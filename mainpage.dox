@@ -1,0 +1,504 @@
+/*!
+ * \mainpage Janus - General purpose WebRTC Gateway
+ *
+ * \par Developer Documentation for the Janus WebRTC Gateway
+ * This is the main developer documentation for the Janus WebRTC
+ * Gateway, generated with the help of
+ * <a href="http://www.doxygen.org">Doxygen</a>. Make sure you
+ * check the \ref DEPS before attempting a compilation. If you are
+ * interested in how to compile, install and use the gateway,
+ * checkout the \ref README information.
+ *
+ * \par A general purpose gateway
+ * The Janus WebRTC Gateway has been conceived as a <tt>general purpose</tt>
+ * gateway. As such, it doesn't provide any functionality per se
+ * other than implementing the means to set up a WebRTC media communication
+ * with a browser, exchanging JSON messages with it, and relaying RTP/RTCP
+ * and messages between browsers and the server-side application logic they're attached to. Any specific
+ * feature/application needs to be implemented in server side plugins,
+ * that browsers can then contact via the gateway to take advantage of
+ * the functionality they provide. Example of such plugins can be
+ * implementations of applications like echo tests, conference bridges,
+ * media recorders, SIP gateways and the like.
+ * 
+ * The reason for this is simple: we wanted something that would have a
+ * <tt>small footprint</tt> (hence a C implementation) and that we could only
+ * equip with what was <tt>really needed</tt> (hence pluggable modules). That is,
+ * something that would allow us to deploy either a full-fledged WebRTC
+ * gateway on the cloud, or a small nettop/box to handle a specific use case.
+ *
+ * \par Architecture and APIs
+ * The core of the gateway is specified in the \ref core section. The protocols
+ * implemented in the gateway are listed in the \ref protocols group
+ * instead. A list of plugins made available out of the box by Meetecho
+ * are available in the \ref plugins group: these plugins can be changed
+ * or extended to match your requirements, or just used as a simple
+ * reference should you be interested in writing a new plugin from
+ * scratch (and you're definitely welcome to!). A \ref pluginapi to
+ * create new plugins, or understand how they're conceived, is documented
+ * as well. A documentation on the web and JavaScript API to use the
+ * gateway and the plugins it makes available in your web application
+ * can be found in the \ref JS page. 
+ *
+ * This is only the first version of the gateway, and as such it is a bit
+ * rough at the edges: there is definitely room for improvement, there are
+ * bugs, limitations, and things that need to be done. For a quick glance
+ * on the most relevant pending stuff check our \ref todo (and, if you're
+ * willing to help on any of those, get in touch with us!)
+ *
+ * \section copyright Copyright and author
+ *
+ * Janus WebRTC Gateway © 2014 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ *
+ * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
+ *
+ * \section license License
+ * This program is free software, distributed under the terms of
+ * the Affero GNU General Public License Version 3. For more details
+ * see the \ref COPYING page.
+ *
+*/
+
+/*! \page DEPS Dependencies
+ *
+ * The application and the plugins depend on the following open source
+ * software and libraries, so make sure you install the related development
+ * versions before attempting a compilation:
+ *
+ * - \b GLib: http://library.gnome.org/devel/glib/
+ * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
+ * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (Web server)
+ * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
+ * - \b Jansson: http://www.digip.org/jansson/ (JSON)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
+ * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
+ * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
+ * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
+ * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
+ * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
+ *
+ * In case you install them, or have them installed, in non-standard paths,
+ * and pkg-config can't find them, make sure to edit all the Makefiles accordingly.
+ */
+
+/*! \page JS JavaScript API
+ * The gateway exposes a pseudo-RESTful interface based on JSON messages,
+ * that allows web applications to take advantage of its features and the
+ * functionality provided by its plugins. To make things easier for web
+ * developers, a JavaScript library (\c janus.js) is available. This library
+ * eases the task of creating sessions with the gateway, attaching WebRTC
+ * users to plugins, send and receive requests and events to the plugins
+ * themselves and so on. For real examples of how this library can be
+ * used, check the demos in the \b html folder of this package.
+ * 
+ * In general, when using the gateway features, you would normally do the following:
+ *
+ * -# include the Janus JavaScript library in your web page;
+ * -# initialize the Janus JavaScript library;
+ * -# connect to the gateway and create a session;
+ * -# create one or more handles to attach to a plugin (e.g., echo test and/or streaming);
+ * -# interact with the plugin (sending/receiving messages, negotiating a PeerConnection);
+ * -# eventually, close all the handles and shutdown the related PeerConnections;  
+ * -# destroy the session.  
+ * 
+ * The above steps will be presented in order, describing how you can use
+ * the low level API to accomplish them. Consider that in the future we might
+ * provide higher level wrappers to this API to address specific needs, e.g.,
+ * a higher level API for each plugin: this would make it even easier to use
+ * the gateway features, as a high level API for the streaming plugin, for
+ * instance, may just ask you to provide the server address and the ID of
+ * the \c &lt;video&gt; element to display the stream in, and would take care of all the
+ * above mentioned steps on your behalf. Needless to say, you're very welcome
+ * to provide wrapper APIs yourself, if you feel a sudden urge to do so! :-)
+ *
+ * <hr>
+ *
+ * As a first step, you should include the \c janus.js library in your project:
+ *
+\verbatim
+<script type="text/javascript" src="janus.js" ></script>
+\endverbatim
+ *
+ * The core of the JavaScript API is the \c Janus object. This object needs
+ * to be initialized the first time it is used in a page. This can be done
+ * using the static \c init method of the object, which accepts the
+ * following options:
+ *
+ * - \c debug: whether debug should be enabled on the JavaScript console (true/false, default=false)
+ * - \c callback: a user provided function that is invoked when the initialization is complete. 
+ * 
+ * Here's an example:
+ *
+ * 
+ \verbatim
+Janus.init({
+   debug: true,
+   callback: function() {
+	   // Done!
+   });
+ \endverbatim
+ *
+ * Once the library has been initialized, you can start creating sessions.
+ * Normally, each browser tab will need a single session with the gateway: in
+ * fact, each gateway session can contain several different plugin handles
+ * at the same time, meaning you can start several different WebRTC sessions
+ * with the same or different plugins for the same user using the same
+ * gateway session. That said, you're free to set up different gateway
+ * sessions in the same page, should you prefer so.
+ *
+ * Creating a session is quite easy. You just need to use the \c new constructor
+ * to create a new \c Janus object that will handle your interaction with the
+ * gateway. Considering the dynamic and asynchronous nature of Janus sessions
+ * (events may occur at any time), there are several properties and callbacks you
+ * can configure when creating a session:
+ *
+ * - \c server: the address of the gateway (e.g., http://yourserver:8088/janus);
+ * - \c iceServers: a list of STUN/TURN servers to use (a default STUN server
+ * will be used if you skip this property);
+ * - a set of callbacks to be notified about events, namely:
+ * 		- \c success: the session was successfully created and is ready to be used;
+ * 		- \c error: the session was NOT successfully created;
+ * 		- \c destroyed: the session was destroyed and can't be used any more.
+ *
+ * These properties and callbacks are passed to the method as properties
+ * of a single parameter object: that is, the \c Janus constructor takes a
+ * single parameter, which although acts as a container for all the available
+ * options. The \c success callback is where you tipically start your application
+ * logic, e.g., attaching the peer to a plugin and start a media session.
+ *
+ * Here's an example:
+ * 
+ \verbatim
+var janus = new Janus(
+	{
+		server: 'http://yourserver:8088/janus',
+		success: function() {
+			// Done! attach to plugin XYZ
+		},
+		error: function(cause) {
+			// Error, can't go on...
+		},
+		destroyed: function() {
+			// I should get rid of this
+		}
+	});
+ \endverbatim
+ *
+ * Once created, this object represents your session with the gateway.
+ * you can interact with a \c Janus object in several different ways.
+ * In particular, the following properties and methods are defined:
+ *
+ * - \c getServer(): returns the address of the gateway;
+ * - \c isConnected(): returns \c true if the Janus instance is connected
+ * to the gateway, \c false otherwise;
+ * - \c getSessionId(): returns the unique gateway session identifier;
+ * - \c attach(parameters): attaches the session to a plugin, creating an handle;
+ * more handles to the same or different plugins can be created at the same time;
+ * - \c destroy(parameters): destroys the session with the gateway, and closes
+ * all the handles (and related PeerConnections) the session may have with any plugin as well.
+ *
+ * The most important property is obviously the \c attach() method, as
+ * it's what will allow you to exploit the features of a plugin to manipulate
+ * the media sent and/or received by a PeerConnection in your web page.
+ * This method will create a plugin handle you can use for the purpose,
+ * for which you can configure properties and callbacks when calling the
+ * \c attach() method itself. As for the \c Janus constructor, the \c attach()
+ * method takes a single parameter that can contain any of the following
+ * properties and callbacks:
+ *
+ * - \c plugin: the unique package name of the plugin (e.g., \c janus.plugin.echotest );
+ * will be used if you skip this property)
+ * - a set of callbacks to be notified about events, namely:
+ * 		- \c success: the handle was successfully created and is ready to be used;
+ * 		- \c error: the handle was NOT successfully created;
+ * 		- \c consentDialog: this callback is triggered just before \c getUserMedia is called
+ * (parameter=<b>true</b>) and after it is completed (parameter=<b>false</b>); this means it can
+ * be used to modify the UI accordingly, e.g., to prompt the user about the need to accept the device access consent requests;
+ * 		- \c onmessage: a message/event has been received from the plugin;
+ * 		- \c onlocalstream: a local \c MediaStream is available and ready to be displayed;
+ * 		- \c onremotestream: a remote \c MediaStream is available and ready to be displayed;
+ * 		- \c oncleanup: the WebRTC PeerConnection with the plugin was closed.
+ *
+ * Here's an example:
+ * 
+ \verbatim
+// Attach to echo test plugin, using the previously created janus instance
+janus.attach(
+	{
+		plugin: "janus.plugin.echotest",
+		success: function(pluginHandle) {
+			// Plugin attached! 'pluginHandle' is our handle
+		},
+		error: function(cause) {
+			// Couldn't attach to the plugin
+		},
+		consentDialog: function(on) {
+			// e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
+		},
+		onmessage: function(msg, jsep) {
+			// We got a message/event (msg) from the plugin
+			// If jsep is not null, this involves a WebRTC negotiation
+		},
+		onlocalstream: function(stream) {
+			// We have a local stream (getUserMedia worked!) to display
+		},
+		onremotestream: function(stream) {
+			// We have a remote stream (working PeerConnection!) to display
+		},
+		oncleanup: function() {
+			// PeerConnection with the plugin closed, clean the UI
+			// The plugin handle is still valid so we can create a new one
+		}
+	});
+ \endverbatim
+ *
+ * So the \c attach() method allows you to attach to a plugin, and specify 
+ * the callbacks to invoke when anything relevant happens in this interaction.
+ * To actively interact with the plugin, you can use the \c Handle object
+ * that is returned by the \c success callback (pluginHandle in the example).
+ *
+ * This \c Handle object has several methods you can use to interact with
+ * the plugin or check the state of the session handle:
+ *
+ * - \c getId(): returns the unique handle identifier;
+ * - \c getPlugin(): returns the unique package name of the attached plugin;
+ * - \c send(parameters): sends a message (with or without a jsep to
+ * negotiate a PeerConnection) to the plugin;
+ * - \c createOffer(callbacks): asks the library to create a WebRTC compliant OFFER;
+ * - \c createAnswer(callbacks): asks the library to create a WebRTC compliant ANSWER;
+ * - \c handleRemoteJsep(callbacks): asks the library to handle an incoming WebRTC compliant session description;
+ * - \c dtmf(parameters): sends a DTMF tone on the PeerConnection;
+ * - \c getBitrate(): gets a verbose description of the currently received stream bitrate (only available on Chrome, for now);
+ * - \c hangup(): tells the library to close the PeerConnection;
+ * - \c detach(parameters): detaches from the plugin and destroys the handle, tearing
+ * down the related PeerConnection if it exists.
+ *
+ * While the \c Handle API may look complex, it's actually quite straightforward
+ * once you get the concept. The only step that may require a little more
+ * effort to understand is the PeerConnection negotiation, but again, if
+ * you're familiar with the WebRTC API, the \c Handle actually makes it
+ * a lot easier.
+ *
+ * The idea behind it's usage is the following:
+ *
+ * -# you use \c attach() to create a \c Handle object;
+ * -# in the \c success callback, your application logic can kick in: you may
+ * want to send a message to the plugin ( \c send(msg) ), negotiate
+ * a PeerConnection with the plugin right away ( \c createOffer followed
+ * by a \c send(msg, jsep) ) or wait for something to happen to do anything;
+ * -# the \c onmessage callback tells you when you've got messages from the plugin;
+ * if the \c jsep parameter is not null, just pass it to the library, which will take
+ * care of it for you; if it's an \b OFFER use \c createAnswer (followed by a
+ * \c send(msg, jsep) to close the loop with the plugin), otherwise use
+ * \c handleRemoteJsep ;
+ * -# whether you took the initiative to set up a PeerConnection or the plugin did,
+ * the \c onlocalstream and/or the \c onremotestream callbacks will provide
+ * you with a stream you can display in your page;
+ * -# each plugin may allow you to manipulate what should flow through the
+ * PeerConnection channel: the \c send method and \c onmessage callback
+ * will allow you to handle this interaction (e.g., to tell the plugin
+ * to mute your stream, or to be notified about someone joining a virtual room). 
+ *
+ * The following paragraphs will delve a bit deeper in the negotiation
+ * mechanism provided by the \c Handle API, in particular describing
+ * the properties and callbacks that may be involved. To follow the approach
+ * outlined by the W3C WebRTC API, this negotiation mechanism is heavily
+ * based on asynchronous methods as well.
+ *
+ * - \c createOffer takes a single parameter, that can contain any of the
+ * following properties and callbacks:
+ *   - \c media: you can use this property to tell the library which media (audio/video)
+ * you're interested in, and whether you're going to send and/or receive any of them;
+ * this option is an object that can take any of the following properties:
+ *   - \c audioSend: \c true/false (do or do not send audio);
+ *   - \c audioRecv: \c true/false (do or do not receive audio);
+ *   - \c audio: \c true/false (do or do not send \b and receive audio, takes precedence on the above);
+ *   - \c videoSend: \c true/false (do or do not send video);
+ *   - \c videoRecv: \c true/false (do or do not receive video);
+ *   - \c video: \c true/false (do or do not send \b and receive video, takes precedence on the above);
+ *   - \c video: \c "hires"/"lowres" (send a 1280x720 or a 320x240 video, takes precedence on the above);
+ * this property will affect the resulting getUserMedia that the library will issue;
+ *   - a set of callbacks to be notified about the result, namely:
+ *     - \c success: the session description was created (attached as a parameter) and is ready to be sent to the plugin; 
+ *     - \c error: the session description was NOT successfully created;
+ * - \c createAnswer takes the same options as createOffer, but requires
+ * an additional one as part of the single parameter argument:
+ *   - \c jsep: the session description sent by the plugin (e.g., as received
+ * in an \c onmessage callback) as its OFFER.
+ *
+ * Whether you use \c createOffer or \c createAnswer depending on the scenario,
+ * you should end up with a valid \c jsep object returned in the \c success
+ * callback. You can attach this \c jsep object to a message in a \c send request
+ * to pass it to the plugin, and have the gateway negotiate a PeerConnection
+ * with your application.
+ *
+ * Here's an example of how to use \c createOffer, taken from the Echo Test demo page:
+ *
+ \verbatim
+// Attach to echo test plugin
+janus.attach(
+	{
+		plugin: "janus.plugin.echotest",
+		success: function(pluginHandle) {
+			// Negotiate WebRTC
+			echotest = pluginHandle;
+			var body = { "audio": true, "video": true };
+			echotest.send({"message": body});
+			echotest.createOffer(
+				{
+					// No media property provided: by default,
+						// it's sendrecv for audio and video
+					success: function(jsep) {
+						// Got our SDP! Send our OFFER to the plugin
+						echotest.send({"message": body, "jsep": jsep});
+					},
+					error: function(error) {
+						// An error occurred...
+					}
+				});
+		},
+		[..]
+		onmessage: function(msg, jsep) {
+			// Handle msg, if needed, and check jsep
+			if(jsep !== undefined && jsep !== null) {
+				// We have the ANSWER from the plugin
+				echotest.handleRemoteJsep({jsep: jsep});
+			}
+		},
+		[..]
+		onlocalstream: function(stream) {
+			// Invoked after createOffer
+			// This is our video
+		},
+		onremotestream: function(stream) {
+			// Invoked after handleRemoteJsep has got us a PeerConnection
+			// This is the remote video
+		},
+		[..]
+  \endverbatim
+ *
+ * This, instead, is an example of how to use \c createAnswer, taken from the Streaming demo page:
+ *
+ \verbatim
+// Attach to echo test plugin
+janus.attach(
+	{
+		plugin: "janus.plugin.streaming",
+		success: function(pluginHandle) {
+			// Handle created
+			streaming = pluginHandle;
+			[..]
+		},
+		[..]
+		onmessage: function(msg, jsep) {
+			// Handle msg, if needed, and check jsep
+			if(jsep !== undefined && jsep !== null) {
+				// We have an OFFER from the plugin
+				streaming.createAnswer(
+					{
+						// We attach the remote OFFER
+						jsep: jsep,
+						// We want recvonly audio/video
+						media: { audioSend: false, videoSend: false },
+						success: function(ourjsep) {
+							// Got our SDP! Send our ANSWER to the plugin
+							var body = { "request": "start" };
+							streaming.send({"message": body, "jsep": ourjsep});
+						},
+						error: function(error) {
+							// An error occurred...
+						}
+					});
+			}
+		},
+		[..]
+		onlocalstream: function(stream) {
+			// This will NOT be invoked, we chose recvonly
+		},
+		onremotestream: function(stream) {
+			// Invoked after send has got us a PeerConnection
+			// This is the remote video
+		},
+		[..]
+  \endverbatim
+ *
+ * Of course, these are just a couple of examples where the scenarios
+ * assumed that one plugin would only receive (Echo Test) or generate
+ * (Streaming) offers. A more complex example (e.g., a Video Call plugin)
+ * would involve both, allowing you to either send offers to a plugin,
+ * or receive some from them. Handling this is just a matter of checking
+ * the \c type of the \c jsep object and reacting accordingly.
+ *  
+ * <hr>
+ * 
+ * This is it! For more information about the API, have a look at the
+ * demo pages that are available in the \b html folder in this package.
+ * 
+ */
+
+/*! \page README README
+ *  \verbinclude README
+ */
+
+/*! \page CREDITS Credits
+ *
+ * Janus WebRTC Gateway © 2014 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ *
+ * \b Author:
+ *         Lorenzo Miniero <lorenzo@meetecho.com>
+ *
+ * Several open source components have been used to implement this software:
+ *
+ * - \b GLib: http://library.gnome.org/devel/glib/
+ * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
+ * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (Web server)
+ * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
+ * - \b Jansson: http://www.digip.org/jansson/ (JSON)
+ * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
+ * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
+ * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
+ * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
+ * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
+ * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
+ *
+ */
+  
+/*! \page COPYING License
+ *  \verbinclude COPYING
+ */
+
+/*! \defgroup core Core
+ * \brief Core implementation of the gateway
+ * \details The Janus WebRTC Gateway is founded on a core that glues the
+ * involved parts together. The main code is janus.c that implements
+ * the logic behind the gateway itself: it implements the web server that
+ * interacts with browsers, and handles sessions with them. This includes
+ * taking care of media signalling and negotiation, and bridging peers
+ * with available plugins.
+ */
+
+/*! \defgroup protocols Protocols
+ * \brief Implementations of the WebRTC protocols
+ * \details The WebRTC specification (WEBRTC/RTCWEB) currently mandates
+ * the usage of a few protocols and techniques. The code in this group
+ * takes care of them all (SDP, ICE, DTLS-SRTP, RTP/RTCP). 
+ * \ingroup core
+ */
+
+/*! \defgroup plugins Plugins
+ * \brief Gateway plugins available out of the box
+ * \details In order to showcase how different plugins can implement
+ * completely different applications on top of the Janus core, a few
+ * plugin implementations are provided out of the box. The API for
+ * writing a new plugin is specified in the \ref pluginapi section.
+ */
+
+/*! \defgroup pluginapi Plugin API
+ * \brief Plugin API (aka, how to write your own plugin)
+ * \details The plugin.h header specifies the API a plugin needs to
+ * implement and make available in order to be used by the gateway and
+ * exposed to browsers. 
+ * \ingroup plugins
+ */

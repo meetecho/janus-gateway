@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Janus WebRTC Gateway: Echo Test</title>
+<script type="text/javascript" src="jquery.min.js" ></script>
+<script type="text/javascript" src="jquery.blockUI.js" ></script>
+<script type="text/javascript" src="js/bootstrap.js"></script>
+<script type="text/javascript" src="js/bootbox.min.js"></script>
+<script type="text/javascript" src="js/spin.min.js"></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="echotest.js"></script>
+<link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<body>
+
+<a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; right: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+<nav class="navbar navbar-default navbar-static-top">
+<div class="container">
+	<div class="navbar-header">
+		<a class="navbar-brand" href="index.html">Janus</a>
+		<button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+			<span class="icon-bar"></span>
+			<span class="icon-bar"></span>
+			<span class="icon-bar"></span>
+		</button>
+	</div>
+	<div class="navbar-collapse collapse">
+		<ul class="nav navbar-nav">
+			<li><a href="index.html">Home</a></li>
+			<li class="dropdown active"><a href="#" class="dropdown-toggle" data-toggle="dropdown">Demos <b class="caret"></b></a>
+				<ul class="dropdown-menu">
+					<li><a href="demos.html">Index</a></li>
+					<li class="divider"></li>
+					<li class="active"><a href="echotest.html">Echo Test</a></li>
+					<li><a href="streamingtest.html">Streaming</a></li>
+					<li><a href="videocalltest.html">Video Call</a></li>
+					<li><a href="siptest.html">SIP Gateway</a></li>
+					<li><a href="videomcutest.html">Video MCU</a></li>
+					<li><a href="audiobridgetest.html">Audio Conference</a></li>
+					<li><a href="voicemailtest.html">Voice Mail</a></li>
+				</ul>
+			</li>
+			<li><a href="docs">Documentation</a></li>
+		</ul>
+		<div class="navbar-header navbar-right">
+			<ul class="nav navbar-nav">
+				<li><a href="http://www.meetecho.com" class="navbar-link"><b>Meetecho</b></a></li>
+			</ul>
+		</div>
+	</div>
+</div>
+</nav>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="page-header">
+				<h1>Plugin Demo: Echo Test
+					<button class="btn btn-default" id="start">Start</button>
+				</h1>
+			</div>
+			<div class="container hide" id="videos">
+				<div class="row">
+					<div class="col-md-6">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Local Video
+									<div class="btn-group btn-group-xs pull-right hide">
+										<button class="btn btn-danger" id="toggleaudio">Disable audio</button>
+										<button class="btn btn-danger" id="togglevideo">Disable video</button>
+										<div class="btn-group btn-group-xs">
+											<button id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+												Bandwidth<span class="caret"></span>
+											</button>
+											<ul id="bitrate" class="dropdown-menu" role="menu">
+												<li><a href="#" id="0">No limit</a></li>
+												<li><a href="#" id="128">Cap to 128kbit</a></li>
+												<li><a href="#" id="256">Cap to 256kbit</a></li>
+												<li><a href="#" id="512">Cap to 512kbit</a></li>
+												<li><a href="#" id="1024">Cap to 1mbit</a></li>
+												<li><a href="#" id="1500">Cap to 1.5mbit</a></li>
+												<li><a href="#" id="2000">Cap to 2mbit</a></li>
+											</ul>
+										</div>
+									</div>
+								</h3>
+							</div>
+							<div class="panel-body" id="videoleft"></div>
+						</div>
+					</div>
+					<div class="col-md-6">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Remote Video <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
+							</div>
+							<div class="panel-body" id="videoright"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<hr>
+	<div class="footer">
+	<p>Janus WebRTC Gateway &copy; <a href="http://www.meetecho.com">Meetecho</a> 2014</p>
+	</div>
+</div>
+
+</body>
+</html>
