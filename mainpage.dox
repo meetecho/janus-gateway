@@ -38,7 +38,7 @@
  * create new plugins, or understand how they're conceived, is documented
  * as well. A documentation on the web and JavaScript API to use the
  * gateway and the plugins it makes available in your web application
- * can be found in the \ref JS page. 
+ * can be found in the \ref JS and \ref rest pages. 
  *
  * This is only the first version of the gateway, and as such it is a bit
  * rough at the edges: there is definitely room for improvement, there are
@@ -84,6 +84,7 @@
 
 /*! \page JS JavaScript API
  * The gateway exposes a pseudo-RESTful interface based on JSON messages,
+ * described in more detail in the \ref rest documentation,
  * that allows web applications to take advantage of its features and the
  * functionality provided by its plugins. To make things easier for web
  * developers, a JavaScript library (\c janus.js) is available. This library
@@ -92,6 +93,13 @@
  * themselves and so on. For real examples of how this library can be
  * used, check the demos in the \b html folder of this package.
  * 
+ * \note The current \c janus.js library makes use of jQuery (http://jquery.com/)
+ * as a support. We're considering preparing versions that make use of
+ * different libraries as well (e.g., Prototype, Dojo, Script.aculo.us, etc.)
+ * in case your web application us based on something that cannot make use
+ * of jQuery. Of course, if you happen to prepare one yourself in the
+ * meanwhile don't hesitate and let us know! :-)
+ *
  * In general, when using the gateway features, you would normally do the following:
  *
  * -# include the Janus JavaScript library in your web page;
@@ -437,6 +445,317 @@ janus.attach(
  * 
  */
 
+/*! \page rest RESTful API
+ *
+ * As anticipated in the \ref JS documentation, the gateway deploys a
+ * RESTful interface that clients can exploit. The \c janus.js library
+ * makes use of it in a transparent way, but if you're interested in
+ * more details about it (e.g., because you want to talk to the gateway
+ * your own way), this page described the interface and the protocol
+ * the API exposes and uses.
+ *
+ * There are basically three types/levels of endpoints you can meet:
+ *
+ * -# \ref root (\c /janus by default, but configurable), which
+ * you only \b POST to in order to create a gateway session;
+ * -# \ref sessions (e.g., \c /janus/12345678, using the
+ * identifier retrieved with a previous create), which you either send
+ * a \b GET to (long poll for events and messages from plugins) or a \b POST
+ * (to create plugin handles or manipulate the session);
+ * -# \ref handles (e.g., \c /janus/12345678/98765432, appending
+ * the handle identifier to the session one) which you only send \b POST
+ * messages to (messages/negotiations for a plugin, handle manipulation),
+ * as all events related to this handle would be received in the session
+ * endpoint \b GET (the \c janus.js library would redirect the incoming
+ * messages to the right handle internally).
+ *
+ * Messages and requests you can send to and receive from any of the
+ * above mentioned endpoints are described in the following chapters.
+ * In general, all messages share at least two fields:
+ * 
+ * - \c janus: the request/event (e.g., "create", "attach", "message", etc.);
+ * - \c transaction: a random string that the client can use to match incoming
+ * messages from the gateway (since, as explained in the \ref plugins
+ * documentation, all messages are asynchronous).
+ *
+ * Different messages will of course add different information to this
+ * base syntax. Error message, instead, usually have these fields:
+ *
+ * - \c janus: this would be "error";
+ * - \c transaction: this would be the transaction identifier of the request
+ * that failed;
+ * - \c error: a JSON object containing two fields:
+ *   - \c code: a numeric error code, as defined in apierror.h;
+ *   - \c reason: a verbose string describing the cause of the failure.
+ *
+ * An example of an error is presented here:
+ *
+\verbatim
+{
+	"janus" : "error",
+	"transaction" : "a1b2c3d4"
+	"error" : {
+		"code" : 458
+		"reason" : "Could not find session 12345678"
+	}
+}
+\endverbatim
+ *
+ * \section root The gateway root
+ * The gateway root is \c /janus by default but, as anticipated, it is
+ * configurable, either via command line or in the \c janus.cfg configuration.
+ *
+ * You can only contact the gateway root when you want to create a new
+ * session with the gateway. To do so, you need to \b POST the a \c janus "create"
+ * JSON message to the gateway:
+ *
+\verbatim
+{
+	"janus" : "create",
+	"transaction" : "<random alphanumeric string>"
+}
+\endverbatim
+ *
+ * If the request is successful, you'll receive the unique session identifier
+ * in a response formatted like this:
+ *
+\verbatim
+{
+	"janus" : "success",
+	"transaction" : "<same as the request>"
+	"data" : {
+		"id" : <unique integer session ID>
+	}
+}
+\endverbatim
+ *
+ * In case of an error, you'll receive an error message as the one introduced
+ * before. This request, if issued with a POST to the gateway root, can only
+ * fail if you miss any of the required fields in the request.
+ *
+ * \section sessions The session endpoint
+ * Once you've created a session, a new endpoint you can use is created
+ * in the gateway. Specifically, the new endpoint is constructed by
+ * concatenating the gateway root and the session identifier you've been
+ * returned (\c e.g., \c /janus/12345678).
+ *
+ * This endpoint can be used in two different ways: 
+ *
+ * -# using a parameter-less \b GET request to the endpoint, you'll
+ * issue a long-poll request to be notified about events and incoming
+ * messages from this session;
+ * -# using a \b POST request to send JSON messages, you'll interact
+ * with the session itself.
+ *
+ * <hr>
+ *
+ * \par Long-poll requests
+ * The long-poll will only trigger events related to messages you're
+ * being sent from plugins, and as such will be clearer to understand
+ * once you read the \ref handles section. That said, the events are formatted
+ * this way:
+ *
+ * - \c janus: this would be "event";
+ * - \c sender: this would be the unique numeric plugin handle identifier;
+ * - \c transaction: this is optional: it is either related to a request
+ * you sent to a plugin before, or it may be missing in case this is an
+ * event the plugin sent on its own account;
+ * - \c plugindata: a JSON object containing the info coming from the plugin itself:
+ *   - \c plugin: the plugin's unique package name (e.g., \c janus.plugin.echotest);
+ *   - \c data: an opaque JSON object that is plugin specific.
+ * - \c jsep: an optional JSON object containing the JSEP SDP (offer or
+ * answer) the plugin may send to negotiate a WebRTC PeerConnection with
+ * the client (check the \ref handles section for more details).
+ *
+ * An example of such an event (in this case, sent by the janus_echotest.c
+ * plugin in response to a request) is presented here:
+ *
+\verbatim
+{
+	"janus" : "event",
+	"sender" : 1815153248,
+	"transaction" : "sBJNyUhH6Vc6",
+	"plugindata" : {
+		"plugin": "janus.plugin.echotest",
+		"data" : {
+			"echotest" : "event",
+			"result" : "ok"
+		}
+	},
+}
+\endverbatim
+ *
+ * The long-poll request has a 30 seconds timeout. If it has no event to
+ * report, a simple \em keep-alive message will be triggered:
+ *
+\verbatim
+{
+	"janus" : "keepalive",
+}
+\endverbatim
+ *
+ * As with all long-poll based approaches, it's up to your application
+ * to send a new polling request as soon as an event or a keep-alive
+ * has been received.
+ *
+ *
+ * <hr>
+ *
+ * \par Interacting with the session
+ * To interact with the session, e.g., to create a new handle to attach
+ * to a plugin or destroy the current session, you need to send a \b POST
+ * JSON message to the session endpoint.
+ *
+ * To attach to a plugin in order to exploit its features, you need to
+ * \b POST a \c janus "attach" JSON message to the gateway; you'll need
+ * of course to provide information on the plugin you want to attach to,
+ * which can be done using the \c plugin field: 
+ *
+\verbatim
+{
+	"janus" : "attach",
+	"plugin" : "<the plugin's unique package name>",
+	"transaction" : "<random string>"
+}
+\endverbatim
+ *
+ * If the request is successful, you'll receive the unique plugin handle
+ * identifier in a response formatted the same way as the session create
+ * one, that is like this:
+ *
+\verbatim
+{
+	"janus" : "success",
+	"transaction" : "<same as the request>"
+	"data" : {
+		"id" : <unique integer plugin handle ID>
+	}
+}
+\endverbatim
+ *
+ * In case of an error, you'll receive an error message as the one introduced
+ * before. This request, if issued with a POST to a valid session endpoint, can only
+ * fail if you miss any of the required fields in the request or if the
+ * plugin you requested is not available in the gateway.
+ *
+ * To destroy the current session, instead, just send a "destroy" \c janus
+ * request:
+ *
+\verbatim
+{
+	"janus" : "destroy",
+	"transaction" : "<random string>"
+}
+\endverbatim
+ *
+ * This will also destroy the endpoint created for this session.
+ * If your session is currently managing one or more plugin handles, 
+ * make sure you destroy them first (as explained in the next section).
+ * The gateway tries to do this automatically when receiving a session
+ * destroy request, but a cleaner approach on the client side would help 
+ * nonetheless avoid potential issues.
+ *
+ * \section handles The plugin handle endpoint
+ * Once you've created a plugin handle, a new endpoint you can use is created
+ * in the gateway. Specifically, the new endpoint is constructed by
+ * concatenating the gateway root, the session identifier and the new
+ * plugin handle identifier you've been returned (\c e.g.,
+ * \c /janus/12345678/98765432).
+ *
+ * You can use this plugin handle for everything that is related to the
+ * communication with a plugin, that is, send the plugin a message,
+ * negotiate a WebRTC connection to attach to the plugin, and so on.
+ *
+ * To send a plugin a message/request, you need to \b POST the handle
+ * endpoint a \c janus "message" JSON payload. The \c body field will
+ * have to contain a plugin-specific JSON payload. In case the message
+ * also needs to convey WebRTC-related negotiation information, a \c jsep
+ * field containing the JSON-ified version of the JSEP object can be 
+ * attached as well.
+ *
+ * Here's an example of a message you may send the janus_echotest.c plugin
+ * to mute your audio:
+ *
+\verbatim
+{
+	"janus" : "message",
+	"transaction" : "sBJNyUhH6Vc6",
+	"body" : {
+		"audio" : false
+	}
+}
+\endverbatim
+ *
+ * The same message containing negotiation information as well, instead,
+ * (an OFFER, in this example), is presented here:
+ *
+\verbatim
+{
+	"janus" : "message",
+	"transaction" : "sBJNyUhH6Vc6",
+	"body" : {
+		"audio" : false
+	},
+	"jsep" : {
+		"type" : "offer",
+		"sdp" : "v=0\r\no=[..more sdp stuff..]"
+	}
+}
+\endverbatim
+ *
+ * Considering the asynchronous nature of the Janus API, a successful
+ * management of such messages within the gateway will simply result in
+ * a \c janus "ack" messages being sent back to the client. A logical response
+ * to those messages, if needed, would be provided as an event in the
+ * long-poll interface described previously, and clients would be able
+ * to match it to the original request by means of the transaction
+ * identifiers. It is worth noting, though, that should a WebRTC negotiation
+ * be involved you don't have to expect an ANSWER to your OFFER to be
+ * sent back in the same transaction. A plugin may decide, in its
+ * application logic, to not provide you with an ANSWER right away, but
+ * only after some internal state changes occur. It's up to your application
+ * to handle the negotiation state accordingly.
+ *
+ * An example of an "ack" being sent back to the client, using the previous
+ * sample request as a reference, is presented here:
+ *
+\verbatim
+{
+	"janus" : "ack",
+	"transaction" : "sBJNyUhH6Vc6"
+}
+\endverbatim
+ *
+ * If you receive this ack, you can be sure the plugin has received the
+ * message, and is going to process it soon.
+ *
+ * In case of an error, instead, you'll receive an error message as the one
+ * introduced before. This request, if issued with a POST to a valid plugin
+ * handle endpoint, can only fail if you miss any of the required fields
+ * in the request, if the plugin you tried to contact is not available in
+ * the gateway anymore, if an error occurred in the plugin when trying to
+ * receive the message or if the \c jsep SDP you may have provided is
+ * invalid.
+ *
+ * To destroy the plugin handle, instead, just send a "detach" \c janus
+ * request:
+ *
+\verbatim
+{
+	"janus" : "detach",
+	"transaction" : "<random string>"
+}
+\endverbatim
+ *
+ * This will also destroy the endpoint created for this plugin handle.
+ * If your plugin handle is also managing an ongoing WebRTC connection
+ * with the plugin, make sure it is torn down as part of this process.
+ * The plugin implementation and the gateway core should do this
+ * automatically, but implementing the right behaviour in clients would
+ * help avoid potential issues nonetheless.
+ *
+ */
+ 
 /*! \page README README
  *  \verbinclude README
  */
