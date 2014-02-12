@@ -582,7 +582,7 @@ static void *janus_sip_handler(void *data) {
 			session->account.username = g_strdup(username_text);
 			session->account.secret = g_strdup(secret_text);
 			session->account.proxy_ip = g_strdup(proxyip_text);
-			if(session->account.username == NULL || session->account.secret == NULL || session->account.proxy_ip) {
+			if(session->account.username == NULL || session->account.secret == NULL || session->account.proxy_ip == NULL) {
 				JANUS_DEBUG("Memory error!\n");
 				sprintf(error_cause, "Memory error");
 				goto error;
