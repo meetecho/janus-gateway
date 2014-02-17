@@ -568,6 +568,83 @@ static void *janus_videoroom_handler(void *data) {
 		}
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
+		if(!strcasecmp(request_text, "create")) {
+			/* Create a new videoroom */
+			JANUS_PRINT("Creating a new videoroom\n");
+			json_t *desc = json_object_get(root, "description");
+			if(desc && !json_is_string(desc)) {
+				JANUS_DEBUG("JSON error: invalid element (desc)\n");
+				sprintf(error_cause, "JSON error: invalid element (desc)");
+				goto error;
+			}
+			json_t *bitrate = json_object_get(root, "bitrate");
+			if(bitrate && !json_is_integer(bitrate)) {
+				JANUS_DEBUG("JSON error: invalid element (bitrate)\n");
+				sprintf(error_cause, "JSON error: invalid element (bitrate)");
+				goto error;
+			}
+			json_t *publishers = json_object_get(root, "publishers");
+			if(publishers && !json_is_integer(publishers)) {
+				JANUS_DEBUG("JSON error: invalid element (publishers)\n");
+				sprintf(error_cause, "JSON error: invalid element (publishers)");
+				goto error;
+			}
+			/* Create the audio bridge room */
+			janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
+			if(videoroom == NULL) {
+				JANUS_DEBUG("Memory error!\n");
+				sprintf(error_cause, "Memory error");
+				goto error;
+			}
+			/* Generate a random ID */
+			guint64 room_id = 0;
+			while(room_id == 0) {
+				room_id = g_random_int();
+				if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
+					/* Room ID already taken, try another one */
+					room_id = 0;
+				}
+			}
+			videoroom->room_id = room_id;
+			char *description = NULL;
+			if(desc != NULL) {
+				description = g_strdup(json_string_value(desc));
+			} else {
+				char roomname[255];
+				sprintf(roomname, "Room %"SCNu64"", videoroom->room_id);
+				description = g_strdup(roomname);
+			}
+			if(description == NULL) {
+				JANUS_DEBUG("Memory error!\n");
+				continue;
+			}
+			videoroom->room_name = description;
+			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
+			if(publishers)
+				videoroom->max_publishers = json_integer_value(publishers);
+			if(videoroom->max_publishers < 0)
+				videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
+			videoroom->bitrate = 0;
+			if(bitrate)
+				videoroom->bitrate = json_integer_value(bitrate);
+			videoroom->destroy = 0;
+			videoroom->participants = g_hash_table_new(NULL, NULL);
+			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
+			JANUS_PRINT("Created videoroom: %"SCNu64" (%s)\n", videoroom->room_id, videoroom->room_name);
+			/* Show updated rooms list */
+			GList *rooms_list = g_hash_table_get_values(rooms);
+			GList *r = rooms_list;
+			while(r) {
+				janus_videoroom *vr = (janus_videoroom *)r->data;
+				JANUS_PRINT("  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers);
+				r = r->next;
+			}
+			g_list_free(rooms_list);
+			/* Send info back */
+			event = json_object();
+			json_object_set(event, "videoroom", json_string("created"));
+			json_object_set(event, "room", json_integer(videoroom->room_id));
+		} else
 		/* What kind of participant is this session referring to? */
 		if(session->participant_type == janus_videoroom_p_type_none) {
 			JANUS_PRINT("Configuring new participant\n");

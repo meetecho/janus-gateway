@@ -541,7 +541,91 @@ static void *janus_audiobridge_handler(void *data) {
 		}
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
-		if(!strcasecmp(request_text, "join")) {
+		if(!strcasecmp(request_text, "create")) {
+			/* Create a new audiobridge */
+			JANUS_PRINT("Creating a new audiobridge\n");
+			json_t *desc = json_object_get(root, "description");
+			if(desc && !json_is_string(desc)) {
+				JANUS_DEBUG("JSON error: invalid element (desc)\n");
+				sprintf(error_cause, "JSON error: invalid element (desc)");
+				goto error;
+			}
+			json_t *sampling = json_object_get(root, "sampling");
+			if(sampling && !json_is_integer(sampling)) {
+				JANUS_DEBUG("JSON error: invalid element (sampling)\n");
+				sprintf(error_cause, "JSON error: invalid element (sampling)");
+				goto error;
+			}
+			json_t *record = json_object_get(root, "record");
+			if(record && !json_is_boolean(record)) {
+				JANUS_DEBUG("JSON error: invalid element (record)\n");
+				sprintf(error_cause, "JSON error: invalid value (record)");
+				goto error;
+			}
+			/* Create the audio bridge room */
+			janus_audiobridge_room *audiobridge = calloc(1, sizeof(janus_audiobridge_room));
+			if(audiobridge == NULL) {
+				JANUS_DEBUG("Memory error!\n");
+				sprintf(error_cause, "Memory error");
+				goto error;
+			}
+			/* Generate a random ID */
+			guint64 room_id = 0;
+			while(room_id == 0) {
+				room_id = g_random_int();
+				if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
+					/* Room ID already taken, try another one */
+					room_id = 0;
+				}
+			}
+			audiobridge->room_id = room_id;
+			char *description = NULL;
+			if(desc != NULL) {
+				description = g_strdup(json_string_value(desc));
+			} else {
+				char roomname[255];
+				sprintf(roomname, "Room %"SCNu64"", audiobridge->room_id);
+				description = g_strdup(roomname);
+			}
+			if(description == NULL) {
+				JANUS_DEBUG("Memory error!\n");
+				continue;
+			}
+			audiobridge->room_name = description;
+			if(sampling)
+				audiobridge->sampling_rate = json_integer_value(sampling);
+			else
+				audiobridge->sampling_rate = 16000;
+			if(audiobridge->sampling_rate != 16000) {
+				JANUS_DEBUG("We currently only support 16kHz (wideband) as a sampling rate for audio rooms, changing %"SCNu32" to 16000...\n", audiobridge->sampling_rate);
+				audiobridge->sampling_rate = 16000;
+			}
+			audiobridge->record = FALSE;
+			if(record && json_is_true(record))
+				audiobridge->record = TRUE;
+			audiobridge->recording = NULL;
+			audiobridge->destroy = 0;
+			audiobridge->participants = g_hash_table_new(NULL, NULL);
+			janus_mutex_init(&audiobridge->mutex);
+			g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
+			JANUS_PRINT("Created audiobridge: %"SCNu64" (%s)\n", audiobridge->room_id, audiobridge->room_name);
+			/* We need a thread for the mix */
+			g_thread_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge);
+			/* Show updated rooms list */
+			GList *rooms_list = g_hash_table_get_values(rooms);
+			GList *r = rooms_list;
+			while(r) {
+				janus_audiobridge_room *ar = (janus_audiobridge_room *)r->data;
+				JANUS_PRINT("  ::: [%"SCNu64"][%s] %"SCNu32" (%s be recorded)\n",
+					ar->room_id, ar->room_name, ar->sampling_rate, ar->record ? "will" : "will NOT");
+				r = r->next;
+			}
+			g_list_free(rooms_list);
+			/* Send info back */
+			event = json_object();
+			json_object_set(event, "audiobridge", json_string("created"));
+			json_object_set(event, "room", json_integer(audiobridge->room_id));
+		} else if(!strcasecmp(request_text, "join")) {
 			JANUS_PRINT("Configuring new participant\n");
 			json_t *room = json_object_get(root, "room");
 			if(!room || !json_is_integer(room)) {
