@@ -38,7 +38,7 @@ then
 	echo "  -- The installed glib-2.0 version (`pkg-config --modversion glib-2.0`) is outdated, at least 2.32 is required"
 	exit 1
 fi
-pkg-config --atleast-version=1.0.1e openssl
+pkg-config --atleast-version=1.0.1 openssl
 if [ $? != 0 ]
 then
 	echo "  -- The installed openssl version (`pkg-config --modversion openssl`) is outdated, at least 1.0.1e is required"
@@ -60,8 +60,10 @@ then
 else
 	export HAVE_OGG=1
 fi
-LIBNICE=( `ldconfig -p | grep libnice.so | tail -n 1` )
-PORTRANGE=`nm -AD ${LIBNICE[3]} | grep nice_agent_set_port_range`
+LIBNICE=`ldconfig -p | grep libnice.so | tail -n 1`
+set -- junk $LIBNICE
+shift
+PORTRANGE=`nm -AD $4 | grep nice_agent_set_port_range`
 if [ -z "$PORTRANGE" ]
 then
 	echo "  -- Your version of libnice does not have nice_agent_set_port_range: support for configuring an RTP/RTCP range will be disabled"
