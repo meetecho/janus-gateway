@@ -27,6 +27,7 @@
 #include "apierror.h"
 #include "rtcp.h"
 #include "sdp.h"
+#include "utils.h"
 
 
 static janus_config *config = NULL;
@@ -54,6 +55,18 @@ gchar *janus_get_server_key() {
 static gchar *local_ip = NULL;
 gchar *janus_get_local_ip() {
 	return local_ip;
+}
+static gchar *public_ip = NULL;
+gchar *janus_get_public_ip() {
+	/* Fallback to the local IP, if we have no public one */
+	return public_ip ? public_ip : local_ip;
+}
+void janus_set_public_ip(const char *ip) {
+	if(ip == NULL)
+		return;
+	if(public_ip != NULL)
+		g_free(public_ip);
+	public_ip = g_strdup(ip);
 }
 static gint stop = 0;
 gint janus_is_stopping() {
@@ -754,7 +767,7 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 		MHD_destroy_response(response);
 		return ret;
 	}
-	gint64 start = g_get_monotonic_time();
+	gint64 start = janus_get_monotonic_time();
 	gint64 end = 0;
 	/* We have a timeout for the long poll: 30 seconds */
 	while(end-start < 30*G_USEC_PER_SEC) {
@@ -765,7 +778,7 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 		}
 		/* Sleep 100ms */
 		g_usleep(100000);
-		end = g_get_monotonic_time();
+		end = janus_get_monotonic_time();
 	}
 	if(event == NULL || event->payload == NULL) {
 		JANUS_PRINT("Long poll time out for session %"SCNu64"...\n", session_id);
@@ -1171,6 +1184,12 @@ gint main(int argc, char *argv[])
 			janus_config_add_item(config, "nat", "stun_port", "3478");
 		}
 	}
+	if(args_info.public_ip_given) {
+		janus_config_add_item(config, "nat", "public_ip", args_info.public_ip_arg);
+	}
+	if(args_info.rtp_port_range_given) {
+		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
+	}
 	janus_config_print(config);
 
 	/* What is the local public IP? */
@@ -1180,6 +1199,7 @@ gint main(int argc, char *argv[])
 		JANUS_PRINT("  -- Will try to use %s\n", item->value);
 	struct ifaddrs *myaddrs, *ifa;
 	int status = getifaddrs(&myaddrs);
+	char *tmp = NULL;
 	if (status == 0) {
 		for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next) {
 			if(ifa->ifa_addr == NULL) {
@@ -1202,11 +1222,8 @@ gint main(int argc, char *argv[])
 							exit(1);
 						}
 					} else if(strcasecmp(buf, "127.0.0.1")) {	/* FIXME Check private IP addresses as well */
-						local_ip = strdup(buf);
-						if(local_ip == NULL) {
-							JANUS_DEBUG("Memory error!\n");
-							exit(1);
-						}
+						if(tmp == NULL)	/* FIXME Take note of the first IP we find, we'll use it as a backup */
+							tmp = strdup(buf);
 					}
 				}
 			}
@@ -1215,11 +1232,14 @@ gint main(int argc, char *argv[])
 		freeifaddrs(myaddrs);
 	}
 	if(local_ip == NULL) {
-		JANUS_DEBUG("Couldn't find any address! using 127.0.0.1 as local IP... (which is NOT going to work out of your machine)\n");
-		local_ip = "127.0.0.1";
-	} else {
-		JANUS_PRINT("Using %s as local IP...\n", local_ip);
+		if(tmp != NULL) {
+			local_ip = tmp;
+		} else {
+			JANUS_DEBUG("Couldn't find any address! using 127.0.0.1 as local IP... (which is NOT going to work out of your machine)\n");
+			local_ip = g_strdup("127.0.0.1");
+		}
 	}
+	JANUS_PRINT("Using %s as local IP...\n", local_ip);
 
 	/* Pre-parse the web server path, if any */
 	ws_path = "/janus";
@@ -1239,15 +1259,50 @@ gint main(int argc, char *argv[])
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL;
 	uint16_t stun_port = 0;
+	uint16_t rtp_min_port = 0, rtp_max_port = 0;
+	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
+	if(item && item->value) {
+		/* Split in min and max port */
+		char *maxport = strrchr(item->value, '-');
+		if(maxport != NULL) {
+			*maxport = '\0';
+			maxport++;
+			rtp_min_port = atoi(item->value);
+			rtp_max_port = atoi(maxport);
+			maxport--;
+			maxport = '-';
+		}
+		if(rtp_min_port > rtp_max_port) {
+			int temp_port = rtp_min_port;
+			rtp_min_port = rtp_max_port;
+			rtp_max_port = temp_port;
+		}
+		if(rtp_max_port == 0)
+			rtp_max_port = 65535;
+		JANUS_PRINT("RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
+	}
 	item = janus_config_get_item_drilldown(config, "nat", "stun_server");
 	if(item && item->value)
 		stun_server = (char *)item->value;
 	item = janus_config_get_item_drilldown(config, "nat", "stun_port");
 	if(item && item->value)
 		stun_port = atoi(item->value);
-	if(janus_ice_init(stun_server, stun_port) < 0) {
+	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port) < 0) {
 		JANUS_DEBUG("Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
+	}
+
+	/* Is there a public_ip value to be used for NAT traversal instead? */
+	item = janus_config_get_item_drilldown(config, "nat", "public_ip");
+	if(item && item->value) {
+		if(public_ip != NULL)
+			g_free(public_ip);
+		public_ip = g_strdup((char *)item->value);
+		if(public_ip == NULL) {
+			JANUS_DEBUG("Memory error\n");
+			exit(1);
+		}
+		JANUS_PRINT("Using %s as our public IP in SDP\n", public_ip);
 	}
 	
 	/* Setup OpenSSL stuff */

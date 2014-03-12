@@ -32,6 +32,7 @@
 
 #include "../config.h"
 #include "../rtp.h"
+#include "../utils.h"
 
 
 /* Plugin information */
@@ -333,7 +334,7 @@ void janus_voicemail_setup_media(janus_pluginession *handle) {
 	if(session->destroy)
 		return;
 	/* Only start recording this peer when we get this event */
-	session->start_time = g_get_monotonic_time();
+	session->start_time = janus_get_monotonic_time();
 	session->started = TRUE;
 	/* Prepare JSON event */
 	json_t *event = json_object();
@@ -351,7 +352,7 @@ void janus_voicemail_incoming_rtp(janus_pluginession *handle, int video, char *b
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
 	if(!session || session->destroy || session->stopping || !session->started || session->start_time == 0)
 		return;
-	gint64 now = g_get_monotonic_time();
+	gint64 now = janus_get_monotonic_time();
 	/* Have 10 seconds passed? */
 	if((now-session->start_time) >= 10*G_USEC_PER_SEC) {
 		/* FIXME Simulate a "stop" coming from the browser */
@@ -546,8 +547,8 @@ static void *janus_voicemail_handler(void *data) {
 			}
 			JANUS_PRINT("Opus payload type is %d\n", opus_pt);
 			g_sprintf(sdp, sdp_template,
-				g_get_monotonic_time(),			/* We need current time here */
-				g_get_monotonic_time(),			/* We need current time here */
+				janus_get_monotonic_time(),		/* We need current time here */
+				janus_get_monotonic_time(),		/* We need current time here */
 				session->recording_id,			/* Recording ID */
 				opus_pt,						/* Opus payload type */
 				opus_pt							/* Opus payload type */);
@@ -557,9 +558,9 @@ static void *janus_voicemail_handler(void *data) {
 				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
 			}
 			/* How long will the gateway take to push the event? */
-			gint64 start = g_get_monotonic_time();
+			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, type, sdp);
-			JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, g_get_monotonic_time()-start);
+			JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
 			if(res != JANUS_OK) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			}

@@ -3,14 +3,21 @@ STUFF = $(shell pkg-config --cflags glib-2.0 jansson sofia-sip-ua opus ogg ini_c
 LIBS = $(shell pkg-config --libs glib-2.0 jansson sofia-sip-ua opus ogg ini_config) -ldl -D_GNU_SOURCE
 OPTS = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wunused #-Werror #-O2
 GDB = -g -ggdb #-gstabs
+OBJS = janus_echotest.so janus_streaming.so janus_sip.so janus_videocall.so janus_videoroom.so
+ifeq ($(HAVE_OPUS),1)
+	OBJS += janus_audiobridge.so
+endif
+ifeq ($(HAVE_OGG),1)
+	OBJS += janus_voicemail.so
+endif
 
-all: janus_echotest.so janus_streaming.so janus_sip.so janus_videocall.so janus_audiobridge.so janus_videoroom.so janus_voicemail.so
+all: $(OBJS)
 
 %.o: %.c
 	$(CC) $(STUFF) -shared -fPIC $(GDB) -c $< -o $@ $(OPTS)
 
-%.so: %.o ../rtcp.o
-	$(CC) -shared -fPIC $(GDB) -o $@ $< ../config.o ../rtcp.o $(LIBS)
+%.so: %.o ../config.o ../rtcp.o ../utils.o
+	$(CC) -shared -fPIC $(GDB) -o $@ $< ../config.o ../rtcp.o ../utils.o $(LIBS)
 
 clean:
 	rm -f *.so *.o

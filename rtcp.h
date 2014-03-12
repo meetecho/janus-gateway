@@ -221,6 +221,14 @@ int janus_rtcp_remb(char *packet, int len, uint64_t bitrate);
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_fir(char *packet, int len, int *seqnr);
 
+/*! \brief Method to generate a new legacy RTCP FIR (RFC2032) message to request a key frame
+ * \note This is actually identical to janus_rtcp_fir(), with the difference that we set 192 as packet type
+ * @param[in] packet The buffer data (MUST be at least 20 chars)
+ * @param[in] len The message data length in bytes (MUST be 20)
+ * @param[in,out] seqnr The current FIR sequence number (will be incremented by the method)
+ * @returns 0 in case of success, -1 on errors */
+int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr);
+
 /*! \brief Method to generate a new RTCP PLI message to request a key frame
  * @param[in] packet The buffer data (MUST be at least 20 chars)
  * @param[in] len The message data length in bytes (MUST be 8)

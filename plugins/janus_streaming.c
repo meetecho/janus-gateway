@@ -71,6 +71,7 @@ videortpmap = RTP map of the video codec (e.g., VP8/90000)
 
 #include "../config.h"
 #include "../rtp.h"
+#include "../utils.h"
 
 
 /* Plugin information */
@@ -732,7 +733,7 @@ static void *janus_streaming_handler(void *data) {
 			memset(sdptemp, 0, 1024);
 			gchar buffer[100];
 			memset(buffer, 0, 100);
-			gint64 sessid = g_get_monotonic_time();
+			gint64 sessid = janus_get_monotonic_time();
 			gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
 			g_sprintf(buffer,
 				"v=0\r\no=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",

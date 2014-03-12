@@ -149,8 +149,12 @@ gchar *janus_get_server_pem(void);
 gchar *janus_get_server_key(void);
 
 
-/*! \brief Helper method to return the local IP address */
+/*! \brief Helper method to return the local IP address (autodetected by default) */
 gchar *janus_get_local_ip(void);
+/*! \brief Helper method to return the IP address to use in the SDP (autodetected by default) */
+gchar *janus_get_public_ip(void);
+/*! \brief Helper method to overwrite the IP address to use in the SDP */
+void janus_set_public_ip(const char *ip);
 /*! \brief Helper method to check whether the gateway is being shut down */
 gint janus_is_stopping(void);
 

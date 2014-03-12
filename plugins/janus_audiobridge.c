@@ -41,6 +41,7 @@ sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 #include "../mutex.h"
 #include "../rtp.h"
 #include "../rtcp.h"
+#include "../utils.h"
 
 
 /* Plugin information */
@@ -882,8 +883,8 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			JANUS_PRINT("Opus payload type is %d\n", participant->opus_pt);
 			g_sprintf(sdp, sdp_template,
-				g_get_monotonic_time(),			/* We need current time here */
-				g_get_monotonic_time(),			/* We need current time here */
+				janus_get_monotonic_time(),		/* We need current time here */
+				janus_get_monotonic_time(),		/* We need current time here */
 				participant->room->room_name,	/* Audio bridge name */
 				participant->opus_pt,			/* Opus payload type */
 				participant->opus_pt,			/* Opus payload type */
@@ -895,9 +896,9 @@ static void *janus_audiobridge_handler(void *data) {
 				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
 			}
 			/* How long will the gateway take to push the event? */
-			gint64 start = g_get_monotonic_time();
+			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_audiobridge_plugin, msg->transaction, event_text, type, sdp);
-			JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, g_get_monotonic_time()-start);
+			JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
 			if(res != JANUS_OK) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			} else {

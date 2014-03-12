@@ -90,6 +90,19 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
 				}
 				break;
 			}
+			case RTCP_FIR: {
+				/* FIR, rfc2032 */
+				JANUS_PRINT("     #%d FIR (192)\n", pno);
+				rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
+				if(fixssrc && newssrcr && (ntohs(rtcp->length) >= 20)) {
+					rtcpfb->media = htonl(newssrcr);
+				}
+				if(fixssrc && newssrcr) {
+					uint32_t *ssrc = (uint32_t *)rtcpfb->fci;
+					*ssrc = htonl(newssrcr);
+				}
+				break;
+			}
 			case RTCP_RTPFB: {
 				/* RTPFB, Transport layer FB message (rfc4585) */
 				//~ JANUS_PRINT("     #%d RTPFB (205)\n", pno);
@@ -388,6 +401,28 @@ int janus_rtcp_fir(char *packet, int len, int *seqnr) {
 	/* Set header */
 	rtcp->version = 2;
 	rtcp->type = RTCP_PSFB;
+	rtcp->rc = 4;	/* FMT=4 */
+	rtcp->length = htons((len/4)-1);
+	/* Now set FIR stuff */
+	rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
+	rtcp_fir *fir = (rtcp_fir *)rtcpfb->fci;
+	fir->seqnr = htonl(*seqnr << 24);	/* FCI: Sequence number */
+	JANUS_PRINT("[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
+	return 0;
+}
+
+/* Generate a new legacy FIR message */
+int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr) {
+	/* FIXME Right now, this is identical to the new FIR, with the difference that we use 192 as PT */
+	if(packet == NULL || len != 20 || seqnr == NULL)
+		return -1;
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	*seqnr = *seqnr + 1;
+	if(*seqnr < 0 || *seqnr >= 256)
+		*seqnr = 0;	/* Reset sequence number */
+	/* Set header */
+	rtcp->version = 2;
+	rtcp->type = RTCP_FIR;
 	rtcp->rc = 4;	/* FMT=4 */
 	rtcp->length = htons((len/4)-1);
 	/* Now set FIR stuff */

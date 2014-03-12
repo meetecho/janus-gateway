@@ -18,6 +18,7 @@
 #include "ice.h"
 #include "dtls.h"
 #include "sdp.h"
+#include "utils.h"
 
 
 static su_home_t *home = NULL;
@@ -476,7 +477,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				anon->sdp_origin->o_id, anon->sdp_origin->o_version);
 		g_strlcat(sdp, buffer, BUFSIZE);
 	} else {
-		gint64 sessid = g_get_monotonic_time();
+		gint64 sessid = janus_get_monotonic_time();
 		gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
 		g_sprintf(buffer,
 			"o=%s %"SCNi64" %"SCNi64" IN IP4 127.0.0.1\r\n",	/* FIXME Should we fix the address? */
@@ -506,7 +507,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	//~ /* Connection c= (global) */
 	//~ if(anon->sdp_connection) {
 		//~ g_sprintf(buffer,
-			//~ "c=IN IP4 %s\r\n", janus_get_local_ip());
+			//~ "c=IN IP4 %s\r\n", janus_get_public_ip());
 		//~ g_strlcat(sdp, buffer, BUFSIZE);
 	//~ }
 	/* DTLS fingerprint a= (global) */
@@ -612,7 +613,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			/* Media connection c= */
 			//~ if(m->m_connections) {
 				g_sprintf(buffer,
-					"c=IN IP4 %s\r\n", janus_get_local_ip());
+					"c=IN IP4 %s\r\n", janus_get_public_ip());
 				g_strlcat(sdp, buffer, BUFSIZE);
 			//~ }
 			/* What is the direction? */
@@ -633,7 +634,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			}
 			/* RTCP */
 			g_sprintf(buffer, "a=rtcp:%s IN IP4 %s\r\n",
-				m->m_type == sdp_media_audio ? "ARTCP" : "VRTCP", janus_get_local_ip());
+				m->m_type == sdp_media_audio ? "ARTCP" : "VRTCP", janus_get_public_ip());
 			g_strlcat(sdp, buffer, BUFSIZE);
 			/* RTP maps */
 			if(m->m_rtpmaps) {
@@ -689,7 +690,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					"a=ssrc:%i msid:janus janusa0\r\n"
 					"a=ssrc:%i mslabel:janus\r\n"
 					"a=ssrc:%i label:janusa0\r\n",
-						//~ janus_get_local_ip(),
+						//~ janus_get_public_ip(),
 						stream->ssrc, stream->ssrc, stream->ssrc, stream->ssrc);
 				g_strlcat(sdp, buffer, BUFSIZE);
 			} else if(m->m_type == sdp_media_video) {
@@ -699,7 +700,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					"a=ssrc:%i msid:janus janusv0\r\n"
 					"a=ssrc:%i mslabel:janus\r\n"
 					"a=ssrc:%i label:janusv0\r\n",
-						//~ janus_get_local_ip(),
+						//~ janus_get_public_ip(),
 						stream->ssrc, stream->ssrc, stream->ssrc, stream->ssrc);
 				g_strlcat(sdp, buffer, BUFSIZE);
 			}

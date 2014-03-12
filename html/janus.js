@@ -484,7 +484,8 @@ function Janus(gatewayCallbacks) {
 			Janus.log(stream);
 		config.myStream = stream;
 		Janus.log("streamsDone:");
-		Janus.log(stream);
+		if(stream !== null && stream !== undefined)
+			Janus.log(stream);
 		var pc_config = {"iceServers": iceServers};
 		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
 		var pc_constraints = {"optional": [{"DtlsSrtpKeyAgreement": true}]};

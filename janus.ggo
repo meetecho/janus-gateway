@@ -8,4 +8,6 @@ option "config" C "Configuration file to use" string typestr="path" optional
 option "configs-folder" F "Configuration files folder (default=./conf)" string typestr="path" optional
 option "cert-pem" c "HTTPS/DTLS certificate" string typestr="filename" optional
 option "cert-key" k "HTTPS/DTLS certificate key" string typestr="filename" optional
-option "stun-server" S "STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)" string typestr="filename" optional
+option "stun-server" S "STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)" string typestr="ip:port" optional
+option "public-ip" e "Public address of the machine, to use in SDP" string typestr="ipaddress" optional
+option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional

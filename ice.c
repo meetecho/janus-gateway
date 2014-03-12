@@ -16,6 +16,7 @@
  
 #include <sys/socket.h>
 #include <netdb.h>
+#include <stun/usages/bind.h>
 
 #include "janus.h"
 #include "debug.h"
@@ -38,12 +39,26 @@ uint16_t janus_ice_get_stun_port() {
 }
 
 
+/* RTP/RTCP port range */
+uint16_t rtp_range_min = 0;
+uint16_t rtp_range_max = 0;
+
+
 /* libnice initialization */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port) {
+gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port) {
 	if(stun_server == NULL)
 		return 0;	/* No initialization needed */
 	if(stun_port == 0)
 		stun_port = 3478;
+	/*! \todo The RTP/RTCP port range configuration may be just a placeholder: for
+	 * instance, libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails
+	 * when linking with an undefined reference to \c nice_agent_set_port_range 
+	 * so this is checked by the install.sh script in advance. */
+	rtp_range_min = rtp_min_port;
+	rtp_range_max = rtp_max_port;
+#ifndef HAVE_PORTRANGE
+	JANUS_DEBUG("nice_agent_set_port_range unavailable, port range disabled\n");
+#endif
 	JANUS_PRINT("STUN server to use: %s:%u\n", stun_server, stun_port);
 	/* Resolve address to get an IP */
 	struct hostent *he = gethostbyname(stun_server);
@@ -63,7 +78,71 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port) {
 	}
 	janus_stun_port = stun_port;
 	JANUS_PRINT("  >> %s:%u\n", janus_stun_server, janus_stun_port);
-	return 0;
+	/* Test the STUN server */
+	StunAgent stun;
+	stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
+	StunMessage msg;
+	uint8_t buf[1500];
+	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
+	JANUS_PRINT("Testing STUN server: message is of %zu bytes\n", len);
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	int yes = 1;	/* For setsockopt() SO_REUSEADDR */
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+	struct sockaddr_in address, remote;
+	address.sin_family = AF_INET;
+	address.sin_port = 0;
+	address.sin_addr.s_addr = INADDR_ANY;
+	remote.sin_family = AF_INET;
+	remote.sin_port = htons(janus_stun_port);
+	remote.sin_addr.s_addr = inet_addr(janus_stun_server);
+	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
+		JANUS_PRINT("Bind failed for STUN BINDING test\n");
+		return -1;
+	}
+	int bytes = sendto(fd, buf, len, 0, (struct sockaddr*)&remote, sizeof(remote));
+	if(bytes < 0) {
+		JANUS_PRINT("Error sending STUN BINDING test\n");
+		return -1;
+	}
+	JANUS_PRINT("  >> Sent %d bytes %s:%u, waiting for reply...\n", bytes, janus_stun_server, janus_stun_port);
+	struct timeval timeout;
+	fd_set readfds;
+	FD_SET(fd, &readfds);
+	timeout.tv_sec = 5;	/* FIXME Don't wait forever */
+	timeout.tv_usec = 0;
+	select(fd+1, &readfds, NULL, NULL, &timeout);
+	if(!FD_ISSET(fd, &readfds)) {
+		JANUS_PRINT("No response to our STUN BINDING test\n");
+		return -1;
+	}
+	socklen_t addrlen = sizeof(remote);
+	bytes = recvfrom(fd, buf, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+	JANUS_PRINT("  >> Got %d bytes...\n", bytes);
+	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) < 0) {
+		JANUS_PRINT("Failed to validate STUN BINDING response\n");
+		return -1;
+	}
+	StunClass class = stun_message_get_class(&msg);
+	StunMethod method = stun_message_get_method(&msg);
+	if(class != STUN_RESPONSE || method != STUN_BINDING) {
+		JANUS_PRINT("Unexpected STUN response: %d/%d\n", class, method);
+		return -1;
+	}
+	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
+	JANUS_PRINT("  >> XOR-MAPPED-ADDRESS: %d\n", ret);
+	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
+		janus_set_public_ip(inet_ntoa(address.sin_addr));
+		JANUS_PRINT("  >> Our public address is %s\n", janus_get_public_ip());
+		return 0;
+	}
+	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
+	JANUS_PRINT("  >> MAPPED-ADDRESS: %d\n", ret);
+	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
+		janus_set_public_ip(inet_ntoa(address.sin_addr));
+		JANUS_PRINT("  >> Our public address is %s\n", janus_get_public_ip());
+		return 0;
+	}
+	return -1;
 }
 
 /* ICE stuff */
@@ -502,7 +581,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->icectx = g_main_context_new();
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
 	handle->icethread = g_thread_new("ice thread", &janus_ice_thread, handle);
-	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_RFC5245);
+	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
+	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_DRAFT19);
 	/* Any STUN server to use? */
 	if(janus_stun_server != NULL && janus_stun_port > 0) {
 		g_object_set (G_OBJECT(handle->agent),
@@ -566,6 +646,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->rtp_component = audio_rtp;
 		g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(2), audio_rtcp);
 		audio_stream->rtcp_component = audio_rtcp;
+#ifdef HAVE_PORTRANGE
+		/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
+		nice_agent_set_port_range(handle->agent, handle->audio_id, 1, rtp_range_min, rtp_range_max);
+		nice_agent_set_port_range(handle->agent, handle->audio_id, 2, rtp_range_min, rtp_range_max);
+#endif
 		nice_agent_gather_candidates (handle->agent, handle->audio_id);
 		nice_agent_attach_recv (handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtp);
 		nice_agent_attach_recv (handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtcp);
@@ -611,6 +696,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->rtp_component = video_rtp;
 		g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(2), video_rtcp);
 		video_stream->rtcp_component = video_rtcp;
+#ifdef HAVE_PORTRANGE
+		/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
+		nice_agent_set_port_range(handle->agent, handle->video_id, 1, rtp_range_min, rtp_range_max);
+		nice_agent_set_port_range(handle->agent, handle->video_id, 2, rtp_range_min, rtp_range_max);
+#endif
 		nice_agent_gather_candidates (handle->agent, handle->video_id);
 		nice_agent_attach_recv (handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtp);
 		nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtcp);

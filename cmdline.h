@@ -71,6 +71,12 @@ struct gengetopt_args_info
   char * stun_server_arg;	/**< @brief STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none).  */
   char * stun_server_orig;	/**< @brief STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none) original value given at command line.  */
   const char *stun_server_help; /**< @brief STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none) help description.  */
+  char * public_ip_arg;	/**< @brief Public address of the machine, to use in SDP.  */
+  char * public_ip_orig;	/**< @brief Public address of the machine, to use in SDP original value given at command line.  */
+  const char *public_ip_help; /**< @brief Public address of the machine, to use in SDP help description.  */
+  char * rtp_port_range_arg;	/**< @brief Port range to use for RTP/RTCP.  */
+  char * rtp_port_range_orig;	/**< @brief Port range to use for RTP/RTCP original value given at command line.  */
+  const char *rtp_port_range_help; /**< @brief Port range to use for RTP/RTCP help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
@@ -85,6 +91,8 @@ struct gengetopt_args_info
   unsigned int cert_pem_given ;	/**< @brief Whether cert-pem was given.  */
   unsigned int cert_key_given ;	/**< @brief Whether cert-key was given.  */
   unsigned int stun_server_given ;	/**< @brief Whether stun-server was given.  */
+  unsigned int public_ip_given ;	/**< @brief Whether public-ip was given.  */
+  unsigned int rtp_port_range_given ;	/**< @brief Whether rtp-port-range was given.  */
 
 } ;
 

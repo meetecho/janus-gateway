@@ -23,7 +23,7 @@ fi
 
 echo
 echo "Checking dependencies..."
-for x in glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config opus ogg
+for x in glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config
 do
 	DEPENDENCY=`pkg-config --cflags --libs $x`
 	if [ -z "$DEPENDENCY" ]
@@ -32,6 +32,43 @@ do
 		exit 1;
 	fi
 done
+pkg-config --atleast-version=2.32 glib-2.0
+if [ $? != 0 ]
+then
+	echo "  -- The installed glib-2.0 version (`pkg-config --modversion glib-2.0`) is outdated, at least 2.32 is required"
+	exit 1
+fi
+pkg-config --atleast-version=1.0.1e openssl
+if [ $? != 0 ]
+then
+	echo "  -- The installed openssl version (`pkg-config --modversion openssl`) is outdated, at least 1.0.1e is required"
+	exit 1
+fi
+pkg-config --exists opus
+if [ $? != 0 ]
+then
+	echo "  -- opus is not installed, the AudioBridge plugin will not be built"
+	sleep 2
+else
+	export HAVE_OPUS=1
+fi
+pkg-config --exists ogg
+if [ $? != 0 ]
+then
+	echo "  -- libogg is not installed, the VoiceMail plugin will not be built"
+	sleep 2
+else
+	export HAVE_OGG=1
+fi
+LIBNICE=( `ldconfig -p | grep libnice.so | tail -n 1` )
+PORTRANGE=`nm -AD ${LIBNICE[3]} | grep nice_agent_set_port_range`
+if [ -z "$PORTRANGE" ]
+then
+	echo "  -- Your version of libnice does not have nice_agent_set_port_range: support for configuring an RTP/RTCP range will be disabled"
+	sleep 2
+else
+	export HAVE_PORTRANGE="-DHAVE_PORTRANGE"
+fi
 
 echo
 echo "Compiling..."

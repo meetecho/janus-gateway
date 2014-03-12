@@ -26,8 +26,10 @@
 /*! \brief ICE stuff initialization
  * @param[in] stun_server STUN server address to use, if any
  * @param[in] stun_port STUN port to use, if any
+ * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
+ * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port);
+gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);

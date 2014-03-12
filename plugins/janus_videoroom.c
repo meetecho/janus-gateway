@@ -39,6 +39,7 @@ description = This is my awesome room
 publishers = <max number of concurrent senders> (e.g., 6 for a video
              conference or 1 for a webinar)
 bitrate = <max video bitrate for senders> (e.g., 128000)
+fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 \endverbatim
  *
  * \ingroup plugins
@@ -51,6 +52,7 @@ bitrate = <max video bitrate for senders> (e.g., 128000)
 
 #include "../config.h"
 #include "../rtcp.h"
+#include "../utils.h"
 
 
 /* Plugin information */
@@ -133,6 +135,7 @@ typedef struct janus_videoroom {
 	gchar *room_name;	/* Room description */
 	int max_publishers;	/* Maximum number of concurrent publishers */
 	uint64_t bitrate;	/* Global bitrate limit */
+	uint16_t fir_freq;	/* Regular FIR frequency (0=disabled) */
 	gboolean destroy;
 	GHashTable *participants;	/* Map of potential publishers (we get listeners from them) */
 } janus_videoroom;
@@ -156,6 +159,7 @@ typedef struct janus_videoroom_participant {
 	gchar *sdp;			/* The SDP this publisher negotiated, if any */
 	gboolean audio_active;
 	gboolean video_active;
+	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
@@ -213,6 +217,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *desc = janus_config_get_item(cat, "description");
 			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
 			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
+			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
 			/* Create the video mcu room */
 			janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
 			if(videoroom == NULL) {
@@ -238,6 +243,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->bitrate = 0;
 			if(bitrate != NULL && bitrate->value != NULL)
 				videoroom->bitrate = atol(bitrate->value);
+			videoroom->fir_freq = 0;
+			if(firfreq != NULL && firfreq->value != NULL)
+				videoroom->fir_freq = atol(firfreq->value);
 			videoroom->destroy = 0;
 			videoroom->participants = g_hash_table_new(NULL, NULL);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
@@ -254,7 +262,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	GList *r = rooms_list;
 	while(r) {
 		janus_videoroom *vr = (janus_videoroom *)r->data;
-		JANUS_PRINT("  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers);
+		JANUS_PRINT("  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq);
 		r = r->next;
 	}
 	g_list_free(rooms_list);
@@ -401,7 +409,10 @@ void janus_videoroom_setup_media(janus_pluginession *handle) {
 				/* Send a FIR */
 				char buf[20];
 				memset(buf, 0, 20);
-				janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
+				if(!p->firefox)
+					janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
+				else
+					janus_rtcp_fir_legacy((char *)&buf, 20, &p->fir_seq);
 				JANUS_PRINT("New listener available, sending FIR to %s\n", p->display);
 				gateway->relay_rtcp(p->session->handle, 1, buf, 20);
 				/* Send a PLI too, just in case... */
@@ -427,21 +438,24 @@ void janus_videoroom_incoming_rtp(janus_pluginession *handle, int video, char *b
 		packet.length = len;
 		packet.is_video = video;
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
-		if(video) {
+		if(video && (participant->room->fir_freq > 0)) {
 			/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
-			gint64 now = g_get_monotonic_time();
-			if((now-participant->fir_latest) >= (10*G_USEC_PER_SEC)) {
-				/* FIXME We send a FIR every 10 seconds */
+			gint64 now = janus_get_monotonic_time();
+			if((now-participant->fir_latest) >= (participant->room->fir_freq*G_USEC_PER_SEC)) {
+				/* FIXME We send a FIR every tot seconds */
 				participant->fir_latest = now;
 				char buf[20];
 				memset(buf, 0, 20);
-				janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
+				if(!participant->firefox)
+					janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
+				else
+					janus_rtcp_fir_legacy((char *)&buf, 20, &participant->fir_seq);
 				JANUS_PRINT("Sending FIR to %s\n", participant->display);
 				gateway->relay_rtcp(handle, video, buf, 20);
 				/* Send a PLI too, just in case... */
 				memset(buf, 0, 12);
 				janus_rtcp_pli((char *)&buf, 12);
-				JANUS_PRINT("New listener available, sending PLI to %s\n", participant->display);
+				JANUS_PRINT("Sending PLI to %s\n", participant->display);
 				gateway->relay_rtcp(handle, video, buf, 12);
 			}
 		}
@@ -583,6 +597,12 @@ static void *janus_videoroom_handler(void *data) {
 				sprintf(error_cause, "JSON error: invalid element (bitrate)");
 				goto error;
 			}
+			json_t *fir_freq = json_object_get(root, "fir_freq");
+			if(fir_freq && !json_is_integer(fir_freq)) {
+				JANUS_DEBUG("JSON error: invalid element (fir_freq)\n");
+				sprintf(error_cause, "JSON error: invalid element (fir_freq)");
+				goto error;
+			}
 			json_t *publishers = json_object_get(root, "publishers");
 			if(publishers && !json_is_integer(publishers)) {
 				JANUS_DEBUG("JSON error: invalid element (publishers)\n");
@@ -627,6 +647,9 @@ static void *janus_videoroom_handler(void *data) {
 			videoroom->bitrate = 0;
 			if(bitrate)
 				videoroom->bitrate = json_integer_value(bitrate);
+			videoroom->fir_freq = 0;
+			if(fir_freq)
+				videoroom->fir_freq = json_integer_value(fir_freq);
 			videoroom->destroy = 0;
 			videoroom->participants = g_hash_table_new(NULL, NULL);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
@@ -636,7 +659,7 @@ static void *janus_videoroom_handler(void *data) {
 			GList *r = rooms_list;
 			while(r) {
 				janus_videoroom *vr = (janus_videoroom *)r->data;
-				JANUS_PRINT("  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers);
+				JANUS_PRINT("  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq);
 				r = r->next;
 			}
 			g_list_free(rooms_list);
@@ -721,6 +744,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->sdp = NULL;	/* We'll deal with this later */
 				publisher->audio_active = FALSE;
 				publisher->video_active = FALSE;
+				publisher->firefox = FALSE;
 				publisher->bitrate = videoroom->bitrate;
 				publisher->listeners = NULL;
 				publisher->fir_latest = 0;
@@ -791,9 +815,9 @@ static void *janus_videoroom_handler(void *data) {
 					/* Negotiate by sending the selected publisher SDP back */
 					if(publisher->sdp != NULL) {
 						/* How long will the gateway take to push the event? */
-						gint64 start = g_get_monotonic_time();
+						gint64 start = janus_get_monotonic_time();
 						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, "offer", publisher->sdp);
-						JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, g_get_monotonic_time()-start);
+						JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
 						if(res != JANUS_OK) {
 							/* TODO Failed to negotiate? We should remove this listener */
 						} else {
@@ -883,10 +907,34 @@ static void *janus_videoroom_handler(void *data) {
 			janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
 			if(!strcasecmp(request_text, "start")) {
 				/* Start/restart receiving the publisher streams */
+				janus_videoroom_participant *publisher = listener->feed;
 				listener->paused = FALSE;
+				event = json_object();
+				json_object_set(event, "videoroom", json_string("event"));
+				json_object_set(event, "room", json_integer(publisher->room->room_id));
+				json_object_set(event, "result", json_string("ok"));
+				/* Send a FIR */
+				char buf[20];
+				memset(buf, 0, 20);
+				if(!publisher->firefox)
+					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
+				else
+					janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
+				JANUS_PRINT("Resuming publisher, sending FIR to %s\n", publisher->display);
+				gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
+				/* Send a PLI too, just in case... */
+				memset(buf, 0, 12);
+				janus_rtcp_pli((char *)&buf, 12);
+				JANUS_PRINT("Resuming publisher, sending PLI to %s\n", publisher->display);
+				gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
 			} else if(!strcasecmp(request_text, "pause")) {
 				/* Stop receiving the publisher streams for a while */
+				janus_videoroom_participant *publisher = listener->feed;
 				listener->paused = TRUE;
+				event = json_object();
+				json_object_set(event, "videoroom", json_string("event"));
+				json_object_set(event, "room", json_integer(publisher->room->room_id));
+				json_object_set(event, "result", json_string("ok"));
 			} else if(!strcasecmp(request_text, "leave")) {
 				janus_videoroom_participant *publisher = listener->feed;
 				if(publisher != NULL) {
@@ -933,10 +981,13 @@ static void *janus_videoroom_handler(void *data) {
 				msg->sdp = string_replace(msg->sdp, "sendrecv", "sendonly", &modified);	/* FIXME In case the browser doesn't set it correctly */
 				msg->sdp = string_replace(msg->sdp, "sendonly", "recvonly", &modified);
 				janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+				if(strstr(msg->sdp, "Mozilla")) {
+					participant->firefox = TRUE;
+				}
 				/* How long will the gateway take to push the event? */
-				gint64 start = g_get_monotonic_time();
+				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, msg->sdp);
-				JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, g_get_monotonic_time()-start);
+				JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
 				msg->sdp = string_replace(msg->sdp, "recvonly", "sendonly", &modified);
 				if(res != JANUS_OK) {
 					/* TODO Failed to negotiate? We should remove this publisher */
@@ -979,9 +1030,9 @@ static void *janus_videoroom_handler(void *data) {
 					janus_videoroom_participant *feed = (janus_videoroom_participant *)listener->feed;
 					if(feed != NULL && feed->sdp != NULL) {
 						/* How long will the gateway take to push the event? */
-						gint64 start = g_get_monotonic_time();
+						gint64 start = janus_get_monotonic_time();
 						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, feed->sdp);
-						JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, g_get_monotonic_time()-start);
+						JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
 						if(res != JANUS_OK) {
 							/* TODO Failed to negotiate? We should remove this listener */
 						} else {

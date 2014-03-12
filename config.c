@@ -1,3 +1,12 @@
+/*! \file    config.c
+ * \author   Lorenzo Miniero <lorenzo@meetecho.com>
+ * \brief    Configuration files parsing
+ * \details  Implementation of a parser of INI configuration files (based on libini-config).
+ * 
+ * \ingroup core
+ * \ref core
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

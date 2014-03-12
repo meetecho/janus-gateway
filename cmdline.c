@@ -44,7 +44,9 @@ const char *gengetopt_args_info_help[] = {
   "  -F, --configs-folder=path     Configuration files folder (default=./conf)",
   "  -c, --cert-pem=filename       HTTPS/DTLS certificate",
   "  -k, --cert-key=filename       HTTPS/DTLS certificate key",
-  "  -S, --stun-server=filename    STUN server(:port) to use, if needed (e.g., \n                                  gateway behind NAT, default=none)",
+  "  -S, --stun-server=ip:port     STUN server(:port) to use, if needed (e.g., \n                                  gateway behind NAT, default=none)",
+  "  -e, --public-ip=ipaddress     Public address of the machine, to use in SDP",
+  "  -r, --rtp-port-range=min-max  Port range to use for RTP/RTCP",
     0
 };
 
@@ -83,6 +85,8 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->cert_pem_given = 0 ;
   args_info->cert_key_given = 0 ;
   args_info->stun_server_given = 0 ;
+  args_info->public_ip_given = 0 ;
+  args_info->rtp_port_range_given = 0 ;
 }
 
 static
@@ -108,6 +112,10 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->cert_key_orig = NULL;
   args_info->stun_server_arg = NULL;
   args_info->stun_server_orig = NULL;
+  args_info->public_ip_arg = NULL;
+  args_info->public_ip_orig = NULL;
+  args_info->rtp_port_range_arg = NULL;
+  args_info->rtp_port_range_orig = NULL;
   
 }
 
@@ -129,6 +137,8 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->cert_pem_help = gengetopt_args_info_help[10] ;
   args_info->cert_key_help = gengetopt_args_info_help[11] ;
   args_info->stun_server_help = gengetopt_args_info_help[12] ;
+  args_info->public_ip_help = gengetopt_args_info_help[13] ;
+  args_info->rtp_port_range_help = gengetopt_args_info_help[14] ;
   
 }
 
@@ -227,6 +237,10 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->cert_key_orig));
   free_string_field (&(args_info->stun_server_arg));
   free_string_field (&(args_info->stun_server_orig));
+  free_string_field (&(args_info->public_ip_arg));
+  free_string_field (&(args_info->public_ip_orig));
+  free_string_field (&(args_info->rtp_port_range_arg));
+  free_string_field (&(args_info->rtp_port_range_orig));
   
   
 
@@ -283,6 +297,10 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "cert-key", args_info->cert_key_orig, 0);
   if (args_info->stun_server_given)
     write_into_file(outfile, "stun-server", args_info->stun_server_orig, 0);
+  if (args_info->public_ip_given)
+    write_into_file(outfile, "public-ip", args_info->public_ip_orig, 0);
+  if (args_info->rtp_port_range_given)
+    write_into_file(outfile, "rtp-port-range", args_info->rtp_port_range_orig, 0);
   
 
   i = EXIT_SUCCESS;
@@ -550,10 +568,12 @@ cmdline_parser_internal (
         { "cert-pem",	1, NULL, 'c' },
         { "cert-key",	1, NULL, 'k' },
         { "stun-server",	1, NULL, 'S' },
+        { "public-ip",	1, NULL, 'e' },
+        { "rtp-port-range",	1, NULL, 'r' },
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVi:p:s:nb:P:C:F:c:k:S:", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVi:p:s:nb:P:C:F:c:k:S:e:r:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -695,6 +715,30 @@ cmdline_parser_internal (
               &(local_args_info.stun_server_given), optarg, 0, 0, ARG_STRING,
               check_ambiguity, override, 0, 0,
               "stun-server", 'S',
+              additional_error))
+            goto failure;
+        
+          break;
+        case 'e':	/* Public address of the machine, to use in SDP.  */
+        
+        
+          if (update_arg( (void *)&(args_info->public_ip_arg), 
+               &(args_info->public_ip_orig), &(args_info->public_ip_given),
+              &(local_args_info.public_ip_given), optarg, 0, 0, ARG_STRING,
+              check_ambiguity, override, 0, 0,
+              "public-ip", 'e',
+              additional_error))
+            goto failure;
+        
+          break;
+        case 'r':	/* Port range to use for RTP/RTCP.  */
+        
+        
+          if (update_arg( (void *)&(args_info->rtp_port_range_arg), 
+               &(args_info->rtp_port_range_orig), &(args_info->rtp_port_range_given),
+              &(local_args_info.rtp_port_range_given), optarg, 0, 0, ARG_STRING,
+              check_ambiguity, override, 0, 0,
+              "rtp-port-range", 'r',
               additional_error))
             goto failure;
         
