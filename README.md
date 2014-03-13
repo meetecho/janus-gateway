@@ -112,6 +112,9 @@ or on the command line:
 	-k, --cert-key=filename       HTTPS/DTLS certificate key
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g., 
 								  gateway behind NAT, default=none)
+	-e, --public-ip=ipaddress     Public address of the machine, to use in SDP
+	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
+								  if the installed libnice supports it)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:
