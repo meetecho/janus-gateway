@@ -209,13 +209,14 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	int error = 0;
-	janus_pluginession *session_handle = calloc(1, sizeof(janus_pluginession));
+	janus_plugin_session *session_handle = calloc(1, sizeof(janus_plugin_session));
 	if(session_handle == NULL) {
 		JANUS_DEBUG("Memory error!\n");
 		return JANUS_ERROR_UNKNOWN;	/* FIXME Do we need something like "Internal Server Error"? */
 	}
 	session_handle->gateway_handle = handle;
 	session_handle->plugin_handle = NULL;
+	session_handle->stopped = 0;
 	plugin->create_session(session_handle, &error);
 	if(error) {
 		/* TODO Make error struct to pass verbose information */
@@ -238,7 +239,8 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	JANUS_PRINT("Detaching handle from %s\n", plugin_t->get_name());
 	/* TODO Actually detach handle... */
 	int error = 0;
-	handle->app_handle->gateway_handle = NULL;
+	//~ handle->app_handle->gateway_handle = NULL;
+	handle->app_handle->stopped = 1;	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
 	plugin_t->destroy_session(handle->app_handle, &error);
 	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
 	/* TODO Actually destroy handle */
@@ -383,6 +385,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						list = list->next;
 					}
 					JANUS_PRINT("\n");
+					g_slist_free(nacks);
 				}
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtcp)
@@ -620,7 +623,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->payload_type = -1;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		audio_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		audio_stream->ssrc = 12345;	/* FIXME Should we make this dynamic? */
+		audio_stream->ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
 		audio_stream->ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
@@ -670,7 +673,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->payload_type = -1;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		video_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		video_stream->ssrc = 54321;	/* FIXME Should we make this dynamic? */
+		video_stream->ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
 		video_stream->ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		video_stream->components = g_hash_table_new(NULL, NULL);
 		janus_mutex_init(&video_stream->mutex);

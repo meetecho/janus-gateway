@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Audio Bridge Demo</title>
+<title>Janus WebRTC Gateway: Screen Sharing Demo</title>
 <script type="text/javascript" src="jquery.min.js" ></script>
 <script type="text/javascript" src="jquery.blockUI.js" ></script>
 <script type="text/javascript" src="js/bootstrap.js"></script>
 <script type="text/javascript" src="js/bootbox.min.js"></script>
 <script type="text/javascript" src="js/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="audiobridgetest.js"></script>
+<script type="text/javascript" src="screensharingtest.js"></script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
@@ -41,9 +41,9 @@
 					<li><a href="videocalltest.html">Video Call</a></li>
 					<li><a href="siptest.html">SIP Gateway</a></li>
 					<li><a href="videomcutest.html">Video MCU</a></li>
-					<li class="active"><a href="audiobridgetest.html">Audio Conference</a></li>
+					<li><a href="audiobridgetest.html">Audio Conference</a></li>
 					<li><a href="voicemailtest.html">Voice Mail</a></li>
-					<li><a href="screensharingtest.html">Screen Sharing</a></li>
+					<li class="active"><a href="screensharingtest.html">Screen Sharing</a></li>
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
@@ -61,7 +61,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Audio Conference (mixed)
+				<h1>Plugin Demo: Screen Sharing
 					<button class="btn btn-default" id="start">Start</button>
 				</h1>
 			</div>
@@ -69,54 +69,60 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>The Audio Bridge demo is a simple example of how to implement
-						an audio conferencing application through Janus. Since it makes use
-						of the AudioBridge plugin, all the audio contributions will be mixed,
-						which means that a single PeerConnection will be created no matter
-						how many participants will join the room.</p>
-						<p>To try the demo, just insert a username to join the default audio
-						room that is configured. This will add you to the mixed audio conference.
-						A container on the left will display a list of the other participants
-						in the room as they join, with a simple indicator to inform you whether
-						they're muted or not. You can mute/unmute yourself using the icon that
-						will appear next to your name.</p>
+						<p>This demo, as the Video Conferencing one, makes use of the Video MCU plugin. Unlike
+						the video conferencing scenario, though, this demo implements a webinar kind of scenario:
+						that is, it allows a single user to share their screen with a set of passive
+						viewers.</p>
+						<p>When started, the demo asks you whether you want to be the one sharing the screen
+						or a viewer to an existing session. When sharing your screen, an ID will be returned
+						that you'll be able to share with other people to act as viewers. Just notice that,
+						for the sake of simplicity, just the screen is shared, without any additional audio
+						and video feed: you may want to try and add those yourself to the demo, by relying,
+						for instance, on the AudioBridge plugin for the purpose.</p>
+						<div class="alert alert-info"><b>Note well!</b> If you want to share your screen, you'll need to open
+						the <b>HTTPS</b> version of this page. If the gateway is not behind the same webserver
+						as the pages that are served (that is, you didn't configure a proxying of HTTP requests
+						to the gateway via a web frontend, e.g., Apache HTTPD), make sure you started it
+						with HTTPS support as well, since for security reasons you cannot contact an HTTP
+						backend if the page has been served via HTTPS. Besides, if you configured the gateway
+						to make use of self-signed certificates, try and open a generic link served by Janus
+						in the browser itself, or otherwise AJAX requests to it will fail due to the unsafe
+						nature of the certificate.</div>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="audiojoin">
+			<div class="container hide" id="screenmenu">
 				<div class="row">
-					<span class="label label-info" id="you"></span>
-					<div class="col-md-12" id="controls">
-						<div class="input-group margin-bottom-md hide" id="registernow">
-							<span class="input-group-addon">@</span>
-							<input class="form-control" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
-							<span class="input-group-btn">
-								<button class="btn btn-success" id="register">Join the room</button>
-							</span>
-						</div>
+					<div class="input-group margin-bottom-md hide" id="createnow">
+						<span class="input-group-addon"><i class="fa fa-users fa-1"></i></span>
+						<input class="form-control" type="text" placeholder="Insert a title for the session" id="desc" onkeypress="return checkEnterShare(this, event);"></input>
+						<span class="input-group-btn">
+							<button class="btn btn-success" id="create">Share your screen</button>
+						</span>
+					</div>
+				</div>
+				<div class="divider col-md-12">
+					<hr class="pull-left"/>or<hr class="pull-right"/>
+				</div>
+				<div class="row">
+					<div class="input-group margin-bottom-md hide" id="joinnow">
+						<span class="input-group-addon"><i class="fa fa-play-circle-o fa-1"></i></span>
+						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" id="roomid" onkeypress="return checkEnterJoin(this, event);"></input>
+						<span class="input-group-btn">
+							<button class="btn btn-success" id="join">Join an existing session</button>
+						</span>
 					</div>
 				</div>
 			</div>
 			<div class="container hide" id="room">
 				<div class="row">
-					<div class="col-md-6">
+					<div class="col-md-12">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Participants <span class="label label-info hide" id="participant"></span><button class="btn-xs btn-danger hide pull-right" id="toggleaudio">Mute</button></h3>
+								<h3 class="panel-title">Screen Capture <span class="label label-info" id="title"></span> <span class="label label-success" id="session"></span></h3>
 							</div>
-							<div class="panel-body">
-								<ul id="list" class="list-group">
-								</ul>
-							</div>
-						</div>
-					</div>
-					<div class="col-md-6">
-						<div class="panel panel-default">
-							<div class="panel-heading">
-								<h3 class="panel-title">Mixed Audio</span></h3>
-							</div>
-							<div class="panel-body" id="mixedaudio"></div>
+							<div class="panel-body" id="screencapture"></div>
 						</div>
 					</div>
 				</div>

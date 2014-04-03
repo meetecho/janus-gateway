@@ -28,7 +28,9 @@
  * 
  * Rooms to make available are listed in the plugin configuration file.
  * A pre-filled configuration file is provided in \c conf/janus.plugin.videoroom.cfg
- * and includes a demo room for testing.
+ * and includes a demo room for testing. The same plugin is also used
+ * dynamically (that is, with rooms created on the fly via API) in the
+ * Screen Sharing demo as well.
  * 
  * To add more rooms or modify the existing one, you can use the following
  * syntax:
@@ -71,13 +73,13 @@ const char *janus_videoroom_get_version_string(void);
 const char *janus_videoroom_get_description(void);
 const char *janus_videoroom_get_name(void);
 const char *janus_videoroom_get_package(void);
-void janus_videoroom_create_session(janus_pluginession *handle, int *error);
-void janus_videoroom_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp);
-void janus_videoroom_setup_media(janus_pluginession *handle);
-void janus_videoroom_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_videoroom_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_videoroom_hangup_media(janus_pluginession *handle);
-void janus_videoroom_destroy_session(janus_pluginession *handle, int *error);
+void janus_videoroom_create_session(janus_plugin_session *handle, int *error);
+void janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+void janus_videoroom_setup_media(janus_plugin_session *handle);
+void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_videoroom_hangup_media(janus_plugin_session *handle);
+void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
 
 /* Plugin setup */
 static janus_plugin janus_videoroom_plugin =
@@ -122,7 +124,7 @@ typedef enum janus_videoroom_p_type {
 } janus_videoroom_p_type;
 
 typedef struct janus_videoroom_message {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	char *transaction;
 	char *message;
 	char *sdp_type;
@@ -132,8 +134,8 @@ GQueue *messages;
 
 typedef struct janus_videoroom {
 	guint64 room_id;	/* Unique room ID */
-	gchar *room_name;	/* Room description */
-	int max_publishers;	/* Maximum number of concurrent publishers */
+	gchar *room_name;		/* Room description */
+	int max_publishers;		/* Maximum number of concurrent publishers */
 	uint64_t bitrate;	/* Global bitrate limit */
 	uint16_t fir_freq;	/* Regular FIR frequency (0=disabled) */
 	gboolean destroy;
@@ -142,7 +144,7 @@ typedef struct janus_videoroom {
 GHashTable *rooms;
 
 typedef struct janus_videoroom_session {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	janus_videoroom_p_type participant_type;
 	gpointer participant;
 	gboolean started;
@@ -319,7 +321,7 @@ const char *janus_videoroom_get_package() {
 	return JANUS_VIDEOROOM_PACKAGE;
 }
 
-void janus_videoroom_create_session(janus_pluginession *handle, int *error) {
+void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -339,7 +341,7 @@ void janus_videoroom_create_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_videoroom_destroy_session(janus_pluginession *handle, int *error) {
+void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -370,7 +372,7 @@ void janus_videoroom_destroy_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_videoroom_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+void janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
 	JANUS_PRINT("%s\n", message);
@@ -387,7 +389,7 @@ void janus_videoroom_handle_message(janus_pluginession *handle, char *transactio
 	g_queue_push_tail(messages, msg);
 }
 
-void janus_videoroom_setup_media(janus_pluginession *handle) {
+void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	JANUS_DEBUG("WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
@@ -425,8 +427,8 @@ void janus_videoroom_setup_media(janus_pluginession *handle) {
 	}
 }
 
-void janus_videoroom_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized || !gateway)
+void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized || !gateway)
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session || session->destroy || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
@@ -462,19 +464,21 @@ void janus_videoroom_incoming_rtp(janus_pluginession *handle, int video, char *b
 	}
 }
 
-void janus_videoroom_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized || !gateway)
+void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized || !gateway)
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session || session->destroy || !session->participant || !video)
 		return;
 	if(session->participant_type == janus_videoroom_p_type_subscriber) {
-		/* FIXME Badly: we're blinding forwarding the listener RTCP t the publisher: this probably means confusing him... */
+		/* FIXME Badly: we're blinding forwarding the listener RTCP to the publisher: this probably means confusing him... */
 		janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
 		if(l && l->feed) {
 			janus_videoroom_participant *p = l->feed;
 			if(p && p->session) {
-				gateway->relay_rtcp(p->session->handle, 1, buf, 20);
+				if(p->bitrate > 0)
+					janus_rtcp_cap_remb(buf, len, p->bitrate);
+				gateway->relay_rtcp(p->session->handle, video, buf, len);
 			}
 		}
 	} else if(session->participant_type == janus_videoroom_p_type_publisher) {
@@ -483,10 +487,21 @@ void janus_videoroom_incoming_rtcp(janus_pluginession *handle, int video, char *
 		if(participant->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, participant->bitrate);
 		gateway->relay_rtcp(handle, video, buf, len);
+		/* FIXME Badly: we're also blinding forwarding the publisher RTCP to all the listeners: this probably means confusing them... */
+		if(participant->listeners != NULL) {
+			GSList *ps = participant->listeners;
+			while(ps) {
+				janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+				if(l->session && l->session->handle) {
+					gateway->relay_rtcp(l->session->handle, video, buf, len);
+				}
+				ps = ps->next;
+			}
+		}
 	}
 }
 
-void janus_videoroom_hangup_media(janus_pluginession *handle) {
+void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	JANUS_PRINT("No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;
@@ -587,8 +602,8 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_PRINT("Creating a new videoroom\n");
 			json_t *desc = json_object_get(root, "description");
 			if(desc && !json_is_string(desc)) {
-				JANUS_DEBUG("JSON error: invalid element (desc)\n");
-				sprintf(error_cause, "JSON error: invalid element (desc)");
+				JANUS_DEBUG("JSON error: invalid element (description)\n");
+				sprintf(error_cause, "JSON error: invalid element (description)");
 				goto error;
 			}
 			json_t *bitrate = json_object_get(root, "bitrate");
@@ -699,15 +714,6 @@ static void *janus_videoroom_handler(void *data) {
 			const char *ptype_text = json_string_value(ptype);
 			if(!strcasecmp(ptype_text, "publisher")) {
 				JANUS_PRINT("Configuring new publisher\n");
-				/* This is a new publisher: is there room? */
-				GList *participants_list = g_hash_table_get_values(videoroom->participants);
-				if(g_list_length(participants_list) == videoroom->max_publishers) {
-					JANUS_DEBUG("Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
-					sprintf(error_cause, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
-					g_list_free(participants_list);
-					goto error;
-				}
-				g_list_free(participants_list);
 				json_t *display = json_object_get(root, "display");
 				if(!display || !json_is_string(display)) {
 					JANUS_DEBUG("JSON error: invalid element (display)\n");
@@ -755,7 +761,7 @@ static void *janus_videoroom_handler(void *data) {
 				g_hash_table_insert(videoroom->participants, GUINT_TO_POINTER(user_id), publisher);
 				/* Return a list of all available publishers (those with an SDP available, that is) */
 				json_t *list = json_array();
-				participants_list = g_hash_table_get_values(videoroom->participants);
+				GList *participants_list = g_hash_table_get_values(videoroom->participants);
 				GList *ps = participants_list;
 				while(ps) {
 					janus_videoroom_participant *p = (janus_videoroom_participant *)ps->data;
@@ -772,6 +778,7 @@ static void *janus_videoroom_handler(void *data) {
 				event = json_object();
 				json_object_set(event, "videoroom", json_string("joined"));
 				json_object_set(event, "room", json_integer(videoroom->room_id));
+				json_object_set(event, "description", json_string(videoroom->room_name));
 				json_object_set(event, "id", json_integer(user_id));
 				json_object_set_new(event, "publishers", list);
 				g_list_free(participants_list);
@@ -976,14 +983,31 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			if(session->participant_type == janus_videoroom_p_type_publisher) {
+				/* This is a new publisher: is there room? */
+				janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+				janus_videoroom *videoroom = participant->room;
+				GList *participants_list = g_hash_table_get_values(videoroom->participants);
+				GList *ps = participants_list;
+				int count = 0;
+				while(ps) {
+					janus_videoroom_participant *p = (janus_videoroom_participant *)ps->data;
+					if(p != participant && p->sdp)
+						count++;
+					ps = ps->next;
+				}
+				if(count == videoroom->max_publishers) {
+					JANUS_DEBUG("Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
+					sprintf(error_cause, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
+					goto error;
+				}
 				/* Negotiate by sending the own publisher SDP back (just to negotiate the same media stuff) */
 				int modified = 0;
 				msg->sdp = string_replace(msg->sdp, "sendrecv", "sendonly", &modified);	/* FIXME In case the browser doesn't set it correctly */
 				msg->sdp = string_replace(msg->sdp, "sendonly", "recvonly", &modified);
-				janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 				if(strstr(msg->sdp, "Mozilla")) {
 					participant->firefox = TRUE;
 				}
+				JANUS_PRINT("Handling publisher: turned this into an '%s':\n%s\n", type, msg->sdp);
 				/* How long will the gateway take to push the event? */
 				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, msg->sdp);
@@ -1002,10 +1026,9 @@ static void *janus_videoroom_handler(void *data) {
 					json_array_append_new(list, pl);
 					json_t *pub = json_object();
 					json_object_set(pub, "videoroom", json_string("event"));
-					json_object_set(event, "room", json_integer(participant->room->room_id));
+					json_object_set(pub, "room", json_integer(participant->room->room_id));
 					json_object_set_new(pub, "publishers", list);
 					char *pub_text = json_dumps(pub, JSON_INDENT(3));
-					json_decref(list);
 					json_decref(pub);
 					GList *participants_list = g_hash_table_get_values(participant->room->participants);
 					GList *ps = participants_list;

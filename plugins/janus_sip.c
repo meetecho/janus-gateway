@@ -62,13 +62,13 @@ const char *janus_sip_get_version_string(void);
 const char *janus_sip_get_description(void);
 const char *janus_sip_get_name(void);
 const char *janus_sip_get_package(void);
-void janus_sip_create_session(janus_pluginession *handle, int *error);
-void janus_sip_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp);
-void janus_sip_setup_media(janus_pluginession *handle);
-void janus_sip_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_sip_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_sip_hangup_media(janus_pluginession *handle);
-void janus_sip_destroy_session(janus_pluginession *handle, int *error);
+void janus_sip_create_session(janus_plugin_session *handle, int *error);
+void janus_sip_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+void janus_sip_setup_media(janus_plugin_session *handle);
+void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_sip_hangup_media(janus_plugin_session *handle);
+void janus_sip_destroy_session(janus_plugin_session *handle, int *error);
 
 /* Plugin setup */
 static janus_plugin janus_sip_plugin =
@@ -108,7 +108,7 @@ static void *janus_sip_handler(void *data);
 char *string_replace(char *message, char *old, char *new, int *modified);
 
 typedef struct janus_sip_message {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	char *transaction;
 	char *message;
 	char *sdp_type;
@@ -154,7 +154,7 @@ typedef struct janus_sip_media {
 } janus_sip_media;
 
 typedef struct janus_sip_session {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	ssip_t *stack;
 	janus_sip_account account;
 	janus_sip_status status;
@@ -307,7 +307,7 @@ const char *janus_sip_get_package() {
 	return JANUS_SIP_PACKAGE;
 }
 
-void janus_sip_create_session(janus_pluginession *handle, int *error) {
+void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -358,7 +358,7 @@ void janus_sip_create_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_sip_destroy_session(janus_pluginession *handle, int *error) {
+void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -384,7 +384,7 @@ void janus_sip_destroy_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_sip_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+void janus_sip_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
 	JANUS_PRINT("%s\n", message);
@@ -401,7 +401,7 @@ void janus_sip_handle_message(janus_pluginession *handle, char *transaction, cha
 	g_queue_push_tail(messages, msg);
 }
 
-void janus_sip_setup_media(janus_pluginession *handle) {
+void janus_sip_setup_media(janus_plugin_session *handle) {
 	JANUS_DEBUG("WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
@@ -415,8 +415,8 @@ void janus_sip_setup_media(janus_pluginession *handle) {
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
-void janus_sip_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	if(gateway) {
 		/* Honour the audio/video active flags */
@@ -438,8 +438,8 @@ void janus_sip_incoming_rtp(janus_pluginession *handle, int video, char *buf, in
 	}
 }
 
-void janus_sip_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	if(gateway) {
 		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
@@ -461,7 +461,7 @@ void janus_sip_incoming_rtcp(janus_pluginession *handle, int video, char *buf, i
 	}
 }
 
-void janus_sip_hangup_media(janus_pluginession *handle) {
+void janus_sip_hangup_media(janus_plugin_session *handle) {
 	JANUS_PRINT("No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;

@@ -47,13 +47,13 @@ const char *janus_echotest_get_version_string(void);
 const char *janus_echotest_get_description(void);
 const char *janus_echotest_get_name(void);
 const char *janus_echotest_get_package(void);
-void janus_echotest_create_session(janus_pluginession *handle, int *error);
-void janus_echotest_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp);
-void janus_echotest_setup_media(janus_pluginession *handle);
-void janus_echotest_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_echotest_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_echotest_hangup_media(janus_pluginession *handle);
-void janus_echotest_destroy_session(janus_pluginession *handle, int *error);
+void janus_echotest_create_session(janus_plugin_session *handle, int *error);
+void janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+void janus_echotest_setup_media(janus_plugin_session *handle);
+void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_echotest_hangup_media(janus_plugin_session *handle);
+void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 
 /* Plugin setup */
 static janus_plugin janus_echotest_plugin =
@@ -90,7 +90,7 @@ static GThread *handler_thread;
 static void *janus_echotest_handler(void *data);
 
 typedef struct janus_echotest_message {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	char *transaction;
 	char *message;
 	char *sdp_type;
@@ -99,7 +99,7 @@ typedef struct janus_echotest_message {
 GQueue *messages;
 
 typedef struct janus_echotest_session {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	gboolean audio_active;
 	gboolean video_active;
 	uint64_t bitrate;
@@ -185,7 +185,7 @@ const char *janus_echotest_get_package() {
 	return JANUS_ECHOTEST_PACKAGE;
 }
 
-void janus_echotest_create_session(janus_pluginession *handle, int *error) {
+void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -206,7 +206,7 @@ void janus_echotest_create_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_echotest_destroy_session(janus_pluginession *handle, int *error) {
+void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -225,7 +225,7 @@ void janus_echotest_destroy_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_echotest_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+void janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
 	JANUS_PRINT("%s\n", message);
@@ -242,7 +242,7 @@ void janus_echotest_handle_message(janus_pluginession *handle, char *transaction
 	g_queue_push_tail(messages, msg);
 }
 
-void janus_echotest_setup_media(janus_pluginession *handle) {
+void janus_echotest_setup_media(janus_plugin_session *handle) {
 	JANUS_DEBUG("WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
@@ -256,8 +256,8 @@ void janus_echotest_setup_media(janus_pluginession *handle) {
 	/* We really don't care, as we only send RTP/RTCP we get in the first place back anyway */
 }
 
-void janus_echotest_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -275,8 +275,8 @@ void janus_echotest_incoming_rtp(janus_pluginession *handle, int video, char *bu
 	}
 }
 
-void janus_echotest_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -293,7 +293,7 @@ void janus_echotest_incoming_rtcp(janus_pluginession *handle, int video, char *b
 	}
 }
 
-void janus_echotest_hangup_media(janus_pluginession *handle) {
+void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	JANUS_PRINT("No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;

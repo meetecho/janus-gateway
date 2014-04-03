@@ -38,7 +38,9 @@
  * create new plugins, or understand how they're conceived, is documented
  * as well. A documentation on the web and JavaScript API to use the
  * gateway and the plugins it makes available in your web application
- * can be found in the \ref JS and \ref rest pages. 
+ * can be found in the \ref JS and \ref rest pages. Some information on
+ * how to deploy Janus and your web applications that want to make use of
+ * it are provided in the \ref deploy page.
  *
  * This is only the first version of the gateway, and as such it is a bit
  * rough at the edges: there is definitely room for improvement, there are
@@ -753,6 +755,161 @@ janus.attach(
  * The plugin implementation and the gateway core should do this
  * automatically, but implementing the right behaviour in clients would
  * help avoid potential issues nonetheless.
+ *
+ */
+
+/*! \page deploy Deploying Janus
+ *
+ * When you're going to deploy Janus (e.g., to try the demos we made
+ * available out-of-the-box), there's one thing that is important to point
+ * out: while Janus does indeed provide an HTTP RESTful interface (documented
+ * in \ref rest), it does \b NOT also act as a webserver for static files.
+ * This means you'll need a different webserver to host static files, including
+ * HTML/PHP/JSP/etc. pages, JavaScript files, images and whatever is part
+ * of your web application.
+ *
+ * That said, deploying Janus is, in principle, quite simple: just start Janus on a
+ * machine, put the HTML and JavaScript that will make use of it on a webserver
+ * somewhere, make sure the JavaScript code is configured with the right
+ * address for the gateway and you're done!
+ *
+ * Let's assume, for the sake of simplicity, that your webserver is serving
+ * files on port \c 80. By default, Janus binds on the \c 8088 port for HTTP.
+ * So, if Janus and the webserver hosting the are co-located, all you need to get your 
+ * application working is configure the web application to point to the right
+ * address for the gateway. In the demos provided with these packages, this
+ * is done by means of the \c server variable:
+ *
+ * \verbatim
+var server = "http://" + window.location.hostname + ":8088/janus";
+ \endverbatim
+ *
+ * which basically tells the JavaScript application that the Janus API can be
+ * contacted at the same host as the website but at a different port (8088) and path (/janus). 
+ * In case you configured the gateway differently, e.g., 7000 as the port 
+ * for HTTP and /my/custom/path as the API endpoint, the \c server variable
+ * could be built this way:
+ *
+ * \verbatim
+var server = "http://" + window.location.hostname + ":7000/my/custom/path";
+ \endverbatim
+ *
+ * In case the webserver and Janus are <b>NOT</b> colocated, instead, just
+ * replace the \c window.location.hostname part with the right address of
+ * the gateway, e.g.:
+ *
+ * \verbatim
+var server = "http://www.example.com:8088/janus";
+ \endverbatim
+ *
+ * It's important to point out, though, that this more "static" approach
+ * only works if the webserver is serving files via HTTP. As soon as you
+ * start involving \b HTTPS, things start to get more complicated: in fact,
+ * for security reasons you cannot contact an HTTP backend if the page is
+ * made available via HTTPS. This means that if you're interested in serving
+ * your web application via HTTPS, you'll need to enable the HTTPS embedded
+ * webserver in Janus as well, and configure the JavaScript code to refer to
+ * that itself, e.g.:
+ *
+ * \verbatim
+var server = "https://" + window.location.hostname + ":8089/janus";
+ \endverbatim
+ *
+ * assuming \c 8089 is the port you configured Janus to use for HTTPS.
+ * To make this more "dynamic", e.g., allow both HTTP and HTTPS instead of
+ * just sticking to one, you might make use of something like this:
+ *
+ * \verbatim
+var server = null;
+if(window.location.protocol === 'http:')
+	server = "http://" + window.location.hostname + ":8088/janus";
+else
+	server = "https://" + window.location.hostname + ":8089/janus";
+ \endverbatim
+ *
+ * that is evaulate the right address to use at runtime.
+ *
+ * Anyway, there's a much easier way to address these scenarios, which
+ * is explained in the next section.
+ *
+ * \section apache Deploying Janus behind a web frontend
+ *
+ * To avoid most of the issues explained above, an easy approach can be
+ * deploying Janus behind a frontend, that would act as a reverse proxy for it.
+ * This would allow you to make the Janus API available as a relative path 
+ * of your web application, rather than a service reachable at a different
+ * port and/or domain.
+ *
+ * Configuring the web application, as a consequence, would be even easier,
+ * as all you'd need to do would be to provide a relative path for the API,
+ * e.g.:
+ *
+ * \verbatim
+var server = "/janus";
+ \endverbatim
+ *
+ * which would automatically work whether the page is served via HTTP or
+ * HTTPS. In fact, all the HTTPS requests would be terminated at the webserver,
+ * which would then always send simple HTTP messages to the gateway itself.
+ *
+ * An easy way to do so in Apache HTTPD is by means of the following directives:
+ *
+ * \verbatim
+ProxyRequests Off
+ProxyVia Off
+ProxyPass /janus http://127.0.0.1:8088/janus
+ProxyPassReverse /janus http://127.0.0.1:8088/janus
+ \endverbatim
+ *
+ * Different versions of HTTPD or different webservers may require a
+ * different syntax, but the principle is usually always the same: you instruct
+ * the webserver to act as a proxy for a local endpoint, in this case a
+ * Janus instance colocated at the webserver and configured with the
+ * default settings.
+ *
+ * \section webserver A quick and easy web server
+ * As you probably know, you cannot open WebRTC-powered web applications
+ * by just opening the application HTML files from file system, as it won't
+ * work. This means that to test and use Janus you'll need to host your
+ * applications on a webserver.
+ * 
+ * If you're not interested in configuring a full-fledged webserver, but
+ * are only interested in a quick and easy way to test the demos, you can
+ * make use of the embedded webservers some frameworks like PHP and Python
+ * provide. To start a webserver for the demos, for instance, just open a
+ * terminal in the \c html folder of the project, and type:
+ *
+ *\verbatim
+php -S 0.0.0.0:8000
+ \endverbatim
+ *
+ * or:
+ *
+ *\verbatim
+python -m SimpleHTTPServer 8000
+ \endverbatim
+ *
+ * This will setup a webserver on port \c 8000 for you to use, meaning you'll
+ * just need to have your browser open a local connection to that port to 
+ * try the demos:
+ *
+ *\verbatim
+http://yourlocaliphere:8000
+ \endverbatim
+ *
+ * You can do the same on a different port to also access the HTML version of the Doxygen generated
+ * documentation, starting the embedded webservers from the \c docs/html
+ * folder instead:
+ *
+ *\verbatim
+php -S 0.0.0.0:9000
+ \endverbatim
+ *
+ * or:
+ *
+ *\verbatim
+python -m SimpleHTTPServer 9000
+ \endverbatim
  *
  */
  

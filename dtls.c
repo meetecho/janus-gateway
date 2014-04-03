@@ -349,7 +349,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
 				crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
 				dtls->remote_policy.ssrc.type = ssrc_any_inbound;
-				dtls->remote_policy.key = calloc(1, SRTP_MASTER_LENGTH);
+				dtls->remote_policy.key = calloc(SRTP_MASTER_LENGTH+8, sizeof(char));
 				if(dtls->remote_policy.key == NULL) {
 					JANUS_DEBUG("Memory error!\n");
 					goto done;
@@ -363,7 +363,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
 				crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
 				dtls->local_policy.ssrc.type = ssrc_any_outbound;
-				dtls->local_policy.key = calloc(1, SRTP_MASTER_LENGTH);
+				dtls->local_policy.key = calloc(SRTP_MASTER_LENGTH+8, sizeof(char));
 				if(dtls->local_policy.key == NULL) {
 					JANUS_DEBUG("Memory error!\n");
 					goto done;
@@ -391,32 +391,32 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				}
 				dtls->srtp_valid = 1;
 				JANUS_PRINT("[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
-				if(component->component_id == 2) {
-					/* FIXME Ugly hack to send a RTCP SDES right away, and make browsers happy */
-					JANUS_PRINT(" Going to send a RTCP REPORT (SDES)...\n");
-					char rtcp[1024];
-					memset(&rtcp, 0, 1024);
-					char *rtcp_packet = (char *)&rtcp;
-					rtcp_sdes *sdes = (rtcp_sdes *)rtcp_packet;
-					sdes->header.version = 2;
-					sdes->header.padding = 0;
-					sdes->header.rc = 1;
-					sdes->header.type = RTCP_SDES;	/* SDES */
-					sdes->header.length = htons(2);	/* 2 words */
-					sdes->chunk.csrc = htonl(stream->ssrc);
-					sdes->item.type = 1;
-					sdes->item.len = 0;
-					/* SRTCP Protect */
-					int protected = 12;	/* RTCP header + chunk + item */
-					res = srtp_protect_rtcp(dtls->srtp_out, &rtcp, &protected);
-					//~ JANUS_PRINT(" ... SRTCP protect %s (len=%d-->%d)...\n", janus_get_srtp_error(res), 12, protected);
-					/* Shoot! */
-					//~ JANUS_PRINT(" ... Sending SRTCP packet (type=%d, len=%d, ssrc=%d)...\n",
-						//~ header->packet_type, ntohs(header->length), ntohl(chunk->csrc));
-					//~ int sent = 
-						nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, (const char *)&rtcp);
-					//~ JANUS_PRINT(" ... Sent %d bytes!\n", sent);
-				}
+				//~ if(component->component_id == 2) {
+					//~ /* FIXME Ugly hack to send a RTCP SDES right away, and make browsers happy */
+					//~ JANUS_PRINT(" Going to send a RTCP REPORT (SDES)...\n");
+					//~ char rtcp[1024];
+					//~ memset(&rtcp, 0, 1024);
+					//~ char *rtcp_packet = (char *)&rtcp;
+					//~ rtcp_sdes *sdes = (rtcp_sdes *)rtcp_packet;
+					//~ sdes->header.version = 2;
+					//~ sdes->header.padding = 0;
+					//~ sdes->header.rc = 1;
+					//~ sdes->header.type = RTCP_SDES;	/* SDES */
+					//~ sdes->header.length = htons(2);	/* 2 words */
+					//~ sdes->chunk.csrc = htonl(stream->ssrc);
+					//~ sdes->item.type = 1;
+					//~ sdes->item.len = 0;
+					//~ /* SRTCP Protect */
+					//~ int protected = 12;	/* RTCP header + chunk + item */
+					//~ res = srtp_protect_rtcp(dtls->srtp_out, &rtcp, &protected);
+					//~ // JANUS_PRINT(" ... SRTCP protect %s (len=%d-->%d)...\n", janus_get_srtp_error(res), 12, protected);
+					//~ /* Shoot! */
+					//~ // JANUS_PRINT(" ... Sending SRTCP packet (type=%d, len=%d, ssrc=%d)...\n",
+						//~ // header->packet_type, ntohs(header->length), ntohl(chunk->csrc));
+					//~ // int sent = 
+						//~ nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, (const char *)&rtcp);
+					//~ // JANUS_PRINT(" ... Sent %d bytes!\n", sent);
+				//~ }
 			}
 done:
 			if(dtls->srtp_valid) {

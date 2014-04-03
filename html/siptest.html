@@ -43,6 +43,7 @@
 					<li><a href="videomcutest.html">Video MCU</a></li>
 					<li><a href="audiobridgetest.html">Audio Conference</a></li>
 					<li><a href="voicemailtest.html">Voice Mail</a></li>
+					<li><a href="screensharingtest.html">Screen Sharing</a></li>
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
@@ -63,6 +64,28 @@
 				<h1>Plugin Demo: SIP Gateway
 					<button class="btn btn-default" id="start">Start</button>
 				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This demo shows how you can make use of the SIP plugin to interact with a PBX, e.g., Asterisk,
+						in order to place or receive calls to and from other SIP clients.</p>
+						<p>When started, the demo will allow you to insert a minimum set of information
+						required to REGISTER the web page as a SIP client at a PBX you specify. This will
+						allow you to call extensions on the PBX, or receive calls through the PBX itself.
+						During a call, you'll also be able to interact with the PBX via DTMF tones, e.g.,
+						to drive an Interactive Voice Response (IVR) menu that you're being presented with.</p>
+						<div class="alert alert-info"><b>Note well!</b> This demo, as the plugin it makes use of,
+						has a few issues, right now. Specifically, it has only been tested with the widespread
+						Asterisk PBX (extended with our
+						<a href="https://github.com/meetecho/asterisk-opus" target="_blank">Opus and VP8 support</a> patch),
+						even though it should work fine with others as well. Besides, video has not been
+						tested yet.
+						</div>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
 			</div>
 			<div class="container hide" id="sipcall">
 				<div class="row">

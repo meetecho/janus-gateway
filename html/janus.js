@@ -82,6 +82,7 @@ function Janus(gatewayCallbacks) {
 	var pluginHandles = {};
 	var that = this;
 	var retries = 0;
+	Janus.log(server);
 	createSession(gatewayCallbacks);
 
 	// Public methods
@@ -598,6 +599,25 @@ function Janus(gatewayCallbacks) {
 						Janus.log(videoSupport);
 					} else {
 						Janus.log("Firefox doesn't support media constraints at the moment, ignoring hi-res video");
+					}
+				} else if(media.video === 'screen') {
+					// Not a webcam, but screen capture
+					if(window.location.protocol !== 'https:') {
+						// Screen sharing mandates HTTPS
+						Janus.log("Screen sharing only works on HTTPS, try the https:// version of this page");
+						pluginHandle.consentDialog(false);
+						callbacks.error("Screen sharing only works on HTTPS, try the https:// version of this page");
+						return;
+					}
+					if(!navigator.mozGetUserMedia) {
+						videoSupport = {"mandatory": {"chromeMediaSource": "screen", "maxHeight": "720", "maxWidth": "1280"}, "optional": []};
+						Janus.log("Adding media constraint (screen capture)");
+						Janus.log(videoSupport);
+					} else {
+						Janus.log("Firefox doesn't support screen sharing at the moment");
+						pluginHandle.consentDialog(false);
+						callbacks.error("Firefox doesn't support screen sharing at the moment");
+						return;
 					}
 				}
 			}

@@ -60,13 +60,13 @@ const char *janus_audiobridge_get_version_string(void);
 const char *janus_audiobridge_get_description(void);
 const char *janus_audiobridge_get_name(void);
 const char *janus_audiobridge_get_package(void);
-void janus_audiobridge_create_session(janus_pluginession *handle, int *error);
-void janus_audiobridge_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp);
-void janus_audiobridge_setup_media(janus_pluginession *handle);
-void janus_audiobridge_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_audiobridge_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_audiobridge_hangup_media(janus_pluginession *handle);
-void janus_audiobridge_destroy_session(janus_pluginession *handle, int *error);
+void janus_audiobridge_create_session(janus_plugin_session *handle, int *error);
+void janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+void janus_audiobridge_setup_media(janus_plugin_session *handle);
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_audiobridge_hangup_media(janus_plugin_session *handle);
+void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
 
 /* Plugin setup */
 static janus_plugin janus_audiobridge_plugin =
@@ -105,7 +105,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 static void *janus_audiobridge_mixer_thread(void *data);
 
 typedef struct janus_audiobridge_message {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	char *transaction;
 	char *message;
 	char *sdp_type;
@@ -126,7 +126,7 @@ typedef struct janus_audiobridge_room {
 GHashTable *rooms;
 
 typedef struct janus_audiobridge_session {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
@@ -336,7 +336,7 @@ const char *janus_audiobridge_get_package() {
 	return JANUS_AUDIOBRIDGE_PACKAGE;
 }
 
-void janus_audiobridge_create_session(janus_pluginession *handle, int *error) {
+void janus_audiobridge_create_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -357,7 +357,7 @@ void janus_audiobridge_create_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_audiobridge_destroy_session(janus_pluginession *handle, int *error) {
+void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -382,7 +382,7 @@ void janus_audiobridge_destroy_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_audiobridge_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+void janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
 	JANUS_PRINT("%s\n", message);
@@ -399,7 +399,7 @@ void janus_audiobridge_handle_message(janus_pluginession *handle, char *transact
 	g_queue_push_tail(messages, msg);
 }
 
-void janus_audiobridge_setup_media(janus_pluginession *handle) {
+void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	JANUS_DEBUG("WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
@@ -413,8 +413,8 @@ void janus_audiobridge_setup_media(janus_pluginession *handle) {
 	/* TODO Only send this peer the audio mix when we get this event */
 }
 
-void janus_audiobridge_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;	
 	if(!session || session->destroy || session->stopping || !session->participant)
@@ -445,13 +445,13 @@ void janus_audiobridge_incoming_rtp(janus_pluginession *handle, int video, char 
 	g_queue_push_tail(participant->inbuf, pkt);
 }
 
-void janus_audiobridge_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	/* FIXME Should we care? */
 }
 
-void janus_audiobridge_hangup_media(janus_pluginession *handle) {
+void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	JANUS_PRINT("No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;
@@ -791,7 +791,6 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set(pub, "room", json_integer(participant->room->room_id));
 				json_object_set_new(pub, "participants", list);
 				char *pub_text = json_dumps(pub, JSON_INDENT(3));
-				json_decref(list);
 				json_decref(pub);
 				GList *participants_list = g_hash_table_get_values(participant->room->participants);
 				GList *ps = participants_list;
@@ -917,7 +916,6 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set(pub, "room", json_integer(participant->room->room_id));
 				json_object_set_new(pub, "participants", list);
 				char *pub_text = json_dumps(pub, JSON_INDENT(3));
-				json_decref(list);
 				json_decref(pub);
 				GList *participants_list = g_hash_table_get_values(participant->room->participants);
 				GList *ps = participants_list;

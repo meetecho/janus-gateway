@@ -48,13 +48,13 @@ const char *janus_videocall_get_version_string(void);
 const char *janus_videocall_get_description(void);
 const char *janus_videocall_get_name(void);
 const char *janus_videocall_get_package(void);
-void janus_videocall_create_session(janus_pluginession *handle, int *error);
-void janus_videocall_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp);
-void janus_videocall_setup_media(janus_pluginession *handle);
-void janus_videocall_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_videocall_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_videocall_hangup_media(janus_pluginession *handle);
-void janus_videocall_destroy_session(janus_pluginession *handle, int *error);
+void janus_videocall_create_session(janus_plugin_session *handle, int *error);
+void janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+void janus_videocall_setup_media(janus_plugin_session *handle);
+void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_videocall_hangup_media(janus_plugin_session *handle);
+void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
 
 /* Plugin setup */
 static janus_plugin janus_videocall_plugin =
@@ -91,7 +91,7 @@ static GThread *handler_thread;
 static void *janus_videocall_handler(void *data);
 
 typedef struct janus_videocall_message {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	char *transaction;
 	char *message;
 	char *sdp_type;
@@ -100,7 +100,7 @@ typedef struct janus_videocall_message {
 GQueue *messages;
 
 typedef struct janus_videocall_session {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	gchar *username;
 	gboolean audio_active;
 	gboolean video_active;
@@ -189,7 +189,7 @@ const char *janus_videocall_get_package() {
 	return JANUS_VIDEOCALL_PACKAGE;
 }
 
-void janus_videocall_create_session(janus_pluginession *handle, int *error) {
+void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -211,7 +211,7 @@ void janus_videocall_create_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_videocall_destroy_session(janus_pluginession *handle, int *error) {
+void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -238,7 +238,7 @@ void janus_videocall_destroy_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_videocall_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+void janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
 	JANUS_PRINT("%s\n", message);
@@ -255,7 +255,7 @@ void janus_videocall_handle_message(janus_pluginession *handle, char *transactio
 	g_queue_push_tail(messages, msg);
 }
 
-void janus_videocall_setup_media(janus_pluginession *handle) {
+void janus_videocall_setup_media(janus_plugin_session *handle) {
 	JANUS_DEBUG("WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
@@ -269,8 +269,8 @@ void janus_videocall_setup_media(janus_pluginession *handle) {
 	/* We really don't care, as we only relay RTP/RTCP we get in the first place anyway */
 }
 
-void janus_videocall_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	if(gateway) {
 		/* Honour the audio/video active flags */
@@ -291,8 +291,8 @@ void janus_videocall_incoming_rtp(janus_pluginession *handle, int video, char *b
 	}
 }
 
-void janus_videocall_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	if(gateway) {
 		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
@@ -312,7 +312,7 @@ void janus_videocall_incoming_rtcp(janus_pluginession *handle, int video, char *
 	}
 }
 
-void janus_videocall_hangup_media(janus_pluginession *handle) {
+void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	JANUS_PRINT("No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;

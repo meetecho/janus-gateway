@@ -90,13 +90,13 @@ const char *janus_streaming_get_version_string(void);
 const char *janus_streaming_get_description(void);
 const char *janus_streaming_get_name(void);
 const char *janus_streaming_get_package(void);
-void janus_streaming_create_session(janus_pluginession *handle, int *error);
-void janus_streaming_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp);
-void janus_streaming_setup_media(janus_pluginession *handle);
-void janus_streaming_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_streaming_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_streaming_hangup_media(janus_pluginession *handle);
-void janus_streaming_destroy_session(janus_pluginession *handle, int *error);
+void janus_streaming_create_session(janus_plugin_session *handle, int *error);
+void janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+void janus_streaming_setup_media(janus_plugin_session *handle);
+void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_streaming_hangup_media(janus_plugin_session *handle);
+void janus_streaming_destroy_session(janus_plugin_session *handle, int *error);
 
 /* Plugin setup */
 static janus_plugin janus_streaming_plugin =
@@ -178,7 +178,7 @@ typedef struct janus_streaming_mountpoint {
 GHashTable *mountpoints;
 
 typedef struct janus_streaming_message {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	char *transaction;
 	char *message;
 	char *sdp_type;
@@ -187,7 +187,7 @@ typedef struct janus_streaming_message {
 GQueue *messages;
 
 typedef struct janus_streaming_session {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	janus_streaming_mountpoint *mountpoint;
 	gboolean started;
 	gboolean stopping;
@@ -517,7 +517,7 @@ const char *janus_streaming_get_package() {
 	return JANUS_STREAMING_PACKAGE;
 }
 
-void janus_streaming_create_session(janus_pluginession *handle, int *error) {
+void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -537,7 +537,7 @@ void janus_streaming_create_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_streaming_destroy_session(janus_pluginession *handle, int *error) {
+void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -559,7 +559,7 @@ void janus_streaming_destroy_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_streaming_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+void janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
 	JANUS_PRINT("%s\n", message);
@@ -576,7 +576,7 @@ void janus_streaming_handle_message(janus_pluginession *handle, char *transactio
 	g_queue_push_tail(messages, msg);
 }
 
-void janus_streaming_setup_media(janus_pluginession *handle) {
+void janus_streaming_setup_media(janus_plugin_session *handle) {
 	JANUS_DEBUG("WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
@@ -602,19 +602,19 @@ void janus_streaming_setup_media(janus_pluginession *handle) {
 	JANUS_PRINT("  >> %d\n", gateway->push_event(handle, &janus_streaming_plugin, NULL, event_text, NULL, NULL));
 }
 
-void janus_streaming_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	/* FIXME We don't care about what the browser sends us, we're sendonly */
 }
 
-void janus_streaming_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	/* FIXME Maybe we should care about RTCP, but not now */
 }
 
-void janus_streaming_hangup_media(janus_pluginession *handle) {
+void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	JANUS_PRINT("No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;

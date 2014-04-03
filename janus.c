@@ -91,10 +91,10 @@ void janus_handle_signal(int signum)
  * gateway is handled here.
  */
 ///@{
-int janus_push_event(janus_pluginession *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp);
-json_t *janus_handle_sdp(janus_pluginession *handle, janus_plugin *plugin, char *sdp_type, char *sdp);
-void janus_relay_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_relay_rtcp(janus_pluginession *handle, int video, char *buf, int len);
+int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp);
+json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, char *sdp_type, char *sdp);
+void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_push_event,
@@ -920,14 +920,14 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_push_event(janus_pluginession *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp) {
-	if(!handle || !plugin || !message)
+int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp) {
+	if(!handle || handle->stopped || !plugin || !message)
 		return -1;
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
-	if(!ice_handle)
+	if(!ice_handle || ice_handle->stop)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
-	if(!session)
+	if(!session || session->destroy)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	/* Make sure this is JSON */
 	json_error_t error;
@@ -982,8 +982,8 @@ int janus_push_event(janus_pluginession *handle, janus_plugin *plugin, char *tra
 	return JANUS_OK;
 }
 
-json_t *janus_handle_sdp(janus_pluginession *handle, janus_plugin *plugin, char *sdp_type, char *sdp) {
-	if(handle == NULL || plugin == NULL || sdp_type == NULL || sdp == NULL)
+json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, char *sdp_type, char *sdp) {
+	if(handle == NULL || handle->stopped || plugin == NULL || sdp_type == NULL || sdp == NULL)
 		return NULL;
 	int offer = 0;
 	if(!strcasecmp(sdp_type, "offer")) {
@@ -996,6 +996,8 @@ json_t *janus_handle_sdp(janus_pluginession *handle, janus_plugin *plugin, char 
 		return NULL;
 	}
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	if(ice_handle == NULL || ice_handle->stop)
+		return NULL;
 	/* Is this valid SDP? */
 	int audio = 0, video = 0;
 	if(janus_sdp_preparse(sdp, &audio, &video) < 0) {
@@ -1055,20 +1057,20 @@ json_t *janus_handle_sdp(janus_pluginession *handle, janus_plugin *plugin, char 
 	return jsep;
 }
 
-void janus_relay_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(!handle)
+void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(!handle || handle->stopped)
 		return;
 	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session)
+	if(!session || session->stop)
 		return;
 	janus_ice_relay_rtp(session, video, buf, len);
 }
 
-void janus_relay_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(!handle)
+void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(!handle || handle->stopped)
 		return;
 	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session)
+	if(!session || session->stop)
 		return;
 	janus_ice_relay_rtcp(session, video, buf, len);
 }
@@ -1270,7 +1272,7 @@ gint main(int argc, char *argv[])
 			rtp_min_port = atoi(item->value);
 			rtp_max_port = atoi(maxport);
 			maxport--;
-			maxport = '-';
+			*maxport = '-';
 		}
 		if(rtp_min_port > rtp_max_port) {
 			int temp_port = rtp_min_port;

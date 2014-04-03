@@ -42,6 +42,7 @@
 					<li><a href="videomcutest.html">Video MCU</a></li>
 					<li><a href="audiobridgetest.html">Audio Conference</a></li>
 					<li><a href="voicemailtest.html">Voice Mail</a></li>
+					<li><a href="screensharingtest.html">Screen Sharing</a></li>
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
@@ -62,6 +63,26 @@
 				<h1>Plugin Demo: Echo Test
 					<button class="btn btn-default" id="start">Start</button>
 				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="col-md-12">
+						<h3>Demo details</h3>
+						<p>This Echo Test demo just blindly sends you back whatever you
+						send to it. You're basically attached to yourself, and so your audio
+						and video you send to the gateway are echoed back to you. The same
+						is done for RTCP packets as well, with the information properly updated.</p>
+						<p>The demo also provides a few controls to manipulate the media
+						before you send them. You can mute audio and video, for instance,
+						which will tell the gateway to drop the frames and not echo them
+						back to you. You can also try and cap the bitrate: such control
+						will tell the gateway to manipulate the RTCP REMB packets passing
+						through, in order to simulate a bandwidth limitation. Since REMB
+						messages are involved, though, this feature is only available on
+						Chrome.</p>
+						<p>Press the <code>Start</code> button above to launch the demo.</p>
+					</div>
+				</div>
 			</div>
 			<div class="container hide" id="videos">
 				<div class="row">

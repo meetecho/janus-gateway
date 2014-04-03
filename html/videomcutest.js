@@ -1,4 +1,26 @@
-var server = "http://" + window.location.hostname + ":8088/janus";
+// We make use of this 'server' variable to provide the address of the
+// REST Janus API. By default, in this example we assume that Janus is
+// co-located with the web server hosting the HTML pages but listening
+// on a different port (8088, the default for HTTP in Janus), which is
+// why we make use of the 'window.location.hostname' base address. Since
+// Janus can also do HTTPS, and considering we don't really want to make
+// use of HTTP for Janus if your demos are served on HTTPS, we also rely
+// on the 'window.location.protocol' prefix to build the variable, in
+// particular to also change the port used to contact Janus (8088 for
+// HTTP and 8089 for HTTPS, if enabled).
+// In case you place Janus behind an Apache frontend (as we did on the
+// online demos at http://janus.conf.meetecho.com) you can just use a
+// relative path for the variable, e.g.:
+//
+// 		var server = "/janus";
+//
+// which will take care of this on its own.
+//
+var server = null;
+if(window.location.protocol === 'http:')
+	server = "http://" + window.location.hostname + ":8088/janus";
+else
+	server = "https://" + window.location.hostname + ":8089/janus";
 
 var janus = null;
 var mcutest = null;
@@ -34,6 +56,7 @@ $(document).ready(function() {
 							{
 								plugin: "janus.plugin.videoroom",
 								success: function(pluginHandle) {
+									$('#details').remove();
 									mcutest = pluginHandle;
 									console.log("Plugin attached! (" + mcutest.getPlugin() + ", id=" + mcutest.getId() + ")");
 									console.log("  -- This is a publisher/manager");
@@ -94,7 +117,7 @@ $(document).ready(function() {
 													error: function(error) {
 														console.log("WebRTC error:");
 														console.log(error);
-														bootbox.alert("WebRTC error... " + error);
+														bootbox.alert("WebRTC error... " + JSON.stringify(error));
 													}
 												});
 											
@@ -154,6 +177,7 @@ $(document).ready(function() {
 								onlocalstream: function(stream) {
 									console.log(" ::: Got a local stream :::");
 									console.log(JSON.stringify(stream));
+									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
 										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="true"/>');
@@ -296,7 +320,7 @@ function newRemoteFeed(id, display) {
 							error: function(error) {
 								console.log("WebRTC error:");
 								console.log(error);
-								bootbox.alert("WebRTC error... " + error);
+								bootbox.alert("WebRTC error... " + JSON.stringify(error));
 							}
 						});
 				}

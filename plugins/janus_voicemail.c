@@ -51,13 +51,13 @@ const char *janus_voicemail_get_version_string(void);
 const char *janus_voicemail_get_description(void);
 const char *janus_voicemail_get_name(void);
 const char *janus_voicemail_get_package(void);
-void janus_voicemail_create_session(janus_pluginession *handle, int *error);
-void janus_voicemail_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp);
-void janus_voicemail_setup_media(janus_pluginession *handle);
-void janus_voicemail_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_voicemail_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len);
-void janus_voicemail_hangup_media(janus_pluginession *handle);
-void janus_voicemail_destroy_session(janus_pluginession *handle, int *error);
+void janus_voicemail_create_session(janus_plugin_session *handle, int *error);
+void janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+void janus_voicemail_setup_media(janus_plugin_session *handle);
+void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_voicemail_hangup_media(janus_plugin_session *handle);
+void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error);
 
 /* Plugin setup */
 static janus_plugin janus_voicemail_plugin =
@@ -94,7 +94,7 @@ static GThread *handler_thread;
 static void *janus_voicemail_handler(void *data);
 
 typedef struct janus_voicemail_message {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	char *transaction;
 	char *message;
 	char *sdp_type;
@@ -103,7 +103,7 @@ typedef struct janus_voicemail_message {
 GQueue *messages;
 
 typedef struct janus_voicemail_session {
-	janus_pluginession *handle;
+	janus_plugin_session *handle;
 	guint64 recording_id;
 	gint64 start_time;
 	char *filename;
@@ -246,7 +246,7 @@ const char *janus_voicemail_get_package() {
 	return JANUS_VOICEMAIL_PACKAGE;
 }
 
-void janus_voicemail_create_session(janus_pluginession *handle, int *error) {
+void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -280,7 +280,7 @@ void janus_voicemail_create_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_voicemail_destroy_session(janus_pluginession *handle, int *error) {
+void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	if(stopping || !initialized) {
 		*error = -1;
 		return;
@@ -305,7 +305,7 @@ void janus_voicemail_destroy_session(janus_pluginession *handle, int *error) {
 	return;
 }
 
-void janus_voicemail_handle_message(janus_pluginession *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+void janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
 	JANUS_PRINT("%s\n", message);
@@ -322,7 +322,7 @@ void janus_voicemail_handle_message(janus_pluginession *handle, char *transactio
 	g_queue_push_tail(messages, msg);
 }
 
-void janus_voicemail_setup_media(janus_pluginession *handle) {
+void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	JANUS_DEBUG("WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
@@ -346,8 +346,8 @@ void janus_voicemail_setup_media(janus_pluginession *handle) {
 	JANUS_PRINT("  >> %d\n", gateway->push_event(handle, &janus_voicemail_plugin, NULL, event_text, NULL, NULL));
 }
 
-void janus_voicemail_incoming_rtp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
 	if(!session || session->destroy || session->stopping || !session->started || session->start_time == 0)
@@ -383,13 +383,13 @@ void janus_voicemail_incoming_rtp(janus_pluginession *handle, int video, char *b
 	ogg_write(session);
 }
 
-void janus_voicemail_incoming_rtcp(janus_pluginession *handle, int video, char *buf, int len) {
-	if(stopping || !initialized)
+void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	/* FIXME Should we care? */
 }
 
-void janus_voicemail_hangup_media(janus_pluginession *handle) {
+void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 	JANUS_PRINT("No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;

@@ -618,15 +618,24 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			//~ }
 			/* What is the direction? */
 			switch(m->m_mode) {
-				case sdp_inactive:
-					g_strlcat(sdp, "a=inactive\r\n", BUFSIZE);
-					break;
 				case sdp_sendonly:
 					g_strlcat(sdp, "a=sendonly\r\n", BUFSIZE);
 					break;
 				case sdp_recvonly:
 					g_strlcat(sdp, "a=recvonly\r\n", BUFSIZE);
 					break;
+				case sdp_inactive:
+				/*! \note Due to a sofia-sdp bug, when video is the only available
+				 * medium and audio is not there, the mode for the video medium is
+				 * set to sdp_inactive even when it actually is an 'a=sendrecv'. May
+				 * this be caused by the fact that no audio is there, thus implicitly
+				 * setting the whole session media to inactive? Anyway, until this
+				 * is fixed we assume that an inactive is actually a sendrecv: yeah,
+				 * an ugly and bad hack, but we never add an inactive stream in our
+				 * JavaScript anyway... */
+					JANUS_DEBUG(" *** Turning inactive to sendrecv... ***\n");
+					//~ g_strlcat(sdp, "a=inactive\r\n", BUFSIZE);
+					//~ break;
 				case sdp_sendrecv:
 				default:
 					g_strlcat(sdp, "a=sendrecv\r\n", BUFSIZE);

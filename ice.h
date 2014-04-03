@@ -60,7 +60,7 @@ struct janus_ice_handle {
 	/*! \brief Opaque application (plugin) pointer */
 	void *app;
 	/*! \brief Opaque gateway/plugin session pointer */
-	janus_pluginession *app_handle;
+	janus_plugin_session *app_handle;
 	/*! \brief Flag to check whether this ICE session needs to stop right now */
 	gint stop:1;
 	/*! \brief Number of gathered candidates */

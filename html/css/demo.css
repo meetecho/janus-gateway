@@ -31,3 +31,14 @@
 .margin-bottom-xl {
 	margin-bottom: 20px !important;
 }
+
+.divider {
+	width: 100%;
+	text-align: center;
+}
+
+.divider hr {
+	margin-left: auto;
+	margin-right: auto;
+	width: 45%;
+}
