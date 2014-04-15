@@ -63,6 +63,8 @@ struct janus_ice_handle {
 	janus_plugin_session *app_handle;
 	/*! \brief Flag to check whether this ICE session needs to stop right now */
 	gint stop:1;
+	/*! \brief Flag to check whether we already reported an alert to the plugin or not */
+	gint alert:1;
 	/*! \brief Number of gathered candidates */
 	gint cdone;
 	/*! \brief GLib context for libnice */
@@ -131,6 +133,8 @@ struct janus_ice_component {
 	guint component_id;
 	/*! \brief GLib list of libnice candidates for this component */
 	GSList *candidates;
+	/*! \brief Re-transmission timer for DTLS */
+	GSource *source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
@@ -163,6 +167,12 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
  * @param[in] handle_id The Janus ICE handle ID to destroy
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id);
+/*! \brief Method to actually free the resources allocated by a Janus ICE handle
+ * @param[in] handle The Janus ICE handle instance to free */
+void janus_ice_free(janus_ice_handle *handle);
+/*! \brief Method to only free the WebRTC related resources allocated by a Janus ICE handle
+ * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */
+void janus_ice_webrtc_free(janus_ice_handle *handle);
 ///@}
 
 
@@ -230,12 +240,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
  * @param[in,out] sdp The handle description the gateway is preparing
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
-void janus_ice_setup_candidate(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id);
+void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
-void janus_ice_setup_remote_candidate(janus_ice_handle *handle, guint stream_id, guint component_id);
+void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id, guint component_id);
 /*! \brief Callback to be notified when the DTLS handshake for a specific component has been completed
  * \details This method also decides when to notify attached plugins about the availability of a reliable PeerConnection
  * @param[in] handle The Janus ICE handle this callback refers to

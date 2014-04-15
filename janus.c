@@ -40,6 +40,7 @@ static GHashTable *plugins_so = NULL;
 static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
 
+
 /* Certificates */
 static char *server_pem = NULL;
 gchar *janus_get_server_pem() {
@@ -74,11 +75,25 @@ gint janus_is_stopping() {
 }
 
 
+/* Logging */
+int log_level = 0;
+
+
 /*! \brief Signal handler (just used to intercept CTRL+C) */
 void janus_handle_signal(int signum);
 void janus_handle_signal(int signum)
 {
-	JANUS_PRINT("Stopping gateway...\n");
+	switch(stop) {
+		case 0:
+			JANUS_PRINT("Stopping gateway, please wait...\n");
+			break;
+		case 1:
+			JANUS_PRINT("In a hurry? I'm trying to free resources cleanly, here!\n");
+			break;
+		default:
+			JANUS_PRINT("Ok, leaving immediately...\n");
+			break;
+	}
 	stop++;
 	if(stop > 2)
 		exit(1);
@@ -105,6 +120,7 @@ static janus_callbacks janus_handler_plugin =
 
 
 /* Gateway Sessions */
+static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL;
 janus_session *janus_session_create(void) {
 	guint64 session_id = 0;
@@ -115,28 +131,34 @@ janus_session *janus_session_create(void) {
 			session_id = 0;
 		}
 	}
-	JANUS_PRINT("Creating new session: %"SCNu64"\n", session_id);
+	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"\n", session_id);
 	janus_session *session = (janus_session *)calloc(1, sizeof(janus_session));
 	if(session == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
 	session->session_id = session_id;
 	session->messages = g_queue_new();
 	session->destroy = 0;
 	janus_mutex_init(&session->mutex);
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
+	janus_mutex_unlock(&sessions_mutex);
 	return session;
 }
 
 janus_session *janus_session_find(guint64 session_id) {
-	return g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
+	janus_mutex_lock(&sessions_mutex);
+	janus_session *session = g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
+	janus_mutex_unlock(&sessions_mutex);
+	return session;
 }
 
 gint janus_session_destroy(guint64 session_id) {
 	janus_session *session = janus_session_find(session_id);
 	if(session == NULL)
 		return -1;
+	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
 	/* TODO Remove all handles */
 	//~ if(handle->app == NULL) {
@@ -144,7 +166,7 @@ gint janus_session_destroy(guint64 session_id) {
 		//~ goto jsondone;
 	//~ }
 	//~ janus_plugin *plugin_t = (janus_plugin *)handle->app;
-	//~ JANUS_PRINT("Detaching handle from %s\n", plugin_t->get_name());
+	//~ JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
 	//~ /* TODO Actually detach session... */
 	//~ int error = 0;
 	//~ plugin_t->destroy_session(handle, &error);
@@ -155,9 +177,40 @@ gint janus_session_destroy(guint64 session_id) {
 		//~ goto jsondone;
 	//~ }
 	//~ g_hash_table_remove(session, handle);
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
+	janus_mutex_unlock(&sessions_mutex);
 	/* TODO Actually destroy session */
 	return 0;
+}
+
+void janus_session_free(janus_session *session) {
+	if(session == NULL)
+		return;
+	janus_mutex_lock(&session->mutex);
+	if(session->ice_handles != NULL) {
+		g_hash_table_destroy(session->ice_handles);
+		session->ice_handles = NULL;
+	}
+	if(session->messages != NULL) {
+		if(!g_queue_is_empty(session->messages)) {
+			janus_http_event *event = NULL;
+			while(!g_queue_is_empty(session->messages)) {
+				event = g_queue_pop_head(session->messages);
+				if(event != NULL) {
+					if(event->payload && event->allocated) {
+						g_free(event->payload);
+						event->payload = NULL;
+					}
+					g_free(event);
+				}
+			}
+		}
+		g_queue_free (session->messages);
+		session->messages = NULL;
+	}
+	janus_mutex_unlock(&session->mutex);
+	session = NULL;
 }
 
 
@@ -168,16 +221,16 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
 
-	JANUS_PRINT("Got a HTTP %s request on %s...\n", method, url);
+	JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
 	/* Is this the first round? */
 	int firstround = 0;
 	janus_http_msg *msg = (janus_http_msg *)*ptr;
 	if (msg == NULL) {
 		firstround = 1;
-		JANUS_PRINT(" ... Just parsing headers for now...\n");
+		JANUS_LOG(LOG_VERB, " ... Just parsing headers for now...\n");
 		msg = calloc(1, sizeof(janus_http_msg));
 		if(msg == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 			MHD_destroy_response(response);
 			goto done;
@@ -193,7 +246,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	/* Parse request */
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
-		JANUS_DEBUG("Unsupported method...\n");
+		JANUS_LOG(LOG_ERR, "Unsupported method...\n");
 		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
@@ -219,7 +272,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	if(strcasecmp(url, ws_path)) {
 		basepath = g_strsplit(url, ws_path, -1);
 		if(basepath[1] == NULL || basepath[1][0] != '/') {
-			JANUS_DEBUG("Invalid url %s (%s)\n", url, basepath[1]);
+			JANUS_LOG(LOG_ERR, "Invalid url %s (%s)\n", url, basepath[1]);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
@@ -229,11 +282,13 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
 		}
-		if(firstround)
+		if(firstround) {
+			g_strfreev(basepath);
 			return ret;
+		}
 		path = g_strsplit(basepath[1], "/", -1);
 		if(path == NULL || path[1] == NULL) {
-			JANUS_DEBUG("Invalid path %s (%s)\n", basepath[1], path[1]);
+			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
@@ -246,30 +301,30 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	if(firstround)
 		return ret;
-	JANUS_PRINT(" ... parsing request...\n");
+	JANUS_LOG(LOG_VERB, " ... parsing request...\n");
 	gchar *session_path = NULL, *handle_path = NULL;
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
 		if(session_path == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_PRINT("Session: %s\n", session_path);
+		JANUS_LOG(LOG_VERB, "Session: %s\n", session_path);
 	}
 	if(session_path != NULL && path[2] != NULL && strlen(path[2]) > 0) {
 		handle_path = g_strdup(path[2]);
 		if(handle_path == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_PRINT("Handle: %s\n", handle_path);
+		JANUS_LOG(LOG_VERB, "Handle: %s\n", handle_path);
 	}
 	if(session_path != NULL && handle_path != NULL && path[3] != NULL && strlen(path[3]) > 0) {
-		JANUS_DEBUG("Too many components...\n");
+		JANUS_LOG(LOG_ERR, "Too many components...\n");
 		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
@@ -282,16 +337,16 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	/* Get payload, if any */
 	if(!strcasecmp(method, "POST")) {
-		JANUS_PRINT("Processing POST data (%s)...\n", msg->contenttype);
+		JANUS_LOG(LOG_VERB, "Processing POST data (%s)...\n", msg->contenttype);
 		if(*upload_data_size != 0) {
-			//~ JANUS_PRINT("  -- Uploaded data (%s, %zu bytes):\n%s\n", msg->contenttype, *upload_data_size, upload_data);
-			JANUS_PRINT("  -- Uploaded data (%zu bytes)\n", *upload_data_size);
+			//~ JANUS_LOG(LOG_VERB, "  -- Uploaded data (%s, %zu bytes):\n%s\n", msg->contenttype, *upload_data_size, upload_data);
+			JANUS_LOG(LOG_VERB, "  -- Uploaded data (%zu bytes)\n", *upload_data_size);
 			if(msg->payload == NULL)
 				msg->payload = calloc(1, *upload_data_size+1);
 			else
 				msg->payload = realloc(msg->payload, msg->len+*upload_data_size+1);
 			if(msg->payload == NULL) {
-				JANUS_DEBUG("Memory error!\n");
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 				MHD_destroy_response(response);
 				goto done;
@@ -299,20 +354,20 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
 			memset(msg->payload+msg->len+*upload_data_size, '\0', 1);
 			msg->len += *upload_data_size;
-			//~ JANUS_PRINT("  -- Data we have now (%zu bytes):\n%s\n", msg->len, msg->payload);
-			JANUS_PRINT("  -- Data we have now (%zu bytes)\n", msg->len);
+			//~ JANUS_LOG(LOG_VERB, "  -- Data we have now (%zu bytes):\n%s\n", msg->len, msg->payload);
+			JANUS_LOG(LOG_VERB, "  -- Data we have now (%zu bytes)\n", msg->len);
 			*upload_data_size = 0;	/* Go on */
 			ret = MHD_YES;
 			goto done;
 		}
-		JANUS_PRINT("Done getting payload, we can answer\n");
+		JANUS_LOG(LOG_VERB, "Done getting payload, we can answer\n");
 		if(msg->payload == NULL) {
-			JANUS_DEBUG("No payload :-(\n");
+			JANUS_LOG(LOG_ERR, "No payload :-(\n");
 			ret = MHD_NO;
 			goto done;
 		}
 		payload = msg->payload;
-		JANUS_DEBUG("%s\n", payload);
+		JANUS_LOG(LOG_VERB, "%s\n", payload);
 	}
 	if(session_path == NULL && handle_path == NULL) {
 		/* Can only be a 'Create new session' request */
@@ -363,10 +418,10 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		guint64 session_id = session->session_id;
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
-		json_object_set(reply, "janus", json_string("success"));
-		json_object_set(reply, "transaction", json_string(transaction_text));
+		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
-		json_object_set(data, "id", json_integer(session_id));
+		json_object_set_new(data, "id", json_integer(session_id));
 		json_object_set(reply, "data", data);
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
@@ -379,7 +434,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	guint64 session_id = g_ascii_strtoll(session_path, NULL, 10);
 	if(session_id < 1) {
-		JANUS_DEBUG("Invalid session %s\n", session_path);
+		JANUS_LOG(LOG_ERR, "Invalid session %s\n", session_path);
 		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
@@ -395,7 +450,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	if(handle_path) {
 		handle_id = g_ascii_strtoll(handle_path, NULL, 10);
 		if(handle_id < 1) {
-			JANUS_DEBUG("Invalid handle %s\n", handle_path);
+			JANUS_LOG(LOG_ERR, "Invalid handle %s\n", handle_path);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
@@ -411,7 +466,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		if(handle_path) {
 			char location[50];
 			g_sprintf(location, "%s/%s", ws_path, session_path);
-			JANUS_DEBUG("Invalid GET to %s, redirecting to %s\n", url, location);
+			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Location", location);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
@@ -425,7 +480,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		janus_session *session = janus_session_find(session_id);
 		if(!session) {
-			JANUS_DEBUG("Couldn't find any session %"SCNu64"...\n", session_id);
+			JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
@@ -436,7 +491,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_PRINT("Session %"SCNu64" found... returning message\n", session->session_id);
+		JANUS_LOG(LOG_VERB, "Session %"SCNu64" found... returning message\n", session->session_id);
 		/* Handle GET, taking the first message from the list */
 		janus_http_event *event = g_queue_pop_head(session->messages);
 		if(event != NULL) {
@@ -474,7 +529,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	/* If we got here, it's a POST, make sure we have a session (and a handle) */
 	janus_session *session = janus_session_find(session_id);
 	if(!session) {
-		JANUS_DEBUG("Couldn't find any session %"SCNu64"...\n", session_id);
+		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 		ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, "No such session %"SCNu64"", session_id);
 		goto done;
 	}
@@ -482,7 +537,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	if(handle_id > 0) {
 		handle = janus_ice_handle_find(session, handle_id);
 		if(!handle) {
-			JANUS_DEBUG("Couldn't find any handle %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
+			JANUS_LOG(LOG_ERR, "Couldn't find any handle %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
 			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, "No such handle %"SCNu64" in session %"SCNu64"", handle_id, session_id);
 			goto done;
 		}
@@ -523,10 +578,10 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
-		json_object_set(reply, "janus", json_string("success"));
-		json_object_set(reply, "transaction", json_string(transaction_text));
+		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
-		json_object_set(data, "id", json_integer(handle_id));
+		json_object_set_new(data, "id", json_integer(handle_id));
 		json_object_set(reply, "data", data);
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
@@ -543,8 +598,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		janus_session_destroy(session_id);	/* FIXME Should we check if this actually succeeded, or can we ignore it? */
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
-		json_object_set(reply, "janus", json_string("success"));
-		json_object_set(reply, "transaction", json_string(transaction_text));
+		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
 		json_decref(reply);
@@ -569,8 +624,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
-		json_object_set(reply, "janus", json_string("success"));
-		json_object_set(reply, "transaction", json_string(transaction_text));
+		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
 		json_decref(reply);
@@ -587,7 +642,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			goto jsondone;
 		}
 		janus_plugin *plugin_t = (janus_plugin *)handle->app;
-		JANUS_PRINT("There's a message for %s\n", plugin_t->get_name());
+		JANUS_LOG(LOG_INFO, "There's a message for %s\n", plugin_t->get_name());
 		json_t *body = json_object_get(root, "body");
 		if(body == NULL) {
 			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_JSON, "JSON error: missing mandatory element (body)");
@@ -614,7 +669,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			}
 			jsep_type = g_strdup(json_string_value(type));
 			if(jsep_type == NULL) {
-				JANUS_DEBUG("Memory error!\n");
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 				MHD_destroy_response(response);
 				goto done;
@@ -639,7 +694,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto jsondone;
 			}
 			jsep_sdp = (char *)json_string_value(sdp);
-			JANUS_PRINT("Remote SDP:\n%s", jsep_sdp);
+			JANUS_LOG(LOG_VERB, "Remote SDP:\n%s", jsep_sdp);
 			/* Is this valid SDP? */
 			int audio = 0, video = 0;
 			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video);
@@ -652,10 +707,12 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto jsondone;
 			}
 			/* FIXME We're only handling single audio/video lines for now... */
-			if(audio > 1)
-				JANUS_DEBUG("More than one audio line? only going to negotiate one...\n");
-			if(video > 1)
-				JANUS_DEBUG("More than one video line? only going to negotiate one...\n");
+			if(audio > 1) {
+				JANUS_LOG(LOG_ERR, "More than one audio line? only going to negotiate one...\n");
+			}
+			if(video > 1) {
+				JANUS_LOG(LOG_ERR, "More than one video line? only going to negotiate one...\n");
+			}
 			if(offer) {
 				/* Setup ICE locally (we received an offer) */
 				janus_ice_setup_local(handle, offer, audio, video);
@@ -663,15 +720,15 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			janus_sdp_parse(handle, parsed_sdp);
 			janus_sdp_free(parsed_sdp);
 			if(!offer) {
-				JANUS_PRINT("Done! Sending connectivity checks...\n");
+				JANUS_LOG(LOG_INFO, "Done! Sending connectivity checks...\n");
 				/* Set remote candidates now */
 				if(handle->audio_id > 0) {
-					janus_ice_setup_remote_candidate(handle, handle->audio_id, 1);
-					janus_ice_setup_remote_candidate(handle, handle->audio_id, 2);
+					janus_ice_setup_remote_candidates(handle, handle->audio_id, 1);
+					janus_ice_setup_remote_candidates(handle, handle->audio_id, 2);
 				}
 				if(handle->video_id > 0) {
-					janus_ice_setup_remote_candidate(handle, handle->video_id, 1);
-					janus_ice_setup_remote_candidate(handle, handle->video_id, 2);
+					janus_ice_setup_remote_candidates(handle, handle->video_id, 1);
+					janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
 				}
 			}
 			/* Anonymize SDP */
@@ -687,15 +744,16 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			sdp = NULL;
 		}
 		char *body_text = json_dumps(body, JSON_INDENT(3));
-		//~ json_decref(body);
-		plugin_t->handle_message(handle->app_handle, (char *)transaction_text, body_text, jsep_type, jsep_sdp_stripped);
 		/* We reply right away, not to block the web server... */
 		json_t *reply = json_object();
-		json_object_set(reply, "janus", json_string("ack"));
-		json_object_set(reply, "transaction", json_string(transaction_text));
+		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
 		json_decref(reply);
+		//~ json_decref(body);
+		/* Send the message to the plugin */
+		plugin_t->handle_message(handle->app_handle, g_strdup((char *)transaction_text), body_text, jsep_type, jsep_sdp_stripped);
 		/* Send the success reply */
 		ret = janus_ws_success(connection, msg, "application/json", reply_text);
 	} else {
@@ -706,6 +764,7 @@ jsondone:
 	json_decref(root);
 	
 done:
+	g_strfreev(basepath);
 	g_strfreev(path);
 	g_free(session_path);
 	g_free(handle_path);
@@ -714,7 +773,7 @@ done:
 
 int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = cls;
-	JANUS_PRINT("%s: %s\n", key, value);
+	JANUS_LOG(LOG_VERB, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
 			request->contenttype = strdup(value);
@@ -729,7 +788,7 @@ int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const 
 }
 
 void janus_ws_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
-	JANUS_PRINT("Request completed, freeing data\n");
+	JANUS_LOG(LOG_VERB, "Request completed, freeing data\n");
 	janus_http_msg *request = *con_cls;
 	if(!request)
 		return;
@@ -749,14 +808,14 @@ void janus_ws_request_completed(void *cls, struct MHD_Connection *connection, vo
 int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 	if(!connection || !msg)
 		return MHD_NO;
-	JANUS_PRINT("... handling long poll...\n");
+	JANUS_LOG(LOG_VERB, "... handling long poll...\n");
 	janus_http_event *event = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
 	guint64 session_id = msg->session_id;
 	janus_session *session = janus_session_find(session_id);
 	if(!session) {
-		JANUS_DEBUG("Couldn't find any session %"SCNu64"...\n", session_id);
+		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
@@ -772,7 +831,7 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 	/* We have a timeout for the long poll: 30 seconds */
 	while(end-start < 30*G_USEC_PER_SEC) {
 		event = g_queue_pop_head(session->messages);
-		if(stop || event != NULL) {
+		if(!session || session->destroy || stop || event != NULL) {
 			/* Gotcha! */
 			break;
 		}
@@ -781,10 +840,10 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 		end = janus_get_monotonic_time();
 	}
 	if(event == NULL || event->payload == NULL) {
-		JANUS_PRINT("Long poll time out for session %"SCNu64"...\n", session_id);
+		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session_id);
 		event = (janus_http_event *)calloc(1, sizeof(janus_http_event));
 		if(event == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 			MHD_destroy_response(response);
 			return ret;
@@ -795,18 +854,23 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 		event->allocated = 0;
 	}
 	/* Finish the request by sending the response */
-	JANUS_PRINT("We have a message to serve...\n\t%s\n", event->payload);
+	JANUS_LOG(LOG_VERB, "We have a message to serve...\n\t%s\n", event->payload);
 	//~ if(session->destroy) {
-		//~ JANUS_PRINT("Destroying session %"SCNu64" as well\n", session->session_id);
+		//~ JANUS_LOG(LOG_VERB, "Destroying session %"SCNu64" as well\n", session->session_id);
 		//~ g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
 		//~ /* TODO Actually remove session */
 	//~ }
 	/* Send event */
 	char *payload = g_strdup(event->payload);
 	if(payload == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 		MHD_destroy_response(response);
+		if(event->payload && event->allocated) {
+			g_free(event->payload);
+			event->payload = NULL;
+		}
+		g_free(event);
 		return ret;
 	}
 	ret = janus_ws_success(connection, msg, NULL, payload);
@@ -854,7 +918,7 @@ int janus_ws_error(struct MHD_Connection *connection, janus_http_msg *msg, const
 		/* FIXME 512 should be enough, but anyway... */
 		error_string = calloc(512, sizeof(char));
 		if(error_string == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			struct MHD_Response *response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			int ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 			MHD_destroy_response(response);
@@ -864,16 +928,16 @@ int janus_ws_error(struct MHD_Connection *connection, janus_http_msg *msg, const
 		va_end(ap);
 	}
 	/* Done preparing error */
-	JANUS_PRINT("[ws][%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
+	JANUS_LOG(LOG_VERB, "[ws][%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
 	/* Prepare JSON error */
 	json_t *reply = json_object();
-	json_object_set(reply, "janus", json_string("error"));
+	json_object_set_new(reply, "janus", json_string("error"));
 	if(transaction != NULL)
-		json_object_set(reply, "transaction", json_string(transaction));
+		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *error_data = json_object();
-	json_object_set(error_data, "code", json_integer(error));
-	json_object_set(error_data, "reason", json_string(error_string ? error_string : "no text"));
-	json_object_set(reply, "error", error_data);
+	json_object_set_new(error_data, "code", json_integer(error));
+	json_object_set_new(error_data, "reason", json_string(error_string ? error_string : "no text"));
+	json_object_set_new(reply, "error", error_data);
 	/* Convert to a string */
 	char *reply_text = json_dumps(reply, JSON_INDENT(3));
 	json_decref(reply);
@@ -909,7 +973,7 @@ void janus_pluginso_close(gpointer key, gpointer value, gpointer user_data) {
 	void *plugin = (janus_plugin *)value;
 	if(!plugin)
 		return;
-	dlclose(plugin);
+	//~ dlclose(plugin);
 }
 
 janus_plugin *janus_plugin_find(const gchar *package) {
@@ -933,11 +997,11 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	json_error_t error;
 	json_t *event = json_loads(message, 0, &error);
 	if(!event) {
-		JANUS_DEBUG("[%"SCNu64"] Cannot push event (JSON error: on line %d: %s)\n", ice_handle->handle_id, error.line, error.text);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: on line %d: %s)\n", ice_handle->handle_id, error.line, error.text);
 		return JANUS_ERROR_INVALID_JSON;
 	}
 	if(!json_is_object(event)) {
-		JANUS_DEBUG("[%"SCNu64"] Cannot push event (JSON error: not an object)\n", ice_handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: not an object)\n", ice_handle->handle_id);
 		return JANUS_ERROR_INVALID_JSON_OBJECT;
 	}
 	/* Attach JSEP if possible? */
@@ -945,18 +1009,18 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	if(sdp_type != NULL && sdp != NULL) {
 		jsep = janus_handle_sdp(handle, plugin, sdp_type, sdp);
 		if(jsep == NULL) {
-			JANUS_DEBUG("[%"SCNu64"] Cannot push event (JSON error: problem with the SDP)\n", ice_handle->handle_id);
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: problem with the SDP)\n", ice_handle->handle_id);
 			return JANUS_ERROR_JSEP_INVALID_SDP;
 		}
 	}
 	/* Prepare JSON event */
 	json_t *reply = json_object();
-	json_object_set(reply, "janus", json_string("event"));
-	json_object_set(reply, "sender", json_integer(ice_handle->handle_id));
+	json_object_set_new(reply, "janus", json_string("event"));
+	json_object_set_new(reply, "sender", json_integer(ice_handle->handle_id));
 	if(transaction != NULL)
-		json_object_set(reply, "transaction", json_string(transaction));
+		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *plugin_data = json_object();
-	json_object_set(plugin_data, "plugin", json_string(plugin->get_package()));
+	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
 	json_object_set(plugin_data, "data", event);
 	json_object_set(reply, "plugindata", plugin_data);
 	if(jsep != NULL)
@@ -969,10 +1033,10 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 		json_decref(jsep);
 	json_decref(reply);
 	/* Send the event */
-	JANUS_PRINT("[%"SCNu64"] Adding event to queue of messages...\n", ice_handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", ice_handle->handle_id);
 	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
 	if(notification == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return JANUS_ERROR_UNKNOWN;	/* FIXME Do we need something like "Internal Server Error"? */
 	}
 	notification->code = 200;
@@ -1000,24 +1064,29 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 		return NULL;
 	/* Is this valid SDP? */
 	int audio = 0, video = 0;
-	if(janus_sdp_preparse(sdp, &audio, &video) < 0) {
+	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video);
+	if(parsed_sdp == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP...\n", ice_handle->handle_id);
 		return NULL;
 	}
+	janus_sdp_free(parsed_sdp);
 	if(offer) {
 		/* We still don't have a local ICE setup */
-		if(audio > 1)
-			JANUS_DEBUG("[%"SCNu64"] More than one audio line? only going to negotiate one...\n", ice_handle->handle_id);
-		if(video > 1)
-			JANUS_DEBUG("[%"SCNu64"] More than one video line? only going to negotiate one...\n", ice_handle->handle_id);
+		if(audio > 1) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", ice_handle->handle_id);
+		}
+		if(video > 1) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", ice_handle->handle_id);
+		}
 		/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 		janus_ice_setup_local(ice_handle, 0, audio, video);
 	}
 	/* Wait for candidates-done callback */
 	while(ice_handle->cdone < ice_handle->streams_num) {
-		JANUS_PRINT("[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
 		g_usleep(100000);
 		if(ice_handle->cdone < 0) {
-			JANUS_DEBUG("[%"SCNu64"] Error gathering candidates!\n", ice_handle->handle_id);
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates!\n", ice_handle->handle_id);
 			return NULL;
 		}
 	}
@@ -1036,22 +1105,22 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 	}
 
 	if(!offer) {
-		JANUS_PRINT("[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
+		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
 		/* Set remote candidates now */
 		if(ice_handle->audio_id > 0) {
-			janus_ice_setup_remote_candidate(ice_handle, ice_handle->audio_id, 1);
-			janus_ice_setup_remote_candidate(ice_handle, ice_handle->audio_id, 2);
+			janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 1);
+			janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 2);
 		}
 		if(ice_handle->video_id > 0) {
-			janus_ice_setup_remote_candidate(ice_handle, ice_handle->video_id, 1);
-			janus_ice_setup_remote_candidate(ice_handle, ice_handle->video_id, 2);
+			janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 1);
+			janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
 		}
 	}
 	
 	/* Prepare JSON event */
 	json_t *jsep = json_object();
-	json_object_set(jsep, "type", json_string(sdp_type));
-	json_object_set(jsep, "sdp", json_string(sdp_merged));
+	json_object_set_new(jsep, "type", json_string(sdp_type));
+	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
 	g_free(sdp_stripped);
 	g_free(sdp_merged);
 	return jsep;
@@ -1098,19 +1167,29 @@ gint main(int argc, char *argv[])
 
 	/* Setup Glib */
 	g_type_init();
+	
+	/* Logging level: default is info */
+	log_level = LOG_INFO;
+	if(args_info.debug_level_given) {
+		if(args_info.debug_level_arg < LOG_NONE)
+			args_info.debug_level_arg = 0;
+		else if(args_info.debug_level_arg > LOG_DBG)
+			args_info.debug_level_arg = LOG_DBG;
+		log_level = args_info.debug_level_arg;
+	}
 
 	/* Any configuration to open? */
 	if(args_info.config_given) {
 		config_file = g_strdup(args_info.config_arg);
 		if(config_file == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_PRINT("Memory error!\n");
 			exit(1);
 		}
 	}
 	if(args_info.configs_folder_given) {
 		configs_folder = g_strdup(args_info.configs_folder_arg);
 		if(configs_folder == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_PRINT("Memory error!\n");
 			exit(1);
 		}
 	} else {
@@ -1121,7 +1200,7 @@ gint main(int argc, char *argv[])
 		sprintf(file, "%s/janus.cfg", configs_folder);
 		config_file = g_strdup(file);
 		if(config_file == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_PRINT("Memory error!\n");
 			exit(1);
 		}
 	}
@@ -1131,7 +1210,7 @@ gint main(int argc, char *argv[])
 			/* We only give up if the configuration file was explicitly provided */
 			exit(1);
 		}
-		JANUS_DEBUG("Error reading/parsing the configuration file, going on with the defaults and the command line arguments\n");
+		JANUS_PRINT("Error reading/parsing the configuration file, going on with the defaults and the command line arguments\n");
 		config = janus_config_create("janus.cfg");
 		if(config == NULL) {
 			/* If we can't even create an empty configuration, something's definitely wrong */
@@ -1139,6 +1218,22 @@ gint main(int argc, char *argv[])
 		}
 	}
 	janus_config_print(config);
+	if(args_info.debug_level_given) {
+		char debug[5];
+		sprintf(debug, "%d", args_info.debug_level_arg);
+		janus_config_add_item(config, "general", "debug_level", debug);
+	} else {
+		/* No command line directive on logging, try the configuration file */
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "debug_level");
+		if(item && item->value) {
+			int temp_level = atoi(item->value);
+			if(temp_level == 0 && strcmp(item->value, "0")) {
+				JANUS_PRINT("Invalid debug level %s (configuration), using default (info=4)\n", item->value);
+			} else {
+				log_level = temp_level;
+			}
+		}
+	}
 	/* Any command line argument that should overwrite the configuration? */
 	JANUS_PRINT("Checking command line arguments...\n");
 	if(args_info.interface_given) {
@@ -1193,12 +1288,15 @@ gint main(int argc, char *argv[])
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
 	janus_config_print(config);
+	
+	JANUS_PRINT("Debug/log level is %d\n", log_level);
 
 	/* What is the local public IP? */
-	JANUS_PRINT("Available interfaces:\n");
+	JANUS_LOG(LOG_VERB, "Available interfaces:\n");
 	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "interface");
-	if(item && item->value)
-		JANUS_PRINT("  -- Will try to use %s\n", item->value);
+	if(item && item->value) {
+		JANUS_LOG(LOG_VERB, "  -- Will try to use %s\n", item->value);
+	}
 	struct ifaddrs *myaddrs, *ifa;
 	int status = getifaddrs(&myaddrs);
 	char *tmp = NULL;
@@ -1214,13 +1312,13 @@ gint main(int argc, char *argv[])
 				struct sockaddr_in *ip = (struct sockaddr_in *)(ifa->ifa_addr);
 				char buf[16];
 				if(inet_ntop(ifa->ifa_addr->sa_family, (void *)&(ip->sin_addr), buf, sizeof(buf)) == NULL) {
-					JANUS_DEBUG("\t%s:\tinet_ntop failed!\n", ifa->ifa_name);
+					JANUS_LOG(LOG_ERR, "\t%s:\tinet_ntop failed!\n", ifa->ifa_name);
 				} else {
-					JANUS_PRINT("\t%s:\t%s\n", ifa->ifa_name, buf);
+					JANUS_LOG(LOG_VERB, "\t%s:\t%s\n", ifa->ifa_name, buf);
 					if(item && item->value && !strcasecmp(buf, item->value)) {
 						local_ip = strdup(buf);
 						if(local_ip == NULL) {
-							JANUS_DEBUG("Memory error!\n");
+							JANUS_LOG(LOG_FATAL, "Memory error!\n");
 							exit(1);
 						}
 					} else if(strcasecmp(buf, "127.0.0.1")) {	/* FIXME Check private IP addresses as well */
@@ -1237,18 +1335,18 @@ gint main(int argc, char *argv[])
 		if(tmp != NULL) {
 			local_ip = tmp;
 		} else {
-			JANUS_DEBUG("Couldn't find any address! using 127.0.0.1 as local IP... (which is NOT going to work out of your machine)\n");
+			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as local IP... (which is NOT going to work out of your machine)\n");
 			local_ip = g_strdup("127.0.0.1");
 		}
 	}
-	JANUS_PRINT("Using %s as local IP...\n", local_ip);
+	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Pre-parse the web server path, if any */
 	ws_path = "/janus";
 	item = janus_config_get_item_drilldown(config, "webserver", "base_path");
 	if(item && item->value) {
 		if(item->value[0] != '/') {
-			JANUS_DEBUG("Invalid base path %s (it should start with a /, e.g., /janus\n", item->value);
+			JANUS_LOG(LOG_FATAL, "Invalid base path %s (it should start with a /, e.g., /janus\n", item->value);
 			exit(1);
 		}
 		ws_path = g_strdup(item->value);
@@ -1281,7 +1379,7 @@ gint main(int argc, char *argv[])
 		}
 		if(rtp_max_port == 0)
 			rtp_max_port = 65535;
-		JANUS_PRINT("RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
+		JANUS_LOG(LOG_INFO, "RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
 	}
 	item = janus_config_get_item_drilldown(config, "nat", "stun_server");
 	if(item && item->value)
@@ -1290,7 +1388,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		stun_port = atoi(item->value);
 	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port) < 0) {
-		JANUS_DEBUG("Invalid STUN address %s:%u\n", stun_server, stun_port);
+		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
 	}
 
@@ -1301,16 +1399,16 @@ gint main(int argc, char *argv[])
 			g_free(public_ip);
 		public_ip = g_strdup((char *)item->value);
 		if(public_ip == NULL) {
-			JANUS_DEBUG("Memory error\n");
+			JANUS_LOG(LOG_FATAL, "Memory error\n");
 			exit(1);
 		}
-		JANUS_PRINT("Using %s as our public IP in SDP\n", public_ip);
+		JANUS_LOG(LOG_INFO, "Using %s as our public IP in SDP\n", public_ip);
 	}
 	
 	/* Setup OpenSSL stuff */
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
-		JANUS_DEBUG("Missing certificate/key path, use the command line or the configuration to provide one\n");
+		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
 		exit(1);
 	}
 	server_pem = (char *)item->value;
@@ -1318,7 +1416,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(item && item->value)
 		server_key = (char *)item->value;
-	JANUS_PRINT("Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 	SSL_library_init();
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
@@ -1337,10 +1435,10 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;
-	JANUS_PRINT("Plugins folder: %s\n", path);
+	JANUS_LOG(LOG_INFO, "Plugins folder: %s\n", path);
 	DIR *dir = opendir(path);
 	if(!dir) {
-		JANUS_DEBUG("\tCouldn't access plugins folder...\n");
+		JANUS_LOG(LOG_FATAL, "\tCouldn't access plugins folder...\n");
 		exit(1);
 	}
 	struct dirent *pluginent = NULL;
@@ -1348,29 +1446,27 @@ gint main(int argc, char *argv[])
 	while((pluginent = readdir(dir))) {
 		int len = strlen(pluginent->d_name);
 		if (len < 4) {
-			//~ JANUS_DEBUG("\tSkipping %s (filename too short)\n", pluginent->d_name);
 			continue;
 		}
 		if (strcasecmp(pluginent->d_name+len-3, ".so")) {
-			//~ JANUS_DEBUG("\tSkipping %s (not a shared object)\n", pluginent->d_name);
 			continue;
 		}
-		JANUS_PRINT("Loading plugin '%s'...\n", pluginent->d_name);
+		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 255);
 		sprintf(pluginpath, "%s/%s", path, pluginent->d_name);
 		void *plugin = dlopen(pluginpath, RTLD_LAZY);
 		if (!plugin) {
-			JANUS_DEBUG("\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
+			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
 		} else {
 			create_p *create = (create_p*) dlsym(plugin, "create");
 			const char *dlsym_error = dlerror();
 			if (dlsym_error) {
-				JANUS_DEBUG("\tCouldn't load symbol 'create': %s\n", dlsym_error);
+				JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
 				continue;
 			}
 			janus_plugin *janus_plugin = create();
 			if(!janus_plugin) {
-				JANUS_DEBUG("\tCouldn't use function 'create'...\n");
+				JANUS_LOG(LOG_ERR, "\tCouldn't use function 'create'...\n");
 				continue;
 			}
 			/* Are all methods and callbacks implemented? */
@@ -1387,13 +1483,13 @@ gint main(int argc, char *argv[])
 					!janus_plugin->incoming_rtp ||	/* FIXME Does this have to be mandatory? (e.g., sendonly plugins) */
 					!janus_plugin->incoming_rtcp ||
 					!janus_plugin->hangup_media) {
-				JANUS_DEBUG("\tMissing some methods/callbacks, skipping this plugin...\n");
+				JANUS_LOG(LOG_ERR, "\tMissing some methods/callbacks, skipping this plugin...\n");
 				continue;
 			}
 			janus_plugin->init(&janus_handler_plugin, configs_folder);
-			JANUS_PRINT("\tVersion: %d (%s)\n", janus_plugin->get_version(), janus_plugin->get_version_string());
-			JANUS_PRINT("\t   [%s] %s\n", janus_plugin->get_package(), janus_plugin->get_name());
-			JANUS_PRINT("\t   %s\n", janus_plugin->get_description());
+			JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_plugin->get_version(), janus_plugin->get_version_string());
+			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_plugin->get_package(), janus_plugin->get_name());
+			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_plugin->get_description());
 			if(plugins == NULL)
 				plugins = g_hash_table_new(g_str_hash, g_str_equal);
 			g_hash_table_insert(plugins, (gpointer)janus_plugin->get_package(), janus_plugin);
@@ -1406,9 +1502,10 @@ gint main(int argc, char *argv[])
 
 	/* Start web server */
 	sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&sessions_mutex);
 	item = janus_config_get_item_drilldown(config, "webserver", "http");
 	if(item && item->value && !strcasecmp(item->value, "no")) {
-		JANUS_PRINT("HTTP webserver disabled\n");
+		JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
 	} else {
 		int wsport = 8088;
 		item = janus_config_get_item_drilldown(config, "webserver", "port");
@@ -1424,27 +1521,27 @@ gint main(int argc, char *argv[])
 			MHD_OPTION_NOTIFY_COMPLETED, &janus_ws_request_completed, NULL,
 			MHD_OPTION_END);
 		if(ws == NULL) {
-			JANUS_DEBUG("Couldn't start webserver on port %d...\n", wsport);
+			JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			exit(1);	/* FIXME Should we really give up? */
 		}
-		JANUS_PRINT("HTTP webserver started (port %d, %s path listener)...\n", wsport, ws_path);
+		JANUS_LOG(LOG_INFO, "HTTP webserver started (port %d, %s path listener)...\n", wsport, ws_path);
 	}
 	/* Do we also have to provide an HTTPS one? */
 	char *cert_pem_bytes = NULL, *cert_key_bytes = NULL; 
 	item = janus_config_get_item_drilldown(config, "webserver", "https");
 	if(item && item->value && !strcasecmp(item->value, "no")) {
-		JANUS_PRINT("HTTPS webserver disabled\n");
+		JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
 	} else {
 		item = janus_config_get_item_drilldown(config, "webserver", "secure_port");
 		if(!item || !item->value) {
-			JANUS_DEBUG("  -- HTTPS port missing\n");
+			JANUS_LOG(LOG_FATAL, "  -- HTTPS port missing\n");
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		int swsport = atoi(item->value);
 		/* Read certificate and key */
 		FILE *pem = fopen(server_pem, "rb");
 		if(!pem) {
-			JANUS_DEBUG("Could not open certificate file '%s'...\n", server_pem);
+			JANUS_LOG(LOG_FATAL, "Could not open certificate file '%s'...\n", server_pem);
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		fseek(pem, 0L, SEEK_END);
@@ -1452,7 +1549,7 @@ gint main(int argc, char *argv[])
 		fseek(pem, 0L, SEEK_SET);
 		cert_pem_bytes = calloc(size, sizeof(char));
 		if(cert_pem_bytes == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			exit(1);
 		}
 		char *index = cert_pem_bytes;
@@ -1464,7 +1561,7 @@ gint main(int argc, char *argv[])
 		fclose(pem);
 		FILE *key = fopen(server_key, "rb");
 		if(!key) {
-			JANUS_DEBUG("Could not open key file '%s'...\n", server_key);
+			JANUS_LOG(LOG_FATAL, "Could not open key file '%s'...\n", server_key);
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		fseek(key, 0L, SEEK_END);
@@ -1472,7 +1569,7 @@ gint main(int argc, char *argv[])
 		fseek(key, 0L, SEEK_SET);
 		cert_key_bytes = calloc(size, sizeof(char));
 		if(cert_key_bytes == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			exit(1);
 		}
 		index = cert_key_bytes;
@@ -1497,16 +1594,17 @@ gint main(int argc, char *argv[])
 				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 			MHD_OPTION_END);
 		if(sws == NULL) {
-			JANUS_DEBUG("Couldn't start secure webserver on port %d...\n", swsport);
+			JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 			exit(1);	/* FIXME Should we really give up? */
 		} else {
-			JANUS_PRINT("HTTPS webserver started (port %d, %s path listener)...\n", swsport, ws_path);
+			JANUS_LOG(LOG_INFO, "HTTPS webserver started (port %d, %s path listener)...\n", swsport, ws_path);
 		}
 	}
 	if(!ws && !sws) {
-		JANUS_DEBUG("No webserver (HTTP/HTTPS) started, giving up...\n"); 
+		JANUS_LOG(LOG_FATAL, "No webserver (HTTP/HTTPS) started, giving up...\n"); 
 		exit(1);
 	}
+	
 	while(!stop) {
 		/* Loop until we have to stop */
 		g_usleep(250000);
@@ -1533,7 +1631,7 @@ gint main(int argc, char *argv[])
 	ERR_free_strings();
 	janus_sdp_deinit();
 	
-	JANUS_PRINT("Closing plugins:\n");
+	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);
 	}
@@ -1542,7 +1640,7 @@ gint main(int argc, char *argv[])
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
 	}
 	g_hash_table_destroy(plugins_so);
+
 	JANUS_PRINT("Bye!\n");
-	
 	exit(0);
 }

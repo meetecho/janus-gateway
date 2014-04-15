@@ -70,17 +70,8 @@ Once you have installed all the dependencies, just use:
 to start the whole compilation process. The script will try to check
 whether you have all the dependencies installed, and then issue a 'make'
 for you to start compiling. If Doxygen and graphviz are available, it
-will also build the documentation for you as well.
-
-If you prefer doing this manually, a simple
-
-	make
-
-will start compiling the gateway. To build the documentation as well:
-
-	make docs
-
-will create the documentation in the docs/html subfolder.
+will also build the documentation for you as well in the docs/html
+subfolder.
 
 
 ##Configure and start
@@ -93,7 +84,7 @@ or on the command line:
 
 	./janus --help
 	
-	janus 0.0.1
+	janus 0.0.2
 
 	Usage: janus [OPTIONS]...
 
@@ -115,6 +106,8 @@ or on the command line:
 	-e, --public-ip=ipaddress     Public address of the machine, to use in SDP
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
+	-d, --debug-level=1-7         Debug/logging level (0=disable debugging, 
+                                  7=maximum debug level; default=4)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:

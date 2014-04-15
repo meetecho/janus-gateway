@@ -69,7 +69,9 @@ videortpmap = RTP map of the video codec (e.g., VP8/90000)
 #include <jansson.h>
 #include <sys/time.h>
 
+#include "../apierror.h"
 #include "../config.h"
+#include "../mutex.h"
 #include "../rtp.h"
 #include "../utils.h"
 
@@ -121,7 +123,7 @@ static janus_plugin janus_streaming_plugin =
 
 /* Plugin creator */
 janus_plugin *create(void) {
-	JANUS_PRINT("%s created!\n", JANUS_STREAMING_NAME);
+	JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_STREAMING_NAME);
 	return &janus_streaming_plugin;
 }
 
@@ -186,6 +188,28 @@ typedef struct janus_streaming_message {
 } janus_streaming_message;
 GQueue *messages;
 
+void janus_streaming_message_free(janus_streaming_message *msg);
+void janus_streaming_message_free(janus_streaming_message *msg) {
+	if(!msg)
+		return;
+	msg->handle = NULL;
+	if(msg->transaction != NULL)
+		g_free(msg->transaction);
+	msg->transaction = NULL;
+	if(msg->message != NULL)
+		g_free(msg->message);
+	msg->message = NULL;
+	if(msg->sdp_type != NULL)
+		g_free(msg->sdp_type);
+	msg->sdp_type = NULL;
+	if(msg->sdp != NULL)
+		g_free(msg->sdp);
+	msg->sdp = NULL;
+	g_free(msg);
+	msg = NULL;
+}
+
+
 typedef struct janus_streaming_session {
 	janus_plugin_session *handle;
 	janus_streaming_mountpoint *mountpoint;
@@ -194,6 +218,7 @@ typedef struct janus_streaming_session {
 	gboolean destroy;
 } janus_streaming_session;
 GHashTable *sessions;
+janus_mutex sessions_mutex;
 
 /* Packets we get from gstreamer and relay */
 typedef struct janus_streaming_rtp_relay_packet {
@@ -217,7 +242,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	/* Read configuration */
 	char filename[255];
 	sprintf(filename, "%s/%s.cfg", config_path, JANUS_STREAMING_PACKAGE);
-	JANUS_PRINT("Configuration file: %s\n", filename);
+	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
 		janus_config_print(config);
@@ -231,10 +256,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				cat = cat->next;
 				continue;
 			}
-			JANUS_PRINT("Adding stream '%s'\n", cat->name);
+			JANUS_LOG(LOG_VERB, "Adding stream '%s'\n", cat->name);
 			janus_config_item *type = janus_config_get_item(cat, "type");
 			if(type == NULL || type->value == NULL) {
-				JANUS_PRINT("  -- Invalid type, skipping stream...\n");
+				JANUS_LOG(LOG_VERB, "  -- Invalid type, skipping stream...\n");
 				cat = cat->next;
 				continue;
 			}
@@ -252,18 +277,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
 				janus_streaming_mountpoint *live_rtp = calloc(1, sizeof(janus_streaming_mountpoint));
 				if(live_rtp == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					continue;
 				}
 				if(id == NULL || id->value == NULL) {
-					JANUS_DEBUG("Can't add 'rtp' stream, missing mandatory information...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information...\n");
 					cat = cat->next;
 					continue;
 				}
 				gboolean doaudio = audio && audio->value && !strcasecmp(audio->value, "yes");
 				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
 				if(!doaudio && !dovideo) {
-					JANUS_DEBUG("Can't add 'rtp' stream, no audio or video have to be streamed...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio or video have to be streamed...\n");
 					g_free(live_rtp);
 					cat = cat->next;
 					continue;
@@ -272,7 +297,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(aport == NULL || aport->value == NULL ||
 						acodec == NULL || acodec->value == NULL ||
 						artpmap == NULL || artpmap->value == NULL)) {
-					JANUS_DEBUG("Can't add 'rtp' stream, missing mandatory information for audio...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information for audio...\n");
 					cat = cat->next;
 					continue;
 				}
@@ -280,11 +305,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(vport == NULL || vport->value == NULL ||
 						vcodec == NULL || vcodec->value == NULL ||
 						vrtpmap == NULL || vrtpmap->value == NULL)) {
-					JANUS_DEBUG("Can't add 'rtp' stream, missing mandatory information for video...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information for video...\n");
 					cat = cat->next;
 					continue;
 				}
-				JANUS_PRINT("Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
+				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
 				live_rtp->name = g_strdup(cat->name);
 				live_rtp->id = atoi(id->value);
 				char *description = NULL;
@@ -298,7 +323,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				live_rtp->streaming_source = janus_streaming_source_rtp;
 				janus_streaming_rtp_source *live_rtp_source = calloc(1, sizeof(janus_streaming_rtp_source));
 				if(live_rtp->name == NULL || description == NULL || live_rtp_source == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					if(live_rtp->name)
 						g_free(live_rtp->name);
 					if(description)
@@ -326,7 +351,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				if(id == NULL || id->value == NULL || file == NULL || file->value == NULL) {
-					JANUS_DEBUG("Can't add 'live' stream, missing mandatory information...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'live' stream, missing mandatory information...\n");
 					cat = cat->next;
 					continue;
 				}
@@ -334,18 +359,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
 				if(!doaudio || dovideo) {
-					JANUS_DEBUG("Can't add 'live' stream, we only support audio file streaming right now...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'live' stream, we only support audio file streaming right now...\n");
 					cat = cat->next;
 					continue;
 				}
 				if(!strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
-					JANUS_DEBUG("Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 					cat = cat->next;
 					continue;
 				}
 				janus_streaming_mountpoint *live_file = calloc(1, sizeof(janus_streaming_mountpoint));
 				if(live_file == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					continue;
 				}
 				live_file->name = g_strdup(cat->name);
@@ -361,7 +386,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				live_file->streaming_source = janus_streaming_source_file;
 				janus_streaming_file_source *live_file_source = calloc(1, sizeof(janus_streaming_file_source));
 				if(live_file->name == NULL || description == NULL || live_file_source == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					if(live_file->name)
 						g_free(live_file->name);
 					if(description)
@@ -388,7 +413,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				if(id == NULL || id->value == NULL || file == NULL || file->value == NULL) {
-					JANUS_DEBUG("Can't add 'ondemand' stream, missing mandatory information...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, missing mandatory information...\n");
 					cat = cat->next;
 					continue;
 				}
@@ -396,18 +421,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
 				if(!doaudio || dovideo) {
-					JANUS_DEBUG("Can't add 'ondemand' stream, we only support audio file streaming right now...\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, we only support audio file streaming right now...\n");
 					cat = cat->next;
 					continue;
 				}
 				if(!strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
-					JANUS_DEBUG("Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
+					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 					cat = cat->next;
 					continue;
 				}
 				janus_streaming_mountpoint *ondemand_file = calloc(1, sizeof(janus_streaming_mountpoint));
 				if(ondemand_file == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					continue;
 				}
 				ondemand_file->name = g_strdup(cat->name);
@@ -423,7 +448,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				ondemand_file->streaming_source = janus_streaming_source_file;
 				janus_streaming_file_source *ondemand_file_source = calloc(1, sizeof(janus_streaming_file_source));
 				if(ondemand_file->name == NULL || description == NULL || ondemand_file_source == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					if(ondemand_file->name)
 						g_free(ondemand_file->name);
 					if(description)
@@ -453,7 +478,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	GList *m = mountpoints_list;
 	while(m) {
 		janus_streaming_mountpoint *mp = (janus_streaming_mountpoint *)m->data;
-		JANUS_PRINT("  ::: [%"SCNu64"][%s] %s (%s, %s)\n", mp->id, mp->name, mp->description,
+		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %s (%s, %s)\n", mp->id, mp->name, mp->description,
 			mp->streaming_type == janus_streaming_type_live ? "live" : "on demand",
 			mp->streaming_source == janus_streaming_source_rtp ? "RTP source" : "file source");
 		m = m->next;
@@ -461,6 +486,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	g_list_free(mountpoints_list);
 
 	sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&sessions_mutex);
 	messages = g_queue_new();
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
@@ -472,10 +498,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		initialized = 0;
 		/* Something went wrong... */
-		JANUS_DEBUG("Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
-	JANUS_PRINT("%s initialized!\n", JANUS_STREAMING_NAME);
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_STREAMING_NAME);
 	return 0;
 }
 
@@ -487,14 +513,14 @@ void janus_streaming_destroy() {
 		g_thread_join(handler_thread);
 	}
 	handler_thread = NULL;
-	/* TODO Actually clean up and remove ongoing sessions (and free the mountpoint resources) */
+	/* FIXME We should destroy the sessions cleanly */
 	g_hash_table_destroy(mountpoints);
 	g_hash_table_destroy(sessions);
 	g_queue_free(messages);
 	sessions = NULL;
 	initialized = 0;
 	stopping = 0;
-	JANUS_PRINT("%s destroyed!\n", JANUS_STREAMING_NAME);
+	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_STREAMING_NAME);
 }
 
 int janus_streaming_get_version() {
@@ -524,7 +550,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_streaming_session *session = (janus_streaming_session *)calloc(1, sizeof(janus_streaming_session));
 	if(session == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
 		return;
 	}
@@ -532,7 +558,9 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	session->mountpoint = NULL;	/* This will happen later */
 	session->started = FALSE;	/* This will happen later */
 	handle->plugin_handle = session;
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
+	janus_mutex_unlock(&sessions_mutex);
 
 	return;
 }
@@ -544,45 +572,46 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	JANUS_PRINT("Removing streaming session...\n");
-	/* TODO Actually clean up and remove session */
+	JANUS_LOG(LOG_VERB, "Removing streaming session...\n");
 	if(session->mountpoint) {
 		session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
 	}
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
+	janus_mutex_unlock(&sessions_mutex);
+	/* Cleaning up and removing the session is done in a lazy way */
 	session->destroy = TRUE;
-	g_free(session);
 	return;
 }
 
 void janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
-	JANUS_PRINT("%s\n", message);
+	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
 	if(msg == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return;
 	}
 	msg->handle = handle;
 	msg->message = message;
-	msg->transaction = transaction ? g_strdup(transaction) : NULL;
+	msg->transaction = transaction;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
 	g_queue_push_tail(messages, msg);
 }
 
 void janus_streaming_setup_media(janus_plugin_session *handle) {
-	JANUS_DEBUG("WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;	
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	if(session->destroy)
@@ -591,15 +620,17 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	session->started = TRUE;
 	/* Prepare JSON event */
 	json_t *event = json_object();
-	json_object_set(event, "streaming", json_string("event"));
+	json_object_set_new(event, "streaming", json_string("event"));
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("started"));
 	json_object_set(event, "result", result);
 	char *event_text = json_dumps(event, JSON_INDENT(3));
 	json_decref(event);
 	json_decref(result);
-	JANUS_PRINT("Pushing event: %s\n", event_text);
-	JANUS_PRINT("  >> %d\n", gateway->push_event(handle, &janus_streaming_plugin, NULL, event_text, NULL, NULL));
+	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+	int ret = gateway->push_event(handle, &janus_streaming_plugin, NULL, event_text, NULL, NULL);
+	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	g_free(event_text);
 }
 
 void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -615,12 +646,12 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 }
 
 void janus_streaming_hangup_media(janus_plugin_session *handle) {
-	JANUS_PRINT("No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;	
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	if(session->destroy)
@@ -628,11 +659,11 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
 	if(msg == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return;
 	}
 	msg->handle = handle;
-	msg->message = "{\"request\":\"stop\"}";
+	msg->message = g_strdup("{\"request\":\"stop\"}");
 	msg->transaction = NULL;
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
@@ -641,11 +672,11 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 
 /* Thread to handle incoming messages */
 static void *janus_streaming_handler(void *data) {
-	JANUS_DEBUG("Joining thread\n");
+	JANUS_LOG(LOG_VERB, "Joining thread\n");
 	janus_streaming_message *msg = NULL;
 	char *error_cause = calloc(1024, sizeof(char));
 	if(error_cause == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
 	while(initialized && !stopping) {
@@ -655,33 +686,36 @@ static void *janus_streaming_handler(void *data) {
 		}
 		janus_streaming_session *session = (janus_streaming_session *)msg->handle->plugin_handle;
 		if(!session) {
-			JANUS_DEBUG("No session associated with this handle...\n");
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+			janus_streaming_message_free(msg);
 			continue;
 		}
-		if(session->destroy)
+		if(session->destroy) {
+			janus_streaming_message_free(msg);
 			continue;
+		}
 		/* Handle request */
-		JANUS_PRINT("Handling message: %s\n", msg->message);
+		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
-			JANUS_DEBUG("No message??\n");
+			JANUS_LOG(LOG_ERR, "No message??\n");
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
 		json_error_t error;
 		json_t *root = json_loads(msg->message, 0, &error);
 		if(!root) {
-			JANUS_DEBUG("JSON error: on line %d: %s\n", error.line, error.text);
+			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
-			JANUS_DEBUG("JSON error: not an object\n");
+			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			sprintf(error_cause, "JSON error: not an object");
 			goto error;
 		}
 		json_t *request = json_object_get(root, "request");
 		if(!request || !json_is_string(request)) {
-			JANUS_DEBUG("JSON error: invalid element (request)\n");
+			JANUS_LOG(LOG_ERR, "JSON error: invalid element (request)\n");
 			sprintf(error_cause, "JSON error: invalid element (request)");
 			goto error;
 		}
@@ -691,7 +725,7 @@ static void *janus_streaming_handler(void *data) {
 		if(!strcasecmp(request_text, "list")) {
 			result = json_object();
 			json_t *list = json_array();
-			JANUS_PRINT("Request for the list of mountpoints\n");
+			JANUS_LOG(LOG_VERB, "Request for the list of mountpoints\n");
 			/* Return a list of all available mountpoints */
 			GList *mountpoints_list = g_hash_table_get_values(mountpoints);
 			GList *m = mountpoints_list;
@@ -709,18 +743,18 @@ static void *janus_streaming_handler(void *data) {
 		} else if(!strcasecmp(request_text, "watch")) {
 			json_t *id = json_object_get(root, "id");
 			if(id && !json_is_integer(id)) {
-				JANUS_DEBUG("JSON error: invalid element (id)\n");
+				JANUS_LOG(LOG_ERR, "JSON error: invalid element (id)\n");
 				sprintf(error_cause, "JSON error: invalid element (id)");
 				goto error;
 			}
 			gint64 id_value = json_integer_value(id);
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
 			if(mp == NULL) {
-				JANUS_PRINT("No such mountpoint/stream %"SCNu64"\n", id_value);
+				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
 				sprintf(error_cause, "No such mountpoint/stream %"SCNu64"", id_value);
 				goto error;
 			}
-			JANUS_PRINT("Request to watch mountpoint/stream %"SCNu64"\n", id_value);
+			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %"SCNu64"\n", id_value);
 			session->stopping = FALSE;
 			session->mountpoint = mp;
 			if(mp->streaming_type == janus_streaming_type_on_demand) {
@@ -771,57 +805,61 @@ static void *janus_streaming_handler(void *data) {
 				g_strlcat(sdptemp, "a=mid:video\r\na=sendonly\r\n", 1024);
 			}
 			sdp = g_strdup(sdptemp);
-			JANUS_PRINT("Going to offer this SDP:\n%s\n", sdp);
+			JANUS_LOG(LOG_VERB, "Going to offer this SDP:\n%s\n", sdp);
 			result = json_object();
 			json_object_set_new(result, "status", json_string("preparing"));
 		} else if(!strcasecmp(request_text, "start")) {
-			JANUS_PRINT("Starting the streaming\n");
+			JANUS_LOG(LOG_VERB, "Starting the streaming\n");
 			result = json_object();
 			/* We wait for the setup_media event to start: on the other hand, it may have already arrived */
 			json_object_set_new(result, "status", json_string(session->started ? "started" : "starting"));
 		} else if(!strcasecmp(request_text, "pause")) {
-			JANUS_PRINT("Pausing the streaming\n");
+			JANUS_LOG(LOG_VERB, "Pausing the streaming\n");
 			session->started = FALSE;
 			result = json_object();
 			json_object_set_new(result, "status", json_string("pausing"));
 		} else if(!strcasecmp(request_text, "stop")) {
-			JANUS_PRINT("Stopping the streaming\n");
+			JANUS_LOG(LOG_VERB, "Stopping the streaming\n");
 			session->stopping = TRUE;
 			session->started = FALSE;
 			result = json_object();
 			json_object_set_new(result, "status", json_string("stopping"));
 			if(session->mountpoint) {
-				JANUS_PRINT("  -- Removing the session from the mountpoint listeners\n");
-				if(g_list_find(session->mountpoint->listeners, session) != NULL)
-					JANUS_PRINT("  -- -- Found!\n");
+				JANUS_LOG(LOG_VERB, "  -- Removing the session from the mountpoint listeners\n");
+				if(g_list_find(session->mountpoint->listeners, session) != NULL) {
+					JANUS_LOG(LOG_VERB, "  -- -- Found!\n");
+				}
 				session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
 			}
 			session->mountpoint = NULL;
 		} else {
-			JANUS_PRINT("Unknown request '%s'\n", request_text);
+			JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 			sprintf(error_cause, "Unknown request '%s'", request_text);
 			goto error;
 		}
 		
 		/* Any SDP to handle? */
 		if(msg->sdp) {
-			JANUS_PRINT("This is involving a negotiation (%s) as well (but we really don't care):\n%s\n", msg->sdp_type, msg->sdp);
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (but we really don't care):\n%s\n", msg->sdp_type, msg->sdp);
 		}
 
 		json_decref(root);
 		/* Prepare JSON event */
 		json_t *event = json_object();
-		json_object_set(event, "streaming", json_string("event"));
+		json_object_set_new(event, "streaming", json_string("event"));
 		if(result != NULL)
 			json_object_set(event, "result", result);
 		char *event_text = json_dumps(event, JSON_INDENT(3));
 		json_decref(event);
 		if(result != NULL)
 			json_decref(result);
-		JANUS_PRINT("Pushing event: %s\n", event_text);
-		JANUS_PRINT("  >> %d\n", gateway->push_event(msg->handle, &janus_streaming_plugin, msg->transaction, event_text, sdp_type, sdp));
+		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+		int ret = gateway->push_event(msg->handle, &janus_streaming_plugin, msg->transaction, event_text, sdp_type, sdp);
+		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+		g_free(event_text);
 		if(sdp)
 			g_free(sdp);
+		janus_streaming_message_free(msg);
 		continue;
 		
 error:
@@ -830,55 +868,59 @@ error:
 				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
-			json_object_set(event, "streaming", json_string("event"));
-			json_object_set(event, "error", json_string(error_cause));
+			json_object_set_new(event, "streaming", json_string("event"));
+			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);
-			JANUS_PRINT("Pushing event: %s\n", event_text);
-			JANUS_PRINT("  >> %d\n", gateway->push_event(msg->handle, &janus_streaming_plugin, msg->transaction, event_text, NULL, NULL));
+			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+			int ret = gateway->push_event(msg->handle, &janus_streaming_plugin, msg->transaction, event_text, NULL, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			g_free(event_text);
+			janus_streaming_message_free(msg);
 		}
 	}
-	JANUS_DEBUG("Leaving thread\n");
+	g_free(error_cause);
+	JANUS_LOG(LOG_VERB, "Leaving thread\n");
 	return NULL;
 }
 
 /* FIXME Thread to send RTP packets from a file (on demand) */
 static void *janus_streaming_ondemand_thread(void *data) {
-	JANUS_DEBUG("Filesource (on demand) RTP thread starting...\n");
+	JANUS_LOG(LOG_VERB, "Filesource (on demand) RTP thread starting...\n");
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session) {
-		JANUS_DEBUG("Invalid session!\n");
+		JANUS_LOG(LOG_ERR, "Invalid session!\n");
 		return NULL;
 	}
 	janus_streaming_mountpoint *mountpoint = session->mountpoint;
 	if(!mountpoint) {
-		JANUS_DEBUG("Invalid mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
 		return NULL;
 	}
 	if(mountpoint->streaming_source != janus_streaming_source_file) {
-		JANUS_DEBUG("Not an file source mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Not an file source mountpoint!\n");
 		return NULL;
 	}
 	if(mountpoint->streaming_type != janus_streaming_type_on_demand) {
-		JANUS_PRINT("Not an on-demand file source mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Not an on-demand file source mountpoint!\n");
 		return NULL;
 	}
 	janus_streaming_file_source *source = mountpoint->source;
 	if(source == NULL || source->filename == NULL) {
-		JANUS_PRINT("Invalid file source mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Invalid file source mountpoint!\n");
 		return NULL;
 	}
-	JANUS_PRINT("Opening file source %s...\n", source->filename);
+	JANUS_LOG(LOG_VERB, "Opening file source %s...\n", source->filename);
 	FILE *audio = fopen(source->filename, "rb");
 	if(!audio) {
-		JANUS_PRINT("Ooops, audio file missing!\n");
+		JANUS_LOG(LOG_ERR, "Ooops, audio file missing!\n");
 		return NULL;
 	}
-	JANUS_PRINT("Streaming audio file: %s\n", source->filename);
+	JANUS_LOG(LOG_VERB, "Streaming audio file: %s\n", source->filename);
 	/* Buffer */
 	char *buf = calloc(1024, sizeof(char));
 	if(buf == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
 	/* Set up RTP */
@@ -927,7 +969,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		read = fread(buf + RTP_HEADER_SIZE, sizeof(char), 160, audio);
 		if(feof(audio)) {
 			/* FIXME We're doing this forever... should this be configurable? */
-			JANUS_PRINT("Rewind! (%s)\n", source->filename);
+			JANUS_LOG(LOG_VERB, "Rewind! (%s)\n", source->filename);
 			fseek(audio, 0, SEEK_SET);
 			continue;
 		}
@@ -935,9 +977,9 @@ static void *janus_streaming_ondemand_thread(void *data) {
 			break;
 		if(mountpoint->active == FALSE)
 			mountpoint->active = TRUE;
-		//~ JANUS_PRINT(" ... Preparing RTP packet (pt=%u, seq=%u, ts=%u)...\n",
+		//~ JANUS_LOG(LOG_VERB, " ... Preparing RTP packet (pt=%u, seq=%u, ts=%u)...\n",
 			//~ header->type, ntohs(header->seq_number), ntohl(header->timestamp));
-		//~ JANUS_PRINT(" ... Read %d bytes from the audio file...\n", read);
+		//~ JANUS_LOG(LOG_VERB, " ... Read %d bytes from the audio file...\n", read);
 		/* Relay on all sessions */
 		packet.data = header;
 		packet.length = RTP_HEADER_SIZE + read;
@@ -950,43 +992,44 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		header->timestamp = htonl(ts);
 		header->markerbit = 0;
 	}
-	JANUS_DEBUG("Leaving filesource thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving filesource thread\n");
+	g_free(buf);
 	fclose(audio);
 	return NULL;
 }
 
 /* FIXME Thread to send RTP packets from a file (live) */
 static void *janus_streaming_filesource_thread(void *data) {
-	JANUS_DEBUG("Filesource RTP thread starting...\n");
+	JANUS_LOG(LOG_VERB, "Filesource RTP thread starting...\n");
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
-		JANUS_DEBUG("Invalid mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
 		return NULL;
 	}
 	if(mountpoint->streaming_source != janus_streaming_source_file) {
-		JANUS_DEBUG("Not an file source mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Not an file source mountpoint!\n");
 		return NULL;
 	}
 	if(mountpoint->streaming_type != janus_streaming_type_live) {
-		JANUS_DEBUG("Not a live file source mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Not a live file source mountpoint!\n");
 		return NULL;
 	}
 	janus_streaming_file_source *source = mountpoint->source;
 	if(source == NULL || source->filename == NULL) {
-		JANUS_DEBUG("Invalid file source mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Invalid file source mountpoint!\n");
 		return NULL;
 	}
-	JANUS_PRINT("Opening file source %s...\n", source->filename);
+	JANUS_LOG(LOG_VERB, "Opening file source %s...\n", source->filename);
 	FILE *audio = fopen(source->filename, "rb");
 	if(!audio) {
-		JANUS_DEBUG("Ooops, audio file missing!\n");
+		JANUS_LOG(LOG_ERR, "Ooops, audio file missing!\n");
 		return NULL;
 	}
-	JANUS_PRINT("Streaming audio file: %s\n", source->filename);
+	JANUS_LOG(LOG_VERB, "Streaming audio file: %s\n", source->filename);
 	/* Buffer */
 	char *buf = calloc(1024, sizeof(char));
 	if(buf == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
 	/* Set up RTP */
@@ -1032,7 +1075,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 		read = fread(buf + RTP_HEADER_SIZE, sizeof(char), 160, audio);
 		if(feof(audio)) {
 			/* FIXME We're doing this forever... should this be configurable? */
-			JANUS_PRINT("Rewind! (%s)\n", source->filename);
+			JANUS_LOG(LOG_VERB, "Rewind! (%s)\n", source->filename);
 			fseek(audio, 0, SEEK_SET);
 			continue;
 		}
@@ -1040,9 +1083,9 @@ static void *janus_streaming_filesource_thread(void *data) {
 			break;
 		if(mountpoint->active == FALSE)
 			mountpoint->active = TRUE;
-		// JANUS_PRINT(" ... Preparing RTP packet (pt=%u, seq=%u, ts=%u)...\n",
+		// JANUS_LOG(LOG_VERB, " ... Preparing RTP packet (pt=%u, seq=%u, ts=%u)...\n",
 			// header->type, ntohs(header->seq_number), ntohl(header->timestamp));
-		// JANUS_PRINT(" ... Read %d bytes from the audio file...\n", read);
+		// JANUS_LOG(LOG_VERB, " ... Read %d bytes from the audio file...\n", read);
 		/* Relay on all sessions */
 		packet.data = header;
 		packet.length = RTP_HEADER_SIZE + read;
@@ -1055,26 +1098,27 @@ static void *janus_streaming_filesource_thread(void *data) {
 		header->timestamp = htonl(ts);
 		header->markerbit = 0;
 	}
-	JANUS_DEBUG("Leaving filesource thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving filesource thread\n");
+	g_free(buf);
 	fclose(audio);
 	return NULL;
 }
 
 /* FIXME Test thread to relay RTP frames coming from gstreamer */
 static void *janus_streaming_relay_thread(void *data) {
-	JANUS_DEBUG("Starting relay thread\n");
+	JANUS_LOG(LOG_VERB, "Starting relay thread\n");
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
-		JANUS_DEBUG("Invalid mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
 		return NULL;
 	}
 	if(mountpoint->streaming_source != janus_streaming_source_rtp) {
-		JANUS_DEBUG("[%s] Not an RTP source mountpoint!\n", mountpoint->name);
+		JANUS_LOG(LOG_ERR, "[%s] Not an RTP source mountpoint!\n", mountpoint->name);
 		return NULL;
 	}
 	janus_streaming_rtp_source *source = mountpoint->source;
 	if(source == NULL) {
-		JANUS_DEBUG("[%s] Invalid RTP source mountpoint!\n", mountpoint->name);
+		JANUS_LOG(LOG_ERR, "[%s] Invalid RTP source mountpoint!\n", mountpoint->name);
 		return NULL;
 	}
 	gint audio_port = source->audio_port;
@@ -1090,10 +1134,10 @@ static void *janus_streaming_relay_thread(void *data) {
 		audio_address.sin_port = htons(audio_port);
 		audio_address.sin_addr.s_addr = INADDR_ANY;
 		if(bind(audio_fd, (struct sockaddr *)(&audio_address), sizeof(struct sockaddr)) < 0) {
-			JANUS_DEBUG("[%s] Bind failed for audio (port %d)...\n", mountpoint->name, audio_port);
+			JANUS_LOG(LOG_ERR, "[%s] Bind failed for audio (port %d)...\n", mountpoint->name, audio_port);
 			return NULL;
 		}
-		JANUS_PRINT("[%s] Audio listener bound to port %d\n", mountpoint->name, audio_port);
+		JANUS_LOG(LOG_VERB, "[%s] Audio listener bound to port %d\n", mountpoint->name, audio_port);
 	}
 	int video_fd = 0;
 	if(video_port >= 0) {
@@ -1104,10 +1148,10 @@ static void *janus_streaming_relay_thread(void *data) {
 		video_address.sin_port = htons(video_port);
 		video_address.sin_addr.s_addr = INADDR_ANY;
 		if(bind(video_fd, (struct sockaddr *)(&video_address), sizeof(struct sockaddr)) < 0) {
-			JANUS_DEBUG("[%s] Bind failed for video (%d)...\n", mountpoint->name, video_port);
+			JANUS_LOG(LOG_ERR, "[%s] Bind failed for video (%d)...\n", mountpoint->name, video_port);
 			return NULL;
 		}
-		JANUS_PRINT("[%s] Video listener bound to port %d\n", mountpoint->name, video_port);
+		JANUS_LOG(LOG_VERB, "[%s] Video listener bound to port %d\n", mountpoint->name, video_port);
 	}
 	int maxfd = (audio_fd > video_fd) ? audio_fd : video_fd;
 	/* Needed to fix seq and ts */
@@ -1142,9 +1186,9 @@ static void *janus_streaming_relay_thread(void *data) {
 			/* Got something audio */
 			addrlen = sizeof(remote);
 			bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			// JANUS_PRINT("************************\nGot %d bytes on the audio channel...\n", bytes);
+			// JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
 			rtp_header *rtp = (rtp_header *)buffer;
-			// JANUS_PRINT(" ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+			// JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				// ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			/* Relay on all sessions */
 			packet.data = rtp;
@@ -1153,7 +1197,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			/* Do we have a new stream? */
 			if(ntohl(packet.data->ssrc) != a_last_ssrc) {
 				a_last_ssrc = ntohl(packet.data->ssrc);
-				JANUS_PRINT("[%s] New audio stream! (ssrc=%u)\n", mountpoint->name, a_last_ssrc);
+				JANUS_LOG(LOG_INFO, "[%s] New audio stream! (ssrc=%u)\n", mountpoint->name, a_last_ssrc);
 				a_base_ts_prev = a_last_ts;
 				a_base_ts = ntohl(packet.data->timestamp);
 				a_base_seq_prev = a_last_seq;
@@ -1163,7 +1207,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			packet.data->timestamp = htonl(a_last_ts);
 			a_last_seq = (ntohs(packet.data->seq_number)-a_base_seq)+a_base_seq_prev+1;
 			packet.data->seq_number = htons(a_last_seq);
-			// JANUS_PRINT(" ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+			// JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				// ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			packet.data->type = mountpoint->codecs.audio_pt;
 			/* Go! */
@@ -1176,9 +1220,9 @@ static void *janus_streaming_relay_thread(void *data) {
 			/* Got something video */
 			addrlen = sizeof(remote);
 			bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			//~ JANUS_PRINT("************************\nGot %d bytes on the video channel...\n", bytes);
+			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
 			rtp_header *rtp = (rtp_header *)buffer;
-			//~ JANUS_PRINT(" ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			/* Relay on all sessions */
 			packet.data = rtp;
@@ -1187,7 +1231,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			/* Do we have a new stream? */
 			if(ntohl(packet.data->ssrc) != v_last_ssrc) {
 				v_last_ssrc = ntohl(packet.data->ssrc);
-				JANUS_PRINT("[%s] New video stream! (ssrc=%u)\n", mountpoint->name, v_last_ssrc);
+				JANUS_LOG(LOG_INFO, "[%s] New video stream! (ssrc=%u)\n", mountpoint->name, v_last_ssrc);
 				v_base_ts_prev = v_last_ts;
 				v_base_ts = ntohl(packet.data->timestamp);
 				v_base_seq_prev = v_last_seq;
@@ -1197,7 +1241,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			packet.data->timestamp = htonl(v_last_ts);
 			v_last_seq = (ntohs(packet.data->seq_number)-v_base_seq)+v_base_seq_prev+1;
 			packet.data->seq_number = htons(v_last_seq);
-			//~ JANUS_PRINT(" ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+			//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			packet.data->type = mountpoint->codecs.video_pt;
 			/* Go! */
@@ -1205,23 +1249,23 @@ static void *janus_streaming_relay_thread(void *data) {
 			continue;
 		}
 	}
-	JANUS_DEBUG("Leaving relay thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving relay thread\n");
 	return NULL;
 }
 
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) {
 	janus_streaming_rtp_relay_packet *packet = (janus_streaming_rtp_relay_packet *)user_data;
 	if(!packet || !packet->data || packet->length < 1) {
-		JANUS_DEBUG("Invalid packet...\n");
+		JANUS_LOG(LOG_ERR, "Invalid packet...\n");
 		return;
 	}
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session || !session->handle) {
-		// JANUS_DEBUG("Invalid session...\n");
+		// JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
 	if(!session->started) {
-		// JANUS_DEBUG("Streaming not started yet for this session...\n");
+		// JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
 	if(gateway != NULL)	/* FIXME What about RTCP? */

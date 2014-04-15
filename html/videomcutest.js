@@ -30,6 +30,7 @@ var myusername = null;
 var myid = null;
 
 var feeds = [];
+var bitrateTimer = [];
 
 
 $(document).ready(function() {
@@ -329,15 +330,34 @@ function newRemoteFeed(id, display) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotestream: function(stream) {
-				console.log("Remote feed #" + remoteFeed.rfindex); 
+				console.log("Remote feed #" + remoteFeed.rfindex);
 				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
 					remoteFeed.spinner.stop();
 				if($('#remotevideo'+remoteFeed.rfindex).length === 0)
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+				$('#videoremote'+remoteFeed.rfindex).append(
+					'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
+					'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
+				$("#remotevideo"+remoteFeed.rfindex).bind("loadedmetadata", function () {
+					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(this.videoWidth+'x'+this.videoHeight).show();
+				});
 				attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
+				if(webrtcDetectedBrowser == "chrome") {
+					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
+					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
+						// Display updated bitrate, if supported
+						var bitrate = remoteFeed.getBitrate();
+						$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
+					}, 1000);
+				}
 			},
 			oncleanup: function() {
 				console.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
+				$('#curbitrate'+remoteFeed.rfindex).remove();
+				$('#curres'+remoteFeed.rfindex).remove();
+				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
+					clearInterval(bitrateTimer[remoteFeed.rfindex]);
+				bitrateTimer[remoteFeed.rfindex] = null;
 			}
 		});
 }

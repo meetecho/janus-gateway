@@ -74,6 +74,7 @@ fi
 
 echo
 echo "Compiling..."
+export INSTALLSH="install.sh"
 $MAKE
 if test $? -eq 0
 then
@@ -96,12 +97,12 @@ echo
 echo "Downlading samples for the streaming demo..."
 if [ -n "$WGET" ]
 then
-	$WGET -c -O ./plugins/streams/radio.alaw http://janus.conf.meetecho.com/samples/radio.alaw
-	$WGET -c -O ./plugins/streams/music.mulaw http://janus.conf.meetecho.com/samples/music.mulaw
+	[ ! -f ./plugins/streams/radio.alaw ] && $WGET -c -O ./plugins/streams/radio.alaw http://janus.conf.meetecho.com/samples/radio.alaw
+	[ ! -f ./plugins/streams/music.mulaw ] && $WGET -c -O ./plugins/streams/music.mulaw http://janus.conf.meetecho.com/samples/music.mulaw
 elif [ -n "$CURL" ]
 then
-	$CURL -C - -o ./plugins/streams/radio.alaw http://janus.conf.meetecho.com/samples/radio.alaw
-	$CURL -C - -o ./plugins/streams/music.mulaw http://janus.conf.meetecho.com/samples/music.mulaw
+	[ ! -f ./plugins/streams/radio.alaw ] && $CURL -C - -o ./plugins/streams/radio.alaw http://janus.conf.meetecho.com/samples/radio.alaw
+	[ ! -f ./plugins/streams/music.mulaw ] && $CURL -C - -o ./plugins/streams/music.mulaw http://janus.conf.meetecho.com/samples/music.mulaw
 else
 	echo "  Couldn't find wget or curl, please download the following files"
 	echo "  yourself and place them in the plugins/streams/ folder if you want to"

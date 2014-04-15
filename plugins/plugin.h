@@ -34,7 +34,7 @@ static janus_plugin myplugin = {
 };
 
 janus_plugin *create(void) {
-	JANUS_PRINT("%s created!\n", MY_PLUGIN_NAME);
+	JANUS_LOG(LOG_VERB, , "%s created!\n", MY_PLUGIN_NAME);
 	return &myplugin;
 }
 \endverbatim

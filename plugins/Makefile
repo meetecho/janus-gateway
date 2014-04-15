@@ -17,6 +17,9 @@ all: $(OBJS)
 	$(CC) $(STUFF) -shared -fPIC $(GDB) -c $< -o $@ $(OPTS)
 
 %.so: %.o ../config.o ../rtcp.o ../utils.o
+ifndef INSTALLSH
+	$(error Please use the install.sh script to compile Janus)
+endif
 	$(CC) -shared -fPIC $(GDB) -o $@ $< ../config.o ../rtcp.o ../utils.o $(LIBS)
 
 clean:

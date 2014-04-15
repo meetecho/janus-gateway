@@ -30,7 +30,9 @@
 
 #include <ogg/ogg.h>
 
+#include "../apierror.h"
 #include "../config.h"
+#include "../mutex.h"
 #include "../rtp.h"
 #include "../utils.h"
 
@@ -82,7 +84,7 @@ static janus_plugin janus_voicemail_plugin =
 
 /* Plugin creator */
 janus_plugin *create(void) {
-	JANUS_PRINT("%s created!\n", JANUS_VOICEMAIL_NAME);
+	JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_VOICEMAIL_NAME);
 	return &janus_voicemail_plugin;
 }
 
@@ -102,6 +104,28 @@ typedef struct janus_voicemail_message {
 } janus_voicemail_message;
 GQueue *messages;
 
+void janus_voicemail_message_free(janus_voicemail_message *msg);
+void janus_voicemail_message_free(janus_voicemail_message *msg) {
+	if(!msg)
+		return;
+	msg->handle = NULL;
+	if(msg->transaction != NULL)
+		g_free(msg->transaction);
+	msg->transaction = NULL;
+	if(msg->message != NULL)
+		g_free(msg->message);
+	msg->message = NULL;
+	if(msg->sdp_type != NULL)
+		g_free(msg->sdp_type);
+	msg->sdp_type = NULL;
+	if(msg->sdp != NULL)
+		g_free(msg->sdp);
+	msg->sdp = NULL;
+	g_free(msg);
+	msg = NULL;
+}
+
+
 typedef struct janus_voicemail_session {
 	janus_plugin_session *handle;
 	guint64 recording_id;
@@ -115,6 +139,7 @@ typedef struct janus_voicemail_session {
 	gboolean destroy;
 } janus_voicemail_session;
 GHashTable *sessions;
+janus_mutex sessions_mutex;
 
 static char *recordings_path = NULL;
 static char *recordings_base = NULL;
@@ -157,12 +182,13 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	/* Read configuration */
 	char filename[255];
 	sprintf(filename, "%s/%s.cfg", config_path, JANUS_VOICEMAIL_PACKAGE);
-	JANUS_PRINT("Configuration file: %s\n", filename);
+	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
 		janus_config_print(config);
 	
 	sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&sessions_mutex);
 	messages = g_queue_new();
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
@@ -183,15 +209,15 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		recordings_path = "./html/recordings/";
 	if(recordings_base == NULL)
 		recordings_base = "/recordings/";
-	JANUS_PRINT("Recordings path: %s\n", recordings_path);
-	JANUS_PRINT("Recordings base: %s\n", recordings_base);
+	JANUS_LOG(LOG_VERB, "Recordings path: %s\n", recordings_path);
+	JANUS_LOG(LOG_VERB, "Recordings base: %s\n", recordings_base);
 	/* Create the folder, if needed */
 	struct stat st = {0};
 	if(stat(recordings_path, &st) == -1) {
 		int res = mkdir(recordings_path, 0755);
-		JANUS_PRINT("Creating folder: %d\n", res);
+		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res < 0) {
-			JANUS_DEBUG("%s", strerror(res));
+			JANUS_LOG(LOG_ERR, "%s", strerror(res));
 			return -1;	/* No point going on... */
 		}
 	}
@@ -203,10 +229,10 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		initialized = 0;
 		/* Something went wrong... */
-		JANUS_DEBUG("Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
-	JANUS_PRINT("%s initialized!\n", JANUS_VOICEMAIL_NAME);
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_VOICEMAIL_NAME);
 	return 0;
 }
 
@@ -218,12 +244,14 @@ void janus_voicemail_destroy() {
 		g_thread_join(handler_thread);
 	}
 	handler_thread = NULL;
-	/* Actually clean up and remove ongoing sessions */
+	/* FIXME We should destroy the sessions cleanly */
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	janus_mutex_unlock(&sessions_mutex);
 	g_queue_free(messages);
 	sessions = NULL;
 	initialized = 0;
-	JANUS_PRINT("%s destroyed!\n", JANUS_VOICEMAIL_NAME);
+	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VOICEMAIL_NAME);
 }
 
 int janus_voicemail_get_version() {
@@ -253,7 +281,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_voicemail_session *session = (janus_voicemail_session *)calloc(1, sizeof(janus_voicemail_session));
 	if(session == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
 		return;
 	}
@@ -265,7 +293,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	sprintf(f, "%s/janus-voicemail-%"SCNu64".opus", recordings_path, session->recording_id);
 	session->filename = g_strdup(f);
 	if(session->filename == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
 		return;
 	}
@@ -275,7 +303,9 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	session->stopping = FALSE;
 	session->destroy = FALSE;
 	handle->plugin_handle = session;
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
+	janus_mutex_unlock(&sessions_mutex);
 
 	return;
 }
@@ -287,20 +317,21 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroy) {
-		JANUS_PRINT("Session already destroyed...\n");
-		g_free(session);
+		JANUS_LOG(LOG_WARN, "Session already destroyed...\n");
 		return;
 	}
-	JANUS_PRINT("Removing VoiceMail session...\n");
+	JANUS_LOG(LOG_VERB, "Removing VoiceMail session...\n");
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
+	janus_mutex_unlock(&sessions_mutex);
 	janus_voicemail_hangup_media(handle);
+	/* Cleaning up and removing the session is done in a lazy way */
 	session->destroy = TRUE;
-	g_free(session);
 
 	return;
 }
@@ -308,14 +339,14 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 void janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
-	JANUS_PRINT("%s\n", message);
+	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_voicemail_message *msg = calloc(1, sizeof(janus_voicemail_message));
 	if(msg == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return;
 	}
 	msg->handle = handle;
-	msg->transaction = transaction ? g_strdup(transaction) : NULL;
+	msg->transaction = transaction;
 	msg->message = message;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
@@ -323,12 +354,12 @@ void janus_voicemail_handle_message(janus_plugin_session *handle, char *transact
 }
 
 void janus_voicemail_setup_media(janus_plugin_session *handle) {
-	JANUS_DEBUG("WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	if(session->destroy)
@@ -338,12 +369,14 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	session->started = TRUE;
 	/* Prepare JSON event */
 	json_t *event = json_object();
-	json_object_set(event, "voicemail", json_string("event"));
-	json_object_set(event, "status", json_string("started"));
+	json_object_set_new(event, "voicemail", json_string("event"));
+	json_object_set_new(event, "status", json_string("started"));
 	char *event_text = json_dumps(event, JSON_INDENT(3));
 	json_decref(event);
-	JANUS_PRINT("Pushing event: %s\n", event_text);
-	JANUS_PRINT("  >> %d\n", gateway->push_event(handle, &janus_voicemail_plugin, NULL, event_text, NULL, NULL));
+	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+	int ret = gateway->push_event(handle, &janus_voicemail_plugin, NULL, event_text, NULL, NULL);
+	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	g_free(event_text);
 }
 
 void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -359,11 +392,11 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 		session->started = FALSE;
 		janus_voicemail_message *msg = calloc(1, sizeof(janus_voicemail_message));
 		if(msg == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return;
 		}
 		msg->handle = handle;
-		msg->message = "{\"request\":\"stop\"}";
+		msg->message = g_strdup("{\"request\":\"stop\"}");
 		msg->transaction = NULL;
 		msg->sdp_type = NULL;
 		msg->sdp = NULL;
@@ -376,7 +409,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(session->seq == 0)
 		session->seq = seq;
 	ogg_packet *op = op_from_pkt((const unsigned char *)(buf+12), len-12);	/* TODO Check RTP extensions... */
-	//~ JANUS_PRINT("\tWriting at position %d (%d)\n", seq-session->seq+1, 960*(seq-session->seq+1));
+	//~ JANUS_LOG(LOG_VERB, "\tWriting at position %d (%d)\n", seq-session->seq+1, 960*(seq-session->seq+1));
 	op->granulepos = 960*(seq-session->seq+1); // FIXME: get this from the toc byte
 	ogg_stream_packetin(session->stream, op);
 	free(op);
@@ -390,12 +423,12 @@ void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char
 }
 
 void janus_voicemail_hangup_media(janus_plugin_session *handle) {
-	JANUS_PRINT("No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	if(session->destroy)
@@ -413,11 +446,11 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 
 /* Thread to handle incoming messages */
 static void *janus_voicemail_handler(void *data) {
-	JANUS_DEBUG("Joining thread\n");
+	JANUS_LOG(LOG_VERB, "Joining thread\n");
 	janus_voicemail_message *msg = NULL;
 	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
 	if(error_cause == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
 	while(initialized && !stopping) {
@@ -427,60 +460,63 @@ static void *janus_voicemail_handler(void *data) {
 		}
 		janus_voicemail_session *session = (janus_voicemail_session *)msg->handle->plugin_handle;	
 		if(!session) {
-			JANUS_DEBUG("No session associated with this handle...\n");
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+			janus_voicemail_message_free(msg);
 			continue;
 		}
-		if(session->destroy)
+		if(session->destroy) {
+			janus_voicemail_message_free(msg);
 			continue;
+		}
 		/* Handle request */
-		JANUS_PRINT("Handling message: %s\n", msg->message);
+		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
-			JANUS_DEBUG("No message??\n");
+			JANUS_LOG(LOG_ERR, "No message??\n");
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
 		json_error_t error;
 		json_t *root = json_loads(msg->message, 0, &error);
 		if(!root) {
-			JANUS_DEBUG("JSON error: on line %d: %s\n", error.line, error.text);
+			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
-			JANUS_DEBUG("JSON error: not an object\n");
+			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			sprintf(error_cause, "JSON error: not an object");
 			goto error;
 		}
 		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
 		if(!request || !json_is_string(request)) {
-			JANUS_DEBUG("JSON error: invalid element (request)\n");
+			JANUS_LOG(LOG_ERR, "JSON error: invalid element (request)\n");
 			sprintf(error_cause, "JSON error: invalid element (request)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
 		if(!strcasecmp(request_text, "record")) {
-			JANUS_PRINT("Starting new recording\n");
+			JANUS_LOG(LOG_VERB, "Starting new recording\n");
 			if(session->file != NULL) {
-				JANUS_DEBUG("Already recording (%s)\n", session->filename ? session->filename : "??");
+				JANUS_LOG(LOG_ERR, "Already recording (%s)\n", session->filename ? session->filename : "??");
 				sprintf(error_cause, "Already recording");
 				goto error;
 			}
 			session->stream = malloc(sizeof(ogg_stream_state));
 			if(session->stream == NULL) {
-				JANUS_DEBUG("Couldn't allocate stream struct\n");
+				JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
 				sprintf(error_cause, "Couldn't allocate stream struct");
 				goto error;
 			}
 			if(ogg_stream_init(session->stream, rand()) < 0) {
-				JANUS_DEBUG("Couldn't initialize Ogg stream state\n");
+				JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
 				sprintf(error_cause, "Couldn't initialize Ogg stream state\n");
 				goto error;
 			}
 			session->file = fopen(session->filename, "wb");
 			if(session->file == NULL) {
-				JANUS_DEBUG("Couldn't open output file\n");
+				JANUS_LOG(LOG_ERR, "Couldn't open output file\n");
 				sprintf(error_cause, "Couldn't open output file");
 				goto error;
 			}
@@ -495,8 +531,8 @@ static void *janus_voicemail_handler(void *data) {
 			ogg_flush(session);
 			/* Done: now wait for the setup_media callback to be called */
 			event = json_object();
-			json_object_set(event, "voicemail", json_string("event"));
-			json_object_set(event, "status", json_string(session->started ? "started" : "starting"));
+			json_object_set_new(event, "voicemail", json_string("event"));
+			json_object_set_new(event, "status", json_string(session->started ? "started" : "starting"));
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
 			session->started = FALSE;
@@ -508,26 +544,28 @@ static void *janus_voicemail_handler(void *data) {
 			session->stream = NULL;
 			/* Done: now wait for the setup_media callback to be called */
 			event = json_object();
-			json_object_set(event, "voicemail", json_string("event"));
-			json_object_set(event, "status", json_string("done"));
+			json_object_set_new(event, "voicemail", json_string("event"));
+			json_object_set_new(event, "status", json_string("done"));
 			char url[1024];
 			sprintf(url, "%s/janus-voicemail-%"SCNu64".opus", recordings_base, session->recording_id);
-			json_object_set(event, "recording", json_string(url));
+			json_object_set_new(event, "recording", json_string(url));
 		} else {
-			JANUS_DEBUG("Unknown request '%s'\n", request_text);
+			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			sprintf(error_cause, "Unknown request '%s'", request_text);
 			goto error;
 		}
 
+		json_decref(root);
 		/* Prepare JSON event */
-		JANUS_PRINT("Preparing JSON event as a reply\n");
+		JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
 		char *event_text = json_dumps(event, JSON_INDENT(3));
 		json_decref(event);
 		/* Any SDP to handle? */
 		if(!msg->sdp) {
-			JANUS_PRINT("  >> %d\n", gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, NULL, NULL));
+			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, NULL, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
-			JANUS_PRINT("This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
 			char *type = NULL;
 			if(!strcasecmp(msg->sdp_type, "offer"))
 				type = "answer";
@@ -545,7 +583,7 @@ static void *janus_voicemail_handler(void *data) {
 					fmtp++;
 				opus_pt = atoi(fmtp);
 			}
-			JANUS_PRINT("Opus payload type is %d\n", opus_pt);
+			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 			g_sprintf(sdp, sdp_template,
 				janus_get_monotonic_time(),		/* We need current time here */
 				janus_get_monotonic_time(),		/* We need current time here */
@@ -560,11 +598,13 @@ static void *janus_voicemail_handler(void *data) {
 			/* How long will the gateway take to push the event? */
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, type, sdp);
-			JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
 			if(res != JANUS_OK) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			}
 		}
+		g_free(event_text);
+		janus_voicemail_message_free(msg);
 
 		continue;
 		
@@ -574,15 +614,19 @@ error:
 				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
-			json_object_set(event, "voicemail", json_string("event"));
-			json_object_set(event, "error", json_string(error_cause));
+			json_object_set_new(event, "voicemail", json_string("event"));
+			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);
-			JANUS_PRINT("Pushing event: %s\n", event_text);
-			JANUS_PRINT("  >> %d\n", gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, NULL, NULL));
+			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, NULL, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			g_free(event_text);
+			janus_voicemail_message_free(msg);
 		}
 	}
-	JANUS_DEBUG("Leaving thread\n");
+	g_free(error_cause);
+	JANUS_LOG(LOG_VERB, "Leaving thread\n");
 	return NULL;
 }
 
@@ -610,11 +654,11 @@ ogg_packet *op_opushead() {
 	ogg_packet *op = malloc(sizeof(*op));
 
 	if(!data) {
-		JANUS_DEBUG("Couldn't allocate data buffer...\n");
+		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
 		return NULL;
 	}
 	if(!op) {
-		JANUS_DEBUG("Couldn't allocate Ogg packet...\n");
+		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
 		return NULL;
 	}
 
@@ -645,11 +689,11 @@ ogg_packet *op_opustags() {
 	ogg_packet *op = malloc(sizeof(*op));
 
 	if(!data) {
-		JANUS_DEBUG("Couldn't allocate data buffer...\n");
+		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
 		return NULL;
 	}
 	if(!op) {
-		JANUS_DEBUG("Couldn't allocate Ogg packet...\n");
+		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet...\n");
 		return NULL;
 	}
 
@@ -672,7 +716,7 @@ ogg_packet *op_opustags() {
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
 	ogg_packet *op = malloc(sizeof(*op));
 	if(!op) {
-		JANUS_DEBUG("Couldn't allocate Ogg packet.\n");
+		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet.\n");
 		return NULL;
 	}
 
@@ -706,12 +750,12 @@ int ogg_write(janus_voicemail_session *session) {
 	while (ogg_stream_pageout(session->stream, &page)) {
 		written = fwrite(page.header, 1, page.header_len, session->file);
 		if(written != (size_t)page.header_len) {
-			JANUS_DEBUG("Error writing Ogg page header\n");
+			JANUS_LOG(LOG_ERR, "Error writing Ogg page header\n");
 			return -2;
 		}
 		written = fwrite(page.body, 1, page.body_len, session->file);
 		if(written != (size_t)page.body_len) {
-			JANUS_DEBUG("Error writing Ogg page body\n");
+			JANUS_LOG(LOG_ERR, "Error writing Ogg page body\n");
 			return -3;
 		}
 	}
@@ -730,12 +774,12 @@ int ogg_flush(janus_voicemail_session *session) {
 	while (ogg_stream_flush(session->stream, &page)) {
 		written = fwrite(page.header, 1, page.header_len, session->file);
 		if(written != (size_t)page.header_len) {
-			JANUS_DEBUG("Error writing Ogg page header\n");
+			JANUS_LOG(LOG_ERR, "Error writing Ogg page header\n");
 			return -2;
 		}
 		written = fwrite(page.body, 1, page.body_len, session->file);
 		if(written != (size_t)page.body_len) {
-			JANUS_DEBUG("Error writing Ogg page body\n");
+			JANUS_LOG(LOG_ERR, "Error writing Ogg page body\n");
 			return -3;
 		}
 	}

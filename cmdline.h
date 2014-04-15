@@ -31,7 +31,7 @@ extern "C" {
 
 #ifndef CMDLINE_PARSER_VERSION
 /** @brief the program version */
-#define CMDLINE_PARSER_VERSION "0.0.1"
+#define CMDLINE_PARSER_VERSION "0.0.2"
 #endif
 
 /** @brief Where the command line options are stored */
@@ -77,6 +77,9 @@ struct gengetopt_args_info
   char * rtp_port_range_arg;	/**< @brief Port range to use for RTP/RTCP.  */
   char * rtp_port_range_orig;	/**< @brief Port range to use for RTP/RTCP original value given at command line.  */
   const char *rtp_port_range_help; /**< @brief Port range to use for RTP/RTCP help description.  */
+  int debug_level_arg;	/**< @brief Debug/logging level (0=disable debugging, 7=maximum debug level; default=4).  */
+  char * debug_level_orig;	/**< @brief Debug/logging level (0=disable debugging, 7=maximum debug level; default=4) original value given at command line.  */
+  const char *debug_level_help; /**< @brief Debug/logging level (0=disable debugging, 7=maximum debug level; default=4) help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
@@ -93,6 +96,7 @@ struct gengetopt_args_info
   unsigned int stun_server_given ;	/**< @brief Whether stun-server was given.  */
   unsigned int public_ip_given ;	/**< @brief Whether public-ip was given.  */
   unsigned int rtp_port_range_given ;	/**< @brief Whether rtp-port-range was given.  */
+  unsigned int debug_level_given ;	/**< @brief Whether debug-level was given.  */
 
 } ;
 

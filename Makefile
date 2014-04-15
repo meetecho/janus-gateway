@@ -5,11 +5,14 @@ OPTS = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wu
 GDB = -g -ggdb #-gstabs
 OBJS=janus.o cmdline.o config.o apierror.o rtcp.o dtls.o ice.o sdp.o utils.o
 
-all: janus cmdline plugins
+all: cmdline janus plugins
 
 .PHONY: plugins docs
 
 plugins:
+ifndef INSTALLSH
+	$(error Please use the install.sh script to compile Janus)
+endif
 	$(MAKE) -C plugins
 
 docs:
@@ -17,12 +20,15 @@ docs:
 
 cmdline:
 	rm -f cmdline.o
-	gengetopt --set-package="janus" --set-version="0.0.1" < janus.ggo
+	gengetopt --set-package="janus" --set-version="0.0.2" < janus.ggo
 
 %.o: %.c
 	$(CC) $(STUFF) -fPIC $(GDB) -c $< -o $@ $(OPTS)
 
 janus : $(OBJS)
+ifndef INSTALLSH
+	$(error Please use the install.sh script to compile Janus)
+endif
 	$(CC) $(GDB) -o janus $(OBJS) $(LIBS)
 
 clean :

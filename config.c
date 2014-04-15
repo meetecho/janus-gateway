@@ -58,7 +58,7 @@ janus_config *janus_config_parse(const char *config_file) {
 		return NULL;
 	char *filename = get_filename(config_file);
 	if(filename == NULL) {
-		JANUS_DEBUG("Invalid filename %s\n", config_file);
+		JANUS_LOG(LOG_ERR, "Invalid filename %s\n", config_file);
 		return NULL;
 	}
 	janus_config *jc = NULL;
@@ -68,14 +68,14 @@ janus_config *janus_config_parse(const char *config_file) {
 	struct collection_item *config_errors = NULL;
 	int res = config_from_file(filename, config_file, &config, INI_STOP_ON_ERROR, &config_errors);
 	if(res != 0) {
-		JANUS_DEBUG("  -- Error reading configuration file... error %d (%s)\n", res, strerror(res));
+		JANUS_LOG(LOG_ERR, "  -- Error reading configuration file... error %d (%s)\n", res, strerror(res));
 	}
 	if(config == NULL && config_errors != NULL) {
 		/* Configuration parsing error */
 		struct collection_iterator *iterator = NULL;
 		res = col_bind_iterator(&iterator, config_errors, 0);
 		if(res != 0) {
-			JANUS_DEBUG("  -- Error parsing configuration file... error %d (%s)\n", res, strerror(res));
+			JANUS_LOG(LOG_ERR, "  -- Error parsing configuration file... error %d (%s)\n", res, strerror(res));
 			free_ini_config_errors(config_errors);
 			return NULL;
 		}
@@ -88,11 +88,11 @@ janus_config *janus_config_parse(const char *config_file) {
 			if(res != 0 || item == NULL)
 				break;
 			if(col_get_item_type(item) == COL_TYPE_COLLECTION) {
-				JANUS_PRINT("[%s]\n", col_get_item_property(item, &len));
+				JANUS_LOG(LOG_VERB, "[%s]\n", col_get_item_property(item, &len));
 			} else if(col_get_item_type(item) == COL_TYPE_COLLECTIONREF) {
-				JANUS_PRINT("    [%s]\n", col_get_item_property(item, &len));
+				JANUS_LOG(LOG_VERB, "    [%s]\n", col_get_item_property(item, &len));
 			} else {
-				JANUS_PRINT("        %s: %s\n", col_get_item_property(item, &len), (const char *)col_get_item_data(item));
+				JANUS_LOG(LOG_VERB, "        %s: %s\n", col_get_item_property(item, &len), (const char *)col_get_item_data(item));
 			}
 		};
 	}
@@ -100,7 +100,9 @@ janus_config *janus_config_parse(const char *config_file) {
 		struct collection_iterator *iterator = NULL;
 		res = col_bind_iterator(&iterator, config, 0);
 		if(res != 0) {
-			JANUS_DEBUG("  -- Error parsing configuration file... error %d (%s)\n", res, strerror(res));
+			JANUS_LOG(LOG_ERR, "  -- Error parsing configuration file... error %d (%s)\n", res, strerror(res));
+			if(iterator != NULL)
+				g_free(iterator);
 			free_ini_config(config);
 			if(config_errors != NULL)
 				free_ini_config_errors(config_errors);
@@ -108,7 +110,11 @@ janus_config *janus_config_parse(const char *config_file) {
 		}
 		jc = calloc(1, sizeof(janus_config));
 		if(jc == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			g_free(iterator);
+			free_ini_config(config);
+			if(config_errors != NULL)
+				free_ini_config_errors(config_errors);
 			return NULL;
 		}
 		jc->items = NULL;
@@ -125,11 +131,12 @@ janus_config *janus_config_parse(const char *config_file) {
 			name = (char *)col_get_item_property(item, &len);
 			if(col_get_item_type(item) == COL_TYPE_COLLECTION) {
 				/* Configuration name */
-				//~ JANUS_PRINT("[%s]\n", name ? name : "??");
+				//~ JANUS_LOG(LOG_VERB, "[%s]\n", name ? name : "??");
 				if(name) {
 					jc->name = g_strdup(name);
 					if(jc->name == NULL) {
-						JANUS_DEBUG("Memory error!\n");
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						g_free(iterator);
 						free_ini_config(config);
 						if(config_errors != NULL)
 							free_ini_config_errors(config_errors);
@@ -142,7 +149,8 @@ janus_config *janus_config_parse(const char *config_file) {
 				ci = NULL;
 				janus_config_category *ncg = calloc(1, sizeof(janus_config_category));
 				if(ncg == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					g_free(iterator);
 					free_ini_config(config);
 					if(config_errors != NULL)
 						free_ini_config_errors(config_errors);
@@ -152,11 +160,12 @@ janus_config *janus_config_parse(const char *config_file) {
 				ncg->name = NULL;
 				ncg->items = NULL;
 				ncg->next = NULL;
-				//~ JANUS_PRINT("    [%s]\n", name ? name : "??");
+				//~ JANUS_LOG(LOG_VERB, "    [%s]\n", name ? name : "??");
 				if(name) {
 					ncg->name = g_strdup(name);
 					if(ncg->name == NULL) {
-						JANUS_DEBUG("Memory error!\n");
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						g_free(iterator);
 						free_ini_config(config);
 						if(config_errors != NULL)
 							free_ini_config_errors(config_errors);
@@ -174,7 +183,8 @@ janus_config *janus_config_parse(const char *config_file) {
 				/* Configuration item */
 				temp = g_strdup((char *)col_get_item_data(item));
 				if(temp == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					g_free(iterator);
 					free_ini_config(config);
 					if(config_errors != NULL)
 						free_ini_config_errors(config_errors);
@@ -186,7 +196,8 @@ janus_config *janus_config_parse(const char *config_file) {
 				value = trim(temp);
 				janus_config_item *nci = calloc(1, sizeof(janus_config_item));
 				if(nci == NULL) {
-					JANUS_DEBUG("Memory error!\n");
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					g_free(iterator);
 					free_ini_config(config);
 					if(config_errors != NULL)
 						free_ini_config_errors(config_errors);
@@ -196,11 +207,12 @@ janus_config *janus_config_parse(const char *config_file) {
 				nci->name = NULL;
 				nci->value = NULL;
 				nci->next = NULL;
-				//~ JANUS_PRINT("        %s: %s\n", name ? name : "??", value ? value : "??");
+				//~ JANUS_LOG(LOG_VERB, "        %s: %s\n", name ? name : "??", value ? value : "??");
 				if(name) {
 					nci->name = g_strdup(name);
 					if(nci->name == NULL) {
-						JANUS_DEBUG("Memory error!\n");
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						g_free(iterator);
 						free_ini_config(config);
 						if(config_errors != NULL)
 							free_ini_config_errors(config_errors);
@@ -212,7 +224,8 @@ janus_config *janus_config_parse(const char *config_file) {
 					nci->value = g_strdup(value);
 					g_free((gpointer)value);
 					if(nci->value == NULL) {
-						JANUS_DEBUG("Memory error!\n");
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						g_free(iterator);
 						free_ini_config(config);
 						if(config_errors != NULL)
 							free_ini_config_errors(config_errors);
@@ -238,8 +251,9 @@ janus_config *janus_config_parse(const char *config_file) {
 				ci = nci;
 			}
 		};
+		g_free(iterator);
+		free_ini_config(config);
 	}
-	free_ini_config(config);
 	if(config_errors != NULL)
 		free_ini_config_errors(config_errors);
 	return jc;
@@ -248,13 +262,13 @@ janus_config *janus_config_parse(const char *config_file) {
 janus_config *janus_config_create(const char *name) {
 	janus_config *jc = calloc(1, sizeof(janus_config));
 	if(jc == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
 	if(name != NULL) {
 		jc->name = g_strdup(name);
 		if(jc->name == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			janus_config_destroy(jc);
 			return NULL;
 		}
@@ -321,12 +335,12 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 		/* Create it */
 		c = calloc(1, sizeof(janus_config_category));
 		if(c == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return NULL;
 		}
 		c->name = g_strdup(category);
 		if(c->name == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			g_free((gpointer)c);
 			return NULL;
 		}
@@ -349,18 +363,18 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 		/* Create it */
 		item = calloc(1, sizeof(janus_config_item));
 		if(item == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return NULL;
 		}
 		item->name = g_strdup(name);
 		if(item->name == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			g_free((gpointer)item);
 			return NULL;
 		}
 		item->value = g_strdup(value);
 		if(item->value == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			g_free((gpointer)item->name);
 			g_free((gpointer)item);
 			return NULL;
@@ -382,7 +396,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 		/* Update it */
 		char *item_value = g_strdup(value);
 		if(item_value == NULL) {
-			JANUS_DEBUG("Memory error!\n");
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return NULL;
 		}
 		if(item->value)
@@ -395,23 +409,23 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 void janus_config_print(janus_config *config) {
 	if(config == NULL)
 		return;
-	JANUS_PRINT("[%s]\n", config->name ? config->name : "??");
+	JANUS_LOG(LOG_VERB, "[%s]\n", config->name ? config->name : "??");
 	if(config->items) {
 		janus_config_item *i = config->items;
 		config->items = NULL;
 		while(i) {
-			JANUS_PRINT("        %s: %s\n", i->name ? i->name : "??", i->value ? i->value : "??");
+			JANUS_LOG(LOG_VERB, "        %s: %s\n", i->name ? i->name : "??", i->value ? i->value : "??");
 			i = i->next;
 		}
 	}
 	if(config->categories) {
 		janus_config_category *c = config->categories;
 		while(c) {
-			JANUS_PRINT("    [%s]\n", c->name ? c->name : "??");
+			JANUS_LOG(LOG_VERB, "    [%s]\n", c->name ? c->name : "??");
 			if(c->items) {
 				janus_config_item *i = c->items;
 				while(i) {
-					JANUS_PRINT("        %s: %s\n", i->name ? i->name : "??", i->value ? i->value : "??");
+					JANUS_LOG(LOG_VERB, "        %s: %s\n", i->name ? i->name : "??", i->value ? i->value : "??");
 					i = i->next;
 				}
 			}

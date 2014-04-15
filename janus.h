@@ -36,37 +36,66 @@
 #define BUFSIZE	4096
 
 
-/* Messaging */
+/*! \brief Incoming HTTP message */
 typedef struct janus_http_msg {
-	gchar *acrh, *acrm;
+	/*! \brief Value of the Access-Control-Request-Headers HTTP header, if any (needed for CORS) */
+	gchar *acrh;
+	/*! \brief Value of the Access-Control-Request-Method HTTP header, if any (needed for CORS) */
+	gchar *acrm;
+	/*! \brief Content-Type of the payload */
 	gchar *contenttype;
+	/*! \brief Payload of the message */
 	gchar *payload;
+	/*! \brief Length of the message in octets */
 	size_t len;
+	/*! \brief Gateway-Client session identifier this message belongs to */
 	gint64 session_id;
 } janus_http_msg;
 
+/*! \brief HTTP event to push */
 typedef struct janus_http_event {
+	/*! \brief HTTP response code */
 	gint code;
+	/*! \brief Payload to send to the client, if any */
 	gchar *payload;
+	/*! \brief Whether the payload has been allocated (and thus needs to be freed) or not */
 	gint allocated:1;
 } janus_http_event;
 
 
-/* Gateway-Client session */
+/*! \brief Gateway-Client session */
 typedef struct janus_session {
+	/*! \brief Janus Gateway-Client session ID */
 	guint64 session_id;
+	/*! \brief Map of handles this session is managing */
 	GHashTable *ice_handles;
-	/* HTTP */
+	/*! \brief Queue of outgoing messages to push */
 	GQueue *messages;
+	/*! \brief Flag to trigger a lazy session destruction */
 	gint destroy:1;
+	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 } janus_session;
 
 
-/* Gateway Sessions */
+/** @name Janus Gateway-Client session methods
+ */
+///@{
+/*! \brief Method to create a new Janus Gateway-Client session
+ * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
 janus_session *janus_session_create(void);
+/*! \brief Method to find an existing Janus Gateway-Client session from its ID
+ * @param[in] session_id The Janus Gateway-Client session ID
+ * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
 janus_session *janus_session_find(guint64 session_id);
+/*! \brief Method to destroy a Janus Gateway-Client session
+ * @param[in] session_id The Janus Gateway-Client session ID to destroy
+ * @returns 0 in case of success, a negative integer otherwise */
 gint janus_session_destroy(guint64 session_id);
+/*! \brief Method to actually free the resources allocated by a Janus Gateway-Client session
+ * @param[in] session The Janus Gateway-Client session instance to free */
+void janus_session_free(janus_session *session);
+///@}
 
 
 /** @name Janus web server

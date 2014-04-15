@@ -274,7 +274,6 @@ $(document).ready(function() {
 									bitrateTimer = setInterval(function() {
 										// Display updated bitrate, if supported
 										var bitrate = videocall.getBitrate();
-										//~ console.log("Current bitrate is " + videocall.getBitrate());
 										$('#curbitrate').text(bitrate);
 									}, 1000);
 								},

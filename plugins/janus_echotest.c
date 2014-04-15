@@ -26,7 +26,9 @@
 
 #include <jansson.h>
 
+#include "../apierror.h"
 #include "../config.h"
+#include "../mutex.h"
 #include "../rtcp.h"
 #include "../utils.h"
 
@@ -78,7 +80,7 @@ static janus_plugin janus_echotest_plugin =
 
 /* Plugin creator */
 janus_plugin *create(void) {
-	JANUS_PRINT("%s created!\n", JANUS_ECHOTEST_NAME);
+	JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_ECHOTEST_NAME);
 	return &janus_echotest_plugin;
 }
 
@@ -106,6 +108,28 @@ typedef struct janus_echotest_session {
 	gboolean destroy;
 } janus_echotest_session;
 GHashTable *sessions;
+janus_mutex sessions_mutex;
+
+void janus_echotest_message_free(janus_echotest_message *msg);
+void janus_echotest_message_free(janus_echotest_message *msg) {
+	if(!msg)
+		return;
+	msg->handle = NULL;
+	if(msg->transaction != NULL)
+		g_free(msg->transaction);
+	msg->transaction = NULL;
+	if(msg->message != NULL)
+		g_free(msg->message);
+	msg->message = NULL;
+	if(msg->sdp_type != NULL)
+		g_free(msg->sdp_type);
+	msg->sdp_type = NULL;
+	if(msg->sdp != NULL)
+		g_free(msg->sdp);
+	msg->sdp = NULL;
+	g_free(msg);
+	msg = NULL;
+}
 
 
 /* Plugin implementation */
@@ -122,7 +146,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	/* Read configuration */
 	char filename[255];
 	sprintf(filename, "%s/%s.cfg", config_path, JANUS_ECHOTEST_PACKAGE);
-	JANUS_PRINT("Configuration file: %s\n", filename);
+	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
 		janus_config_print(config);
@@ -131,6 +155,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	config = NULL;
 	
 	sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&sessions_mutex);
 	messages = g_queue_new();
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
@@ -142,10 +167,10 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		initialized = 0;
 		/* Something went wrong... */
-		JANUS_DEBUG("Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
-	JANUS_PRINT("%s initialized!\n", JANUS_ECHOTEST_NAME);
+	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_ECHOTEST_NAME);
 	return 0;
 }
 
@@ -157,12 +182,13 @@ void janus_echotest_destroy() {
 		g_thread_join(handler_thread);
 	}
 	handler_thread = NULL;
+	/* FIXME We should destroy the sessions cleanly */
 	g_hash_table_destroy(sessions);
 	g_queue_free(messages);
 	sessions = NULL;
 	initialized = 0;
 	stopping = 0;
-	JANUS_PRINT("%s destroyed!\n", JANUS_ECHOTEST_NAME);
+	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_ECHOTEST_NAME);
 }
 
 int janus_echotest_get_version() {
@@ -192,7 +218,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_echotest_session *session = (janus_echotest_session *)calloc(1, sizeof(janus_echotest_session));
 	if(session == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
 		return;
 	}
@@ -201,7 +227,9 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
 	handle->plugin_handle = session;
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
+	janus_mutex_unlock(&sessions_mutex);
 
 	return;
 }
@@ -213,29 +241,30 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	JANUS_PRINT("Removing Echo Test session...\n");
-	/* TODO Actually clean up and remove ongoing sessions */
+	JANUS_LOG(LOG_VERB, "Removing Echo Test session...\n");
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
+	janus_mutex_unlock(&sessions_mutex);
+	/* Cleaning up and removing the session is done in a lazy way */
 	session->destroy = TRUE;
-	g_free(session);
 	return;
 }
 
 void janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
 		return;
-	JANUS_PRINT("%s\n", message);
+	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_echotest_message *msg = calloc(1, sizeof(janus_echotest_message));
 	if(msg == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return;
 	}
 	msg->handle = handle;
-	msg->transaction = transaction ? g_strdup(transaction) : NULL;
+	msg->transaction = transaction;
 	msg->message = message;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
@@ -243,12 +272,12 @@ void janus_echotest_handle_message(janus_plugin_session *handle, char *transacti
 }
 
 void janus_echotest_setup_media(janus_plugin_session *handle) {
-	JANUS_DEBUG("WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(stopping || !initialized)
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	if(session->destroy)
@@ -264,7 +293,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 		/* Honour the audio/video active flags */
 		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
 		if(!session) {
-			JANUS_DEBUG("No session associated with this handle...\n");
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
 		if(session->destroy)
@@ -282,7 +311,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 	if(gateway) {
 		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
 		if(!session) {
-			JANUS_DEBUG("No session associated with this handle...\n");
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
 		if(session->destroy)
@@ -294,24 +323,26 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 }
 
 void janus_echotest_hangup_media(janus_plugin_session *handle) {
-	JANUS_PRINT("No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(stopping || !initialized)
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
 	if(!session) {
-		JANUS_DEBUG("No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	if(session->destroy)
 		return;
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
-	json_object_set(event, "echotest", json_string("event"));
-	json_object_set(event, "result", json_string("done"));
+	json_object_set_new(event, "echotest", json_string("event"));
+	json_object_set_new(event, "result", json_string("done"));
 	char *event_text = json_dumps(event, JSON_INDENT(3));
 	json_decref(event);
-	JANUS_PRINT("Pushing event: %s\n", event_text);
-	JANUS_PRINT("  >> %d\n", gateway->push_event(handle, &janus_echotest_plugin, NULL, event_text, NULL, NULL));
+	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+	int ret = gateway->push_event(handle, &janus_echotest_plugin, NULL, event_text, NULL, NULL);
+	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+	g_free(event_text);
 	/* Reset controls */
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
@@ -320,11 +351,11 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 
 /* Thread to handle incoming messages */
 static void *janus_echotest_handler(void *data) {
-	JANUS_DEBUG("Joining thread\n");
+	JANUS_LOG(LOG_VERB, "Joining thread\n");
 	janus_echotest_message *msg = NULL;
 	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
 	if(error_cause == NULL) {
-		JANUS_DEBUG("Memory error!\n");
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
 	while(initialized && !stopping) {
@@ -334,83 +365,88 @@ static void *janus_echotest_handler(void *data) {
 		}
 		janus_echotest_session *session = (janus_echotest_session *)msg->handle->plugin_handle;
 		if(!session) {
-			JANUS_DEBUG("No session associated with this handle...\n");
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+			janus_echotest_message_free(msg);
 			continue;
 		}
-		if(session->destroy)
+		if(session->destroy) {
+			janus_echotest_message_free(msg);
 			continue;
+		}
 		/* Handle request */
-		JANUS_PRINT("Handling message: %s\n", msg->message);
+		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
-			JANUS_DEBUG("No message??\n");
+			JANUS_LOG(LOG_ERR, "No message??\n");
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
 		json_error_t error;
 		json_t *root = json_loads(msg->message, 0, &error);
 		if(!root) {
-			JANUS_DEBUG("JSON error: on line %d: %s\n", error.line, error.text);
+			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
-			JANUS_DEBUG("JSON error: not an object\n");
+			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			sprintf(error_cause, "JSON error: not an object");
 			goto error;
 		}
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
-			JANUS_DEBUG("JSON error: invalid element (audio)\n");
+			JANUS_LOG(LOG_ERR, "JSON error: invalid element (audio)\n");
 			sprintf(error_cause, "JSON error: invalid value (audio)");
 			goto error;
 		}
 		json_t *video = json_object_get(root, "video");
 		if(video && !json_is_boolean(video)) {
-			JANUS_DEBUG("JSON error: invalid element (video)\n");
+			JANUS_LOG(LOG_ERR, "JSON error: invalid element (video)\n");
 			sprintf(error_cause, "JSON error: invalid value (video)");
 			goto error;
 		}
 		json_t *bitrate = json_object_get(root, "bitrate");
 		if(bitrate && !json_is_integer(bitrate)) {
-			JANUS_DEBUG("JSON error: invalid element (bitrate)\n");
+			JANUS_LOG(LOG_ERR, "JSON error: invalid element (bitrate)\n");
 			sprintf(error_cause, "JSON error: invalid value (bitrate)");
 			goto error;
 		}
 		if(audio) {
 			session->audio_active = json_is_true(audio);
-			JANUS_PRINT("Setting audio property: %s\n", session->audio_active ? "true" : "false");
+			JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
 		}
 		if(video) {
 			session->video_active = json_is_true(video);
-			JANUS_PRINT("Setting video property: %s\n", session->video_active ? "true" : "false");
+			JANUS_LOG(LOG_VERB, "Setting video property: %s\n", session->video_active ? "true" : "false");
 		}
 		if(bitrate) {
 			session->bitrate = json_integer_value(bitrate);
-			JANUS_PRINT("Setting video bitrate: %"SCNu64"\n", session->bitrate);
+			JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64"\n", session->bitrate);
 			if(session->bitrate > 0) {
 				/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
 				char buf[24];
 				memset(buf, 0, 24);
 				janus_rtcp_remb((char *)&buf, 24, session->bitrate);
-				JANUS_PRINT("Sending REMB\n");
+				JANUS_LOG(LOG_VERB, "Sending REMB\n");
 				gateway->relay_rtcp(session->handle, 1, buf, 24);
 				/* FIXME How should we handle a subsequent "no limit" bitrate? */
 			}
 		}
 		/* Any SDP to handle? */
 		if(msg->sdp) {
-			JANUS_PRINT("This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
 		}
 
+		json_decref(root);
 		/* Prepare JSON event */
 		json_t *event = json_object();
-		json_object_set(event, "echotest", json_string("event"));
-		json_object_set(event, "result", json_string("ok"));
+		json_object_set_new(event, "echotest", json_string("event"));
+		json_object_set_new(event, "result", json_string("ok"));
 		char *event_text = json_dumps(event, JSON_INDENT(3));
 		json_decref(event);
-		JANUS_PRINT("Pushing event: %s\n", event_text);
+		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 		if(!msg->sdp) {
-			JANUS_PRINT("  >> %d\n", gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, NULL, NULL));
+			int ret = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, NULL, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
 			/* Forward the same offer to the gateway, to start the echo test */
 			char *type = NULL;
@@ -421,9 +457,11 @@ static void *janus_echotest_handler(void *data) {
 			/* How long will the gateway take to push the event? */
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, type, msg->sdp);
-			JANUS_PRINT("  >> Pushing event: %d (took %"SCNu64" ms)\n",
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" ms)\n",
 				res, janus_get_monotonic_time()-start);
 		}
+		g_free(event_text);
+		janus_echotest_message_free(msg);
 		continue;
 		
 error:
@@ -432,14 +470,18 @@ error:
 				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
-			json_object_set(event, "echotest", json_string("event"));
-			json_object_set(event, "error", json_string(error_cause));
+			json_object_set_new(event, "echotest", json_string("event"));
+			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);
-			JANUS_PRINT("Pushing event: %s\n", event_text);
-			JANUS_PRINT("  >> %d\n", gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, NULL, NULL));
+			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+			int ret = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, NULL, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			g_free(event_text);
+			janus_echotest_message_free(msg);
 		}
 	}
-	JANUS_DEBUG("Leaving thread\n");
+	g_free(error_cause);
+	JANUS_LOG(LOG_VERB, "Leaving thread\n");
 	return NULL;
 }
