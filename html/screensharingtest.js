@@ -198,7 +198,7 @@ $(document).ready(function() {
 									$('#screenmenu').hide();
 									$('#room').removeClass('hide').show();
 									if($('#screenvideo').length === 0) {
-										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="true"/>');
+										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 									}
 									attachMediaStream($('#screenvideo').get(0), stream);
 									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
@@ -369,7 +369,7 @@ function newRemoteFeed(id, display) {
 				if(spinner !== undefined && spinner !== null)
 					spinner.stop();
 				if($('#screenvideo').length === 0) {
-					$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="true"/>');
+					$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 				}
 				attachMediaStream($('#screenvideo').get(0), stream);
 			},

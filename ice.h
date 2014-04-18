@@ -61,6 +61,8 @@ struct janus_ice_handle {
 	void *app;
 	/*! \brief Opaque gateway/plugin session pointer */
 	janus_plugin_session *app_handle;
+	/*! \brief Flag to check whether this ICE session is ready to be used (ICE and DTLS ok for all components) */
+	gint ready:1;
 	/*! \brief Flag to check whether this ICE session needs to stop right now */
 	gint stop:1;
 	/*! \brief Flag to check whether we already reported an alert to the plugin or not */
@@ -79,6 +81,8 @@ struct janus_ice_handle {
 	gint audio_id;
 	/*! \brief libnice ICE audio ID */
 	gint video_id;
+	/*! \brief Whether rtcp-mux is supported or not */
+	gint rtcpmux:1;
 	/*! \brief Number of streams */
 	gint streams_num;
 	/*! \brief GLib hash table of streams (IDs are the keys) */
@@ -173,6 +177,10 @@ void janus_ice_free(janus_ice_handle *handle);
 /*! \brief Method to only free the WebRTC related resources allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */
 void janus_ice_webrtc_free(janus_ice_handle *handle);
+/*! \brief Method to only free resources related to a specific ICE component allocated by a Janus ICE handle
+ * @param[in] container The map containing the list of all components for the stream
+ * @param[in] component The Janus ICE component instance to free */
+void janus_ice_component_free(GHashTable *container, janus_ice_component *component);
 ///@}
 
 
@@ -233,8 +241,9 @@ void *janus_ice_thread(void *data);
  * @param[in] offer Whether this is for an OFFER or an ANSWER
  * @param[in] audio Whether audio is enabled
  * @param[in] video Whether video is enabled
+ * @param[in] rtcpmux Whether rtcp-mux is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video);
+int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int rtcpmux);
 /*! \brief Method to add local candidates to the gateway SDP
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in,out] sdp The handle description the gateway is preparing

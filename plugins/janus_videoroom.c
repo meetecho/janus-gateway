@@ -192,6 +192,7 @@ typedef struct janus_videoroom_participant {
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
 	GSList *listeners;
+	janus_mutex listeners_mutex;
 } janus_videoroom_participant;
 
 typedef struct janus_videoroom_listener {
@@ -554,6 +555,8 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* Get rid of publisher */
 		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+		participant->audio_active = FALSE;
+		participant->video_active = FALSE;
 		json_t *event = json_object();
 		json_object_set_new(event, "videoroom", json_string("event"));
 		json_object_set_new(event, "room", json_integer(participant->room->room_id));
@@ -581,7 +584,9 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
 		janus_videoroom_participant *publisher = listener->feed;
 		if(publisher != NULL) {
+			janus_mutex_lock(&publisher->listeners_mutex);
 			publisher->listeners = g_slist_remove(publisher->listeners, listener);
+			janus_mutex_unlock(&publisher->listeners_mutex);
 			listener->feed = NULL;
 		}
 	}
@@ -801,6 +806,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->firefox = FALSE;
 				publisher->bitrate = videoroom->bitrate;
 				publisher->listeners = NULL;
+				janus_mutex_init(&publisher->listeners_mutex);
 				publisher->fir_latest = 0;
 				publisher->fir_seq = 0;
 				/* Done */
@@ -857,7 +863,9 @@ static void *janus_videoroom_handler(void *data) {
 					listener->feed = publisher;
 					listener->paused = TRUE;	/* We need an explicit start from the listener */
 					session->participant = listener;
+					janus_mutex_lock(&publisher->listeners_mutex);
 					publisher->listeners = g_slist_append(publisher->listeners, listener);
+					janus_mutex_unlock(&publisher->listeners_mutex);
 					event = json_object();
 					json_object_set_new(event, "videoroom", json_string("attached"));
 					json_object_set_new(event, "room", json_integer(videoroom->room_id));
@@ -993,7 +1001,9 @@ static void *janus_videoroom_handler(void *data) {
 			} else if(!strcasecmp(request_text, "leave")) {
 				janus_videoroom_participant *publisher = listener->feed;
 				if(publisher != NULL) {
+					janus_mutex_lock(&publisher->listeners_mutex);
 					publisher->listeners = g_slist_remove(publisher->listeners, listener);
+					janus_mutex_unlock(&publisher->listeners_mutex);
 					listener->feed = NULL;
 				}
 				event = json_object();
@@ -1047,6 +1057,9 @@ static void *janus_videoroom_handler(void *data) {
 					ps = ps->next;
 				}
 				if(count == videoroom->max_publishers) {
+					g_list_free(participants_list);
+					participant->audio_active = FALSE;
+					participant->video_active = FALSE;
 					JANUS_LOG(LOG_ERR, "Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
 					sprintf(error_cause, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
 					goto error;

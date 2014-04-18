@@ -54,7 +54,11 @@ void janus_sdp_free(janus_sdp *sdp) {
 }
 
 /* Pre-parse SDP: is this SDP valid? how many audio/video lines? */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video) {
+janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *rtcpmux) {
+	if(!jsep_sdp || !audio || !video || !rtcpmux) {
+		JANUS_LOG(LOG_ERR, "  Can't preparse, invalid arduments\n");
+		return NULL;
+	}
 	sdp_parser_t *parser = sdp_parse(home, jsep_sdp, strlen(jsep_sdp), 0);
 	sdp_session_t *parsed_sdp = sdp_session(parser);
 	if(!parsed_sdp) {
@@ -72,6 +76,7 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video) {
 		}
 		m = m->m_next;
 	}
+	*rtcpmux = strstr(jsep_sdp, "a=rtcp-mux") ? 1 : 0;	/* FIXME Should we make this check per-medium? */
 	janus_sdp *sdp = (janus_sdp *)calloc(1, sizeof(janus_sdp));
 	if(sdp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -235,7 +240,8 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding remote candidate for component %d to stream %d\n", handle->handle_id, rcomponent, rstream);
 						component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(rcomponent));
 						if(component == NULL) {
-							JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d?\n", handle->handle_id, rcomponent, rstream);
+							if(rcomponent == 2 && !handle->rtcpmux)
+								JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d?\n", handle->handle_id, rcomponent, rstream);
 						} else {
 							component->component_id = rcomponent;
 							component->stream_id = rstream;
@@ -647,9 +653,8 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "a=sendrecv\r\n", BUFSIZE);
 					break;
 			}
-			/* RTCP */
-			g_sprintf(buffer, "a=rtcp:%s IN IP4 %s\r\n",
-				m->m_type == sdp_media_audio ? "ARTCP" : "VRTCP", janus_get_public_ip());
+			/* rtcp-mux */
+			g_sprintf(buffer, "a=rtcp-mux\n");
 			g_strlcat(sdp, buffer, BUFSIZE);
 			/* RTP maps */
 			if(m->m_rtpmaps) {
@@ -727,7 +732,8 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			}
 			/* And now the candidates */
 			janus_ice_candidates_to_sdp(handle, sdp, stream->stream_id, 1);
-			janus_ice_candidates_to_sdp(handle, sdp, stream->stream_id, 2);
+			if(!handle->rtcpmux)
+				janus_ice_candidates_to_sdp(handle, sdp, stream->stream_id, 2);
 			/* Next */
 			m = m->m_next;
 		}

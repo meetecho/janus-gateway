@@ -69,14 +69,12 @@ static char *log_prefix[] = {
 /*! \brief Logger based on different levels, which can either be displayed
  * or not according to the configuration of the gateway */
 #define JANUS_LOG(level, ...) \
-	if (level <= log_level) { \
-		if (level != LOG_DBG) { \
-			g_print(log_prefix[level]); \
-			g_print(__VA_ARGS__); \
-		} else { \
+	if (level > LOG_NONE && level <= log_level) { \
+		g_print(log_prefix[level]); \
+		if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
 			g_print("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); \
-			g_print(__VA_ARGS__); \
 		} \
+		g_print(__VA_ARGS__); \
 	}
 ///@}
 

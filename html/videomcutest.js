@@ -181,10 +181,11 @@ $(document).ready(function() {
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
-										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="true"/>');
+										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="muted"/>');
 									}
 									$('#publisher').removeClass('hide').html(myusername).show();
 									attachMediaStream($('#myvideo').get(0), stream);
+									$("#myvideo").get(0).muted = "muted";
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -339,7 +340,18 @@ function newRemoteFeed(id, display) {
 					'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 					'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
 				$("#remotevideo"+remoteFeed.rfindex).bind("loadedmetadata", function () {
-					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(this.videoWidth+'x'+this.videoHeight).show();
+					if(webrtcDetectedBrowser == "chrome") {
+						var width = this.videoWidth;
+						var height = this.videoHeight;
+						$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+					} else {
+						// Firefox has a bug: width and height are not immediately available after a loadedmetadata
+						setTimeout(function() {
+							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
+							var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+							$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+						}, 2000);
+					}
 				});
 				attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
 				if(webrtcDetectedBrowser == "chrome") {

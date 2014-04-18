@@ -62,8 +62,9 @@ void janus_sdp_free(janus_sdp *sdp);
  * @param[in] jsep_sdp The SDP that the browser peer originated
  * @param[out] audio The number of audio m-lines
  * @param[out] video The number of video m-lines
+ * @param[out] rtcpmux Whether rtcp-mux has been negotiated or not
  * @returns The Janus SDP instance in case of success, NULL in case the SDP is invalid */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video);
+janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *rtcpmux);
 
 /*! \brief Method to parse a session description
  * \details This method will parse a session description coming from a peer, and set up the ICE candidates accordingly

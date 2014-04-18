@@ -696,8 +696,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			jsep_sdp = (char *)json_string_value(sdp);
 			JANUS_LOG(LOG_VERB, "Remote SDP:\n%s", jsep_sdp);
 			/* Is this valid SDP? */
-			int audio = 0, video = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video);
+			int audio = 0, video = 0, rtcpmux = 0;
+			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &rtcpmux);
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
@@ -713,23 +713,45 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			if(video > 1) {
 				JANUS_LOG(LOG_ERR, "More than one video line? only going to negotiate one...\n");
 			}
-			if(offer) {
-				/* Setup ICE locally (we received an offer) */
-				janus_ice_setup_local(handle, offer, audio, video);
-			}
-			janus_sdp_parse(handle, parsed_sdp);
-			janus_sdp_free(parsed_sdp);
-			if(!offer) {
-				JANUS_LOG(LOG_INFO, "Done! Sending connectivity checks...\n");
-				/* Set remote candidates now */
-				if(handle->audio_id > 0) {
-					janus_ice_setup_remote_candidates(handle, handle->audio_id, 1);
-					janus_ice_setup_remote_candidates(handle, handle->audio_id, 2);
+			JANUS_LOG(LOG_VERB, "The browser %s rtcp-mux\n", rtcpmux ? "supports" : "does NOT support");
+			/* Check if it's a new session, or an update... */
+			if(!handle->ready || handle->alert) {
+				/* New session */
+				if(offer) {
+					/* Setup ICE locally (we received an offer) */
+					janus_ice_setup_local(handle, offer, audio, video, rtcpmux);
 				}
-				if(handle->video_id > 0) {
-					janus_ice_setup_remote_candidates(handle, handle->video_id, 1);
-					janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
+				janus_sdp_parse(handle, parsed_sdp);
+				janus_sdp_free(parsed_sdp);
+				if(!offer) {
+					/* Set remote candidates now (we received an answer) */
+					handle->rtcpmux = rtcpmux;
+					if(handle->rtcpmux) {
+						JANUS_LOG(LOG_VERB, "  -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n");
+						if(handle->audio_stream && handle->audio_stream->components != NULL) {
+							janus_ice_component_free(handle->audio_stream->components, handle->audio_stream->rtcp_component);
+							handle->audio_stream->rtcp_component = NULL;
+						}
+						if(handle->video_stream && handle->video_stream->components != NULL) {
+							janus_ice_component_free(handle->video_stream->components, handle->video_stream->rtcp_component);
+							handle->video_stream->rtcp_component = NULL;
+						}
+					}
+					JANUS_LOG(LOG_INFO, "Done! Sending connectivity checks...\n");
+					if(handle->audio_id > 0) {
+						janus_ice_setup_remote_candidates(handle, handle->audio_id, 1);
+						if(!rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+							janus_ice_setup_remote_candidates(handle, handle->audio_id, 2);
+					}
+					if(handle->video_id > 0) {
+						janus_ice_setup_remote_candidates(handle, handle->video_id, 1);
+						if(!rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+							janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
+					}
 				}
+			} else {
+				/* TODO Actually handle session updates: for now we ignore them, and just relay them to plugins */
+				JANUS_LOG(LOG_WARN, "Ignoring negotiation update, we don't support them yet...\n");
 			}
 			/* Anonymize SDP */
 			jsep_sdp_stripped = janus_sdp_anonymize(jsep_sdp);
@@ -988,7 +1010,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	if(!handle || handle->stopped || !plugin || !message)
 		return -1;
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
-	if(!ice_handle || ice_handle->stop)
+	if(!ice_handle || ice_handle->stop || ice_handle->alert)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
 	if(!session || session->destroy)
@@ -1060,11 +1082,11 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 		return NULL;
 	}
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
-	if(ice_handle == NULL || ice_handle->stop)
+	if(ice_handle == NULL || ice_handle->stop || ice_handle->alert)
 		return NULL;
 	/* Is this valid SDP? */
-	int audio = 0, video = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video);
+	int audio = 0, video = 0, rtcpmux = 0;
+	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video, &rtcpmux);
 	if(parsed_sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP...\n", ice_handle->handle_id);
 		return NULL;
@@ -1079,7 +1101,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", ice_handle->handle_id);
 		}
 		/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
-		janus_ice_setup_local(ice_handle, 0, audio, video);
+		janus_ice_setup_local(ice_handle, 0, audio, video, rtcpmux);
 	}
 	/* Wait for candidates-done callback */
 	while(ice_handle->cdone < ice_handle->streams_num) {
@@ -1106,14 +1128,27 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 
 	if(!offer) {
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
+		if(ice_handle->rtcpmux) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", ice_handle->handle_id);
+			if(ice_handle->audio_stream && ice_handle->audio_stream->components != NULL) {
+				janus_ice_component_free(ice_handle->audio_stream->components, ice_handle->audio_stream->rtcp_component);
+				ice_handle->audio_stream->rtcp_component = NULL;
+			}
+			if(ice_handle->video_stream && ice_handle->video_stream->components != NULL) {
+				janus_ice_component_free(ice_handle->video_stream->components, ice_handle->video_stream->rtcp_component);
+				ice_handle->video_stream->rtcp_component = NULL;
+			}
+		}
 		/* Set remote candidates now */
 		if(ice_handle->audio_id > 0) {
 			janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 1);
-			janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 2);
+			if(!ice_handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+				janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 2);
 		}
 		if(ice_handle->video_id > 0) {
 			janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 1);
-			janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
+			if(!ice_handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+				janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
 		}
 	}
 	
@@ -1130,7 +1165,7 @@ void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len
 	if(!handle || handle->stopped)
 		return;
 	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || session->stop)
+	if(!session || session->stop || session->alert)
 		return;
 	janus_ice_relay_rtp(session, video, buf, len);
 }
@@ -1139,7 +1174,7 @@ void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int le
 	if(!handle || handle->stopped)
 		return;
 	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || session->stop)
+	if(!session || session->stop || session->alert)
 		return;
 	janus_ice_relay_rtcp(session, video, buf, len);
 }

@@ -144,9 +144,10 @@ $(document).ready(function() {
 									console.log(JSON.stringify(stream));
 									if($('#myvideo').length === 0) {
 										$('#videos').removeClass('hide').show();
-										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="true"/>');
+										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
 									}
 									attachMediaStream($('#myvideo').get(0), stream);
+									$("#myvideo").get(0).muted = "muted";
 									// No remote video yet
 									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 									if(spinner == null) {
@@ -166,9 +167,18 @@ $(document).ready(function() {
 										$('#videoright').append('<video class="rounded centered" id="peervideo" width=320 height=240 autoplay/>');
 										// Detect resolution
 										$("#peervideo").bind("loadedmetadata", function () {
-											var width = this.videoWidth;
-											var height = this.videoHeight;
-											$('#curres').removeClass('hide').text(width+'x'+height).show();
+											if(webrtcDetectedBrowser == "chrome") {
+												var width = this.videoWidth;
+												var height = this.videoHeight;
+												$('#curres').removeClass('hide').text(width+'x'+height).show();
+											} else {
+												// Firefox has a bug: width and height are not immediately available after a loadedmetadata
+												setTimeout(function() {
+													var width = $("#peervideo").get(0).videoWidth;
+													var height = $("#peervideo").get(0).videoHeight;
+													$('#curres').removeClass('hide').text(width+'x'+height).show();
+												}, 2000);
+											}
 										});
 									}
 									attachMediaStream($('#peervideo').get(0), stream);
@@ -206,13 +216,16 @@ $(document).ready(function() {
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
-									$('#curbitrate').removeClass('hide').show();
-									bitrateTimer = setInterval(function() {
-										// Display updated bitrate, if supported
-										var bitrate = echotest.getBitrate();
-										//~ console.log("Current bitrate is " + echotest.getBitrate());
-										$('#curbitrate').text(bitrate);
-									}, 1000);
+									if(webrtcDetectedBrowser == "chrome") {
+										// Only Chrome supports the way we interrogate getStats for the bitrate right now
+										$('#curbitrate').removeClass('hide').show();
+										bitrateTimer = setInterval(function() {
+											// Display updated bitrate, if supported
+											var bitrate = echotest.getBitrate();
+											//~ console.log("Current bitrate is " + echotest.getBitrate());
+											$('#curbitrate').text(bitrate);
+										}, 1000);
+									}
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
