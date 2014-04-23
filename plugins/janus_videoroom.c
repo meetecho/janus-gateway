@@ -515,26 +515,32 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 		if(l && l->feed) {
 			janus_videoroom_participant *p = l->feed;
 			if(p && p->session) {
-				if(p->bitrate > 0)
-					janus_rtcp_cap_remb(buf, len, p->bitrate);
-				gateway->relay_rtcp(p->session->handle, video, buf, len);
+				if((!video && p->audio_active) || (video && p->video_active)) {
+					if(p->bitrate > 0)
+						janus_rtcp_cap_remb(buf, len, p->bitrate);
+					gateway->relay_rtcp(p->session->handle, video, buf, len);
+				}
 			}
 		}
 	} else if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* FIXME Badly: we're just bouncing the incoming RTCP back with modified REMB, we need to improve this... */
 		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-		if(participant->bitrate > 0)
-			janus_rtcp_cap_remb(buf, len, participant->bitrate);
-		gateway->relay_rtcp(handle, video, buf, len);
-		/* FIXME Badly: we're also blinding forwarding the publisher RTCP to all the listeners: this probably means confusing them... */
-		if(participant->listeners != NULL) {
-			GSList *ps = participant->listeners;
-			while(ps) {
-				janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
-				if(l->session && l->session->handle) {
-					gateway->relay_rtcp(l->session->handle, video, buf, len);
+		if(participant && participant->session) {
+			if((!video && participant->audio_active) || (video && participant->video_active)) {
+				if(participant->bitrate > 0)
+					janus_rtcp_cap_remb(buf, len, participant->bitrate);
+				gateway->relay_rtcp(handle, video, buf, len);
+				/* FIXME Badly: we're also blinding forwarding the publisher RTCP to all the listeners: this probably means confusing them... */
+				if(participant->listeners != NULL) {
+					GSList *ps = participant->listeners;
+					while(ps) {
+						janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+						if(l->session && l->session->handle) {
+							gateway->relay_rtcp(l->session->handle, video, buf, len);
+						}
+						ps = ps->next;
+					}
 				}
-				ps = ps->next;
 			}
 		}
 	}

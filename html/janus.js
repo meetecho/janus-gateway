@@ -498,10 +498,12 @@ function Janus(gatewayCallbacks) {
 			if (event.candidate == null) {
 				Janus.log("End of candidates.");
 				config.iceDone = true;
-				if(jsep === null || jsep === undefined)
-					setTimeout(function() { createOffer(handleId, media, callbacks); }, 200);
-				else
-					setTimeout(function() { createAnswer(handleId, media, callbacks); }, 200);
+				//~ if(jsep === null || jsep === undefined) {
+					//~ setTimeout(function() { createOffer(handleId, media, callbacks); }, 200);
+				//~ } else {
+					//~ setTimeout(function() { createAnswer(handleId, media, callbacks); }, 200);
+				//~ }
+				setTimeout(function() { sendSDP(handleId, callbacks); }, 200);
 			} else {
 				Janus.log("candidates: " + JSON.stringify(event.candidate));
 			}
@@ -669,15 +671,13 @@ function Janus(gatewayCallbacks) {
 		config.pc.createOffer(
 			function(offer) {
 				Janus.log(offer);
-				if(config.mySdp == offer.sdp) {
-					Janus.log("Just got the same offer again?");
-				} else {
+				if(config.mySdp === null || config.mySdp === undefined) {
 					Janus.log("Setting local description");
 					config.mySdp = offer.sdp;
 					config.pc.setLocalDescription(offer);
 				}
-				if(!navigator.mozGetUserMedia && !config.iceDone) {
-					// Don't do anything until we have all candidates (but only for Chrome)
+				if(!config.iceDone) {
+					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");
 					return;
 				}
@@ -706,14 +706,13 @@ function Janus(gatewayCallbacks) {
 		config.pc.createAnswer(
 			function(answer) {
 				Janus.log(answer);
-				if(config.mySdp == answer.sdp) {
-					Janus.log("Just got the same answer again?");
-				} else {
+				if(config.mySdp === null || config.mySdp === undefined) {
+					Janus.log("Setting local description");
 					config.mySdp = answer.sdp;
 					config.pc.setLocalDescription(answer);
 				}
-				if(!navigator.mozGetUserMedia && !config.iceDone) {
-					// Don't do anything until we have all candidates (but only for Chrome)
+				if(!config.iceDone) {
+					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");
 					return;
 				}
@@ -724,6 +723,27 @@ function Janus(gatewayCallbacks) {
 				config.sdpSent = true;
 				callbacks.success(answer);
 			}, callbacks.error, mediaConstraints);
+	}
+
+	function sendSDP(handleId, callbacks) {
+		callbacks = callbacks || {};
+		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
+		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
+		var pluginHandle = pluginHandles[handleId];
+		var config = pluginHandle.webrtcStuff;
+		Janus.log("Sending offer/answer SDP...");
+		if(config.mySdp === null || config.mySdp === undefined) {
+			Janus.log("Local SDP instance is invalid, not sending anything...");
+			return;
+		}
+		config.mySdp = config.pc.localDescription;
+		if(config.sdpSent) {
+			Janus.log("Offer/Answer SDP already sent, not sending it again");
+			return;
+		}
+		Janus.log(callbacks);
+		config.sdpSent = true;
+		callbacks.success(config.mySdp);
 	}
 
 	function getBitrate(handleId) {
