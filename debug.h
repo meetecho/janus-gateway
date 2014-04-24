@@ -47,6 +47,8 @@ extern int log_level;
 #define LOG_HUGE     (6)
 /*! \brief Debug message (includes .c filename, function and line number) */
 #define LOG_DBG      (7)
+/*! \brief Maximum level of debugging */
+#define LOG_MAX LOG_DBG
 
 /*! \brief Coloured prefixes for errors and warnings logging. */
 static char *log_prefix[] = {
@@ -69,7 +71,7 @@ static char *log_prefix[] = {
 /*! \brief Logger based on different levels, which can either be displayed
  * or not according to the configuration of the gateway */
 #define JANUS_LOG(level, ...) \
-	if (level > LOG_NONE && level <= LOG_DBG && level <= log_level) { \
+	if (level > LOG_NONE && level <= LOG_MAX && level <= log_level) { \
 		g_print(log_prefix[level]); \
 		if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
 			g_print("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); \

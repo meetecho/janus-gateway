@@ -1208,8 +1208,8 @@ gint main(int argc, char *argv[])
 	if(args_info.debug_level_given) {
 		if(args_info.debug_level_arg < LOG_NONE)
 			args_info.debug_level_arg = 0;
-		else if(args_info.debug_level_arg > LOG_DBG)
-			args_info.debug_level_arg = LOG_DBG;
+		else if(args_info.debug_level_arg > LOG_MAX)
+			args_info.debug_level_arg = LOG_MAX;
 		log_level = args_info.debug_level_arg;
 	}
 
@@ -1266,6 +1266,10 @@ gint main(int argc, char *argv[])
 				JANUS_PRINT("Invalid debug level %s (configuration), using default (info=4)\n", item->value);
 			} else {
 				log_level = temp_level;
+				if(log_level < LOG_NONE)
+					log_level = 0;
+				else if(log_level > LOG_MAX)
+					log_level = LOG_MAX;
 			}
 		}
 	}
@@ -1660,7 +1664,8 @@ gint main(int argc, char *argv[])
 	if(cert_key_bytes != NULL)
 		g_free((gpointer)cert_key_bytes);
 	cert_key_bytes = NULL;
-	g_hash_table_destroy(sessions);
+	if(sessions != NULL)
+		g_hash_table_destroy(sessions);
 	SSL_CTX_free(janus_dtls_get_ssl_ctx());
 	EVP_cleanup();
 	ERR_free_strings();
@@ -1669,12 +1674,12 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);
+		g_hash_table_destroy(plugins);
 	}
-	g_hash_table_destroy(plugins);
 	if(plugins_so != NULL) {
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
+		g_hash_table_destroy(plugins_so);
 	}
-	g_hash_table_destroy(plugins_so);
 
 	JANUS_PRINT("Bye!\n");
 	exit(0);
