@@ -8,6 +8,12 @@ will take into account cross compilation on different environments.
 For some online demos and documentations, make sure you pay the
 [project website](http://janus.conf.meetecho.com/) a visit!
 
+To discuss Janus with us and other users, there's a Google Group called
+[meetecho-janus](http://groups.google.com/d/forum/meetecho-janus) that
+you can use. If you encounter issues, though, please submit an issue
+on [github](https://github.com/meetecho/janus-gateway/issues) instead.
+
+
 ##Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
