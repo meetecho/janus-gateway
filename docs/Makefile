@@ -9,6 +9,7 @@ all: docs
 	mkdir -p html/js
 	cp ../html/js/bootstrap.min.js html/js/
 	cp ../html/favicon.ico html/
+	cp ../html/meetecho-logo-white.png html/
 
 docs:
 	true

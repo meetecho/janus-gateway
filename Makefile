@@ -19,7 +19,6 @@ docs:
 	$(MAKE) -C docs
 
 cmdline:
-	rm -f cmdline.o
 	gengetopt --set-package="janus" --set-version="0.0.2" < janus.ggo
 
 %.o: %.c
