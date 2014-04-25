@@ -323,6 +323,7 @@ function Janus(gatewayCallbacks) {
 							mySdp : null,
 							pc : null,
 							dtmfSender : null,
+							trickle : true,
 							iceDone : false,
 							sdpSent : false,
 							bitrate : {
@@ -396,6 +397,36 @@ function Janus(gatewayCallbacks) {
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
 				Janus.log(textStatus + ": " + errorThrown);	// FIXME
 				callbacks.error(textStatus + ": " + errorThrown);
+			},
+			dataType: "json"
+		});
+	}
+
+	// Private method to send a trickle candidate
+	function sendTrickleCandidate(handleId, candidate) {
+		if(!connected) {
+			Janus.log("Is the gateway down? (connected=false)");
+			return;
+		}
+		var request = { "janus": "trickle", "candidate": candidate, "transaction": randomString(12) };
+		Janus.log("Sending trickle candidate (handle=" + handleId + "):");
+		Janus.log(request);
+		$.ajax({
+			type: 'POST',
+			url: server + "/" + sessionId + "/" + handleId,
+			cache: false,
+			contentType: "application/json",
+			data: JSON.stringify(request),
+			success: function(json) {
+				Janus.log(json);
+				Janus.log("Candidate sent!");
+				if(json["janus"] !== "ack") {
+					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+					return;
+				}
+			},
+			error: function(XMLHttpRequest, textStatus, errorThrown) {
+				Janus.log(textStatus + ": " + errorThrown);	// FIXME
 			},
 			dataType: "json"
 		});
@@ -494,18 +525,24 @@ function Janus(gatewayCallbacks) {
 		Janus.log(config.pc);
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome")	// FIXME
 			config.bitrate.value = "0 kbps";
+		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")"); 
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null) {
 				Janus.log("End of candidates.");
 				config.iceDone = true;
-				//~ if(jsep === null || jsep === undefined) {
-					//~ setTimeout(function() { createOffer(handleId, media, callbacks); }, 200);
-				//~ } else {
-					//~ setTimeout(function() { createAnswer(handleId, media, callbacks); }, 200);
-				//~ }
-				setTimeout(function() { sendSDP(handleId, callbacks); }, 200);
+				if(config.trickle === true) {
+					// Notify end of candidates
+					sendTrickleCandidate(handleId, null);
+				} else {
+					// No trickle, time to send the complete SDP (including all candidates) 
+					sendSDP(handleId, callbacks);
+				}
 			} else {
 				Janus.log("candidates: " + JSON.stringify(event.candidate));
+				if(config.trickle === true) {
+					// Send candidate
+					sendTrickleCandidate(handleId, event.candidate);
+				}
 			}
 		};
 		if(stream !== null && stream !== undefined) {
@@ -579,6 +616,7 @@ function Janus(gatewayCallbacks) {
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		config.trickle = isTrickleEnabled(callbacks.trickle);
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
@@ -676,7 +714,7 @@ function Janus(gatewayCallbacks) {
 					config.mySdp = offer.sdp;
 					config.pc.setLocalDescription(offer);
 				}
-				if(!config.iceDone) {
+				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");
 					return;
@@ -711,7 +749,7 @@ function Janus(gatewayCallbacks) {
 					config.mySdp = answer.sdp;
 					config.pc.setLocalDescription(answer);
 				}
-				if(!config.iceDone) {
+				if(!config.iceDone && !config.trickle) {
 					// Don't do anything until we have all candidates
 					Janus.log("Waiting for all candidates...");
 					return;
@@ -840,5 +878,13 @@ function Janus(gatewayCallbacks) {
 		if(media.videoRecv === undefined || media.videoRecv === null)
 			return true;	// Default
 		return (media.videoRecv === true);
+	}
+
+	function isTrickleEnabled(trickle) {
+		Janus.log("isTrickleEnabled:");
+		Janus.log(trickle);
+		if(trickle === undefined || trickle === null)
+			return false;	// Default, until we're sure it works fine
+		return (trickle === true);
 	}
 };

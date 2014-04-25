@@ -914,7 +914,7 @@ python -m SimpleHTTPServer 9000
  */
  
 /*! \page README README
- *  \verbinclude README
+ *  \verbinclude README.md
  */
 
 /*! \page CREDITS Credits

@@ -9,6 +9,7 @@ option "configs-folder" F "Configuration files folder (default=./conf)" string t
 option "cert-pem" c "HTTPS/DTLS certificate" string typestr="filename" optional
 option "cert-key" k "HTTPS/DTLS certificate key" string typestr="filename" optional
 option "stun-server" S "STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)" string typestr="ip:port" optional
+option "ice-ignore-list" X "Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet)" string typestr="list" optional
 option "public-ip" e "Public address of the machine, to use in SDP" string typestr="ipaddress" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional

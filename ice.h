@@ -36,6 +36,16 @@ char *janus_ice_get_stun_server(void);
 /*! \brief Method to get the STUN server port
  * @returns The currently used STUN server port, if available, or 0 if not */
 uint16_t janus_ice_get_stun_port(void);
+/*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
+ * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
+ * adding it to the ignore list will prevent libnice from gathering a candidate for it.
+ * @param[in] ip Interface/IP to ignore (e.g., 192.168.244.1 or eth1) */
+void janus_ice_ignore_interface(const char *ip);
+/*! \brief Method to check whether an interface/IP is currently in the ignore list for ICE (that is, won't have candidates)
+ * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
+ * @returns true if the interface/IP is in the ignore list, false otherwise */
+gboolean janus_ice_is_ignored(const char *ip);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -61,6 +71,8 @@ struct janus_ice_handle {
 	void *app;
 	/*! \brief Opaque gateway/plugin session pointer */
 	janus_plugin_session *app_handle;
+	/*! \brief Flag to check whether this ICE session is ready to be started (got both OFFER and ANSWER) */
+	gint start;
 	/*! \brief Flag to check whether this ICE session is ready to be used (ICE and DTLS ok for all components) */
 	gint ready:1;
 	/*! \brief Flag to check whether this ICE session needs to stop right now */
@@ -81,8 +93,14 @@ struct janus_ice_handle {
 	gint audio_id;
 	/*! \brief libnice ICE audio ID */
 	gint video_id;
+	/*! \brief Whether BUNDLE is supported or not */
+	gint bundle:1;
 	/*! \brief Whether rtcp-mux is supported or not */
 	gint rtcpmux:1;
+	/*! \brief Whether ICE trickling is supported or not */
+	gint trickle:1;
+	/*! \brief Whether we got all the trickled candidates or not */
+	gint all_trickles:1;
 	/*! \brief Number of streams */
 	gint streams_num;
 	/*! \brief GLib hash table of streams (IDs are the keys) */
@@ -115,6 +133,10 @@ struct janus_ice_stream {
 	gint payload_type;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
+	/*! \brief The ICE username for this stream */
+	gchar *ruser;
+	/*! \brief The ICE password for this stream */
+	gchar *rpass;
 	/*! \brief GLib hash table of components (IDs are the keys) */
 	GHashTable *components;
 	/*! \brief RTP component */
@@ -241,9 +263,11 @@ void *janus_ice_thread(void *data);
  * @param[in] offer Whether this is for an OFFER or an ANSWER
  * @param[in] audio Whether audio is enabled
  * @param[in] video Whether video is enabled
+ * @param[in] bundle Whether BUNDLE is supported or not
  * @param[in] rtcpmux Whether rtcp-mux is supported or not
+ * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int rtcpmux);
+int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int bundle, int rtcpmux, int trickle);
 /*! \brief Method to add local candidates to the gateway SDP
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in,out] sdp The handle description the gateway is preparing

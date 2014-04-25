@@ -153,7 +153,6 @@ static const char *sdp_template =
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */
 		"c=IN IP4 1.1.1.1\r\n"
 		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
-		"a=mid:audio\r\n"
 		"a=recvonly\r\n";					/* This plugin doesn't send any frames */
 
 

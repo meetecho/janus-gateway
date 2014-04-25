@@ -787,7 +787,7 @@ static void *janus_streaming_handler(void *data) {
 						mp->codecs.audio_pt, mp->codecs.audio_rtpmap);
 					g_strlcat(sdptemp, buffer, 1024);
 				}
-				g_strlcat(sdptemp, "a=mid:audio\r\na=sendonly\r\n", 1024);
+				g_strlcat(sdptemp, "a=sendonly\r\n", 1024);
 			}
 			if(mp->codecs.video_pt >= 0) {
 				/* Add video line */
@@ -802,7 +802,7 @@ static void *janus_streaming_handler(void *data) {
 						mp->codecs.video_pt, mp->codecs.video_rtpmap);
 					g_strlcat(sdptemp, buffer, 1024);
 				}
-				g_strlcat(sdptemp, "a=mid:video\r\na=sendonly\r\n", 1024);
+				g_strlcat(sdptemp, "a=sendonly\r\n", 1024);
 			}
 			sdp = g_strdup(sdptemp);
 			JANUS_LOG(LOG_VERB, "Going to offer this SDP:\n%s\n", sdp);

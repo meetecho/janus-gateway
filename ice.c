@@ -14,6 +14,7 @@
  * \ref protocols
  */
  
+#include <ifaddrs.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stun/usages/bind.h>
@@ -36,6 +37,36 @@ char *janus_ice_get_stun_server() {
 }
 uint16_t janus_ice_get_stun_port() {
 	return janus_stun_port;
+}
+
+
+/* Interface/IP ignore list */
+GList *janus_ice_ignore_list = NULL;
+janus_mutex ignore_list_mutex;
+void janus_ice_ignore_interface(const char *ip) {
+	if(ip == NULL)
+		return;
+	/* Is this an IP or an interface? */
+	janus_mutex_lock(&ignore_list_mutex);
+	janus_ice_ignore_list = g_list_append(janus_ice_ignore_list, (gpointer)ip);
+	janus_mutex_unlock(&ignore_list_mutex);
+}
+
+gboolean janus_ice_is_ignored(const char *ip) {
+	if(ip == NULL || janus_ice_ignore_list == NULL)
+		return false;
+	janus_mutex_lock(&ignore_list_mutex);
+	GList *temp = janus_ice_ignore_list;
+	while(temp) {
+		const char *ignored = (const char *)temp->data;
+		if(ignored != NULL && strstr(ip, ignored)) {
+			janus_mutex_unlock(&ignore_list_mutex);
+			return true;
+		}
+		temp = temp->next;
+	}
+	janus_mutex_unlock(&ignore_list_mutex);
+	return false;
 }
 
 
@@ -327,6 +358,14 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 				janus_ice_component_free(handle->audio_stream->components, handle->audio_stream->rtcp_component);
 				handle->audio_stream->rtcp_component = NULL;
 			}
+			if(handle->audio_stream->ruser != NULL) {
+				g_free(handle->audio_stream->ruser);
+				handle->audio_stream->ruser = NULL;
+			}
+			if(handle->audio_stream->rpass != NULL) {
+				g_free(handle->audio_stream->rpass);
+				handle->audio_stream->rpass = NULL;
+			}
 			g_free(handle->audio_stream);
 			handle->audio_stream = NULL;
 		}
@@ -338,6 +377,14 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 				handle->video_stream->rtp_component = NULL;
 				janus_ice_component_free(handle->video_stream->components, handle->video_stream->rtcp_component);
 				handle->video_stream->rtcp_component = NULL;
+			}
+			if(handle->video_stream->ruser != NULL) {
+				g_free(handle->video_stream->ruser);
+				handle->video_stream->ruser = NULL;
+			}
+			if(handle->video_stream->rpass != NULL) {
+				g_free(handle->video_stream->rpass);
+				handle->video_stream->rpass = NULL;
 			}
 			g_free(handle->video_stream);
 			handle->video_stream = NULL;
@@ -366,6 +413,13 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 void janus_ice_component_free(GHashTable *container, janus_ice_component *component) {
 	if(component == NULL)
 		return;
+	janus_ice_stream *stream = component->stream;
+	if(stream == NULL)
+		return;
+	janus_ice_handle *handle = stream->handle;
+	if(handle == NULL)
+		return;
+	janus_mutex_lock(&handle->mutex);
 	if(container != NULL)
 		g_hash_table_remove(container, component);
 	component->stream = NULL;
@@ -393,6 +447,7 @@ void janus_ice_component_free(GHashTable *container, janus_ice_component *compon
 	}
 	component->candidates = NULL;
 	g_free(component);
+	janus_mutex_unlock(&handle->mutex);
 }
 
 
@@ -430,6 +485,9 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component %d in stream %d??\n", handle->handle_id, component_id, stream_id);
 			return;
 		}
+		/* Have we been here before? (might happen, when trickling) */
+		if(component->dtls != NULL)
+			return;
 		/* Create DTLS-SRTP context, at last */
 		component->dtls = janus_dtls_srtp_create(component, stream->dtls_role);
 		if(!component->dtls) {
@@ -447,8 +505,10 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		/* Do DTLS handshake */
 		janus_dtls_srtp_handshake(component->dtls);
 	} else if(state == NICE_COMPONENT_STATE_FAILED) {
-		if(handle && !handle->alert) {
+		/* Failed doesn't mean necessarily we need to give up: we may be trickling */
+		if(handle && (!handle->trickle || handle->all_trickles) && !handle->alert) {
 			/* FIXME Should we really give up for what may be a failure in only one of the media? */
+			JANUS_LOG(LOG_ERR, "ICE failed for handle %"SCNu64"...\n", handle->handle_id);
 			handle->alert = 1;
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			if(plugin != NULL) {
@@ -699,12 +759,14 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		return;
 	}
 	janus_ice_component *component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(component_id));
-	if(!component || !component->candidates) {
+	if(!component) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d: cannot setup remote candidates\n", handle->handle_id, component_id, stream_id);
 		return;
 	}
-	if(!component || !component->candidates || !component->candidates->data) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No remote data for component %d in stream %d: was the remote SDP parsed?\n", handle->handle_id, component_id, stream_id);
+	if(!component->candidates || !component->candidates->data) {
+		if(!handle->trickle || handle->all_trickles) { 
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] No remote candidates for component %d in stream %d: was the remote SDP parsed?\n", handle->handle_id, component_id, stream_id);
+		}
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ## Setting remote candidates: stream %d, component %d (%u in the list)\n",
@@ -743,15 +805,23 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 	}
 }
 
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int rtcpmux) {
+int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int bundle, int rtcpmux, int trickle) {
 	if(!handle)
 		return -1;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting ICE locally: got %s (%d audios, %d videos)\n", handle->handle_id, offer ? "OFFER" : "ANSWER", audio, video);
+	handle->start = 0;
 	handle->ready = 0;
 	handle->stop = 0;
 	handle->alert = 0;
+
+	/* Note: in case this is not an OFFER, we don't know whether BUNDLE is supported on the other side or not yet */
+	handle->bundle = offer ? bundle : 0;
 	/* Note: in case this is not an OFFER, we don't know whether rtcp-mux is supported on the other side or not yet */
 	handle->rtcpmux = offer ? rtcpmux : 0;
+	/* Note: in case this is not an OFFER, we don't know whether ICE trickling is supported on the other side or not yet */
+	handle->trickle = offer ? trickle : 0;
+	handle->all_trickles = 0;
+
 	handle->icectx = g_main_context_new();
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
 	handle->icethread = g_thread_new("ice thread", &janus_ice_thread, handle);
@@ -772,13 +842,52 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		G_CALLBACK (janus_ice_cb_component_state_changed), handle);
 	g_signal_connect (G_OBJECT (handle->agent), "new-selected-pair",
 		G_CALLBACK (janus_ice_cb_new_selected_pair), handle);
-	/* Add one local address */
-	NiceAddress addr_local;
-	nice_address_init (&addr_local);
-	nice_address_set_from_string (&addr_local, janus_get_local_ip());
-	nice_agent_add_local_address (handle->agent, &addr_local);
+
+	/* Add all local addresses, except those in the ignore list */
+	struct ifaddrs *ifaddr, *ifa;
+	int family, s, n;
+	char host[NI_MAXHOST];
+	if(getifaddrs(&ifaddr) == -1) {
+		JANUS_LOG(LOG_ERR, "Error getting list of interfaces...");
+	} else {
+		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+			if(ifa->ifa_addr == NULL)
+				continue;
+			family = ifa->ifa_addr->sa_family;
+			if(family != AF_INET && family != AF_INET6)
+				continue;
+			/* FIXME We skip IPv6 addresses for now: browser don't negotiate them yet anyway */
+			if(family == AF_INET6)
+				continue;
+			/* Check the interface name first: we can ignore that as well */
+			if(ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
+				continue;
+			s = getnameinfo(ifa->ifa_addr,
+					(family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
+					host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+			if(s != 0) {
+				JANUS_LOG(LOG_ERR, "getnameinfo() failed: %s\n", gai_strerror(s));
+				continue;
+			}
+			/* Skip localhost */
+			if(!strcmp(host, "127.0.0.1") || !strcmp(host, "::1") || !strcmp(host, "0.0.0.0"))
+				continue;
+			/* Check if this IP address is in the ignore list, now */
+			if(janus_ice_is_ignored(host))
+				continue;
+			/* Ok, add interface to the ICE agent */
+			JANUS_LOG(LOG_INFO, "Adding %s to the addresses to gather candidates for\n", host);
+			NiceAddress addr_local;
+			nice_address_init (&addr_local);
+			nice_address_set_from_string (&addr_local, host);
+			nice_agent_add_local_address (handle->agent, &addr_local);
+		}
+		freeifaddrs(ifaddr);
+	}
+
 	handle->streams_num = 0;
 	handle->streams = g_hash_table_new(NULL, NULL);
+	/* TODO Involve BUNDLE as well: right now, we're only checking whether rtcp-mux has been enabled or not */
 	if(audio) {
 		/* Add an audio stream */
 		handle->streams_num++;
@@ -794,7 +903,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->payload_type = -1;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		audio_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		audio_stream->ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+		audio_stream->ssrc = ABS(g_random_int());	/* FIXME Should we look for conflicts? */
 		audio_stream->ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
@@ -851,7 +960,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->payload_type = -1;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		video_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		video_stream->ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+		video_stream->ssrc = ABS(g_random_int());	/* FIXME Should we look for conflicts? */
 		video_stream->ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		video_stream->components = g_hash_table_new(NULL, NULL);
 		janus_mutex_init(&video_stream->mutex);
@@ -972,7 +1081,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	char sbuf[BUFSIZE];
 	memcpy(&sbuf, buf, len);
 	/* Fix all SSRCs! */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id, stream->ssrc, stream->ssrc_peer);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id, stream->ssrc, stream->ssrc_peer);
 	janus_rtcp_fix_ssrc((char *)&sbuf, len, 1, stream->ssrc, stream->ssrc_peer);
 	int protected = len;
 	int res = srtp_protect_rtcp(component->dtls->srtp_out, &sbuf, &protected);
@@ -996,15 +1105,18 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] The DTLS handshake for the component %d in stream %d has been completed\n",
 		handle->handle_id, component->component_id, component->stream_id);
 	/* Check if all components are ready */
+	janus_mutex_lock(&handle->mutex);
 	if(handle->audio_stream) {
 		if(handle->audio_stream->rtp_component && handle->audio_stream->rtp_component->dtls &&
 				!handle->audio_stream->rtp_component->dtls->srtp_valid) {
 			/* Still waiting for this component to become ready */
+			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
 		if(handle->audio_stream->rtcp_component && handle->audio_stream->rtcp_component->dtls &&
 				!handle->audio_stream->rtcp_component->dtls->srtp_valid) {
 			/* Still waiting for this component to become ready */
+			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
 	}
@@ -1012,19 +1124,23 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 		if(handle->video_stream->rtp_component && handle->video_stream->rtp_component->dtls &&
 				!handle->video_stream->rtp_component->dtls->srtp_valid) {
 			/* Still waiting for this component to become ready */
+			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
 		if(handle->video_stream->rtcp_component && handle->video_stream->rtcp_component->dtls &&
 				!handle->video_stream->rtcp_component->dtls->srtp_valid) {
 			/* Still waiting for this component to become ready */
+			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
 	}
 	if(handle->ready) {
 		/* Already notified */
+		janus_mutex_unlock(&handle->mutex);
 		return;
 	}
 	handle->ready = 1;
+	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] The DTLS handshake has been completed\n", handle->handle_id);
 	/* Notify the plugin that the WebRTC PeerConnection is ready to be used */
 	janus_plugin *plugin = (janus_plugin *)handle->app;

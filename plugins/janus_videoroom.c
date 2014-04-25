@@ -208,6 +208,26 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	gint is_video;
 } janus_videoroom_rtp_relay_packet;
 
+/* SDP offer/answer template */
+static const char *sdp_template =
+		"v=0\r\n"
+		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */
+		"s=%s\r\n"							/* Video room name */
+		"t=0 0\r\n"
+		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */
+		"c=IN IP4 1.1.1.1\r\n"
+		"a=%s\r\n"							/* Media direction */
+		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
+		"m=video 1 RTP/SAVPF %d\r\n"		/* VP8 payload type */
+		"c=IN IP4 1.1.1.1\r\n"
+		"b=AS:%d\r\n"						/* Bandwidth */
+		"a=%s\r\n"							/* Media direction */
+		"a=rtpmap:%d VP8/90000\r\n"			/* VP8 payload type */
+		"a=rtcp-fb:%d ccm fir\r\n"			/* VP8 payload type */
+		"a=rtcp-fb:%d nack\r\n"				/* VP8 payload type */
+		"a=rtcp-fb:%d nack pli\r\n"			/* VP8 payload type */
+		"a=rtcp-fb:%d goog-remb\r\n";		/* VP8 payload type */
+
 
 /* Plugin implementation */
 int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
@@ -274,6 +294,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->bitrate = 0;
 			if(bitrate != NULL && bitrate->value != NULL)
 				videoroom->bitrate = atol(bitrate->value);
+			if(videoroom->bitrate > 0 && videoroom->bitrate < 64000)
+				videoroom->bitrate = 64000;	/* Don't go below 64k */
 			videoroom->fir_freq = 0;
 			if(firfreq != NULL && firfreq->value != NULL)
 				videoroom->fir_freq = atol(firfreq->value);
@@ -479,7 +501,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		packet.length = len;
 		packet.is_video = video;
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
-		if(video && (participant->room->fir_freq > 0)) {
+		if(video && participant->video_active && (participant->room->fir_freq > 0)) {
 			/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
 			gint64 now = janus_get_monotonic_time();
 			if((now-participant->fir_latest) >= (participant->room->fir_freq*G_USEC_PER_SEC)) {
@@ -487,10 +509,11 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				participant->fir_latest = now;
 				char buf[20];
 				memset(buf, 0, 20);
-				if(!participant->firefox)
-					janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
-				else
-					janus_rtcp_fir_legacy((char *)&buf, 20, &participant->fir_seq);
+				janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
+				//~ if(!participant->firefox)
+					//~ janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
+				//~ else
+					//~ janus_rtcp_fir_legacy((char *)&buf, 20, &participant->fir_seq);
 				JANUS_LOG(LOG_VERB, "Sending FIR to %s\n", participant->display);
 				gateway->relay_rtcp(handle, video, buf, 20);
 				/* Send a PLI too, just in case... */
@@ -498,6 +521,11 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				janus_rtcp_pli((char *)&buf, 12);
 				JANUS_LOG(LOG_VERB, "Sending PLI to %s\n", participant->display);
 				gateway->relay_rtcp(handle, video, buf, 12);
+				if(participant->firefox && participant->bitrate > 0) {
+					/* Now that we're there, let's send a REMB as well */
+					janus_rtcp_remb((char *)&buf, 24, participant->bitrate);
+					gateway->relay_rtcp(handle, video, buf, 24);
+				}
 			}
 		}
 	}
@@ -717,6 +745,8 @@ static void *janus_videoroom_handler(void *data) {
 			videoroom->bitrate = 0;
 			if(bitrate)
 				videoroom->bitrate = json_integer_value(bitrate);
+			if(videoroom->bitrate > 0 && videoroom->bitrate < 64000)
+				videoroom->bitrate = 64000;	/* Don't go below 64k */
 			videoroom->fir_freq = 0;
 			if(fir_freq)
 				videoroom->fir_freq = json_integer_value(fir_freq);
@@ -1070,22 +1100,99 @@ static void *janus_videoroom_handler(void *data) {
 					sprintf(error_cause, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
 					goto error;
 				}
-				/* Negotiate by sending the own publisher SDP back (just to negotiate the same media stuff) */
-				int modified = 0;
-				char *newsdp = g_strdup(msg->sdp);
-				char *tempsdp = string_replace(newsdp, "sendrecv", "sendonly", &modified);	/* FIXME In case the browser doesn't set it correctly */
-				if(modified) {
-					g_free(newsdp);
-					newsdp = tempsdp;
-				}
-				tempsdp = string_replace(newsdp, "sendonly", "recvonly", &modified);
-				if(modified) {
-					g_free(newsdp);
-					newsdp = tempsdp;
-				}
-				if(strstr(newsdp, "Mozilla")) {
+				/* Now prepare the SDP to give back */
+				if(strstr(msg->sdp, "Mozilla")) {
 					participant->firefox = TRUE;
 				}
+				/* What is the Opus payload type? */
+				int opus_pt = 0;
+				char *fmtp = strstr(msg->sdp, "opus/48000");
+				if(fmtp != NULL) {
+					fmtp -= 5;
+					fmtp = strstr(fmtp, ":");
+					if(fmtp)
+						fmtp++;
+					opus_pt = atoi(fmtp);
+				}
+				JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
+				/* What is the VP8 payload type? */
+				int vp8_pt = 0;
+				fmtp = strstr(msg->sdp, "VP8/90000");
+				if(fmtp != NULL) {
+					fmtp -= 5;
+					fmtp = strstr(fmtp, ":");
+					if(fmtp)
+						fmtp++;
+					vp8_pt = atoi(fmtp);
+				}
+				JANUS_LOG(LOG_VERB, "VP8 payload type is %d\n", vp8_pt);
+				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
+				int b = (int)(videoroom->bitrate/1000);
+				char sdp[1024];
+				g_sprintf(sdp, sdp_template,
+					janus_get_monotonic_time(),		/* We need current time here */
+					janus_get_monotonic_time(),		/* We need current time here */
+					participant->room->room_name,	/* Video room name */
+					opus_pt,						/* Opus payload type */
+					"recvonly",						/* The publisher gets a recvonly back */
+					opus_pt, 						/* Opus payload type */
+					vp8_pt,							/* VP8 payload type */
+					b,								/* Bandwidth */
+					"recvonly",						/* The publisher gets a recvonly back */
+					vp8_pt, 						/* VP8 payload type */
+					vp8_pt, 						/* VP8 payload type */
+					vp8_pt, 						/* VP8 payload type */
+					vp8_pt, 						/* VP8 payload type */
+					vp8_pt); 						/* VP8 payload type */
+
+				int modified = 0;
+				char *newsdp = g_strdup(sdp), *tempsdp = NULL;
+				if(b == 0) {
+					/* Remove useless bandwidth attribute */
+					tempsdp = string_replace(newsdp, "b=AS:0\r\n", "", &modified);
+					if(modified) {
+						g_free(newsdp);
+						newsdp = tempsdp;
+					}
+				}
+
+
+				//~ /* Negotiate by sending the own publisher SDP back (just to negotiate the same media stuff) */
+				//~ int modified = 0;
+				//~ char *newsdp = g_strdup(msg->sdp);
+				//~ char *tempsdp = string_replace(newsdp, "sendrecv", "sendonly", &modified);	/* FIXME In case the browser doesn't set it correctly */
+				//~ if(modified) {
+					//~ g_free(newsdp);
+					//~ newsdp = tempsdp;
+				//~ }
+				//~ tempsdp = string_replace(newsdp, "sendonly", "recvonly", &modified);
+				//~ if(modified) {
+					//~ g_free(newsdp);
+					//~ newsdp = tempsdp;
+				//~ }
+				//~ if(strstr(newsdp, "Mozilla")) {
+					//~ participant->firefox = TRUE;
+				//~ }
+				//~ /* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
+				//~ if(videoroom->bitrate > 0) {
+					//~ int b = (int)(videoroom->bitrate/1000);
+					//~ char *video = strstr(newsdp, "m=video");
+					//~ if(video) {
+						//~ char *rn = strstr(video, "\r\n");
+						//~ char video_mline[200]; 
+						//~ memcpy(&video_mline, video, rn-video);
+						//~ video_mline[rn-video] = '\0';
+						//~ char bandwidth[250];
+						//~ sprintf(bandwidth, "%s\r\nb=AS:%d", video_mline, b);
+						//~ tempsdp = string_replace(newsdp, video_mline, bandwidth, &modified);
+						//~ if(modified) {
+							//~ g_free(newsdp);
+							//~ newsdp = tempsdp;
+						//~ }
+					//~ }
+				//~ }
+
+
 				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, newsdp);
 				/* How long will the gateway take to push the event? */
 				gint64 start = janus_get_monotonic_time();

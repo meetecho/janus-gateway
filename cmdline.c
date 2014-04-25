@@ -45,6 +45,7 @@ const char *gengetopt_args_info_help[] = {
   "  -c, --cert-pem=filename       HTTPS/DTLS certificate",
   "  -k, --cert-key=filename       HTTPS/DTLS certificate key",
   "  -S, --stun-server=ip:port     STUN server(:port) to use, if needed (e.g., \n                                  gateway behind NAT, default=none)",
+  "  -X, --ice-ignore-list=list    Comma-separated list of interfaces or IP \n                                  addresses to ignore for ICE gathering; \n                                  partial strings are supported (e.g., \n                                  vmnet8,192.168.0.1,10.0.0.1 or \n                                  vmnet,192.168., default=vmnet)",
   "  -e, --public-ip=ipaddress     Public address of the machine, to use in SDP",
   "  -r, --rtp-port-range=min-max  Port range to use for RTP/RTCP",
   "  -d, --debug-level=1-7         Debug/logging level (0=disable debugging, \n                                  7=maximum debug level; default=4)",
@@ -86,6 +87,7 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->cert_pem_given = 0 ;
   args_info->cert_key_given = 0 ;
   args_info->stun_server_given = 0 ;
+  args_info->ice_ignore_list_given = 0 ;
   args_info->public_ip_given = 0 ;
   args_info->rtp_port_range_given = 0 ;
   args_info->debug_level_given = 0 ;
@@ -114,6 +116,8 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->cert_key_orig = NULL;
   args_info->stun_server_arg = NULL;
   args_info->stun_server_orig = NULL;
+  args_info->ice_ignore_list_arg = NULL;
+  args_info->ice_ignore_list_orig = NULL;
   args_info->public_ip_arg = NULL;
   args_info->public_ip_orig = NULL;
   args_info->rtp_port_range_arg = NULL;
@@ -140,9 +144,10 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->cert_pem_help = gengetopt_args_info_help[10] ;
   args_info->cert_key_help = gengetopt_args_info_help[11] ;
   args_info->stun_server_help = gengetopt_args_info_help[12] ;
-  args_info->public_ip_help = gengetopt_args_info_help[13] ;
-  args_info->rtp_port_range_help = gengetopt_args_info_help[14] ;
-  args_info->debug_level_help = gengetopt_args_info_help[15] ;
+  args_info->ice_ignore_list_help = gengetopt_args_info_help[13] ;
+  args_info->public_ip_help = gengetopt_args_info_help[14] ;
+  args_info->rtp_port_range_help = gengetopt_args_info_help[15] ;
+  args_info->debug_level_help = gengetopt_args_info_help[16] ;
   
 }
 
@@ -241,6 +246,8 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->cert_key_orig));
   free_string_field (&(args_info->stun_server_arg));
   free_string_field (&(args_info->stun_server_orig));
+  free_string_field (&(args_info->ice_ignore_list_arg));
+  free_string_field (&(args_info->ice_ignore_list_orig));
   free_string_field (&(args_info->public_ip_arg));
   free_string_field (&(args_info->public_ip_orig));
   free_string_field (&(args_info->rtp_port_range_arg));
@@ -302,6 +309,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "cert-key", args_info->cert_key_orig, 0);
   if (args_info->stun_server_given)
     write_into_file(outfile, "stun-server", args_info->stun_server_orig, 0);
+  if (args_info->ice_ignore_list_given)
+    write_into_file(outfile, "ice-ignore-list", args_info->ice_ignore_list_orig, 0);
   if (args_info->public_ip_given)
     write_into_file(outfile, "public-ip", args_info->public_ip_orig, 0);
   if (args_info->rtp_port_range_given)
@@ -575,13 +584,14 @@ cmdline_parser_internal (
         { "cert-pem",	1, NULL, 'c' },
         { "cert-key",	1, NULL, 'k' },
         { "stun-server",	1, NULL, 'S' },
+        { "ice-ignore-list",	1, NULL, 'X' },
         { "public-ip",	1, NULL, 'e' },
         { "rtp-port-range",	1, NULL, 'r' },
         { "debug-level",	1, NULL, 'd' },
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVi:p:s:nb:P:C:F:c:k:S:e:r:d:", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVi:p:s:nb:P:C:F:c:k:S:X:e:r:d:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -723,6 +733,18 @@ cmdline_parser_internal (
               &(local_args_info.stun_server_given), optarg, 0, 0, ARG_STRING,
               check_ambiguity, override, 0, 0,
               "stun-server", 'S',
+              additional_error))
+            goto failure;
+        
+          break;
+        case 'X':	/* Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet).  */
+        
+        
+          if (update_arg( (void *)&(args_info->ice_ignore_list_arg), 
+               &(args_info->ice_ignore_list_orig), &(args_info->ice_ignore_list_given),
+              &(local_args_info.ice_ignore_list_given), optarg, 0, 0, ARG_STRING,
+              check_ambiguity, override, 0, 0,
+              "ice-ignore-list", 'X',
               additional_error))
             goto failure;
         

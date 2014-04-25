@@ -62,9 +62,11 @@ void janus_sdp_free(janus_sdp *sdp);
  * @param[in] jsep_sdp The SDP that the browser peer originated
  * @param[out] audio The number of audio m-lines
  * @param[out] video The number of video m-lines
+ * @param[out] bundle Whether BUNDLE has been negotiated or not
  * @param[out] rtcpmux Whether rtcp-mux has been negotiated or not
+ * @param[out] trickle Whether ICE trickling is being used (no candidates) or not
  * @returns The Janus SDP instance in case of success, NULL in case the SDP is invalid */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *rtcpmux);
+janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *bundle, int *rtcpmux, int *trickle);
 
 /*! \brief Method to parse a session description
  * \details This method will parse a session description coming from a peer, and set up the ICE candidates accordingly
@@ -72,6 +74,14 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int 
  * @param[in] sdp The Janus SDP instance to parse
  * @returns 0 in case of success, -1 in case of an error */
 int janus_sdp_parse(janus_ice_handle *session, janus_sdp *sdp);
+
+/*! \brief Method to parse a single candidate
+ * \details This method will parse a single remote candidate provided by a peer, whether it is trickling or not
+ * @param[in] stream The ICE stream this candidate refers to
+ * @param[in] candidate The remote candidate to process
+ * @param[in] trickle Whether this is a trickle candidate, or coming from the SDP
+ * @returns 0 in case of success, a non-zero integer in case of an error */
+int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, int trickle);
 
 /*! \brief Method to strip/anonymize a session description
  * @param[in] sdp The session description to strip/anonymize

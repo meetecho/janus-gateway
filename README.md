@@ -109,6 +109,11 @@ or on the command line:
 	-k, --cert-key=filename       HTTPS/DTLS certificate key
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g., 
 								  gateway behind NAT, default=none)
+	-X, --ice-ignore-list=list    Comma-separated list of interfaces or IP 
+                                  addresses to ignore for ICE gathering; 
+                                  partial strings are supported (e.g., 
+                                  vmnet8,192.168.0.1,10.0.0.1 or 
+                                  vmnet,192.168., default=vmnet)
 	-e, --public-ip=ipaddress     Public address of the machine, to use in SDP
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)

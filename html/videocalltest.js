@@ -89,7 +89,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '500px')
+												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
 											} });
 									} else {
 										// Restore screen
@@ -307,6 +307,12 @@ $(document).ready(function() {
 									if(bitrateTimer !== null && bitrateTimer !== null) 
 										clearInterval(bitrateTimer);
 									bitrateTimer = null;
+									$('#waitingvideo').remove();
+									$('#videos').hide();
+									$('#peer').removeAttr('disabled').val('');
+									$('#call').removeAttr('disabled').html('Call')
+										.removeClass("btn-danger").addClass("btn-success")
+										.unbind('click').click(doCall);
 								}
 							});
 					},

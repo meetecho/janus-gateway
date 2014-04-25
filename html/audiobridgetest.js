@@ -86,7 +86,7 @@ $(document).ready(function() {
 												backgroundColor: 'transparent',
 												color: '#aaa',
 												top: '10px',
-												left: (navigator.mozGetUserMedia ? '-100px' : '400px')
+												left: (navigator.mozGetUserMedia ? '-100px' : '300px')
 											} });
 									} else {
 										// Restore screen

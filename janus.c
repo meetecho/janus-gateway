@@ -30,6 +30,9 @@
 #include "utils.h"
 
 
+#define JANUS_VERSION	"0.0.2"
+
+
 static janus_config *config = NULL;
 static char *config_file = NULL;
 static char *configs_folder = NULL;
@@ -339,7 +342,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	if(!strcasecmp(method, "POST")) {
 		JANUS_LOG(LOG_VERB, "Processing POST data (%s)...\n", msg->contenttype);
 		if(*upload_data_size != 0) {
-			//~ JANUS_LOG(LOG_VERB, "  -- Uploaded data (%s, %zu bytes):\n%s\n", msg->contenttype, *upload_data_size, upload_data);
 			JANUS_LOG(LOG_VERB, "  -- Uploaded data (%zu bytes)\n", *upload_data_size);
 			if(msg->payload == NULL)
 				msg->payload = calloc(1, *upload_data_size+1);
@@ -354,7 +356,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
 			memset(msg->payload+msg->len+*upload_data_size, '\0', 1);
 			msg->len += *upload_data_size;
-			//~ JANUS_LOG(LOG_VERB, "  -- Data we have now (%zu bytes):\n%s\n", msg->len, msg->payload);
 			JANUS_LOG(LOG_VERB, "  -- Data we have now (%zu bytes)\n", msg->len);
 			*upload_data_size = 0;	/* Go on */
 			ret = MHD_YES;
@@ -371,7 +372,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	if(session_path == NULL && handle_path == NULL) {
 		/* Can only be a 'Create new session' request */
-		if(!strcasecmp(method, "GET")) {
+		if(strcasecmp(method, "POST")) {
 			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_USE_POST, "Use POST to create a session");
 			goto done;
 		}
@@ -427,6 +428,43 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
 		json_decref(root);
 		json_decref(data);
+		json_decref(reply);
+		/* Send the success reply */
+		ret = janus_ws_success(connection, msg, "application/json", reply_text);
+		goto done;
+	}
+	if(!strcmp(session_path, "info")) {
+		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
+		if(strcasecmp(method, "GET")) {
+			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_USE_GET, "Use GET for the info endpoint");
+			goto done;
+		}
+		/* Prepare a summary on the gateway */
+		json_t *reply = json_object();
+		json_object_set_new(reply, "name", json_string("Janus WebRTC Gateway"));
+		json_object_set_new(reply, "version", json_string(JANUS_VERSION));
+		json_object_set_new(reply, "author", json_string("Meetecho s.r.l."));
+		json_t *data = json_object();
+		GList *plugins_list = g_hash_table_get_values(plugins);
+		GList *ps = plugins_list;
+		while(ps) {
+			janus_plugin *p = (janus_plugin *)ps->data;
+			if(p == NULL) {
+				ps = ps->next;
+				continue;
+			}
+			json_t *plugin = json_object();
+			json_object_set_new(plugin, "name", json_string(p->get_name()));
+			json_object_set_new(plugin, "description", json_string(p->get_description()));
+			json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
+			json_object_set_new(plugin, "version", json_integer(p->get_version()));
+			ps = ps->next;
+			json_object_set_new(data, p->get_package(), plugin);
+		}
+		g_list_free(plugins_list);
+		json_object_set_new(reply, "plugins", data);
+		/* Convert to a string */
+		char *reply_text = json_dumps(reply, JSON_INDENT(3));
 		json_decref(reply);
 		/* Send the success reply */
 		ret = janus_ws_success(connection, msg, "application/json", reply_text);
@@ -650,7 +688,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		if(!json_is_object(body)) {
 			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid body object");
-			//~ json_decref(body);
 			goto jsondone;
 		}
 		/* Is there an SDP attached? */
@@ -696,14 +733,12 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			jsep_sdp = (char *)json_string_value(sdp);
 			JANUS_LOG(LOG_VERB, "Remote SDP:\n%s", jsep_sdp);
 			/* Is this valid SDP? */
-			int audio = 0, video = 0, rtcpmux = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &rtcpmux);
+			int audio = 0, video = 0, bundle = 0, rtcpmux = 0, trickle = 0;
+			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &bundle, &rtcpmux, &trickle);
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
-				//~ json_decref(body);
 				g_free(jsep_type);
-				//~ g_free(jsep_sdp);
 				goto jsondone;
 			}
 			/* FIXME We're only handling single audio/video lines for now... */
@@ -713,19 +748,26 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			if(video > 1) {
 				JANUS_LOG(LOG_ERR, "More than one video line? only going to negotiate one...\n");
 			}
+			JANUS_LOG(LOG_VERB, "The browser %s BUNDLE\n", bundle ? "supports" : "does NOT support");
 			JANUS_LOG(LOG_VERB, "The browser %s rtcp-mux\n", rtcpmux ? "supports" : "does NOT support");
+			JANUS_LOG(LOG_VERB, "The browser %s doing Trickle ICE\n", trickle ? "is" : "is NOT");
 			/* Check if it's a new session, or an update... */
 			if(!handle->ready || handle->alert) {
 				/* New session */
 				if(offer) {
 					/* Setup ICE locally (we received an offer) */
-					janus_ice_setup_local(handle, offer, audio, video, rtcpmux);
+					janus_ice_setup_local(handle, offer, audio, video, bundle, rtcpmux, trickle);
 				}
 				janus_sdp_parse(handle, parsed_sdp);
 				janus_sdp_free(parsed_sdp);
 				if(!offer) {
 					/* Set remote candidates now (we received an answer) */
+					handle->bundle = bundle;
 					handle->rtcpmux = rtcpmux;
+					handle->trickle = trickle;
+					if(handle->bundle) {
+						/* TODO: we don't handle BUNDLE as of yet */
+					}
 					if(handle->rtcpmux) {
 						JANUS_LOG(LOG_VERB, "  -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n");
 						if(handle->audio_stream && handle->audio_stream->components != NULL) {
@@ -737,17 +779,24 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 							handle->video_stream->rtcp_component = NULL;
 						}
 					}
-					JANUS_LOG(LOG_INFO, "Done! Sending connectivity checks...\n");
-					if(handle->audio_id > 0) {
-						janus_ice_setup_remote_candidates(handle, handle->audio_id, 1);
-						if(!rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-							janus_ice_setup_remote_candidates(handle, handle->audio_id, 2);
+					janus_mutex_lock(&handle->mutex);
+					if(handle->trickle && !handle->all_trickles) {
+						JANUS_LOG(LOG_INFO, "  -- ICE Trickling is supported by the browser, waiting for remote candidates...\n");
+						handle->start = 1;
+					} else {
+						JANUS_LOG(LOG_INFO, "Done! Sending connectivity checks...\n");
+						if(handle->audio_id > 0) {
+							janus_ice_setup_remote_candidates(handle, handle->audio_id, 1);
+							if(!handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+								janus_ice_setup_remote_candidates(handle, handle->audio_id, 2);
+						}
+						if(handle->video_id > 0) {
+							janus_ice_setup_remote_candidates(handle, handle->video_id, 1);
+							if(!handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+								janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
+						}
 					}
-					if(handle->video_id > 0) {
-						janus_ice_setup_remote_candidates(handle, handle->video_id, 1);
-						if(!rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-							janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
-					}
+					janus_mutex_unlock(&handle->mutex);
 				}
 			} else {
 				/* TODO Actually handle session updates: for now we ignore them, and just relay them to plugins */
@@ -758,9 +807,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			if(jsep_sdp_stripped == NULL) {
 				/* Invalid SDP */
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
-				//~ json_decref(body);
 				g_free(jsep_type);
-				//~ g_free(jsep_sdp);
 				goto jsondone;
 			}
 			sdp = NULL;
@@ -773,9 +820,65 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
 		json_decref(reply);
-		//~ json_decref(body);
 		/* Send the message to the plugin */
 		plugin_t->handle_message(handle->app_handle, g_strdup((char *)transaction_text), body_text, jsep_type, jsep_sdp_stripped);
+		/* Send the success reply */
+		ret = janus_ws_success(connection, msg, "application/json", reply_text);
+	} else if(!strcasecmp(message_text, "trickle")) {
+		if(handle == NULL) {
+			/* Trickle is an handle-level command */
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			goto jsondone;
+		}
+		if(handle->app == NULL || handle->app_handle == NULL) {
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this trickle candidate");
+			goto jsondone;
+		}
+		json_t *candidate = json_object_get(root, "candidate");
+		if(candidate == NULL) {
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_JSON, "JSON error: missing mandatory element (candidate)");
+			goto jsondone;
+		}
+		//~ janus_mutex_lock(&handle->mutex);
+		//~ if(!handle->trickle)	/* If we thought there would be no trickling, we were wrong */
+			//~ handle->trickle = 1;
+		//~ janus_mutex_unlock(&handle->mutex);
+		if(!json_is_object(candidate)) {
+			JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
+			janus_mutex_lock(&handle->mutex);
+			handle->all_trickles = 1;
+			janus_mutex_unlock(&handle->mutex);
+		} else {
+			/* Handle remote candidate */
+			json_t *mid = json_object_get(candidate, "sdpMid");
+			if(!mid || !json_is_string(mid)) {
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
+				goto jsondone;
+			}
+			json_t *rc = json_object_get(candidate, "candidate");
+			if(!rc || !json_is_string(rc)) {
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
+				goto jsondone;
+			}
+			JANUS_LOG(LOG_VERB, "Trickle candidate (%s) for handle %"SCNu64": %s\n", json_string_value(mid), handle->handle_id, json_string_value(rc));
+			/* Parse it */
+			janus_ice_stream *stream = strcmp(json_string_value(mid), "video") ? handle->audio_stream : handle->video_stream;
+			if(stream == NULL) {
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
+				goto jsondone;
+			}
+			int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
+			if(res != 0) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
+			}
+		}
+		/* We reply right away, not to block the web server... */
+		json_t *reply = json_object();
+		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
+		/* Convert to a string */
+		char *reply_text = json_dumps(reply, JSON_INDENT(3));
+		json_decref(reply);
 		/* Send the success reply */
 		ret = janus_ws_success(connection, msg, "application/json", reply_text);
 	} else {
@@ -795,7 +898,7 @@ done:
 
 int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = cls;
-	JANUS_LOG(LOG_VERB, "%s: %s\n", key, value);
+	JANUS_LOG(LOG_HUGE, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
 			request->contenttype = strdup(value);
@@ -1010,7 +1113,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	if(!handle || handle->stopped || !plugin || !message)
 		return -1;
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
-	if(!ice_handle || ice_handle->stop || ice_handle->alert)
+	if(!ice_handle || ice_handle->stop)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
 	if(!session || session->destroy)
@@ -1079,14 +1182,15 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 		/* This is an answer from a plugin */
 	} else {
 		/* TODO Handle other messages */
+		JANUS_LOG(LOG_ERR, "Unknown type '%s'\n", sdp_type);
 		return NULL;
 	}
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
-	if(ice_handle == NULL || ice_handle->stop || ice_handle->alert)
+	if(ice_handle == NULL || ice_handle->ready)
 		return NULL;
 	/* Is this valid SDP? */
-	int audio = 0, video = 0, rtcpmux = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video, &rtcpmux);
+	int audio = 0, video = 0, bundle = 0, rtcpmux = 0, trickle = 0;
+	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video, &bundle, &rtcpmux, &trickle);
 	if(parsed_sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP...\n", ice_handle->handle_id);
 		return NULL;
@@ -1101,7 +1205,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", ice_handle->handle_id);
 		}
 		/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
-		janus_ice_setup_local(ice_handle, 0, audio, video, rtcpmux);
+		janus_ice_setup_local(ice_handle, 0, audio, video, bundle, rtcpmux, trickle);
 	}
 	/* Wait for candidates-done callback */
 	while(ice_handle->cdone < ice_handle->streams_num) {
@@ -1130,26 +1234,33 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
 		if(ice_handle->rtcpmux) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", ice_handle->handle_id);
-			if(ice_handle->audio_stream && ice_handle->audio_stream->components != NULL) {
+			if(ice_handle->audio_stream && ice_handle->audio_stream->rtcp_component && ice_handle->audio_stream->components != NULL) {
 				janus_ice_component_free(ice_handle->audio_stream->components, ice_handle->audio_stream->rtcp_component);
 				ice_handle->audio_stream->rtcp_component = NULL;
 			}
-			if(ice_handle->video_stream && ice_handle->video_stream->components != NULL) {
+			if(ice_handle->video_stream && ice_handle->video_stream->rtcp_component && ice_handle->video_stream->components != NULL) {
 				janus_ice_component_free(ice_handle->video_stream->components, ice_handle->video_stream->rtcp_component);
 				ice_handle->video_stream->rtcp_component = NULL;
 			}
 		}
-		/* Set remote candidates now */
-		if(ice_handle->audio_id > 0) {
-			janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 1);
-			if(!ice_handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-				janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 2);
+		janus_mutex_lock(&ice_handle->mutex);
+		if(ice_handle->trickle && !ice_handle->all_trickles) {
+			/* Still trickling, but take note of the fact ICE has started now */
+			ice_handle->start = 1;
+		} else {
+			/* Not trickling (anymore?), set remote candidates now */
+			if(ice_handle->audio_id > 0) {
+				janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 1);
+				if(!ice_handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+					janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 2);
+			}
+			if(ice_handle->video_id > 0) {
+				janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 1);
+				if(!ice_handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+					janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
+			}
 		}
-		if(ice_handle->video_id > 0) {
-			janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 1);
-			if(!ice_handle->rtcpmux)	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-				janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
-		}
+		janus_mutex_unlock(&ice_handle->mutex);
 	}
 	
 	/* Prepare JSON event */
@@ -1323,6 +1434,9 @@ gint main(int argc, char *argv[])
 	if(args_info.public_ip_given) {
 		janus_config_add_item(config, "nat", "public_ip", args_info.public_ip_arg);
 	}
+	if(args_info.ice_ignore_list_given) {
+		janus_config_add_item(config, "nat", "ice_ignore_list", args_info.ice_ignore_list_arg);
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
@@ -1429,6 +1543,25 @@ gint main(int argc, char *argv[])
 	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
+	}
+	/* Any IP/interface to ignore? */
+	item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
+	if(item && item->value) {
+		gchar **list = g_strsplit(item->value, ",", -1);
+		gchar *index = list[0];
+		if(index != NULL) {
+			int i=0;
+			while(index != NULL) {
+				if(strlen(index) > 0) {
+					JANUS_LOG(LOG_INFO, "Adding '%s' to the ICE ignore list...\n", index);
+					janus_ice_ignore_interface(g_strdup(index));
+				}
+				i++;
+				index = list[i];
+			}
+		}
+		g_strfreev(list);
+		list = NULL;
 	}
 
 	/* Is there a public_ip value to be used for NAT traversal instead? */

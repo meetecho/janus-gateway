@@ -189,9 +189,8 @@ static const char *sdp_template =
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */
 		"c=IN IP4 1.1.1.1\r\n"
 		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
-		"a=fmtp:%d maxplaybackrate=%d; stereo=0; sprop-stereo=0; useinbandfec=0\r\n"
+		"a=fmtp:%d maxplaybackrate=%d; stereo=0; sprop-stereo=0; useinbandfec=0\r\n";
 											/* Opus payload type and room sampling rate */
-		"a=mid:audio\r\n";
 
 /* Helper struct to generate and parse WAVE headers */
 typedef struct wav_header {

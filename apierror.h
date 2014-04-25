@@ -17,7 +17,9 @@
 #define JANUS_OK								0
 
 /*! \brief Unknown/undocumented error */
-#define JANUS_ERROR_UNKNOWN						450
+#define JANUS_ERROR_UNKNOWN						490
+/*! \brief The client needs to use HTTP POST for this request */
+#define JANUS_ERROR_USE_GET						450
 /*! \brief The client needs to use HTTP POST for this request */
 #define JANUS_ERROR_USE_POST					451
 /*! \brief The request is missing in the message */
@@ -49,6 +51,8 @@
 #define JANUS_ERROR_JSEP_UNKNOWN_TYPE			464
 /*! \brief The Session Description provided by the peer is invalid */
 #define JANUS_ERROR_JSEP_INVALID_SDP			465
+/*! \brief The stream a trickle candidate for does not exist or is invalid */
+#define JANUS_ERROR_TRICKE_INVALID_STREAM		466
 
 
 /*! \brief Helper method to get a string representation of an API error code

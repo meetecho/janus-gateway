@@ -317,7 +317,7 @@ int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate) {
 					uint64_t origbitrate = brMantissa << brExp;
 					if(origbitrate > bitrate) {
 						JANUS_LOG(LOG_VERB, "Got REMB bitrate %"SCNu64", need to cap it to %"SCNu64"\n", origbitrate, bitrate);
-						JANUS_LOG(LOG_VERB, "  >> %u * 2^%u = %"SCNu64"\n", brMantissa, brExp, origbitrate);
+						JANUS_LOG(LOG_HUGE, "  >> %u * 2^%u = %"SCNu64"\n", brMantissa, brExp, origbitrate);
 						/* bitrate --> brexp/brmantissa */
 						uint8_t b = 0;
 						uint8_t newbrexp = 0;
@@ -329,8 +329,8 @@ int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate) {
 							}
 						}
 						newbrmantissa = bitrate >> b;
-						JANUS_LOG(LOG_VERB, "new brexp:      %"SCNu8"\n", newbrexp);
-						JANUS_LOG(LOG_VERB, "new brmantissa: %"SCNu32"\n", newbrmantissa);
+						JANUS_LOG(LOG_HUGE, "new brexp:      %"SCNu8"\n", newbrexp);
+						JANUS_LOG(LOG_HUGE, "new brmantissa: %"SCNu32"\n", newbrmantissa);
 						/* FIXME From rtcp_sender.cc */
 						_ptrRTCPData[1] = (uint8_t)((newbrexp << 2) + ((newbrmantissa >> 16) & 0x03));
 						_ptrRTCPData[2] = (uint8_t)(newbrmantissa >> 8);
@@ -386,7 +386,7 @@ int janus_rtcp_remb(char *packet, int len, uint64_t bitrate) {
 	_ptrRTCPData[1] = (uint8_t)((newbrexp << 2) + ((newbrmantissa >> 16) & 0x03));
 	_ptrRTCPData[2] = (uint8_t)(newbrmantissa >> 8);
 	_ptrRTCPData[3] = (uint8_t)(newbrmantissa);
-	JANUS_LOG(LOG_VERB, "[REMB] bitrate=%"SCNu64" (%d bytes)\n", bitrate, 4*(ntohs(rtcp->length)+1));
+	JANUS_LOG(LOG_HUGE, "[REMB] bitrate=%"SCNu64" (%d bytes)\n", bitrate, 4*(ntohs(rtcp->length)+1));
 	return 0;
 }
 
@@ -407,7 +407,7 @@ int janus_rtcp_fir(char *packet, int len, int *seqnr) {
 	rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
 	rtcp_fir *fir = (rtcp_fir *)rtcpfb->fci;
 	fir->seqnr = htonl(*seqnr << 24);	/* FCI: Sequence number */
-	JANUS_LOG(LOG_VERB, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
+	JANUS_LOG(LOG_HUGE, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
 	return 0;
 }
 
@@ -429,7 +429,7 @@ int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr) {
 	rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
 	rtcp_fir *fir = (rtcp_fir *)rtcpfb->fci;
 	fir->seqnr = htonl(*seqnr << 24);	/* FCI: Sequence number */
-	JANUS_LOG(LOG_VERB, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
+	JANUS_LOG(LOG_HUGE, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
 	return 0;
 }
 

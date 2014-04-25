@@ -6,6 +6,8 @@ const char *janus_get_api_error(int error) {
 			return "Success";
 		case JANUS_ERROR_UNKNOWN:
 			return "Unknown error";
+		case JANUS_ERROR_USE_GET:
+			return "Use GET";
 		case JANUS_ERROR_USE_POST:
 			return "Use POST";
 		case JANUS_ERROR_MISSING_REQUEST:
@@ -36,6 +38,8 @@ const char *janus_get_api_error(int error) {
 			return "Unsupported JSEP type";
 		case JANUS_ERROR_JSEP_INVALID_SDP:
 			return "Invalid SDP";
+		case JANUS_ERROR_TRICKE_INVALID_STREAM:
+			return "Invalid stream";
 		default:
 			return "Unknown error";
 	}
