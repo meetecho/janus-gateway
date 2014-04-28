@@ -1754,7 +1754,7 @@ gint main(int argc, char *argv[])
 		fclose(key);
 		/* Start webserver */
 		sws = MHD_start_daemon(
-			MHD_USE_SSL | MHD_USE_DEBUG | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+			MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
 			swsport,
 			NULL,
 			NULL,
