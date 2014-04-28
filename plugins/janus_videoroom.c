@@ -208,16 +208,19 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	gint is_video;
 } janus_videoroom_rtp_relay_packet;
 
-/* SDP offer/answer template */
+/* SDP offer/answer templates */
 static const char *sdp_template =
 		"v=0\r\n"
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */
 		"s=%s\r\n"							/* Video room name */
 		"t=0 0\r\n"
+		"%s%s";								/* Audio and/or video m-lines */
+static const char *sdp_a_template =
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */
 		"c=IN IP4 1.1.1.1\r\n"
 		"a=%s\r\n"							/* Media direction */
-		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
+		"a=rtpmap:%d opus/48000/2\r\n";		/* Opus payload type */
+static const char *sdp_v_template =
 		"m=video 1 RTP/SAVPF %d\r\n"		/* VP8 payload type */
 		"c=IN IP4 1.1.1.1\r\n"
 		"b=AS:%d\r\n"						/* Bandwidth */
@@ -1104,50 +1107,76 @@ static void *janus_videoroom_handler(void *data) {
 				if(strstr(msg->sdp, "Mozilla")) {
 					participant->firefox = TRUE;
 				}
+				/* Which media are available? */
+				int audio = 0, video = 0;
+				if(strstr(msg->sdp, "m=audio")) {
+					audio++;
+				}
+				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", audio ? "is" : "is NOT"); 
+				if(strstr(msg->sdp, "m=video")) {
+					video++;
+				}
+				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT"); 
 				/* What is the Opus payload type? */
 				int opus_pt = 0;
-				char *fmtp = strstr(msg->sdp, "opus/48000");
-				if(fmtp != NULL) {
-					fmtp -= 5;
-					fmtp = strstr(fmtp, ":");
-					if(fmtp)
-						fmtp++;
-					opus_pt = atoi(fmtp);
+				if(audio) {
+					char *fmtp = strstr(msg->sdp, "opus/48000");
+					if(fmtp != NULL) {
+						fmtp -= 5;
+						fmtp = strstr(fmtp, ":");
+						if(fmtp)
+							fmtp++;
+						opus_pt = atoi(fmtp);
+					}
+					JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 				}
-				JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 				/* What is the VP8 payload type? */
 				int vp8_pt = 0;
-				fmtp = strstr(msg->sdp, "VP8/90000");
-				if(fmtp != NULL) {
-					fmtp -= 5;
-					fmtp = strstr(fmtp, ":");
-					if(fmtp)
-						fmtp++;
-					vp8_pt = atoi(fmtp);
+				if(video) {
+					char *fmtp = strstr(msg->sdp, "VP8/90000");
+					if(fmtp != NULL) {
+						fmtp -= 5;
+						fmtp = strstr(fmtp, ":");
+						if(fmtp)
+							fmtp++;
+						vp8_pt = atoi(fmtp);
+					}
+					JANUS_LOG(LOG_VERB, "VP8 payload type is %d\n", vp8_pt);
 				}
-				JANUS_LOG(LOG_VERB, "VP8 payload type is %d\n", vp8_pt);
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
 				int b = (int)(videoroom->bitrate/1000);
-				char sdp[1024];
+				char sdp[1024], audio_mline[256], video_mline[512];
+				if(audio) {
+					g_sprintf(audio_mline, sdp_a_template,
+						opus_pt,						/* Opus payload type */
+						"recvonly",						/* The publisher gets a recvonly back */
+						opus_pt); 						/* Opus payload type */
+				} else {
+					audio_mline[0] = '\0';
+				}
+				if(video) {
+					g_sprintf(video_mline, sdp_v_template,
+						vp8_pt,							/* VP8 payload type */
+						b,								/* Bandwidth */
+						"recvonly",						/* The publisher gets a recvonly back */
+						vp8_pt, 						/* VP8 payload type */
+						vp8_pt, 						/* VP8 payload type */
+						vp8_pt, 						/* VP8 payload type */
+						vp8_pt, 						/* VP8 payload type */
+						vp8_pt); 						/* VP8 payload type */
+				} else {
+					audio_mline[0] = '\0';
+				}
 				g_sprintf(sdp, sdp_template,
 					janus_get_monotonic_time(),		/* We need current time here */
 					janus_get_monotonic_time(),		/* We need current time here */
 					participant->room->room_name,	/* Video room name */
-					opus_pt,						/* Opus payload type */
-					"recvonly",						/* The publisher gets a recvonly back */
-					opus_pt, 						/* Opus payload type */
-					vp8_pt,							/* VP8 payload type */
-					b,								/* Bandwidth */
-					"recvonly",						/* The publisher gets a recvonly back */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt); 						/* VP8 payload type */
+					audio_mline,					/* Audio m-line, if any */
+					video_mline);					/* Video m-line, if any */
 
 				int modified = 0;
 				char *newsdp = g_strdup(sdp), *tempsdp = NULL;
-				if(b == 0) {
+				if(video && b == 0) {
 					/* Remove useless bandwidth attribute */
 					tempsdp = string_replace(newsdp, "b=AS:0\r\n", "", &modified);
 					if(modified) {
@@ -1155,43 +1184,6 @@ static void *janus_videoroom_handler(void *data) {
 						newsdp = tempsdp;
 					}
 				}
-
-
-				//~ /* Negotiate by sending the own publisher SDP back (just to negotiate the same media stuff) */
-				//~ int modified = 0;
-				//~ char *newsdp = g_strdup(msg->sdp);
-				//~ char *tempsdp = string_replace(newsdp, "sendrecv", "sendonly", &modified);	/* FIXME In case the browser doesn't set it correctly */
-				//~ if(modified) {
-					//~ g_free(newsdp);
-					//~ newsdp = tempsdp;
-				//~ }
-				//~ tempsdp = string_replace(newsdp, "sendonly", "recvonly", &modified);
-				//~ if(modified) {
-					//~ g_free(newsdp);
-					//~ newsdp = tempsdp;
-				//~ }
-				//~ if(strstr(newsdp, "Mozilla")) {
-					//~ participant->firefox = TRUE;
-				//~ }
-				//~ /* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
-				//~ if(videoroom->bitrate > 0) {
-					//~ int b = (int)(videoroom->bitrate/1000);
-					//~ char *video = strstr(newsdp, "m=video");
-					//~ if(video) {
-						//~ char *rn = strstr(video, "\r\n");
-						//~ char video_mline[200]; 
-						//~ memcpy(&video_mline, video, rn-video);
-						//~ video_mline[rn-video] = '\0';
-						//~ char bandwidth[250];
-						//~ sprintf(bandwidth, "%s\r\nb=AS:%d", video_mline, b);
-						//~ tempsdp = string_replace(newsdp, video_mline, bandwidth, &modified);
-						//~ if(modified) {
-							//~ g_free(newsdp);
-							//~ newsdp = tempsdp;
-						//~ }
-					//~ }
-				//~ }
-
 
 				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, newsdp);
 				/* How long will the gateway take to push the event? */
