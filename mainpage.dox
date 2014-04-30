@@ -321,14 +321,17 @@ janus.attach(
  *   - \c media: you can use this property to tell the library which media (audio/video)
  * you're interested in, and whether you're going to send and/or receive any of them;
  * this option is an object that can take any of the following properties:
- *   - \c audioSend: \c true/false (do or do not send audio);
- *   - \c audioRecv: \c true/false (do or do not receive audio);
- *   - \c audio: \c true/false (do or do not send \b and receive audio, takes precedence on the above);
- *   - \c videoSend: \c true/false (do or do not send video);
- *   - \c videoRecv: \c true/false (do or do not receive video);
- *   - \c video: \c true/false (do or do not send \b and receive video, takes precedence on the above);
- *   - \c video: \c "hires"/"lowres" (send a 1280x720 or a 320x240 video, takes precedence on the above);
+ *     - \c audioSend: \c true/false (do or do not send audio);
+ *     - \c audioRecv: \c true/false (do or do not receive audio);
+ *     - \c audio: \c true/false (do or do not send \b and receive audio, takes precedence on the above);
+ *     - \c videoSend: \c true/false (do or do not send video);
+ *     - \c videoRecv: \c true/false (do or do not receive video);
+ *     - \c video: \c true/false (do or do not send \b and receive video, takes precedence on the above);
+ *     - \c video: \c "hires"/"lowres" (send a 1280x720 or a 320x240 video, takes precedence on the above);
  * this property will affect the resulting getUserMedia that the library will issue;
+ *     - \c video: \c "screen" (use screensharing for video, disables audio, takes precedence on both audio and video);
+ *   - \c trickle: \c true/false, to tell the library whether you want
+ * Trickle ICE to be used (true, the default) or not (false);
  *   - a set of callbacks to be notified about the result, namely:
  *     - \c success: the session description was created (attached as a parameter) and is ready to be sent to the plugin; 
  *     - \c error: the session description was NOT successfully created;
