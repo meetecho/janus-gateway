@@ -131,7 +131,6 @@ janus_config *janus_config_parse(const char *config_file) {
 			name = (char *)col_get_item_property(item, &len);
 			if(col_get_item_type(item) == COL_TYPE_COLLECTION) {
 				/* Configuration name */
-				//~ JANUS_LOG(LOG_VERB, "[%s]\n", name ? name : "??");
 				if(name) {
 					jc->name = g_strdup(name);
 					if(jc->name == NULL) {
@@ -160,7 +159,6 @@ janus_config *janus_config_parse(const char *config_file) {
 				ncg->name = NULL;
 				ncg->items = NULL;
 				ncg->next = NULL;
-				//~ JANUS_LOG(LOG_VERB, "    [%s]\n", name ? name : "??");
 				if(name) {
 					ncg->name = g_strdup(name);
 					if(ncg->name == NULL) {
@@ -207,7 +205,6 @@ janus_config *janus_config_parse(const char *config_file) {
 				nci->name = NULL;
 				nci->value = NULL;
 				nci->next = NULL;
-				//~ JANUS_LOG(LOG_VERB, "        %s: %s\n", name ? name : "??", value ? value : "??");
 				if(name) {
 					nci->name = g_strdup(name);
 					if(nci->name == NULL) {

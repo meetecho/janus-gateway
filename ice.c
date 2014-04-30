@@ -107,7 +107,9 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_por
 	rtp_range_min = rtp_min_port;
 	rtp_range_max = rtp_max_port;
 #ifndef HAVE_PORTRANGE
-	JANUS_LOG(LOG_ERR, "nice_agent_set_port_range unavailable, port range disabled\n");
+	JANUS_LOG(LOG_WARN, "nice_agent_set_port_range unavailable, port range disabled\n");
+#else
+	JANUS_LOG(LOG_INFO, "ICE port range: %"SCNu16"-%"SCNu16"\n", rtp_range_min, rtp_range_max);
 #endif
 	JANUS_LOG(LOG_INFO, "STUN server to use: %s:%u\n", stun_server, stun_port);
 	/* Resolve address to get an IP */
@@ -299,8 +301,8 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	janus_mutex_lock(&session->mutex);
-	handle->stop = 1;
-	handle->alert = 1;
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	if(handle->iceloop)
 		g_main_loop_quit(handle->iceloop);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
@@ -312,6 +314,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
+	JANUS_LOG(LOG_INFO, "Handle detached (%d), scheduling destruction\n", error);
 	return error;
 }
 
@@ -349,46 +352,10 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	}
 	handle->icethread = NULL;
 	if(handle->streams != NULL) {
-		if(handle->audio_stream != NULL) {
-			g_hash_table_remove(handle->streams, handle->audio_stream);
-			handle->audio_stream->handle = NULL;
-			if(handle->audio_stream->components != NULL) {
-				janus_ice_component_free(handle->audio_stream->components, handle->audio_stream->rtp_component);
-				handle->audio_stream->rtp_component = NULL;
-				janus_ice_component_free(handle->audio_stream->components, handle->audio_stream->rtcp_component);
-				handle->audio_stream->rtcp_component = NULL;
-			}
-			if(handle->audio_stream->ruser != NULL) {
-				g_free(handle->audio_stream->ruser);
-				handle->audio_stream->ruser = NULL;
-			}
-			if(handle->audio_stream->rpass != NULL) {
-				g_free(handle->audio_stream->rpass);
-				handle->audio_stream->rpass = NULL;
-			}
-			g_free(handle->audio_stream);
-			handle->audio_stream = NULL;
-		}
-		if(handle->video_stream != NULL) {
-			g_hash_table_remove(handle->streams, handle->video_stream);
-			handle->video_stream->handle = NULL;
-			if(handle->video_stream->components != NULL) {
-				janus_ice_component_free(handle->video_stream->components, handle->video_stream->rtp_component);
-				handle->video_stream->rtp_component = NULL;
-				janus_ice_component_free(handle->video_stream->components, handle->video_stream->rtcp_component);
-				handle->video_stream->rtcp_component = NULL;
-			}
-			if(handle->video_stream->ruser != NULL) {
-				g_free(handle->video_stream->ruser);
-				handle->video_stream->ruser = NULL;
-			}
-			if(handle->video_stream->rpass != NULL) {
-				g_free(handle->video_stream->rpass);
-				handle->video_stream->rpass = NULL;
-			}
-			g_free(handle->video_stream);
-			handle->video_stream = NULL;
-		}
+		janus_ice_stream_free(handle->streams, handle->audio_stream);
+		handle->audio_stream = NULL;
+		janus_ice_stream_free(handle->streams, handle->video_stream);
+		handle->video_stream = NULL;
 		g_hash_table_destroy(handle->streams);
 		handle->streams = NULL;
 	}
@@ -405,9 +372,34 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		g_free(handle->remote_fingerprint);
 		handle->remote_fingerprint = NULL;
 	}
-	handle->ready = 0;
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
+}
+
+void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream) {
+	if(stream == NULL)
+		return;
+	if(container != NULL)
+		g_hash_table_remove(container, stream);
+	stream->handle = NULL;
+	if(stream->components != NULL) {
+		janus_ice_component_free(stream->components, stream->rtp_component);
+		stream->rtp_component = NULL;
+		janus_ice_component_free(stream->components, stream->rtcp_component);
+		stream->rtcp_component = NULL;
+		g_hash_table_destroy(stream->components);
+	}
+	if(stream->ruser != NULL) {
+		g_free(stream->ruser);
+		stream->ruser = NULL;
+	}
+	if(stream->rpass != NULL) {
+		g_free(stream->rpass);
+		stream->rpass = NULL;
+	}
+	g_free(stream);
+	stream = NULL;
 }
 
 void janus_ice_component_free(GHashTable *container, janus_ice_component *component) {
@@ -497,7 +489,6 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		/* Create retransmission timer */
 		//~ SSL_set_mode(component->ssl, SSL_MODE_AUTO_RETRY);
 		//~ SSL_set_read_ahead(component->ssl, 1);
-		//~ guint id = g_timeout_add_seconds(1, janus_dtls_retry, component);
 		component->source = g_timeout_source_new_seconds(1);
 		g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
 		guint id = g_source_attach(component->source, handle->icectx);
@@ -506,10 +497,12 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		janus_dtls_srtp_handshake(component->dtls);
 	} else if(state == NICE_COMPONENT_STATE_FAILED) {
 		/* Failed doesn't mean necessarily we need to give up: we may be trickling */
-		if(handle && (!handle->trickle || handle->all_trickles) && !handle->alert) {
+		if(handle &&
+				(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES))
+					&& !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 			/* FIXME Should we really give up for what may be a failure in only one of the media? */
 			JANUS_LOG(LOG_ERR, "ICE failed for handle %"SCNu64"...\n", handle->handle_id);
-			handle->alert = 1;
+			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			if(plugin != NULL) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
@@ -525,30 +518,35 @@ void janus_ice_cb_new_selected_pair(NiceAgent *agent, guint stream_id, guint com
 }
 
 void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice) {
-	//~ JANUS_LOG(LOG_VERB, "Got data (%d bytes) for component %d in stream %d\n", len, component_id, stream_id);
 	janus_ice_component *component = (janus_ice_component *)ice;
 	if(!component) {
-		JANUS_LOG(LOG_ERR, "janus_ice_cb_nice_recv:     No component %d in stream %d??\n", component_id, stream_id);
+		JANUS_LOG(LOG_ERR, "No component %d in stream %d??\n", component_id, stream_id);
+		return;
+	}
+	if(!component->dtls) {	/* Still waiting for the DTLS stack */
+		JANUS_LOG(LOG_ERR, "Still waiting for the DTLS stack for component %d in stream %d...\n", component_id, stream_id);
 		return;
 	}
 	janus_ice_stream *stream = component->stream;
 	if(!stream) {
-		JANUS_LOG(LOG_ERR, "janus_ice_cb_nice_recv:     No stream %d??\n", stream_id);
+		JANUS_LOG(LOG_ERR, "No stream %d??\n", stream_id);
 		return;
 	}
 	janus_ice_handle *handle = stream->handle;
-	if(!handle)
+	if(!handle) {
+		JANUS_LOG(LOG_ERR, "No handle for stream %d??\n", stream_id);
 		return;
+	}
 	/* What is this? */
 	if (janus_is_dtls(buf)) {
-		//~ JANUS_LOG(LOG_VERB, "  Looks like DTLS!\n");
+		JANUS_LOG(LOG_HUGE, "Looks like DTLS!\n");
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		return;
 	}
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
 	if(len < 12)
 		return;	/* Definitely nothing useful */
-	if(component_id == 1 && (!handle->rtcpmux || janus_is_rtp(buf))) {
+	if(component_id == 1 && (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) || janus_is_rtp(buf))) {
 		/* FIXME If rtcp-mux is not used, a first component is always RTP; otherwise, we need to check */
 		if(!component->dtls || !component->dtls->srtp_valid) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Missing valid SRTP session, skipping...\n", handle->handle_id);
@@ -558,22 +556,43 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			if(res != err_status_ok) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTP unprotect error: %s (len=%d-->%d)\n", handle->handle_id, janus_get_srtp_error(res), len, buflen);
 			} else {
-				if(stream->ssrc_peer == 0) {
+				/* Is this audio or video? */
+				int video = 0;
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+					/* Easy enough */
+					video = (stream->stream_id == handle->video_id ? 1 : 0);
+				} else {
+					/* Bundled streams, check SSRC */
 					rtp_header *header = (rtp_header *)buf;
-					stream->ssrc_peer = ntohl(header->ssrc);
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Peer %s SSRC: %u\n", handle->handle_id, stream->stream_id == handle->audio_id ? "audio" : "video", stream->ssrc_peer);
+					video = (stream->video_ssrc_peer == ntohl(header->ssrc) ? 1 : 0);
+					//~ JANUS_LOG(LOG_VERB, "[RTP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
+						//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, ntohl(header->ssrc));
+				}
+				if(video) {
+					if(stream->video_ssrc_peer == 0) {
+						rtp_header *header = (rtp_header *)buf;
+						stream->video_ssrc_peer = ntohl(header->ssrc);
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Peer video SSRC: %u\n", handle->handle_id, stream->video_ssrc_peer);
+					}
+				} else {
+					if(stream->audio_ssrc_peer == 0) {
+						rtp_header *header = (rtp_header *)buf;
+						stream->audio_ssrc_peer = ntohl(header->ssrc);
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Peer audio SSRC: %u\n", handle->handle_id, stream->audio_ssrc_peer);
+					}
 				}
 				/* TODO Should we store the packet in a circular buffer, in case we get a NACK we can handle ourselves without relaying? */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp)
-					plugin->incoming_rtp(handle->app_handle, stream->stream_id == handle->video_id ? 1 : 0, buf, buflen);
+					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
 			}
 		}
 		return;
 	}
-	if(component_id == 2 || (component_id == 1 && handle->rtcpmux && janus_is_rtcp(buf))) {
+	if(component_id == 2 || (component_id == 1 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && janus_is_rtcp(buf))) {
 		/* FIXME A second component is always RTCP; in case of rtcp-mux, we need to check */
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Got an RTCP packet (%s stream)!\n", handle->handle_id, stream->stream_id == handle->audio_id ? "audio" : "video");
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Got an RTCP packet (%s stream)!\n", handle->handle_id,
+			janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? "bundled" : (stream->stream_id == handle->audio_id ? "audio" : "video"));
 		if(!component->dtls || !component->dtls->srtp_valid) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Missing valid SRTP session, skipping...\n", handle->handle_id);
 		} else {
@@ -582,23 +601,35 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			if(res != err_status_ok) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTCP unprotect error: %s (len=%d-->%d)\n", handle->handle_id, janus_get_srtp_error(res), len, buflen);
 			} else {
+				/* Is this audio or video? */
+				int video = 0;
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+					/* Easy enough */
+					video = (stream->stream_id == handle->video_id ? 1 : 0);
+				} else {
+					/* TODO Bundled streams, check SSRC */
+					guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, len);
+					video = (stream->video_ssrc_peer == rtcp_ssrc ? 1 : 0);
+					//~ JANUS_LOG(LOG_VERB, "[RTCP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
+						//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, rtcp_ssrc);
+				}
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
 				if(nacks != NULL) {
 					/* TODO Actually handle NACK */
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS we should probably handle...\n", handle->handle_id);
-					JANUS_LOG(LOG_VERB, "           >>");
+					JANUS_LOG(LOG_HUGE, "           >>");
 					GSList *list = nacks;
 					while(list->next) {
-						JANUS_LOG(LOG_VERB, " %u", GPOINTER_TO_UINT(list->data));
+						JANUS_LOG(LOG_HUGE, " %u", GPOINTER_TO_UINT(list->data));
 						list = list->next;
 					}
-					JANUS_LOG(LOG_VERB, "\n");
+					JANUS_LOG(LOG_HUGE, "\n");
 					g_slist_free(nacks);
 					nacks = NULL;
 				}
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtcp)
-					plugin->incoming_rtcp(handle->app_handle, stream->stream_id == handle->video_id ? 1 : 0, buf, buflen);
+					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen);
 			}
 		}
 	}
@@ -616,7 +647,7 @@ void *janus_ice_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
 	/* This handle has been destroyed, wait a bit and then free all the resources */
 	g_usleep (1*G_USEC_PER_SEC);
-	if(handle->stop) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		janus_ice_free(handle);
 	} else {
 		janus_ice_webrtc_free(handle);
@@ -764,7 +795,8 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		return;
 	}
 	if(!component->candidates || !component->candidates->data) {
-		if(!handle->trickle || handle->all_trickles) { 
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE)
+				|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) { 
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] No remote candidates for component %d in stream %d: was the remote SDP parsed?\n", handle->handle_id, component_id, stream_id);
 		}
 		return;
@@ -809,18 +841,31 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	if(!handle)
 		return -1;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting ICE locally: got %s (%d audios, %d videos)\n", handle->handle_id, offer ? "OFFER" : "ANSWER", audio, video);
-	handle->start = 0;
-	handle->ready = 0;
-	handle->stop = 0;
-	handle->alert = 0;
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 
 	/* Note: in case this is not an OFFER, we don't know whether BUNDLE is supported on the other side or not yet */
-	handle->bundle = offer ? bundle : 0;
+	if(offer && bundle) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE);
+	} else {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE);
+	}
 	/* Note: in case this is not an OFFER, we don't know whether rtcp-mux is supported on the other side or not yet */
-	handle->rtcpmux = offer ? rtcpmux : 0;
+	if(offer && rtcpmux) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX);
+	} else {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX);
+	}
 	/* Note: in case this is not an OFFER, we don't know whether ICE trickling is supported on the other side or not yet */
-	handle->trickle = offer ? trickle : 0;
-	handle->all_trickles = 0;
+	if(offer && trickle) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
+	} else {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
+	}
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED);
 
 	handle->icectx = g_main_context_new();
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
@@ -891,7 +936,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	if(audio) {
 		/* Add an audio stream */
 		handle->streams_num++;
-		handle->audio_id = nice_agent_add_stream (handle->agent, handle->rtcpmux ? 1 : 2);
+		handle->audio_id = nice_agent_add_stream (handle->agent, janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? 1 : 2);
 		janus_ice_stream *audio_stream = (janus_ice_stream *)calloc(1, sizeof(janus_ice_stream));
 		if(audio_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -903,8 +948,14 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->payload_type = -1;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		audio_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		audio_stream->ssrc = ABS(g_random_int());	/* FIXME Should we look for conflicts? */
-		audio_stream->ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
+		audio_stream->audio_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+		audio_stream->audio_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
+		audio_stream->video_ssrc = 0;
+		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+			/* If we're bundling, this stream is going to be used for video as well */
+			audio_stream->video_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+		}
+		audio_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->audio_id), audio_stream);
@@ -924,7 +975,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		nice_agent_set_port_range(handle->agent, handle->audio_id, 1, rtp_range_min, rtp_range_max);
 #endif
 		janus_ice_component *audio_rtcp = NULL;
-		if(!handle->rtcpmux) {
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
 			audio_rtcp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
 			if(audio_rtcp == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -942,13 +993,13 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		nice_agent_gather_candidates (handle->agent, handle->audio_id);
 		nice_agent_attach_recv (handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtp);
-		if(!handle->rtcpmux && audio_rtcp != NULL)
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && audio_rtcp != NULL)
 			nice_agent_attach_recv (handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtcp);
 	}
-	if(video) {
+	if(video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 		/* Add a video stream */
 		handle->streams_num++;
-		handle->video_id = nice_agent_add_stream (handle->agent, handle->rtcpmux ? 1 : 2);
+		handle->video_id = nice_agent_add_stream (handle->agent, janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? 1 : 2);
 		janus_ice_stream *video_stream = (janus_ice_stream *)calloc(1, sizeof(janus_ice_stream));
 		if(video_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -960,8 +1011,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->payload_type = -1;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		video_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		video_stream->ssrc = ABS(g_random_int());	/* FIXME Should we look for conflicts? */
-		video_stream->ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
+		video_stream->video_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+		video_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
+		video_stream->audio_ssrc = 0;
+		video_stream->audio_ssrc_peer = 0;
 		video_stream->components = g_hash_table_new(NULL, NULL);
 		janus_mutex_init(&video_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->video_id), video_stream);
@@ -981,7 +1034,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		nice_agent_set_port_range(handle->agent, handle->video_id, 1, rtp_range_min, rtp_range_max);
 #endif
 		janus_ice_component *video_rtcp = NULL;
-		if(!handle->rtcpmux) {
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
 			video_rtcp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
 			if(video_rtcp == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -999,7 +1052,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		nice_agent_gather_candidates (handle->agent, handle->video_id);
 		nice_agent_attach_recv (handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtp);
-		if(!handle->rtcpmux && video_rtcp != NULL)
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && video_rtcp != NULL)
 			nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtcp);
 	}
 	return 0;
@@ -1009,14 +1062,14 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	/* TODO Should we fix something in RTP header stuff too? */
 	if(!handle)
 		return;
-	janus_ice_stream *stream = video ? handle->video_stream : handle->audio_stream;
+	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_stream : (video ? handle->video_stream : handle->audio_stream);
 	if(!stream)
 		return;
 	janus_ice_component *component = stream->rtp_component;
 	if(!component)
 		return;
 	if(!stream->cdone) {
-		if(!handle->alert && !stream->noerrorlog) {
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s candidates not gathered yet for stream??\n", handle->handle_id, video ? "video" : "audio");
 			stream->noerrorlog = 1;	/* Don't flood with thre same error all over again */
 		}
@@ -1024,7 +1077,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	}
 	stream->noerrorlog = 0;
 	if(!component->dtls || !component->dtls->srtp_valid) {
-		if(!handle->alert && !component->noerrorlog) {
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s stream component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio");
 			component->noerrorlog = 1;	/* Don't flood with thre same error all over again */
 		}
@@ -1035,7 +1088,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	char sbuf[BUFSIZE];
 	memcpy(&sbuf, buf, len);
 	rtp_header *header = (rtp_header *)&sbuf;
-	header->ssrc = htonl(stream->ssrc);
+	header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
 	int protected = len;
 	int res = srtp_protect(component->dtls->srtp_out, &sbuf, &protected);
 	//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), len, protected);
@@ -1055,14 +1108,14 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
 	if(!handle)
 		return;
-	janus_ice_stream *stream = video ? handle->video_stream : handle->audio_stream;
+	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_stream : (video ? handle->video_stream : handle->audio_stream);
 	if(!stream)
 		return;
-	janus_ice_component *component = handle->rtcpmux ? stream->rtp_component : stream->rtcp_component;
+	janus_ice_component *component = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? stream->rtp_component : stream->rtcp_component;
 	if(!component)
 		return;
 	if(!stream->cdone) {
-		if(!handle->alert && !stream->noerrorlog) {
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s candidates not gathered yet for stream??\n", handle->handle_id, video ? "video" : "audio");
 			stream->noerrorlog = 1;	/* Don't flood with thre same error all over again */
 		}
@@ -1070,7 +1123,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	}
 	stream->noerrorlog = 0;
 	if(!component->dtls || !component->dtls->srtp_valid) {
-		if(!handle->alert && !component->noerrorlog) {
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s stream component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio");
 			component->noerrorlog = 1;	/* Don't flood with thre same error all over again */
 		}
@@ -1081,8 +1134,12 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	char sbuf[BUFSIZE];
 	memcpy(&sbuf, buf, len);
 	/* Fix all SSRCs! */
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id, stream->ssrc, stream->ssrc_peer);
-	janus_rtcp_fix_ssrc((char *)&sbuf, len, 1, stream->ssrc, stream->ssrc_peer);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
+		video ? stream->video_ssrc : stream->audio_ssrc,
+		video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
+	janus_rtcp_fix_ssrc((char *)&sbuf, len, 1,
+		video ? stream->video_ssrc : stream->audio_ssrc,
+		video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
 	int protected = len;
 	int res = srtp_protect_rtcp(component->dtls->srtp_out, &sbuf, &protected);
 	//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTCP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), len, protected);
@@ -1134,12 +1191,12 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 			return;
 		}
 	}
-	if(handle->ready) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 		/* Already notified */
 		janus_mutex_unlock(&handle->mutex);
 		return;
 	}
-	handle->ready = 1;
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] The DTLS handshake has been completed\n", handle->handle_id);
 	/* Notify the plugin that the WebRTC PeerConnection is ready to be used */

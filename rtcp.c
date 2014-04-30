@@ -20,6 +20,53 @@ int janus_rtcp_parse(char *packet, int len) {
 	return janus_rtcp_fix_ssrc(packet, len, 0, 0, 0);
 }
 
+guint32 janus_rtcp_get_sender_ssrc(char *packet, int len) {
+	if(packet == NULL || len == 0)
+		return 0;
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return 0;
+	int pno = 0, total = len;
+	while(rtcp) {
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_SR: {
+				/* SR, sender report */
+				rtcp_sr *sr = (rtcp_sr*)rtcp;
+				return ntohl(sr->ssrc);
+			}
+			case RTCP_RR: {
+				/* RR, receiver report */
+				rtcp_rr *rr = (rtcp_rr*)rtcp;
+				return ntohl(rr->ssrc);
+			}
+			case RTCP_RTPFB: {
+				/* RTPFB, Transport layer FB message (rfc4585) */
+				rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
+				return ntohl(rtcpfb->ssrc);
+			}
+			case RTCP_PSFB: {
+				/* PSFB, Payload-specific FB message (rfc4585) */
+				rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
+				return ntohl(rtcpfb->ssrc);
+			}
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0) {
+			break;
+		}
+		total -= length*4+4;
+		if(total <= 0) {
+			break;
+		}
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return 0;
+}
+
 int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr) {
 	if(packet == NULL || len == 0)
 		return -1;

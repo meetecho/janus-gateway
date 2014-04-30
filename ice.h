@@ -20,6 +20,7 @@
 #include <glib.h>
 #include <agent.h>
 
+#include "utils.h"
 #include "plugins/plugin.h"
 
 
@@ -61,6 +62,19 @@ typedef struct janus_ice_stream janus_ice_stream;
 /*! \brief Janus ICE component */
 typedef struct janus_ice_component janus_ice_component;
 
+
+#define JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER	(1 << 0)
+#define JANUS_ICE_HANDLE_WEBRTC_START				(1 << 1)
+#define JANUS_ICE_HANDLE_WEBRTC_READY				(1 << 2)
+#define JANUS_ICE_HANDLE_WEBRTC_STOP				(1 << 3)
+#define JANUS_ICE_HANDLE_WEBRTC_ALERT				(1 << 4)
+#define JANUS_ICE_HANDLE_WEBRTC_BUNDLE				(1 << 5)
+#define JANUS_ICE_HANDLE_WEBRTC_RTCPMUX				(1 << 6)
+#define JANUS_ICE_HANDLE_WEBRTC_TRICKLE				(1 << 7)
+#define JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES		(1 << 8)
+#define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
+
+
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {
 	/*! \brief Opaque pointer to the gateway/peer session */
@@ -71,14 +85,8 @@ struct janus_ice_handle {
 	void *app;
 	/*! \brief Opaque gateway/plugin session pointer */
 	janus_plugin_session *app_handle;
-	/*! \brief Flag to check whether this ICE session is ready to be started (got both OFFER and ANSWER) */
-	gint start;
-	/*! \brief Flag to check whether this ICE session is ready to be used (ICE and DTLS ok for all components) */
-	gint ready:1;
-	/*! \brief Flag to check whether this ICE session needs to stop right now */
-	gint stop:1;
-	/*! \brief Flag to check whether we already reported an alert to the plugin or not */
-	gint alert:1;
+	/*! \brief Mask of WebRTC-related flags for this handle */
+	janus_flags webrtc_flags;
 	/*! \brief Number of gathered candidates */
 	gint cdone;
 	/*! \brief GLib context for libnice */
@@ -93,14 +101,6 @@ struct janus_ice_handle {
 	gint audio_id;
 	/*! \brief libnice ICE audio ID */
 	gint video_id;
-	/*! \brief Whether BUNDLE is supported or not */
-	gint bundle:1;
-	/*! \brief Whether rtcp-mux is supported or not */
-	gint rtcpmux:1;
-	/*! \brief Whether ICE trickling is supported or not */
-	gint trickle:1;
-	/*! \brief Whether we got all the trickled candidates or not */
-	gint all_trickles:1;
 	/*! \brief Number of streams */
 	gint streams_num;
 	/*! \brief GLib hash table of streams (IDs are the keys) */
@@ -125,10 +125,14 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
-	/*! \brief SSRC of the gateway */
-	guint32 ssrc;
-	/*! \brief SSRC of the peer */
-	guint32 ssrc_peer;
+	/*! \brief Audio SSRC of the gateway for this stream (may be bundled) */
+	guint32 audio_ssrc;
+	/*! \brief Video SSRC of the gateway for this stream (may be bundled) */
+	guint32 video_ssrc;
+	/*! \brief Audio SSRC of the peer for this stream (may be bundled) */
+	guint32 audio_ssrc_peer;
+	/*! \brief Video SSRC of the peer for this stream (may be bundled) */
+	guint32 video_ssrc_peer;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
 	/*! \brief DTLS role of the gateway for this stream */
@@ -199,6 +203,10 @@ void janus_ice_free(janus_ice_handle *handle);
 /*! \brief Method to only free the WebRTC related resources allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */
 void janus_ice_webrtc_free(janus_ice_handle *handle);
+/*! \brief Method to only free resources related to a specific ICE stream allocated by a Janus ICE handle
+ * @param[in] container The map containing the list of all streams for the handle
+ * @param[in] stream The Janus ICE stream instance to free */
+void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream);
 /*! \brief Method to only free resources related to a specific ICE component allocated by a Janus ICE handle
  * @param[in] container The map containing the list of all components for the stream
  * @param[in] component The Janus ICE component instance to free */

@@ -457,7 +457,7 @@ static void *janus_echotest_handler(void *data) {
 			/* How long will the gateway take to push the event? */
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, type, msg->sdp);
-			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" ms)\n",
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",
 				res, janus_get_monotonic_time()-start);
 		}
 		g_free(event_text);

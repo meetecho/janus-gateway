@@ -70,7 +70,6 @@ $(document).ready(function() {
 									console.log("Trying a createOffer too (audio/video sendrecv)");
 									echotest.createOffer(
 										{
-											trickle: true,
 											// No media provided: by default, it's sendrecv for audio and video
 											success: function(jsep) {
 												console.log("Got SDP!");

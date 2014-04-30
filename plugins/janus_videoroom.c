@@ -919,7 +919,7 @@ static void *janus_videoroom_handler(void *data) {
 						/* How long will the gateway take to push the event? */
 						gint64 start = janus_get_monotonic_time();
 						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, "offer", publisher->sdp);
-						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
+						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 						JANUS_LOG(LOG_VERB, "  >> %d\n", res);
 						g_free(event_text);
 						json_decref(root);
@@ -1189,7 +1189,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* How long will the gateway take to push the event? */
 				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, newsdp);
-				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 				tempsdp = string_replace(newsdp, "recvonly", "sendonly", &modified);
 				if(modified) {
 					g_free(newsdp);
@@ -1238,7 +1238,7 @@ static void *janus_videoroom_handler(void *data) {
 						/* How long will the gateway take to push the event? */
 						gint64 start = janus_get_monotonic_time();
 						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, feed->sdp);
-						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" ms)\n", res, janus_get_monotonic_time()-start);
+						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 						if(res != JANUS_OK) {
 							/* TODO Failed to negotiate? We should remove this listener */
 						} else {

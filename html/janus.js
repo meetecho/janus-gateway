@@ -884,7 +884,7 @@ function Janus(gatewayCallbacks) {
 		Janus.log("isTrickleEnabled:");
 		Janus.log(trickle);
 		if(trickle === undefined || trickle === null)
-			return false;	// Default, until we're sure it works fine
+			return true;	// Default is true
 		return (trickle === true);
 	}
 };

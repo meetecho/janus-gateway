@@ -167,7 +167,6 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 		JANUS_LOG(LOG_FATAL, "Ops, error setting up libsrtp?\n");
 		return 5;
 	}
-	//~ srtp_install_event_handler(srtp_event_cb);
 	return 0;
 }
 
@@ -262,7 +261,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		JANUS_LOG(LOG_ERR, "No handle/agent, no DTLS...\n");
 		return;
 	}
-	if(handle->alert) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		JANUS_LOG(LOG_ERR, "Alert already received, clearing up...\n");
 		return;
 	}
@@ -283,10 +282,9 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	int read = SSL_read(dtls->ssl, buf, len);
 	JANUS_LOG(LOG_HUGE, "    ...and read %d of them from SSL...\n", read);
 	janus_dtls_fd_bridge(dtls);
-	if(handle->stop || janus_is_stopping()) {
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) || janus_is_stopping()) {
 		/* DTLS alert received, we should end it here */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forced to stop it here...\n", handle->handle_id);
-		//~ g_main_loop_quit(iceloop);
 		return;
 	}
 	if(SSL_is_init_finished(dtls->ssl)) {
@@ -395,35 +393,9 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				}
 				dtls->srtp_valid = 1;
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
-				//~ if(component->component_id == 2) {
-					//~ /* FIXME Ugly hack to send a RTCP SDES right away, and make browsers happy */
-					//~ JANUS_LOG(LOG_VERB, " Going to send a RTCP REPORT (SDES)...\n");
-					//~ char rtcp[1024];
-					//~ memset(&rtcp, 0, 1024);
-					//~ char *rtcp_packet = (char *)&rtcp;
-					//~ rtcp_sdes *sdes = (rtcp_sdes *)rtcp_packet;
-					//~ sdes->header.version = 2;
-					//~ sdes->header.padding = 0;
-					//~ sdes->header.rc = 1;
-					//~ sdes->header.type = RTCP_SDES;	/* SDES */
-					//~ sdes->header.length = htons(2);	/* 2 words */
-					//~ sdes->chunk.csrc = htonl(stream->ssrc);
-					//~ sdes->item.type = 1;
-					//~ sdes->item.len = 0;
-					//~ /* SRTCP Protect */
-					//~ int protected = 12;	/* RTCP header + chunk + item */
-					//~ res = srtp_protect_rtcp(dtls->srtp_out, &rtcp, &protected);
-					//~ // JANUS_LOG(LOG_VERB, " ... SRTCP protect %s (len=%d-->%d)...\n", janus_get_srtp_error(res), 12, protected);
-					//~ /* Shoot! */
-					//~ // JANUS_LOG(LOG_VERB, " ... Sending SRTCP packet (type=%d, len=%d, ssrc=%d)...\n",
-						//~ // header->packet_type, ntohs(header->length), ntohl(chunk->csrc));
-					//~ // int sent = 
-						//~ nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, (const char *)&rtcp);
-					//~ // JANUS_LOG(LOG_VERB, " ... Sent %d bytes!\n", sent);
-				//~ }
 			}
 done:
-			if(!handle->alert && dtls->srtp_valid) {
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && dtls->srtp_valid) {
 				/* Handshake successfully completed */
 				janus_ice_dtls_handshake_done(handle, component);
 			} else {
@@ -495,8 +467,8 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert received, closing...\n", handle->handle_id);
-	if(!handle->alert) {
-		handle->alert = 1;
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		if(handle->iceloop)
 			g_main_loop_quit(handle->iceloop);
 		janus_plugin *plugin = (janus_plugin *)handle->app;
@@ -574,7 +546,7 @@ gboolean janus_dtls_retry(gpointer stack) {
 	janus_ice_handle *handle = stream->handle;
 	if(!handle)
 		return FALSE;
-	if(handle->stop)
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		return FALSE;
 	//~ struct timeval timeout;
 	//~ DTLSv1_get_timeout(dtls->ssl, &timeout);

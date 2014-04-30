@@ -83,6 +83,14 @@ int janus_sdp_parse(janus_ice_handle *session, janus_sdp *sdp);
  * @returns 0 in case of success, a non-zero integer in case of an error */
 int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, int trickle);
 
+/*! \brief Method to parse a SSRC attribute
+ * \details This method will parse a SSRC attribute, and set it for the peer
+ * @param[in] stream The ICE stream this candidate refers to
+ * @param[in] ssrc_attr The SSRC attribute value to parse
+ * @param[in] video Whether this is a video SSRC or not
+ * @returns 0 in case of success, a non-zero integer in case of an error */
+int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int video);
+
 /*! \brief Method to strip/anonymize a session description
  * @param[in] sdp The session description to strip/anonymize
  * @returns A string containing the stripped/anonymized session description in case of success, NULL if the SDP is invalid */
