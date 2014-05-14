@@ -394,20 +394,20 @@ static void *janus_echotest_handler(void *data) {
 		}
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
-			JANUS_LOG(LOG_ERR, "JSON error: invalid element (audio)\n");
-			sprintf(error_cause, "JSON error: invalid value (audio)");
+			JANUS_LOG(LOG_ERR, "Invalid element (audio)\n");
+			sprintf(error_cause, "Invalid value (audio)");
 			goto error;
 		}
 		json_t *video = json_object_get(root, "video");
 		if(video && !json_is_boolean(video)) {
-			JANUS_LOG(LOG_ERR, "JSON error: invalid element (video)\n");
-			sprintf(error_cause, "JSON error: invalid value (video)");
+			JANUS_LOG(LOG_ERR, "Invalid element (video)\n");
+			sprintf(error_cause, "Invalid value (video)");
 			goto error;
 		}
 		json_t *bitrate = json_object_get(root, "bitrate");
 		if(bitrate && !json_is_integer(bitrate)) {
-			JANUS_LOG(LOG_ERR, "JSON error: invalid element (bitrate)\n");
-			sprintf(error_cause, "JSON error: invalid value (bitrate)");
+			JANUS_LOG(LOG_ERR, "Invalid element (bitrate)\n");
+			sprintf(error_cause, "Invalid value (bitrate)");
 			goto error;
 		}
 		if(audio) {

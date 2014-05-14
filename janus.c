@@ -377,7 +377,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			goto done;
 		}
 		if(!strcasecmp(method, "POST") && !payload) {
-			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_REQUEST, "JSON error: missing request");
+			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_REQUEST, "Missing request");
 			goto done;
 		}
 		json_error_t error;
@@ -393,13 +393,13 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		json_t *transaction = json_object_get(root, "transaction");
 		if(!transaction || !json_is_string(transaction)) {
-			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSON error: missing mandatory element (transaction)");
+			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (transaction)");
 			goto done;
 		}
 		const gchar *transaction_text = json_string_value(transaction);
 		json_t *message = json_object_get(root, "janus");
 		if(!message || !json_is_string(message)) {
-			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSON error: missing mandatory element (janus)");
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (janus)");
 			json_decref(root);
 			goto done;
 		}
@@ -553,13 +553,13 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	json_t *transaction = json_object_get(root, "transaction");
 	if(!transaction || !json_is_string(transaction)) {
-		ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSON error: missing mandatory element (transaction)");
+		ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (transaction)");
 		goto jsondone;
 	}
 	const gchar *transaction_text = json_string_value(transaction);
 	json_t *message = json_object_get(root, "janus");
 	if(!message || !json_is_string(message)) {
-		ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSON error: missing mandatory element (janus)");
+		ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (janus)");
 		goto jsondone;
 	}
 	const gchar *message_text = json_string_value(message);
@@ -590,7 +590,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		json_t *plugin = json_object_get(root, "plugin");
 		if(!plugin || !json_is_string(plugin)) {
-			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSON error: missing mandatory element (plugin)");
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugin)");
 			goto jsondone;
 		}
 		const gchar *plugin_text = json_string_value(plugin);
@@ -683,7 +683,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		JANUS_LOG(LOG_INFO, "There's a message for %s\n", plugin_t->get_name());
 		json_t *body = json_object_get(root, "body");
 		if(body == NULL) {
-			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_JSON, "JSON error: missing mandatory element (body)");
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (body)");
 			goto jsondone;
 		}
 		if(!json_is_object(body)) {
@@ -866,7 +866,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		json_t *candidate = json_object_get(root, "candidate");
 		if(candidate == NULL) {
-			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_JSON, "JSON error: missing mandatory element (candidate)");
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (candidate)");
 			goto jsondone;
 		}
 		if(!json_is_object(candidate)) {
@@ -886,7 +886,21 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
 				goto jsondone;
 			}
-			JANUS_LOG(LOG_INFO, "Trickle candidate (%s) for handle %"SCNu64": %s\n", json_string_value(mid), handle->handle_id, json_string_value(rc));
+			JANUS_LOG(LOG_VERB, "Trickle candidate (%s) for handle %"SCNu64": %s\n", json_string_value(mid), handle->handle_id, json_string_value(rc));
+			/* Is there any stream ready? this trickle may get here before the SDP it relates to */
+			if(handle->audio_stream == NULL && handle->video_stream == NULL) {
+				/* No stream available, wait a bit */
+				gint64 waited = 0;
+				while(handle->audio_stream == NULL && handle->video_stream == NULL) {
+					JANUS_LOG(LOG_INFO, "No stream, wait a bit in case this trickle got here before the SDP...\n");
+					g_usleep(100000);
+					waited += 100000;
+					if(waited >= 3*G_USEC_PER_SEC) {
+						JANUS_LOG(LOG_VERB, "  -- Waited 3 seconds, that's enough!\n");
+						break;
+					}
+				}
+			}
 			/* Is the ICE stack ready already? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
 				/* Still processing the offer, wait a bit */
@@ -1138,7 +1152,7 @@ void janus_pluginso_close(gpointer key, gpointer value, gpointer user_data) {
 	void *plugin = (janus_plugin *)value;
 	if(!plugin)
 		return;
-	//~ dlclose(plugin);
+	dlclose(plugin);
 }
 
 janus_plugin *janus_plugin_find(const gchar *package) {
@@ -1326,7 +1340,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 }
 
 void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(!handle || handle->stopped)
+	if(!handle || handle->stopped || buf == NULL || len < 1)
 		return;
 	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
 	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
@@ -1336,7 +1350,7 @@ void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len
 }
 
 void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(!handle || handle->stopped)
+	if(!handle || handle->stopped || buf == NULL || len < 1)
 		return;
 	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
 	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)

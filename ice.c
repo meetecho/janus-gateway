@@ -464,7 +464,7 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		handle ? handle->handle_id : -1, component_id, stream_id, state, janus_get_ice_state_name(state));
 	if(!handle)
 		return;
-	if(state == NICE_COMPONENT_STATE_READY) {
+	if(state == NICE_COMPONENT_STATE_CONNECTED) {	/* FIXME Was NICE_COMPONENT_STATE_READY, but this gives us a working pair anyway */
 		/* Now we can start the DTLS handshake */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Component is ready, starting DTLS handshake...\n", handle->handle_id);
 		janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
@@ -487,8 +487,6 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			return;
 		}
 		/* Create retransmission timer */
-		//~ SSL_set_mode(component->ssl, SSL_MODE_AUTO_RETRY);
-		//~ SSL_set_read_ahead(component->ssl, 1);
 		component->source = g_timeout_source_new_seconds(1);
 		g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
 		guint id = g_source_attach(component->source, handle->icectx);
@@ -1060,7 +1058,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 
 void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len) {
 	/* TODO Should we fix something in RTP header stuff too? */
-	if(!handle)
+	if(!handle || buf == NULL || len < 1)
 		return;
 	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_stream : (video ? handle->video_stream : handle->audio_stream);
 	if(!stream)
@@ -1106,7 +1104,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 }
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
-	if(!handle)
+	if(!handle || buf == NULL || len < 1)
 		return;
 	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_stream : (video ? handle->video_stream : handle->audio_stream);
 	if(!stream)

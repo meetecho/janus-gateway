@@ -675,8 +675,8 @@ static void *janus_videoroom_handler(void *data) {
 		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
 		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "JSON error: invalid element (request)\n");
-			sprintf(error_cause, "JSON error: invalid element (request)");
+			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
+			sprintf(error_cause, "Invalid element (request)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -686,26 +686,26 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Creating a new videoroom\n");
 			json_t *desc = json_object_get(root, "description");
 			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (description)\n");
-				sprintf(error_cause, "JSON error: invalid element (description)");
+				JANUS_LOG(LOG_ERR, "Invalid element (description)\n");
+				sprintf(error_cause, "Invalid element (description)");
 				goto error;
 			}
 			json_t *bitrate = json_object_get(root, "bitrate");
 			if(bitrate && !json_is_integer(bitrate)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (bitrate)\n");
-				sprintf(error_cause, "JSON error: invalid element (bitrate)");
+				JANUS_LOG(LOG_ERR, "Invalid element (bitrate)\n");
+				sprintf(error_cause, "Invalid element (bitrate)");
 				goto error;
 			}
 			json_t *fir_freq = json_object_get(root, "fir_freq");
 			if(fir_freq && !json_is_integer(fir_freq)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (fir_freq)\n");
-				sprintf(error_cause, "JSON error: invalid element (fir_freq)");
+				JANUS_LOG(LOG_ERR, "Invalid element (fir_freq)\n");
+				sprintf(error_cause, "Invalid element (fir_freq)");
 				goto error;
 			}
 			json_t *publishers = json_object_get(root, "publishers");
 			if(publishers && !json_is_integer(publishers)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (publishers)\n");
-				sprintf(error_cause, "JSON error: invalid element (publishers)");
+				JANUS_LOG(LOG_ERR, "Invalid element (publishers)\n");
+				sprintf(error_cause, "Invalid element (publishers)");
 				goto error;
 			}
 			/* Create the audio bridge room */
@@ -783,8 +783,8 @@ static void *janus_videoroom_handler(void *data) {
 			}
 			json_t *room = json_object_get(root, "room");
 			if(!room || !json_is_integer(room)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (room)\n");
-				sprintf(error_cause, "JSON error: invalid element (room)");
+				JANUS_LOG(LOG_ERR, "Invalid element (room)\n");
+				sprintf(error_cause, "Invalid element (room)");
 				goto error;
 			}
 			guint64 room_id = json_integer_value(room);
@@ -799,8 +799,8 @@ static void *janus_videoroom_handler(void *data) {
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			if(!ptype || !json_is_string(ptype)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (ptype)\n");
-				sprintf(error_cause, "JSON error: invalid element (ptype)");
+				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
+				sprintf(error_cause, "Invalid element (ptype)");
 				goto error;
 			}
 			const char *ptype_text = json_string_value(ptype);
@@ -808,8 +808,8 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Configuring new publisher\n");
 				json_t *display = json_object_get(root, "display");
 				if(!display || !json_is_string(display)) {
-					JANUS_LOG(LOG_ERR, "JSON error: invalid element (display)\n");
-					sprintf(error_cause, "JSON error: invalid element (display)");
+					JANUS_LOG(LOG_ERR, "Invalid element (display)\n");
+					sprintf(error_cause, "Invalid element (display)");
 					goto error;
 				}
 				const char *display_text = json_string_value(display);
@@ -880,8 +880,8 @@ static void *janus_videoroom_handler(void *data) {
 				/* This is a new listener */
 				json_t *feed = json_object_get(root, "feed");
 				if(!feed || !json_is_integer(feed)) {
-					JANUS_LOG(LOG_ERR, "JSON error: invalid element (feed)\n");
-					sprintf(error_cause, "JSON error: invalid element (feed)");
+					JANUS_LOG(LOG_ERR, "Invalid element (feed)\n");
+					sprintf(error_cause, "Invalid element (feed)");
 					goto error;
 				}
 				guint64 feed_id = json_integer_value(feed);
@@ -928,8 +928,8 @@ static void *janus_videoroom_handler(void *data) {
 					g_free(event_text);
 				}
 			} else {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (ptype)\n");
-				sprintf(error_cause, "JSON error: invalid element (ptype)");
+				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
+				sprintf(error_cause, "Invalid element (ptype)");
 				goto error;
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_publisher) {
@@ -939,20 +939,20 @@ static void *janus_videoroom_handler(void *data) {
 				/* Configure audio/video/bitrate for this publisher */
 				json_t *audio = json_object_get(root, "audio");
 				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "JSON error: invalid element (audio)\n");
-					sprintf(error_cause, "JSON error: invalid value (audio)");
+					JANUS_LOG(LOG_ERR, "Invalid element (audio)\n");
+					sprintf(error_cause, "Invalid value (audio)");
 					goto error;
 				}
 				json_t *video = json_object_get(root, "video");
 				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "JSON error: invalid element (video)\n");
-					sprintf(error_cause, "JSON error: invalid value (video)");
+					JANUS_LOG(LOG_ERR, "Invalid element (video)\n");
+					sprintf(error_cause, "Invalid value (video)");
 					goto error;
 				}
 				json_t *bitrate = json_object_get(root, "bitrate");
 				if(bitrate && !json_is_integer(bitrate)) {
-					JANUS_LOG(LOG_ERR, "JSON error: invalid element (bitrate)\n");
-					sprintf(error_cause, "JSON error: invalid value (bitrate)");
+					JANUS_LOG(LOG_ERR, "Invalid element (bitrate)\n");
+					sprintf(error_cause, "Invalid value (bitrate)");
 					goto error;
 				}
 				if(audio) {

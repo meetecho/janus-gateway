@@ -418,8 +418,8 @@ static void *janus_videocall_handler(void *data) {
 		}
 		json_t *request = json_object_get(root, "request");
 		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "JSON error: invalid element (request)\n");
-			sprintf(error_cause, "JSON error: invalid element (request)");
+			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
+			sprintf(error_cause, "Invalid element (request)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -451,8 +451,8 @@ static void *janus_videocall_handler(void *data) {
 			}
 			json_t *username = json_object_get(root, "username");
 			if(!username || !json_is_string(username)) {
-				JANUS_LOG(LOG_ERR, "JSON error: missing element (username)\n");
-				sprintf(error_cause, "JSON error: missing element (username)");
+				JANUS_LOG(LOG_ERR, "Missing element (username)\n");
+				sprintf(error_cause, "Missing element (username)");
 				goto error;
 			}
 			const char *username_text = json_string_value(username);
@@ -485,8 +485,8 @@ static void *janus_videocall_handler(void *data) {
 			}
 			json_t *username = json_object_get(root, "username");
 			if(!username || !json_is_string(username)) {
-				JANUS_LOG(LOG_ERR, "JSON error: missing element (username)\n");
-				sprintf(error_cause, "JSON error: missing element (username)");
+				JANUS_LOG(LOG_ERR, "Missing element (username)\n");
+				sprintf(error_cause, "Missing element (username)");
 				goto error;
 			}
 			const char *username_text = json_string_value(username);
@@ -571,20 +571,20 @@ static void *janus_videocall_handler(void *data) {
 			/* Update the local configuration (audio/video mute/unmute, or bitrate cap) */
 			json_t *audio = json_object_get(root, "audio");
 			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (audio)\n");
-				sprintf(error_cause, "JSON error: invalid value (audio)");
+				JANUS_LOG(LOG_ERR, "Invalid element (audio)\n");
+				sprintf(error_cause, "Invalid value (audio)");
 				goto error;
 			}
 			json_t *video = json_object_get(root, "video");
 			if(video && !json_is_boolean(video)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (video)\n");
-				sprintf(error_cause, "JSON error: invalid value (video)");
+				JANUS_LOG(LOG_ERR, "Invalid element (video)\n");
+				sprintf(error_cause, "Invalid value (video)");
 				goto error;
 			}
 			json_t *bitrate = json_object_get(root, "bitrate");
 			if(bitrate && !json_is_integer(bitrate)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (bitrate)\n");
-				sprintf(error_cause, "JSON error: invalid value (bitrate)");
+				JANUS_LOG(LOG_ERR, "Invalid element (bitrate)\n");
+				sprintf(error_cause, "Invalid value (bitrate)");
 				goto error;
 			}
 			if(audio) {

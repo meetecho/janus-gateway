@@ -593,8 +593,8 @@ static void *janus_audiobridge_handler(void *data) {
 		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
 		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "JSON error: invalid element (request)\n");
-			sprintf(error_cause, "JSON error: invalid element (request)");
+			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
+			sprintf(error_cause, "Invalid element (request)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -604,20 +604,20 @@ static void *janus_audiobridge_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Creating a new audiobridge\n");
 			json_t *desc = json_object_get(root, "description");
 			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (desc)\n");
-				sprintf(error_cause, "JSON error: invalid element (desc)");
+				JANUS_LOG(LOG_ERR, "Invalid element (desc)\n");
+				sprintf(error_cause, "Invalid element (desc)");
 				goto error;
 			}
 			json_t *sampling = json_object_get(root, "sampling");
 			if(sampling && !json_is_integer(sampling)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (sampling)\n");
-				sprintf(error_cause, "JSON error: invalid element (sampling)");
+				JANUS_LOG(LOG_ERR, "Invalid element (sampling)\n");
+				sprintf(error_cause, "Invalid element (sampling)");
 				goto error;
 			}
 			json_t *record = json_object_get(root, "record");
 			if(record && !json_is_boolean(record)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (record)\n");
-				sprintf(error_cause, "JSON error: invalid value (record)");
+				JANUS_LOG(LOG_ERR, "Invalid element (record)\n");
+				sprintf(error_cause, "Invalid value (record)");
 				goto error;
 			}
 			/* Create the audio bridge room */
@@ -690,8 +690,8 @@ static void *janus_audiobridge_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			json_t *room = json_object_get(root, "room");
 			if(!room || !json_is_integer(room)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (room)\n");
-				sprintf(error_cause, "JSON error: invalid element (room)");
+				JANUS_LOG(LOG_ERR, "Invalid element (room)\n");
+				sprintf(error_cause, "Invalid element (room)");
 				goto error;
 			}
 			guint64 room_id = json_integer_value(room);
@@ -706,8 +706,8 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *display = json_object_get(root, "display");
 			if(!display || !json_is_string(display)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (display)\n");
-				sprintf(error_cause, "JSON error: invalid element (display)");
+				JANUS_LOG(LOG_ERR, "Invalid element (display)\n");
+				sprintf(error_cause, "Invalid element (display)");
 				goto error;
 			}
 			const char *display_text = json_string_value(display);
@@ -825,8 +825,8 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Configure settings for this participant */
 			json_t *audio = json_object_get(root, "audio");
 			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "JSON error: invalid element (audio)\n");
-				sprintf(error_cause, "JSON error: invalid value (audio)");
+				JANUS_LOG(LOG_ERR, "Invalid element (audio)\n");
+				sprintf(error_cause, "Invalid value (audio)");
 				goto error;
 			}
 			if(audio) {

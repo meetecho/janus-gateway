@@ -70,11 +70,12 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This demo shows how you can make use of the SIP plugin to interact with a PBX, e.g., Asterisk,
-						in order to place or receive calls to and from other SIP clients.</p>
+						<p>This demo shows how you can make use of the SIP plugin to interact with a
+						SIP Proxy (e.g., Kamailio) or PBX (e.g., Asterisk) in order to place or
+						receive calls to and from other SIP clients.</p>
 						<p>When started, the demo will allow you to insert a minimum set of information
-						required to REGISTER the web page as a SIP client at a PBX you specify. This will
-						allow you to call extensions on the PBX, or receive calls through the PBX itself.
+						required to REGISTER the web page as a SIP client at a SIP Proxy or PBX you specify.
+						This will allow you to call SIP URIs, or receive calls through the SIP Server itself.
 						During a call, you'll also be able to interact with the PBX via DTMF tones, e.g.,
 						to drive an Interactive Voice Response (IVR) menu that you're being presented with.</p>
 						<div class="alert alert-info"><b>Note well!</b> This demo, as the plugin it makes use of,
@@ -82,7 +83,7 @@
 						Asterisk PBX (extended with our
 						<a href="https://github.com/meetecho/asterisk-opus" target="_blank">Opus and VP8 support</a> patch),
 						even though it should work fine with others as well. Besides, video has not been
-						tested yet.
+						tested yet and as such may not work as expected.
 						</div>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
@@ -94,22 +95,22 @@
 						<div class="col-md-6 container hide" id="login">
 							<div class="input-group margin-bottom-sm">
 								<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="SIP Server (ip:port)" id="server" onkeypress="return checkEnter(this, event);"></input>
+								<input class="form-control" type="text" placeholder="SIP Proxy Server (e.g., sip:host:port)" id="server" onkeypress="return checkEnter(this, event);"></input>
 							</div>
 							<div class="input-group margin-bottom-sm">
 								<span class="input-group-addon"><i class="fa fa-user fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="SIP Username" id="username" onkeypress="return checkEnter(this, event);"></input>
+								<input class="form-control" type="text" placeholder="SIP Identity (e.g., sip:goofy@example.com)" id="username" onkeypress="return checkEnter(this, event);"></input>
 							</div>
 							<div class="input-group margin-bottom-sm">
 								<span class="input-group-addon"><i class="fa fa-key fa-fw"></i></span>
-								<input class="form-control" type="password" placeholder="Secret" id="password" onkeypress="return checkEnter(this, event);"></input>
+								<input class="form-control" type="password" placeholder="Secret (e.g., mysupersecretpassword)" id="password" onkeypress="return checkEnter(this, event);"></input>
 							</div>
-							<button class="btn btn-success margin-bottom-sm" id="register">Register</button> <span class="hide label label-info" id="you"></span>
+							<button class="btn btn-success margin-bottom-sm" id="register">Register</button> <input id="guest" type="checkbox">Guest</input> <span class="hide label label-info" id="you"></span>
 						</div>
 						<div class="col-md-6 container hide" id="phone">
 							<div class="input-group margin-bottom-sm">
 								<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="Extension to call (e.g., 1000)" id="peer" onkeypress="return checkEnter(this, event);"></input>
+								<input class="form-control" type="text" placeholder="SIP URI to call (e.g., sip:1000@example.com)" id="peer" onkeypress="return checkEnter(this, event);"></input>
 							</div>
 							<button class="btn btn-success margin-bottom-sm" id="call">Call</button>
 						</div>
@@ -119,7 +120,7 @@
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Local Video</h3>
+								<h3 class="panel-title">You</h3>
 							</div>
 							<div class="panel-body" id="videoleft"></div>
 						</div>
@@ -127,7 +128,7 @@
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video</h3>
+								<h3 class="panel-title">Remote UA</h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
 						</div>
