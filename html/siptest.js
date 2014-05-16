@@ -133,6 +133,14 @@ $(document).ready(function() {
 											// TODO Any ringtone?
 										} else if(event === 'incomingcall') {
 											console.log("Incoming call from " + result["username"] + "!");
+											var doAudio = true, doVideo = true;
+											if(jsep !== null && jsep !== undefined) {
+												// What has been negotiated?
+												doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
+												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
+												console.log("Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
+												console.log("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
+											}
 											// Notify user
 											bootbox.dialog({
 												message: "Incoming call from " + result["username"] + "!",
@@ -143,14 +151,12 @@ $(document).ready(function() {
 														className: "btn-success",
 														callback: function() {
 															$('#peer').val(result["username"]).attr('disabled', true);
-															if(jsep !== null && jsep !== undefined)
-																sipcall.handleRemoteJsep({jsep: jsep});
 															sipcall.createAnswer(
 																{
 																	jsep: jsep,
-																	// No media provided: by default, it's sendrecv for audio and video
+																	media: { audio: doAudio, video: doVideo },
 																	success: function(jsep) {
-																		console.log("Got SDP!");
+																		console.log("Got SDP! audio=" + doAudio + ", video=" + doVideo);
 																		console.log(jsep.sdp);
 																		var body = { "request": "accept" };
 																		sipcall.send({"message": body, "jsep": jsep});
