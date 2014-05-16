@@ -603,8 +603,8 @@ function Janus(gatewayCallbacks) {
 					new RTCSessionDescription(jsep),
 					function() {
 						Janus.log("Remote description accepted!");
+						createAnswer(handleId, media, callbacks);
 					}, callbacks.error);
-			createAnswer(handleId, media, callbacks);
 		}
 	}
 
