@@ -1238,7 +1238,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		case nua_i_cancel: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			/* FIXME Check state? */
-			session->status = janus_sip_status_closing;
+			session->status = janus_sip_status_registered;	/* FIXME What about a 'closing' state? */
 			/* Notify the browser */
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));

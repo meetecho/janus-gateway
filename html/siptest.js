@@ -29,6 +29,9 @@ var spinner = null;
 
 var registered = false;
 
+var incoming = null;
+
+
 $(document).ready(function() {
 	// Initialize the library (console debug enabled)
 	Janus.init({debug: true, callback: function() {
@@ -142,14 +145,17 @@ $(document).ready(function() {
 												console.log("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
 											}
 											// Notify user
-											bootbox.dialog({
+											bootbox.hideAll();
+											incoming = bootbox.dialog({
 												message: "Incoming call from " + result["username"] + "!",
 												title: "Incoming call",
+												closeButton: false,
 												buttons: {
 													success: {
 														label: "Answer",
 														className: "btn-success",
 														callback: function() {
+															incoming = null;
 															$('#peer').val(result["username"]).attr('disabled', true);
 															sipcall.createAnswer(
 																{
@@ -168,6 +174,9 @@ $(document).ready(function() {
 																		console.log("WebRTC error:");
 																		console.log(error);
 																		bootbox.alert("WebRTC error... " + JSON.stringify(error));
+																		// Don't keep the caller waiting any longer
+																		var body = { "request": "decline" };
+																		sipcall.send({"message": body});
 																	}
 																});
 														}
@@ -176,6 +185,7 @@ $(document).ready(function() {
 														label: "Decline",
 														className: "btn-danger",
 														callback: function() {
+															incoming = null;
 															var body = { "request": "decline" };
 															sipcall.send({"message": body});
 														}
@@ -185,12 +195,17 @@ $(document).ready(function() {
 										} else if(event === 'accepted') {
 											console.log(result["username"] + " accepted the call!");
 											// TODO Video call can start
-											if(jsep !== null && jsep !== undefined)
-												sipcall.handleRemoteJsep({jsep: jsep});
+											if(jsep !== null && jsep !== undefined) {
+												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
+											}
 											$('#call').removeAttr('disabled').html('Hangup')
 												.removeClass("btn-success").addClass("btn-danger")
 												.unbind('click').click(doHangup);
 										} else if(event === 'hangup') {
+											if(incoming != null) {
+												incoming.modal('hide');
+												incoming = null;
+											}
 											console.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
 											bootbox.alert(result["reason"]);
 											// Reset status
