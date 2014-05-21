@@ -51,8 +51,9 @@ On Ubuntu or Debian, it would require something like this:
 		libopus-dev libogg-dev libini-config-dev libcollection-dev \
 		pkg-config gengetopt
 
-* *Note:* apparently libopus is not available on Ubuntu: you'll have to
-install it manually.
+* *Note:* please notice that libopus may not be available out of the box
+on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
+14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
 Should you be interested in building the gateway documentation as well,
 you'll need an additional component installed too:
