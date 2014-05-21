@@ -48,7 +48,8 @@ On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
-		libogg-dev libini-config-dev libcollection-dev pkg-config gengetopt
+		libopus-dev libogg-dev libini-config-dev libcollection-dev \
+		pkg-config gengetopt
 
 * *Note:* apparently libopus is not available on Ubuntu: you'll have to
 install it manually.
