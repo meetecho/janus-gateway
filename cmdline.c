@@ -40,7 +40,7 @@ const char *gengetopt_args_info_help[] = {
   "  -n, --no-http                 Disable insecure HTTP web server  (default=off)",
   "  -b, --base-path=basepath      Base path to bind to in the web server \n                                  (default=/janus) ",
   "  -P, --plugins-folder=path     Plugins folder (default=./plugins)",
-  "  -C, --config=path             Configuration file to use",
+  "  -C, --config=filename         Configuration file to use",
   "  -F, --configs-folder=path     Configuration files folder (default=./conf)",
   "  -c, --cert-pem=filename       HTTPS/DTLS certificate",
   "  -k, --cert-key=filename       HTTPS/DTLS certificate key",

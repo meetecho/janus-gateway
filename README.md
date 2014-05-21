@@ -104,7 +104,7 @@ or on the command line:
 	-b, --base-path=basepath      Base path to bind to in the web server 
 								  (default=/janus) 
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
-	-C, --config=path             Configuration file to use
+	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
 	-c, --cert-pem=filename       HTTPS/DTLS certificate
 	-k, --cert-key=filename       HTTPS/DTLS certificate key
