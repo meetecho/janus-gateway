@@ -48,7 +48,8 @@ On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
-		libogg-dev libini-config-dev libcollection-dev pkg-config gengetopt
+		libopus-dev libogg-dev libini-config-dev libcollection-dev \
+		pkg-config gengetopt
 
 * *Note:* apparently libopus is not available on Ubuntu: you'll have to
 install it manually.
@@ -103,7 +104,7 @@ or on the command line:
 	-b, --base-path=basepath      Base path to bind to in the web server 
 								  (default=/janus) 
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
-	-C, --config=path             Configuration file to use
+	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
 	-c, --cert-pem=filename       HTTPS/DTLS certificate
 	-k, --cert-key=filename       HTTPS/DTLS certificate key
