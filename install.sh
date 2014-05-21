@@ -74,6 +74,7 @@ fi
 
 echo
 echo "Compiling..."
+make cmdline
 export INSTALLSH="install.sh"
 $MAKE
 if test $? -eq 0
