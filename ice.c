@@ -159,6 +159,7 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_por
 	JANUS_LOG(LOG_VERB, "  >> Sent %d bytes %s:%u, waiting for reply...\n", bytes, janus_stun_server, janus_stun_port);
 	struct timeval timeout;
 	fd_set readfds;
+	FD_ZERO(&readfds);
 	FD_SET(fd, &readfds);
 	timeout.tv_sec = 5;	/* FIXME Don't wait forever */
 	timeout.tv_usec = 0;
