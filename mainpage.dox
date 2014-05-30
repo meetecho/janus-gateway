@@ -7,7 +7,7 @@
  * <a href="http://www.doxygen.org">Doxygen</a>. Make sure you
  * check the \ref DEPS before attempting a compilation. If you are
  * interested in how to compile, install and use the gateway,
- * checkout the \ref README information.
+ * checkout the \ref README information. A \ref FAQ page is also available.
  *
  * \par A general purpose gateway
  * The Janus WebRTC Gateway has been conceived as a <tt>general purpose</tt>
@@ -946,6 +946,266 @@ python -m SimpleHTTPServer 9000
   
 /*! \page COPYING License
  *  \verbinclude COPYING
+ */
+
+/*! \page FAQ Frequently Asked Questions
+ * This page contains a list of FAQ as gathered on the
+ * <a href="https://groups.google.com/forum/?pli=1#!forum/meetecho-janus">meetecho-janus</a>
+ * Google group and the 
+ * <a href="https://github.com/meetecho/janus-gateway/issues">Issues</a>
+ * page on GitHub. It obviously also includes things we're being asked all the
+ * time in general! If your question is not listed here or not available
+ * anywhere in this documentation, feel free to refer to the group for
+ * generic help, or to the Issues page for bugs in the implementation.\n\n
+ *
+ * -# <b>What is Janus?</b>\n
+ *    .
+ *    Janus is an open source WebRTC gateway written by <a href="http://www.meetecho.com">Meetecho</a>,
+ *    conceived as modular and, as much as possible,
+ *    general purpose. It acts as a WebRTC endpoint browsers can interact
+ *    with, and different modules can determine what should be done with
+ *    the media. This means that you can do SIP, videoconferencing, streaming
+ *    and tons of other stuff using the same box! And if what you need is
+ *    not there, you can always write your own module and expand Janus.\n\n
+ *    .
+ * -# <b>What is Meetecho?</b>\n
+ *    .
+ *    Meetecho is a startup founded by a few researchers, post-docs and
+ *    Ph.Ds coming from the Universty of Napoli Federico II. We've been
+ *    working on real-time multimedia applications over the Internet for
+ *    years, and at one point we decided to try and make products out
+ *    of our research efforts. Our web conferencing platform and Janus
+ *    is part of those efforts.\n\n
+ *    .
+ * -# <b>Now that we're at it, how is Meetecho pronounced??</b>\n
+ *    .
+ *    We're being asked that a lot! We've heard so many variants and different
+ *    pronounciations of the name that we could make a book out of it!
+ *    When we chose the name, we wanted it to sound like
+ *    <a href="https://www.youtube.com/watch?v=TkgDOMSv9PE">this</a>,
+ *    which means \a awesome! in Italian. The extra H was a mistake on our
+ *    side, as obviously \a echo is pronouced differently than \a eco! Long
+ *    story short, it doesn't really matter how you pronounce it: just
+ *    do it and help us be famous! :-)\n\n
+ *    .
+ * -# <b>Why is Janus called like that?</b>\n
+ *    .
+ *    Quoting <a href="http://en.wikipedia.org/wiki/Janus">Wikipedia</a>:
+ *    "<i>In ancient Roman religion and myth, Janus (Latin: Ianus, pronounced
+ *    [ˈiaː.nus]) is the god of beginnings and transitions, and thereby of
+ *    gates, doors, passages, endings and time. He is usually depicted as
+ *    having two faces, since he looks to the future and to the past.</i>"
+ *    Considering the general purpose nature of our gateway, where one face always looks
+ *    at the future (WebRTC) and the other at the past (whatever the modules
+ *    allows you to do, be it legacy stuff or not), Janus looked like the
+ *    perfect name for it! And besides, we're Italian, Ancient Rome was
+ *    awesome and mythology rules... ;-)  
+ *    \n\n
+ *    .
+ * -# <b>Why is the license AGPL? Do you provide alternative license mechanisms as well?</b>\n
+ *    .
+ *    We chose AGPL for a simple reason: we wanted our work to be open source,
+ *    and we wanted interested people to play with it and contribute back
+ *    whatever improvement they could provide to the core. This is not always
+ *    the case with open source software, which is sometimes just seen as
+ *    free stuff you can exploit without helping back, and AGPL looked like
+ *    the easiest way to do that. We've been made aware that this license
+ *    mechanism is
+ *    <a href="https://groups.google.com/forum/?pli=1#!searchin/discuss-webrtc/janus/discuss-webrtc/LJHXkIsAaEU/fHgJ2z0sxfoJ">not very appreciated</a>
+ *    around, especially because of some
+ *    interpretations about it that could affect the way proprietary stuff
+ *    is deployed. We obviously care about these concerns, and are considering
+ *    an approach that would make it easier for Janus to be integrated in
+ *    heterogeneous scenarios.\n\n
+ *    One road we're investigating is what we call
+ *    the "MongoDB approach". MongoDB is an open source NoSQL implementation,
+ *    which is AGPL as well. That said, they released the MongoDB core as
+ *    AGPL, while the drivers to use it with less restrictive licenses, that
+ *    are supposed to lift the concerns we mentioned above, while keeping
+ *    the concept that modifications to the core should be contributed back.
+ *    We could do the same for Janus, by releasing the APIs as something
+ *    different than AGPL.\n\n
+ *    Apart from that, we're obviously also willing to discuss different
+ *    licensing agreements with interested parties, including commercial
+ *    ones. Sponsored development can also be considered, so if you're
+ *    interested in more details just contact us.\n\n
+ *    .
+ * -# <b>On what OS can I install Janus?</b>\n
+ *    .
+ *    At the moment only Linux is supported. While a more cross-platform
+ *    approach has been considered, there are no plans to work in that
+ *    direction in the near future, as we're mostly interested in adding
+ *    new features and improving/enhancing what's already there.\n\n
+ *    .
+ * -# <b>I've launched Janus, how do I try the demos?</b>\n
+ *    .
+ *    The demos are available in the \c html folder in the project. That
+ *    said, the integrated web server in Janus does not serve static files
+ *    as well, so you'll have to make them available using a different
+ *    webserver. Details about how to deploy Janus are provided in
+ *    \ref deploy.\n\n
+ *    .
+ * -# <b>Are DataChannels supported?</b>\n
+ *    .
+ *    DataChannels are not supported yet, but we're working on this as
+ *    we write so <a href="http://www.meetecho.com/blog">stay tuned</a>!.\n\n
+ *    .
+ * -# <b>Can I use Janus as a gateway to my Freeswitch/Kamailio/Asterisk/other SIP infrastructure?</b>\n
+ *    .
+ *    Of course! One of the modules we provide out of the box is a SIP
+ *    gateway plugin based on the <a href="http://sofia-sip.sourceforge.net/">Sofia-SIP</a>
+ *    library stack. These plugin allows a web user to register at a SIP
+ *    proxy/server either as an authenticated user or as a guest, and
+ *    start or receive calls from other SIP users, including other web users
+ *    exploiting the same plugin. Janus will take care of all the WebRTC-related
+ *    stuff (ICE, DTLS, SRTP), which means that on the SIP side it will
+ *    be plain RTP only, much easier and lighter to handle for legacy
+ *    implementations. This has so far only been tested with
+ *    Kamailio and Asterisk but, since a well known and reliable stack
+ *    like Sofia is being used for the purpose, it should work fine with
+ *    other implementations as well.\n\n
+ *    Please notice that there's definitely room for improvement in this
+ *    module (e.g., video support is a bit flaky right now), so let us
+ *    know if you encounter any problems with it!\n\n
+ *    .
+ * -# <b>Can I use existng SIP stacks (e.g., JsSIP) with Janus?</b>\n
+ *    .
+ *    Janus uses a custom JSON-based protocol for all the communication
+ *    between web users and plugins in the gateway, so no, that's not
+ *    possible right now. The SIP plugin in Janus only exposes some very
+ *    high level information to web users (e.g., registration failed/succeeded,
+ *    incoming call, decline, hangup, etc.), without delving in any SIP-related
+ *    detail, which is instead completely demanded to the server-side plugin
+ *    itself. This ensures that web users can take advantage of SIP functionality
+ *    in an easy way, without having to worry about the details and complexity
+ *    of SIP within JavaScript.\n\n
+ *    .
+ * -# <b>Does Janus support transcoding?</b>\n
+ *    .
+ *    Janus is a simple intermediary between WebRTC users and server-side
+ *    plugins providing application logic, so no, it doesn't provide any
+ *    transcoding functionality per-se. If transcoding is needed, this is
+ *    supposed to be implemented within plugins themselves. That said,
+ *    none of the plugins we provide out-of the box does transcoding,
+ *    since we wanted the implementation to be lightweight and besides
+ *    there are several existing tools and third-party implementations that
+ *    could be leveraged for the purpose.\n\n
+ *    .
+ * -# <b>Does Janus support recording?</b>\n
+ *    .
+ *    See above: no recording functionality is provided by Janus itself,
+ *    as that's something that should be done by plugins as part of their
+ *    application logic. That said, unlike transcoding some of the plugins
+ *    do implement some sort of recording feature. Specifically, the
+ *    Audio Bridge plugin allows for a recording of the mixed audio room
+ *    to an uncompressed WAV file; the Voice Mail plugin, instead, allows
+ *    for the recording of audio frames provided by a web user to an .opus
+ *    file, for the purpose of archiving. The same functionality could
+ *    be easily migrated to other plugins, and work is being done to
+ *    do the same for video as well (something that we have ready, but
+ *    currently introduces too many dependencies that we'd rather avoid).\n\n
+ *    .
+ * -# <b>Can I use WebSockets instead of plain HTTP to interact with Janus?</b>\n
+ *    .
+ *    Not at the moment. We chose a REST-based plain HTTP communication
+ *    for a simple reason: we noticed that there were some scenarios (e.g.,
+ *    client firewalls) where websockets wouldn't work, even though WebRTC
+ *    did. To improve the chances of success in the communication, we
+ *    then chose this simpler approach with respect to signalling. Besides,
+ *    plain HTTP is much easier to proxy and/or place behind frontends
+ *    like Apache HTTPD or nginx than WebSockets, another aspect that
+ *    played a decisive role in our decision, as we were also very interested
+ *    in making the integration of Janus in heterogeneous environments
+ *    as easy as possible. Anyway, there are plans to make the API part
+ *    more generic, so that different protocols or mechanisms (e.g., HTTP,
+ *    WebSockets, XMPP or others) could be used to interact with Janus, so stay tuned!\n\n
+ *    .
+ * -# <b>Can I use Janus with node.js or other frameworks?</b>\n
+ *    .
+ *    Not out of the box, but since interaction with Janus is completely
+ *    Janus based, this can be abstracted in several different way. With
+ *    respect to node.js, <a href="">NICTA</a> recently released a module
+ *    called <a href="https://www.npmjs.org/package/rtc-janus">rtc-janus</a>
+ *    that allows you to interact with a Janus instance from a node.js
+ *    application, so give that a try!\n\n
+ *    .
+ * -# <b>Is there any benchmark on Janus performances?</b>\n
+ *    .
+ *    Benchmarking Janus is not an easy task, especially if we consider
+ *    its general purpose nature. In fact, Janus by itself does not much
+ *    more than negotiating WebRTC PeerConnections and relaying frames
+ *    around, while most of the application login is in the modules. As
+ *    you can imagine, different modules may have very different requirements
+ *    and impact on the performances. For instance, the Echo Test is probably
+ *    much lighter than the Video MCU, even if they're handling the same
+ *    number of users. This means that such a benchmarking does not have
+ *    much sense unless you contextualise the scenarios.\n\n
+ *    For this reason, we and some Janus adopters have recently tried to
+ *    do some benchmarking taking a specific plugin as a reference, that
+ *    is the Video MCU: in fact, the Video MCU is one of the most popular
+ *    modules in Janus, and by itself it does represent a good test bed
+ *    considering its many-to-many communication pattern. You can find
+ *    some details and considerations in a recent
+ *    <a href="https://groups.google.com/forum/?pli=1#!topic/meetecho-janus/ydGcbMt7IX0">post</a>
+ *    on our Google group. Anyway, we're still doing testing, whose
+ *    results will probably be made available in a publication somethere
+ *    in the near future.\n\n
+ *    .
+ * -# <b>I want to write my own plugin, where do I start?</b>\n
+ *    .
+ *    Great! There's an API you can refer to, documented in \ref pluginapi.
+ *    Since you'll want your web users to interact with it, make also sure
+ *    you study the \ref JS as well, especially the parts that talk about
+ *    how to send/receive messages and negotiate WebRTC PeerConnections.
+ *    The existing plugins are also an excellent way to start to get
+ *    comfortable with the API: a good starting point may be the Echo Test
+ *    plugin, which is a very simple and barebone implementation that
+ *    simply bounces back whatever it is sent, and also involved some
+ *    rough application logic to determine its behaviour (e.g., messages
+ *    coming from web users that selectively enable or disable video).
+ *    If you need any help with this, feel free to contact us: we're
+ *    excited to see who will make available the first third-party Janus
+ *    plugin!\n\n
+ *    .
+ * -# <b>I'm using the Video MCU and, when several users are handled, I get
+ *    a "Too many open files" errors and Janus crashes</b>\n
+ *    .
+ *    As all applications on Linux environments, Janus is bound to the
+ *    constraints imposed by the OS and/or the user. One of these constraints
+ *    is related to how many file descriptors the application, or all the
+ *    applications, can open. On several distributions this number is, by
+ *    default, quite low, which can cause the issue you experienced. This
+ *    value, together with others, can be modified, per-user or for all users,
+ *    using the \c ulimit application. For a simple and quick way to handle
+ *    this refer to the guide provided by the MongoDB developers:
+ *    http://docs.mongodb.org/manual/reference/ulimit/ \n\n
+ *    .
+ * -# <b>When I enable the HTTPS web server in Janus, the CPU goes crazy</b>\n
+ *    .
+ *    As discussed in a recent <a href="https://groups.google.com/forum/?pli=1#!topic/meetecho-janus/lD8A0VqXsNs">post</a>
+ *    on our Google group, this is caused by an occasional problem within
+ *    libmicrohttpd, the library we use to implement an embedded web server
+ *    in Janus. This is not deterministic, as the high CPU usage does happen
+ *    on some distributions (e.g., Ubuntu 12.04), while it doesn't on
+ *    others (e.g., Ubuntu 14.04). Anyway, this only can happen if you enable
+ *    HTTPS support within Janus itself: you can still have a safe HTTPS
+ *    usage with Janus if you deploy it behind a frontend (e.g., Apache HTTPD)
+ *    that takes care of this on its behalf. Refer to the \ref deploy section
+ *    for more details about this.\n\n
+ *    .
+ * -# <b>Can you implement a feature I want?</b>\n
+ *    .
+ *    We're constantly working on new features and on improving what's
+ *    already there, and we do love feedback from users. That said, we're
+ *    a small team and we do have to pay our bills, so we always have to
+ *    reserve our resources wisely. If there's a feature you'd like to
+ *    see implemented, tell us on our Google group, and discuss it with
+ *    other users: it may be on our schedule, or someone else may be
+ *    already working on it to contribute it back to the project. You
+ *    may even want to try and build it yourself and help us make Janus
+ *    even better! If you really need something that isn't there, you
+ *    may also want to consider a sponsored development.\n\n
+ *    .
  */
 
 /*! \defgroup core Core
