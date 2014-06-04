@@ -64,7 +64,6 @@ manually. It is a pretty easy and standard process:
 	cd usrsctp
 	./bootstrap
 	./configure --prefix=/usr && make && sudo make install
-	echo
 	
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
