@@ -46,10 +46,11 @@ sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			1
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.1"
+#define JANUS_AUDIOBRIDGE_VERSION			2
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.2"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
+#define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
 #define JANUS_AUDIOBRIDGE_PACKAGE			"janus.plugin.audiobridge"
 
 /* Plugin methods */
@@ -60,6 +61,7 @@ int janus_audiobridge_get_version(void);
 const char *janus_audiobridge_get_version_string(void);
 const char *janus_audiobridge_get_description(void);
 const char *janus_audiobridge_get_name(void);
+const char *janus_audiobridge_get_author(void);
 const char *janus_audiobridge_get_package(void);
 void janus_audiobridge_create_session(janus_plugin_session *handle, int *error);
 void janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
@@ -79,6 +81,7 @@ static janus_plugin janus_audiobridge_plugin =
 		.get_version_string = janus_audiobridge_get_version_string,
 		.get_description = janus_audiobridge_get_description,
 		.get_name = janus_audiobridge_get_name,
+		.get_author = janus_audiobridge_get_author,
 		.get_package = janus_audiobridge_get_package,
 		
 		.create_session = janus_audiobridge_create_session,
@@ -365,6 +368,10 @@ const char *janus_audiobridge_get_description() {
 
 const char *janus_audiobridge_get_name() {
 	return JANUS_AUDIOBRIDGE_NAME;
+}
+
+const char *janus_audiobridge_get_author() {
+	return JANUS_AUDIOBRIDGE_AUTHOR;
 }
 
 const char *janus_audiobridge_get_package() {

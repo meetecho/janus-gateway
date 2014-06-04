@@ -282,6 +282,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.onmessage = (typeof callbacks.onmessage == "function") ? callbacks.onmessage : jQuery.noop;
 		callbacks.onlocalstream = (typeof callbacks.onlocalstream == "function") ? callbacks.onlocalstream : jQuery.noop;
 		callbacks.onremotestream = (typeof callbacks.onremotestream == "function") ? callbacks.onremotestream : jQuery.noop;
+		callbacks.ondata = (typeof callbacks.ondata == "function") ? callbacks.ondata : jQuery.noop;
 		callbacks.oncleanup = (typeof callbacks.oncleanup == "function") ? callbacks.oncleanup : jQuery.noop;
 		if(!connected) {
 			Janus.log("Is the gateway down? (connected=false)");
@@ -322,6 +323,7 @@ function Janus(gatewayCallbacks) {
 							myStream : null,
 							mySdp : null,
 							pc : null,
+							dataChannel : null,
 							dtmfSender : null,
 							trickle : true,
 							iceDone : false,
@@ -339,6 +341,7 @@ function Janus(gatewayCallbacks) {
 						getPlugin : function() { return plugin; },
 						getBitrate : function() { return getBitrate(handleId); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
+						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
 						onmessage : callbacks.onmessage,
@@ -347,6 +350,7 @@ function Janus(gatewayCallbacks) {
 						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
 						onlocalstream : callbacks.onlocalstream,
 						onremotestream : callbacks.onremotestream,
+						ondata : callbacks.ondata,
 						oncleanup : callbacks.oncleanup,
 						hangup : function() { cleanupWebrtc(handleId); },
 						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
@@ -430,6 +434,29 @@ function Janus(gatewayCallbacks) {
 			},
 			dataType: "json"
 		});
+	}
+
+	// Private method to send a data channel message
+	function sendData(handleId, callbacks) {
+		callbacks = callbacks || {};
+		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
+		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
+		var pluginHandle = pluginHandles[handleId];
+		var config = pluginHandle.webrtcStuff;
+		if(config.dataChannel === null || config.dataChannel === undefined) {
+			Janus.log("Invalid data channel");
+			callbacks.error("Invalid data channel");
+			return;
+		}
+		var text = callbacks.text;
+		if(text === null || text === undefined) {
+			Janus.log("Invalid text");
+			callbacks.error("Invalid text");
+			return;
+		}
+		Janus.log("Sending string on data channel: " + text); 
+		config.dataChannel.send(text);
+		callbacks.success();
 	}
 
 	// Private method to send a DTMF tone
@@ -520,7 +547,11 @@ function Janus(gatewayCallbacks) {
 			Janus.log(stream);
 		var pc_config = {"iceServers": iceServers};
 		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
-		var pc_constraints = {"optional": [{"DtlsSrtpKeyAgreement": true}]};
+		var pc_constraints = {
+			"optional": [{"DtlsSrtpKeyAgreement": true}]
+		};
+		Janus.log("Creating PeerConnection:");
+		Janus.log(pc_constraints);
 		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
 		Janus.log(config.pc);
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome")	// FIXME
@@ -595,6 +626,28 @@ function Janus(gatewayCallbacks) {
 			}
 			pluginHandle.onremotestream(remoteStream.stream);
 		};
+		// Any data channel to create?
+		if(isDataEnabled(media)) {
+			Janus.log("Creating data channel");
+			var onDataChannelMessage = function(event) {
+				Janus.log('Received message on data channel: ' + event.data);
+				pluginHandle.ondata(event.data);	// FIXME
+			}
+			var onDataChannelStateChange = function() {
+				Janus.log('State change on data channel: ' + config.dataChannel.readyState);
+			}
+			var onDataChannelError = function(error) {
+				Janus.log('Got error on data channel:');
+				Janus.log(error);
+				// TODO
+			}
+			// Until we implement the proxying of open requests within the Janus core, we open a channel ourselves whatever the case
+			config.dataChannel = config.pc.createDataChannel("JanusDataChannel", {reliable: false});
+			config.dataChannel.onmessage = onDataChannelMessage;
+			config.dataChannel.onopen = onDataChannelStateChange;
+			config.dataChannel.onclose = onDataChannelStateChange;
+			config.dataChannel.onerror = onDataChannelError;
+		}
 		// Create offer/answer now
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
@@ -702,9 +755,12 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
 		Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
-		var mediaConstraints = {'mandatory': {
-									'OfferToReceiveAudio':isAudioRecvEnabled(media), 
-									'OfferToReceiveVideo':isVideoRecvEnabled(media) }};
+		var mediaConstraints = {
+			'mandatory': {
+				'OfferToReceiveAudio':isAudioRecvEnabled(media), 
+				'OfferToReceiveVideo':isVideoRecvEnabled(media)
+			}
+		};
 		Janus.log(mediaConstraints);
 		config.pc.createOffer(
 			function(offer) {
@@ -737,9 +793,12 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
 		Janus.log("Creating answer (iceDone=" + config.iceDone + ")");
-		var mediaConstraints = {'mandatory': {
-									'OfferToReceiveAudio':isAudioRecvEnabled(media), 
-									'OfferToReceiveVideo':isVideoRecvEnabled(media) }};
+		var mediaConstraints = {
+			'mandatory': {
+				'OfferToReceiveAudio':isAudioRecvEnabled(media), 
+				'OfferToReceiveVideo':isVideoRecvEnabled(media)
+			}
+		};
 		Janus.log(mediaConstraints);
 		config.pc.createAnswer(
 			function(answer) {
@@ -828,6 +887,8 @@ function Janus(gatewayCallbacks) {
 		config.mySdp = null;
 		config.iceDone = false;
 		config.sdpSent = false;
+		config.dataChannel = null;
+		config.dtmfSender = null;
 		pluginHandle.oncleanup();
 	}
 
@@ -878,6 +939,14 @@ function Janus(gatewayCallbacks) {
 		if(media.videoRecv === undefined || media.videoRecv === null)
 			return true;	// Default
 		return (media.videoRecv === true);
+	}
+
+	function isDataEnabled(media) {
+		Janus.log("isDataEnabled:");
+		Janus.log(media);
+		if(media === undefined || media === null)
+			return false;	// Default
+		return (media.data === true);
 	}
 
 	function isTrickleEnabled(trickle) {

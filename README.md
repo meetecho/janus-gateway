@@ -24,6 +24,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](http://srtp.sourceforge.net/srtp.html)
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
+* [usrsctp](http://code.google.com/p/sctp-refimpl/)
 
 A couple of plugins depend on a few more libraries:
 
@@ -55,6 +56,19 @@ On Ubuntu or Debian, it would require something like this:
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
+For what concerns usrsctp, which is needed for Data Channels support, it
+is usually not available in repositories, so you'll have to install it
+manually. It is a pretty easy and standard process:
+
+	svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp
+	cd usrsctp
+	./bootstrap
+	./configure --prefix=/usr && make && sudo make install
+	echo
+	
+* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+script if you're installing on a x86_64 distribution.
+
 Should you be interested in building the gateway documentation as well,
 you'll need an additional component installed too:
 
@@ -79,7 +93,10 @@ to start the whole compilation process. The script will try to check
 whether you have all the dependencies installed, and then issue a 'make'
 for you to start compiling. If Doxygen and graphviz are available, it
 will also build the documentation for you as well in the docs/html
-subfolder.
+subfolder. If you prefer not to build the documentation (or not to
+build it again and again every time you compile!) use the 'nodocs' option:
+
+	sh install.sh nodocs
 
 
 ##Configure and start
@@ -92,7 +109,7 @@ or on the command line:
 
 	./janus --help
 	
-	janus 0.0.2
+	janus 0.0.3
 
 	Usage: janus [OPTIONS]...
 

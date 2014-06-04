@@ -71,9 +71,10 @@ $(document).ready(function() {
 									echotest.createOffer(
 										{
 											// No media provided: by default, it's sendrecv for audio and video
+											media: { data: true },	// Let's negotiate data channels as well
 											success: function(jsep) {
 												console.log("Got SDP!");
-												console.log(jsep.sdp);
+												console.log(jsep);
 												echotest.send({"message": body, "jsep": jsep});
 											},
 											error: function(error) {
@@ -117,7 +118,7 @@ $(document).ready(function() {
 									console.log(JSON.stringify(msg));
 									if(jsep !== undefined && jsep !== null) {
 										console.log("Handling SDP as well...");
-										console.log(jsep.sdp);
+										console.log(jsep);
 										echotest.handleRemoteJsep({jsep: jsep});
 									}
 									var result = msg["result"];
@@ -226,6 +227,11 @@ $(document).ready(function() {
 											$('#curbitrate').text(bitrate);
 										}, 1000);
 									}
+									$('#datasend').removeAttr('disabled');
+								},
+								ondata: function(data) {
+									console.log("We got data from the DataChannel! " + data);
+									$('#datarecv').val(data);
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
@@ -240,6 +246,7 @@ $(document).ready(function() {
 									$('#bitrate').attr('disabled', true);
 									$('#curbitrate').hide();
 									$('#curres').hide();
+									$('#datasend').attr('disabled', true);
 								}
 							});
 					},
@@ -256,3 +263,26 @@ $(document).ready(function() {
 		});
 	}});
 });
+
+function checkEnter(event) {
+	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	if(theCode == 13) {
+		sendData();
+		return false;
+	} else {
+		return true;
+	}
+}
+
+function sendData() {
+	var data = $('#datasend').val();
+	if(data === "") {
+		bootbox.alert('Insert a message to send on the DataChannel');
+		return;
+	}
+	echotest.data({
+		text: data,
+		error: function(reason) { bootbox.alert(reason); },
+		success: function() { $('#datasend').val(''); },
+	});
+}

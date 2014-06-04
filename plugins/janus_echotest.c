@@ -34,10 +34,11 @@
 
 
 /* Plugin information */
-#define JANUS_ECHOTEST_VERSION			1
-#define JANUS_ECHOTEST_VERSION_STRING	"0.0.1"
+#define JANUS_ECHOTEST_VERSION			2
+#define JANUS_ECHOTEST_VERSION_STRING	"0.0.2"
 #define JANUS_ECHOTEST_DESCRIPTION		"This is a trivial EchoTest plugin for Janus, just used to showcase the plugin interface."
 #define JANUS_ECHOTEST_NAME				"JANUS EchoTest plugin"
+#define JANUS_ECHOTEST_AUTHOR			"Meetecho s.r.l."
 #define JANUS_ECHOTEST_PACKAGE			"janus.plugin.echotest"
 
 /* Plugin methods */
@@ -48,12 +49,14 @@ int janus_echotest_get_version(void);
 const char *janus_echotest_get_version_string(void);
 const char *janus_echotest_get_description(void);
 const char *janus_echotest_get_name(void);
+const char *janus_echotest_get_author(void);
 const char *janus_echotest_get_package(void);
 void janus_echotest_create_session(janus_plugin_session *handle, int *error);
 void janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
 void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 
@@ -67,6 +70,7 @@ static janus_plugin janus_echotest_plugin =
 		.get_version_string = janus_echotest_get_version_string,
 		.get_description = janus_echotest_get_description,
 		.get_name = janus_echotest_get_name,
+		.get_author = janus_echotest_get_author,
 		.get_package = janus_echotest_get_package,
 		
 		.create_session = janus_echotest_create_session,
@@ -74,6 +78,7 @@ static janus_plugin janus_echotest_plugin =
 		.setup_media = janus_echotest_setup_media,
 		.incoming_rtp = janus_echotest_incoming_rtp,
 		.incoming_rtcp = janus_echotest_incoming_rtcp,
+		.incoming_data = janus_echotest_incoming_data,
 		.hangup_media = janus_echotest_hangup_media,
 		.destroy_session = janus_echotest_destroy_session,
 	}; 
@@ -207,6 +212,10 @@ const char *janus_echotest_get_name() {
 	return JANUS_ECHOTEST_NAME;
 }
 
+const char *janus_echotest_get_author() {
+	return JANUS_ECHOTEST_AUTHOR;
+}
+
 const char *janus_echotest_get_package() {
 	return JANUS_ECHOTEST_PACKAGE;
 }
@@ -319,6 +328,32 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
 		gateway->relay_rtcp(handle, video, buf, len);
+	}
+}
+
+void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
+		return;
+	/* Simple echo test */
+	if(gateway) {
+		janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
+		if(!session) {
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+			return;
+		}
+		if(session->destroy)
+			return;
+		if(buf == NULL || len <= 0)
+			return;
+		char *text = calloc(len+1, sizeof(char));
+		memcpy(text, buf, len);
+		*(text+len) = '\0';
+		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to bounce back: %s\n", strlen(text), text);
+		char reply[1<<16];
+		memset(reply, 0, 1<<16);
+		sprintf(reply, "Janus EchoTest here! You wrote: %s", text);
+		free(text);
+		gateway->relay_data(handle, reply, strlen(reply));
 	}
 }
 

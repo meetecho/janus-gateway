@@ -21,7 +21,9 @@ typedef pthread_mutex_t janus_mutex;
 #define janus_mutex_destroy(a) pthread_mutex_destroy(a)
 /*! \brief Janus mutex lock */
 #define janus_mutex_lock(a) pthread_mutex_lock(a);
+//~ #define janus_mutex_lock(a) { printf("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); printf("LOCK\n"); pthread_mutex_lock(a); };
 /*! \brief Janus mutex unlock */
 #define janus_mutex_unlock(a) pthread_mutex_unlock(a);
+//~ #define janus_mutex_unlock(a) { printf("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); printf("UNLOCK\n"); pthread_mutex_unlock(a); };
 
 #endif

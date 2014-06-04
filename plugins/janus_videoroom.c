@@ -60,10 +60,11 @@ fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			1
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.1"
+#define JANUS_VIDEOROOM_VERSION			2
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.2"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing MCU for Janus, something like Licode."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
+#define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VIDEOROOM_PACKAGE			"janus.plugin.videoroom"
 
 /* Plugin methods */
@@ -74,6 +75,7 @@ int janus_videoroom_get_version(void);
 const char *janus_videoroom_get_version_string(void);
 const char *janus_videoroom_get_description(void);
 const char *janus_videoroom_get_name(void);
+const char *janus_videoroom_get_author(void);
 const char *janus_videoroom_get_package(void);
 void janus_videoroom_create_session(janus_plugin_session *handle, int *error);
 void janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
@@ -93,6 +95,7 @@ static janus_plugin janus_videoroom_plugin =
 		.get_version_string = janus_videoroom_get_version_string,
 		.get_description = janus_videoroom_get_description,
 		.get_name = janus_videoroom_get_name,
+		.get_author = janus_videoroom_get_author,
 		.get_package = janus_videoroom_get_package,
 		
 		.create_session = janus_videoroom_create_session,
@@ -377,6 +380,10 @@ const char *janus_videoroom_get_description() {
 
 const char *janus_videoroom_get_name() {
 	return JANUS_VIDEOROOM_NAME;
+}
+
+const char *janus_videoroom_get_author() {
+	return JANUS_VIDEOROOM_AUTHOR;
 }
 
 const char *janus_videoroom_get_package() {

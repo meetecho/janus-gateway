@@ -109,7 +109,7 @@ $(document).ready(function() {
 													media: { video: false},	// This is an audio only room
 													success: function(jsep) {
 														console.log("Got SDP!");
-														console.log(jsep.sdp);
+														console.log(jsep);
 														var publish = { "request": "configure", "audio": true };
 														mixertest.send({"message": publish, "jsep": jsep});
 													},
@@ -172,7 +172,7 @@ $(document).ready(function() {
 									}
 									if(jsep !== undefined && jsep !== null) {
 										console.log("Handling SDP as well...");
-										console.log(jsep.sdp);
+										console.log(jsep);
 										mixertest.handleRemoteJsep({jsep: jsep});
 									}
 								},

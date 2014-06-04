@@ -8,7 +8,14 @@ DOT=`which dot`
 WGET=`which wget`
 CURL=`which curl`
 
+NODOCS=0
 echo "Installing the Janus WebRTC gateway..."
+case "$1" in
+	nodocs)
+		echo "  -- nodocs passed, skipping documentation!"
+		NODOCS=1
+		;;
+esac
 
 if [ -z "$PKG_CONFIG" ]
 then
@@ -71,10 +78,25 @@ then
 else
 	export HAVE_PORTRANGE="-DHAVE_PORTRANGE"
 fi
+$MAKE sctptest
+if [ $? != 0 ]
+then
+	echo
+	echo "The installer couldn't find usrsctp lib, which is needed for Data Channels"
+	echo "You can install it with the following steps:"
+	echo "    svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp"
+	echo "    cd usrsctp"
+	echo "    ./bootstrap"
+	echo "    ./configure --prefix=/usr && make && sudo make install"
+	echo
+	echo "    [Note: you may need to pass --libdir=/usr/lib64 to the configure script if you're installing on a x86_64 distribution]"
+	echo
+	exit 1
+fi
 
 echo
 echo "Compiling..."
-make cmdline
+$MAKE cmdline
 export INSTALLSH="install.sh"
 $MAKE
 if test $? -eq 0
@@ -85,13 +107,16 @@ else
 	exit 1
 fi
 
-echo
-echo "Generating documentation..."
-if [ -z "$DOXYGEN" ] || [ -z "$DOT" ]
+if test $NODOCS -eq 0
 then
-	echo "Doxygen or graphviz missing, no documentation will be built...";
-else
-	$MAKE docs
+	echo
+	echo "Generating documentation..."
+	if [ -z "$DOXYGEN" ] || [ -z "$DOT" ]
+	then
+		echo "Doxygen or graphviz missing, no documentation will be built...";
+	else
+		$MAKE docs
+	fi
 fi
 
 echo

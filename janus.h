@@ -30,6 +30,7 @@
 #include "mutex.h"
 #include "dtls.h"
 #include "ice.h"
+#include "sctp.h"
 #include "plugins/plugin.h"
 
 

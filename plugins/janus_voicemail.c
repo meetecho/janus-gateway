@@ -38,10 +38,11 @@
 
 
 /* Plugin information */
-#define JANUS_VOICEMAIL_VERSION			1
-#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.1"
+#define JANUS_VOICEMAIL_VERSION			2
+#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.2"
 #define JANUS_VOICEMAIL_DESCRIPTION		"This is a plugin implementing a very simple VoiceMail service for Janus, recording Opus streams."
-#define JANUS_VOICEMAIL_NAME				"JANUS VoiceMail plugin"
+#define JANUS_VOICEMAIL_NAME			"JANUS VoiceMail plugin"
+#define JANUS_VOICEMAIL_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VOICEMAIL_PACKAGE			"janus.plugin.voicemail"
 
 /* Plugin methods */
@@ -52,6 +53,7 @@ int janus_voicemail_get_version(void);
 const char *janus_voicemail_get_version_string(void);
 const char *janus_voicemail_get_description(void);
 const char *janus_voicemail_get_name(void);
+const char *janus_voicemail_get_author(void);
 const char *janus_voicemail_get_package(void);
 void janus_voicemail_create_session(janus_plugin_session *handle, int *error);
 void janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
@@ -71,6 +73,7 @@ static janus_plugin janus_voicemail_plugin =
 		.get_version_string = janus_voicemail_get_version_string,
 		.get_description = janus_voicemail_get_description,
 		.get_name = janus_voicemail_get_name,
+		.get_author = janus_voicemail_get_author,
 		.get_package = janus_voicemail_get_package,
 		
 		.create_session = janus_voicemail_create_session,
@@ -267,6 +270,10 @@ const char *janus_voicemail_get_description() {
 
 const char *janus_voicemail_get_name() {
 	return JANUS_VOICEMAIL_NAME;
+}
+
+const char *janus_voicemail_get_author() {
+	return JANUS_VOICEMAIL_AUTHOR;
 }
 
 const char *janus_voicemail_get_package() {

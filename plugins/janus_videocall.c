@@ -35,10 +35,11 @@
 
 
 /* Plugin information */
-#define JANUS_VIDEOCALL_VERSION			1
-#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.1"
+#define JANUS_VIDEOCALL_VERSION			2
+#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.2"
 #define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
+#define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VIDEOCALL_PACKAGE			"janus.plugin.videocall"
 
 /* Plugin methods */
@@ -49,12 +50,14 @@ int janus_videocall_get_version(void);
 const char *janus_videocall_get_version_string(void);
 const char *janus_videocall_get_description(void);
 const char *janus_videocall_get_name(void);
+const char *janus_videocall_get_author(void);
 const char *janus_videocall_get_package(void);
 void janus_videocall_create_session(janus_plugin_session *handle, int *error);
 void janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
 void janus_videocall_setup_media(janus_plugin_session *handle);
 void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
 
@@ -68,6 +71,7 @@ static janus_plugin janus_videocall_plugin =
 		.get_version_string = janus_videocall_get_version_string,
 		.get_description = janus_videocall_get_description,
 		.get_name = janus_videocall_get_name,
+		.get_author = janus_videocall_get_author,
 		.get_package = janus_videocall_get_package,
 		
 		.create_session = janus_videocall_create_session,
@@ -75,6 +79,7 @@ static janus_plugin janus_videocall_plugin =
 		.setup_media = janus_videocall_setup_media,
 		.incoming_rtp = janus_videocall_incoming_rtp,
 		.incoming_rtcp = janus_videocall_incoming_rtcp,
+		.incoming_data = janus_videocall_incoming_data,
 		.hangup_media = janus_videocall_hangup_media,
 		.destroy_session = janus_videocall_destroy_session,
 	}; 
@@ -210,6 +215,10 @@ const char *janus_videocall_get_name() {
 	return JANUS_VIDEOCALL_NAME;
 }
 
+const char *janus_videocall_get_author() {
+	return JANUS_VIDEOCALL_AUTHOR;
+}
+
 const char *janus_videocall_get_package() {
 	return JANUS_VIDEOCALL_PACKAGE;
 }
@@ -334,6 +343,32 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
 		gateway->relay_rtcp(session->peer->handle, video, buf, len);
+	}
+}
+
+void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized)
+		return;
+	if(gateway) {
+		janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+		if(!session) {
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+			return;
+		}
+		if(!session->peer) {
+			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
+			return;
+		}
+		if(session->destroy || session->peer->destroy)
+			return;
+		if(buf == NULL || len <= 0)
+			return;
+		char text[1<<16];
+		memset(text, 0, 1<<16);
+		memcpy(text, buf, len);
+		text[len] = '\0';
+		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+		gateway->relay_data(session->peer->handle, text, strlen(text));
 	}
 }
 
@@ -478,6 +513,11 @@ static void *janus_videocall_handler(void *data) {
 			json_object_set_new(result, "username", json_string(username_text));
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
+			if(session->username == NULL) {
+				JANUS_LOG(LOG_ERR, "Register a username first\n");
+				sprintf(error_cause, "Register a username first");
+				goto error;
+			}
 			if(session->peer != NULL) {
 				JANUS_LOG(LOG_ERR, "Already in a call\n");
 				sprintf(error_cause, "Already in a call");
@@ -490,6 +530,11 @@ static void *janus_videocall_handler(void *data) {
 				goto error;
 			}
 			const char *username_text = json_string_value(username);
+			if(!strcmp(username_text, session->username)) {
+				JANUS_LOG(LOG_ERR, "You can't call yourself... use the EchoTest for that\n");
+				sprintf(error_cause, "You can't call yourself... use the EchoTest for that");
+				goto error;
+			}
 			janus_mutex_lock(&sessions_mutex);
 			janus_videocall_session *peer = g_hash_table_lookup(sessions, username_text);
 			if(peer == NULL || peer->destroy) {

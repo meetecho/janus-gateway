@@ -14,6 +14,7 @@
 <script type="text/javascript" src="echotest.js"></script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
 <body>
 
 <a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
@@ -81,6 +82,10 @@
 						through, in order to simulate a bandwidth limitation. Since REMB
 						messages are involved, though, this feature is only available on
 						Chrome.</p>
+						<p>Finally, this demo also includes Data Channels: whatever you
+						write in the text box under your local video, will be sent via
+						Data Channels to the plugins, modified by adding a fixed prefix,
+						and sent back to you in the text area below the remote video.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
@@ -113,6 +118,10 @@
 							</div>
 							<div class="panel-body" id="videoleft"></div>
 						</div>
+						<div class="input-group margin-bottom-sm">
+							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
+							<input class="form-control" type="text" placeholder="Write a DataChannel message" id="datasend" onkeypress="return checkEnter(event);" disabled></input>
+						</div>
 					</div>
 					<div class="col-md-6">
 						<div class="panel panel-default">
@@ -120,6 +129,10 @@
 								<h3 class="panel-title">Remote Video <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
+						</div>
+						<div class="input-group margin-bottom-sm">
+							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
+							<input class="form-control" type="text" id="datarecv" disabled></input>
 						</div>
 					</div>
 				</div>

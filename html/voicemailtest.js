@@ -140,7 +140,7 @@ $(document).ready(function() {
 									}
 									if(jsep !== undefined && jsep !== null) {
 										console.log("Handling SDP as well...");
-										console.log(jsep.sdp);
+										console.log(jsep);
 										vmailtest.handleRemoteJsep({jsep: jsep});
 									}
 								},
@@ -176,7 +176,7 @@ function startRecording() {
 			media: { audioRecv: false, video: false},	// We're going to only send, and not receive, audio
 			success: function(jsep) {
 				console.log("Got SDP!");
-				console.log(jsep.sdp);
+				console.log(jsep);
 				var publish = { "request": "record" };
 				vmailtest.send({"message": publish, "jsep": jsep});
 			},

@@ -83,6 +83,10 @@
 						your audio and video, and a knob to try and limit your bandwidth. If
 						the browser supports it, you'll also get a view of the bandwidth
 						currently used by your peer for the video stream.</p>
+						<p>A very simple chat based on Data Channels is available as well:
+						just use the text area under your local video to send messages
+						to your peer. Incoming messages will be displayed below the
+						remote video instead.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
@@ -133,6 +137,10 @@
 							</div>
 							<div class="panel-body" id="videoleft"></div>
 						</div>
+						<div class="input-group margin-bottom-sm">
+							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
+							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
+						</div>
 					</div>
 					<div class="col-md-6">
 						<div class="panel panel-default">
@@ -140,6 +148,10 @@
 								<h3 class="panel-title">Remote Video <span class="label label-info hide" id="callee"></span> <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
+						</div>
+						<div class="input-group margin-bottom-sm">
+							<span class="input-group-addon"><i class="fa fa-cloud-download fa-fw"></i></span>
+							<input class="form-control" type="text" id="datarecv" disabled></input>
 						</div>
 					</div>
 				</div>

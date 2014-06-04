@@ -21,6 +21,7 @@
 #include <openssl/ssl.h>
 #include <srtp/srtp.h>
 
+#include "sctp.h"
 
 /*! \brief DTLS stuff initialization
  * @param[in] server_pem Path to the certificate to use
@@ -76,6 +77,10 @@ typedef struct janus_dtls_srtp {
 	char *dtls_last_msg;
 	/*! \brief Length of the last message the DTLS client tried to send (needed for retransmissions) */
 	gint dtls_last_len;
+	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
+	int ready;
+	/*! \brief SCTP association, if DataChannels are involved */
+	janus_sctp_association *sctp;
 } janus_dtls_srtp;
 
 
@@ -112,6 +117,25 @@ int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
  * \details As libnice is going to actually send and receive data, and not OpenSSL, a read/write BIO is used to "bridge" the data between the crypto stuff and the network.
  * @param[in] dtls The janus_dtls_srtp instance to use */
 void janus_dtls_fd_bridge(janus_dtls_srtp *dtls);
+
+/*! \brief Callback (called from the ICE handle) to encapsulate in DTLS outgoing SCTP data (DataChannel)
+ * @param[in] dtls The janus_dtls_srtp instance to use
+ * @param[in] buf The data buffer to encapsulate
+ * @param[in] len The data length */
+void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
+
+/*! \brief Callback (called from the SCTP stack) to encapsulate in DTLS outgoing SCTP data (DataChannel)
+ * @param[in] dtls The janus_dtls_srtp instance to use
+ * @param[in] buf The data buffer to encapsulate
+ * @param[in] len The data length
+ * @returns The number of sent bytes in case of success, 0 or a negative integer otherwise */
+int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
+
+/*! \brief Callback to be notified about incoming SCTP data (DataChannel) to forward to the handle
+ * @param[in] dtls The janus_dtls_srtp instance to use
+ * @param[in] buf The data buffer
+ * @param[in] len The data length */
+void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
 
 /*! \brief DTLS retransmission timer
  * \details As libnice is going to actually send and receive data, OpenSSL cannot handle retransmissions by itself: this timed callback (g_source_set_callback) deals with this.

@@ -20,6 +20,8 @@
 #include <glib.h>
 #include <agent.h>
 
+#include "dtls.h"
+#include "sctp.h"
 #include "utils.h"
 #include "plugins/plugin.h"
 
@@ -73,6 +75,7 @@ typedef struct janus_ice_component janus_ice_component;
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE				(1 << 7)
 #define JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES		(1 << 8)
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
+#define JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS		(1 << 10)
 
 
 /*! \brief Janus ICE handle */
@@ -99,8 +102,10 @@ struct janus_ice_handle {
 	NiceAgent *agent;
 	/*! \brief libnice ICE audio ID */
 	gint audio_id;
-	/*! \brief libnice ICE audio ID */
+	/*! \brief libnice ICE video ID */
 	gint video_id;
+	/*! \brief libnice ICE SCTP ID */
+	gint data_id;
 	/*! \brief Number of streams */
 	gint streams_num;
 	/*! \brief GLib hash table of streams (IDs are the keys) */
@@ -109,6 +114,8 @@ struct janus_ice_handle {
 	janus_ice_stream *audio_stream;
 	/*! \brief Video stream */
 	janus_ice_stream *video_stream;
+	/*! \brief SCTP/DataChannel stream */
+	janus_ice_stream *data_stream;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
 	gchar *remote_hashing;
 	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
@@ -143,7 +150,7 @@ struct janus_ice_stream {
 	gchar *rpass;
 	/*! \brief GLib hash table of components (IDs are the keys) */
 	GHashTable *components;
-	/*! \brief RTP component */
+	/*! \brief RTP (or SCTP, if this is the data stream) component */
 	janus_ice_component *rtp_component;
 	/*! \brief RTCP component */
 	janus_ice_component *rtcp_component;
@@ -167,6 +174,8 @@ struct janus_ice_component {
 	GSource *source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
+	/*! \brief SCTP association, if this is for data channels */
+	janus_sctp_association *sctp;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this stream */
@@ -258,6 +267,16 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len);
+/*! \brief Gateway SCTP/DataChannel callback, called when a plugin has data to send to a peer
+ * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] buf The message data (buffer)
+ * @param[in] len The buffer lenght */
+void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
+/*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when when there's data for a plugin
+ * @param[in] handle The Janus ICE handle associated with the peer
+ * @param[in] buffer The message data (buffer)
+ * @param[in] length The buffer lenght */
+void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
 ///@}
 
 
@@ -271,11 +290,12 @@ void *janus_ice_thread(void *data);
  * @param[in] offer Whether this is for an OFFER or an ANSWER
  * @param[in] audio Whether audio is enabled
  * @param[in] video Whether video is enabled
+ * @param[in] data Whether SCTP data channels are enabled
  * @param[in] bundle Whether BUNDLE is supported or not
  * @param[in] rtcpmux Whether rtcp-mux is supported or not
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int bundle, int rtcpmux, int trickle);
+int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int bundle, int rtcpmux, int trickle);
 /*! \brief Method to add local candidates to the gateway SDP
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in,out] sdp The handle description the gateway is preparing

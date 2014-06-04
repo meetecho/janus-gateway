@@ -30,7 +30,10 @@
 #include "utils.h"
 
 
-#define JANUS_VERSION	"0.0.2"
+#define JANUS_NAME				"Janus WebRTC Gateway"
+#define JANUS_AUTHOR			"Meetecho s.r.l."
+#define JANUS_VERSION			3
+#define JANUS_VERSION_STRING	"0.0.3"
 
 
 static janus_config *config = NULL;
@@ -113,11 +116,13 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, char *sdp_type, char *sdp);
 void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_relay_data(janus_plugin_session *handle, char *buf, int len);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_push_event,
 		.relay_rtp = janus_relay_rtp,
 		.relay_rtcp = janus_relay_rtcp,
+		.relay_data = janus_relay_data,
 	}; 
 ///@}
 
@@ -441,9 +446,10 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		/* Prepare a summary on the gateway */
 		json_t *reply = json_object();
-		json_object_set_new(reply, "name", json_string("Janus WebRTC Gateway"));
-		json_object_set_new(reply, "version", json_string(JANUS_VERSION));
-		json_object_set_new(reply, "author", json_string("Meetecho s.r.l."));
+		json_object_set_new(reply, "name", json_string(JANUS_NAME));
+		json_object_set_new(reply, "version", json_integer(JANUS_VERSION));
+		json_object_set_new(reply, "version_string", json_string(JANUS_VERSION_STRING));
+		json_object_set_new(reply, "author", json_string(JANUS_AUTHOR));
 		json_t *data = json_object();
 		GList *plugins_list = g_hash_table_get_values(plugins);
 		GList *ps = plugins_list;
@@ -455,6 +461,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			}
 			json_t *plugin = json_object();
 			json_object_set_new(plugin, "name", json_string(p->get_name()));
+			json_object_set_new(plugin, "author", json_string(p->get_author()));
 			json_object_set_new(plugin, "description", json_string(p->get_description()));
 			json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
 			json_object_set_new(plugin, "version", json_integer(p->get_version()));
@@ -737,8 +744,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			jsep_sdp = (char *)json_string_value(sdp);
 			JANUS_LOG(LOG_VERB, "Remote SDP:\n%s", jsep_sdp);
 			/* Is this valid SDP? */
-			int audio = 0, video = 0, bundle = 0, rtcpmux = 0, trickle = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &bundle, &rtcpmux, &trickle);
+			int audio = 0, video = 0, data = 0, bundle = 0, rtcpmux = 0, trickle = 0;
+			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
@@ -753,6 +760,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			if(video > 1) {
 				JANUS_LOG(LOG_ERR, "More than one video line? only going to negotiate one...\n");
 			}
+			JANUS_LOG(LOG_VERB, "The browser %s negotiating SCTP/DataChannels\n", bundle ? "is" : "is NOT");
 			JANUS_LOG(LOG_VERB, "The browser %s BUNDLE\n", bundle ? "supports" : "does NOT support");
 			JANUS_LOG(LOG_VERB, "The browser %s rtcp-mux\n", rtcpmux ? "supports" : "does NOT support");
 			JANUS_LOG(LOG_VERB, "The browser %s doing Trickle ICE\n", trickle ? "is" : "is NOT");
@@ -762,7 +770,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				/* New session */
 				if(offer) {
 					/* Setup ICE locally (we received an offer) */
-					janus_ice_setup_local(handle, offer, audio, video, bundle, rtcpmux, trickle);
+					janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle);
 				}
 				janus_sdp_parse(handle, parsed_sdp);
 				janus_sdp_free(parsed_sdp);
@@ -783,14 +791,29 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 					} else {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					}
-					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) && audio && video) {
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 						JANUS_LOG(LOG_VERB, "  -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n");
-						if(handle->streams && handle->video_stream) {
-							handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
-							handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
-							janus_ice_stream_free(handle->streams, handle->video_stream);
-							handle->video_stream = NULL;
-							handle->video_id = 0;
+						if(audio) {
+							/* Get rid of video and data, if present */
+							if(handle->streams && handle->video_stream) {
+								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
+								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
+								janus_ice_stream_free(handle->streams, handle->video_stream);
+								handle->video_stream = NULL;
+								handle->video_id = 0;
+							}
+							if(handle->streams && handle->data_stream) {
+								janus_ice_stream_free(handle->streams, handle->data_stream);
+								handle->data_stream = NULL;
+								handle->data_id = 0;
+							}
+						} else if(video) {
+							/* Get rid of data, if present */
+							if(handle->streams && handle->data_stream) {
+								janus_ice_stream_free(handle->streams, handle->data_stream);
+								handle->data_stream = NULL;
+								handle->data_id = 0;
+							}
 						}
 					}
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
@@ -917,10 +940,15 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			}
 			/* Parse it */
 			int video = (strcmp(json_string_value(mid), "video") == 0);
-			if(video && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-				JANUS_LOG(LOG_VERB, "Got a video candidate but we're bundling, ignoring...\n");
+			int data = (strcmp(json_string_value(mid), "data") == 0);
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+					&& (
+						((video || data) && handle->audio_stream != NULL) || 
+							((data) && handle->video_stream != NULL))
+						) {
+				JANUS_LOG(LOG_VERB, "Got a %s candidate but we're bundling, ignoring...\n", json_string_value(mid));
 			} else {
-				janus_ice_stream *stream = video ? handle->video_stream : handle->audio_stream;
+				janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
 				if(stream == NULL) {
 					ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
 					goto jsondone;
@@ -1152,7 +1180,7 @@ void janus_pluginso_close(gpointer key, gpointer value, gpointer user_data) {
 	void *plugin = (janus_plugin *)value;
 	if(!plugin)
 		return;
-	dlclose(plugin);
+	//~ dlclose(plugin);
 }
 
 janus_plugin *janus_plugin_find(const gchar *package) {
@@ -1243,8 +1271,8 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 	if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY))
 		return NULL;
 	/* Is this valid SDP? */
-	int audio = 0, video = 0, bundle = 0, rtcpmux = 0, trickle = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video, &bundle, &rtcpmux, &trickle);
+	int audio = 0, video = 0, data = 0, bundle = 0, rtcpmux = 0, trickle = 0;
+	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
 	if(parsed_sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP...\n", ice_handle->handle_id);
 		return NULL;
@@ -1259,7 +1287,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", ice_handle->handle_id);
 		}
 		/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
-		janus_ice_setup_local(ice_handle, 0, audio, video, bundle, rtcpmux, trickle);
+		janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle);
 	}
 	/* Wait for candidates-done callback */
 	while(ice_handle->cdone < ice_handle->streams_num) {
@@ -1321,6 +1349,9 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 			if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
 				janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
 		}
+		if(ice_handle->data_id > 0) {
+			janus_ice_setup_remote_candidates(ice_handle, ice_handle->data_id, 1);
+		}
 		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) &&
 				!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) {
 			/* Still trickling, but take note of the fact ICE has started now */
@@ -1359,6 +1390,16 @@ void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int le
 	janus_ice_relay_rtcp(session, video, buf, len);
 }
 
+void janus_relay_data(janus_plugin_session *handle, char *buf, int len) {
+	if(!handle || handle->stopped || buf == NULL || len < 1)
+		return;
+	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
+	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_ice_relay_data(session, buf, len);
+}
+
 
 /* Main */
 gint main(int argc, char *argv[])
@@ -1373,9 +1414,9 @@ gint main(int argc, char *argv[])
 	if(cmdline_parser(argc, argv, &args_info) != 0)
 		exit(1);
 	
-	JANUS_PRINT("----------------------------------------\n");
-	JANUS_PRINT("Starting Meetecho Janus (WebRTC Gateway)\n");
-	JANUS_PRINT("----------------------------------------\n\n");
+	JANUS_PRINT("---------------------------------------------------\n");
+	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", JANUS_VERSION_STRING);
+	JANUS_PRINT("---------------------------------------------------\n\n");
 	
 	/* Handle SIGINT */
 	signal(SIGINT, janus_handle_signal);
@@ -1666,6 +1707,11 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Initialize SCTP for DataChannels */
+	if(janus_sctp_init() < 0) {
+		exit(1);
+	}
+
 	/* Initialize Sofia-SDP */
 	if(janus_sdp_init() < 0) {
 		exit(1);
@@ -1874,7 +1920,10 @@ gint main(int argc, char *argv[])
 	SSL_CTX_free(janus_dtls_get_ssl_ctx());
 	EVP_cleanup();
 	ERR_free_strings();
+	JANUS_LOG(LOG_INFO, "Cleaning SDP structures...\n");
 	janus_sdp_deinit();
+	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
+	janus_sctp_deinit();
 	
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {

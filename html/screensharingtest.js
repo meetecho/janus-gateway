@@ -136,7 +136,7 @@ $(document).ready(function() {
 														media: { video: "screen", audio: false, videoRecv: false},	// Screen sharing doesn't work with audio, and Publishers are sendonly
 														success: function(jsep) {
 															console.log("Got publisher SDP!");
-															console.log(jsep.sdp);
+															console.log(jsep);
 															var publish = { "request": "configure", "audio": true, "video": true };
 															screentest.send({"message": publish, "jsep": jsep});
 														},
@@ -188,7 +188,7 @@ $(document).ready(function() {
 									}
 									if(jsep !== undefined && jsep !== null) {
 										console.log("Handling SDP as well...");
-										console.log(jsep.sdp);
+										console.log(jsep);
 										screentest.handleRemoteJsep({jsep: jsep});
 									}
 								},
@@ -342,7 +342,7 @@ function newRemoteFeed(id, display) {
 				}
 				if(jsep !== undefined && jsep !== null) {
 					console.log("Handling SDP as well...");
-					console.log(jsep.sdp);
+					console.log(jsep);
 					// Answer and attach
 					remoteFeed.createAnswer(
 						{
@@ -350,7 +350,7 @@ function newRemoteFeed(id, display) {
 							media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
 							success: function(jsep) {
 								console.log("Got SDP!");
-								console.log(jsep.sdp);
+								console.log(jsep);
 								var body = { "request": "start", "room": room };
 								remoteFeed.send({"message": body, "jsep": jsep});
 							},

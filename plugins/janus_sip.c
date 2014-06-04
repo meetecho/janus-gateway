@@ -49,10 +49,11 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			1
-#define JANUS_SIP_VERSION_STRING	"0.0.1"
+#define JANUS_SIP_VERSION			2
+#define JANUS_SIP_VERSION_STRING	"0.0.2"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
+#define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
 #define JANUS_SIP_PACKAGE			"janus.plugin.sip"
 
 /* Plugin methods */
@@ -63,6 +64,7 @@ int janus_sip_get_version(void);
 const char *janus_sip_get_version_string(void);
 const char *janus_sip_get_description(void);
 const char *janus_sip_get_name(void);
+const char *janus_sip_get_author(void);
 const char *janus_sip_get_package(void);
 void janus_sip_create_session(janus_plugin_session *handle, int *error);
 void janus_sip_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
@@ -82,6 +84,7 @@ static janus_plugin janus_sip_plugin =
 		.get_version_string = janus_sip_get_version_string,
 		.get_description = janus_sip_get_description,
 		.get_name = janus_sip_get_name,
+		.get_author = janus_sip_get_author,
 		.get_package = janus_sip_get_package,
 		
 		.create_session = janus_sip_create_session,
@@ -401,6 +404,10 @@ const char *janus_sip_get_description() {
 
 const char *janus_sip_get_name() {
 	return JANUS_SIP_NAME;
+}
+
+const char *janus_sip_get_author() {
+	return JANUS_SIP_AUTHOR;
 }
 
 const char *janus_sip_get_package() {

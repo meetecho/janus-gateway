@@ -20,6 +20,7 @@
  * as such within the Janus session/handle protocol;
  * - \c relay_rtp(): to send/relay the peer an RTP packet;
  * - \c relay_rtcp(): to send/relay the peer an RTCP message.
+ * - \c relay_data(): to send/relay the peer a SCTP DataChannel message.
  * 
  * On the other hand, a plugin that wants to register at the gateway
  * needs to implement the \c janus_plugin interface. Besides, as a
@@ -61,6 +62,7 @@ janus_plugin *create(void) {
  * - \c setup_media(): a callback to notify you the peer PeerConnection is now ready to be used;
  * - \c incoming_rtp(): a callback to notify you a peer has sent you a RTP packet;
  * - \c incoming_rtcp(): a callback to notify you a peer has sent you a RTCP message;
+ * - \c incoming_data(): a callback to notify you a peer has sent you a message on a SCTP DataChannel;
  * - \c hangup_media(): a callback to notify you the peer PeerConnection has been closed (e.g., after a DTLS alert);
  * - \c destroy_session(): this method is called by the gateway to destroy a session between you and a peer.
  * 
@@ -176,6 +178,8 @@ struct janus_plugin {
 	const char *(* const get_description)(void);
 	/*! \brief Informative method to request the name of the plugin */
 	const char *(* const get_name)(void);
+	/*! \brief Informative method to request the author of the plugin */
+	const char *(* const get_author)(void);
 	/*! \brief Informative method to request the package name of the plugin (what will be used in web applications to refer to it) */
 	const char *(* const get_package)(void);
 
@@ -203,6 +207,14 @@ struct janus_plugin {
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
 	void (* const incoming_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
+	/*! \brief Method to handle incoming SCTP/DataChannel data from a peer (text only, for the moment)
+	 * \note We currently only support text data, binary data will follow... please also notice that
+	 * DataChannels send unterminated strings, so you'll have to terminate them with a \0 yourself to
+	 * use them. 
+	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] buf The message data (buffer)
+	 * @param[in] len The buffer lenght */
+	void (* const incoming_data)(janus_plugin_session *handle, char *buf, int len);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);
@@ -236,6 +248,11 @@ struct janus_callbacks {
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
 	void (* const relay_rtcp)(janus_plugin_session *handle, int video, char *buf, int len);
+	/*! \brief Callback to relay SCTP/DataChannel messages to a peer
+	 * @param[in] handle The plugin/gateway session that will be used for this peer
+	 * @param[in] buf The message data (buffer)
+	 * @param[in] len The buffer lenght */
+	void (* const relay_data)(janus_plugin_session *handle, char *buf, int len);
 
 };
 

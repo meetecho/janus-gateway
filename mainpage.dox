@@ -77,6 +77,7 @@
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
+ * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (Data Channels)
  * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
  *
@@ -279,6 +280,7 @@ janus.attach(
  * - \c createAnswer(callbacks): asks the library to create a WebRTC compliant ANSWER;
  * - \c handleRemoteJsep(callbacks): asks the library to handle an incoming WebRTC compliant session description;
  * - \c dtmf(parameters): sends a DTMF tone on the PeerConnection;
+ * - \c data(parameters): sends data through the Data Channel, if available;
  * - \c getBitrate(): gets a verbose description of the currently received stream bitrate (only available on Chrome, for now);
  * - \c hangup(): tells the library to close the PeerConnection;
  * - \c detach(parameters): detaches from the plugin and destroys the handle, tearing
@@ -308,7 +310,9 @@ janus.attach(
  * -# each plugin may allow you to manipulate what should flow through the
  * PeerConnection channel: the \c send method and \c onmessage callback
  * will allow you to handle this interaction (e.g., to tell the plugin
- * to mute your stream, or to be notified about someone joining a virtual room). 
+ * to mute your stream, or to be notified about someone joining a virtual room),
+ * while the \c ondata callback is triggered whenever data is received
+ * on the Data Channel, if available. 
  *
  * The following paragraphs will delve a bit deeper in the negotiation
  * mechanism provided by the \c Handle API, in particular describing
@@ -318,8 +322,9 @@ janus.attach(
  *
  * - \c createOffer takes a single parameter, that can contain any of the
  * following properties and callbacks:
- *   - \c media: you can use this property to tell the library which media (audio/video)
- * you're interested in, and whether you're going to send and/or receive any of them;
+ *   - \c media: you can use this property to tell the library which media (audio/video/data)
+ * you're interested in, and whether you're going to send and/or receive any of them; by default
+ * audio and video are enabled in both directions, while the Data Channels are disabled;
  * this option is an object that can take any of the following properties:
  *     - \c audioSend: \c true/false (do or do not send audio);
  *     - \c audioRecv: \c true/false (do or do not receive audio);
@@ -330,6 +335,7 @@ janus.attach(
  *     - \c video: \c "hires"/"lowres" (send a 1280x720 or a 320x240 video, takes precedence on the above);
  * this property will affect the resulting getUserMedia that the library will issue;
  *     - \c video: \c "screen" (use screensharing for video, disables audio, takes precedence on both audio and video);
+ *     - \c data: \c true/false (do or do not use Data Channels, default is false)
  *   - \c trickle: \c true/false, to tell the library whether you want
  * Trickle ICE to be used (true, the default) or not (false);
  *   - a set of callbacks to be notified about the result, namely:
@@ -939,6 +945,7 @@ python -m SimpleHTTPServer 9000
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
+ * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (Data Channels)
  * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
  *
@@ -1045,10 +1052,16 @@ python -m SimpleHTTPServer 9000
  *    webserver. Details about how to deploy Janus are provided in
  *    \ref deploy.\n\n
  *    .
- * -# <b>Are DataChannels supported?</b>\n
+ * -# <b>Are Data Channels supported?</b>\n
  *    .
- *    DataChannels are not supported yet, but we're working on this as
- *    we write so <a href="http://www.meetecho.com/blog">stay tuned</a>!.\n\n
+ *    Yes we do! Starting from version 0.0.3 of Janus, we added a first
+ *    experimental support to Data Channels, that can as such be used in
+ *    plugins that choose to support them. Right now, they are only
+ *    handled in the Echo Test plugin, but this will be added to other
+ *    plugins as well, if not just to showcase what can be done with them.\n\n
+ *    Please notice that right now we only support text data: we're
+ *    currently working on binary streams as well, so we hope support
+ *    for those will be available soon.\n\n
  *    .
  * -# <b>Can I use Janus as a gateway to my Freeswitch/Kamailio/Asterisk/other SIP infrastructure?</b>\n
  *    .
@@ -1123,8 +1136,8 @@ python -m SimpleHTTPServer 9000
  * -# <b>Can I use Janus with node.js or other frameworks?</b>\n
  *    .
  *    Not out of the box, but since interaction with Janus is completely
- *    Janus based, this can be abstracted in several different way. With
- *    respect to node.js, <a href="">NICTA</a> recently released a module
+ *    HTTP based, this can be abstracted in several different way. With
+ *    respect to node.js, <a href="#">NICTA</a> recently released a module
  *    called <a href="https://www.npmjs.org/package/rtc-janus">rtc-janus</a>
  *    that allows you to interact with a Janus instance from a node.js
  *    application, so give that a try!\n\n
@@ -1160,7 +1173,7 @@ python -m SimpleHTTPServer 9000
  *    The existing plugins are also an excellent way to start to get
  *    comfortable with the API: a good starting point may be the Echo Test
  *    plugin, which is a very simple and barebone implementation that
- *    simply bounces back whatever it is sent, and also involved some
+ *    simply bounces back whatever it is sent, and also involves some
  *    rough application logic to determine its behaviour (e.g., messages
  *    coming from web users that selectively enable or disable video).
  *    If you need any help with this, feel free to contact us: we're

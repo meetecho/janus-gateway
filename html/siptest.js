@@ -163,7 +163,7 @@ $(document).ready(function() {
 																	media: { audio: doAudio, video: doVideo },
 																	success: function(jsep) {
 																		console.log("Got SDP! audio=" + doAudio + ", video=" + doVideo);
-																		console.log(jsep.sdp);
+																		console.log(jsep);
 																		var body = { "request": "accept" };
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
@@ -381,7 +381,7 @@ function doCall() {
 			},
 			success: function(jsep) {
 				console.log("Got SDP!");
-				console.log(jsep.sdp);
+				console.log(jsep);
 				var body = { "request": "call", uri: $('#peer').val() };
 				sipcall.send({"message": body, "jsep": jsep});
 			},

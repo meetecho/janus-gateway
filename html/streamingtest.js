@@ -110,7 +110,7 @@ $(document).ready(function() {
 									}
 									if(jsep !== undefined && jsep !== null) {
 										console.log("Handling SDP as well...");
-										console.log(jsep.sdp);
+										console.log(jsep);
 										// Answer
 										streaming.createAnswer(
 											{
@@ -118,7 +118,7 @@ $(document).ready(function() {
 												media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
 												success: function(jsep) {
 													console.log("Got SDP!");
-													console.log(jsep.sdp);
+													console.log(jsep);
 													var body = { "request": "start" };
 													streaming.send({"message": body, "jsep": jsep});
 													$('#watch').html("Stop").removeAttr('disabled').click(stopStream);

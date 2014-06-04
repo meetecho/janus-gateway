@@ -132,9 +132,10 @@ $(document).ready(function() {
 													{
 														jsep: jsep,
 														// No media provided: by default, it's sendrecv for audio and video
+														media: { data: true },	// Let's negotiate data channels as well
 														success: function(jsep) {
 															console.log("Got SDP!");
-															console.log(jsep.sdp);
+															console.log(jsep);
 															var body = { "request": "accept" };
 															videocall.send({"message": body, "jsep": jsep});
 															$('#peer').attr('disabled', true);
@@ -149,18 +150,25 @@ $(document).ready(function() {
 														}
 													});
 											} else if(event === 'accepted') {
-												console.log(result["username"] + " accepted the call!");
+												var peer = result["username"];
+												if(peer === null || peer === undefined) {
+													console.log("Call started!");
+												} else {
+													console.log(peer + " accepted the call!");
+													yourusername = peer;
+												}
 												// TODO Video call can start
-												videocall.handleRemoteJsep({jsep: jsep});
+												if(jsep !== null && jsep !== undefined)
+													videocall.handleRemoteJsep({jsep: jsep});
 												$('#call').removeAttr('disabled').html('Hangup')
 													.removeClass("btn-success").addClass("btn-danger")
 													.unbind('click').click(doHangup);
-												yourusername = result["username"];
 											} else if(event === 'hangup') {
 												console.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
 												// TODO Reset status
 												videocall.hangup();
-												spinner.stop();
+												if(spinner !== null && spinner !== undefined)
+													spinner.stop();
 												$('#waitingvideo').remove();
 												$('#videos').hide();
 												$('#peer').removeAttr('disabled').val('');
@@ -185,7 +193,8 @@ $(document).ready(function() {
 										}
 										// TODO Reset status
 										videocall.hangup();
-										spinner.stop();
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
 										$('#waitingvideo').remove();
 										$('#videos').hide();
 										$('#peer').removeAttr('disabled').val('');
@@ -222,7 +231,8 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
 									console.log(JSON.stringify(stream));
-									spinner.stop();
+									if(spinner !== null && spinner !== undefined)
+										spinner.stop();
 									$('#waitingvideo').remove();
 									if($('#remotevideo').length === 0)
 										$('#videoright').append('<video class="rounded centered" id="remotevideo" width=320 height=240 autoplay/>');
@@ -289,6 +299,11 @@ $(document).ready(function() {
 											$('#curbitrate').text(bitrate);
 										}, 1000);
 									}
+									$('#datasend').removeAttr('disabled');
+								},
+								ondata: function(data) {
+									console.log("We got data from the DataChannel! " + data);
+									$('#datarecv').val(data);
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
@@ -337,6 +352,8 @@ function checkEnter(field, event) {
 			registerUsername();
 		else if(field.id == 'peer')
 			doCall();
+		else if(field.id == 'datasend')
+			sendData();
 		return false;
 	} else {
 		return true;
@@ -384,10 +401,11 @@ function doCall() {
 	// Call this user
 	videocall.createOffer(
 		{
-			media: null,	// By default, it's sendrecv for audio and video
+			// By default, it's sendrecv for audio and video...
+			media: { data: true },	// ... let's negotiate data channels as well
 			success: function(jsep) {
 				console.log("Got SDP!");
-				console.log(jsep.sdp);
+				console.log(jsep);
 				var body = { "request": "call", "username": $('#peer').val() };
 				videocall.send({"message": body, "jsep": jsep});
 			},
@@ -405,4 +423,17 @@ function doHangup() {
 	videocall.send({"message": hangup});
 	videocall.hangup();
 	yourusername = null;
+}
+
+function sendData() {
+	var data = $('#datasend').val();
+	if(data === "") {
+		bootbox.alert('Insert a message to send on the DataChannel to your peer');
+		return;
+	}
+	videocall.data({
+		text: data,
+		error: function(reason) { bootbox.alert(reason); },
+		success: function() { $('#datasend').val(''); },
+	});
 }
