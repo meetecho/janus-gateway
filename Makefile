@@ -35,4 +35,5 @@ endif
 
 clean :
 	rm -f janus *.o plugins/*.o plugins/*.so
+	rm -f sctptest/test sctptest/*.o
 	rm -rf docs/html

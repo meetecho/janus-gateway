@@ -56,7 +56,7 @@
  *
  * \section license License
  * This program is free software, distributed under the terms of
- * the Affero GNU General Public License Version 3. For more details
+ * the GNU General Public License Version 3. For more details
  * see the \ref COPYING page.
  *
 */
@@ -1011,7 +1011,11 @@ python -m SimpleHTTPServer 9000
  *    .
  * -# <b>Why is the license AGPL? Do you provide alternative license mechanisms as well?</b>\n
  *    .
- *    We chose AGPL for a simple reason: we wanted our work to be open source,
+ *    First, a word of update: we recently switched from AGPLv3 to GPLv3,
+ *    so if AGPL was your concern, we hope this simple choice managed to
+ *    change your mind on whether considering trying Janus or not!
+ *
+ *    That said, we initially chose AGPL for a simple reason: we wanted our work to be open source,
  *    and we wanted interested people to play with it and contribute back
  *    whatever improvement they could provide to the core. This is not always
  *    the case with open source software, which is sometimes just seen as
@@ -1021,17 +1025,9 @@ python -m SimpleHTTPServer 9000
  *    <a href="https://groups.google.com/forum/?pli=1#!searchin/discuss-webrtc/janus/discuss-webrtc/LJHXkIsAaEU/fHgJ2z0sxfoJ">not very appreciated</a>
  *    around, especially because of some
  *    interpretations about it that could affect the way proprietary stuff
- *    is deployed. We obviously care about these concerns, and are considering
- *    an approach that would make it easier for Janus to be integrated in
- *    heterogeneous scenarios.\n\n
- *    One road we're investigating is what we call
- *    the "MongoDB approach". MongoDB is an open source NoSQL implementation,
- *    which is AGPL as well. That said, they released the MongoDB core as
- *    AGPL, while the drivers to use it with less restrictive licenses, that
- *    are supposed to lift the concerns we mentioned above, while keeping
- *    the concept that modifications to the core should be contributed back.
- *    We could do the same for Janus, by releasing the APIs as something
- *    different than AGPL.\n\n
+ *    is deployed. We obviously cared about these concerns, and that's what
+ *    eventually lead to pick GPLv3 as a license, which should make it
+ *    easier for Janus to be integrated in heterogeneous scenarios.\n\n
  *    Apart from that, we're obviously also willing to discuss different
  *    licensing agreements with interested parties, including commercial
  *    ones. Sponsored development can also be considered, so if you're
