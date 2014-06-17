@@ -15,6 +15,8 @@
  * \ingroup protocols
  * \ref protocols
  */
+
+#ifdef HAVE_SCTP
  
 #include "sctp.h"
 #include "dtls.h"
@@ -1338,3 +1340,5 @@ void janus_sctp_message_destroy(janus_sctp_message *message) {
 	free(message);
 	message = NULL;
 }
+
+#endif

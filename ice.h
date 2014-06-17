@@ -174,8 +174,6 @@ struct janus_ice_component {
 	GSource *source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
-	/*! \brief SCTP association, if this is for data channels */
-	janus_sctp_association *sctp;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this stream */

@@ -19,6 +19,8 @@
 #ifndef _JANUS_SCTP_H
 #define _JANUS_SCTP_H
 
+#ifdef HAVE_SCTP
+
 #define INET 1
 #define INET6 1
 
@@ -192,5 +194,7 @@ void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len)
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
 void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len);
+
+#endif
 
 #endif

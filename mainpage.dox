@@ -312,7 +312,8 @@ janus.attach(
  * will allow you to handle this interaction (e.g., to tell the plugin
  * to mute your stream, or to be notified about someone joining a virtual room),
  * while the \c ondata callback is triggered whenever data is received
- * on the Data Channel, if available. 
+ * on the Data Channel, if available (and the \c ondataopen callback
+ * will tell you when a Data Channel is actually available). 
  *
  * The following paragraphs will delve a bit deeper in the negotiation
  * mechanism provided by the \c Handle API, in particular describing

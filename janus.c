@@ -59,6 +59,7 @@ gchar *janus_get_server_key() {
 
 
 /* Information */
+static gchar *info_text = NULL;
 static gchar *local_ip = NULL;
 gchar *janus_get_local_ip() {
 	return local_ip;
@@ -444,37 +445,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_USE_GET, "Use GET for the info endpoint");
 			goto done;
 		}
-		/* Prepare a summary on the gateway */
-		json_t *reply = json_object();
-		json_object_set_new(reply, "name", json_string(JANUS_NAME));
-		json_object_set_new(reply, "version", json_integer(JANUS_VERSION));
-		json_object_set_new(reply, "version_string", json_string(JANUS_VERSION_STRING));
-		json_object_set_new(reply, "author", json_string(JANUS_AUTHOR));
-		json_t *data = json_object();
-		GList *plugins_list = g_hash_table_get_values(plugins);
-		GList *ps = plugins_list;
-		while(ps) {
-			janus_plugin *p = (janus_plugin *)ps->data;
-			if(p == NULL) {
-				ps = ps->next;
-				continue;
-			}
-			json_t *plugin = json_object();
-			json_object_set_new(plugin, "name", json_string(p->get_name()));
-			json_object_set_new(plugin, "author", json_string(p->get_author()));
-			json_object_set_new(plugin, "description", json_string(p->get_description()));
-			json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
-			json_object_set_new(plugin, "version", json_integer(p->get_version()));
-			ps = ps->next;
-			json_object_set_new(data, p->get_package(), plugin);
-		}
-		g_list_free(plugins_list);
-		json_object_set_new(reply, "plugins", data);
-		/* Convert to a string */
-		char *reply_text = json_dumps(reply, JSON_INDENT(3));
-		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_ws_success(connection, msg, "application/json", reply_text);
+		ret = janus_ws_success(connection, msg, "application/json", info_text);
 		goto done;
 	}
 	guint64 session_id = g_ascii_strtoll(session_path, NULL, 10);
@@ -760,7 +732,10 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			if(video > 1) {
 				JANUS_LOG(LOG_ERR, "More than one video line? only going to negotiate one...\n");
 			}
-			JANUS_LOG(LOG_VERB, "The browser %s negotiating SCTP/DataChannels\n", bundle ? "is" : "is NOT");
+			JANUS_LOG(LOG_VERB, "The browser %s negotiating SCTP/DataChannels\n", data ? "is" : "is NOT");
+#ifndef HAVE_SCTP
+			JANUS_LOG(LOG_WARN, "  -- DataChannels have been negotiated, but support for them has not been compiled...\n");
+#endif
 			JANUS_LOG(LOG_VERB, "The browser %s BUNDLE\n", bundle ? "supports" : "does NOT support");
 			JANUS_LOG(LOG_VERB, "The browser %s rtcp-mux\n", rtcpmux ? "supports" : "does NOT support");
 			JANUS_LOG(LOG_VERB, "The browser %s doing Trickle ICE\n", trickle ? "is" : "is NOT");
@@ -940,7 +915,11 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			}
 			/* Parse it */
 			int video = (strcmp(json_string_value(mid), "video") == 0);
+#ifdef HAVE_SCTP
 			int data = (strcmp(json_string_value(mid), "data") == 0);
+#else
+			int data = 0;
+#endif
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 					&& (
 						((video || data) && handle->audio_stream != NULL) || 
@@ -1397,7 +1376,11 @@ void janus_relay_data(janus_plugin_session *handle, char *buf, int len) {
 	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
+#ifdef HAVE_SCTP
 	janus_ice_relay_data(session, buf, len);
+#else
+	JANUS_LOG(LOG_WARN, "Asked to relay data, but Data Channels support has not been compiled...\n");
+#endif
 }
 
 
@@ -1707,10 +1690,14 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 
+#ifdef HAVE_SCTP
 	/* Initialize SCTP for DataChannels */
 	if(janus_sctp_init() < 0) {
 		exit(1);
 	}
+#else
+	JANUS_LOG(LOG_WARN, "Data Channels support not compiled\n");
+#endif
 
 	/* Initialize Sofia-SDP */
 	if(janus_sdp_init() < 0) {
@@ -1786,6 +1773,41 @@ gint main(int argc, char *argv[])
 		}
 	}
 	closedir(dir);
+
+	/* Prepare a summary on the gateway */
+	json_t *info = json_object();
+	json_object_set_new(info, "name", json_string(JANUS_NAME));
+	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
+	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
+	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
+#ifdef HAVE_SCTP
+	json_object_set_new(info, "data_channels", json_integer(1));
+#else
+	json_object_set_new(info, "data_channels", json_integer(0));
+#endif
+	json_t *data = json_object();
+	GList *plugins_list = g_hash_table_get_values(plugins);
+	GList *ps = plugins_list;
+	while(ps) {
+		janus_plugin *p = (janus_plugin *)ps->data;
+		if(p == NULL) {
+			ps = ps->next;
+			continue;
+		}
+		json_t *plugin = json_object();
+		json_object_set_new(plugin, "name", json_string(p->get_name()));
+		json_object_set_new(plugin, "author", json_string(p->get_author()));
+		json_object_set_new(plugin, "description", json_string(p->get_description()));
+		json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
+		json_object_set_new(plugin, "version", json_integer(p->get_version()));
+		ps = ps->next;
+		json_object_set_new(data, p->get_package(), plugin);
+	}
+	g_list_free(plugins_list);
+	json_object_set_new(info, "plugins", data);
+	/* Convert to a string */
+	info_text = json_dumps(info, JSON_INDENT(3));
+	json_decref(info);
 
 	/* Start web server */
 	sessions = g_hash_table_new(NULL, NULL);
@@ -1922,8 +1944,10 @@ gint main(int argc, char *argv[])
 	ERR_free_strings();
 	JANUS_LOG(LOG_INFO, "Cleaning SDP structures...\n");
 	janus_sdp_deinit();
+#ifdef HAVE_SCTP
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();
+#endif
 	
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {

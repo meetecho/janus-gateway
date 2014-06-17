@@ -103,8 +103,11 @@ gchar *janus_dtls_get_local_fingerprint() {
 	return (gchar *)local_fingerprint;
 }
 
+
+#ifdef HAVE_SCTP
 /* Helper thread to create a SCTP association that will use this DTLS stack */
 void *janus_dtls_sctp_setup_thread(void *data);
+#endif
 
 
 /* DTLS-SRTP initialization */
@@ -232,7 +235,9 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		SSL_set_accept_state(dtls->ssl);
 	}
 	dtls->ready = 0;
+#ifdef HAVE_SCTP
 	dtls->sctp = NULL;
+#endif
 	/* Done */
 	dtls->component = component;
 	return dtls;
@@ -304,10 +309,14 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	if(dtls->ready) {
 		/* There's data to be read? */
 		JANUS_LOG(LOG_HUGE, "Any data available?\n");
+#ifdef HAVE_SCTP
 		if(dtls->sctp != NULL && read > 0) {
 			JANUS_LOG(LOG_HUGE, "Sending data (%d bytes) to the SCTP stack...\n", read);
 			janus_sctp_data_from_dtls(dtls->sctp, data, read);
 		}
+#else
+		JANUS_LOG(LOG_WARN, "Data available but Data Channels support disabled...\n");
+#endif
 	} else {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS established, yay!\n", handle->handle_id);
 		/* Check the remote fingerprint */
@@ -416,6 +425,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					dtls->srtp_valid = 1;
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created outbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
 				}
+#ifdef HAVE_SCTP
 				if(component->stream_id == handle->data_id ||
 						(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) &&
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS))) {
@@ -431,6 +441,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						}
 					}
 				}
+#endif
 				dtls->ready = 1;
 			}
 done:
@@ -448,11 +459,13 @@ done:
 void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	if(dtls == NULL)
 		return;
+#ifdef HAVE_SCTP
 	/* Destroy the SCTP association if this is a DataChannel */
 	if(dtls->sctp != NULL) {
 		janus_sctp_association_destroy(dtls->sctp);
 		dtls->sctp = NULL;
 	}
+#endif
 	/* Destroy DTLS stack and free resources */
 	dtls->component = NULL;
 	if(dtls->ssl != NULL) {
@@ -582,8 +595,8 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 	}
 }
 
+#ifdef HAVE_SCTP
 void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
-	JANUS_LOG(LOG_INFO, "janus_dtls_wrap_sctp_data\n");
 	if(dtls == NULL || dtls->sctp == NULL || buf == NULL || len < 1)
 		return;
 	janus_sctp_send_data(dtls->sctp, buf, len);
@@ -622,6 +635,7 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len) {
 	}
 	janus_ice_incoming_data(handle, buf, len);
 }
+#endif
 
 gboolean janus_dtls_retry(gpointer stack) {
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)stack;
@@ -656,6 +670,7 @@ gboolean janus_dtls_retry(gpointer stack) {
 }
 
 
+#ifdef HAVE_SCTP
 /* Helper thread to create a SCTP association that will use this DTLS stack */
 void *janus_dtls_sctp_setup_thread(void *data) {
 	if(data == NULL) {
@@ -671,3 +686,4 @@ void *janus_dtls_sctp_setup_thread(void *data) {
 	janus_sctp_association_setup(sctp);
 	return NULL;
 }
+#endif

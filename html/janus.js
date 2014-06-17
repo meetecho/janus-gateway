@@ -283,6 +283,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.onlocalstream = (typeof callbacks.onlocalstream == "function") ? callbacks.onlocalstream : jQuery.noop;
 		callbacks.onremotestream = (typeof callbacks.onremotestream == "function") ? callbacks.onremotestream : jQuery.noop;
 		callbacks.ondata = (typeof callbacks.ondata == "function") ? callbacks.ondata : jQuery.noop;
+		callbacks.ondataopen = (typeof callbacks.ondataopen == "function") ? callbacks.ondataopen : jQuery.noop;
 		callbacks.oncleanup = (typeof callbacks.oncleanup == "function") ? callbacks.oncleanup : jQuery.noop;
 		if(!connected) {
 			Janus.log("Is the gateway down? (connected=false)");
@@ -351,6 +352,7 @@ function Janus(gatewayCallbacks) {
 						onlocalstream : callbacks.onlocalstream,
 						onremotestream : callbacks.onremotestream,
 						ondata : callbacks.ondata,
+						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
 						hangup : function() { cleanupWebrtc(handleId); },
 						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
@@ -635,6 +637,9 @@ function Janus(gatewayCallbacks) {
 			}
 			var onDataChannelStateChange = function() {
 				Janus.log('State change on data channel: ' + config.dataChannel.readyState);
+				if(config.dataChannel.readyState === 'open') {
+					pluginHandle.ondataopen();	// FIXME
+				}
 			}
 			var onDataChannelError = function(error) {
 				Janus.log('Got error on data channel:');
@@ -642,7 +647,7 @@ function Janus(gatewayCallbacks) {
 				// TODO
 			}
 			// Until we implement the proxying of open requests within the Janus core, we open a channel ourselves whatever the case
-			config.dataChannel = config.pc.createDataChannel("JanusDataChannel", {reliable: false});
+			config.dataChannel = config.pc.createDataChannel("JanusDataChannel", {ordered:false});	// FIXME Add options (ordered, maxRetransmits, etc.)
 			config.dataChannel.onmessage = onDataChannelMessage;
 			config.dataChannel.onopen = onDataChannelStateChange;
 			config.dataChannel.onclose = onDataChannelStateChange;

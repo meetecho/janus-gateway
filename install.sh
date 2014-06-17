@@ -9,11 +9,26 @@ WGET=`which wget`
 CURL=`which curl`
 
 NODOCS=0
+NODATACHANS=0
 echo "Installing the Janus WebRTC gateway..."
 case "$1" in
 	nodocs)
 		echo "  -- nodocs passed, skipping documentation!"
 		NODOCS=1
+		;;
+	nodatachans)
+		echo "  -- nodatachans passed, disabling Data Channels support!"
+		NODATACHANS=1
+		;;
+esac
+case "$2" in
+	nodocs)
+		echo "  -- nodocs passed, skipping documentation!"
+		NODOCS=1
+		;;
+	nodatachans)
+		echo "  -- nodatachans passed, disabling Data Channels support!"
+		NODATACHANS=1
 		;;
 esac
 
@@ -78,20 +93,28 @@ then
 else
 	export HAVE_PORTRANGE="-DHAVE_PORTRANGE"
 fi
-$MAKE sctptest
-if [ $? != 0 ]
+if test $NODATACHANS -eq 0
 then
-	echo
-	echo "The installer couldn't find usrsctp lib, which is needed for Data Channels"
-	echo "You can install it with the following steps:"
-	echo "    svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp"
-	echo "    cd usrsctp"
-	echo "    ./bootstrap"
-	echo "    ./configure --prefix=/usr && make && sudo make install"
-	echo
-	echo "    [Note: you may need to pass --libdir=/usr/lib64 to the configure script if you're installing on a x86_64 distribution]"
-	echo
-	exit 1
+	export SCTP_LIB="-lusrsctp"
+	export HAVE_SCTP="-DHAVE_SCTP"
+	$MAKE sctptest
+	if [ $? != 0 ]
+	then
+		echo
+		echo "The installer couldn't find usrsctp lib, which is needed for Data Channels"
+		echo "You can install it with the following steps:"
+		echo "    svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp"
+		echo "    cd usrsctp"
+		echo "    ./bootstrap"
+		echo "    ./configure --prefix=/usr && make && sudo make install"
+		echo
+		echo "    [Note: you may need to pass --libdir=/usr/lib64 to the configure script if you're installing on a x86_64 distribution]"
+		echo
+		echo "If you're not interested in Data Channels, you can disable them passing nodatachans to the install script:" 
+		echo "    ./install.sh nodatachans"
+		echo 
+		exit 1
+	fi
 fi
 
 echo

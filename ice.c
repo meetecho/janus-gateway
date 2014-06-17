@@ -1078,6 +1078,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && video_rtcp != NULL)
 			nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtcp);
 	}
+#ifndef HAVE_SCTP
+	handle->data_id = 0;
+	handle->data_stream = NULL;
+#else
 	if(data && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 		/* Add a SCTP/DataChannel stream */
 		handle->streams_num++;
@@ -1114,6 +1118,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		nice_agent_gather_candidates (handle->agent, handle->data_id);
 		nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, data_component);
 	}
+#endif
 	return 0;
 }
 
@@ -1215,6 +1220,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	}
 }
 
+#ifdef HAVE_SCTP
 void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	if(!handle || buf == NULL || len < 1)
 		return;
@@ -1244,6 +1250,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	component->noerrorlog = 0;
 	janus_dtls_wrap_sctp_data(component->dtls, buf, len);
 }
+#endif
 
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component) {
 	if(!handle || !component)

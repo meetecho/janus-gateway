@@ -227,6 +227,9 @@ $(document).ready(function() {
 											$('#curbitrate').text(bitrate);
 										}, 1000);
 									}
+								},
+								ondataopen: function(data) {
+									console.log("The DataChannel is available!");
 									$('#datasend').removeAttr('disabled');
 								},
 								ondata: function(data) {

@@ -57,8 +57,9 @@ on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
 For what concerns usrsctp, which is needed for Data Channels support, it
-is usually not available in repositories, so you'll have to install it
-manually. It is a pretty easy and standard process:
+is usually not available in repositories, so if you're interested in
+them (support is optional) you'll have to install it manually. It is a
+pretty easy and standard process:
 
 	svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp
 	cd usrsctp
@@ -88,12 +89,17 @@ Once you have installed all the dependencies, just use:
 
 	sh install.sh
 
-to start the whole compilation process. The script will try to check
-whether you have all the dependencies installed, and then issue a 'make'
-for you to start compiling. If Doxygen and graphviz are available, it
-will also build the documentation for you as well in the docs/html
-subfolder. If you prefer not to build the documentation (or not to
-build it again and again every time you compile!) use the 'nodocs' option:
+to start the whole compilation process, or:
+
+	sh install.sh nodatachans
+
+if you want to disable support for Data Channels. The script will try to
+check whether you have all the dependencies installed, and then issue a
+'make' for you to start compiling. If Doxygen and graphviz are
+available, it will also build the documentation for you as well in the
+docs/html subfolder. If you prefer not to build the documentation (or
+not to build it again and again every time you compile!) use the
+'nodocs' option (adding nodatachans too, if needed):
 
 	sh install.sh nodocs
 
