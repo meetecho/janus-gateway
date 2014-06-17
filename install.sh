@@ -10,6 +10,15 @@ CURL=`which curl`
 
 NODOCS=0
 NODATACHANS=0
+case "$1" in
+	--help)
+		echo "Usage: $0 [options]"
+		echo "    --nodatachans        disable Data Channels support (no usrsctp needed)"
+		echo "    --nodocs             don't build documentation"
+		echo "    --help               show this help message and exit"
+		exit 0
+		;;
+esac
 echo "Installing the Janus WebRTC gateway..."
 case "$1" in
 	nodocs)
