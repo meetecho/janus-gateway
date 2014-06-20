@@ -705,7 +705,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			} else if(!strcasecmp(jsep_type, "answer")) {
 				offer = 0;
-				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			} else {
 				/* TODO Handle other message types as well */
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_JSEP_UNKNOWN_TYPE, "JSEP error: unknown message type '%s'", jsep_type);
@@ -830,6 +829,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 						}
 					}
 					janus_mutex_unlock(&handle->mutex);
+					/* We got our answer */
+					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				}
 			} else {
 				/* TODO Actually handle session updates: for now we ignore them, and just relay them to plugins */
@@ -1298,7 +1299,10 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 		return NULL;
 	}
 
-	if(!offer) {
+	if(offer) {
+		/* We set the flag to wait for an answer before handling trickle candidates */
+		janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+	} else {
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
 		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) && audio && video) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", ice_handle->handle_id);

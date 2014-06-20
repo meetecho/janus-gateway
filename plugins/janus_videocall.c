@@ -264,7 +264,8 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	janus_videocall_hangup_media(handle);
 	if(session->username != NULL) {
 		janus_mutex_lock(&sessions_mutex);
-		JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", g_hash_table_remove(sessions, (gpointer)session->username));
+		int res = g_hash_table_remove(sessions, (gpointer)session->username);
+		JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);
 		janus_mutex_unlock(&sessions_mutex);
 	}
 	/* Cleaning up and removing the session is done in a lazy way */
