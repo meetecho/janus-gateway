@@ -1060,6 +1060,29 @@ python -m SimpleHTTPServer 9000
  *    currently working on binary streams as well, so we hope support
  *    for those will be available soon.\n\n
  *    .
+ * -# <b>I don't care about Data Channels, do I have to compile usrsctp anyway?</b>\n
+ *    .
+ *    Support for Data Channels is optional. If you don't care about them,
+ *    but only about audio and/or video, pass the \c nodatachans option
+ *    to the \c install.sh script. If you already attempted an install
+ *    previously, issue a \c make \c clean before compiling again, or
+ *    you might encounter issues with pre-existing symbols.\n\n
+ *    .
+ * -# <b>I can't install usrsctp, I'm getting errors about dereferencing pointers?</b>\n
+ *    .
+ *    Apparently recent compilers are stricter with respect to some code
+ *    syntaxes, and this seems to be affecting the way \c usrsctp is written
+ *    as of now. Some users managed to fix this issue by passing an export
+ *    before the \c bootstrap and \c configure steps in the \c usrsctp
+ *    compilation:\n\n
+ *\verbatim
+   export CFLAGS="-fno-strict-aliasing" ./boostrap
+   export CFLAGS="-fno-strict-aliasing" ./configure --prefix=/usr
+   make && make install
+ \endverbatim
+ *    Another solution seems to be removing all the \c -O2 occurrences
+ *    in the generated \c configure script.\n\n
+ *    .
  * -# <b>Can I use Janus as a gateway to my Freeswitch/Kamailio/Asterisk/other SIP infrastructure?</b>\n
  *    .
  *    Of course! One of the modules we provide out of the box is a SIP
