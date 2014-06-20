@@ -279,7 +279,14 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	/* Get path components */
 	gchar **basepath = NULL, **path = NULL;
 	if(strcasecmp(url, ws_path)) {
-		basepath = g_strsplit(url, ws_path, -1);
+		if(strlen(ws_path) > 1) {
+			basepath = g_strsplit(url, ws_path, -1);
+		} else {
+			/* The base path is the web server too itself, we process the url itself */
+			basepath = calloc(3, sizeof(char *));
+			basepath[0] = g_strdup("/");
+			basepath[1] = g_strdup(url);
+		}
 		if(basepath[1] == NULL || basepath[1][0] != '/') {
 			JANUS_LOG(LOG_ERR, "Invalid url %s (%s)\n", url, basepath[1]);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
@@ -1596,7 +1603,7 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 		ws_path = g_strdup(item->value);
-		if(ws_path[strlen(ws_path)-1] == '/') {
+		if(strlen(ws_path) > 1 && ws_path[strlen(ws_path)-1] == '/') {
 			/* Remove the trailing slash, it makes things harder when we parse requests later */
 			ws_path[strlen(ws_path)-1] = '\0';
 		}
