@@ -648,9 +648,14 @@ static void *janus_sip_handler(void *data) {
 			goto error;
 		}
 		json_t *request = json_object_get(root, "request");
-		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
-			sprintf(error_cause, "Invalid element (request)");
+		if(!request) {
+			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			sprintf(error_cause, "Missing element (request)");
+			goto error;
+		}
+		if(!json_is_string(request)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -666,9 +671,14 @@ static void *janus_sip_handler(void *data) {
 			gboolean guest = FALSE;
 			json_t *type = json_object_get(root, "type");
 			if(type != NULL) {
+				if(!type) {
+					JANUS_LOG(LOG_ERR, "Missing element (type)\n");
+					sprintf(error_cause, "Missing element (type)");
+					goto error;
+				}
 				if(!json_is_string(type)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (type)\n");
-					sprintf(error_cause, "Invalid element (type)");
+					JANUS_LOG(LOG_ERR, "Invalid element (type should be a string)\n");
+					sprintf(error_cause, "Invalid element (type should be a string)");
 					goto error;
 				}
 				const char *type_text = json_string_value(type);
@@ -681,9 +691,14 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Parse address */
 			json_t *proxy = json_object_get(root, "proxy");
-			if(!proxy || !json_is_string(proxy)) {
-				JANUS_LOG(LOG_ERR, "Missing or invalid element (proxy)\n");
-				sprintf(error_cause, "Missing or invalid element (proxy)");
+			if(!proxy) {
+				JANUS_LOG(LOG_ERR, "Missing element (proxy)\n");
+				sprintf(error_cause, "Missing element (proxy)");
+				goto error;
+			}
+			if(!json_is_string(proxy)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (proxy should be a string)\n");
+				sprintf(error_cause, "Invalid element (proxy should be a string)");
 				goto error;
 			}
 			const char *proxy_text = json_string_value(proxy);
@@ -753,9 +768,14 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(result, "username", json_string(session->account.username));
 			} else {
 				json_t *username = json_object_get(root, "username");
-				if(!username || !json_is_string(username)) {
-					JANUS_LOG(LOG_ERR, "Missing or invalid element (username)\n");
-					sprintf(error_cause, "Missing or invalid element (username)");
+				if(!username) {
+					JANUS_LOG(LOG_ERR, "Missing element (username)\n");
+					sprintf(error_cause, "Missing element (username)");
+					goto error;
+				}
+				if(!json_is_string(username)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (username should be a string)\n");
+					sprintf(error_cause, "Invalid element (username should be a string)");
 					goto error;
 				}
 				/* Parse address */
@@ -801,9 +821,14 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				json_t *secret = json_object_get(root, "secret");
-				if(!secret || !json_is_string(secret)) {
-					JANUS_LOG(LOG_ERR, "Missing or invalid element (secret)\n");
-					sprintf(error_cause, "Missing or invalid element (secret)");
+				if(!secret) {
+					JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
+					sprintf(error_cause, "Missing element (secret)");
+					goto error;
+				}
+				if(!json_is_string(secret)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
+					sprintf(error_cause, "Invalid element (secret should be a string)");
 					goto error;
 				}
 				const char *secret_text = json_string_value(secret);
@@ -877,9 +902,14 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			json_t *uri = json_object_get(root, "uri");
-			if(!uri || !json_is_string(uri)) {
-				JANUS_LOG(LOG_ERR, "Missing or invalid element (uri)\n");
-				sprintf(error_cause, "Missing or invalid element (uri)");
+			if(!uri) {
+				JANUS_LOG(LOG_ERR, "Missing element (uri)\n");
+				sprintf(error_cause, "Missing element (uri)");
+				goto error;
+			}
+			if(!json_is_string(uri)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (uri should be a string)\n");
+				sprintf(error_cause, "Invalid element (uri should be a string)");
 				goto error;
 			}
 			/* Parse address */

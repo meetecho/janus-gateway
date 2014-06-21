@@ -945,7 +945,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			if(janus_ice_is_ignored(host))
 				continue;
 			/* Ok, add interface to the ICE agent */
-			JANUS_LOG(LOG_INFO, "Adding %s to the addresses to gather candidates for\n", host);
+			JANUS_LOG(LOG_VERB, "Adding %s to the addresses to gather candidates for\n", host);
 			NiceAddress addr_local;
 			nice_address_init (&addr_local);
 			nice_address_set_from_string (&addr_local, host);

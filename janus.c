@@ -45,6 +45,7 @@ static GHashTable *plugins_so = NULL;
 
 static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
+static char *ws_api_secret = NULL;
 
 
 /* Certificates */
@@ -131,13 +132,14 @@ static janus_callbacks janus_handler_plugin =
 /* Gateway Sessions */
 static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL;
-janus_session *janus_session_create(void) {
-	guint64 session_id = 0;
-	while(session_id == 0) {
-		session_id = g_random_int();
-		if(janus_session_find(session_id) != NULL) {
-			/* Session ID already taken, try another one */
-			session_id = 0;
+janus_session *janus_session_create(guint64 session_id) {
+	if(session_id == 0) {
+		while(session_id == 0) {
+			session_id = g_random_int();
+			if(janus_session_find(session_id) != NULL) {
+				/* Session ID already taken, try another one */
+				session_id = 0;
+			}
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"\n", session_id);
@@ -149,6 +151,7 @@ janus_session *janus_session_create(void) {
 	session->session_id = session_id;
 	session->messages = g_queue_new();
 	session->destroy = 0;
+	janus_mutex_init(&session->qmutex);
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
@@ -202,6 +205,7 @@ void janus_session_free(janus_session *session) {
 		session->ice_handles = NULL;
 	}
 	if(session->messages != NULL) {
+		janus_mutex_lock(&session->qmutex);
 		if(!g_queue_is_empty(session->messages)) {
 			janus_http_event *event = NULL;
 			while(!g_queue_is_empty(session->messages)) {
@@ -216,6 +220,7 @@ void janus_session_free(janus_session *session) {
 			}
 		}
 		g_queue_free (session->messages);
+		janus_mutex_unlock(&session->qmutex);
 		session->messages = NULL;
 	}
 	janus_mutex_unlock(&session->mutex);
@@ -404,15 +409,35 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			json_decref(root);
 			goto done;
 		}
+		if(ws_api_secret != NULL) {
+			/* There's an API secret, check that the client provided it */
+			json_t *secret = json_object_get(root, "apisecret");
+			if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), ws_api_secret)) {
+				ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_UNAUTHORIZED, NULL);
+				json_decref(root);
+				goto done;
+			}
+		}
 		json_t *transaction = json_object_get(root, "transaction");
-		if(!transaction || !json_is_string(transaction)) {
+		if(!transaction) {
 			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (transaction)");
+			json_decref(root);
+			goto done;
+		}
+		if(!json_is_string(transaction)) {
+			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (transaction should be a string)");
+			json_decref(root);
 			goto done;
 		}
 		const gchar *transaction_text = json_string_value(transaction);
 		json_t *message = json_object_get(root, "janus");
-		if(!message || !json_is_string(message)) {
+		if(!message) {
 			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (janus)");
+			json_decref(root);
+			goto done;
+		}
+		if(!json_is_string(message)) {
+			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (janus should be a string)");
 			json_decref(root);
 			goto done;
 		}
@@ -422,14 +447,31 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			json_decref(root);
 			goto done;
 		}
+		guint64 session_id = 0;
+		json_t *id = json_object_get(root, "id");
+		if(id != NULL) {
+			/* The application provided the session ID to use */
+			if(!json_is_integer(id)) {
+				ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (id should be an integer)");
+				json_decref(root);
+				goto done;
+			}
+			session_id = json_integer_value(id);
+			if(session_id > 0 && janus_session_find(session_id) != NULL) {
+				/* Session ID already taken */
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_SESSION_CONFLICT, "Session ID already in use");
+				json_decref(root);
+				goto done;
+			}
+		}
 		/* Handle it */
-		janus_session *session = janus_session_create();
+		janus_session *session = janus_session_create(session_id);
 		if(session == NULL) {
 			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			json_decref(root);
 			goto done;
 		}
-		guint64 session_id = session->session_id;
+		session_id = session->session_id;
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -515,14 +557,79 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_LOG(LOG_VERB, "Session %"SCNu64" found... returning message\n", session->session_id);
+		if(ws_api_secret != NULL) {
+			/* There's an API secret, check that the client provided it */
+			const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
+			if(!secret || strcmp(secret, ws_api_secret)) {
+				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+				if(msg->acrm)
+					MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
+				if(msg->acrh)
+					MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
+				MHD_destroy_response(response);
+				goto done;
+			}
+		}
+		/* How many messages can we send back in a single response? (just one by default) */
+		int max_events = 1;
+		const char *maxev = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "maxev");
+		if(maxev != NULL) {
+			max_events = atoi(maxev);
+			if(max_events < 1) {
+				JANUS_LOG(LOG_WARN, "Invalid maxev parameter passed (%d), defaulting to 1\n", max_events);
+				max_events = 1;
+			}
+		}
+		JANUS_LOG(LOG_VERB, "Session %"SCNu64" found... returning up to %d messages\n", session->session_id, max_events);
 		/* Handle GET, taking the first message from the list */
+		janus_mutex_lock(&session->qmutex);
 		janus_http_event *event = g_queue_pop_head(session->messages);
+		janus_mutex_unlock(&session->qmutex);
 		if(event != NULL) {
-			ret = janus_ws_success(connection, msg, "application/json", event->payload);
+			if(max_events == 1) {
+				/* Return just this message and leave */
+				ret = janus_ws_success(connection, msg, "application/json", event->payload);
+			} else {
+				/* The application is willing to receive more events at the same time, anything to report? */
+				json_t *list = json_array();
+				json_error_t error;
+				if(event->payload) {
+					json_t *ev = json_loads(event->payload, 0, &error);
+					if(ev && json_is_object(ev))	/* FIXME Should we fail if this is not valid JSON? */
+						json_array_append_new(list, ev);
+					g_free(event->payload);
+					event->payload = NULL;
+				}
+				g_free(event);
+				event = NULL;
+				int events = 1;
+				while(events < max_events) {
+					janus_mutex_lock(&session->qmutex);
+					event = g_queue_pop_head(session->messages);
+					janus_mutex_unlock(&session->qmutex);
+					if(event == NULL)
+						break;
+					if(event->payload) {
+						json_t *ev = json_loads(event->payload, 0, &error);
+						if(ev && json_is_object(ev))	/* FIXME Should we fail if this is not valid JSON? */
+							json_array_append_new(list, ev);
+						g_free(event->payload);
+						event->payload = NULL;
+					}
+					g_free(event);
+					event = NULL;
+					events++;
+				}
+				/* Return the array of messages and leave */
+				char *event_text = json_dumps(list, JSON_INDENT(3));
+				json_decref(list);
+				ret = janus_ws_success(connection, msg, "application/json", event_text);
+			}
 		} else {
 			/* Still no message, wait */
-			ret = janus_ws_notifier(connection, msg);
+			ret = janus_ws_notifier(connection, msg, max_events);
 		}
 		goto done;
 	}
@@ -537,15 +644,31 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
 		goto jsondone;
 	}
+	if(ws_api_secret != NULL) {
+		/* There's an API secret, check that the client provided it */
+		json_t *secret = json_object_get(root, "apisecret");
+		if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), ws_api_secret)) {
+			ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_UNAUTHORIZED, NULL);
+			goto jsondone;
+		}
+	}
 	json_t *transaction = json_object_get(root, "transaction");
-	if(!transaction || !json_is_string(transaction)) {
+	if(!transaction) {
 		ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (transaction)");
+		goto jsondone;
+	}
+	if(!json_is_string(transaction)) {
+		ret = janus_ws_error(connection, msg, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (transaction should be a string)");
 		goto jsondone;
 	}
 	const gchar *transaction_text = json_string_value(transaction);
 	json_t *message = json_object_get(root, "janus");
-	if(!message || !json_is_string(message)) {
+	if(!message) {
 		ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (janus)");
+		goto jsondone;
+	}
+	if(!json_is_string(message)) {
+		ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (janus should be a string)");
 		goto jsondone;
 	}
 	const gchar *message_text = json_string_value(message);
@@ -575,8 +698,12 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
-		if(!plugin || !json_is_string(plugin)) {
+		if(!plugin) {
 			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugin)");
+			goto jsondone;
+		}
+		if(!json_is_string(plugin)) {
+			ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugin should be a string)");
 			goto jsondone;
 		}
 		const gchar *plugin_text = json_string_value(plugin);
@@ -686,8 +813,12 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto jsondone;
 			}
 			json_t *type = json_object_get(jsep, "type");
-			if(!type || !json_is_string(type)) {
+			if(!type) {
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (type)");
+				goto jsondone;
+			}
+			if(!json_is_string(type)) {
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (type should be a string)");
 				goto jsondone;
 			}
 			jsep_type = g_strdup(json_string_value(type));
@@ -713,8 +844,14 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto jsondone;
 			}
 			json_t *sdp = json_object_get(jsep, "sdp");
-			if(!sdp || !json_is_string(sdp)) {
+			if(!sdp) {
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (sdp)");
+				g_free(jsep_type);
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+				goto jsondone;
+			}
+			if(!json_is_string(sdp)) {
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (sdp should be a string)");
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
@@ -740,7 +877,9 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			}
 			JANUS_LOG(LOG_VERB, "The browser %s negotiating SCTP/DataChannels\n", data ? "is" : "is NOT");
 #ifndef HAVE_SCTP
-			JANUS_LOG(LOG_WARN, "  -- DataChannels have been negotiated, but support for them has not been compiled...\n");
+			if(data) {
+				JANUS_LOG(LOG_WARN, "  -- DataChannels have been negotiated, but support for them has not been compiled...\n");
+			}
 #endif
 			JANUS_LOG(LOG_VERB, "The browser %s BUNDLE\n", bundle ? "supports" : "does NOT support");
 			JANUS_LOG(LOG_VERB, "The browser %s rtcp-mux\n", rtcpmux ? "supports" : "does NOT support");
@@ -883,13 +1022,21 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		} else {
 			/* Handle remote candidate */
 			json_t *mid = json_object_get(candidate, "sdpMid");
-			if(!mid || !json_is_string(mid)) {
+			if(!mid) {
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
 				goto jsondone;
 			}
+			if(!json_is_string(mid)) {
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
+				goto jsondone;
+			}
 			json_t *rc = json_object_get(candidate, "candidate");
-			if(!rc || !json_is_string(rc)) {
+			if(!rc) {
 				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
+				goto jsondone;
+			}
+			if(!json_is_string(rc)) {
+				ret = janus_ws_error(connection, msg, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (candidate should be a string)");
 				goto jsondone;
 			}
 			JANUS_LOG(LOG_VERB, "Trickle candidate (%s) for handle %"SCNu64": %s\n", json_string_value(mid), handle->handle_id, json_string_value(rc));
@@ -1004,9 +1151,11 @@ void janus_ws_request_completed(void *cls, struct MHD_Connection *connection, vo
 }
 
 /* Worker to handle notifications */
-int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
+int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg, int max_events) {
 	if(!connection || !msg)
 		return MHD_NO;
+	if(max_events < 1)
+		max_events = 1;
 	JANUS_LOG(LOG_VERB, "... handling long poll...\n");
 	janus_http_event *event = NULL;
 	struct MHD_Response *response = NULL;
@@ -1027,18 +1176,59 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 	}
 	gint64 start = janus_get_monotonic_time();
 	gint64 end = 0;
+	json_t *list = NULL;
+	gboolean found = FALSE;
 	/* We have a timeout for the long poll: 30 seconds */
 	while(end-start < 30*G_USEC_PER_SEC) {
+		janus_mutex_lock(&session->qmutex);
 		event = g_queue_pop_head(session->messages);
+		janus_mutex_unlock(&session->qmutex);
 		if(!session || session->destroy || stop || event != NULL) {
+			if(event == NULL)
+				break;
 			/* Gotcha! */
-			break;
+			found = TRUE;
+			if(max_events == 1) {
+				break;
+			} else {
+				/* The application is willing to receive more events at the same time, anything to report? */
+				list = json_array();
+				json_error_t error;
+				if(event->payload) {
+					json_t *ev = json_loads(event->payload, 0, &error);
+					if(ev && json_is_object(ev))	/* FIXME Should we fail if this is not valid JSON? */
+						json_array_append_new(list, ev);
+					g_free(event->payload);
+					event->payload = NULL;
+				}
+				g_free(event);
+				event = NULL;
+				int events = 1;
+				while(events < max_events) {
+					janus_mutex_lock(&session->qmutex);
+					event = g_queue_pop_head(session->messages);
+					janus_mutex_unlock(&session->qmutex);
+					if(event == NULL)
+						break;
+					if(event->payload) {
+						json_t *ev = json_loads(event->payload, 0, &error);
+						if(ev && json_is_object(ev))	/* FIXME Should we fail if this is not valid JSON? */
+							json_array_append_new(list, ev);
+						g_free(event->payload);
+						event->payload = NULL;
+					}
+					g_free(event);
+					event = NULL;
+					events++;
+				}
+				break;
+			}
 		}
 		/* Sleep 100ms */
 		g_usleep(100000);
 		end = janus_get_monotonic_time();
 	}
-	if(event == NULL || event->payload == NULL) {
+	if(!found) {
 		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session_id);
 		event = (janus_http_event *)calloc(1, sizeof(janus_http_event));
 		if(event == NULL) {
@@ -1049,13 +1239,27 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 		}
 		event->code = 200;
 		/*! \todo Improve the Janus protocol keep-alive mechanism in JavaScript */
-		event->payload = "{\"janus\" : \"keepalive\"}";
+		event->payload = max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]";
 		event->allocated = 0;
+	}
+	if(list != NULL) {
+		event = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+		if(event == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
+			MHD_destroy_response(response);
+			return ret;
+		}
+		event->code = 200;
+		char *event_text = json_dumps(list, JSON_INDENT(3));
+		json_decref(list);
+		event->payload = event_text;
+		event->allocated = 1;
 	}
 	/* Finish the request by sending the response */
 	JANUS_LOG(LOG_VERB, "We have a message to serve...\n\t%s\n", event->payload);
 	/* Send event */
-	char *payload = g_strdup(event->payload);
+	char *payload = g_strdup(event ? (event->payload ? event->payload : "") : "");
 	if(payload == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -1068,11 +1272,13 @@ int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg) {
 		return ret;
 	}
 	ret = janus_ws_success(connection, msg, NULL, payload);
-	if(event->payload && event->allocated) {
-		g_free(event->payload);
-		event->payload = NULL;
+	if(event != NULL) {
+		if(event->payload && event->allocated) {
+			g_free(event->payload);
+			event->payload = NULL;
+		}
+		g_free(event);
 	}
-	g_free(event);
 	return ret;
 }
 
@@ -1236,7 +1442,9 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	notification->code = 200;
 	notification->payload = reply_text;
 	notification->allocated = 1;
+	janus_mutex_lock(&session->qmutex);
 	g_queue_push_tail(session->messages, notification);
+	janus_mutex_unlock(&session->qmutex);
 	return JANUS_OK;
 }
 
@@ -1499,6 +1707,9 @@ gint main(int argc, char *argv[])
 	if(args_info.plugins_folder_given) {
 		janus_config_add_item(config, "general", "plugins_folder", args_info.plugins_folder_arg);
 	}
+	if(args_info.apisecret_given) {
+		janus_config_add_item(config, "general", "api_secret", args_info.apisecret_arg);
+	}
 	if(args_info.no_http_given) {
 		janus_config_add_item(config, "webserver", "http", "no");
 	}
@@ -1612,7 +1823,16 @@ gint main(int argc, char *argv[])
 			ws_path[strlen(ws_path)-1] = '\0';
 		}
 	}
-	
+	/* Is there any API secret to consider? */
+	ws_api_secret = NULL;
+	item = janus_config_get_item_drilldown(config, "general", "api_secret");
+	if(item && item->value) {
+		ws_api_secret = g_strdup(item->value);
+		if(ws_api_secret != NULL) {
+			JANUS_LOG(LOG_WARN, "An API secret has been specified: %s (make sure your requests will contain it or they will fail!)\n", ws_api_secret);
+		}
+	}
+
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL;
 	uint16_t stun_port = 0;

@@ -599,9 +599,14 @@ static void *janus_audiobridge_handler(void *data) {
 		}
 		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
-		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
-			sprintf(error_cause, "Invalid element (request)");
+		if(!request) {
+			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			sprintf(error_cause, "Missing element (request)");
+			goto error;
+		}
+		if(!json_is_string(request)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -611,20 +616,20 @@ static void *janus_audiobridge_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Creating a new audiobridge\n");
 			json_t *desc = json_object_get(root, "description");
 			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (desc)\n");
-				sprintf(error_cause, "Invalid element (desc)");
+				JANUS_LOG(LOG_ERR, "Invalid element (description should be a string)\n");
+				sprintf(error_cause, "Invalid element (description should be a string)");
 				goto error;
 			}
 			json_t *sampling = json_object_get(root, "sampling");
 			if(sampling && !json_is_integer(sampling)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (sampling)\n");
-				sprintf(error_cause, "Invalid element (sampling)");
+				JANUS_LOG(LOG_ERR, "Invalid element (sampling should be an integer)\n");
+				sprintf(error_cause, "Invalid element (sampling should be an integer)");
 				goto error;
 			}
 			json_t *record = json_object_get(root, "record");
 			if(record && !json_is_boolean(record)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (record)\n");
-				sprintf(error_cause, "Invalid value (record)");
+				JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
+				sprintf(error_cause, "Invalid value (record should be a boolean)");
 				goto error;
 			}
 			/* Create the audio bridge room */
@@ -696,9 +701,14 @@ static void *janus_audiobridge_handler(void *data) {
 		} else if(!strcasecmp(request_text, "join")) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			json_t *room = json_object_get(root, "room");
-			if(!room || !json_is_integer(room)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room)\n");
-				sprintf(error_cause, "Invalid element (room)");
+			if(!room) {
+				JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+				sprintf(error_cause, "Missing element (room)");
+				goto error;
+			}
+			if(!json_is_integer(room)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+				sprintf(error_cause, "Invalid element (room should be an integer)");
 				goto error;
 			}
 			guint64 room_id = json_integer_value(room);
@@ -712,9 +722,14 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *display = json_object_get(root, "display");
-			if(!display || !json_is_string(display)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (display)\n");
-				sprintf(error_cause, "Invalid element (display)");
+			if(!display) {
+				JANUS_LOG(LOG_ERR, "Missing element (display)\n");
+				sprintf(error_cause, "Missing element (display)");
+				goto error;
+			}
+			if(!json_is_string(display)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (display should be a string)\n");
+				sprintf(error_cause, "Invalid element (display should be a string)");
 				goto error;
 			}
 			const char *display_text = json_string_value(display);
@@ -831,9 +846,14 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			/* Configure settings for this participant */
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audio)\n");
-				sprintf(error_cause, "Invalid value (audio)");
+			if(!audio) {
+				JANUS_LOG(LOG_ERR, "Missing element (audio)\n");
+				sprintf(error_cause, "Missing element (audio)");
+				goto error;
+			}
+			if(!json_is_boolean(audio)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+				sprintf(error_cause, "Invalid element (audio should be a boolean)");
 				goto error;
 			}
 			if(audio) {

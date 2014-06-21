@@ -681,9 +681,14 @@ static void *janus_videoroom_handler(void *data) {
 		}
 		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
-		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
-			sprintf(error_cause, "Invalid element (request)");
+		if(!request) {
+			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			sprintf(error_cause, "Missing element (request)");
+			goto error;
+		}
+		if(!json_is_string(request)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -693,26 +698,26 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Creating a new videoroom\n");
 			json_t *desc = json_object_get(root, "description");
 			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (description)\n");
-				sprintf(error_cause, "Invalid element (description)");
+				JANUS_LOG(LOG_ERR, "Invalid element (description should be a string)\n");
+				sprintf(error_cause, "Invalid element (description should be a string)");
 				goto error;
 			}
 			json_t *bitrate = json_object_get(root, "bitrate");
 			if(bitrate && !json_is_integer(bitrate)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (bitrate)\n");
-				sprintf(error_cause, "Invalid element (bitrate)");
+				JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+				sprintf(error_cause, "Invalid element (bitrate should be an integer)");
 				goto error;
 			}
 			json_t *fir_freq = json_object_get(root, "fir_freq");
 			if(fir_freq && !json_is_integer(fir_freq)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (fir_freq)\n");
-				sprintf(error_cause, "Invalid element (fir_freq)");
+				JANUS_LOG(LOG_ERR, "Invalid element (fir_freq should be an integer)\n");
+				sprintf(error_cause, "Invalid element (fir_freq should be an integer)");
 				goto error;
 			}
 			json_t *publishers = json_object_get(root, "publishers");
 			if(publishers && !json_is_integer(publishers)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (publishers)\n");
-				sprintf(error_cause, "Invalid element (publishers)");
+				JANUS_LOG(LOG_ERR, "Invalid element (publishers should be an integer)\n");
+				sprintf(error_cause, "Invalid element (publishers should be an integer)");
 				goto error;
 			}
 			/* Create the audio bridge room */
@@ -789,9 +794,14 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			json_t *room = json_object_get(root, "room");
-			if(!room || !json_is_integer(room)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room)\n");
-				sprintf(error_cause, "Invalid element (room)");
+			if(!room) {
+				JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+				sprintf(error_cause, "Missing element (room)");
+				goto error;
+			}
+			if(!json_is_integer(room)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+				sprintf(error_cause, "Invalid element (room should be an integer)");
 				goto error;
 			}
 			guint64 room_id = json_integer_value(room);
@@ -805,18 +815,28 @@ static void *janus_videoroom_handler(void *data) {
 			}
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *ptype = json_object_get(root, "ptype");
-			if(!ptype || !json_is_string(ptype)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
-				sprintf(error_cause, "Invalid element (ptype)");
+			if(!ptype) {
+				JANUS_LOG(LOG_ERR, "Missing element (ptype)\n");
+				sprintf(error_cause, "Missing element (ptype)");
+				goto error;
+			}
+			if(!json_is_string(ptype)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (ptype should be a string)\n");
+				sprintf(error_cause, "Invalid element (ptype should be a string)");
 				goto error;
 			}
 			const char *ptype_text = json_string_value(ptype);
 			if(!strcasecmp(ptype_text, "publisher")) {
 				JANUS_LOG(LOG_VERB, "Configuring new publisher\n");
 				json_t *display = json_object_get(root, "display");
-				if(!display || !json_is_string(display)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (display)\n");
-					sprintf(error_cause, "Invalid element (display)");
+				if(!display) {
+					JANUS_LOG(LOG_ERR, "Missing element (display)\n");
+					sprintf(error_cause, "Missing element (display)");
+					goto error;
+				}
+				if(!json_is_string(display)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (display should be a string)\n");
+					sprintf(error_cause, "Invalid element (display should be a string)");
 					goto error;
 				}
 				const char *display_text = json_string_value(display);
@@ -886,9 +906,14 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Configuring new listener\n");
 				/* This is a new listener */
 				json_t *feed = json_object_get(root, "feed");
-				if(!feed || !json_is_integer(feed)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (feed)\n");
-					sprintf(error_cause, "Invalid element (feed)");
+				if(!feed) {
+					JANUS_LOG(LOG_ERR, "Missing element (feed)\n");
+					sprintf(error_cause, "Missing element (feed)");
+					goto error;
+				}
+				if(!json_is_integer(feed)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feed should be an integer)\n");
+					sprintf(error_cause, "Invalid element (feed should be an integer)");
 					goto error;
 				}
 				guint64 feed_id = json_integer_value(feed);
@@ -946,20 +971,20 @@ static void *janus_videoroom_handler(void *data) {
 				/* Configure audio/video/bitrate for this publisher */
 				json_t *audio = json_object_get(root, "audio");
 				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audio)\n");
-					sprintf(error_cause, "Invalid value (audio)");
+					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+					sprintf(error_cause, "Invalid value (audio should be a boolean)");
 					goto error;
 				}
 				json_t *video = json_object_get(root, "video");
 				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (video)\n");
-					sprintf(error_cause, "Invalid value (video)");
+					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+					sprintf(error_cause, "Invalid value (video should be a boolean)");
 					goto error;
 				}
 				json_t *bitrate = json_object_get(root, "bitrate");
 				if(bitrate && !json_is_integer(bitrate)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (bitrate)\n");
-					sprintf(error_cause, "Invalid value (bitrate)");
+					JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+					sprintf(error_cause, "Invalid value (bitrate should be an integer)");
 					goto error;
 				}
 				if(audio) {

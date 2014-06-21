@@ -77,6 +77,11 @@ function Janus(gatewayCallbacks) {
 	if(iceServers === undefined || iceServers === null)
 		iceServers = [{"url": "stun:stun.l.google.com:19302"}];
 	var server = gatewayCallbacks.server;
+	var maxev = null;
+	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
+		maxev = gatewayCallbacks.max_poll_events;
+	if(maxev < 1)
+		maxev = 1;
 	var connected = false;
 	var sessionId = null;
 	var pluginHandles = {};
@@ -111,9 +116,12 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Is the gateway down? (connected=false)");
 			return;
 		}
+		var longpoll = server + "/" + sessionId + "?rid=" + new Date().getTime();
+		if(maxev !== undefined && maxev !== null)
+			longpoll = longpoll + "&maxev=" + maxev;
 		$.ajax({
 			type: 'GET',
-			url: server + "/" + sessionId + "?rid=" + new Date().getTime(),
+			url: longpoll,
 			cache: false,
 			timeout: 60000,	// FIXME
 			success: handleEvent,
@@ -122,7 +130,7 @@ function Janus(gatewayCallbacks) {
 				//~ clearTimeout(timeoutTimer);
 				retries++;
 				if(retries > 3) {
-					// Did we just lost the gateway? :-(
+					// Did we just lose the gateway? :-(
 					connected = false;
 					gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
 					return;
@@ -140,6 +148,13 @@ function Janus(gatewayCallbacks) {
 			setTimeout(eventHandler, 200);
 		Janus.log("Got event on session " + sessionId);
 		Janus.log(json);
+		if($.isArray(json)) {
+			// We got an array: it means we passed a maxev > 1, iterate on all objects
+			for(var i=0; i<json.length; i++) {
+				handleEvent(json[i]);
+			}
+			return;
+		}
 		if(json["janus"] === "keepalive") {
 			// Nothing happened
 			return;

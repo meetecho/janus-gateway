@@ -495,9 +495,14 @@ static void *janus_voicemail_handler(void *data) {
 		}
 		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
-		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
-			sprintf(error_cause, "Invalid element (request)");
+		if(!request) {
+			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			sprintf(error_cause, "Missing element (request)");
+			goto error;
+		}
+		if(!json_is_string(request)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);

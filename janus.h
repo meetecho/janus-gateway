@@ -72,6 +72,8 @@ typedef struct janus_session {
 	GHashTable *ice_handles;
 	/*! \brief Queue of outgoing messages to push */
 	GQueue *messages;
+	/*! \brief Mutex to lock/unlock the messages queue */
+	janus_mutex qmutex;
 	/*! \brief Flag to trigger a lazy session destruction */
 	gint destroy:1;
 	/*! \brief Mutex to lock/unlock this session */
@@ -83,8 +85,9 @@ typedef struct janus_session {
  */
 ///@{
 /*! \brief Method to create a new Janus Gateway-Client session
+ * @param[in] session_id The desired Janus Gateway-Client session ID, or 0 if it needs to be generated randomly
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_create(void);
+janus_session *janus_session_create(guint64 session_id);
 /*! \brief Method to find an existing Janus Gateway-Client session from its ID
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
@@ -143,8 +146,9 @@ int janus_ws_error(struct MHD_Connection *connection, janus_http_msg *msg, const
  * is sent to tell the browser that the session is still valid.
  * @param[in] connection The libmicrohttpd MHD_Connection connection instance that is handling the request
  * @param[in] msg The original request, which also manages the request state
+ * @param[in] max_events The maximum number of events that can be returned in a single response (by default just one; if more, an array is returned)
  * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg);
+int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg, int max_events);
 ///@}
 
 

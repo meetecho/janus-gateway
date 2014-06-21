@@ -4,6 +4,8 @@ const char *janus_get_api_error(int error) {
 	switch(error) {
 		case JANUS_OK:
 			return "Success";
+		case JANUS_ERROR_UNAUTHORIZED:
+			return "Unauthorized request (wrong or missing apisecret)";
 		case JANUS_ERROR_UNKNOWN:
 			return "Unknown error";
 		case JANUS_ERROR_USE_GET:
@@ -40,6 +42,10 @@ const char *janus_get_api_error(int error) {
 			return "Invalid SDP";
 		case JANUS_ERROR_TRICKE_INVALID_STREAM:
 			return "Invalid stream";
+		case JANUS_ERROR_INVALID_ELEMENT_TYPE:
+			return "Invalid element type";
+		case JANUS_ERROR_SESSION_CONFLICT:
+			return "Session ID already in use";
 		default:
 			return "Unknown error";
 	}

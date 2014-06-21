@@ -13,3 +13,4 @@ option "ice-ignore-list" X "Comma-separated list of interfaces or IP addresses t
 option "public-ip" e "Public address of the machine, to use in SDP" string typestr="ipaddress" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
+option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional

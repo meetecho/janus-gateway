@@ -721,9 +721,14 @@ static void *janus_streaming_handler(void *data) {
 			goto error;
 		}
 		json_t *request = json_object_get(root, "request");
-		if(!request || !json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request)\n");
-			sprintf(error_cause, "Invalid element (request)");
+		if(!request) {
+			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			sprintf(error_cause, "Missing element (request)");
+			goto error;
+		}
+		if(!json_is_string(request)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -750,8 +755,8 @@ static void *janus_streaming_handler(void *data) {
 		} else if(!strcasecmp(request_text, "watch")) {
 			json_t *id = json_object_get(root, "id");
 			if(id && !json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id)\n");
-				sprintf(error_cause, "Invalid element (id)");
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				sprintf(error_cause, "Invalid element (id should be an integer)");
 				goto error;
 			}
 			gint64 id_value = json_integer_value(id);

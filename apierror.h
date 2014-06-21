@@ -16,6 +16,8 @@
 /*! \brief Success (no error) */
 #define JANUS_OK								0
 
+/*! \brief Unauthorized (can only happen when using apisecret) */
+#define JANUS_ERROR_UNAUTHORIZED				403
 /*! \brief Unknown/undocumented error */
 #define JANUS_ERROR_UNKNOWN						490
 /*! \brief The client needs to use HTTP POST for this request */
@@ -53,6 +55,10 @@
 #define JANUS_ERROR_JSEP_INVALID_SDP			465
 /*! \brief The stream a trickle candidate for does not exist or is invalid */
 #define JANUS_ERROR_TRICKE_INVALID_STREAM		466
+/*! \brief A JSON element is of the wrong type (e.g., an integer instead of a string) */
+#define JANUS_ERROR_INVALID_ELEMENT_TYPE		467
+/*! \brief The ID provided to create a new session is already in use */
+#define JANUS_ERROR_SESSION_CONFLICT			468
 
 
 /*! \brief Helper method to get a string representation of an API error code

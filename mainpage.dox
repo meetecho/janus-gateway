@@ -464,7 +464,8 @@ janus.attach(
  * makes use of it in a transparent way, but if you're interested in
  * more details about it (e.g., because you want to talk to the gateway
  * your own way), this page described the interface and the protocol
- * the API exposes and uses.
+ * the API exposes and uses. Some details are also provided in case you're
+ * interested in \ref secret when wrapping requests in your application.
  *
  * There are basically three types/levels of endpoints you can meet:
  *
@@ -610,6 +611,41 @@ janus.attach(
  * to send a new polling request as soon as an event or a keep-alive
  * has been received.
  *
+ * Notice that, by default, the long poll returns a single event: that is,
+ * as soon as a message becomes available in the session queue, that event
+ * is returned and the long poll closes. If you want to receive more events
+ * within the context of the same long poll, you can pass the \c max_events
+ * query string parameter to the GET, e.g.:
+ *
+\verbatim
+GET http://host:port/janus/<sessionid>?max_events=5
+\endverbatim
+ *
+\verbatim
+[
+	{
+		// Event #1
+		"janus" : "event",
+		[..]
+	},
+	{
+		// Event #2
+		"janus" : "event",
+		[..]
+	},
+	[..]
+]
+\endverbatim
+ *
+ * This request will instruct the gateway to return at maximum 5 events
+ * within the context of the same long poll, formatted as a JSON array
+ * of events. Please beware that this does \b NOT mean that you'll
+ * always get 5 events this way: it only means that, if a message becomes
+ * available in the queue and more events are present as well, Janus will
+ * return more than one without needing you to send multiple long polls
+ * immediately thereafter to get them. For this reason, don't be surprised
+ * if even with a \c max_events parameter set, you'll still get a single
+ * event being notified as the sole object in the returned array.
  *
  * <hr>
  *
@@ -766,6 +802,60 @@ janus.attach(
  * automatically, but implementing the right behaviour in clients would
  * help avoid potential issues nonetheless.
  *
+ * \section secret Securing the API
+ * Several deployers showed an interested in wrapping the Janus API on
+ * their server side: this allows them to keep the interaction with their
+ * users the way it was before, while still benefiting from the features
+ * Janus provides. This is an easy enough step, as it just needs developers
+ * to relay the involved SDP, and implementing the Janus API messages to
+ * handle the logic.
+ *
+ * That said, since in this case Janus would be contacted, through the API,
+ * just by a limited number of applications (e.g., application servers
+ * made in node.js, Ruby, Java Servlets or whatever) and not random
+ * browsers, it is reasonable to involve a mechanism to control who is
+ * allowed to contact and control it. To allow for that, Janus exposes a
+ * shared API secret mechanism: that is, you configure Janus with a string
+ * applications need to present when sending requests, and if they don't,
+ * Janus rejects them with an \c unauthorized message.
+ * 
+ * Configuring the API secret mechanism is easy enough: you can do that
+ * either via the command line (\c -a or \c --apisecret ) or in the
+ * \c janus.cfg configuration (\c apisecret value in the \c general section).
+ * When enabled, all requests addressed to that Janus instance \b MUST
+ * also contain an \c apisecret field in the Janus message headers. For
+ * instance, this message presented above would fail:
+ * 
+\verbatim
+{
+	"janus" : "create",
+	"transaction" : "<random alphanumeric string>"
+}
+\endverbatim
+ * 
+\verbatim
+{
+	"janus": "error",
+	"error": {
+		"reason": "Unauthorized request (wrong or missing apisecret)",
+		"code": 403
+	}
+}
+\endverbatim
+ * 
+ * For a successful transaction, the message would have to look like this:
+ * 
+\verbatim
+{
+	"janus" : "create",
+	"apisecret" : "<API secret configured in Janus>",
+	"transaction" : "<random alphanumeric string>"
+}
+\endverbatim
+ * 
+ * The same applies for the long poll GET messages as well, which will
+ * need to contain the \c apisecret as a query string parameter.
+ * 
  */
 
 /*! \page deploy Deploying Janus

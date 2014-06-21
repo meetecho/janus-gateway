@@ -143,6 +143,10 @@ or on the command line:
 								  if the installed libnice supports it)
 	-d, --debug-level=1-7         Debug/logging level (0=disable debugging, 
                                   7=maximum debug level; default=4)
+	-a, --apisecret=randomstring  API secret all requests need to pass in order 
+                                  to be accepted by Janus (useful when wrapping 
+                                  Janus API requests in a server, none by 
+                                  default)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:
