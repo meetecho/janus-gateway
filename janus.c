@@ -926,7 +926,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 								janus_ice_stream_free(handle->streams, handle->video_stream);
 							}
 							handle->video_stream = NULL;
-							if(handle->data_id > 0) {
+							if(handle->video_id > 0) {
 								nice_agent_attach_recv (handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 							}
@@ -1550,7 +1550,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 					janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
 				}
 				ice_handle->video_stream = NULL;
-				if(ice_handle->data_id > 0) {
+				if(ice_handle->video_id > 0) {
 					nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 					nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 				}
