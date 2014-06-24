@@ -137,6 +137,12 @@ void janus_echotest_message_free(janus_echotest_message *msg) {
 }
 
 
+/* Error codes */
+#define JANUS_ECHOTEST_ERROR_NO_MESSAGE			411
+#define JANUS_ECHOTEST_ERROR_INVALID_JSON		412
+#define JANUS_ECHOTEST_ERROR_INVALID_ELEMENT	413
+
+
 /* Plugin implementation */
 int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	if(stopping) {
@@ -388,6 +394,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 static void *janus_echotest_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining thread\n");
 	janus_echotest_message *msg = NULL;
+	int error_code = 0;
 	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -409,9 +416,11 @@ static void *janus_echotest_handler(void *data) {
 			continue;
 		}
 		/* Handle request */
+		error_code = 0;
 		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
+			error_code = JANUS_ECHOTEST_ERROR_NO_MESSAGE;
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
@@ -419,29 +428,34 @@ static void *janus_echotest_handler(void *data) {
 		json_t *root = json_loads(msg->message, 0, &error);
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: not an object");
 			goto error;
 		}
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			sprintf(error_cause, "Invalid value (audio should be a boolean)");
 			goto error;
 		}
 		json_t *video = json_object_get(root, "video");
 		if(video && !json_is_boolean(video)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			sprintf(error_cause, "Invalid value (video should be a boolean)");
 			goto error;
 		}
 		json_t *bitrate = json_object_get(root, "bitrate");
 		if(bitrate && !json_is_integer(bitrate)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			sprintf(error_cause, "Invalid value (bitrate should be an integer)");
 			goto error;
 		}
@@ -506,6 +520,7 @@ error:
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
+			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);

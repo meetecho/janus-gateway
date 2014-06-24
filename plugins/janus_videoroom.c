@@ -235,6 +235,21 @@ static const char *sdp_v_template =
 		"a=rtcp-fb:%d goog-remb\r\n";		/* VP8 payload type */
 
 
+/* Error codes */
+#define JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR		499
+#define JANUS_VIDEOROOM_ERROR_NO_MESSAGE		421
+#define JANUS_VIDEOROOM_ERROR_INVALID_JSON		422
+#define JANUS_VIDEOROOM_ERROR_INVALID_REQUEST	423
+#define JANUS_VIDEOROOM_ERROR_JOIN_FIRST		424
+#define JANUS_VIDEOROOM_ERROR_ALREADY_JOINED	425
+#define JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM		426
+#define JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED		427
+#define JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT	428
+#define JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT	429
+#define JANUS_VIDEOROOM_ERROR_INVALID_SDP_TYPE	430
+#define JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL	431
+
+
 /* Plugin implementation */
 int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	if(stopping) {
@@ -640,6 +655,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 static void *janus_videoroom_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining thread\n");
 	janus_videoroom_message *msg = NULL;
+	int error_code = 0;
 	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -661,9 +677,11 @@ static void *janus_videoroom_handler(void *data) {
 			continue;
 		}
 		/* Handle request */
+		error_code = 0;
 		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
+			error_code = JANUS_VIDEOROOM_ERROR_NO_MESSAGE;
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
@@ -671,11 +689,13 @@ static void *janus_videoroom_handler(void *data) {
 		json_t *root = json_loads(msg->message, 0, &error);
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: not an object");
 			goto error;
 		}
@@ -683,11 +703,13 @@ static void *janus_videoroom_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		if(!request) {
 			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 			sprintf(error_cause, "Missing element (request)");
 			goto error;
 		}
 		if(!json_is_string(request)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
@@ -699,24 +721,28 @@ static void *janus_videoroom_handler(void *data) {
 			json_t *desc = json_object_get(root, "description");
 			if(desc && !json_is_string(desc)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (description should be a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (description should be a string)");
 				goto error;
 			}
 			json_t *bitrate = json_object_get(root, "bitrate");
 			if(bitrate && !json_is_integer(bitrate)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (bitrate should be an integer)");
 				goto error;
 			}
 			json_t *fir_freq = json_object_get(root, "fir_freq");
 			if(fir_freq && !json_is_integer(fir_freq)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (fir_freq should be an integer)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (fir_freq should be an integer)");
 				goto error;
 			}
 			json_t *publishers = json_object_get(root, "publishers");
 			if(publishers && !json_is_integer(publishers)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (publishers should be an integer)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (publishers should be an integer)");
 				goto error;
 			}
@@ -724,6 +750,7 @@ static void *janus_videoroom_handler(void *data) {
 			janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
 			if(videoroom == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 				sprintf(error_cause, "Memory error");
 				goto error;
 			}
@@ -790,6 +817,7 @@ static void *janus_videoroom_handler(void *data) {
 			/* Not configured yet, we need to do this now */
 			if(strcasecmp(request_text, "join")) {
 				JANUS_LOG(LOG_ERR, "Invalid request on unconfigured participant\n");
+				error_code = JANUS_VIDEOROOM_ERROR_JOIN_FIRST;
 				sprintf(error_cause, "Invalid request on unconfigured participant");
 				goto error;
 			}
@@ -801,6 +829,7 @@ static void *janus_videoroom_handler(void *data) {
 			}
 			if(!json_is_integer(room)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (room should be an integer)");
 				goto error;
 			}
@@ -810,6 +839,7 @@ static void *janus_videoroom_handler(void *data) {
 			if(videoroom == NULL) {
 				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 				sprintf(error_cause, "No such room (%"SCNu64")", room_id);
 				goto error;
 			}
@@ -817,11 +847,13 @@ static void *janus_videoroom_handler(void *data) {
 			json_t *ptype = json_object_get(root, "ptype");
 			if(!ptype) {
 				JANUS_LOG(LOG_ERR, "Missing element (ptype)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 				sprintf(error_cause, "Missing element (ptype)");
 				goto error;
 			}
 			if(!json_is_string(ptype)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype should be a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (ptype should be a string)");
 				goto error;
 			}
@@ -831,11 +863,13 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *display = json_object_get(root, "display");
 				if(!display) {
 					JANUS_LOG(LOG_ERR, "Missing element (display)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 					sprintf(error_cause, "Missing element (display)");
 					goto error;
 				}
 				if(!json_is_string(display)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (display should be a string)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					sprintf(error_cause, "Invalid element (display should be a string)");
 					goto error;
 				}
@@ -853,6 +887,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_videoroom_participant *publisher = calloc(1, sizeof(janus_videoroom_participant));
 				if(publisher == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 					sprintf(error_cause, "Memory error");
 					goto error;
 				}
@@ -862,6 +897,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->display = g_strdup(display_text);
 				if(publisher->display == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 					sprintf(error_cause, "Memory error");
 					g_free(publisher);
 					goto error;
@@ -908,11 +944,13 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *feed = json_object_get(root, "feed");
 				if(!feed) {
 					JANUS_LOG(LOG_ERR, "Missing element (feed)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 					sprintf(error_cause, "Missing element (feed)");
 					goto error;
 				}
 				if(!json_is_integer(feed)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (feed should be an integer)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					sprintf(error_cause, "Invalid element (feed should be an integer)");
 					goto error;
 				}
@@ -920,12 +958,14 @@ static void *janus_videoroom_handler(void *data) {
 				janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(feed_id));
 				if(publisher == NULL || publisher->sdp == NULL) {
 					JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
+					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 					sprintf(error_cause, "No such feed (%"SCNu64")", feed_id);
 					goto error;
 				} else {
 					janus_videoroom_listener *listener = calloc(1, sizeof(janus_videoroom_listener));
 					if(listener == NULL) {
 						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 						sprintf(error_cause, "Memory error");
 						goto error;
 					}
@@ -961,29 +1001,38 @@ static void *janus_videoroom_handler(void *data) {
 				}
 			} else {
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (ptype)");
 				goto error;
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Handle this publisher */
 			janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant; 
-			if(!strcasecmp(request_text, "configure")) {
+			if(!strcasecmp(request_text, "join")) {
+				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
+				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
+				sprintf(error_cause, "Already in as a publisher on this handle");
+				goto error;
+			} else if(!strcasecmp(request_text, "configure")) {
 				/* Configure audio/video/bitrate for this publisher */
 				json_t *audio = json_object_get(root, "audio");
 				if(audio && !json_is_boolean(audio)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					sprintf(error_cause, "Invalid value (audio should be a boolean)");
 					goto error;
 				}
 				json_t *video = json_object_get(root, "video");
 				if(video && !json_is_boolean(video)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					sprintf(error_cause, "Invalid value (video should be a boolean)");
 					goto error;
 				}
 				json_t *bitrate = json_object_get(root, "bitrate");
 				if(bitrate && !json_is_integer(bitrate)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 					sprintf(error_cause, "Invalid value (bitrate should be an integer)");
 					goto error;
 				}
@@ -1003,7 +1052,7 @@ static void *janus_videoroom_handler(void *data) {
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
-				json_object_set_new(event, "result", json_string("ok"));
+				json_object_set_new(event, "configured", json_string("ok"));
 			} else if(!strcasecmp(request_text, "leave")) {
 				/* This publisher is leaving, tell everybody */
 				event = json_object();
@@ -1033,20 +1082,26 @@ static void *janus_videoroom_handler(void *data) {
 				session->destroy = TRUE;
 			} else {
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
 				sprintf(error_cause, "Unknown request '%s'", request_text);
 				goto error;
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Handle this listener */
 			janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
-			if(!strcasecmp(request_text, "start")) {
+			if(!strcasecmp(request_text, "join")) {
+				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
+				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
+				sprintf(error_cause, "Already in as a listener on this handle");
+				goto error;
+			} else if(!strcasecmp(request_text, "start")) {
 				/* Start/restart receiving the publisher streams */
 				janus_videoroom_participant *publisher = listener->feed;
 				listener->paused = FALSE;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
-				json_object_set_new(event, "result", json_string("ok"));
+				json_object_set_new(event, "started", json_string("ok"));
 				/* Send a FIR */
 				char buf[20];
 				memset(buf, 0, 20);
@@ -1068,7 +1123,7 @@ static void *janus_videoroom_handler(void *data) {
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
-				json_object_set_new(event, "result", json_string("ok"));
+				json_object_set_new(event, "paused", json_string("ok"));
 			} else if(!strcasecmp(request_text, "leave")) {
 				janus_videoroom_participant *publisher = listener->feed;
 				if(publisher != NULL) {
@@ -1080,10 +1135,11 @@ static void *janus_videoroom_handler(void *data) {
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
-				json_object_set_new(event, "result", json_string("ok"));
+				json_object_set_new(event, "left", json_string("ok"));
 				session->started = FALSE;
 			} else {
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
 				sprintf(error_cause, "Unknown request '%s'", request_text);
 				goto error;
 			}
@@ -1111,6 +1167,7 @@ static void *janus_videoroom_handler(void *data) {
 			} else {
 				/* TODO We don't support anything else right now... */
 				JANUS_LOG(LOG_ERR, "Unknown SDP type '%s'\n", msg->sdp_type);
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP_TYPE;
 				sprintf(error_cause, "Unknown SDP type '%s'", msg->sdp_type);
 				goto error;
 			}
@@ -1132,6 +1189,7 @@ static void *janus_videoroom_handler(void *data) {
 					participant->audio_active = FALSE;
 					participant->video_active = FALSE;
 					JANUS_LOG(LOG_ERR, "Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
+					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
 					sprintf(error_cause, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
 					goto error;
 				}
@@ -1292,6 +1350,7 @@ error:
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "videoroom", json_string("event"));
+			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);

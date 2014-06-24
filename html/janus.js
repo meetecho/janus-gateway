@@ -1,15 +1,20 @@
 // List of sessions
 Janus.sessions = {};
 
+Janus.noop = function() {};
+
 // Initialization
 Janus.init = function(options) {
-	if(Janus.initDone === undefined) {
-		options = options || {};
-		options.callback = (typeof options.callback == "function") ? options.callback : jQuery.noop;
+	options = options || {};
+	options.callback = (typeof options.callback == "function") ? options.callback : Janus.noop;
+	if(Janus.initDone === true) {
+		// Already initialized
+		options.callback();
+	} else {
 		if(typeof console == "undefined" || typeof console.log == "undefined")
 			console = { log: function() {} };
 		// Console log (debugging disabled by default)
-		Janus.log = (options.debug === true) ? console.log.bind(console) : jQuery.noop;
+		Janus.log = (options.debug === true) ? console.log.bind(console) : Janus.noop;
 		Janus.log("Initializing library");
 		Janus.initDone = true;
 		// Detect tab close
@@ -39,7 +44,7 @@ Janus.init = function(options) {
 					options.callback();
 				}
 			}
-			oHead.appendChild( oScript);
+			oHead.appendChild(oScript);
 		};
 
 		addJs('adapter.js');
@@ -56,12 +61,12 @@ Janus.isWebrtcSupported = function() {
 };
 
 function Janus(gatewayCallbacks) {
-	if(!Janus.isWebrtcSupported()) {
-		gatewayCallbacks.error("WebRTC not supported by this browser");
-		return {};
-	}
 	if(Janus.initDone === undefined) {
 		gatewayCallbacks.error("Library not initialized");
+		return {};
+	}
+	if(!Janus.isWebrtcSupported()) {
+		gatewayCallbacks.error("WebRTC not supported by this browser");
 		return {};
 	}
 	Janus.log("Library initialized: " + Janus.initDone);

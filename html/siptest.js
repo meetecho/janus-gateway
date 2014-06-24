@@ -71,10 +71,10 @@ $(document).ready(function() {
 										});
 									$('#guest').change(function() {
 										if($('#guest').length && $('#guest:checked').val() !== undefined) {
-											$('#username').empty().attr('disabled', true);
+											//~ $('#username').empty().attr('disabled', true);
 											$('#password').empty().attr('disabled', true);
 										} else {
-											$('#username').removeAttr('disabled');
+											//~ $('#username').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 										}
 									});
@@ -318,6 +318,19 @@ function registerUsername() {
 			"type" : "guest",
 			"proxy" : sipserver
 		};
+		var username = $('#username').val();
+		if(username !== undefined && username !== null) {
+			if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
+				bootbox.alert('Usernames are optional for guests: if you want to specify one anyway, though, please insert a valid SIP address (e.g., sip:goofy@example.com)');
+				$('#server').removeAttr('disabled');
+				$('#username').removeAttr('disabled');
+				$('#password').removeAttr('disabled');
+				$('#register').removeAttr('disabled').click(registerUsername);
+				$('#guest').removeAttr('disabled');
+				return;
+			}
+			register.username = username;
+		}
 		sipcall.send({"message": register});
 		return;
 	}

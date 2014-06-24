@@ -869,13 +869,18 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto jsondone;
 			}
 			/* FIXME We're only handling single audio/video lines for now... */
+			JANUS_LOG(LOG_VERB, "Audio %s been negotiated\n", audio ? "has" : "has NOT");
 			if(audio > 1) {
 				JANUS_LOG(LOG_ERR, "More than one audio line? only going to negotiate one...\n");
 			}
+			JANUS_LOG(LOG_VERB, "Video %s been negotiated\n", video ? "has" : "has NOT");
 			if(video > 1) {
 				JANUS_LOG(LOG_ERR, "More than one video line? only going to negotiate one...\n");
 			}
-			JANUS_LOG(LOG_VERB, "The browser %s negotiating SCTP/DataChannels\n", data ? "is" : "is NOT");
+			JANUS_LOG(LOG_VERB, "SCTP/DataChannels %s been negotiated\n", video ? "have" : "have NOT");
+			if(data > 1) {
+				JANUS_LOG(LOG_ERR, "More than one data line? only going to negotiate one...\n");
+			}
 #ifndef HAVE_SCTP
 			if(data) {
 				JANUS_LOG(LOG_WARN, "  -- DataChannels have been negotiated, but support for them has not been compiled...\n");
@@ -918,22 +923,26 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 							if(handle->streams && handle->video_stream) {
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
+								nice_agent_attach_recv (handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+								nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								janus_ice_stream_free(handle->streams, handle->video_stream);
-								handle->video_stream = NULL;
-								handle->video_id = 0;
 							}
+							handle->video_stream = NULL;
+							handle->video_id = 0;
 							if(handle->streams && handle->data_stream) {
+								nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+								nice_agent_attach_recv (handle->agent, handle->data_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								janus_ice_stream_free(handle->streams, handle->data_stream);
-								handle->data_stream = NULL;
-								handle->data_id = 0;
 							}
+							handle->data_stream = NULL;
+							handle->data_id = 0;
 						} else if(video) {
 							/* Get rid of data, if present */
 							if(handle->streams && handle->data_stream) {
 								janus_ice_stream_free(handle->streams, handle->data_stream);
-								handle->data_stream = NULL;
-								handle->data_id = 0;
 							}
+							handle->data_stream = NULL;
+							handle->data_id = 0;
 						}
 					}
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
@@ -1475,12 +1484,23 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 	janus_sdp_free(parsed_sdp);
 	if(offer) {
 		/* We still don't have a local ICE setup */
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated\n", ice_handle->handle_id, audio ? "has" : "has NOT");
 		if(audio > 1) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", ice_handle->handle_id);
 		}
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video %s been negotiated\n", ice_handle->handle_id, video ? "has" : "has NOT");
 		if(video > 1) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", ice_handle->handle_id);
 		}
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP/DataChannels %s been negotiated\n", ice_handle->handle_id, video ? "have" : "have NOT");
+		if(data > 1) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one data line? only going to negotiate one...\n", ice_handle->handle_id);
+		}
+#ifndef HAVE_SCTP
+		if(data) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- DataChannels have been negotiated, but support for them has not been compiled...\n", ice_handle->handle_id);
+		}
+#endif
 		/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 		janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle);
 	}
@@ -1517,10 +1537,12 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 			if(ice_handle->streams && ice_handle->video_stream) {
 				ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
 				ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
+				nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+				nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 				janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
-				ice_handle->video_stream = NULL;
-				ice_handle->video_id = 0;
 			}
+			ice_handle->video_stream = NULL;
+			ice_handle->video_id = 0;
 		}
 		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", ice_handle->handle_id);

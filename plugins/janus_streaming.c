@@ -231,6 +231,15 @@ typedef struct janus_streaming_rtp_relay_packet {
 } janus_streaming_rtp_relay_packet;
 
 
+/* Error codes */
+#define JANUS_STREAMING_ERROR_NO_MESSAGE			450
+#define JANUS_STREAMING_ERROR_INVALID_JSON			451
+#define JANUS_STREAMING_ERROR_INVALID_REQUEST		452
+#define JANUS_STREAMING_ERROR_MISSING_ELEMENT		453
+#define JANUS_STREAMING_ERROR_INVALID_ELEMENT		454
+#define JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT	455
+
+
 /* Plugin implementation */
 int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	if(stopping) {
@@ -681,6 +690,7 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 static void *janus_streaming_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining thread\n");
 	janus_streaming_message *msg = NULL;
+	int error_code = 0;
 	char *error_cause = calloc(1024, sizeof(char));
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -702,9 +712,11 @@ static void *janus_streaming_handler(void *data) {
 			continue;
 		}
 		/* Handle request */
+		error_code = 0;
 		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
+			error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
@@ -712,22 +724,26 @@ static void *janus_streaming_handler(void *data) {
 		json_t *root = json_loads(msg->message, 0, &error);
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+			error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: not an object");
 			goto error;
 		}
 		json_t *request = json_object_get(root, "request");
 		if(!request) {
 			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
 			sprintf(error_cause, "Missing element (request)");
 			goto error;
 		}
 		if(!json_is_string(request)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
@@ -756,6 +772,7 @@ static void *janus_streaming_handler(void *data) {
 			json_t *id = json_object_get(root, "id");
 			if(id && !json_is_integer(id)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 				sprintf(error_cause, "Invalid element (id should be an integer)");
 				goto error;
 			}
@@ -763,6 +780,7 @@ static void *janus_streaming_handler(void *data) {
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
 			if(mp == NULL) {
 				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
+				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 				sprintf(error_cause, "No such mountpoint/stream %"SCNu64"", id_value);
 				goto error;
 			}
@@ -846,6 +864,7 @@ static void *janus_streaming_handler(void *data) {
 			session->mountpoint = NULL;
 		} else {
 			JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
 			sprintf(error_cause, "Unknown request '%s'", request_text);
 			goto error;
 		}
@@ -881,6 +900,7 @@ error:
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "streaming", json_string("event"));
+			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);

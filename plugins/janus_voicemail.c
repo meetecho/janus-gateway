@@ -170,6 +170,18 @@ int ogg_write(janus_voicemail_session *session);
 int ogg_flush(janus_voicemail_session *session);
 
 
+/* Error codes */
+#define JANUS_VOICEMAIL_ERROR_UNKNOWN_ERROR		499
+#define JANUS_VOICEMAIL_ERROR_NO_MESSAGE		460
+#define JANUS_VOICEMAIL_ERROR_INVALID_JSON		461
+#define JANUS_VOICEMAIL_ERROR_INVALID_REQUEST	462
+#define JANUS_VOICEMAIL_ERROR_MISSING_ELEMENT	463
+#define JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT	464
+#define JANUS_VOICEMAIL_ERROR_ALREADY_RECORDING	465
+#define JANUS_VOICEMAIL_ERROR_IO_ERROR			466
+#define JANUS_VOICEMAIL_ERROR_LIBOGG_ERROR		467
+
+
 /* Plugin implementation */
 int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	if(stopping) {
@@ -454,6 +466,7 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 static void *janus_voicemail_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining thread\n");
 	janus_voicemail_message *msg = NULL;
+	int error_code = 0;
 	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -475,9 +488,11 @@ static void *janus_voicemail_handler(void *data) {
 			continue;
 		}
 		/* Handle request */
+		error_code = 0;
 		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
+			error_code = JANUS_VOICEMAIL_ERROR_NO_MESSAGE;
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
@@ -485,11 +500,13 @@ static void *janus_voicemail_handler(void *data) {
 		json_t *root = json_loads(msg->message, 0, &error);
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+			error_code = JANUS_VOICEMAIL_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+			error_code = JANUS_VOICEMAIL_ERROR_INVALID_JSON;
 			sprintf(error_cause, "JSON error: not an object");
 			goto error;
 		}
@@ -497,11 +514,13 @@ static void *janus_voicemail_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		if(!request) {
 			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+			error_code = JANUS_VOICEMAIL_ERROR_MISSING_ELEMENT;
 			sprintf(error_cause, "Missing element (request)");
 			goto error;
 		}
 		if(!json_is_string(request)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+			error_code = JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT;
 			sprintf(error_cause, "Invalid element (request should be a string)");
 			goto error;
 		}
@@ -511,23 +530,27 @@ static void *janus_voicemail_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Starting new recording\n");
 			if(session->file != NULL) {
 				JANUS_LOG(LOG_ERR, "Already recording (%s)\n", session->filename ? session->filename : "??");
+				error_code = JANUS_VOICEMAIL_ERROR_ALREADY_RECORDING;
 				sprintf(error_cause, "Already recording");
 				goto error;
 			}
 			session->stream = malloc(sizeof(ogg_stream_state));
 			if(session->stream == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
+				error_code = JANUS_VOICEMAIL_ERROR_UNKNOWN_ERROR;
 				sprintf(error_cause, "Couldn't allocate stream struct");
 				goto error;
 			}
 			if(ogg_stream_init(session->stream, rand()) < 0) {
 				JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
+				error_code = JANUS_VOICEMAIL_ERROR_LIBOGG_ERROR;
 				sprintf(error_cause, "Couldn't initialize Ogg stream state\n");
 				goto error;
 			}
 			session->file = fopen(session->filename, "wb");
 			if(session->file == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open output file\n");
+				error_code = JANUS_VOICEMAIL_ERROR_IO_ERROR;
 				sprintf(error_cause, "Couldn't open output file");
 				goto error;
 			}
@@ -562,6 +585,7 @@ static void *janus_voicemail_handler(void *data) {
 			json_object_set_new(event, "recording", json_string(url));
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
+			error_code = JANUS_VOICEMAIL_ERROR_INVALID_REQUEST;
 			sprintf(error_cause, "Unknown request '%s'", request_text);
 			goto error;
 		}
@@ -626,6 +650,7 @@ error:
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
+			json_object_set_new(event, "error_code", json_integer(error_cause));
 			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);
