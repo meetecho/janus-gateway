@@ -550,6 +550,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		return;	/* Definitely nothing useful */
 	if(component_id == 1 && (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) || janus_is_rtp(buf))) {
 		/* FIXME If rtcp-mux is not used, a first component is always RTP; otherwise, we need to check */
+		//~ JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTP packet (%s stream)!\n", handle->handle_id,
+			//~ janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? "bundled" : (stream->stream_id == handle->audio_id ? "audio" : "video"));
 		if(!component->dtls || !component->dtls->srtp_valid) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Missing valid SRTP session, skipping...\n", handle->handle_id);
 		} else {
@@ -1019,7 +1021,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && audio_rtcp != NULL)
 			nice_agent_attach_recv (handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtcp);
 	}
-	if(video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+	if(video && (!audio || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))) {
 		/* Add a video stream */
 		handle->streams_num++;
 		handle->video_id = nice_agent_add_stream (handle->agent, janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? 1 : 2);
@@ -1082,7 +1084,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->data_id = 0;
 	handle->data_stream = NULL;
 #else
-	if(data && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+	if(data && ((!audio && !video) || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))) {
 		/* Add a SCTP/DataChannel stream */
 		handle->streams_num++;
 		handle->data_id = nice_agent_add_stream (handle->agent, 3);
@@ -1126,7 +1128,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	/* TODO Should we fix something in RTP header stuff too? */
 	if(!handle || buf == NULL || len < 1)
 		return;
-	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_stream : (video ? handle->video_stream : handle->audio_stream);
+	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (video ? handle->video_stream : handle->audio_stream);
 	if(!stream)
 		return;
 	janus_ice_component *component = stream->rtp_component;
@@ -1172,7 +1174,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
 	if(!handle || buf == NULL || len < 1)
 		return;
-	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_stream : (video ? handle->video_stream : handle->audio_stream);
+	janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (video ? handle->video_stream : handle->audio_stream);
 	if(!stream)
 		return;
 	janus_ice_component *component = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? stream->rtp_component : stream->rtcp_component;
