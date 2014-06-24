@@ -923,18 +923,22 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 							if(handle->streams && handle->video_stream) {
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
-								nice_agent_attach_recv (handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								janus_ice_stream_free(handle->streams, handle->video_stream);
 							}
 							handle->video_stream = NULL;
+							if(handle->data_id > 0) {
+								nice_agent_attach_recv (handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+								nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							}
 							handle->video_id = 0;
 							if(handle->streams && handle->data_stream) {
-								nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_attach_recv (handle->agent, handle->data_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								janus_ice_stream_free(handle->streams, handle->data_stream);
 							}
 							handle->data_stream = NULL;
+							if(handle->data_id > 0) {
+								nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+								nice_agent_attach_recv (handle->agent, handle->data_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							}
 							handle->data_id = 0;
 						} else if(video) {
 							/* Get rid of data, if present */
@@ -942,6 +946,10 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 								janus_ice_stream_free(handle->streams, handle->data_stream);
 							}
 							handle->data_stream = NULL;
+							if(handle->data_id > 0) {
+								nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+								nice_agent_attach_recv (handle->agent, handle->data_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							}
 							handle->data_id = 0;
 						}
 					}
@@ -1534,15 +1542,40 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
 		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) && audio && video) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", ice_handle->handle_id);
-			if(ice_handle->streams && ice_handle->video_stream) {
-				ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
-				ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
-				nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-				nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-				janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
+			if(audio) {
+				/* Get rid of video and data, if present */
+				if(ice_handle->streams && ice_handle->video_stream) {
+					ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
+					ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
+					janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
+				}
+				ice_handle->video_stream = NULL;
+				if(ice_handle->data_id > 0) {
+					nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					nice_agent_attach_recv (ice_handle->agent, ice_handle->video_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+				}
+				ice_handle->video_id = 0;
+				if(ice_handle->streams && ice_handle->data_stream) {
+					janus_ice_stream_free(ice_handle->streams, ice_handle->data_stream);
+				}
+				ice_handle->data_stream = NULL;
+				if(ice_handle->data_id > 0) {
+					nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+				}
+				ice_handle->data_id = 0;
+			} else if(video) {
+				/* Get rid of data, if present */
+				if(ice_handle->streams && ice_handle->data_stream) {
+					janus_ice_stream_free(ice_handle->streams, ice_handle->data_stream);
+				}
+				ice_handle->data_stream = NULL;
+				if(ice_handle->data_id > 0) {
+					nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+				}
+				ice_handle->data_id = 0;
 			}
-			ice_handle->video_stream = NULL;
-			ice_handle->video_id = 0;
 		}
 		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", ice_handle->handle_id);
