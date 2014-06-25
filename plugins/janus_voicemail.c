@@ -650,7 +650,7 @@ error:
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
-			json_object_set_new(event, "error_code", json_integer(error_cause));
+			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3));
 			json_decref(event);
