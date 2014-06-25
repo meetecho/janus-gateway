@@ -439,6 +439,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 							/* Something went wrong... */
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 						}
+						dtls->srtp_valid = 1;
 					}
 				}
 #endif
