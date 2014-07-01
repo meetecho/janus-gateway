@@ -38,8 +38,8 @@
 
 
 /* Plugin information */
-#define JANUS_VOICEMAIL_VERSION			2
-#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.2"
+#define JANUS_VOICEMAIL_VERSION			3
+#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.3"
 #define JANUS_VOICEMAIL_DESCRIPTION		"This is a plugin implementing a very simple VoiceMail service for Janus, recording Opus streams."
 #define JANUS_VOICEMAIL_NAME			"JANUS VoiceMail plugin"
 #define JANUS_VOICEMAIL_AUTHOR			"Meetecho s.r.l."
@@ -570,13 +570,14 @@ static void *janus_voicemail_handler(void *data) {
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
 			session->started = FALSE;
+			session->stopping = TRUE;
 			if(session->file)
 				fclose(session->file);
 			session->file = NULL;
 			if(session->stream)
 				ogg_stream_destroy(session->stream);
 			session->stream = NULL;
-			/* Done: now wait for the setup_media callback to be called */
+			/* Done: send the event and close the handle */
 			event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
 			json_object_set_new(event, "status", json_string("done"));
@@ -640,6 +641,10 @@ static void *janus_voicemail_handler(void *data) {
 		}
 		g_free(event_text);
 		janus_voicemail_message_free(msg);
+		
+		if(session->stopping) {
+			gateway->end_session(session->handle);
+		}
 
 		continue;
 		

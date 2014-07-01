@@ -16,6 +16,16 @@
 //
 // which will take care of this on its own.
 //
+//
+// If you want to use the WebSockets frontend to Janus, instead, you'll
+// have to pass a different kind of address, e.g.:
+//
+// 		var server = "ws://" + window.location.hostname + ":8188";
+//
+// Of course this assumes that support for WebSockets has been built in
+// when compiling the gateway. WebSockets support has not been tested
+// as much as the REST API, so handle with care!
+//
 var server = null;
 if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";
@@ -119,13 +129,15 @@ $(document).ready(function() {
 													$('#listen').click(function() {
 														$('#rec').remove();
 														$('#done').parent().append(
-															//~ '<audio id="rec" style="width:100%;height:100%;" autoplay>' +
-																//~ '<source src="' + msg["recording"] + '" type="audio/ogg"></source>' +
-															//~ '</audio>'
-															'<audio id="rec" style="width:100%;height:100%;" autoplay controls ' +
-																'src="' + msg["recording"] + '">' +
+															'<audio id="rec" style="width:100%;height:100%;" autoplay controls preload="auto">' +
+																'<source id="opusrec" src="' + msg["recording"] + '" type="audio/ogg""></source>' +
+																'Your browser doesn\'t support the playout of Opus files' +
 															'</audio>'
 														);
+														$('#opusrec').attr('type', 'audio/ogg; codecs="opus"');
+														if($('#opusrec').get(0).error) {
+															bootbox.alert("Couldn't play the Opus recording (" + $('#opusrec').get(0).error + "), try downloading it instead");
+														}
 														return false;
 													});
 													$('#done').removeClass('hide').show();

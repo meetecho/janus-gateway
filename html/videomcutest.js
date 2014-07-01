@@ -16,6 +16,16 @@
 //
 // which will take care of this on its own.
 //
+//
+// If you want to use the WebSockets frontend to Janus, instead, you'll
+// have to pass a different kind of address, e.g.:
+//
+// 		var server = "ws://" + window.location.hostname + ":8188";
+//
+// Of course this assumes that support for WebSockets has been built in
+// when compiling the gateway. WebSockets support has not been tested
+// as much as the REST API, so handle with care!
+//
 var server = null;
 if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";
@@ -105,23 +115,7 @@ $(document).ready(function() {
 											// Publisher/manager created, negotiate WebRTC and attach to existing feeds, if any
 											myid = msg["id"];
 											console.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											// Publish our stream
-											mcutest.createOffer(
-												{
-													media: { audioRecv: false, videoRecv: false},	// Publishers are sendonly
-													success: function(jsep) {
-														console.log("Got publisher SDP!");
-														console.log(jsep);
-														var publish = { "request": "configure", "audio": true, "video": true };
-														mcutest.send({"message": publish, "jsep": jsep});
-													},
-													error: function(error) {
-														console.log("WebRTC error:");
-														console.log(error);
-														bootbox.alert("WebRTC error... " + JSON.stringify(error));
-													}
-												});
-											
+											publishOwnFeed();
 											// Any new feed to attach to?
 											if(msg["publishers"] !== undefined && msg["publishers"] !== null) {
 												var list = msg["publishers"];
@@ -134,6 +128,12 @@ $(document).ready(function() {
 													newRemoteFeed(id, display)
 												}
 											}
+										} else if(event === "destroyed") {
+											// The room has been destroyed
+											console.log("The room has been destroyed!");
+											bootbox.alert(error, function() {
+												window.location.reload();
+											});
 										} else if(event === "event") {
 											// Any new feed to attach to?
 											if(msg["publishers"] !== undefined && msg["publishers"] !== null) {
@@ -164,6 +164,24 @@ $(document).ready(function() {
 													feeds[remoteFeed.rfindex] = null;
 													remoteFeed.detach();
 												}
+											} else if(msg["unpublished"] !== undefined && msg["unpublished"] !== null) {
+												// One of the publishers has unpublished?
+												var unpublished = msg["unpublished"];
+												console.log("Publisher left: " + unpublished);
+												var remoteFeed = null;
+												for(var i=1; i<6; i++) {
+													if(feeds[i] != null && feeds[i] != undefined && feeds[i].rfid == unpublished) {
+														remoteFeed = feeds[i];
+														break;
+													}
+												}
+												if(remoteFeed != null) {
+													console.log("Feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") has left the room, detaching");
+													$('#remote'+remoteFeed.rfindex).empty().hide();
+													$('#videoremote'+remoteFeed.rfindex).empty();
+													feeds[remoteFeed.rfindex] = null;
+													remoteFeed.detach();
+												}
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
 												bootbox.alert(msg["error"]);
 											}
@@ -178,10 +196,14 @@ $(document).ready(function() {
 								onlocalstream: function(stream) {
 									console.log(" ::: Got a local stream :::");
 									console.log(JSON.stringify(stream));
+									$('#videolocal').empty();
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
 										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="muted"/>');
+										// Add an 'unpublish' button
+										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="unpublish" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;">Unpublish</button>');
+										$('#unpublish').click(unpublishOwnFeed);
 									}
 									$('#publisher').removeClass('hide').html(myusername).show();
 									attachMediaStream($('#myvideo').get(0), stream);
@@ -191,14 +213,9 @@ $(document).ready(function() {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
-									console.log(" ::: Got a cleanup notification :::");
-									$('#videolocal').empty();
-									$('#videoremote1').empty();
-									$('#videoremote2').empty();
-									$('#videoremote3').empty();
-									$('#videoremote4').empty();
-									$('#videoremote5').empty();
-									$('#videos').hide();
+									console.log(" ::: Got a cleanup notification: we are unpublished now :::");
+									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
+									$('#publish').click(publishOwnFeed);
 								}
 							});
 					},
@@ -256,6 +273,34 @@ function registerUsername() {
 		myusername = username;
 		mcutest.send({"message": register});
 	}
+}
+
+function publishOwnFeed() {
+	// Publish our stream
+	$('#publish').attr('disabled', true).unbind('click');
+	mcutest.createOffer(
+		{
+			media: { audioRecv: false, videoRecv: false},	// Publishers are sendonly
+			success: function(jsep) {
+				console.log("Got publisher SDP!");
+				console.log(jsep);
+				var publish = { "request": "configure", "audio": true, "video": true };
+				mcutest.send({"message": publish, "jsep": jsep});
+			},
+			error: function(error) {
+				console.log("WebRTC error:");
+				console.log(error);
+				bootbox.alert("WebRTC error... " + JSON.stringify(error));
+				$('#publish').removeAttr('disabled').click(publishOwnFeed);
+			}
+		});
+}
+
+function unpublishOwnFeed() {
+	// Unpublish our stream
+	$('#unpublish').attr('disabled', true).unbind('click');
+	var unpublish = { "request": "unpublish" };
+	mcutest.send({"message": unpublish});
 }
 
 function newRemoteFeed(id, display) {

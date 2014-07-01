@@ -16,6 +16,16 @@
 //
 // which will take care of this on its own.
 //
+//
+// If you want to use the WebSockets frontend to Janus, instead, you'll
+// have to pass a different kind of address, e.g.:
+//
+// 		var server = "ws://" + window.location.hostname + ":8188";
+//
+// Of course this assumes that support for WebSockets has been built in
+// when compiling the gateway. WebSockets support has not been tested
+// as much as the REST API, so handle with care!
+//
 var server = null;
 if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";
@@ -140,6 +150,12 @@ $(document).ready(function() {
 														$('#rp'+id + ' > i').hide();
 												}
 											}
+										} else if(event === "destroyed") {
+											// The room has been destroyed
+											console.log("The room has been destroyed!");
+											bootbox.alert(error, function() {
+												window.location.reload();
+											});
 										} else if(event === "event") {
 											if(msg["participants"] !== undefined && msg["participants"] !== null) {
 												var list = msg["participants"];

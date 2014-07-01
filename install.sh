@@ -10,10 +10,12 @@ CURL=`which curl`
 
 NODOCS=0
 NODATACHANS=0
+NOWEBSOCKETS=0
 case "$1" in
 	--help)
 		echo "Usage: $0 [options]"
 		echo "    --nodatachans        disable Data Channels support (no usrsctp needed)"
+		echo "    --nowebsockets       disable WebSockets support (no libwebsock needed)"
 		echo "    --nodocs             don't build documentation"
 		echo "    --help               show this help message and exit"
 		exit 0
@@ -29,6 +31,10 @@ case "$1" in
 		echo "  -- nodatachans passed, disabling Data Channels support!"
 		NODATACHANS=1
 		;;
+	nowebsockets)
+		echo "  -- nowebsockets passed, disabling WebSockets support!"
+		NOWEBSOCKETS=1
+		;;
 esac
 case "$2" in
 	nodocs)
@@ -38,6 +44,24 @@ case "$2" in
 	nodatachans)
 		echo "  -- nodatachans passed, disabling Data Channels support!"
 		NODATACHANS=1
+		;;
+	nowebsockets)
+		echo "  -- nowebsockets passed, disabling WebSockets support!"
+		NOWEBSOCKETS=1
+		;;
+esac
+case "$3" in
+	nodocs)
+		echo "  -- nodocs passed, skipping documentation!"
+		NODOCS=1
+		;;
+	nodatachans)
+		echo "  -- nodatachans passed, disabling Data Channels support!"
+		NODATACHANS=1
+		;;
+	nowebsockets)
+		echo "  -- nowebsockets passed, disabling WebSockets support!"
+		NOWEBSOCKETS=1
 		;;
 esac
 
@@ -110,7 +134,7 @@ then
 	if [ $? != 0 ]
 	then
 		echo
-		echo "The installer couldn't find usrsctp lib, which is needed for Data Channels"
+		echo "The installer couldn't find the usrsctp lib, which is needed for Data Channels"
 		echo "You can install it with the following steps:"
 		echo "    svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp"
 		echo "    cd usrsctp"
@@ -121,6 +145,29 @@ then
 		echo
 		echo "If you're not interested in Data Channels, you can disable them passing nodatachans to the install script:" 
 		echo "    ./install.sh nodatachans"
+		echo 
+		exit 1
+	fi
+fi
+if test $NOWEBSOCKETS -eq 0
+then
+	export WS_LIB="-lwebsock"
+	export HAVE_WS="-DHAVE_WS"
+	$MAKE wstest
+	if [ $? != 0 ]
+	then
+		echo
+		echo "The installer couldn't find the libwebsock lib, which is needed for WebSockets"
+		echo "You can install version 1.0.4 (required!) with the following steps:"
+		echo "    wget http://paydensutherland.com/libwebsock-1.0.4.tar.gz"
+		echo "    tar xfv libwebsock-1.0.4.tar.gz"
+		echo "    cd libwebsock-1.0.4"
+		echo "    ./configure --prefix=/usr && make && sudo make install"
+		echo
+		echo "    [Note: you may need to pass --libdir=/usr/lib64 to the configure script if you're installing on a x86_64 distribution]"
+		echo
+		echo "If you're not interested in WebSockets support, you can disable them passing nowebsockets to the install script:" 
+		echo "    ./install.sh nowebsockets"
 		echo 
 		exit 1
 	fi

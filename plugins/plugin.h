@@ -254,6 +254,17 @@ struct janus_callbacks {
 	 * @param[in] len The buffer lenght */
 	void (* const relay_data)(janus_plugin_session *handle, char *buf, int len);
 
+	/*! \brief Callback to ask the core to close a WebRTC PeerConnection
+	 * \note A call to this method will result in the core invoking the hangup_media
+	 * callback on this plugin when done
+	 * @param[in] handle The plugin/gateway session that the PeerConnection is related to */
+	void (* const close_pc)(janus_plugin_session *handle);
+	/*! \brief Callback to ask the core to get rid of a plugin/gateway session
+	 * \note A call to this method will result in the core invoking the destroy_session
+	 * callback on this plugin when done
+	 * @param[in] handle The plugin/gateway session to get rid of */
+	void (* const end_session)(janus_plugin_session *handle);
+
 };
 
 /*! \brief The hook that plugins need to implement to be created from the gateway */

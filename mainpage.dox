@@ -77,7 +77,8 @@
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
- * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (Data Channels)
+ * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (optional, Data Channels)
+ * - \b libwebsock: https://github.com/payden/libwebsock/ (optional, v1.0.4, WebSockets)
  * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
  *
@@ -86,11 +87,14 @@
  */
 
 /*! \page JS JavaScript API
- * The gateway exposes a pseudo-RESTful interface based on JSON messages,
- * described in more detail in the \ref rest documentation,
- * that allows web applications to take advantage of its features and the
- * functionality provided by its plugins. To make things easier for web
- * developers, a JavaScript library (\c janus.js) is available. This library
+ * The gateway exposes both a pseudo-RESTful interface, and optionally a
+ * WebSocket interface as well, both of which based on JSON messages. These
+ * interfaces are described in more detail in the \ref plainhttp and
+ * \ref WS documentation respectively, and both allow web applications to
+ * take advantage of the features provided by Janus and the functionality
+ * made available by its plugins. To make things easier for web
+ * developers, a JavaScript library (\c janus.js) is available that can
+ * make use of both interfaces using exactly the same API. This library
  * eases the task of creating sessions with the gateway, attaching WebRTC
  * users to plugins, send and receive requests and events to the plugins
  * themselves and so on. For real examples of how this library can be
@@ -164,7 +168,8 @@ Janus.init({
  * (events may occur at any time), there are several properties and callbacks you
  * can configure when creating a session:
  *
- * - \c server: the address of the gateway (e.g., http://yourserver:8088/janus);
+ * - \c server: the address of the gateway (e.g., http://yourserver:8088/janus
+ * to use the plain HTTP API or ws://yourserver:8188/ for WebSockets);
  * - \c iceServers: a list of STUN/TURN servers to use (a default STUN server
  * will be used if you skip this property);
  * - a set of callbacks to be notified about events, namely:
@@ -229,7 +234,11 @@ var janus = new Janus(
  * 		- \c onmessage: a message/event has been received from the plugin;
  * 		- \c onlocalstream: a local \c MediaStream is available and ready to be displayed;
  * 		- \c onremotestream: a remote \c MediaStream is available and ready to be displayed;
- * 		- \c oncleanup: the WebRTC PeerConnection with the plugin was closed.
+ * 		- \c ondataopen: a Data Channel is available and ready to be used;
+ * 		- \c ondata: data has been received through the Data Channel;
+ * 		- \c oncleanup: the WebRTC PeerConnection with the plugin was closed;
+ * 		- \c detached: the plugin handle has been detached by the plugin itself,
+ * and so should not be used anymore.
  *
  * Here's an example:
  * 
@@ -260,6 +269,10 @@ janus.attach(
 		oncleanup: function() {
 			// PeerConnection with the plugin closed, clean the UI
 			// The plugin handle is still valid so we can create a new one
+		},
+		detached: function() {
+			// Connection with the plugin closed, get rid of its features
+			// The plugin handle is not valid anymore
 		}
 	});
  \endverbatim
@@ -457,8 +470,21 @@ janus.attach(
  * 
  */
 
-/*! \page rest RESTful API
+/*! \page rest RESTful and WebSockets API
  *
+ * Since version \c 0.0.4, there are two different ways to interact with a
+ * Janus instance: a \ref plainhttp (the default) and a \ref WS
+ * (optional, needs an external library to be available). Both
+ * the interfaces use the same messages (in terms of requests, responses
+ * and notifications), so almost all the concepts described in the
+ * \ref plainhttp section apply to the WebSocket interface as well.
+ * As it will be explained later in the \ref WS section below, the only
+ * differences come when addressing specific sessions/handles and in part
+ * in how you handle notifications using WebSockets: in fact,
+ * since with WebSockets there's no REST-based path involved, you'll need
+ * a couple of additional identifiers to bridge the gap.
+ * 
+ * \section plainhttp Plain HTTP REST Interface
  * As anticipated in the \ref JS documentation, the gateway deploys a
  * RESTful interface that clients can exploit. The \c janus.js library
  * makes use of it in a transparent way, but if you're interested in
@@ -514,6 +540,50 @@ janus.attach(
 }
 \endverbatim
  *
+ *
+ * \section info Getting info about the Janus instance
+ * The API exposes an \c info endpoint you can query to get information
+ * about the Janus instance you're talking to. Specifically, it returns
+ * information about the version of the Janus server, whether some of the
+ * optional features (Data Channels and WebSockets) are supported or not, 
+ * and which plugins are available.
+ *
+ * To get this information, just send an HTTP \b GET message to the \c info
+ * endpoint (e.g., http://yourserver:8088/janus/info), which will return
+ * something like this:
+ *
+\verbatim
+{
+	"version_string": "0.0.4",
+	"author": "Meetecho s.r.l.",
+	"name": "Janus WebRTC Gateway",
+	"version": 4,
+	"websockets": 1,		// WebSockets are supported
+	"data_channels": 1,		// Data Channels are supported
+	"plugins": {
+		"janus.plugin.sip": {		// The SIP plugin is available
+			"version_string": "0.0.2",
+			"description": "This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway.",
+			"author": "Meetecho s.r.l.",
+			"name": "JANUS SIP plugin",
+			"version": 2
+		},
+		"janus.plugin.videoroom": {	// The Video MCU plugin is available
+			"version_string": "0.0.3",
+			"description": "This is a plugin implementing a videoconferencing MCU for Janus, something like Licode.",
+			"author": "Meetecho s.r.l.",
+			"name": "JANUS VideoRoom plugin",
+			"version": 3
+		},
+		[..]	// Other plugins
+	}
+\endverbatim
+ *
+ * You can use this information to selectively enable or disable features
+ * in your application according to what's available in the Janus instance
+ * you're trying to contact.
+ *
+ *
  * \section root The gateway root
  * The gateway root is \c /janus by default but, as anticipated, it is
  * configurable, either via command line or in the \c janus.cfg configuration.
@@ -545,6 +615,7 @@ janus.attach(
  * In case of an error, you'll receive an error message as the one introduced
  * before. This request, if issued with a POST to the gateway root, can only
  * fail if you miss any of the required fields in the request.
+ *
  *
  * \section sessions The session endpoint
  * Once you've created a session, a new endpoint you can use is created
@@ -721,6 +792,13 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * field containing the JSON-ified version of the JSEP object can be 
  * attached as well.
  *
+ * \note If you attach a \c jsep object, whether it's an offer or an answer,
+ * you're stating your will to negotiate a PeerConnection. This means that
+ * an empty or invalid \c jsep object will trigger a validation and will
+ * cause the whole request to fail, so make sure you exclude the field
+ * completely from your request if all you're interested into is sending
+ * a message to a plugin.
+ *
  * Here's an example of a message you may send the janus_echotest.c plugin
  * to mute your audio:
  *
@@ -855,6 +933,113 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * 
  * The same applies for the long poll GET messages as well, which will
  * need to contain the \c apisecret as a query string parameter.
+ * 
+ * \section WS WebSockets Interface
+ * In recent version of Janus we added support for WebSockets to control
+ * the gateway, along the already existing (and still the default) REST
+ * API. In fact, while WebSockets still present some more issues in terms
+ * of reachability when compared to plain HTTP, they definitely provide
+ * a more efficient means for implementing a bidirectional communication.
+ * This is especially useful if you're wrapping the Janus API on your
+ * servers, as it allows you to avoid all the noise and overhead introduced
+ * by several concurrent HTTP transactions and long polls by relying on
+ * what may be seen as a single "control channel".
+ * 
+ * As anticipated at the beginning of this section, the actual messages
+ * being exchanged are exactly the same. This means that all the concepts
+ * introduced before still apply: you still create a session, attach to
+ * a plugin and interact with it exactly the same way. What is different
+ * is, of course, the REST path approach that becomes unavailable when
+ * using a WebSocket as a control channel. To address the idenfitiers
+ * that become missing using WebSockets, you'll need to add additional
+ * fields to the requests when necessary.
+ * 
+ * So, when you want to create a session using the REST API, you send a
+ * POST to the gateway base path: 
+ * 
+\verbatim
+{
+	"janus" : "create",
+	"transaction" : "<random alphanumeric string>"
+}
+\endverbatim
+ * 
+ * The same applies if you're interested in getting generic info from the
+ * Janus instance. Since there's no \b GET you can use, a specific \c janus
+ * request type called \c info is available:
+ * 
+\verbatim
+{
+	"janus" : "info",
+	"transaction" : "<random alphanumeric string>"
+}
+\endverbatim
+ * 
+ * Since you'd contact the base path for both requests, you don't need to add any identifier
+ * for this scenario. But if instead you want to attach to a plugin within
+ * the context of a specific session, using the REST API you'd send a
+ * post to the \c /janus/<session-id> endpoint:
+ * 
+\verbatim
+{
+	"janus" : "attach",
+	"plugin" : "<the plugin's unique package name>",
+	"transaction" : "<random string>"
+}
+\endverbatim
+ * 
+ * To make this work with WebSockets as well, you need to add a further
+ * field called \c session_id in the request:
+ * 
+\verbatim
+{
+	"janus" : "attach",
+	"session_id" : "<the session identifier>",		// NEW!
+	"plugin" : "<the plugin's unique package name>",
+	"transaction" : "<random string>"
+}
+\endverbatim
+ * 
+ * which will allow the WebSocket server to understand which session this
+ * request pertains to. At the same time, when you need to address a
+ * specific handle (e.g., to send a message to a plugin, or negotiate a
+ * WebRTC PeerConnection) you'll need to add a \c handle_id field to the
+ * request as well, or the request will be rejected:
+ *
+\verbatim
+{
+	"janus" : "message",
+	"session_id" : "<the session identifier>",		// NEW!
+	"handle_id" : "<the handle identifier>",		// NEW!
+	"transaction" : "sBJNyUhH6Vc6",
+	"body" : {
+		"audio" : false
+	}
+}
+\endverbatim
+ *
+ * Considering the bidirectional nature of WebSockets and the fact that
+ * the channel will be shared for different requests, you'll need to pay
+ * extra attention to the \c transaction identifier, which will allow you
+ * to map incoming responses and events to the request you sent that
+ * originated them.
+ * 
+ * As a last point, another slight difference with WebSockets comes from
+ * how push notifications are implemented. In the \ref plainhttp this is
+ * done via long polls: that is, you explicitly subscribe to notifications,
+ * and have to do that again as soon as an event has been received. With
+ * WebSockets, this is not needed: as soon as you create a session on a
+ * WebSocket, that channel becomes automatically subscribed for events
+ * related to that sessions, and you'll receive them on the same WebSocket.
+ * For the same reason, as soon as the WebSocket is closed, all the sessions
+ * created within its context are considered closed as well, and so their
+ * resources (including all the handles and PeerConnections) will be
+ * released as well.
+ * 
+ * \note The same \c janus.js JavaScript library can be used both with the
+ * REST and the WebSockets API: all you need to do is provide the right
+ * Janus server address during the initialization and the library will
+ * use one or the other according to the protocol prefix.
  * 
  */
 
@@ -1011,6 +1196,42 @@ php -S 0.0.0.0:9000
 python -m SimpleHTTPServer 9000
  \endverbatim
  *
+ * \section apache Using Janus with WebSockets 
+ *
+ * Configuring the usae of WebSockets rather than the REST API in the JavaScript
+ * library is quite trivial, as it's a matter of passing a \c ws:// address
+ * instead of an \c http:// one to the constructor. That said, most of the same
+ * considerations provided for the REST API apply here as well, e.g.,
+ * to just use \c window.location.hostname if the webserver and Janus are
+ * colocated:
+ *
+ * \verbatim
+var server = "ws://" + window.location.hostname + ":8188/";
+ \endverbatim
+ *
+ * to specify the port if you change it:
+ *
+ * \verbatim
+var server = "ws://" + window.location.hostname + ":7000/";
+ \endverbatim
+ *
+ * and/or the right address of the gateway in case the webserver and Janus
+ * are <b>NOT</b> colocated:
+ *
+ * \verbatim
+var server = "ws://www.example.com:8188/";
+ \endverbatim
+ *
+ * Notice how the path (\c /janus by default for HTTP) is not provided
+ * for WebSockets, as it is ignored by the gateway.
+ *
+ * The considerations for deploying Janus behind a proxy/webserver, though,
+ * differ if you use WebSockets. Instead, most webservers (e.g., Apache HTTPD)
+ * don't provide an easy way to proxy WebSocket requests, and usually
+ * require custom modifications for the purpose. If this is something
+ * you're interested in, we recommend you follow the best practices related
+ * to that made available by the web server developers.
+ *
  */
  
 /*! \page README README
@@ -1141,7 +1362,7 @@ python -m SimpleHTTPServer 9000
  *    .
  * -# <b>Are Data Channels supported?</b>\n
  *    .
- *    Yes we do! Starting from version 0.0.3 of Janus, we added a first
+ *    Yes we do! Starting from version \c 0.0.3 of Janus, we added a first
  *    experimental support to Data Channels, that can as such be used in
  *    plugins that choose to support them. Right now, they are only
  *    handled in the Echo Test plugin, but this will be added to other
@@ -1230,7 +1451,7 @@ python -m SimpleHTTPServer 9000
  *    .
  * -# <b>Can I use WebSockets instead of plain HTTP to interact with Janus?</b>\n
  *    .
- *    Not at the moment. We chose a REST-based plain HTTP communication
+ *    Since version \c 0.0.4, you can! At first we chose a REST-based plain HTTP communication
  *    for a simple reason: we noticed that there were some scenarios (e.g.,
  *    client firewalls) where websockets wouldn't work, even though WebRTC
  *    did. To improve the chances of success in the communication, we
@@ -1239,9 +1460,13 @@ python -m SimpleHTTPServer 9000
  *    like Apache HTTPD or nginx than WebSockets, another aspect that
  *    played a decisive role in our decision, as we were also very interested
  *    in making the integration of Janus in heterogeneous environments
- *    as easy as possible. Anyway, there are plans to make the API part
- *    more generic, so that different protocols or mechanisms (e.g., HTTP,
- *    WebSockets, XMPP or others) could be used to interact with Janus, so stay tuned!\n\n
+ *    as easy as possible. That said, WebSockets also provide substantial
+ *    benefits when compared to plain HTTP, and definitely make life easier to
+ *    server side integrators as well, e.g., in terms of overhead and use of
+ *    resources. For this reason, we added an optional (meaning you can
+ *    skip it if you want) support for WebSockets that uses the same API
+ *    already available in HTTP. Please beware that support for WbeSockets
+ *    is still \b highly \b experimental, so handle that with care!\n\n
  *    .
  * -# <b>Can I use Janus with node.js or other frameworks?</b>\n
  *    .

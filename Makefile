@@ -1,13 +1,13 @@
 CC = gcc
-STUFF = $(shell pkg-config --cflags glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP)
-LIBS = $(shell pkg-config --libs glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -lsrtp $(SCTP_LIB) -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP)
+STUFF = $(shell pkg-config --cflags glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP) $(HAVE_WS)
+LIBS = $(shell pkg-config --libs glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -lsrtp $(SCTP_LIB) $(WS_LIB) -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP) $(HAVE_WS)
 OPTS = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wunused -Wno-format-security #-Werror #-O2
 GDB = -fstack-protector-all -g -ggdb -rdynamic #-gstabs
 OBJS=janus.o cmdline.o config.o apierror.o rtcp.o dtls.o sctp.o ice.o sdp.o utils.o
 
 all: cmdline janus plugins
 
-.PHONY: plugins docs sctptest
+.PHONY: plugins docs sctptest wstest
 
 plugins:
 ifndef INSTALLSH
@@ -19,10 +19,13 @@ docs:
 	$(MAKE) -C docs
 
 cmdline:
-	gengetopt --set-package="janus" --set-version="0.0.3" < janus.ggo
+	gengetopt --set-package="janus" --set-version="0.0.4" < janus.ggo
 
 sctptest:
 	$(MAKE) -C sctptest
+
+wstest:
+	$(MAKE) -C wstest
 
 %.o: %.c
 	$(CC) $(STUFF) -fPIC $(GDB) -c $< -o $@ $(OPTS)
@@ -36,4 +39,5 @@ endif
 clean :
 	rm -f janus *.o plugins/*.o plugins/*.so
 	rm -f sctptest/test sctptest/*.o
+	rm -f wstest/test wstest/*.o
 	rm -rf docs/html

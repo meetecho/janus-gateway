@@ -290,7 +290,7 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 #ifdef HAVE_SCTP
 				if(!strcasecmp(a->a_name, "sctpmap")) {
 					/* TODO Parse sctpmap line to get the UDP-port value and the number of channels */
-					JANUS_LOG(LOG_WARN, "Got a sctpmap attribute: %s\n", a->a_value);
+					JANUS_LOG(LOG_VERB, "Got a sctpmap attribute: %s\n", a->a_value);
 				}
 #endif
 			}

@@ -24,7 +24,10 @@ To install it, you'll need to satisfy the following dependencies:
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](http://srtp.sourceforge.net/srtp.html)
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
-* [usrsctp](http://code.google.com/p/sctp-refimpl/)
+* [usrsctp](http://code.google.com/p/sctp-refimpl/) (only needed if you
+are interested in Data Channels)
+* [libwebsock](https://github.com/payden/libwebsock) (only needed if
+you are interested in WebSockets support)
 
 A couple of plugins depend on a few more libraries:
 
@@ -69,6 +72,24 @@ pretty easy and standard process:
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
 
+The same applies for libwebsock, which is needed for the optional
+WebSockets support. If you're interested in supporting WebSockets to
+control Janus, as an alternative (or replacement) to the default plain
+HTTP REST API, you'll have to install the version ```1.0.4``` manually:
+
+	wget libwebsock-1.0.4.tar.gz
+	tar xfv libwebsock-1.0.4.tar.gz
+	cd libwebsock-1.0.4
+	./configure --prefix=/usr && make && sudo make install
+	
+* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+script if you're installing on a x86_64 distribution.
+
+Please notice that you have to install version ```1.0.4``` and not any
+later version. In fact, recent versions of libwebsock added support for
+threading in the library, but it is currently experimental and doesn't
+work as expected in Janus.
+
 Should you be interested in building the gateway documentation as well,
 you'll need an additional component installed too:
 
@@ -89,17 +110,22 @@ Once you have installed all the dependencies, just use:
 
 	sh install.sh
 
-to start the whole compilation process, or:
+to start the whole compilation process. If you're not interested in
+Data Channels or WebSockets (or you don't care about either of them)
+you can pass a specific compilation flag to disable them: 
 
-	sh install.sh nodatachans
+	sh install.sh nodatachans nowebsockets
 
-if you want to disable support for Data Channels. The script will try to
-check whether you have all the dependencies installed, and then issue a
-'make' for you to start compiling. If Doxygen and graphviz are
-available, it will also build the documentation for you as well in the
-docs/html subfolder. If you prefer not to build the documentation (or
-not to build it again and again every time you compile!) use the
-'nodocs' option (adding nodatachans too, if needed):
+As the flag names suggest, 'nodatachans' disables support for Data
+Channels, while 'nowebsockets' disables WebSockets.
+
+The script will then try to check whether you have all the dependencies
+installed, and then issue a 'make' for you to start compiling. If
+Doxygen and graphviz are available, it will also build the documentation
+for you as well in the docs/html subfolder. If you prefer not to build
+the documentation (or not to build it again and again every time you
+compile!) use the 'nodocs' option (along 'nodatachans' and
+'nowebsockets', if needed):
 
 	sh install.sh nodocs
 
@@ -114,7 +140,7 @@ or on the command line:
 
 	./janus --help
 	
-	janus 0.0.3
+	janus 0.0.4
 
 	Usage: janus [OPTIONS]...
 
@@ -126,6 +152,12 @@ or on the command line:
 	-n, --no-http                 Disable insecure HTTP web server  (default=off)
 	-b, --base-path=basepath      Base path to bind to in the web server 
 								  (default=/janus) 
+	-w, --ws-port=portnumber      WebSockets server port (default=no WebSockets)
+	-W, --ws-secure-port=portnumber
+                                  Secure WebSockets server port (default=no 
+                                  secure WebSockets)
+	-N, --no-websockets           Disable insecure WebSockets server  
+                                  (default=off)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
@@ -161,7 +193,9 @@ can also change the base path that the webserver uses: by default this
 is /janus, but you can change it to anything you want and with any nesting
 you want (e.g., /mypath, /my/path, or /my/really/nested/path). This is
 done to allow you to more easily customize rules in any frontend you
-may have (e.g., Apache in front of your services).
+may have (e.g., Apache in front of your services). Please notice that
+the path configuration has no effect on the WebSockets usage of the API,
+instead, as it is not needed there.
  
 In the absence of a configuration file, the only mandatory options to
 specify in the command line are the ones related to the DTLS certificate.

@@ -2,7 +2,10 @@ option "interface" i "Interface to use (will be the public IP)" string typestr="
 option "port" p "Web server HTTP port (default=8088)" int typestr="portnumber" optional
 option "secure-port" s "Web server HTTPS port (default=no HTTPS)" int typestr="portnumber" optional
 option "no-http" n "Disable insecure HTTP web server" flag off
-option "base-path" b "Base path to bind to in the web server (default=/janus) "string typestr="basepath" optional
+option "base-path" b "Base path to bind to in the HTTP/HTTPS web server (default=/janus) "string typestr="basepath" optional
+option "ws-port" w "WebSockets server port (default=no WebSockets)" int typestr="portnumber" optional
+option "ws-secure-port" W "Secure WebSockets server port (default=no secure WebSockets)" int typestr="portnumber" optional
+option "no-websockets" N "Disable insecure WebSockets server" flag off
 option "plugins-folder" P "Plugins folder (default=./plugins)" string typestr="path" optional
 option "config" C "Configuration file to use" string typestr="filename" optional
 option "configs-folder" F "Configuration files folder (default=./conf)" string typestr="path" optional

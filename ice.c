@@ -313,6 +313,24 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	handle->app_handle->stopped = 1;	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
 	plugin_t->destroy_session(handle->app_handle, &error);
 	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+	/* Prepare JSON event to notify user/application */
+	json_t *event = json_object();
+	json_object_set_new(event, "janus", json_string("detached"));
+	json_object_set_new(event, "sender", json_integer(handle_id));
+	/* Convert to a string */
+	char *event_text = json_dumps(event, JSON_INDENT(3));
+	json_decref(event);
+	/* Send the event before we do anything */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle_id);
+	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	if(notification) {
+		notification->code = 200;
+		notification->payload = event_text;
+		notification->allocated = 1;
+		janus_mutex_lock(&session->qmutex);
+		g_queue_push_tail(session->messages, notification);
+		janus_mutex_unlock(&session->qmutex);
+	}
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_INFO, "Handle detached (%d), scheduling destruction\n", error);

@@ -26,6 +26,9 @@
 
 #include <jansson.h>
 #include <microhttpd.h>
+#ifdef HAVE_WS
+#include <websock/websock.h>
+#endif
 
 #include "mutex.h"
 #include "dtls.h"
@@ -80,6 +83,22 @@ typedef struct janus_session {
 	janus_mutex mutex;
 } janus_session;
 
+#ifdef HAVE_WS
+/*! \brief WebSocket client session */
+typedef struct janus_websocket_client {
+	/*! \brief The libwebsock client instance */
+	libwebsock_client_state *state;
+	/*! \brief List of gateway sessions this client has created and is managing */
+	GHashTable *sessions;
+	/*! \brief Thread to handle push notifications */
+	GThread *thread;
+	/*! \brief Mutex to lock/unlock this session */
+	janus_mutex mutex;
+	/*! \brief Flag to trigger a lazy session destruction */
+	gint destroy:1;
+} janus_websocket_client;
+#endif
+
 
 /** @name Janus Gateway-Client session methods
  */
@@ -99,6 +118,50 @@ gint janus_session_destroy(guint64 session_id);
 /*! \brief Method to actually free the resources allocated by a Janus Gateway-Client session
  * @param[in] session The Janus Gateway-Client session instance to free */
 void janus_session_free(janus_session *session);
+///@}
+
+
+/** @name Janus request processing
+ * \details Since messages may come from different sources (plain HTTP or
+ * WebSockets, and potentially even more in the future), we have a shared
+ * way to process messages: a method to process a request, and helper methods
+ * to return a success or an error message.
+ */
+///@{
+/*! \brief Plain HTTP REST source */
+#define JANUS_SOURCE_PLAIN_HTTP		1
+/*! \brief WebSocket source */
+#define JANUS_SOURCE_WEBSOCKETS		2
+/*! \brief Helper to address request sources (e.g., a specific HTTP connection or websocket) */
+typedef struct janus_request_source {
+	/*! \brief The source type */
+	int type;
+	/*! \brief Opaque pointer to the source */
+	void *source;
+	/*! \brief Opaque pointer to the original request, if available */
+	void *msg;
+} janus_request_source;
+/*! \brief Helper to process an incoming request, no matter where it comes from
+ * @param[in] source The source that originated the request
+ * @param[in] request The JSON request
+ * @returns MHD_YES on success, MHD_NO otherwise
+ */
+int janus_process_incoming_request(janus_request_source *source, json_t *request);
+/*! \brief Method to return a successful Janus response message (JSON) to the browser
+ * @param[in] source The source that originated the request
+ * @param[in] transaction The Janus transaction identifier
+ * @param[in] payload The stringified version of the Janus response (JSON) 
+ * @returns MHD_YES on success, MHD_NO otherwise */
+int janus_process_success(janus_request_source *source, const char *transaction, char *payload);
+/*! \brief Method to return an error Janus response message (JSON) to the browser
+ * @param[in] source The source that originated the request
+ * @param[in] transaction The Janus transaction identifier
+ * @param[in] error The error code as defined in apierror.h
+ * @param[in] format The printf format of the reason string, followed by a variable
+ * number of arguments, if needed; if format is NULL, a pre-configured string
+ * associated with the error code is used
+ * @returns MHD_YES on success, MHD_NO otherwise */
+int janus_process_error(janus_request_source *source, const char *transaction, gint error, const char *format, ...);
 ///@}
 
 
@@ -122,34 +185,61 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 /*! \brief Callback (libmicrohttpd) invoked when a request has been processed and can be freed */
 void janus_ws_request_completed (void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
-/*! \brief Method to return a successful Janus response message (JSON) to the browser
- * @param[in] connection The libmicrohttpd MHD_Connection connection instance that is handling the request
- * @param[in] msg The original request
- * @param[in] transaction The Janus transaction identifier
- * @param[in] payload The stringified version of the Janus response (JSON) 
- * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_ws_success(struct MHD_Connection *connection, janus_http_msg *msg, const char *transaction, char *payload);
-/*! \brief Method to return an error Janus response message (JSON) to the browser
- * @param[in] connection The libmicrohttpd MHD_Connection connection instance that is handling the request
- * @param[in] msg The original request
- * @param[in] transaction The Janus transaction identifier
- * @param[in] error The error code as defined in apierror.h
- * @param[in] format The printf format of the reason string, followed by a variable
- * number of arguments, if needed; if format is NULL, a pre-configured string
- * associated with the error code is used
- * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_ws_error(struct MHD_Connection *connection, janus_http_msg *msg, const char *transaction, gint error, const char *format, ...);
 /*! \brief Worker to handle requests that are actually long polls
  * \details As this method handles a long poll, it doesn't return until an
  * event (e.g., pushed by a plugin) is available, or a timeout (30 seconds)
  * has been fired. In case of a timeout, a keep-alive Janus response (JSON)
  * is sent to tell the browser that the session is still valid.
- * @param[in] connection The libmicrohttpd MHD_Connection connection instance that is handling the request
- * @param[in] msg The original request, which also manages the request state
+ * @param[in] source The janus_request_source instance that is handling the request
  * @param[in] max_events The maximum number of events that can be returned in a single response (by default just one; if more, an array is returned)
  * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_ws_notifier(struct MHD_Connection *connection, janus_http_msg *msg, int max_events);
+int janus_ws_notifier(janus_request_source *source, int max_events);
 ///@}
+
+#ifdef HAVE_WS
+/** @name Janus WebSockets server
+ * \details Browsers can also make use WebSockets to make requests to the
+ * gateway (as long as, of course, support for them has been built, since
+ * they're optional in Janus). In that case, the same WebSocket can be used
+ * for both sending requests and receiving notifications, without the need
+ * for long polls. At the same time, without the concept of a REST path,
+ * requests sent through the WebSockets interface will need to include,
+ * when needed, additional pieces of information like \c session_id and
+ * \c handle_id. That is, where you'd send a Janus request related to a
+ * specific session to the \c /janus/<session> path, with WebSockets
+ * you'd have to send the same request with an additional \c session_id
+ * field in the JSON payload. The same applies for the handle. Another
+ * JavaScript library (janus-ws.js) implements all of this on the client
+ * side automatically.
+ * \note When you create a session using WebSockets, a subscription to
+ * the events related to it is done automatically, so no need for an
+ * explicit request as the GET in the plain HTTP API. Closing a WebSocket
+ * will also destroy all the sessions it created.
+ */
+///@{
+/*! \brief Callback (libwebsock) invoked when a new WebSocket client has connected (connection open)
+ * @param[in] state The libwebsock libwebsock_client_state connection state of the new client
+ * @returns 0 on success, an integer otherwise */
+int janus_wss_onopen(libwebsock_client_state *state);
+/*! \brief Callback (libwebsock) invoked when a new message from a WebSocket client is available
+ * @param[in] state The libwebsock libwebsock_client_state connection state of the client
+ * @param[in] msg The incoming message as a libwebsock_message instance
+ * @returns 0 on success, an integer otherwise */
+int janus_wss_onmessage(libwebsock_client_state *state, libwebsock_message *msg);
+/*! \brief Callback (libwebsock) invoked when a WebSocket client has left (connection closed)
+ * @param[in] state The libwebsock libwebsock_client_state connection state of the new client
+ * @returns 0 on success, an integer otherwise */
+int janus_wss_onclose(libwebsock_client_state *state);
+/*! \brief Worker to handle push notifications from the core or the plugins
+ * \details Unlike the long poll mechanism needed for the plain HTTP approach,
+ * with WebSockets we can send notifications on the same channel we receive
+ * requests from: this thread takes care of notifying all the events related
+ * to all the events created by a specific WebSocket client.
+ * @param[in] data Opaque pointer to the janus_websocket_client this thread refers to
+ * @returns Nothing important */
+void *janus_wss_thread(void *data);
+///@}
+#endif
 
 
 /** @name Janus plugin management
