@@ -46,6 +46,8 @@
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"
+#include "../rtp.h"
+#include "../rtcp.h"
 
 
 /* Plugin information */
@@ -175,10 +177,12 @@ typedef struct janus_sip_media {
 	int audio_rtp_fd, audio_rtcp_fd;
 	int local_audio_rtp_port, remote_audio_rtp_port;
 	int local_audio_rtcp_port, remote_audio_rtcp_port;
+	guint32 audio_ssrc, audio_ssrc_peer;
 	int has_video:1;
 	int video_rtp_fd, video_rtcp_fd;
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
+	guint32 video_ssrc, video_ssrc_peer;
 } janus_sip_media;
 
 typedef struct janus_sip_session {
@@ -468,6 +472,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_audio_rtp_port = 0;
 	session->media.local_audio_rtcp_port = 0;
 	session->media.remote_audio_rtcp_port = 0;
+	session->media.audio_ssrc = 0;
+	session->media.audio_ssrc_peer = 0;
 	session->media.has_video = 0;
 	session->media.video_rtp_fd = 0;
 	session->media.video_rtcp_fd= 0;
@@ -475,6 +481,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
 	session->media.remote_video_rtcp_port = 0;
+	session->media.video_ssrc = 0;
+	session->media.video_ssrc_peer = 0;
 	su_home_init(session->stack->s_home);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
@@ -558,10 +566,20 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			return;
 		/* Forward to our SIP peer */
 		if(video) {
+			if(session->media.video_ssrc == 0) {
+				rtp_header *header = (rtp_header *)buf;
+				session->media.video_ssrc = ntohl(header->ssrc);
+				JANUS_LOG(LOG_VERB, "Got SIP video SSRC: %"SCNu32"\n", session->media.video_ssrc);
+			}
 			if(session->media.has_video && session->media.video_rtp_fd) {
 				send(session->media.video_rtp_fd, buf, len, 0);
 			}
 		} else {
+			if(session->media.audio_ssrc == 0) {
+				rtp_header *header = (rtp_header *)buf;
+				session->media.audio_ssrc = ntohl(header->ssrc);
+				JANUS_LOG(LOG_VERB, "Got SIP audio SSRC: %"SCNu32"\n", session->media.audio_ssrc);
+			}
 			if(session->media.has_audio && session->media.audio_rtp_fd) {
 				send(session->media.audio_rtp_fd, buf, len, 0);
 			}
@@ -580,8 +598,14 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		}
 		if(session->status != janus_sip_status_incall)
 			return;
+		/* Fix SSRCs as the gateway does */
+		JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
+			video ? session->media.video_ssrc : session->media.audio_ssrc,
+			video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
+		janus_rtcp_fix_ssrc((char *)buf, len, 1,
+			video ? session->media.video_ssrc : session->media.audio_ssrc,
+			video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
 		/* Forward to our SIP peer */
-		/* TODO Fix SSRCs as the gateway does */
 		if(video) {
 			if(session->media.has_video && session->media.video_rtcp_fd) {
 				send(session->media.video_rtcp_fd, buf, len, 0);
@@ -2010,6 +2034,11 @@ static void *janus_sip_relay_thread(void *data) {
 			//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
 			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+			if(session->media.audio_ssrc_peer == 0) {
+				rtp_header *header = (rtp_header *)buffer;
+				session->media.audio_ssrc_peer = ntohl(header->ssrc);
+				JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
+			}
 			/* Relay to browser */
 			gateway->relay_rtp(session->handle, 0, buffer, bytes);
 			continue;
@@ -2034,6 +2063,11 @@ static void *janus_sip_relay_thread(void *data) {
 			//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
 			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+			if(session->media.video_ssrc_peer == 0) {
+				rtp_header *header = (rtp_header *)buffer;
+				session->media.video_ssrc_peer = ntohl(header->ssrc);
+				JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
+			}
 			/* Relay to browser */
 			gateway->relay_rtp(session->handle, 1, buffer, bytes);
 			continue;
