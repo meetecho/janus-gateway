@@ -778,33 +778,6 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 		}
 		g_strlcat(sdp, buffer, BUFSIZE);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s\n", handle->handle_id, buffer);
-		/* RTP or RTCP? */
-		gchar *search = NULL, replace[6];
-		g_sprintf(replace, "%d", port);
-		if(stream_id == handle->audio_id) {
-			if(component_id == 1) {
-				/* Audio RTP */
-				search = "ARTPP";
-			} else {
-				/* Audio RTCP */
-				search = "ARTCP";
-			}
-		} else {	/* FIXME We assume this is video: there's nothing else right now */
-			if(component_id == 1) {
-				/* Video RTP */
-				search = "VRTPP";
-			} else {
-				/* Video RTCP */
-				search = "VRTCP";
-			}
-		}
-		/* FIXME This is a VERY ugly way to set ports in m-lines! */
-		gchar *index = g_strstr_len(sdp, BUFSIZE, search);
-		if(index) {
-			int j=0;
-			for(j=0; j<5; j++)
-				index[j] = replace[j];
-		}
 	}
 	/* Done, free the list and the candidates */
 	for (i = candidates; i; i = i->next) {

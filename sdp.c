@@ -708,7 +708,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					m = m->m_next;
 					continue;
 				}
-				g_strlcat(sdp, "m=audio ARTPP RTP/SAVPF", BUFSIZE);
+				g_strlcat(sdp, "m=audio 1 RTP/SAVPF", BUFSIZE);
 			} else if(m->m_type == sdp_media_video && m->m_port > 0) {
 				video++;
 				gint id = handle->video_id;
@@ -737,7 +737,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					m = m->m_next;
 					continue;
 				}
-				g_strlcat(sdp, "m=video VRTPP RTP/SAVPF", BUFSIZE);
+				g_strlcat(sdp, "m=video 1 RTP/SAVPF", BUFSIZE);
 #ifdef HAVE_SCTP
 			} else if(m->m_type == sdp_media_application) {
 				/* Is this SCTP for DataChannels? */
