@@ -1,6 +1,6 @@
 /*! \file   janus_audiobridge.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Janus AudioBridge plugin
  * \details  This is a plugin implementing an audio conference bridge for
  * Janus, specifically mixing Opus streams. This means that it replies

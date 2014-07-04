@@ -2,15 +2,13 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    Logging and Debugging
- * \details  Implementation of a wrapper on printf (or g_print) to either log or debug.
- * \todo     Improve this wrappers to optionally save logs on file
+ * \details  Implementation of a wrapper on printf to either log or debug.
  * 
- * \ingroup core
- * \ref core
+ * \ingroup postprocessing
+ * \ref postprocessing
  */
 
-#include <glib.h>
-#include <glib/gprintf.h>
+#include <stdio.h>
  
 #ifndef _JANUS_DEBUG_H
 #define _JANUS_DEBUG_H
@@ -68,16 +66,16 @@ static char *log_prefix[] = {
  */
 ///@{
 /*! \brief Simple wrapper to g_print/printf */
-#define JANUS_PRINT g_print
+#define JANUS_PRINT printf
 /*! \brief Logger based on different levels, which can either be displayed
  * or not according to the configuration of the gateway */
 #define JANUS_LOG(level, ...) \
 	if (level > LOG_NONE && level <= LOG_MAX && level <= log_level) { \
-		g_print(log_prefix[level]); \
+		printf(log_prefix[level]); \
 		if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
-			g_print("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); \
+			printf("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
-		g_print(__VA_ARGS__); \
+		printf(__VA_ARGS__); \
 	}
 ///@}
 

@@ -1,6 +1,6 @@
 /*! \file    ice.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    ICE/STUN/TURN processing (headers)
  * \details  Implementation (based on libnice) of the ICE process. The
  * code handles the whole ICE process, from the gathering of candidates

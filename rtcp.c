@@ -1,6 +1,6 @@
 /*! \file    rtcp.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    RTCP processing
  * \details  Implementation (based on the oRTP structures) of the RTCP
  * messages. RTCP messages coming through the gateway are parsed and,

@@ -1,5 +1,6 @@
 /*! \file    config.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
+ * \copyright GNU General Public License v3
  * \brief    Configuration files parsing (headers)
  * \details  Implementation of a parser of INI configuration files (based on libini-config).
  * 

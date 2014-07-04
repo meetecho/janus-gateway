@@ -1,6 +1,6 @@
 /*! \file    dtls.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    DTLS/SRTP processing
  * \details  Implementation (based on OpenSSL and libsrtp) of the DTLS/SRTP
  * transport. The code takes care of the DTLS handshake between peers and

@@ -1,6 +1,6 @@
 /*! \file    sdp.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    SDP processing
  * \details  Implementation (based on the Sofia-SDP stack) of the SDP
  * parser/merger/generator in the gateway. Each SDP coming from peers is

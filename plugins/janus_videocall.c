@@ -1,6 +1,6 @@
 /*! \file   janus_videocall.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Janus VideoCall plugin
  * \details  This is a simple video call plugin for Janus, allowing two
  * WebRTC peers to call each other through the gateway. The idea is to

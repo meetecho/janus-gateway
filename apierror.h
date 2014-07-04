@@ -1,6 +1,6 @@
 /*! \file    apierror.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    Janus API errors definition
  * \details  Definition of all the API errors that may occur when invoking
  * the Janus web-based JSON API.

@@ -1,6 +1,6 @@
 /*! \file   plugin.h
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Plugin-Gateway communication
  * \details  This header contains the definition of the callbacks both
  * the gateway and all the plugins need too implement to interact with

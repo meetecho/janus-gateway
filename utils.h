@@ -1,6 +1,6 @@
 /*! \file    utils.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    Utilities and helpers (headers)
  * \details  Implementations of a few methods that may be of use here
  * and there in the code.

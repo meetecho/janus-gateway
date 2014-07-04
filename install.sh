@@ -218,4 +218,10 @@ fi
 
 echo
 echo "Done! Check the configuration files for both the gateway and the plugins in the 'conf' folder."
-./janus -h
+echo
+echo "If you're also interested in compiling the Janus recordings post-processing utility, launch the install.sh script in the postprocessing folder:"
+echo "    cd postprocessing"
+echo "    ./install.sh"
+echo
+echo "Type './janus -h' for help on Janus"
+echo

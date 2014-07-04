@@ -1,6 +1,6 @@
 /*! \file   janus_videoroom.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Janus VideoRoom plugin
  * \details  This is a plugin implementing a videoconferencing MCU for Janus.
  * This means that the plugin implements a virtual conferencing room peers
@@ -43,6 +43,8 @@ publishers = <max number of concurrent senders> (e.g., 6 for a video
              conference or 1 for a webinar)
 bitrate = <max video bitrate for senders> (e.g., 128000)
 fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
+record = true|false (whether this room should be recorded, default=false)
+rec_dir = <folder where recordings should be stored, when enabled>
 \endverbatim
  *
  * \ingroup plugins
@@ -57,6 +59,7 @@ fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 #include "../config.h"
 #include "../mutex.h"
 #include "../rtcp.h"
+#include "../record.h"
 #include "../utils.h"
 
 
@@ -167,6 +170,8 @@ typedef struct janus_videoroom {
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint64_t bitrate;			/* Global bitrate limit */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
+	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
+	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
 	gboolean destroy;			/* Value to flag the room for destruction */
 	GHashTable *participants;	/* Map of potential publishers (we get listeners from them) */
 } janus_videoroom;
@@ -196,6 +201,8 @@ typedef struct janus_videoroom_participant {
 	uint64_t bitrate;
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
+	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
+	janus_recorder *vrc;	/* The Janus recorder instance for this publisher's video, if enabled */
 	GSList *listeners;
 	janus_mutex listeners_mutex;
 } janus_videoroom_participant;
@@ -296,6 +303,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
 			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
 			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
+			janus_config_item *record = janus_config_get_item(cat, "record");
+			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video mcu room */
 			janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
 			if(videoroom == NULL) {
@@ -329,12 +338,28 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->fir_freq = 0;
 			if(firfreq != NULL && firfreq->value != NULL)
 				videoroom->fir_freq = atol(firfreq->value);
+			if(record && record->value) {
+				if(!strcasecmp(record->value, "true"))
+					videoroom->record = TRUE;
+				else if(!strcasecmp(record->value, "false"))
+					videoroom->record = FALSE;
+				else {
+					JANUS_LOG(LOG_WARN, "Invalid value '%s' for 'record', recording disabled\n", record->value);
+					videoroom->record = FALSE;
+				}
+				if(rec_dir && rec_dir->value) {
+					videoroom->rec_dir = g_strdup(rec_dir->value);
+				}
+			}
 			videoroom->destroy = 0;
 			videoroom->participants = g_hash_table_new(NULL, NULL);
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->room_secret ? videoroom->room_secret : "no secret");
+			if(videoroom->record) {
+				JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
+			}
 			cat = cat->next;
 		}
 		/* Done */
@@ -484,6 +509,15 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		}
 		g_free(leaving_text);
 		g_list_free(participants_list);
+		/* Get rid of the recorders, if available */
+		if(participant->arc) {
+			janus_recorder_close(participant->arc);
+			JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
+		}
+		if(participant->vrc) {
+			janus_recorder_close(participant->vrc);
+			JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
+		}
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Detaching this listener from its subscriber is already done by hangup_media */
 	}
@@ -556,6 +590,13 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
+		/* Save the frame if we're recording */
+		if(participant->room->record) {
+			if(video && participant->vrc)
+				janus_recorder_save_frame(participant->vrc, buf, len);
+			else if(!video && participant->arc)
+				janus_recorder_save_frame(participant->arc, buf, len);
+		}
 		janus_videoroom_rtp_relay_packet packet;
 		packet.data = buf;
 		packet.length = len;
@@ -792,6 +833,20 @@ static void *janus_videoroom_handler(void *data) {
 				sprintf(error_cause, "Invalid element (publishers should be an integer)");
 				goto error;
 			}
+			json_t *record = json_object_get(root, "record");
+			if(record && !json_is_boolean(record)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (record should be a boolean)");
+				goto error;
+			}
+			json_t *rec_dir = json_object_get(root, "rec_dir");
+			if(rec_dir && !json_is_string(rec_dir)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (rec_dir should be a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (rec_dir should be a string)");
+				goto error;
+			}
 			/* Create the audio bridge room */
 			janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
 			if(videoroom == NULL) {
@@ -840,10 +895,19 @@ static void *janus_videoroom_handler(void *data) {
 			videoroom->fir_freq = 0;
 			if(fir_freq)
 				videoroom->fir_freq = json_integer_value(fir_freq);
+			if(record) {
+				videoroom->record = json_is_true(record);
+				if(videoroom->record && rec_dir) {
+					videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
+				}
+			}
 			videoroom->destroy = 0;
 			videoroom->participants = g_hash_table_new(NULL, NULL);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->room_secret ? videoroom->room_secret : "no secret");
+			if(videoroom->record) {
+				JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
+			}
 			/* Show updated rooms list */
 			GList *rooms_list = g_hash_table_get_values(rooms);
 			GList *r = rooms_list;
@@ -1409,6 +1473,24 @@ static void *janus_videoroom_handler(void *data) {
 					if(modified) {
 						g_free(newsdp);
 						newsdp = tempsdp;
+					}
+				}
+				/* Is this room recorded? */
+				if(videoroom->record) {
+					char filename[255];
+					memset(filename, 0, 255);
+					sprintf(filename, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
+						videoroom->room_id, participant->user_id, janus_get_monotonic_time());
+					participant->arc = janus_recorder_create(videoroom->rec_dir, 0, filename);
+					if(participant->arc == NULL) {
+						JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
+					}
+					memset(filename, 0, 255);
+					sprintf(filename, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
+						videoroom->room_id, participant->user_id, janus_get_monotonic_time());
+					participant->vrc = janus_recorder_create(videoroom->rec_dir, 1, filename);
+					if(participant->vrc == NULL) {
+						JANUS_LOG(LOG_ERR, "Couldn't open a video recording file for this publisher!\n");
 					}
 				}
 

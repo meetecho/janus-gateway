@@ -1,6 +1,6 @@
 /*! \file   janus_echotest.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Janus EchoTest plugin
  * \details  This is a trivial EchoTest plugin for Janus, just used to
  * showcase the plugin interface. A peer attaching to this plugin will
@@ -34,8 +34,8 @@
 
 
 /* Plugin information */
-#define JANUS_ECHOTEST_VERSION			2
-#define JANUS_ECHOTEST_VERSION_STRING	"0.0.2"
+#define JANUS_ECHOTEST_VERSION			3
+#define JANUS_ECHOTEST_VERSION_STRING	"0.0.3"
 #define JANUS_ECHOTEST_DESCRIPTION		"This is a trivial EchoTest plugin for Janus, just used to showcase the plugin interface."
 #define JANUS_ECHOTEST_NAME				"JANUS EchoTest plugin"
 #define JANUS_ECHOTEST_AUTHOR			"Meetecho s.r.l."

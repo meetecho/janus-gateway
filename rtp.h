@@ -1,6 +1,6 @@
 /*! \file    rtp.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    RTP processing (headers)
  * \details  Implementation the RTP header. Since the gateway does not
  * much more than relaying frames around, the only thing we're interested

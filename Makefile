@@ -3,7 +3,7 @@ STUFF = $(shell pkg-config --cflags glib-2.0 nice libmicrohttpd jansson libssl l
 LIBS = $(shell pkg-config --libs glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -lsrtp $(SCTP_LIB) $(WS_LIB) -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP) $(HAVE_WS)
 OPTS = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wunused -Wno-format-security #-Werror #-O2
 GDB = -fstack-protector-all -g -ggdb -rdynamic #-gstabs
-OBJS=janus.o cmdline.o config.o apierror.o rtcp.o dtls.o sctp.o ice.o sdp.o utils.o
+OBJS=janus.o cmdline.o config.o apierror.o rtcp.o dtls.o sctp.o ice.o sdp.o record.o utils.o
 
 all: cmdline janus plugins
 

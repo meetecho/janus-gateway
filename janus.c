@@ -1,6 +1,6 @@
 /*! \file   janus.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Janus core
  * \details Implementation of the gateway core. This code takes care of
  * the gateway initialization (command line/configuration) and setup,

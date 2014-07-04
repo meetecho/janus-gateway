@@ -1,6 +1,6 @@
 /*! \file   janus_sip.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Janus SIP plugin
  * \details  This is a simple SIP plugin for Janus, allowing WebRTC peers
  * to register at a SIP server (e.g., Asterisk) and call SIP user agents

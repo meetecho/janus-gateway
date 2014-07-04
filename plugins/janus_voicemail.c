@@ -1,6 +1,6 @@
 /*! \file   janus_voicemail.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief  Janus VoiceMail plugin
  * \details  This is a plugin implementing a very simple VoiceMail service
  * for Janus, specifically recording Opus streams. This means that it replies
@@ -724,7 +724,7 @@ ogg_packet *op_opushead() {
 /* Manufacture a generic OpusTags packet */
 ogg_packet *op_opustags() {
 	char *identifier = "OpusTags";
-	char *vendor = "opus rtp packet dump";
+	char *vendor = "Janus VoiceMail plugin";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
 	unsigned char *data = malloc(size);
 	ogg_packet *op = malloc(sizeof(*op));

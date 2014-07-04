@@ -1,6 +1,6 @@
 /*! \file    dtls.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \copyright GNU Affero General Public License v3
+ * \copyright GNU General Public License v3
  * \brief    SCTP processing for data channels (headers)
  * \details  Implementation (based on libusrsctp) of the SCTP Data Channels.
  * The code takes care of the SCTP association between peers and the gateway,
