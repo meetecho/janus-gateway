@@ -230,9 +230,10 @@ typedef struct wav_header {
 #define JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT	493
 #define JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT	494
 #define JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM	495
-#define JANUS_AUDIOBRIDGE_ERROR_NOT_JOINED		496
-#define JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR	497
-#define JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED	498
+#define JANUS_AUDIOBRIDGE_ERROR_ROOM_EXISTS		496
+#define JANUS_AUDIOBRIDGE_ERROR_NOT_JOINED		497
+#define JANUS_AUDIOBRIDGE_ERROR_LIBOPUS_ERROR	498
+#define JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED	499
 
 
 /* Plugin implementation */
@@ -668,22 +669,48 @@ static void *janus_audiobridge_handler(void *data) {
 				sprintf(error_cause, "Invalid value (record should be a boolean)");
 				goto error;
 			}
+			guint64 room_id = 0;
+			json_t *room = json_object_get(root, "room");
+			if(room && !json_is_integer(room)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (room should be an integer)");
+				goto error;
+			} else {
+				room_id = json_integer_value(room);
+				if(room_id == 0) {
+					JANUS_LOG(LOG_WARN, "Desired room ID is 0, which is not allowed... picking random ID instead\n");
+				}
+			}
+			janus_mutex_lock(&rooms_mutex);
+			if(room_id > 0) {
+				/* Let's make sure the room doesn't exist already */
+				if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
+					/* It does... */
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Room %"SCNu64" already exists!\n", room_id);
+					error_code = JANUS_AUDIOBRIDGE_ERROR_ROOM_EXISTS;
+					sprintf(error_cause, "Room %"SCNu64" already exists", room_id);
+					goto error;
+				}
+			}
 			/* Create the audio bridge room */
 			janus_audiobridge_room *audiobridge = calloc(1, sizeof(janus_audiobridge_room));
 			if(audiobridge == NULL) {
+				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
 				sprintf(error_cause, "Memory error");
 				goto error;
 			}
 			/* Generate a random ID */
-			janus_mutex_lock(&rooms_mutex);
-			guint64 room_id = 0;
-			while(room_id == 0) {
-				room_id = g_random_int();
-				if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
-					/* Room ID already taken, try another one */
-					room_id = 0;
+			if(room_id == 0) {
+				while(room_id == 0) {
+					room_id = g_random_int();
+					if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
+						/* Room ID already taken, try another one */
+						room_id = 0;
+					}
 				}
 			}
 			audiobridge->room_id = room_id;
