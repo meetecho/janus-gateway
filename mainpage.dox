@@ -56,8 +56,8 @@
  *
  * \section license License
  * This program is free software, distributed under the terms of
- * the GNU General Public License Version 3. For more details
- * see the \ref COPYING page.
+ * the GNU General Public License Version 3. For more details, including
+ * commercial licensing, see the \ref COPYING page.
  *
 */
 
@@ -1264,6 +1264,12 @@ var server = "ws://www.example.com:8188/";
  */
   
 /*! \page COPYING License
+ * This program is free software, distributed under the terms of the GNU
+ * General Public License Version 3.
+ *
+ * If you're interested in a commercial license (e.g., for technical support
+ * or for sponsoring the development of new features), <a href="http://www.meetecho.com">contact us</a>.
+ *
  *  \verbinclude COPYING
  */
 
