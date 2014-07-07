@@ -1094,8 +1094,9 @@ static void *janus_sip_handler(void *data) {
 				sdp = temp;
 			}
 			/* Send INVITE */
-			if(session->stack->s_nh_i == NULL)
-				session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
+			if(session->stack->s_nh_i != NULL)
+				nua_handle_destroy(session->stack->s_nh_i);
+			session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for INVITE still null??\n");
 				error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
@@ -1187,8 +1188,6 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Send 200 OK */
 			session->status = janus_sip_status_incall;
-			//~ if(session->stack->s_nh_i == NULL)
-				//~ session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
 			}
@@ -1508,7 +1507,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			/* end the event loop. su_root_run() will return */
-			//~ su_root_break(magic->root);
 			su_root_break(ssip->s_root);
 			break;
 		case nua_r_terminate:
