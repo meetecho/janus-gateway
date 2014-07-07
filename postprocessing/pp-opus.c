@@ -18,7 +18,7 @@
 #include <ogg/ogg.h>
 
 #include "pp-opus.h"
-#include "debug.h"
+#include "pp-debug.h"
 
 
 /* OGG/Opus helpers */

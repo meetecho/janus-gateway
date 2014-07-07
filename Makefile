@@ -40,4 +40,5 @@ clean :
 	rm -f janus *.o plugins/*.o plugins/*.so
 	rm -f sctptest/test sctptest/*.o
 	rm -f wstest/test wstest/*.o
+	rm -f postprocessing/janus-pp-rec postprocessing/*.o
 	rm -rf docs/html

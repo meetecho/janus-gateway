@@ -40,7 +40,7 @@
 #include <stdlib.h>
 #include <signal.h>
 
-#include "debug.h"
+#include "pp-debug.h"
 #include "pp-rtp.h"
 #include "pp-webm.h"
 #include "pp-opus.h"

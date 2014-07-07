@@ -19,7 +19,7 @@
 #include <libavformat/avformat.h>
 
 #include "pp-webm.h"
-#include "debug.h"
+#include "pp-debug.h"
 
 
 /* WebRTC stuff (VP8) */

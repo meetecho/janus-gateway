@@ -99,6 +99,9 @@ void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls);
  * @param[in] buf The DTLS message data
  * @param[in] len The DTLS message data lenght */
 void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len);
+/*! \brief Send an alert on a janus_dtls_srtp instance
+ * @param[in] dtls The janus_dtls_srtp instance to send the alert on */
+void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls);
 /*! \brief Destroy a janus_dtls_srtp instance
  * @param[in] dtls The janus_dtls_srtp instance to destroy */
 void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls);

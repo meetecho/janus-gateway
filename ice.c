@@ -357,6 +357,37 @@ void janus_ice_free(janus_ice_handle *handle) {
 	handle = NULL;
 }
 
+void janus_ice_webrtc_hangup(janus_ice_handle *handle) {
+	if(handle == NULL)
+		return;
+	janus_mutex_lock(&handle->mutex);
+	handle->icethread = NULL;
+	if(handle->streams != NULL) {
+		if(handle->audio_stream) {
+			janus_ice_stream *stream = handle->audio_stream;
+			if(stream->rtp_component)
+				janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+			if(stream->rtcp_component)
+				janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+		}
+		if(handle->video_stream) {
+			janus_ice_stream *stream = handle->video_stream;
+			if(stream->rtp_component)
+				janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+			if(stream->rtcp_component)
+				janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+		}
+		if(handle->data_stream) {
+			janus_ice_stream *stream = handle->data_stream;
+			if(stream->rtp_component)
+				janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+			if(stream->rtcp_component)
+				janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+		}
+	}
+	janus_mutex_unlock(&handle->mutex);
+}
+
 void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;

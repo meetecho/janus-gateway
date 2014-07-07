@@ -1917,7 +1917,12 @@ void janus_close_pc(janus_plugin_session *handle) {
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
 	if(!ice_handle)
 		return;
-
+		
+	/* Send an alert on all the DTLS connections */
+	janus_ice_webrtc_hangup(ice_handle);
+	/* Get rid of the PeerConnection */
+	janus_ice_webrtc_free(ice_handle);
+	
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("hangup"));

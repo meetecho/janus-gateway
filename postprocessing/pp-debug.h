@@ -1,4 +1,4 @@
-/*! \file    debug.h
+/*! \file    pp-debug.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    Logging and Debugging

@@ -457,6 +457,14 @@ done:
 	}
 }
 
+void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
+	/* Send alert */
+	if(dtls != NULL && dtls->ssl != NULL) {
+		SSL_shutdown(dtls->ssl);
+		janus_dtls_fd_bridge(dtls);
+	}
+}
+
 void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	if(dtls == NULL)
 		return;

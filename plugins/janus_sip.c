@@ -629,6 +629,8 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroy)
 		return;
+	if(session->status < janus_sip_status_inviting || session->status > janus_sip_status_incall)
+		return;
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = calloc(1, sizeof(janus_sip_message));
 	if(msg == NULL) {
@@ -1363,6 +1365,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
+			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+			gateway->close_pc(session->handle);
 			break;
 		}
 		case nua_i_cancel: {
@@ -1383,6 +1387,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
+			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+			gateway->close_pc(session->handle);
 			break;
 		}
 		case nua_i_chat:
@@ -1533,6 +1539,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
+			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+			gateway->close_pc(session->handle);
 			break;
 		case nua_r_cancel:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
@@ -1580,6 +1588,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				g_free(call_text);
+				/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+				gateway->close_pc(session->handle);
 				break;
 			}
 			ssip_t *ssip = session->stack;
