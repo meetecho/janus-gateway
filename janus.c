@@ -1510,10 +1510,10 @@ int janus_wss_onopen(libwebsock_client_state *state) {
 }
 
 int janus_wss_onmessage(libwebsock_client_state *state, libwebsock_message *msg) {
-	JANUS_LOG(LOG_INFO, "WebSocket onmessage: #%d\n", state->sockfd);
-	JANUS_LOG(LOG_VERB, "  -- Message opcode: %d\n", msg->opcode);
-	JANUS_LOG(LOG_VERB, "  -- Payload Length: %llu\n", msg->payload_len);
-	JANUS_LOG(LOG_VERB, "  -- Payload: %s\n", msg->payload);
+	JANUS_LOG(LOG_VERB, "WebSocket onmessage: #%d\n", state->sockfd);
+	JANUS_LOG(LOG_HUGE, "  -- Message opcode: %d\n", msg->opcode);
+	JANUS_LOG(LOG_HUGE, "  -- Payload Length: %llu\n", msg->payload_len);
+	JANUS_LOG(LOG_HUGE, "  -- Payload: %s\n", msg->payload);
 
 	janus_mutex_lock(&wss_mutex);
 	janus_websocket_client *client = g_hash_table_lookup(wss_sessions, state);
@@ -2422,6 +2422,23 @@ gint main(int argc, char *argv[])
 	/* Start web server, if enabled */
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
+	gint64 threads = 0;
+	item = janus_config_get_item_drilldown(config, "webserver", "threads");
+	if(item && item->value) {
+		if(!strcasecmp(item->value, "unlimited")) {
+			/* No limit on threads, use a thread per connection */
+			threads = 0;
+		} else {
+			/* Use a thread pool */
+			threads = atoll(item->value);
+			if(threads == 0) {
+				JANUS_LOG(LOG_WARN, "Chose '0' as size for the thread pool, which is equivalent to 'unlimited'\n");
+			} else if(threads < 0) {
+				JANUS_LOG(LOG_WARN, "Invalid value '%"SCNi64"' as size for the thread pool, falling back to to 'unlimited'\n", threads);
+				threads = 0;
+			}
+		}
+	}
 	item = janus_config_get_item_drilldown(config, "webserver", "http");
 	if(item && item->value && !strcasecmp(item->value, "no")) {
 		JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
@@ -2430,15 +2447,30 @@ gint main(int argc, char *argv[])
 		item = janus_config_get_item_drilldown(config, "webserver", "port");
 		if(item && item->value)
 			wsport = atoi(item->value);
-		ws = MHD_start_daemon(
-			MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
-			wsport,
-			NULL,
-			NULL,
-			&janus_ws_handler,
-			ws_path,
-			MHD_OPTION_NOTIFY_COMPLETED, &janus_ws_request_completed, NULL,
-			MHD_OPTION_END);
+		if(threads == 0) {
+			JANUS_LOG(LOG_VERB, "Using a thread per connection for the HTTP web server\n");
+			ws = MHD_start_daemon(
+				MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+				wsport,
+				NULL,
+				NULL,
+				&janus_ws_handler,
+				ws_path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_ws_request_completed, NULL,
+				MHD_OPTION_END);
+		} else {
+			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the HTTP web server\n", threads);
+			ws = MHD_start_daemon(
+				MHD_USE_SELECT_INTERNALLY,
+				wsport,
+				NULL,
+				NULL,
+				&janus_ws_handler,
+				ws_path,
+				MHD_OPTION_THREAD_POOL_SIZE, threads,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_ws_request_completed, NULL,
+				MHD_OPTION_END);
+		}
 		if(ws == NULL) {
 			JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			exit(1);	/* FIXME Should we really give up? */
@@ -2500,18 +2532,36 @@ gint main(int argc, char *argv[])
 		}
 		fclose(key);
 		/* Start webserver */
-		sws = MHD_start_daemon(
-			MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
-			swsport,
-			NULL,
-			NULL,
-			&janus_ws_handler,
-			ws_path,
-			MHD_OPTION_NOTIFY_COMPLETED, &janus_ws_request_completed, NULL,
-				/* FIXME We're using the same certificates as those for DTLS */
-				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-			MHD_OPTION_END);
+		if(threads == 0) {
+			JANUS_LOG(LOG_VERB, "Using a thread per connection for the HTTPS web server\n");
+			sws = MHD_start_daemon(
+				MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+				swsport,
+				NULL,
+				NULL,
+				&janus_ws_handler,
+				ws_path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_ws_request_completed, NULL,
+					/* FIXME We're using the same certificates as those for DTLS */
+					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
+					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_END);
+		} else {
+			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the HTTPS web server\n", threads);
+			sws = MHD_start_daemon(
+				MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY,
+				swsport,
+				NULL,
+				NULL,
+				&janus_ws_handler,
+				ws_path,
+				MHD_OPTION_THREAD_POOL_SIZE, threads,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_ws_request_completed, NULL,
+					/* FIXME We're using the same certificates as those for DTLS */
+					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
+					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_END);
+		}
 		if(sws == NULL) {
 			JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 			exit(1);	/* FIXME Should we really give up? */

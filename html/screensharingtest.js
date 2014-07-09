@@ -26,6 +26,22 @@
 // when compiling the gateway. WebSockets support has not been tested
 // as much as the REST API, so handle with care!
 //
+//
+// If you have multiple options available, and want to let the library
+// autodetect the best way to contact your gateway (or pool of gateways),
+// you can also pass an array of servers, e.g., to provide alternative
+// means of access (e.g., try WebSockets first and, if that fails, fall
+// back to plain HTTP) or just have failover servers:
+//
+//		var server = [
+//			"ws://" + window.location.hostname + ":8188",
+//			"/janus"
+//		];
+//
+// This will tell the library to try connecting to each of the servers
+// in the presented order. The first working server will be used for
+// the whole session.
+//
 var server = null;
 if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";

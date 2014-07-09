@@ -168,8 +168,10 @@ Janus.init({
  * (events may occur at any time), there are several properties and callbacks you
  * can configure when creating a session:
  *
- * - \c server: the address of the gateway (e.g., http://yourserver:8088/janus
- * to use the plain HTTP API or ws://yourserver:8188/ for WebSockets);
+ * - \c server: the address of the gateway as a specific address (e.g.,
+ * http://yourserver:8088/janus to use the plain HTTP API or ws://yourserver:8188/
+ * for WebSockets) or as an array of addresses to try sequentially to allow
+ * automatic for fallback/failover during setup;
  * - \c iceServers: a list of STUN/TURN servers to use (a default STUN server
  * will be used if you skip this property);
  * - a set of callbacks to be notified about events, namely:
@@ -199,6 +201,30 @@ var janus = new Janus(
 			// I should get rid of this
 		}
 	});
+ \endverbatim
+ *
+ * As anticipated, the server may be a specific address, e.g.:
+ *
+ \verbatim
+var janus = new Janus(
+	{
+		server: 'http://yourserver:8088/janus',
+				// or
+		server: 'ws://yourserver:8188/',
+		[..]
+ \endverbatim
+ *
+ * or an array of addresses. Such an array can be especially useful if
+ * you want the library to first check if the WebSockets server is
+ * reachable and, if not, fallback to plain HTTP, or just to provide
+ * a link multiple instances to try for failover. This is an example of
+ * how to pass a 'try websockets and fallback to HTTP' array:
+ *
+ \verbatim
+var janus = new Janus(
+	{
+		server: ['ws://yourserver:8188/','http://yourserver:8088/janus'],
+		[..]
  \endverbatim
  *
  * Once created, this object represents your session with the gateway.
@@ -1196,7 +1222,7 @@ php -S 0.0.0.0:9000
 python -m SimpleHTTPServer 9000
  \endverbatim
  *
- * \section apache Using Janus with WebSockets 
+ * \section deplyws Using Janus with WebSockets 
  *
  * Configuring the usae of WebSockets rather than the REST API in the JavaScript
  * library is quite trivial, as it's a matter of passing a \c ws:// address
@@ -1231,6 +1257,27 @@ var server = "ws://www.example.com:8188/";
  * require custom modifications for the purpose. If this is something
  * you're interested in, we recommend you follow the best practices related
  * to that made available by the web server developers.
+ *
+ * \section both Using fallback addresses 
+ * As anticipated in the \ref JS section, you can also pass an array of servers
+ * to the Janus library initialization. This allows you, for instance, to
+ * pass a link to both the WebSockets and REST interfaces, and have the
+ * library try them both to see which one is reachable, e.g.:
+ *
+ \verbatim
+var ws_server = "ws://" + window.location.hostname + ":8188/";
+var http_server = "http://" + window.location.hostname + ":8088/janus";
+var servers = [ws_server, http_server];
+ \endverbatim
+ *
+ * which is especially useful if you're not sure whether or not WebSockets
+ * will work in some specific networks. Please notice that, for the individual
+ * servers listed in the array, the same considerations given above (e.g.,
+ * in terms of relative vs. absolute linking) still apply.
+ *
+ * Such an approach can also be used when you've deployed several different
+ * instances of Janus, and you want the library to try some and fallback
+ * to others if any of them is not reachable for any reason.
  *
  */
  

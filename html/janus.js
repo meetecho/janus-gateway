@@ -80,17 +80,26 @@ function Janus(gatewayCallbacks) {
 	}
 	var websockets = false;
 	var ws = null;
-	if(gatewayCallbacks.server.indexOf("ws") === 0) {
-		websockets = true;
-		Janus.log("Using WebSockets to contact Janus");
+	var servers = null, serversIndex = 0;
+	var server = gatewayCallbacks.server;
+	if($.isArray(server)) {
+		Janus.log("Multiple servers provided (" + server.length + "), will use the first that works");
+		server = null;
+		servers = gatewayCallbacks.server;
+		Janus.log(servers);
 	} else {
-		websockets = false;
-		Janus.log("Using REST API to contact Janus");
+		if(server.indexOf("ws") === 0) {
+			websockets = true;
+			Janus.log("Using WebSockets to contact Janus");
+		} else {
+			websockets = false;
+			Janus.log("Using REST API to contact Janus");
+		}
+		Janus.log(server);
 	}
 	var iceServers = gatewayCallbacks.iceServers;
 	if(iceServers === undefined || iceServers === null)
 		iceServers = [{"url": "stun:stun.l.google.com:19302"}];
-	var server = gatewayCallbacks.server;
 	var maxev = null;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
 		maxev = gatewayCallbacks.max_poll_events;
@@ -101,7 +110,6 @@ function Janus(gatewayCallbacks) {
 	var pluginHandles = {};
 	var that = this;
 	var retries = 0;
-	Janus.log(server);
 	var transactions = {};
 	createSession(gatewayCallbacks);
 
@@ -268,10 +276,34 @@ function Janus(gatewayCallbacks) {
 	function createSession(callbacks) {
 		var transaction = randomString(12);
 		var request = { "janus": "create", "transaction": transaction };
+		if(server === null && $.isArray(servers)) {
+			// We still need to find a working server from the list we were given
+			server = servers[serversIndex];
+			if(server.indexOf("ws") === 0) {
+				websockets = true;
+				Janus.log("Server #" + (serversIndex+1) + ": trying WebSockets to contact Janus");
+			} else {
+				websockets = false;
+				Janus.log("Server #" + (serversIndex+1) + ": trying REST API to contact Janus");
+			}
+			Janus.log(server);
+		}
 		if(websockets) {
 			ws = new WebSocket(server); 
 			ws.onerror = function() {
 				Janus.log("Error connecting to the Janus WebSockets server...");
+				if($.isArray(servers)) {
+					serversIndex++;
+					if(serversIndex == servers.length) {
+						// We tried all the servers the user gave us and they all failed
+						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+						return;
+					}
+					// Let's try the next server
+					server = null;
+					setTimeout(function() { createSession(callbacks); }, 200);
+					return;
+				}
 				callbacks.error("Error connecting to the Janus WebSockets server: Is the gateway down?");
 			};
 			ws.onopen = function() {
@@ -296,6 +328,8 @@ function Janus(gatewayCallbacks) {
 				handleEvent(JSON.parse(event.data));
 			};
 			ws.onclose = function() {
+				if(server === null)
+					return;
 				// FIXME What if this is called when the page is closed?
 				gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
 			};
@@ -324,6 +358,18 @@ function Janus(gatewayCallbacks) {
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
 				Janus.log(textStatus + ": " + errorThrown);	// FIXME
+				if($.isArray(servers)) {
+					serversIndex++;
+					if(serversIndex == servers.length) {
+						// We tried all the servers the user gave us and they all failed
+						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+						return;
+					}
+					// Let's try the next server
+					server = null;
+					setTimeout(function() { createSession(callbacks); }, 200);
+					return;
+				}
 				if(errorThrown === "")
 					callbacks.error(textStatus + ": Is the gateway down?");
 				else
