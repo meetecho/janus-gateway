@@ -77,8 +77,12 @@ typedef struct janus_session {
 	GQueue *messages;
 	/*! \brief Mutex to lock/unlock the messages queue */
 	janus_mutex qmutex;
+	/*! \brief Time of the last activity on the session */
+	gint64 last_activity;
 	/*! \brief Flag to trigger a lazy session destruction */
 	gint destroy:1;
+	/*! \brief Flag to notify there's been a session timeout */
+	gint timeout:1;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 } janus_session;

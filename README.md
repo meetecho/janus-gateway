@@ -1,7 +1,8 @@
 Janus WebRTC Gateway
 ====================
 
-Janus is an open source, general purpose, WebRTC gateway. This version
+Janus is an open source, general purpose, WebRTC gateway designed and
+developed by [Meetecho](http://www.meetecho.com). This version
 of the gateway can only be installed on Linux systems: next versions
 will take into account cross compilation on different environments.
 

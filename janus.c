@@ -147,6 +147,65 @@ static GHashTable *wss_sessions = NULL;
 /* Gateway Sessions */
 static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL;
+
+#define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
+void *janus_sessions_watchdog(void *data);
+void *janus_sessions_watchdog(void *data) {
+	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
+	gint64 now = 0;
+	while(!stop) {
+		janus_mutex_lock(&sessions_mutex);
+		if(sessions != NULL && g_hash_table_size(sessions) > 0) {
+			/* Iterate on all the sessions and check the last activity */
+			now = janus_get_monotonic_time();
+			GList *sessions_list = g_hash_table_get_values(sessions);
+			GList *s = sessions_list;
+			while(s) {
+				janus_session *session = (janus_session *)s->data;
+				if(!session || session->destroy || stop) {
+					s = s->next;
+					continue;
+				}
+				if(now-session->last_activity >= (SESSION_TIMEOUT+3)*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the session only after a few seconds */
+					janus_mutex_unlock(&sessions_mutex);
+					janus_session_destroy(session->session_id);
+					janus_mutex_lock(&sessions_mutex);
+				} else if(now-session->last_activity >= SESSION_TIMEOUT*G_USEC_PER_SEC && !session->timeout) {
+					/* Timeout! */
+					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
+					/* Prepare JSON event to notify user/application */
+					json_t *event = json_object();
+					json_object_set_new(event, "janus", json_string("timeout"));
+					/* Convert to a string */
+					char *event_text = json_dumps(event, JSON_INDENT(3));
+					json_decref(event);
+					/* Send the event */
+					janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+					if(notification == NULL) {
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						s = s->next;
+						continue;
+					}
+					notification->code = 200;
+					notification->payload = event_text;
+					notification->allocated = 1;
+					janus_mutex_lock(&session->qmutex);
+					g_queue_push_tail(session->messages, notification);
+					session->timeout = 1;
+					janus_mutex_unlock(&session->qmutex);
+				}
+				s = s->next;
+			}
+			g_list_free(sessions_list);
+		}
+		janus_mutex_unlock(&sessions_mutex);
+		g_usleep(2000000);
+	}
+	JANUS_LOG(LOG_INFO, "Sessions watchdog stopped\n");
+	return NULL;
+}
+
 janus_session *janus_session_create(guint64 session_id) {
 	if(session_id == 0) {
 		while(session_id == 0) {
@@ -166,6 +225,7 @@ janus_session *janus_session_create(guint64 session_id) {
 	session->session_id = session_id;
 	session->messages = g_queue_new();
 	session->destroy = 0;
+	session->last_activity = janus_get_monotonic_time();
 	janus_mutex_init(&session->qmutex);
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
@@ -187,23 +247,21 @@ gint janus_session_destroy(guint64 session_id) {
 		return -1;
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
-	/* TODO Remove all handles */
-	//~ if(handle->app == NULL) {
-		//~ ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, "No plugin to detach from");
-		//~ goto jsondone;
-	//~ }
-	//~ janus_plugin *plugin_t = (janus_plugin *)handle->app;
-	//~ JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
-	//~ /* TODO Actually detach session... */
-	//~ int error = 0;
-	//~ plugin_t->destroy_session(handle, &error);
-	//~ if(error) {	/* TODO Make error struct to pass verbose information */
-		//~ g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
-		//~ ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
-		//~ /* TODO Delete handle instance */
-		//~ goto jsondone;
-	//~ }
-	//~ g_hash_table_remove(session, handle);
+	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+		/* Remove all handles */
+		GList *handles_list = g_hash_table_get_values(session->ice_handles);
+		GList *h = handles_list;
+		while(h) {
+			janus_ice_handle *handle = (janus_ice_handle *)h->data;
+			if(!handle || stop) {
+				h = h->next;
+				continue;
+			}
+			janus_ice_handle_destroy(session, handle->handle_id);
+			h = h->next;
+		}
+		g_list_free(handles_list);
+	}
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
 	janus_mutex_unlock(&sessions_mutex);
@@ -482,6 +540,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto done;
 			}
 		}
+		/* Update the last activity timer */
+		session->last_activity = janus_get_monotonic_time();
 		/* How many messages can we send back in a single response? (just one by default) */
 		int max_events = 1;
 		const char *maxev = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "maxev");
@@ -724,9 +784,22 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto jsondone;
 		}
 	}
+	/* Update the last activity timer */
+	session->last_activity = janus_get_monotonic_time();
 
 	/* What is this? */
-	if(!strcasecmp(message_text, "attach")) {
+	if(!strcasecmp(message_text, "keepalive")) {
+		/* Just a keep-alive message, reply with an ack */
+		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session->session_id);
+		json_t *reply = json_object();
+		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
+		/* Convert to a string */
+		char *reply_text = json_dumps(reply, JSON_INDENT(3));
+		json_decref(reply);
+		/* Send the success reply */
+		ret = janus_process_success(source, "application/json", reply_text);
+	} else if(!strcasecmp(message_text, "attach")) {
 		if(handle != NULL) {
 			/* Attach is a session-level command */
 			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
@@ -1613,6 +1686,13 @@ void *janus_wss_thread(void *data) {
 							JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
 						}
 					}
+				}
+				if(g_queue_is_empty(session->messages) && session->timeout) {
+					/* Close the websocket */
+					janus_mutex_unlock(&session->qmutex);
+					libwebsock_close(client->state);
+					//~ janus_wss_onclose(client->state);
+					break;
 				}
 				janus_mutex_unlock(&session->qmutex);
 				s = s->next;
@@ -2635,10 +2715,19 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Start the sessions watchdog */
+	GThread *watchdog = g_thread_new("watchdog", &janus_sessions_watchdog, NULL);
+	if(!watchdog) {
+		JANUS_LOG(LOG_FATAL, "Couldn't start sessions watchdog...\n");
+		exit(1);
+	}
+	
 #ifdef HAVE_WS
 	if(wss || swss) {
 		/* The libwebsock wait is our loop */
 		libwebsock_wait(wss ? wss : swss);
+		if(!stop)
+			janus_handle_signal(SIGINT);
 	} else {
 		while(!stop) {
 			/* Loop until we have to stop */
@@ -2653,6 +2742,8 @@ gint main(int argc, char *argv[])
 #endif
 
 	/* Done */
+	g_thread_join(watchdog);
+	watchdog = NULL;
 	if(config)
 		janus_config_destroy(config);
 	JANUS_LOG(LOG_INFO, "Closing webserver...\n");

@@ -271,6 +271,15 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Unknown message '" + json["janus"] + "'");
 		}
 	}
+	
+	// Private helper to send keep-alive messages on WebSockets
+	function keepAlive() {
+		if(server === null || !websockets || !connected)
+			return;
+		setTimeout(keepAlive, 30000);
+		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": randomString(12) };
+		ws.send(JSON.stringify(request));
+	}
 
 	// Private method to create a session
 	function createSession(callbacks) {
@@ -316,6 +325,7 @@ function Janus(gatewayCallbacks) {
 						callbacks.error(json["error"].reason);
 						return;
 					}
+					setTimeout(keepAlive, 30000);
 					connected = true;
 					sessionId = json.data["id"];
 					Janus.log("Created session: " + sessionId);
@@ -328,8 +338,9 @@ function Janus(gatewayCallbacks) {
 				handleEvent(JSON.parse(event.data));
 			};
 			ws.onclose = function() {
-				if(server === null)
+				if(server === null || !connected)
 					return;
+				connected = false;
 				// FIXME What if this is called when the page is closed?
 				gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
 			};

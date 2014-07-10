@@ -293,9 +293,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 				if(id == NULL || id->value == NULL) {
-					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information...\n");
-					cat = cat->next;
-					continue;
+					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 				}
 				gboolean doaudio = audio && audio->value && !strcasecmp(audio->value, "yes");
 				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
@@ -323,7 +321,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
 				live_rtp->name = g_strdup(cat->name);
-				live_rtp->id = atoi(id->value);
+				live_rtp->id = (id && id->value) ? atoi(id->value) : g_random_int();
 				char *description = NULL;
 				if(desc != NULL && desc->value != NULL)
 					description = g_strdup(desc->value);
