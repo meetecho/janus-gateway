@@ -1050,6 +1050,30 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * to map incoming responses and events to the request you sent that
  * originated them.
  * 
+ * An \b important aspect to point out is related to keep-alive messages
+ * for WebSockets Janus channels. A Janus session is kept alive as long
+ * as there's no inactivity for 60 seconds: if no messages have been
+ * received in that time frame, the session is torn down by the gateway.
+ * A normal activity on a session is usually enough to prevent that;
+ * for a more prolonged inactivity with respect to messaging, on plain
+ * HTTP the session is usually kept alive through the regular long poll
+ * requests, which act as activity as long as the session is concerned.
+ * This aid is obviously not possible when using WebSockets, where a single channel is
+ * used both for sending requests and receiving events and responses. For
+ * this reason, an ad-hoc message for keeping alive a Janus session should
+ * to be triggered on a regular basis:
+ * 
+\verbatim
+{
+	"janus" : "keepalive",
+	"session_id" : "<the session identifier>",
+	"transaction" : "sBJNyUhH6Vc6"
+}
+\endverbatim
+ * 
+ * This will make sure that the gateway detects activity on the session
+ * even when no actual messages are being exchanged with handles.
+ * 
  * As a last point, another slight difference with WebSockets comes from
  * how push notifications are implemented. In the \ref plainhttp this is
  * done via long polls: that is, you explicitly subscribe to notifications,
