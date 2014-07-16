@@ -477,7 +477,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			goto done;
 		}
 		/* Send the success reply */
-		ret = janus_process_success(&source, "application/json", info_text);
+		ret = janus_process_success(&source, "application/json", g_strdup(info_text));
 		goto done;
 	}
 	
