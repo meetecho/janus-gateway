@@ -301,9 +301,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vport = janus_config_get_item(cat, "videoport");
 				janus_config_item *vcodec = janus_config_get_item(cat, "videopt");
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
-				if(id == NULL || id->value == NULL) {
-					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
-				}
 				gboolean doaudio = audio && audio->value && !strcasecmp(audio->value, "yes");
 				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
 				if(!doaudio && !dovideo) {
@@ -326,6 +323,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information for video...\n");
 					cat = cat->next;
 					continue;
+				}
+				if(id == NULL || id->value == NULL) {
+					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_WARN, "A stream with the provided ID already exists, skipping '%s'\n", cat->name);
+						cat = cat->next;
+						continue;
+					}
 				}
 				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
 				if(!janus_streaming_create_rtp_source(
@@ -350,7 +359,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
-				if(id == NULL || id->value == NULL || file == NULL || file->value == NULL) {
+				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' stream, missing mandatory information...\n");
 					cat = cat->next;
 					continue;
@@ -368,6 +377,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cat = cat->next;
 					continue;
 				}
+				if(id == NULL || id->value == NULL) {
+					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_WARN, "A stream with the provided ID already exists, skipping '%s'\n", cat->name);
+						cat = cat->next;
+						continue;
+					}
+				}
 				if(!janus_streaming_create_file_source(
 						(id && id->value) ? atoi(id->value) : 0,
 						(char *)cat->name,
@@ -384,7 +405,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
-				if(id == NULL || id->value == NULL || file == NULL || file->value == NULL) {
+				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, missing mandatory information...\n");
 					cat = cat->next;
 					continue;
@@ -401,6 +422,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
 					cat = cat->next;
 					continue;
+				}
+				if(id == NULL || id->value == NULL) {
+					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_WARN, "A stream with the provided ID already exists, skipping '%s'\n", cat->name);
+						cat = cat->next;
+						continue;
+					}
 				}
 				if(!janus_streaming_create_file_source(
 						(id && id->value) ? atoi(id->value) : 0,
@@ -867,6 +900,16 @@ static void *janus_streaming_handler(void *data) {
 				}
 				if(id == NULL) {
 					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
+						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+						sprintf(error_cause, "A stream with the provided ID already exists");
+						goto error;
+					}
 				}
 				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
 				mp = janus_streaming_create_rtp_source(
@@ -940,6 +983,19 @@ static void *janus_streaming_handler(void *data) {
 					sprintf(error_cause, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
 					goto error;
 				}
+				if(id == NULL) {
+					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
+						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+						sprintf(error_cause, "A stream with the provided ID already exists");
+						goto error;
+					}
+				}
 				mp = janus_streaming_create_file_source(
 						id ? json_integer_value(id) : 0,
 						name ? (char *)json_string_value(name) : NULL,
@@ -1011,6 +1067,19 @@ static void *janus_streaming_handler(void *data) {
 					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 					sprintf(error_cause, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
 					goto error;
+				}
+				if(id == NULL) {
+					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
+						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+						sprintf(error_cause, "A stream with the provided ID already exists");
+						goto error;
+					}
 				}
 				mp = janus_streaming_create_file_source(
 						id ? json_integer_value(id) : 0,

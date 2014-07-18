@@ -726,9 +726,21 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
 		if(config.dtmfSender === null || config.dtmfSender === undefined) {
-			Janus.log("Invalid DTMF configuration");
-			callbacks.error("Invalid DTMF configuration");
-			return;
+			// Create the DTMF sender, if possible
+			if(config.myStream !== undefined && config.myStream !== null) {
+				var tracks = config.myStream.getAudioTracks();
+				if(tracks !== null && tracks !== undefined && tracks.length > 0) {
+					var local_audio_track = tracks[0];
+					config.dtmfSender = config.pc.createDTMFSender(local_audio_track);
+					Janus.log("Created DTMF Sender");
+					config.dtmfSender.ontonechange = function(tone) { Janus.log("Sent DTMF tone: " + tone.tone); };
+				}
+			}
+			if(config.dtmfSender === null || config.dtmfSender === undefined) {
+				Janus.log("Invalid DTMF configuration");
+				callbacks.error("Invalid DTMF configuration");
+				return;
+			}
 		}
 		var dtmf = callbacks.dtmf;
 		if(dtmf === null || dtmf === undefined) {
@@ -882,16 +894,6 @@ function Janus(gatewayCallbacks) {
 					});
 				}, 1000);
 			}
-			// Create the DTMF sender too, if possible
-			if(config.myStream !== undefined && config.myStream !== null) {
-				var tracks = config.myStream.getAudioTracks();
-				if(tracks !== null && tracks !== undefined && tracks.length > 0) {
-					var local_audio_track = tracks[0];
-					config.dtmfSender = config.pc.createDTMFSender(local_audio_track);
-					Janus.log("Created DTMF Sender");
-					config.dtmfSender.ontonechange = function(tone) { Janus.log("Sent DTMF tone: " + tone.tone); };
-				}
-			}
 			pluginHandle.onremotestream(remoteStream.stream);
 		};
 		// Any data channel to create?
@@ -940,6 +942,22 @@ function Janus(gatewayCallbacks) {
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		// Are we updating a session?
+		if(config.pc !== undefined && config.pc !== null) {
+			Janus.log("Updating existing media session");
+			// Create offer/answer now
+			if(jsep === null || jsep === undefined) {
+				createOffer(handleId, media, callbacks);
+			} else {
+				config.pc.setRemoteDescription(
+						new RTCSessionDescription(jsep),
+						function() {
+							Janus.log("Remote description accepted!");
+							createAnswer(handleId, media, callbacks);
+						}, callbacks.error);
+			}
+			return;
+		} 
 		config.trickle = isTrickleEnabled(callbacks.trickle);
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};

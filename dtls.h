@@ -73,6 +73,8 @@ typedef struct janus_dtls_srtp {
 	srtp_policy_t remote_policy;
 	/*! \brief libsrtp policy for outgoing SRTP packets */
 	srtp_policy_t local_policy;
+	/*! \brief Mutex to lock/unlock this libsrtp context */
+	janus_mutex srtp_mutex;
 	/*! \brief Buffer of the last message the DTLS client tried to send (needed for retransmissions) */
 	char *dtls_last_msg;
 	/*! \brief Length of the last message the DTLS client tried to send (needed for retransmissions) */

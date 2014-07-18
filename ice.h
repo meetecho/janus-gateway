@@ -76,6 +76,7 @@ typedef struct janus_ice_component janus_ice_component;
 #define JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES		(1 << 8)
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
 #define JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS		(1 << 10)
+#define JANUS_ICE_HANDLE_WEBRTC_PLAN_B				(1 << 11)
 
 
 /*! \brief Janus ICE handle */

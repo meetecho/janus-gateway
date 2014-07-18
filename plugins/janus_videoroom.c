@@ -12,6 +12,21 @@
  * listeners) to a fully meshed video conference (each peer sending and
  * receiving to and from all the others).
  * 
+ * For what concerns the subscriber side, there are two different ways to
+ * attach to a publisher's feed: a generic 'listener', which can attach to
+ * a single feed, and a more complex 'Multiplexed listener', which instead can
+ * attach to more feeds using the same PeerConnection. The generic 'listener'
+ * is the default, which means that if you want to watch more feeds at the
+ * same time, you'll need to create multiple 'listeners' to attach at any
+ * of them. The 'Multiplexed listener', instead, is a more complex alternative
+ * that exploits the so called RTCWEB 'Plan B', which multiplexes more
+ * streams on a single PeerConnection and in the SDP: while more efficient in terms of
+ * resources, though, this approach is experimental, and currently only
+ * available on Google Chrome, so use it wisely.
+ * \note As of now, work on Plan B is still going on, and as such its support in Janus
+ * is flaky to say the least. Don't try to attach as a Multiplexed listener or bad
+ * things will probably happen!
+ * 
  * Considering that this plugin allows for several different WebRTC PeerConnections
  * to be on at the same time for the same peer (specifically, each peer
  * potentially has 1 PeerConnection on for publishing and N on for subscriptions
@@ -20,11 +35,12 @@
  * handle active for managing its relation with the plugin (joining a room,
  * leaving a room, muting/unmuting, publishing, receiving events), and needs
  * to open a new one each time he/she wants to subscribe to a feed from
- * another participant. The handle used for a subscription, however, would
- * be logically a "slave" to the master one used for managing the room: this
- * means that it cannot be used, for instance, to unmute in the room, as its
- * only purpose would be to provide a context in which creating the sendonly
- * PeerConnection for the subscription to the active participant.
+ * another participant (or a single one in case a 'Multiplexed listener is used).
+ * The handle used for a subscription, however, would be logically a "slave"
+ * to the master one used for managing the room: this means that it cannot
+ * be used, for instance, to unmute in the room, as its only purpose would
+ * be to provide a context in which creating the sendonly PeerConnection
+ * for the subscription to the active participant.
  * 
  * Rooms to make available are listed in the plugin configuration file.
  * A pre-filled configuration file is provided in \c conf/janus.plugin.videoroom.cfg
@@ -58,6 +74,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"
+#include "../rtp.h"
 #include "../rtcp.h"
 #include "../record.h"
 #include "../utils.h"
@@ -128,8 +145,9 @@ char *string_replace(char *message, char *old, char *new, int *modified);
 
 typedef enum janus_videoroom_p_type {
 	janus_videoroom_p_type_none = 0,
-	janus_videoroom_p_type_subscriber,
-	janus_videoroom_p_type_publisher,
+	janus_videoroom_p_type_subscriber,			/* Generic listener/subscriber */
+	janus_videoroom_p_type_subscriber_muxed,	/* Multiplexed listener/subscriber */
+	janus_videoroom_p_type_publisher,			/* Participant/publisher */
 } janus_videoroom_p_type;
 
 typedef struct janus_videoroom_message {
@@ -195,6 +213,8 @@ typedef struct janus_videoroom_participant {
 	guint64 user_id;	/* Unique ID in the room */
 	gchar *display;	/* Display name (just for fun) */
 	gchar *sdp;			/* The SDP this publisher negotiated, if any */
+	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
+	guint32 video_ssrc;		/* Video SSRC of this publisher */
 	gboolean audio_active;
 	gboolean video_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
@@ -211,8 +231,16 @@ typedef struct janus_videoroom_listener {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	janus_videoroom_participant *feed;	/* Participant this listener is subscribed to */
+	struct janus_videoroom_listener_muxed *parent;	/* Overall subscriber, if this is a sub-listener in a Multiplexed one */
 	gboolean paused;
 } janus_videoroom_listener;
+
+typedef struct janus_videoroom_listener_muxed {
+	janus_videoroom_session *session;
+	janus_videoroom *room;	/* Room */
+	GSList *listeners;	/* List of listeners (as a Multiplexed listener can be subscribed to more publishers at the same time) */
+	janus_mutex listeners_mutex;
+} janus_videoroom_listener_muxed;
 
 typedef struct janus_videoroom_rtp_relay_packet {
 	char *data;
@@ -221,6 +249,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 } janus_videoroom_rtp_relay_packet;
 
 /* SDP offer/answer templates */
+#define OPUS_PT		111
+#define VP8_PT		100
 static const char *sdp_template =
 		"v=0\r\n"
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */
@@ -261,6 +291,12 @@ static const char *sdp_v_template =
 #define JANUS_VIDEOROOM_ERROR_UNAUTHORIZED		433
 #define JANUS_VIDEOROOM_ERROR_ALREADY_PUBLISHED	434
 #define JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED		435
+
+
+/* Multiplexing helpers */
+int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listener, GList *feeds, char *transaction);
+int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_listener, GList *feeds, char *transaction);
+int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, char *transaction, char *event_text);
 
 
 /* Plugin implementation */
@@ -520,7 +556,9 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
 		}
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
-		/* Detaching this listener from its subscriber is already done by hangup_media */
+		/* Detaching this listener from its publisher is already done by hangup_media */
+	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+		/* Detaching this listener from its publishers is already done by hangup_media */
 	}
 	/* Cleaning up and removing the session is done in a lazy way */
 	session->destroy = TRUE;
@@ -559,25 +597,56 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	/* Media relaying can start now */
 	session->started = TRUE;
 	/* If this is a listener, ask the publisher a FIR */
-	if(session->participant && session->participant_type == janus_videoroom_p_type_subscriber) {
-		janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
-		if(l && l->feed) {
-			janus_videoroom_participant *p = l->feed;
-			if(p && p->session) {
-				/* Send a FIR */
-				char buf[20];
-				memset(buf, 0, 20);
-				if(!p->firefox)
-					janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
-				else
-					janus_rtcp_fir_legacy((char *)&buf, 20, &p->fir_seq);
-				JANUS_LOG(LOG_VERB, "New listener available, sending FIR to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-				gateway->relay_rtcp(p->session->handle, 1, buf, 20);
-				/* Send a PLI too, just in case... */
-				memset(buf, 0, 12);
-				janus_rtcp_pli((char *)&buf, 12);
-				JANUS_LOG(LOG_VERB, "New listener available, sending PLI to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-				gateway->relay_rtcp(p->session->handle, 1, buf, 12);
+	if(session->participant) {
+		if(session->participant_type == janus_videoroom_p_type_subscriber) {
+			janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
+			if(l && l->feed) {
+				janus_videoroom_participant *p = l->feed;
+				if(p && p->session) {
+					/* Send a FIR */
+					char buf[20];
+					memset(buf, 0, 20);
+					if(!p->firefox)
+						janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
+					else
+						janus_rtcp_fir_legacy((char *)&buf, 20, &p->fir_seq);
+					JANUS_LOG(LOG_VERB, "New listener available, sending FIR to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+					gateway->relay_rtcp(p->session->handle, 1, buf, 20);
+					/* Send a PLI too, just in case... */
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					JANUS_LOG(LOG_VERB, "New listener available, sending PLI to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+					gateway->relay_rtcp(p->session->handle, 1, buf, 12);
+				}
+			}
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+			/* Do the same, but for all feeds */
+			janus_videoroom_listener_muxed *listener = (janus_videoroom_listener_muxed *)session->participant;
+			if(listener == NULL)
+				return;
+			GSList *ps = listener->listeners;
+			while(ps) {
+				janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+				if(l && l->feed) {
+					janus_videoroom_participant *p = l->feed;
+					if(p && p->session) {
+						/* Send a FIR */
+						char buf[20];
+						memset(buf, 0, 20);
+						if(!p->firefox)
+							janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
+						else
+							janus_rtcp_fir_legacy((char *)&buf, 20, &p->fir_seq);
+						JANUS_LOG(LOG_VERB, "New Multiplexed listener available, sending FIR to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+						gateway->relay_rtcp(p->session->handle, 1, buf, 20);
+						/* Send a PLI too, just in case... */
+						memset(buf, 0, 12);
+						janus_rtcp_pli((char *)&buf, 12);
+						JANUS_LOG(LOG_VERB, "New Multiplexed listener available, sending PLI to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+						gateway->relay_rtcp(p->session->handle, 1, buf, 12);
+					}
+				}
+				ps = ps->next;
 			}
 		}
 	}
@@ -591,6 +660,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
+		/* Update payload type and SSRC */
+		rtp_header *rtp = (rtp_header *)buf;
+		rtp->type = video ? VP8_PT : OPUS_PT;
+		rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
 		/* Save the frame if we're recording */
 		if(participant->room->record) {
 			if(video && participant->vrc)
@@ -598,6 +671,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			else if(!video && participant->arc)
 				janus_recorder_save_frame(participant->arc, buf, len);
 		}
+		/* Done, relay it */
 		janus_videoroom_rtp_relay_packet packet;
 		packet.data = buf;
 		packet.length = len;
@@ -652,25 +726,28 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 				}
 			}
 		}
+	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+		/* TODO What should we do here? */
 	} else if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* FIXME Badly: we're just bouncing the incoming RTCP back with modified REMB, we need to improve this... */
 		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 		if(participant && participant->session) {
 			if((!video && participant->audio_active) || (video && participant->video_active)) {
+				janus_rtcp_fix_ssrc(buf, len, 1, video ? participant->video_ssrc : participant->audio_ssrc, 0);
 				if(participant->bitrate > 0)
 					janus_rtcp_cap_remb(buf, len, participant->bitrate);
 				gateway->relay_rtcp(handle, video, buf, len);
-				/* FIXME Badly: we're also blinding forwarding the publisher RTCP to all the listeners: this probably means confusing them... */
-				if(participant->listeners != NULL) {
-					GSList *ps = participant->listeners;
-					while(ps) {
-						janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
-						if(l->session && l->session->handle) {
-							gateway->relay_rtcp(l->session->handle, video, buf, len);
-						}
-						ps = ps->next;
-					}
-				}
+				//~ /* FIXME Badly: we're also blinding forwarding the publisher RTCP to all the listeners: this probably means confusing them... */
+				//~ if(participant->listeners != NULL) {
+					//~ GSList *ps = participant->listeners;
+					//~ while(ps) {
+						//~ janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+						//~ if(l->session && l->session->handle) {
+							//~ gateway->relay_rtcp(l->session->handle, video, buf, len);
+						//~ }
+						//~ ps = ps->next;
+					//~ }
+				//~ }
 			}
 		}
 	}
@@ -687,6 +764,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroy)
 		return;
+	session->started = FALSE;
 	/* Send an event to the browser and tell the PeerConnection is over */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
@@ -721,12 +799,35 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of listener */
 		janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
-		janus_videoroom_participant *publisher = listener->feed;
-		if(publisher != NULL) {
-			janus_mutex_lock(&publisher->listeners_mutex);
-			publisher->listeners = g_slist_remove(publisher->listeners, listener);
-			janus_mutex_unlock(&publisher->listeners_mutex);
-			listener->feed = NULL;
+		if(listener) {
+			listener->paused = TRUE;
+			janus_videoroom_participant *publisher = listener->feed;
+			if(publisher != NULL) {
+				janus_mutex_lock(&publisher->listeners_mutex);
+				publisher->listeners = g_slist_remove(publisher->listeners, listener);
+				janus_mutex_unlock(&publisher->listeners_mutex);
+				listener->feed = NULL;
+			}
+		}
+		/* TODO Should we close the handle as well? */
+	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+		/* Do the same, but for all sub-listener */
+		janus_videoroom_listener_muxed *listener = (janus_videoroom_listener_muxed *)session->participant;
+		GSList *ps = listener->listeners;
+		while(ps) {
+			janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+			if(l) {
+				l->paused = TRUE;
+				janus_videoroom_participant *publisher = l->feed;
+				if(publisher != NULL) {
+					janus_mutex_lock(&publisher->listeners_mutex);
+					publisher->listeners = g_slist_remove(publisher->listeners, listener);
+					janus_mutex_unlock(&publisher->listeners_mutex);
+					l->feed = NULL;
+				}
+			}
+			/* TODO Should we close the handle as well? */
+			ps = ps->next;
 		}
 		/* TODO Should we close the handle as well? */
 	}
@@ -1114,6 +1215,8 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->bitrate = videoroom->bitrate;
 				publisher->listeners = NULL;
 				janus_mutex_init(&publisher->listeners_mutex);
+				publisher->audio_ssrc = g_random_int();
+				publisher->video_ssrc = g_random_int();
 				publisher->fir_latest = 0;
 				publisher->fir_seq = 0;
 				/* Done */
@@ -1179,6 +1282,7 @@ static void *janus_videoroom_handler(void *data) {
 					listener->room = videoroom;
 					listener->feed = publisher;
 					listener->paused = TRUE;	/* We need an explicit start from the listener */
+					listener->parent = NULL;
 					session->participant = listener;
 					janus_mutex_lock(&publisher->listeners_mutex);
 					publisher->listeners = g_slist_append(publisher->listeners, listener);
@@ -1206,6 +1310,83 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					g_free(event_text);
 				}
+			} else if(!strcasecmp(ptype_text, "muxed-listener")) {
+				/* This is a new Multiplexed listener */
+				JANUS_LOG(LOG_INFO, "Configuring new Multiplexed listener\n");
+				/* Any feed we want to attach to already? */
+				GList *list = NULL;
+				json_t *feeds = json_object_get(root, "feeds");
+				if(feeds && !json_is_array(feeds)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feeds should be an array)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (feeds should be an array)");
+					goto error;
+				}
+				if(feeds && json_array_size(feeds) > 0) {
+					int i=0, problem = 0;
+					for(i=0; i<json_array_size(feeds); i++) {
+						json_t *feed = json_array_get(feeds, i);
+						if(!feed || !json_is_integer(feed)) {
+							problem = 1;
+							JANUS_LOG(LOG_ERR, "Invalid element (feeds in the array must be integers)\n");
+							error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+							sprintf(error_cause, "Invalid element (feeds in the array must be integers)");
+							break;
+						}
+						uint64_t feed_id = json_integer_value(feed);
+						janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(feed_id));
+						if(publisher == NULL || publisher->sdp == NULL) {
+							problem = 1;
+							JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
+							error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+							sprintf(error_cause, "No such feed (%"SCNu64")", feed_id);
+							break;
+						}
+						list = g_list_prepend(list, GUINT_TO_POINTER(feed_id));
+						JANUS_LOG(LOG_INFO, "  -- Subscribing to feed %"SCNu64"\n", feed_id);
+					}
+					if(problem) {
+						goto error;
+					}
+				}
+				/* Allocate listener */
+				janus_videoroom_listener_muxed *listener = calloc(1, sizeof(janus_videoroom_listener_muxed));
+				if(listener == NULL) {
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					sprintf(error_cause, "Memory error");
+					goto error;
+				}
+				listener->session = session;
+				listener->room = videoroom;
+				session->participant_type = janus_videoroom_p_type_subscriber_muxed;
+				session->participant = listener;
+				/* Ack that we created the listener */
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("muxed-created"));
+				json_object_set_new(event, "room", json_integer(videoroom->room_id));
+				JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
+				char *event_text = json_dumps(event, JSON_INDENT(3));
+				json_decref(event);
+				/* How long will the gateway take to push the event? */
+				gint64 start = janus_get_monotonic_time();
+				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+				JANUS_LOG(LOG_VERB, "  >> %d\n", res);
+				g_free(event_text);
+				json_decref(root);
+				/* Attach to feeds if needed */
+				if(list != NULL) {
+					JANUS_LOG(LOG_INFO, "Subscribing to %d feeds\n", g_list_length(list));
+					list = g_list_reverse(list);
+					if(janus_videoroom_muxed_subscribe(listener, list, msg->transaction) < 0) {
+						JANUS_LOG(LOG_ERR, "Error subscribing!\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;	/* FIXME */
+						sprintf(error_cause, "Error subscribing!");
+						goto error;
+					}
+				}
+				continue;
 			} else {
 				JANUS_LOG(LOG_ERR, "Invalid element (ptype)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
@@ -1214,7 +1395,13 @@ static void *janus_videoroom_handler(void *data) {
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Handle this publisher */
-			janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant; 
+			janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+			if(participant == NULL) {
+				JANUS_LOG(LOG_ERR, "Invalid participant instance\n");
+				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+				sprintf(error_cause, "Invalid participant instance");
+				goto error;
+			}
 			if(!strcasecmp(request_text, "join")) {
 				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
@@ -1317,8 +1504,14 @@ static void *janus_videoroom_handler(void *data) {
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Handle this listener */
 			janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
+			if(listener == NULL) {
+				JANUS_LOG(LOG_ERR, "Invalid listener instance\n");
+				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+				sprintf(error_cause, "Invalid listener instance");
+				goto error;
+			}
 			if(!strcasecmp(request_text, "join")) {
-				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
+				JANUS_LOG(LOG_ERR, "Already in as a listener on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
 				sprintf(error_cause, "Already in as a listener on this handle");
 				goto error;
@@ -1363,6 +1556,148 @@ static void *janus_videoroom_handler(void *data) {
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
+				json_object_set_new(event, "left", json_string("ok"));
+				session->started = FALSE;
+			} else {
+				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
+				sprintf(error_cause, "Unknown request '%s'", request_text);
+				goto error;
+			}
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+			/* Handle this Multiplexed listener */
+			janus_videoroom_listener_muxed *listener = (janus_videoroom_listener_muxed *)session->participant;
+			if(listener == NULL) {
+				JANUS_LOG(LOG_ERR, "Invalid Multiplexed listener instance\n");
+				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+				sprintf(error_cause, "Invalid Multiplexed listener instance");
+				goto error;
+			}
+			if(!strcasecmp(request_text, "join")) {
+				JANUS_LOG(LOG_ERR, "Already in as a Multiplexed listener on this handle\n");
+				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
+				sprintf(error_cause, "Already in as a Multiplexed listener on this handle");
+				goto error;
+			} else if(!strcasecmp(request_text, "add")) {
+				/* Add new streams to subscribe to */
+				GList *list = NULL;
+				json_t *feeds = json_object_get(root, "feeds");
+				if(!feeds) {
+					JANUS_LOG(LOG_ERR, "Missing element (feeds)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (feeds)");
+					goto error;
+				}
+				if(!json_is_array(feeds) || json_array_size(feeds) == 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feeds should be a non-empty array)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (feeds should be a non-empty array)");
+					goto error;
+				}
+				int i=0, problem = 0;
+				for(i=0; i<json_array_size(feeds); i++) {
+					json_t *feed = json_array_get(feeds, i);
+					if(!feed || !json_is_integer(feed)) {
+						problem = 1;
+						JANUS_LOG(LOG_ERR, "Invalid element (feeds in the array must be integers)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						sprintf(error_cause, "Invalid element (feeds in the array must be integers)");
+						break;
+					}
+					uint64_t feed_id = json_integer_value(feed);
+					janus_videoroom_participant *publisher = g_hash_table_lookup(listener->room->participants, GUINT_TO_POINTER(feed_id));
+					if(publisher == NULL || publisher->sdp == NULL) {
+						problem = 1;
+						JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
+						error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+						sprintf(error_cause, "No such feed (%"SCNu64")", feed_id);
+						break;
+					}
+					list = g_list_prepend(list, GUINT_TO_POINTER(feed_id));
+				}
+				if(problem) {
+					goto error;
+				}
+				list = g_list_reverse(list);
+				if(janus_videoroom_muxed_subscribe(listener, list, msg->transaction) < 0) {
+					JANUS_LOG(LOG_ERR, "Error subscribing!\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;	/* FIXME */
+					sprintf(error_cause, "Error subscribing!");
+					goto error;
+				}
+				continue;
+			} else if(!strcasecmp(request_text, "remove")) {
+				/* Remove subscribed streams */
+				GList *list = NULL;
+				json_t *feeds = json_object_get(root, "feeds");
+				if(!feeds) {
+					JANUS_LOG(LOG_ERR, "Missing element (feeds)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (feeds)");
+					goto error;
+				}
+				if(!json_is_array(feeds) || json_array_size(feeds) == 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feeds should be a non-empty array)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (feeds should be a non-empty array)");
+					goto error;
+				}
+				int i=0, error = 0;
+				for(i=0; i<json_array_size(feeds); i++) {
+					json_t *feed = json_array_get(feeds, i);
+					if(!feed || !json_is_integer(feed)) {
+						error = 1;
+						break;
+					}
+					list = g_list_prepend(list, GUINT_TO_POINTER(json_integer_value(feed)));
+				}
+				if(error) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feeds in the array must be integers)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (feeds in the array must be integers)");
+					goto error;
+				}
+				list = g_list_reverse(list);
+				if(janus_videoroom_muxed_unsubscribe(listener, list, msg->transaction) < 0) {
+					JANUS_LOG(LOG_ERR, "Error subscribing!\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;	/* FIXME */
+					sprintf(error_cause, "Error subscribing!");
+					goto error;
+				}
+				continue;
+			} else if(!strcasecmp(request_text, "start")) {
+				/* Start/restart receiving the publishers streams */
+				/* TODO */
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
+				json_object_set_new(event, "started", json_string("ok"));
+				//~ /* Send a FIR */
+				//~ char buf[20];
+				//~ memset(buf, 0, 20);
+				//~ if(!publisher->firefox)
+					//~ janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
+				//~ else
+					//~ janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
+				//~ JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+				//~ gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
+				//~ /* Send a PLI too, just in case... */
+				//~ memset(buf, 0, 12);
+				//~ janus_rtcp_pli((char *)&buf, 12);
+				//~ JANUS_LOG(LOG_VERB, "Resuming publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+				//~ gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+			} else if(!strcasecmp(request_text, "pause")) {
+				/* Stop receiving the publishers streams for a while */
+				/* TODO */
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
+				json_object_set_new(event, "paused", json_string("ok"));
+			} else if(!strcasecmp(request_text, "leave")) {
+				/* TODO */
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
 				json_object_set_new(event, "left", json_string("ok"));
 				session->started = FALSE;
 			} else {
@@ -1435,55 +1770,29 @@ static void *janus_videoroom_handler(void *data) {
 					video++;
 				}
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT"); 
-				/* What is the Opus payload type? */
-				int opus_pt = 0;
-				if(audio) {
-					char *fmtp = strstr(msg->sdp, "opus/48000");
-					if(fmtp != NULL) {
-						fmtp -= 5;
-						fmtp = strstr(fmtp, ":");
-						if(fmtp)
-							fmtp++;
-						opus_pt = atoi(fmtp);
-					}
-					JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
-				}
-				/* What is the VP8 payload type? */
-				int vp8_pt = 0;
-				if(video) {
-					char *fmtp = strstr(msg->sdp, "VP8/90000");
-					if(fmtp != NULL) {
-						fmtp -= 5;
-						fmtp = strstr(fmtp, ":");
-						if(fmtp)
-							fmtp++;
-						vp8_pt = atoi(fmtp);
-					}
-					JANUS_LOG(LOG_VERB, "VP8 payload type is %d\n", vp8_pt);
-				}
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
 				int b = (int)(videoroom->bitrate/1000);
 				char sdp[1024], audio_mline[256], video_mline[512];
 				if(audio) {
 					g_sprintf(audio_mline, sdp_a_template,
-						opus_pt,						/* Opus payload type */
+						OPUS_PT,						/* Opus payload type */
 						"recvonly",						/* The publisher gets a recvonly back */
-						opus_pt); 						/* Opus payload type */
+						OPUS_PT); 						/* Opus payload type */
 				} else {
 					audio_mline[0] = '\0';
 				}
 				if(video) {
 					g_sprintf(video_mline, sdp_v_template,
-						vp8_pt,							/* VP8 payload type */
+						VP8_PT,							/* VP8 payload type */
 						b,								/* Bandwidth */
 						"recvonly",						/* The publisher gets a recvonly back */
-						vp8_pt, 						/* VP8 payload type */
-						vp8_pt, 						/* VP8 payload type */
-						vp8_pt, 						/* VP8 payload type */
-						vp8_pt, 						/* VP8 payload type */
-						vp8_pt); 						/* VP8 payload type */
+						VP8_PT, 						/* VP8 payload type */
+						VP8_PT, 						/* VP8 payload type */
+						VP8_PT, 						/* VP8 payload type */
+						VP8_PT, 						/* VP8 payload type */
+						VP8_PT); 						/* VP8 payload type */
 				} else {
-					audio_mline[0] = '\0';
+					video_mline[0] = '\0';
 				}
 				g_sprintf(sdp, sdp_template,
 					janus_get_monotonic_time(),		/* We need current time here */
@@ -1529,7 +1838,7 @@ static void *janus_videoroom_handler(void *data) {
 				tempsdp = string_replace(newsdp, "recvonly", "sendonly", &modified);
 				if(modified) {
 					g_free(newsdp);
-					tempsdp = tempsdp;
+					newsdp = tempsdp;
 				}
 				if(res != JANUS_OK) {
 					/* TODO Failed to negotiate? We should remove this publisher */
@@ -1583,6 +1892,8 @@ static void *janus_videoroom_handler(void *data) {
 						}
 					}
 				}
+			} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+				/* FIXME We shouldn't be here, we always offer ourselves */
 			}
 		}
 		g_free(event_text);
@@ -1613,6 +1924,186 @@ error:
 	return NULL;
 }
 
+
+/* Multiplexing helpers */
+int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listener, GList *feeds, char *transaction) {
+	if(!muxed_listener || !feeds)
+		return -1;
+	JANUS_LOG(LOG_INFO, "Subscribing to %d feeds\n", g_list_length(feeds));
+	janus_videoroom *videoroom = muxed_listener->room;
+	GList *ps = feeds;
+	json_t *list = json_array();
+	while(ps) {
+		uint64_t feed_id = GPOINTER_TO_UINT(ps->data);
+		janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(feed_id));
+		if(publisher == NULL || publisher->sdp == NULL) {
+			JANUS_LOG(LOG_WARN, "No such feed (%"SCNu64"), skipping\n", feed_id);
+			ps = ps->next;
+			continue;
+		}
+		janus_videoroom_listener *listener = calloc(1, sizeof(janus_videoroom_listener));
+		if(listener == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			ps = ps->next;
+			continue;
+		}
+		listener->session = muxed_listener->session;
+		listener->room = videoroom;
+		listener->feed = publisher;
+		//~ listener->paused = TRUE;	/* We need an explicit start from the listener */
+		listener->paused = FALSE;
+		listener->parent = muxed_listener;
+		janus_mutex_lock(&publisher->listeners_mutex);
+		publisher->listeners = g_slist_append(publisher->listeners, listener);
+		janus_mutex_unlock(&publisher->listeners_mutex);
+		janus_mutex_lock(&muxed_listener->listeners_mutex);
+		muxed_listener->listeners = g_slist_append(muxed_listener->listeners, listener);
+		janus_mutex_unlock(&muxed_listener->listeners_mutex);
+		/* Add to feeds in the answer */
+		json_t *f = json_object();
+		json_object_set_new(f, "id", json_integer(feed_id));
+		if(publisher->display)
+			json_object_set_new(f, "display", json_string(publisher->display));
+		json_array_append_new(list, f);
+		ps = ps->next;
+	}
+	/* Prepare event */
+	json_t *event = json_object();
+	json_object_set_new(event, "videoroom", json_string("muxed-attached"));
+	json_object_set_new(event, "room", json_integer(videoroom->room_id));
+	json_object_set_new(event, "feeds", list);
+	JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
+	char *event_text = json_dumps(event, JSON_INDENT(3));
+	json_decref(event);
+	/* Send the updated offer */
+	return janus_videoroom_muxed_offer(muxed_listener, transaction, event_text);
+}
+
+int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_listener, GList *feeds, char *transaction) {
+	janus_videoroom *videoroom = muxed_listener->room;
+	GList *ps = feeds;
+	json_t *list = json_array();
+	while(ps) {
+		uint64_t feed_id = GPOINTER_TO_UINT(ps->data);
+		GSList *ls = muxed_listener->listeners;
+		while(ls) {
+			janus_videoroom_listener *listener = (janus_videoroom_listener *)ls->data;
+			if(listener) {
+				janus_videoroom_participant *publisher = listener->feed;
+				if(publisher != NULL) {
+					janus_mutex_lock(&publisher->listeners_mutex);
+					publisher->listeners = g_slist_remove(publisher->listeners, listener);
+					janus_mutex_unlock(&publisher->listeners_mutex);
+					listener->feed = NULL;
+				}
+				janus_mutex_lock(&muxed_listener->listeners_mutex);
+				muxed_listener->listeners = g_slist_remove(muxed_listener->listeners, listener);
+				janus_mutex_unlock(&muxed_listener->listeners_mutex);
+				/* Add to feeds in the answer */
+				json_t *f = json_object();
+				json_object_set_new(f, "id", json_integer(feed_id));
+				if(publisher->display)
+					json_object_set_new(f, "display", json_string(publisher->display));
+				json_array_append_new(list, f);
+				break;
+			}
+			ls = ls->next;
+		}
+		ps = ps->next;
+	}
+	/* Prepare event */
+	json_t *event = json_object();
+	json_object_set_new(event, "videoroom", json_string("muxed-detached"));
+	json_object_set_new(event, "room", json_integer(videoroom->room_id));
+	json_object_set_new(event, "feeds", list);
+	JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
+	char *event_text = json_dumps(event, JSON_INDENT(3));
+	json_decref(event);
+	/* Send the updated offer */
+	return janus_videoroom_muxed_offer(muxed_listener, transaction, event_text);
+}
+
+int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, char *transaction, char *event_text) {
+	if(muxed_listener == NULL)
+		return -1;
+	/* Negotiate by placing a 'muxed' fake attribute for each publisher we subscribed to,
+	 * that will translate to multiple SSRCs when merging the SDP */
+	int audio = 0, video = 0;
+	char audio_muxed[1024], video_muxed[1024], temp[255];
+	memset(audio_muxed, 0, 1024);
+	memset(video_muxed, 0, 1024);
+	GSList *ps = muxed_listener->listeners;
+	while(ps) {
+		janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+		if(l && l->feed && l->feed->sdp) {
+			if(strstr(l->feed->sdp, "m=audio")) {
+				audio++;
+				g_sprintf(temp, "a=planb:mcu%"SCNu64" %"SCNu32"\r\n", l->feed->user_id, l->feed->audio_ssrc);
+				g_strlcat(audio_muxed, temp, 1024);
+			}
+			if(strstr(l->feed->sdp, "m=video")) {
+				video++;
+				g_sprintf(temp, "a=planb:mcu%"SCNu64" %"SCNu32"\r\n", l->feed->user_id, l->feed->video_ssrc);
+				g_strlcat(video_muxed, temp, 1024);
+			}
+		}
+		ps = ps->next;
+	}
+	/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
+	char sdp[2048], audio_mline[256], video_mline[512];
+	if(audio) {
+		g_sprintf(audio_mline, sdp_a_template,
+			OPUS_PT,						/* Opus payload type */
+			"sendonly",						/* The publisher gets a recvonly back */
+			OPUS_PT); 						/* Opus payload type */
+		g_strlcat(audio_mline, audio_muxed, 2048);
+	} else {
+		audio_mline[0] = '\0';
+	}
+	if(video) {
+		g_sprintf(video_mline, sdp_v_template,
+			VP8_PT,							/* VP8 payload type */
+			0,								/* Bandwidth */
+			"sendonly",						/* The publisher gets a recvonly back */
+			VP8_PT, 						/* VP8 payload type */
+			VP8_PT, 						/* VP8 payload type */
+			VP8_PT, 						/* VP8 payload type */
+			VP8_PT, 						/* VP8 payload type */
+			VP8_PT); 						/* VP8 payload type */
+		g_strlcat(video_mline, video_muxed, 2048);
+	} else {
+		video_mline[0] = '\0';
+	}
+	g_sprintf(sdp, sdp_template,
+		janus_get_monotonic_time(),		/* We need current time here */
+		janus_get_monotonic_time(),		/* We need current time here */
+		muxed_listener->room->room_name,	/* Video room name */
+		audio_mline,					/* Audio m-line, if any */
+		video_mline);					/* Video m-line, if any */
+	int modified = 0;
+	char *newsdp = g_strdup(sdp), *tempsdp = NULL;
+	if(video) {
+		/* Remove useless bandwidth attribute */
+		tempsdp = string_replace(newsdp, "b=AS:0\r\n", "", &modified);
+		if(modified) {
+			g_free(newsdp);
+			newsdp = tempsdp;
+		}
+	}
+	/* How long will the gateway take to push the event? */
+	gint64 start = janus_get_monotonic_time();
+	int res = gateway->push_event(muxed_listener->session->handle, &janus_videoroom_plugin, transaction, event_text, "offer", newsdp);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+	if(res != JANUS_OK) {
+		/* TODO Failed to negotiate? We should remove this listener */
+	} else {
+		/* Let's wait for the setup_media event */
+	}
+	return 0;
+}
+
+
+/* Helper to quickly relay RTP packets from publishers to subscribers */
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) {
 	janus_videoroom_rtp_relay_packet *packet = (janus_videoroom_rtp_relay_packet *)user_data;
 	if(!packet || !packet->data || packet->length < 1) {

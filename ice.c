@@ -744,6 +744,12 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 	GSList *candidates, *i;
 	candidates = nice_agent_get_local_candidates (agent, stream_id, component_id);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] We have %d candidates for Stream #%d, Component #%d\n", handle->handle_id, g_slist_length(candidates), stream_id, component_id);
+	/* Any provided public IP to consider? */
+	char *host_ip = NULL;
+	if(janus_get_public_ip() != janus_get_local_ip()) {
+		host_ip = janus_get_public_ip(); 
+		JANUS_LOG(LOG_VERB, "Public IP specified (%s), using that as host address in the candidates\n", host_ip);
+	} 
 	for (i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Stream #%d, Component #%d\n", handle->handle_id, c->stream_id, c->component_id);
@@ -766,7 +772,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 					c->component_id,
 					"udp",
 					c->priority,
-					address,
+					host_ip ? host_ip : address,
 					port);
 		} else if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE) {
 			/* 'srflx' candidate */
@@ -1175,10 +1181,21 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	/* FIXME Copy in a buffer and fix SSRC */
 	char sbuf[BUFSIZE];
 	memcpy(&sbuf, buf, len);
-	rtp_header *header = (rtp_header *)&sbuf;
-	header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
+		/* Overwrite SSRC */
+		rtp_header *header = (rtp_header *)&sbuf;
+		header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
+	}
 	int protected = len;
-	int res = srtp_protect(component->dtls->srtp_out, &sbuf, &protected);
+	int res = 0;
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
+		res = srtp_protect(component->dtls->srtp_out, &sbuf, &protected);
+	} else {
+		/* We need to make sure different sources don't use the SRTP context at the same time */
+		janus_mutex_lock(&component->dtls->srtp_mutex);
+		res = srtp_protect(component->dtls->srtp_out, &sbuf, &protected);
+		janus_mutex_unlock(&component->dtls->srtp_mutex);
+	}
 	//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), len, protected);
 	if(res != err_status_ok) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), len, protected);
@@ -1222,14 +1239,30 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	char sbuf[BUFSIZE];
 	memcpy(&sbuf, buf, len);
 	/* Fix all SSRCs! */
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
-		video ? stream->video_ssrc : stream->audio_ssrc,
-		video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
-	janus_rtcp_fix_ssrc((char *)&sbuf, len, 1,
-		video ? stream->video_ssrc : stream->audio_ssrc,
-		video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
+			video ? stream->video_ssrc : stream->audio_ssrc,
+			video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
+		janus_rtcp_fix_ssrc((char *)&sbuf, len, 1,
+			video ? stream->video_ssrc : stream->audio_ssrc,
+			video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
+	} else {
+		/* Plan B involved, we trust the plugin to set the right 'local' SSRC and we don't mess with it */
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing peer SSRC (Plan B, peer %u)\n", handle->handle_id,
+			video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
+		janus_rtcp_fix_ssrc((char *)&sbuf, len, 1, 0,
+			video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
+	}
 	int protected = len;
-	int res = srtp_protect_rtcp(component->dtls->srtp_out, &sbuf, &protected);
+	int res = 0;
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
+		res = srtp_protect_rtcp(component->dtls->srtp_out, &sbuf, &protected);
+	} else {
+		/* We need to make sure different sources don't use the SRTP context at the same time */
+		janus_mutex_lock(&component->dtls->srtp_mutex);
+		res = srtp_protect_rtcp(component->dtls->srtp_out, &sbuf, &protected);
+		janus_mutex_unlock(&component->dtls->srtp_mutex);
+	}
 	//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTCP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), len, protected);
 	if(res != err_status_ok) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTCP protect error... %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), len, protected);

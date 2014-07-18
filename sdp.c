@@ -613,6 +613,13 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 		return NULL;
 	}
 	sdp[0] = '\0';
+	/* FIXME Any Plan B to take into account? */
+	int planb = strstr(origsdp, "a=planb:") ? 1 : 0;
+	if(planb) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B);
+	} else {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B);
+	}
 	/* Version v= */
 	g_strlcat(sdp,
 		"v=0\r\n", BUFSIZE);
@@ -659,6 +666,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	g_strlcat(sdp,
 		"a=msid-semantic: WMS janus\r\n",
 		BUFSIZE);
+	char wms[BUFSIZE];
+	memset(wms, 0, BUFSIZE);
+	g_strlcat(wms, "WMS", BUFSIZE);
 	/* Copy other global attributes, if any */
 	if(anon->sdp_attributes) {
 		sdp_attribute_t *a = anon->sdp_attributes;
@@ -925,6 +935,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			if(m->m_attributes) {
 				sdp_attribute_t *a = m->m_attributes;
 				while(a) {
+					if(!strcmp(a->a_name, "planb")) {
+						/* Skip the fake planb attribute, it's for internal use only */
+						a = a->a_next;
+						continue;
+					}
 					if(a->a_value == NULL) {
 						g_sprintf(buffer,
 							"a=%s\r\n", a->a_name);
@@ -938,22 +953,70 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				}
 			}
 			/* Add last attributes, rtcp and ssrc (msid) */
-			if(m->m_type == sdp_media_audio) {
-				g_sprintf(buffer,
-					"a=ssrc:%"SCNu32" cname:janusaudio\r\n"
-					"a=ssrc:%"SCNu32" msid:janus janusa0\r\n"
-					"a=ssrc:%"SCNu32" mslabel:janus\r\n"
-					"a=ssrc:%"SCNu32" label:janusa0\r\n",
-						stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc);
-				g_strlcat(sdp, buffer, BUFSIZE);
-			} else if(m->m_type == sdp_media_video) {
-				g_sprintf(buffer,
-					"a=ssrc:%"SCNu32" cname:janusvideo\r\n"
-					"a=ssrc:%"SCNu32" msid:janus janusv0\r\n"
-					"a=ssrc:%"SCNu32" mslabel:janus\r\n"
-					"a=ssrc:%"SCNu32" label:janusv0\r\n",
-						stream->video_ssrc, stream->video_ssrc, stream->video_ssrc, stream->video_ssrc);
-				g_strlcat(sdp, buffer, BUFSIZE);
+			if(!planb) {
+				/* Single SSRC */
+				if(m->m_type == sdp_media_audio) {
+					g_sprintf(buffer,
+						"a=ssrc:%"SCNu32" cname:janusaudio\r\n"
+						"a=ssrc:%"SCNu32" msid:janus janusa0\r\n"
+						"a=ssrc:%"SCNu32" mslabel:janus\r\n"
+						"a=ssrc:%"SCNu32" label:janusa0\r\n",
+							stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc);
+					g_strlcat(sdp, buffer, BUFSIZE);
+				} else if(m->m_type == sdp_media_video) {
+					g_sprintf(buffer,
+						"a=ssrc:%"SCNu32" cname:janusvideo\r\n"
+						"a=ssrc:%"SCNu32" msid:janus janusv0\r\n"
+						"a=ssrc:%"SCNu32" mslabel:janus\r\n"
+						"a=ssrc:%"SCNu32" label:janusv0\r\n",
+							stream->video_ssrc, stream->video_ssrc, stream->video_ssrc, stream->video_ssrc);
+					g_strlcat(sdp, buffer, BUFSIZE);
+				}
+			} else {
+				/* Multiple SSRCs */
+				char mslabel[255];
+				memset(mslabel, 0, 255);
+				if(m->m_attributes) {
+					char id[256];
+					uint32_t ssrc = 0;
+					sdp_attribute_t *a = m->m_attributes;
+					while(a) {
+						if(a->a_name == NULL || a->a_value == NULL || strcmp(a->a_name, "planb")) {
+							a = a->a_next;
+							continue;
+						}
+						if(sscanf(a->a_value, "%255s %"SCNu32"", id, &ssrc) != 2) {
+							JANUS_LOG(LOG_ERR, "Error parsing 'planb' attribute, skipping it...\n");
+							a = a->a_next;
+							continue;
+						}
+						JANUS_LOG(LOG_VERB, "Parsing 'planb' attribute: %s\n", a->a_value);
+						/* Add proper SSRC attributes */
+						if(m->m_type == sdp_media_audio) {
+							g_sprintf(buffer,
+								"a=ssrc:%"SCNu32" cname:%saudio\r\n"
+								"a=ssrc:%"SCNu32" msid:%s %sa0\r\n"
+								"a=ssrc:%"SCNu32" mslabel:%s\r\n"
+								"a=ssrc:%"SCNu32" label:%sa0\r\n",
+									ssrc, id, ssrc, id, id, ssrc, id, ssrc, id);
+						} else if(m->m_type == sdp_media_video) {
+							g_sprintf(buffer,
+								"a=ssrc:%"SCNu32" cname:%svideo\r\n"
+								"a=ssrc:%"SCNu32" msid:%s %sv0\r\n"
+								"a=ssrc:%"SCNu32" mslabel:%s\r\n"
+								"a=ssrc:%"SCNu32" label:%sv0\r\n",
+									ssrc, id, ssrc, id, id, ssrc, id, ssrc, id);
+						}
+						g_strlcat(sdp, buffer, BUFSIZE);
+						/* Add to msid-semantic, if needed */
+						if(!strstr(wms, id)) {
+							sprintf(mslabel, " %s", id);
+							g_strlcat(wms, mslabel, BUFSIZE);
+						}
+						/* Go on */
+						a = a->a_next;
+					}
+				}
 			}
 			/* And now the candidates */
 			janus_ice_candidates_to_sdp(handle, sdp, stream->stream_id, 1);
@@ -964,6 +1027,16 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			m = m->m_next;
 		}
 	}
+
+	/* Do we need to update the msid-semantic attribute? */
+	if(planb) {
+		int modified = 0;
+		char *tempsdp = janus_string_replace(sdp, "WMS janus", wms, &modified);
+		if(modified)
+			g_free(sdp);
+		sdp = tempsdp;
+	}
+	
 	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
 	JANUS_LOG(LOG_VERB, "  >> Merged (%zu --> %zu bytes)\n", strlen(origsdp), strlen(sdp));
 	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");

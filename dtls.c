@@ -238,6 +238,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 #ifdef HAVE_SCTP
 	dtls->sctp = NULL;
 #endif
+	janus_mutex_init(&dtls->srtp_mutex);
 	/* Done */
 	dtls->component = component;
 	return dtls;
