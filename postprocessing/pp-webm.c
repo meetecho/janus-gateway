@@ -31,6 +31,11 @@
 	# define swap2(d) d
 #endif
 
+#define LIBAVCODEC_VER_AT_LEAST(major, minor) \
+	(LIBAVCODEC_VERSION_MAJOR > major || \
+	 (LIBAVCODEC_VERSION_MAJOR == major && \
+	  LIBAVCODEC_VERSION_MINOR >= minor))
+
 
 /* WebM output */
 AVFormatContext *fctx;
@@ -64,7 +69,11 @@ int janus_pp_webm_create(char *destination) {
 	}
 	//~ avcodec_get_context_defaults2(vStream->codec, CODEC_TYPE_VIDEO);
 	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
+#if LIBAVCODEC_VER_AT_LEAST(54, 25)
 	vStream->codec->codec_id = AV_CODEC_ID_VP8;
+#else
+	vStream->codec->codec_id = CODEC_ID_VP8;
+#endif
 	//~ vStream->codec->codec_type = CODEC_TYPE_VIDEO;
 	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;
 	vStream->codec->time_base = (AVRational){1, fps};
