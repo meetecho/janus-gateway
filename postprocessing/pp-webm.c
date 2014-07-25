@@ -68,7 +68,11 @@ int janus_pp_webm_create(char *destination) {
 		return -1;
 	}
 	//~ avcodec_get_context_defaults2(vStream->codec, CODEC_TYPE_VIDEO);
+#if LIBAVCODEC_VER_AT_LEAST(53, 21)
+	avcodec_get_context_defaults3(vStream->codec, AVMEDIA_TYPE_VIDEO);
+#else
 	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
+#endif
 #if LIBAVCODEC_VER_AT_LEAST(54, 25)
 	vStream->codec->codec_id = AV_CODEC_ID_VP8;
 #else
