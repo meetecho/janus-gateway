@@ -177,6 +177,7 @@ void *janus_sessions_watchdog(void *data) {
 					/* Prepare JSON event to notify user/application */
 					json_t *event = json_object();
 					json_object_set_new(event, "janus", json_string("timeout"));
+					json_object_set_new(event, "session_id", json_integer(session->session_id));
 					/* Convert to a string */
 					char *event_text = json_dumps(event, JSON_INDENT(3));
 					json_decref(event);
@@ -473,7 +474,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	if(session_path != NULL && !strcmp(session_path, "info")) {
 		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
 		if(strcasecmp(method, "GET")) {
-			ret = janus_process_error(&source, NULL, JANUS_ERROR_USE_GET, "Use GET for the info endpoint");
+			ret = janus_process_error(&source, 0, NULL, JANUS_ERROR_USE_GET, "Use GET for the info endpoint");
 			goto done;
 		}
 		/* Send the success reply */
@@ -608,11 +609,11 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	json_error_t error;
 	json_t *root = json_loads(payload, 0, &error);
 	if(!root) {
-		ret = janus_process_error(&source, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		ret = janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
 		goto done;
 	}
 	if(!json_is_object(root)) {
-		ret = janus_process_error(&source, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		ret = janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
 		json_decref(root);
 		goto done;
 	}
@@ -651,21 +652,21 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	/* Get transaction and message request */
 	json_t *transaction = json_object_get(root, "transaction");
 	if(!transaction) {
-		ret = janus_process_error(source, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (transaction)");
+		ret = janus_process_error(source, session_id, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (transaction)");
 		goto jsondone;
 	}
 	if(!json_is_string(transaction)) {
-		ret = janus_process_error(source, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (transaction should be a string)");
+		ret = janus_process_error(source, session_id, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (transaction should be a string)");
 		goto jsondone;
 	}
 	const gchar *transaction_text = json_string_value(transaction);
 	json_t *message = json_object_get(root, "janus");
 	if(!message) {
-		ret = janus_process_error(source, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (janus)");
+		ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (janus)");
 		goto jsondone;
 	}
 	if(!json_is_string(message)) {
-		ret = janus_process_error(source, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (janus should be a string)");
+		ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (janus should be a string)");
 		goto jsondone;
 	}
 	const gchar *message_text = json_string_value(message);
@@ -677,14 +678,14 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto jsondone;
 		}
 		if(strcasecmp(message_text, "create")) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 		if(ws_api_secret != NULL) {
 			/* There's an API secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "apisecret");
 			if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), ws_api_secret)) {
-				ret = janus_process_error(source, NULL, JANUS_ERROR_UNAUTHORIZED, NULL);
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
 		}
@@ -693,20 +694,20 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if(id != NULL) {
 			/* The application provided the session ID to use */
 			if(!json_is_integer(id)) {
-				ret = janus_process_error(source, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (id should be an integer)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (id should be an integer)");
 				goto jsondone;
 			}
 			session_id = json_integer_value(id);
 			if(session_id > 0 && janus_session_find(session_id) != NULL) {
 				/* Session ID already taken */
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_SESSION_CONFLICT, "Session ID already in use");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_SESSION_CONFLICT, "Session ID already in use");
 				goto jsondone;
 			}
 		}
 		/* Handle it */
 		janus_session *session = janus_session_create(session_id);
 		if(session == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
 		}
 		session_id = session->session_id;
@@ -744,7 +745,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	}
 	if(session_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid session\n");
-		ret = janus_process_error(source, NULL, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
+		ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
 		goto jsondone;
 	}
 	if(source->type == JANUS_SOURCE_PLAIN_HTTP) {
@@ -754,7 +755,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	}
 	if(h && handle_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid handle\n");
-		ret = janus_process_error(source, NULL, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
+		ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, NULL);
 		goto jsondone;
 	}
 
@@ -763,7 +764,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "apisecret");
 		if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), ws_api_secret)) {
-			ret = janus_process_error(source, NULL, JANUS_ERROR_UNAUTHORIZED, NULL);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
 	}
@@ -772,7 +773,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	janus_session *session = janus_session_find(session_id);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
-		ret = janus_process_error(source, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, "No such session %"SCNu64"", session_id);
+		ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, "No such session %"SCNu64"", session_id);
 		goto jsondone;
 	}
 	janus_ice_handle *handle = NULL;
@@ -780,7 +781,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		handle = janus_ice_handle_find(session, handle_id);
 		if(!handle) {
 			JANUS_LOG(LOG_ERR, "Couldn't find any handle %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, "No such handle %"SCNu64" in session %"SCNu64"", handle_id, session_id);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, "No such handle %"SCNu64" in session %"SCNu64"", handle_id, session_id);
 			goto jsondone;
 		}
 	}
@@ -793,6 +794,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session->session_id);
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "session_id", json_integer(session->session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
@@ -802,28 +804,28 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	} else if(!strcasecmp(message_text, "attach")) {
 		if(handle != NULL) {
 			/* Attach is a session-level command */
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
 		if(!plugin) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugin)");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugin)");
 			goto jsondone;
 		}
 		if(!json_is_string(plugin)) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugin should be a string)");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugin should be a string)");
 			goto jsondone;
 		}
 		const gchar *plugin_text = json_string_value(plugin);
 		janus_plugin *plugin_t = janus_plugin_find(plugin_text);
 		if(plugin_t == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, "No such plugin '%s'", plugin_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, "No such plugin '%s'", plugin_text);
 			goto jsondone;
 		}
 		/* Create handle */
 		handle = janus_ice_handle_create(session);
 		if(handle == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
 		}
 		handle_id = handle->handle_id;
@@ -832,12 +834,13 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if((error = janus_ice_handle_attach_plugin(session, handle_id, plugin_t)) != 0) {
 			/* TODO Make error struct to pass verbose information */
 			janus_ice_handle_destroy(session, handle_id);
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
 			goto jsondone;
 		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "session_id", json_integer(session->session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
@@ -851,7 +854,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	} else if(!strcasecmp(message_text, "destroy")) {
 		if(handle != NULL) {
 			/* Query is a session-level command */
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 #ifdef HAVE_WS
@@ -870,6 +873,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
@@ -879,23 +883,24 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	} else if(!strcasecmp(message_text, "detach")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 		if(handle->app == NULL || handle->app_handle == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
 			goto jsondone;
 		}
 		int error = 0;
 		if((error = janus_ice_handle_destroy(session, handle_id)) != 0) {
 			/* TODO Make error struct to pass verbose information */
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
 			/* TODO Delete handle instance */
 			goto jsondone;
 		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
@@ -905,22 +910,22 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	} else if(!strcasecmp(message_text, "message")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 		if(handle->app == NULL || handle->app_handle == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this message");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this message");
 			goto jsondone;
 		}
 		janus_plugin *plugin_t = (janus_plugin *)handle->app;
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] There's a message for %s\n", handle->handle_id, plugin_t->get_name());
 		json_t *body = json_object_get(root, "body");
 		if(body == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (body)");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (body)");
 			goto jsondone;
 		}
 		if(!json_is_object(body)) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid body object");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid body object");
 			goto jsondone;
 		}
 		/* Is there an SDP attached? */
@@ -929,22 +934,22 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		char *jsep_sdp = NULL, *jsep_sdp_stripped = NULL;
 		if(jsep != NULL) {
 			if(!json_is_object(jsep)) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid jsep object");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid jsep object");
 				goto jsondone;
 			}
 			json_t *type = json_object_get(jsep, "type");
 			if(!type) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (type)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (type)");
 				goto jsondone;
 			}
 			if(!json_is_string(type)) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (type should be a string)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (type should be a string)");
 				goto jsondone;
 			}
 			jsep_type = g_strdup(json_string_value(type));
 			if(jsep_type == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 				goto jsondone;
 			}
 			type = NULL;
@@ -957,20 +962,20 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				offer = 0;
 			} else {
 				/* TODO Handle other message types as well */
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_JSEP_UNKNOWN_TYPE, "JSEP error: unknown message type '%s'", jsep_type);
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_JSEP_UNKNOWN_TYPE, "JSEP error: unknown message type '%s'", jsep_type);
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
 			}
 			json_t *sdp = json_object_get(jsep, "sdp");
 			if(!sdp) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (sdp)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (sdp)");
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
 			}
 			if(!json_is_string(sdp)) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (sdp should be a string)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (sdp should be a string)");
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
@@ -982,7 +987,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
@@ -1115,7 +1120,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			jsep_sdp_stripped = janus_sdp_anonymize(jsep_sdp);
 			if(jsep_sdp_stripped == NULL) {
 				/* Invalid SDP */
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
@@ -1127,6 +1132,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* We reply right away, not to block the web server... */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
@@ -1138,16 +1144,16 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	} else if(!strcasecmp(message_text, "trickle")) {
 		if(handle == NULL) {
 			/* Trickle is an handle-level command */
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 		if(handle->app == NULL || handle->app_handle == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this trickle candidate");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this trickle candidate");
 			goto jsondone;
 		}
 		json_t *candidate = json_object_get(root, "candidate");
 		if(candidate == NULL) {
-			ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (candidate)");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (candidate)");
 			goto jsondone;
 		}
 		if(!json_is_object(candidate)) {
@@ -1159,20 +1165,20 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			/* Handle remote candidate */
 			json_t *mid = json_object_get(candidate, "sdpMid");
 			if(!mid) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
 				goto jsondone;
 			}
 			if(!json_is_string(mid)) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
 				goto jsondone;
 			}
 			json_t *rc = json_object_get(candidate, "candidate");
 			if(!rc) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
 				goto jsondone;
 			}
 			if(!json_is_string(rc)) {
-				ret = janus_process_error(source, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (candidate should be a string)");
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (candidate should be a string)");
 				goto jsondone;
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
@@ -1220,7 +1226,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			} else {
 				janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
 				if(stream == NULL) {
-					ret = janus_process_error(source, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
 					goto jsondone;
 				}
 				int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
@@ -1232,6 +1238,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* We reply right away, not to block the web server... */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3));
@@ -1239,7 +1246,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* Send the success reply */
 		ret = janus_process_success(source, "application/json", reply_text);
 	} else {
-		ret = janus_process_error(source, transaction_text, JANUS_ERROR_UNKNOWN_REQUEST, "Unknown request '%s'", message_text);
+		ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN_REQUEST, "Unknown request '%s'", message_text);
 	}
 	goto jsondone;
 
@@ -1458,7 +1465,7 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 	}
 }
 
-int janus_process_error(janus_request_source *source, const char *transaction, gint error, const char *format, ...)
+int janus_process_error(janus_request_source *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...)
 {
 	if(!source)
 		return MHD_NO;
@@ -1504,6 +1511,8 @@ int janus_process_error(janus_request_source *source, const char *transaction, g
 	/* Prepare JSON error */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("error"));
+	if(session_id > 0)
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 	if(transaction != NULL)
 		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *error_data = json_object();
@@ -1614,11 +1623,11 @@ int janus_wss_onmessage(libwebsock_client_state *state, libwebsock_message *msg)
 	json_error_t error;
 	json_t *root = json_loads(msg->payload, 0, &error);
 	if(!root) {
-		janus_process_error(&source, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
 		return 0;
 	}
 	if(!json_is_object(root)) {
-		janus_process_error(&source, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
 		json_decref(root);
 		return 0;
 	}
@@ -1766,6 +1775,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	/* Prepare JSON event */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("event"));
+	json_object_set_new(reply, "session_id", json_integer(session->session_id));
 	json_object_set_new(reply, "sender", json_integer(ice_handle->handle_id));
 	if(transaction != NULL)
 		json_object_set_new(reply, "transaction", json_string(transaction));
@@ -2014,6 +2024,9 @@ void janus_close_pc(janus_plugin_session *handle) {
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
 	if(!ice_handle)
 		return;
+	janus_session *session = (janus_session *)ice_handle->session;
+	if(!session)
+		return;
 		
 	/* Send an alert on all the DTLS connections */
 	janus_ice_webrtc_hangup(ice_handle);
@@ -2023,6 +2036,7 @@ void janus_close_pc(janus_plugin_session *handle) {
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("hangup"));
+	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(ice_handle->handle_id));
 	/* Convert to a string */
 	char *event_text = json_dumps(event, JSON_INDENT(3));
@@ -2037,7 +2051,6 @@ void janus_close_pc(janus_plugin_session *handle) {
 	notification->code = 200;
 	notification->payload = event_text;
 	notification->allocated = 1;
-	janus_session *session = (janus_session *)ice_handle->session;
 	janus_mutex_lock(&session->qmutex);
 	g_queue_push_tail(session->messages, notification);
 	janus_mutex_unlock(&session->qmutex);

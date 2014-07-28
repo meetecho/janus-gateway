@@ -195,6 +195,9 @@ function Janus(gatewayCallbacks) {
 				transactions[transaction] = null;
 			}
 			return;
+		} else if(json["janus"] === "webrtcup") {
+			// The PeerConnection with the gateway is up! FIXME Should we notify this?
+			return;
 		} else if(json["janus"] === "hangup") {
 			// A plugin asked the core to hangup a PeerConnection on one of our handles
 			var sender = json["sender"];

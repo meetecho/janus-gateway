@@ -48,6 +48,7 @@
 #include "../mutex.h"
 #include "../rtp.h"
 #include "../rtcp.h"
+#include "../utils.h"
 
 
 /* Plugin information */
@@ -112,7 +113,6 @@ static char *local_ip = NULL;
 
 static GThread *handler_thread;
 static void *janus_sip_handler(void *data);
-char *string_replace(char *message, char *old, char *new, int *modified);
 
 typedef struct janus_sip_message {
 	janus_plugin_session *handle;
@@ -1069,11 +1069,11 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			int modified = 0;
-			char *temp = string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
+			char *temp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
 			if(modified)
 				g_free(sdp);
 			sdp = temp;
-			temp = string_replace(sdp, "1.1.1.1", local_ip, &modified);
+			temp = janus_string_replace(sdp, "1.1.1.1", local_ip, &modified);
 			if(modified)
 				g_free(sdp);
 			sdp = temp;
@@ -1081,7 +1081,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=audio %d", session->media.local_audio_rtp_port);
-				temp = string_replace(sdp, "m=audio 1", mline, &modified);
+				temp = janus_string_replace(sdp, "m=audio 1", mline, &modified);
 				if(modified)
 					g_free(sdp);
 				sdp = temp;
@@ -1090,7 +1090,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Setting local video port: %d\n", session->media.local_video_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=video %d", session->media.local_video_rtp_port);
-				temp = string_replace(sdp, "m=video 1", mline, &modified);
+				temp = janus_string_replace(sdp, "m=video 1", mline, &modified);
 				if(modified)
 					g_free(sdp);
 				sdp = temp;
@@ -1162,11 +1162,11 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			int modified = 0;
-			char *temp = string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
+			char *temp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
 			if(modified)
 				g_free(sdp);
 			sdp = temp;
-			temp = string_replace(sdp, "1.1.1.1", local_ip, &modified);
+			temp = janus_string_replace(sdp, "1.1.1.1", local_ip, &modified);
 			if(modified)
 				g_free(sdp);
 			sdp = temp;
@@ -1174,7 +1174,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=audio %d", session->media.local_audio_rtp_port);
-				temp = string_replace(sdp, "m=audio 1", mline, &modified);
+				temp = janus_string_replace(sdp, "m=audio 1", mline, &modified);
 				if(modified)
 					g_free(sdp);
 				sdp = temp;
@@ -1183,7 +1183,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Setting local video port: %d\n", session->media.local_video_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=video %d", session->media.local_video_rtp_port);
-				temp = string_replace(sdp, "m=video 1", mline, &modified);
+				temp = janus_string_replace(sdp, "m=video 1", mline, &modified);
 				if(modified)
 					g_free(sdp);
 				sdp = temp;
@@ -2126,82 +2126,4 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	//~ stop = 1;
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
 	return NULL;
-}
-
-/* Easy way to replace multiple occurrences of a string with another: ALWAYS creates a NEW string */
-char *string_replace(char *message, char *old, char *new, int *modified)
-{
-	if(!message || !old || !new || !modified)
-		return NULL;
-	*modified = 0;
-	if(!strstr(message, old)) {	/* Nothing to be done (old is not there) */
-		return message;
-	}
-	if(!strcmp(old, new)) {	/* Nothing to be done (old=new) */
-		return message;
-	}
-	if(strlen(old) == strlen(new)) {	/* Just overwrite */
-		char *outgoing = message;
-		char *pos = strstr(outgoing, old), *tmp = NULL;
-		int i = 0;
-		while(pos) {
-			i++;
-			memcpy(pos, new, strlen(new));
-			pos += strlen(old);
-			tmp = strstr(pos, old);
-			pos = tmp;
-		}
-		return outgoing;
-	} else {	/* We need to resize */
-		*modified = 1;
-		char *outgoing = strdup(message);
-		if(outgoing == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return NULL;
-		}
-		int diff = strlen(new) - strlen(old);
-		/* Count occurrences */
-		int counter = 0;
-		char *pos = strstr(outgoing, old), *tmp = NULL;
-		while(pos) {
-			counter++;
-			pos += strlen(old);
-			tmp = strstr(pos, old);
-			pos = tmp;
-		}
-		uint16_t oldlen = strlen(outgoing)+1, newlen = oldlen + diff*counter;
-		*modified = diff*counter;
-		if(diff > 0) {	/* Resize now */
-			tmp = realloc(outgoing, newlen);
-			if(!tmp)
-				return NULL;
-			outgoing = tmp;
-		}
-		/* Replace string */
-		pos = strstr(outgoing, old);
-		while(pos) {
-			if(diff > 0) {	/* Move to the right (new is larger than old) */
-				uint16_t len = strlen(pos)+1;
-				memmove(pos + diff, pos, len);
-				memcpy(pos, new, strlen(new));
-				pos += strlen(new);
-				tmp = strstr(pos, old);
-			} else {	/* Move to the left (new is smaller than old) */
-				uint16_t len = strlen(pos - diff)+1;
-				memmove(pos, pos - diff, len);
-				memcpy(pos, new, strlen(new));
-				pos += strlen(old);
-				tmp = strstr(pos, old);
-			}
-			pos = tmp;
-		}
-		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
-			tmp = realloc(outgoing, newlen);
-			if(!tmp)
-				return NULL;
-			outgoing = tmp;
-		}
-		outgoing[strlen(outgoing)] = '\0';
-		return outgoing;
-	}
 }

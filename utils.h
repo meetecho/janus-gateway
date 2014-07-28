@@ -22,12 +22,12 @@ gint64 janus_get_monotonic_time(void);
 
 /*! \brief Helper to replace strings
  * @param message The string that contains the text to replace
- * @param old The old text to replace
- * @param new The new text
+ * @param old_string The old text to replace
+ * @param new_string The new text
  * @param[in,out] modified Whether a new string has been created and the old
  * pointer can be deallocated or not
  * @returns A pointer to the updated text string (re-allocated or just updated) */
-char *janus_string_replace(char *message, char *old, char *new, int *modified);
+char *janus_string_replace(char *message, char *old_string, char *new_string, int *modified);
 
 
 /** @name Flags helper methods

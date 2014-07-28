@@ -184,15 +184,13 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_por
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		janus_set_public_ip(inet_ntoa(address.sin_addr));
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", janus_get_public_ip());
+		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", inet_ntoa(address.sin_addr));
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		janus_set_public_ip(inet_ntoa(address.sin_addr));
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", janus_get_public_ip());
+		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", inet_ntoa(address.sin_addr));
 		return 0;
 	}
 	return -1;
@@ -307,6 +305,11 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	if(handle->iceloop)
 		g_main_loop_quit(handle->iceloop);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
+	if(plugin_t == NULL) {
+		/* There was no plugin attached, probably something went wrong there */
+		g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+		return 0;
+	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
 	/* TODO Actually detach handle... */
 	int error = 0;
@@ -559,6 +562,30 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 				if(plugin && plugin->hangup_media)
 					plugin->hangup_media(handle->app_handle);
 			}
+			/* Also prepare JSON event to notify user/application */
+			janus_session *session = (janus_session *)handle->session;
+			if(session == NULL)
+				return;
+			json_t *event = json_object();
+			json_object_set_new(event, "janus", json_string("hangup"));
+			json_object_set_new(event, "session_id", json_integer(session->session_id));
+			json_object_set_new(event, "sender", json_integer(handle->handle_id));
+			/* Convert to a string */
+			char *event_text = json_dumps(event, JSON_INDENT(3));
+			json_decref(event);
+			/* Send the event */
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
+			janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+			if(notification == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				return;
+			}
+			notification->code = 200;
+			notification->payload = event_text;
+			notification->allocated = 1;
+			janus_mutex_lock(&session->qmutex);
+			g_queue_push_tail(session->messages, notification);
+			janus_mutex_unlock(&session->qmutex);
 		}
 	}
 }
@@ -1367,4 +1394,28 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 		if(plugin && plugin->setup_media)
 			plugin->setup_media(handle->app_handle);
 	}
+	/* Also prepare JSON event to notify user/application */
+	janus_session *session = (janus_session *)handle->session;
+	if(session == NULL)
+		return;
+	json_t *event = json_object();
+	json_object_set_new(event, "janus", json_string("webrtcup"));
+	json_object_set_new(event, "session_id", json_integer(session->session_id));
+	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	/* Convert to a string */
+	char *event_text = json_dumps(event, JSON_INDENT(3));
+	json_decref(event);
+	/* Send the event */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
+	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	if(notification == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
+	notification->code = 200;
+	notification->payload = event_text;
+	notification->allocated = 1;
+	janus_mutex_lock(&session->qmutex);
+	g_queue_push_tail(session->messages, notification);
+	janus_mutex_unlock(&session->qmutex);
 }

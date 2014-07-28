@@ -46,26 +46,26 @@ gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag) {
 }
 
 /* Easy way to replace multiple occurrences of a string with another: MAY creates a NEW string */
-char *janus_string_replace(char *message, char *old, char *new, int *modified)
+char *janus_string_replace(char *message, char *old_string, char *new_string, int *modified)
 {
-	if(!message || !old || !new || !modified)
+	if(!message || !old_string || !new_string || !modified)
 		return NULL;
 	*modified = 0;
-	if(!strstr(message, old)) {	/* Nothing to be done (old is not there) */
+	if(!strstr(message, old_string)) {	/* Nothing to be done (old_string is not there) */
 		return message;
 	}
-	if(!strcmp(old, new)) {	/* Nothing to be done (old=new) */
+	if(!strcmp(old_string, new_string)) {	/* Nothing to be done (old_string=new_string) */
 		return message;
 	}
-	if(strlen(old) == strlen(new)) {	/* Just overwrite */
+	if(strlen(old_string) == strlen(new_string)) {	/* Just overwrite */
 		char *outgoing = message;
-		char *pos = strstr(outgoing, old), *tmp = NULL;
+		char *pos = strstr(outgoing, old_string), *tmp = NULL;
 		int i = 0;
 		while(pos) {
 			i++;
-			memcpy(pos, new, strlen(new));
-			pos += strlen(old);
-			tmp = strstr(pos, old);
+			memcpy(pos, new_string, strlen(new_string));
+			pos += strlen(old_string);
+			tmp = strstr(pos, old_string);
 			pos = tmp;
 		}
 		return outgoing;
@@ -75,44 +75,44 @@ char *janus_string_replace(char *message, char *old, char *new, int *modified)
 		if(outgoing == NULL) {
 			return NULL;
 		}
-		int diff = strlen(new) - strlen(old);
+		int diff = strlen(new_string) - strlen(old_string);
 		/* Count occurrences */
 		int counter = 0;
-		char *pos = strstr(outgoing, old), *tmp = NULL;
+		char *pos = strstr(outgoing, old_string), *tmp = NULL;
 		while(pos) {
 			counter++;
-			pos += strlen(old);
-			tmp = strstr(pos, old);
+			pos += strlen(old_string);
+			tmp = strstr(pos, old_string);
 			pos = tmp;
 		}
-		uint16_t oldlen = strlen(outgoing)+1, newlen = oldlen + diff*counter;
+		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
 		*modified = diff*counter;
 		if(diff > 0) {	/* Resize now */
-			tmp = realloc(outgoing, newlen);
+			tmp = realloc(outgoing, new_stringlen);
 			if(!tmp)
 				return NULL;
 			outgoing = tmp;
 		}
 		/* Replace string */
-		pos = strstr(outgoing, old);
+		pos = strstr(outgoing, old_string);
 		while(pos) {
-			if(diff > 0) {	/* Move to the right (new is larger than old) */
+			if(diff > 0) {	/* Move to the right (new_string is larger than old_string) */
 				uint16_t len = strlen(pos)+1;
 				memmove(pos + diff, pos, len);
-				memcpy(pos, new, strlen(new));
-				pos += strlen(new);
-				tmp = strstr(pos, old);
-			} else {	/* Move to the left (new is smaller than old) */
+				memcpy(pos, new_string, strlen(new_string));
+				pos += strlen(new_string);
+				tmp = strstr(pos, old_string);
+			} else {	/* Move to the left (new_string is smaller than old_string) */
 				uint16_t len = strlen(pos - diff)+1;
 				memmove(pos, pos - diff, len);
-				memcpy(pos, new, strlen(new));
-				pos += strlen(old);
-				tmp = strstr(pos, old);
+				memcpy(pos, new_string, strlen(new_string));
+				pos += strlen(old_string);
+				tmp = strstr(pos, old_string);
 			}
 			pos = tmp;
 		}
 		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
-			tmp = realloc(outgoing, newlen);
+			tmp = realloc(outgoing, new_stringlen);
 			if(!tmp)
 				return NULL;
 			outgoing = tmp;

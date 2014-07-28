@@ -159,13 +159,14 @@ int janus_process_incoming_request(janus_request_source *source, json_t *request
 int janus_process_success(janus_request_source *source, const char *transaction, char *payload);
 /*! \brief Method to return an error Janus response message (JSON) to the browser
  * @param[in] source The source that originated the request
+ * @param[in] session_id Janus session identifier this error refers to
  * @param[in] transaction The Janus transaction identifier
  * @param[in] error The error code as defined in apierror.h
  * @param[in] format The printf format of the reason string, followed by a variable
  * number of arguments, if needed; if format is NULL, a pre-configured string
  * associated with the error code is used
  * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_process_error(janus_request_source *source, const char *transaction, gint error, const char *format, ...);
+int janus_process_error(janus_request_source *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...);
 ///@}
 
 
