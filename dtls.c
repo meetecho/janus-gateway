@@ -383,11 +383,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
 					crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
 					dtls->remote_policy.ssrc.type = ssrc_any_inbound;
-					dtls->remote_policy.key = calloc(SRTP_MASTER_LENGTH+8, sizeof(char));
-					if(dtls->remote_policy.key == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						goto done;
-					}
+					unsigned char remote_policy_key[SRTP_MASTER_LENGTH];
+					dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
 					memcpy(dtls->remote_policy.key, remote_key, SRTP_MASTER_KEY_LENGTH);
 					memcpy(dtls->remote_policy.key + SRTP_MASTER_KEY_LENGTH, remote_salt, SRTP_MASTER_SALT_LENGTH);
 					dtls->remote_policy.window_size = 128;
@@ -397,11 +394,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
 					crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
 					dtls->local_policy.ssrc.type = ssrc_any_outbound;
-					dtls->local_policy.key = calloc(SRTP_MASTER_LENGTH+8, sizeof(char));
-					if(dtls->local_policy.key == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						goto done;
-					}
+					unsigned char local_policy_key[SRTP_MASTER_LENGTH];
+					dtls->local_policy.key = (unsigned char *)&local_policy_key;
 					memcpy(dtls->local_policy.key, local_key, SRTP_MASTER_KEY_LENGTH);
 					memcpy(dtls->local_policy.key + SRTP_MASTER_KEY_LENGTH, local_salt, SRTP_MASTER_SALT_LENGTH);
 					dtls->local_policy.window_size = 128;
@@ -486,16 +480,14 @@ void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	dtls->read_bio = NULL;
 	dtls->write_bio = NULL;
 	if(dtls->srtp_valid) {
-		if(dtls->remote_policy.key != NULL) {
-			g_free(dtls->remote_policy.key);
-			dtls->remote_policy.key = NULL;
+		if(dtls->srtp_in) {
+			srtp_dealloc(dtls->srtp_in);
+			dtls->srtp_in = NULL;
 		}
-		if(dtls->local_policy.key != NULL) {
-			g_free(dtls->local_policy.key);
-			dtls->local_policy.key = NULL;
+		if(dtls->srtp_out) {
+			srtp_dealloc(dtls->srtp_out);
+			dtls->srtp_out = NULL;
 		}
-		srtp_dealloc(dtls->srtp_in);
-		srtp_dealloc(dtls->srtp_out);
 		/* FIXME What about dtls->remote_policy and dtls->local_policy? */
 	}
 	if(dtls->dtls_last_msg != NULL) {

@@ -448,11 +448,15 @@ int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int vi
 	if(ssrc == 0)
 		return -3;
 	if(video) {
-		stream->video_ssrc_peer = ssrc;
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %u\n", handle->handle_id, stream->video_ssrc_peer);
+		if(stream->video_ssrc_peer == 0) {
+			stream->video_ssrc_peer = ssrc;
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %u\n", handle->handle_id, stream->video_ssrc_peer);
+		}
 	} else {
-		stream->audio_ssrc_peer = ssrc;
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer audio SSRC: %u\n", handle->handle_id, stream->audio_ssrc_peer);
+		if(stream->audio_ssrc_peer == 0) {
+			stream->audio_ssrc_peer = ssrc;
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer audio SSRC: %u\n", handle->handle_id, stream->audio_ssrc_peer);
+		}
 	}
 	return 0;
 }

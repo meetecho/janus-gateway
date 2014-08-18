@@ -1234,7 +1234,7 @@ void *janus_sctp_thread(void *data) {
 		janus_mutex_lock(&sctp->mutex);
 		if(g_queue_is_empty(sctp->in_messages) && g_queue_is_empty(sctp->out_messages)) {
 			janus_mutex_unlock(&sctp->mutex);
-			g_usleep (100000);
+			g_usleep (10000);
 			continue;
 		}
 		janus_mutex_unlock(&sctp->mutex);
