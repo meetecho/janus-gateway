@@ -77,9 +77,9 @@ $(document).ready(function() {
 					server: server,
 					// No "iceServers" is provided, meaning janus.js will use a default STUN server
 					// Here are some examples of how an iceServers field may look like to support TURN
-					// 		iceServers: [{url: "turn:janususer@yourturnserver.com:3478", credential: "januspwd"}],
-					// 		iceServers: [{url: "turn:janususer@yourturnserver.com:443?transport=tcp", credential: "januspwd"}],
-					// 		iceServers: [{url: "turns:janususer@yourturnserver.com:443?transport=tcp", credential: "januspwd"}],
+					// 		iceServers: [{url: "turn:yourturnserver.com:3478", username: "janususer", credential: "januspwd"}],
+					// 		iceServers: [{url: "turn:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
+					// 		iceServers: [{url: "turns:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
 					success: function() {
 						// Attach to echo test plugin
 						janus.attach(

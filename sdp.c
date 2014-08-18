@@ -334,6 +334,11 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 			if(rcomponent == 2 && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d?\n", handle->handle_id, rcomponent, stream->stream_id);
 		} else {
+			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
+				janus_mutex_unlock(&handle->mutex);
+				return 0;
+			}
 			if(trickle) {
 				if(component->dtls != NULL) {
 					/* This component is already ready, ignore this further candidate */
