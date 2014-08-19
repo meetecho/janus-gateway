@@ -291,6 +291,7 @@ static const char *sdp_v_template =
 #define JANUS_VIDEOROOM_ERROR_UNAUTHORIZED		433
 #define JANUS_VIDEOROOM_ERROR_ALREADY_PUBLISHED	434
 #define JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED		435
+#define JANUS_VIDEOROOM_ERROR_ID_EXISTS			436
 
 
 /* Multiplexing helpers */
@@ -1187,13 +1188,32 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				const char *display_text = display ? json_string_value(display) : NULL;
-				/* Generate a random ID */
 				guint64 user_id = 0;
-				while(user_id == 0) {
-					user_id = g_random_int();
+				json_t *id = json_object_get(root, "id");
+				if(id) {
+					if(!json_is_integer(id)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						sprintf(error_cause, "Invalid element (id should be an integer)");
+						goto error;
+					}
+					user_id = json_integer_value(id);
 					if(g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(user_id)) != NULL) {
-						/* User ID already taken, try another one */
-						user_id = 0;
+						/* User ID already taken */
+						JANUS_LOG(LOG_ERR, "User ID %"SCNu64" already exists\n", user_id);
+						error_code = JANUS_VIDEOROOM_ERROR_ID_EXISTS;
+						sprintf(error_cause, "User ID %"SCNu64" already exists", user_id);
+						goto error;
+					}
+				}
+				if(user_id == 0) {
+					/* Generate a random ID */
+					while(user_id == 0) {
+						user_id = g_random_int();
+						if(g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(user_id)) != NULL) {
+							/* User ID already taken, try another one */
+							user_id = 0;
+						}
 					}
 				}
 				JANUS_LOG(LOG_VERB, "  -- Publisher ID: %"SCNu64"\n", user_id);
