@@ -529,7 +529,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		json_object_set_new(event, "videoroom", json_string("event"));
 		json_object_set_new(event, "room", json_integer(participant->room->room_id));
 		json_object_set_new(event, "leaving", json_integer(participant->user_id));
-		char *leaving_text = json_dumps(event, JSON_INDENT(3));
+		char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
 		GList *participants_list = g_hash_table_get_values(participant->room->participants);
@@ -782,7 +782,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		json_object_set_new(event, "videoroom", json_string("event"));
 		json_object_set_new(event, "room", json_integer(participant->room->room_id));
 		json_object_set_new(event, "unpublished", json_integer(participant->user_id));
-		char *unpub_text = json_dumps(event, JSON_INDENT(3));
+		char *unpub_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		GList *participants_list = g_hash_table_get_values(participant->room->participants);
 		GList *ps = participants_list;
@@ -1106,7 +1106,7 @@ static void *janus_videoroom_handler(void *data) {
 			/* Notify all participants that the fun is over, and that they'll be kicked */
 			JANUS_LOG(LOG_VERB, "Notifying all participants\n");
 			json_t *destroyed = json_object();
-			char *destroyed_text = json_dumps(event, JSON_INDENT(3));
+			char *destroyed_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_object_set_new(destroyed, "videoroom", json_string("destroyed"));
 			json_object_set_new(destroyed, "room", json_integer(videoroom->room_id));
 			janus_mutex_lock(&rooms_mutex);
@@ -1315,7 +1315,7 @@ static void *janus_videoroom_handler(void *data) {
 						json_object_set_new(event, "display", json_string(publisher->display));
 					session->participant_type = janus_videoroom_p_type_subscriber;
 					JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-					char *event_text = json_dumps(event, JSON_INDENT(3));
+					char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 					json_decref(event);
 					/* Negotiate by sending the selected publisher SDP back */
 					if(publisher->sdp != NULL) {
@@ -1386,7 +1386,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("muxed-created"));
 				json_object_set_new(event, "room", json_integer(videoroom->room_id));
 				JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-				char *event_text = json_dumps(event, JSON_INDENT(3));
+				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 				/* How long will the gateway take to push the event? */
 				gint64 start = janus_get_monotonic_time();
@@ -1494,7 +1494,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "leaving", json_integer(participant->user_id));
-				char *leaving_text = json_dumps(event, JSON_INDENT(3));
+				char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				GList *participants_list = g_hash_table_get_values(participant->room->participants);
 				GList *ps = participants_list;
 				while(ps) {
@@ -1731,7 +1731,7 @@ static void *janus_videoroom_handler(void *data) {
 		json_decref(root);
 		/* Prepare JSON event */
 		JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-		char *event_text = json_dumps(event, JSON_INDENT(3));
+		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		/* Any SDP to handle? */
 		if(!msg->sdp) {
@@ -1876,7 +1876,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(pub, "videoroom", json_string("event"));
 					json_object_set_new(pub, "room", json_integer(participant->room->room_id));
 					json_object_set_new(pub, "publishers", list);
-					char *pub_text = json_dumps(pub, JSON_INDENT(3));
+					char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 					json_decref(pub);
 					GList *participants_list = g_hash_table_get_values(participant->room->participants);
 					GList *ps = participants_list;
@@ -1930,7 +1930,7 @@ error:
 			json_object_set_new(event, "videoroom", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 			int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, NULL, NULL);
@@ -1993,7 +1993,7 @@ int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listen
 	json_object_set_new(event, "room", json_integer(videoroom->room_id));
 	json_object_set_new(event, "feeds", list);
 	JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-	char *event_text = json_dumps(event, JSON_INDENT(3));
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
 	/* Send the updated offer */
 	return janus_videoroom_muxed_offer(muxed_listener, transaction, event_text);
@@ -2037,7 +2037,7 @@ int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_list
 	json_object_set_new(event, "room", json_integer(videoroom->room_id));
 	json_object_set_new(event, "feeds", list);
 	JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-	char *event_text = json_dumps(event, JSON_INDENT(3));
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
 	/* Send the updated offer */
 	return janus_videoroom_muxed_offer(muxed_listener, transaction, event_text);

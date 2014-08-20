@@ -6,6 +6,12 @@ option "base-path" b "Base path to bind to in the HTTP/HTTPS web server (default
 option "ws-port" w "WebSockets server port (default=no WebSockets)" int typestr="portnumber" optional
 option "ws-secure-port" W "Secure WebSockets server port (default=no secure WebSockets)" int typestr="portnumber" optional
 option "no-websockets" N "Disable insecure WebSockets server" flag off
+option "admin-port" m "Admin/monitor web server HTTP port (default=7088)" int typestr="portnumber" optional
+option "admin-secure-port" M "Admin/monitor web server HTTPS port (default=no HTTPS)" int typestr="portnumber" optional
+option "no-admin" O "Disable insecure HTTP admin/monitor web server" flag off
+option "admin-base-path" B "Base path to bind to in the HTTP/HTTPS admin/monitor web server (default=/admin) "string typestr="basepath" optional
+option "admin-secret" Q "Admin/monitor secret all requests need to pass in order to be accepted by Janus (useful a crude form of authentication, none by default)" string typestr="randomstring" optional
+option "admin-acl" L "Comma-separated list of IP addresses allowed to use the Admin/monitor; partial strings are supported (e.g., 192.168.0.1,10.0.0.1 or 192.168., default=no restriction)" string typestr="list" optional
 option "plugins-folder" P "Plugins folder (default=./plugins)" string typestr="path" optional
 option "config" C "Configuration file to use" string typestr="filename" optional
 option "configs-folder" F "Configuration files folder (default=./conf)" string typestr="path" optional

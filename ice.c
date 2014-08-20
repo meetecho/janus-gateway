@@ -321,7 +321,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	json_object_set_new(event, "janus", json_string("detached"));
 	json_object_set_new(event, "sender", json_integer(handle_id));
 	/* Convert to a string */
-	char *event_text = json_dumps(event, JSON_INDENT(3));
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
 	/* Send the event before we do anything */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle_id);
@@ -427,6 +427,14 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		g_free(handle->remote_fingerprint);
 		handle->remote_fingerprint = NULL;
 	}
+	if(handle->local_sdp != NULL) {
+		g_free(handle->local_sdp);
+		handle->local_sdp = NULL;
+	}
+	if(handle->remote_sdp != NULL) {
+		g_free(handle->remote_sdp);
+		handle->remote_sdp = NULL;
+	}
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
@@ -493,6 +501,32 @@ void janus_ice_component_free(GHashTable *container, janus_ice_component *compon
 		candidates = NULL;
 	}
 	component->candidates = NULL;
+	if(component->local_candidates != NULL) {
+		GSList *i = NULL, *candidates = component->local_candidates;
+		for (i = candidates; i; i = i->next) {
+			gchar *c = (gchar *) i->data;
+			if(c != NULL) {
+				g_free(c);
+				c = NULL;
+			}
+		}
+		g_slist_free(candidates);
+		candidates = NULL;
+	}
+	component->local_candidates = NULL;
+	if(component->remote_candidates != NULL) {
+		GSList *i = NULL, *candidates = component->remote_candidates;
+		for (i = candidates; i; i = i->next) {
+			gchar *c = (gchar *) i->data;
+			if(c != NULL) {
+				g_free(c);
+				c = NULL;
+			}
+		}
+		g_slist_free(candidates);
+		candidates = NULL;
+	}
+	component->remote_candidates = NULL;
 	g_free(component);
 	//~ janus_mutex_unlock(&handle->mutex);
 }
@@ -571,7 +605,7 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			json_object_set_new(event, "session_id", json_integer(session->session_id));
 			json_object_set_new(event, "sender", json_integer(handle->handle_id));
 			/* Convert to a string */
-			char *event_text = json_dumps(event, JSON_INDENT(3));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			/* Send the event */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
@@ -842,18 +876,9 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 		}
 		g_strlcat(sdp, buffer, BUFSIZE);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s\n", handle->handle_id, buffer);
+		/* Save for the summary, in case we need it */
+		component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer));
 	}
-	/* Done, free the list and the candidates */
-	for (i = candidates; i; i = i->next) {
-		NiceCandidate *c = (NiceCandidate *) i->data;
-		if(c != NULL) {
-			i->data = NULL;
-			nice_candidate_free(c);
-			c = NULL;
-		}
-	}
-	g_slist_free(candidates);
-	candidates = NULL;
 }
 
 void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id, guint component_id) {
@@ -1047,6 +1072,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		audio_rtp->stream = audio_stream;
 		audio_rtp->candidates = NULL;
+		audio_rtp->local_candidates = NULL;
+		audio_rtp->remote_candidates = NULL;
 		janus_mutex_init(&audio_rtp->mutex);
 		g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(1), audio_rtp);
 		audio_stream->rtp_component = audio_rtp;
@@ -1063,6 +1090,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			}
 			audio_rtcp->stream = audio_stream;
 			audio_rtcp->candidates = NULL;
+			audio_rtcp->local_candidates = NULL;
+			audio_rtcp->remote_candidates = NULL;
 			janus_mutex_init(&audio_rtcp->mutex);
 			g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(2), audio_rtcp);
 			audio_stream->rtcp_component = audio_rtcp;
@@ -1106,6 +1135,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		video_rtp->stream = video_stream;
 		video_rtp->candidates = NULL;
+		video_rtp->local_candidates = NULL;
+		video_rtp->remote_candidates = NULL;
 		janus_mutex_init(&video_rtp->mutex);
 		g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(1), video_rtp);
 		video_stream->rtp_component = video_rtp;
@@ -1122,6 +1153,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			}
 			video_rtcp->stream = video_stream;
 			video_rtcp->candidates = NULL;
+			video_rtcp->local_candidates = NULL;
+			video_rtcp->remote_candidates = NULL;
 			janus_mutex_init(&video_rtcp->mutex);
 			g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(2), video_rtcp);
 			video_stream->rtcp_component = video_rtcp;
@@ -1165,6 +1198,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		data_component->stream = data_stream;
 		data_component->candidates = NULL;
+		data_component->local_candidates = NULL;
+		data_component->remote_candidates = NULL;
 		janus_mutex_init(&data_component->mutex);
 		g_hash_table_insert(data_stream->components, GUINT_TO_POINTER(1), data_component);
 		data_stream->rtp_component = data_component;	/* We use the component called 'RTP' for data */
@@ -1403,7 +1438,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Convert to a string */
-	char *event_text = json_dumps(event, JSON_INDENT(3));
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);

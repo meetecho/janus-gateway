@@ -389,7 +389,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	json_t *event = json_object();
 	json_object_set_new(event, "voicemail", json_string("event"));
 	json_object_set_new(event, "status", json_string("started"));
-	char *event_text = json_dumps(event, JSON_INDENT(3));
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
 	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 	int ret = gateway->push_event(handle, &janus_voicemail_plugin, NULL, event_text, NULL, NULL);
@@ -594,7 +594,7 @@ static void *janus_voicemail_handler(void *data) {
 		json_decref(root);
 		/* Prepare JSON event */
 		JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-		char *event_text = json_dumps(event, JSON_INDENT(3));
+		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		/* Any SDP to handle? */
 		if(!msg->sdp) {
@@ -657,7 +657,7 @@ error:
 			json_object_set_new(event, "voicemail", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, NULL, NULL);

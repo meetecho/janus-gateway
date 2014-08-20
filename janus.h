@@ -151,6 +151,12 @@ typedef struct janus_request_source {
  * @returns MHD_YES on success, MHD_NO otherwise
  */
 int janus_process_incoming_request(janus_request_source *source, json_t *request);
+/*! \brief Helper to process an incoming admin/monitor request, no matter where it comes from
+ * @param[in] source The source that originated the request
+ * @param[in] request The JSON request
+ * @returns MHD_YES on success, MHD_NO otherwise
+ */
+int janus_process_incoming_admin_request(janus_request_source *source, json_t *request);
 /*! \brief Method to return a successful Janus response message (JSON) to the browser
  * @param[in] source The source that originated the request
  * @param[in] transaction The Janus transaction identifier
@@ -184,8 +190,14 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
  * the client side automatically.
  */
 ///@{
+/*! \brief Callback (libmicrohttpd) invoked when a new connection is attempted on the REST API */
+int janus_ws_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
+/*! \brief Callback (libmicrohttpd) invoked when a new connection is attempted on the admin/monitor webserver */
+int janus_admin_ws_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen);
 /*! \brief Callback (libmicrohttpd) invoked when an HTTP message (GET, POST, OPTIONS, etc.) is available */
 int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
+/*! \brief Callback (libmicrohttpd) invoked when an admin/monitor HTTP message (GET, POST, OPTIONS, etc.) is available */
+int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **ptr);
 /*! \brief Callback (libmicrohttpd) invoked when headers of an incoming HTTP message have been parsed */
 int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 /*! \brief Callback (libmicrohttpd) invoked when a request has been processed and can be freed */

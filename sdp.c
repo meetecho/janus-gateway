@@ -407,6 +407,8 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 				component->candidates = g_slist_append(component->candidates, c);
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Candidate added to the list! (%u elements for %d/%d)\n", handle->handle_id,
 					g_slist_length(component->candidates), stream->stream_id, component->component_id);
+				/* Save for the summary, in case we need it */
+				component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(candidate));
 				if(trickle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)) {
 					/* This is a trickle candidate and ICE has started, we should process it right away */
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED)) {

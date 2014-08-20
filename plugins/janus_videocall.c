@@ -411,7 +411,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		json_object_set_new(calling, "username", json_string(session->username));
 		json_object_set_new(calling, "reason", json_string("Remote hangup"));
 		json_object_set_new(call, "result", calling);
-		char *call_text = json_dumps(call, JSON_INDENT(3));
+		char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(call);
 		JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 		int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, call_text, NULL, NULL);
@@ -623,7 +623,7 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(calling, "event", json_string("incomingcall"));
 				json_object_set_new(calling, "username", json_string(session->username));
 				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3));
+				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
 				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call_text, msg->sdp_type, msg->sdp);
@@ -657,7 +657,7 @@ static void *janus_videocall_handler(void *data) {
 			json_object_set_new(calling, "event", json_string("accepted"));
 			json_object_set_new(calling, "username", json_string(session->username));
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3));
+			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 			int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, call_text, msg->sdp_type, msg->sdp);
@@ -739,7 +739,7 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(calling, "username", json_string(session->username));
 				json_object_set_new(calling, "reason", json_string("Remote hangup"));
 				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3));
+				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
 				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call_text, NULL, NULL);
@@ -759,7 +759,7 @@ static void *janus_videocall_handler(void *data) {
 		json_object_set_new(event, "videocall", json_string("event"));
 		if(result != NULL)
 			json_object_set(event, "result", result);
-		char *event_text = json_dumps(event, JSON_INDENT(3));
+		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		if(result != NULL)
 			json_decref(result);
@@ -781,7 +781,7 @@ error:
 			json_object_set_new(event, "videocall", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 			int ret = gateway->push_event(msg->handle, &janus_videocall_plugin, msg->transaction, event_text, NULL, NULL);

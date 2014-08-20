@@ -1273,7 +1273,7 @@ static void *janus_sip_handler(void *data) {
 		json_object_set_new(event, "sip", json_string("event"));
 		if(result != NULL)
 			json_object_set(event, "result", result);
-		char *event_text = json_dumps(event, JSON_INDENT(3));
+		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		if(result != NULL)
 			json_decref(result);
@@ -1295,7 +1295,7 @@ error:
 			json_object_set_new(event, "sip", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 			int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event_text, NULL, NULL);
@@ -1359,7 +1359,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(calling, "reason", json_string(reason));
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3));
+			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
@@ -1381,7 +1381,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(calling, "reason", json_string("Remote cancel"));
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3));
+			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
@@ -1435,7 +1435,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(calling, "event", json_string("incomingcall"));
 			json_object_set_new(calling, "username", json_string(caller));
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3));
+			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, "offer", sip->sip_payload->pl_data);
@@ -1533,7 +1533,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(calling, "reason", json_string("Bye"));
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3));
+			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
@@ -1582,7 +1582,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "username", json_string(session->callee));
 				json_object_set_new(calling, "reason", json_string(reason));
 				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3));
+				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
@@ -1623,7 +1623,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(calling, "event", json_string("accepted"));
 			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3));
+			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, "answer", fixed_sdp);
@@ -1662,7 +1662,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "event", json_string("registered"));
 				json_object_set_new(calling, "username", json_string(session->account.username));
 				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3));
+				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
@@ -1690,7 +1690,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char error_cause[256];
 				sprintf(error_cause, "Registration failed: %d %s", status, phrase ? phrase : "??");
 				json_object_set_new(event, "error", json_string(error_cause));
-				char *event_text = json_dumps(event, JSON_INDENT(3));
+				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, event_text, NULL, NULL);

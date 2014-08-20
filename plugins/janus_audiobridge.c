@@ -537,7 +537,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	json_object_set_new(event, "audiobridge", json_string("event"));
 	json_object_set_new(event, "room", json_integer(audiobridge->room_id));
 	json_object_set_new(event, "leaving", json_integer(participant->user_id));
-	char *leaving_text = json_dumps(event, JSON_INDENT(3));
+	char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
 	g_hash_table_remove(audiobridge->participants, GUINT_TO_POINTER(participant->user_id));
 	GList *participants_list = g_hash_table_get_values(audiobridge->participants);
@@ -819,7 +819,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Notify all participants that the fun is over, and that they'll be kicked */
 			JANUS_LOG(LOG_VERB, "Notifying all participants\n");
 			json_t *destroyed = json_object();
-			char *destroyed_text = json_dumps(event, JSON_INDENT(3));
+			char *destroyed_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_object_set_new(destroyed, "audiobridge", json_string("destroyed"));
 			json_object_set_new(destroyed, "room", json_integer(audiobridge->room_id));
 			janus_mutex_lock(&rooms_mutex);
@@ -1036,7 +1036,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pub, "audiobridge", json_string("event"));
 				json_object_set_new(pub, "room", json_integer(participant->room->room_id));
 				json_object_set_new(pub, "participants", list);
-				char *pub_text = json_dumps(pub, JSON_INDENT(3));
+				char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(pub);
 				GList *participants_list = g_hash_table_get_values(participant->room->participants);
 				GList *ps = participants_list;
@@ -1076,7 +1076,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_object_set_new(event, "audiobridge", json_string("event"));
 			json_object_set_new(event, "room", json_integer(audiobridge->room_id));
 			json_object_set_new(event, "leaving", json_integer(participant->user_id));
-			char *leaving_text = json_dumps(event, JSON_INDENT(3));
+			char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			GList *participants_list = g_hash_table_get_values(audiobridge->participants);
 			GList *ps = participants_list;
 			while(ps) {
@@ -1107,7 +1107,7 @@ static void *janus_audiobridge_handler(void *data) {
 		json_decref(root);
 		/* Prepare JSON event */
 		JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-		char *event_text = json_dumps(event, JSON_INDENT(3));
+		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		/* Any SDP to handle? */
 		if(!msg->sdp) {
@@ -1169,7 +1169,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pub, "audiobridge", json_string("event"));
 				json_object_set_new(pub, "room", json_integer(participant->room->room_id));
 				json_object_set_new(pub, "participants", list);
-				char *pub_text = json_dumps(pub, JSON_INDENT(3));
+				char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(pub);
 				GList *participants_list = g_hash_table_get_values(participant->room->participants);
 				GList *ps = participants_list;
@@ -1203,7 +1203,7 @@ error:
 			json_object_set_new(event, "audiobridge", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 			int ret = gateway->push_event(msg->handle, &janus_audiobridge_plugin, msg->transaction, event_text, NULL, NULL);

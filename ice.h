@@ -121,6 +121,10 @@ struct janus_ice_handle {
 	gchar *remote_hashing;
 	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
 	gchar *remote_fingerprint;
+	/*! \brief SDP generated locally (just for debugging purposes) */
+	gchar *local_sdp;
+	/*! \brief SDP received by the peer (just for debugging purposes) */
+	gchar *remote_sdp;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };
@@ -169,8 +173,12 @@ struct janus_ice_component {
 	guint stream_id;
 	/*! \brief libnice ICE component ID */
 	guint component_id;
-	/*! \brief GLib list of libnice candidates for this component */
+	/*! \brief GLib list of libnice remote candidates for this component */
 	GSList *candidates;
+	/*! \brief GLib list of local candidates for this component (summary) */
+	GSList *local_candidates;
+	/*! \brief GLib list of remote candidates for this component (summary) */
+	GSList *remote_candidates;
 	/*! \brief Re-transmission timer for DTLS */
 	GSource *source;
 	/*! \brief DTLS-SRTP stack */

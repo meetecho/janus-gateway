@@ -612,7 +612,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("started"));
 	json_object_set(event, "result", result);
-	char *event_text = json_dumps(event, JSON_INDENT(3));
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
 	json_decref(result);
 	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
@@ -1257,7 +1257,7 @@ static void *janus_streaming_handler(void *data) {
 		json_object_set_new(event, "streaming", json_string("event"));
 		if(result != NULL)
 			json_object_set(event, "result", result);
-		char *event_text = json_dumps(event, JSON_INDENT(3));
+		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		if(result != NULL)
 			json_decref(result);
@@ -1279,7 +1279,7 @@ error:
 			json_object_set_new(event, "streaming", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 			int ret = gateway->push_event(msg->handle, &janus_streaming_plugin, msg->transaction, event_text, NULL, NULL);
