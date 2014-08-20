@@ -38,9 +38,10 @@
  * create new plugins, or understand how they're conceived, is documented
  * as well. A documentation on the web and JavaScript API to use the
  * gateway and the plugins it makes available in your web application
- * can be found in the \ref JS and \ref rest pages. Some information on
- * how to deploy Janus and your web applications that want to make use of
- * it are provided in the \ref deploy page.
+ * can be found in the \ref JS and \ref rest pages. If you're interested
+ * in monitoring Janus resources, you can refer to the \ref admin page.
+ * Some information on how to deploy Janus and your web applications that
+ * want to make use of it are provided in the \ref deploy page.
  *
  * This is only the first version of the gateway, and as such it is a bit
  * rough at the edges: there is definitely room for improvement, there are
@@ -631,7 +632,7 @@ janus.attach(
 \verbatim
 {
 	"janus" : "success",
-	"transaction" : "<same as the request>"
+	"transaction" : "<same as the request>",
 	"data" : {
 		"id" : <unique integer session ID>
 	}
@@ -771,7 +772,7 @@ GET http://host:port/janus/<sessionid>?max_events=5
 \verbatim
 {
 	"janus" : "success",
-	"transaction" : "<same as the request>"
+	"transaction" : "<same as the request>",
 	"data" : {
 		"id" : <unique integer plugin handle ID>
 	}
@@ -1091,6 +1092,138 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * Janus server address during the initialization and the library will
  * use one or the other according to the protocol prefix.
  * 
+ */
+
+/*! \page admin Admin/Monitor API
+ * Recent versions of Janus introduced a new feature: an Admin/Monitor
+ * API that can be used to ask Janus for more specific information
+ * related to sessions and handles. This is especially useful when you
+ * want to debug issues at the media level.
+ *
+ * \note Right now, this new API only allows you to retrieve information,
+ * but not act on it: to do so (e.g., to force a session removal), you can
+ * rely on the existing \ref rest for the purpose.
+ *
+ * The API, for security reasons, is not enabled by default. You can enable
+ * it by editing the \c [admin] section in the \c janus.cfg configuration
+ * file accordingly. The configuration is pretty much the same as the one
+ * for the \ref plainhttp so you can refer to that one. In addition, you
+ * can configure restrictions in the form of a password/secret that clients
+ * need to provide and access lists based on full/partial addresses.
+ *
+ * For what concerns the syntax, it's very similar to the \ref rest and
+ * so this page will briefly discuss the differences. At the moment, three
+ * different methods are exposed:
+ *
+ * - \c list_sessions: list all the sessions currently active in Janus
+ * (returns an array of session identifiers);
+ * - \c list_handles: list all the ICE handles currently active in a Janus
+ * session (returns an array of handle identifiers);
+ * - \c handle_info: list all the available info on a specific ICE handle.
+ *
+ * Following the same spirit of the \ref rest these methods need to be
+ * invoked on the right path and/or providing the right \c session_id and
+ * \c handle_id identifiers. Specifically, \c list_sessions must be invoked
+ * without any session/handle information, as it's a global request. Here's
+ * an example of how such a request and its related response might look like:
+ *
+\verbatim
+POST /admin
+{
+	"janus" : "list_sessions",
+	"transaction" : "<random alphanumeric string>",
+	"admin_secret" : "<password specified in janus.cfg, if any>"
+}
+\endverbatim
+ *
+ *
+\verbatim
+{
+	"janus" : "success",
+	"transaction" : "<same as the request>",
+	"sessions" : [
+		<session ID #1>,
+		<session ID #2>,
+		[..]
+		<session ID #n>
+	]
+}
+\endverbatim
+ *
+ * On the other hand, since \c list_handles is related to a specific session,
+ * a session must be referenced correctly. Using the REST API, this can
+ * be done by appending the session identifier (e.g., one of the IDs
+ * returned by the previous call) to the API root:
+ *
+\verbatim
+POST /admin/12345678
+{
+	"janus" : "list_handles",
+	"transaction" : "<random alphanumeric string>",
+	"admin_secret" : "<password specified in janus.cfg, if any>"
+}
+\endverbatim
+ *
+ *
+\verbatim
+{
+	"janus" : "success",
+	"transaction" : "<same as the request>",
+	"session_id" : 12345678,
+	"handles" : [
+		<handle ID #1>,
+		<handle ID #2>,
+		[..]
+		<handle ID #n>
+	]
+}
+\endverbatim
+ *
+ * Once a list of handles is available, detailed info on any of them can
+ * be obtained by means of a \c handle_info call. Since this is a
+ * handle-specific request, the correct handle identifier must be
+ * referenced, e.g., by appending the ID to the session it belongs to:
+ *
+\verbatim
+POST /admin/12345678/98765432
+{
+	"janus" : "handle_info",
+	"transaction" : "<random alphanumeric string>",
+	"admin_secret" : "<password specified in janus.cfg, if any>"
+}
+\endverbatim
+ *
+ *
+\verbatim
+{
+	"janus" : "success",
+	"transaction" : "<same as the request>",
+	"session_id" : 12345678,
+	"handle_id" : 98765432,
+	"info" : {
+		"plugin": "janus.plugin.echotest",
+		"flags": {
+			// flags
+		},
+		"sdps": {
+			"local": "v=0[..]",
+			"remote": "v=0[..]"
+		},
+		"streams": [
+			// streams, components, etc.
+		]
+	}
+}
+\endverbatim
+ *
+ * The actual content of the last response is omitted for brevity, but
+ * you're welcome to experiment with it in order to check whether more
+ * information (of a different nature, maybe) may be useful to have.
+ *
+ * \note At the moment, no plugin-related information is available through
+ * this API. The only plugin-related information you can find is which
+ * plugin a specific handle is attached to.
+ *
  */
 
 /*! \page deploy Deploying Janus
