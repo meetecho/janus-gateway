@@ -1226,6 +1226,11 @@ static void *janus_streaming_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "status", json_string("pausing"));
 		} else if(!strcasecmp(request_text, "stop")) {
+			if(session->stopping || !session->started) {
+				/* Been there, done that: ignore */
+				json_decref(root);
+				continue;
+			}
 			JANUS_LOG(LOG_VERB, "Stopping the streaming\n");
 			session->stopping = TRUE;
 			session->started = FALSE;
@@ -1239,6 +1244,8 @@ static void *janus_streaming_handler(void *data) {
 				session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
 			}
 			session->mountpoint = NULL;
+			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+			gateway->close_pc(session->handle);
 		} else {
 			JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;

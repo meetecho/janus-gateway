@@ -192,6 +192,7 @@ function startStream() {
 		bootbox.alert("Select a stream from the list");
 		return;
 	}
+	$('#streamset').attr('disabled', true);
 	$('#streamslist').attr('disabled', true);
 	$('#watch').attr('disabled', true).unbind('click');
 	var body = { "request": "watch", id: parseInt(selectedStream) };
@@ -211,6 +212,7 @@ function stopStream() {
 	var body = { "request": "stop" };
 	streaming.send({"message": body});
 	streaming.hangup();
+	$('#streamset').removeAttr('disabled');
 	$('#streamslist').removeAttr('disabled');
 	$('#watch').html("Watch or Listen").removeAttr('disabled').click(startStream);
 	$('#status').empty().hide();
