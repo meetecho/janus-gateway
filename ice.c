@@ -440,11 +440,11 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
 }
 
-void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream) {
+void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 	if(stream == NULL)
 		return;
-	if(container != NULL)
-		g_hash_table_remove(container, stream);
+	if(streams != NULL)
+		g_hash_table_remove(streams, stream);
 	if(stream->components != NULL) {
 		janus_ice_component_free(stream->components, stream->rtp_component);
 		stream->rtp_component = NULL;
@@ -465,7 +465,7 @@ void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream) {
 	stream = NULL;
 }
 
-void janus_ice_component_free(GHashTable *container, janus_ice_component *component) {
+void janus_ice_component_free(GHashTable *components, janus_ice_component *component) {
 	if(component == NULL)
 		return;
 	janus_ice_stream *stream = component->stream;
@@ -475,8 +475,8 @@ void janus_ice_component_free(GHashTable *container, janus_ice_component *compon
 	if(handle == NULL)
 		return;
 	//~ janus_mutex_lock(&handle->mutex);
-	if(container != NULL)
-		g_hash_table_remove(container, component);
+	if(components != NULL)
+		g_hash_table_remove(components, component);
 	component->stream = NULL;
 	if(component->source != NULL) {
 		g_source_destroy(component->source);
