@@ -16,7 +16,7 @@ all: $(OBJS)
 ifndef INSTALLSH
 	$(error Please use the install.sh script to compile Janus)
 endif
-	$(CC) -shared -fPIC $(GDB) -o $@ $< $(UTILS) $(LIBS)
+	$(CC) -shared -fPIC $(GDB) -o $@ $< $(UTILS) $(LIBS) $(LDFLAGS)
 
 clean:
 	rm -f *.so *.o
