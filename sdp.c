@@ -37,6 +37,7 @@ int janus_sdp_init() {
 void janus_sdp_deinit() {
 	su_home_deinit(home);
 	su_home_unref(home);
+	home = NULL;
 }
 
 
