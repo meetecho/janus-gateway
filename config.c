@@ -102,8 +102,6 @@ janus_config *janus_config_parse(const char *config_file) {
 		res = col_bind_iterator(&iterator, config, 0);
 		if(res != 0) {
 			JANUS_LOG(LOG_ERR, "  -- Error parsing configuration file... error %d (%s)\n", res, strerror(res));
-			if(iterator != NULL)
-				g_free(iterator);
 			free_ini_config(config);
 			if(config_errors != NULL)
 				free_ini_config_errors(config_errors);
