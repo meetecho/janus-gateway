@@ -1,5 +1,12 @@
 CC = gcc
-OPTS = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wunused -Wno-format-security #-Werror #-O2
+OPTS = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
+       -Wunused -fstrict-aliasing -Wextra -Wformat=2 -Winit-self -Winline \
+       -Wpacked -Wpointer-arith -Wmissing-format-attribute -Wmissing-noreturn \
+       -Wnested-externs -Wstrict-prototypes -Wunsafe-loop-optimizations \
+       -Wwrite-strings -Wno-missing-field-initializers -Wno-unused-parameter \
+       -Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
+       -Wmissing-include-dirs -Waggregate-return -Wunused-but-set-variable \
+       -Warray-bounds
 GDB = -fstack-protector-all -g -ggdb -rdynamic #-gstabs
 
 %.o: %.c
