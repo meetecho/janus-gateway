@@ -96,6 +96,8 @@ janus_config *janus_config_parse(const char *config_file) {
 				JANUS_LOG(LOG_VERB, "        %s: %s\n", col_get_item_property(item, &len), (const char *)col_get_item_data(item));
 			}
 		};
+
+		col_unbind_iterator(iterator);
 	}
 	if(config != NULL) {
 		struct collection_iterator *iterator = NULL;
@@ -110,7 +112,7 @@ janus_config *janus_config_parse(const char *config_file) {
 		jc = calloc(1, sizeof(janus_config));
 		if(jc == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			g_free(iterator);
+			col_unbind_iterator(iterator);
 			free_ini_config(config);
 			if(config_errors != NULL)
 				free_ini_config_errors(config_errors);
@@ -139,7 +141,7 @@ janus_config *janus_config_parse(const char *config_file) {
 				janus_config_category *ncg = calloc(1, sizeof(janus_config_category));
 				if(ncg == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					g_free(iterator);
+					col_unbind_iterator(iterator);
 					free_ini_config(config);
 					if(config_errors != NULL)
 						free_ini_config_errors(config_errors);
@@ -163,7 +165,7 @@ janus_config *janus_config_parse(const char *config_file) {
 				temp = g_strdup((char *)col_get_item_data(item));
 				if(temp == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					g_free(iterator);
+					col_unbind_iterator(iterator);
 					free_ini_config(config);
 					if(config_errors != NULL)
 						free_ini_config_errors(config_errors);
@@ -176,7 +178,7 @@ janus_config *janus_config_parse(const char *config_file) {
 				janus_config_item *nci = calloc(1, sizeof(janus_config_item));
 				if(nci == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					g_free(iterator);
+					col_unbind_iterator(iterator);
 					free_ini_config(config);
 					if(config_errors != NULL)
 						free_ini_config_errors(config_errors);
@@ -211,7 +213,7 @@ janus_config *janus_config_parse(const char *config_file) {
 				ci = nci;
 			}
 		};
-		g_free(iterator);
+		col_unbind_iterator(iterator);
 		free_ini_config(config);
 	}
 	if(config_errors != NULL)
