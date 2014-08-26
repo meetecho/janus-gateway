@@ -186,15 +186,15 @@ typedef struct janus_audiobridge_rtp_relay_packet {
 } janus_audiobridge_rtp_relay_packet;
 
 /* SDP offer/answer template */
-static const char *sdp_template =
-		"v=0\r\n"
-		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */
-		"s=%s\r\n"							/* Audio bridge name */
-		"t=0 0\r\n"
-		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */
-		"c=IN IP4 1.1.1.1\r\n"
-		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
-		"a=fmtp:%d maxplaybackrate=%d; stereo=0; sprop-stereo=0; useinbandfec=0\r\n";
+#define sdp_template \
+		"v=0\r\n" \
+		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
+		"s=%s\r\n"							/* Audio bridge name */ \
+		"t=0 0\r\n" \
+		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
+		"c=IN IP4 1.1.1.1\r\n" \
+		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */ \
+		"a=fmtp:%d maxplaybackrate=%d; stereo=0; sprop-stereo=0; useinbandfec=0\r\n" \
 											/* Opus payload type and room sampling rate */
 
 /* Helper struct to generate and parse WAVE headers */

@@ -148,15 +148,15 @@ static char *recordings_path = NULL;
 static char *recordings_base = NULL;
 
 /* SDP offer/answer template */
-static const char *sdp_template =
-		"v=0\r\n"
-		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */
-		"s=VoiceMail %"SCNu64"\r\n"						/* VoiceMail recording ID */
-		"t=0 0\r\n"
-		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */
-		"c=IN IP4 1.1.1.1\r\n"
-		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
-		"a=recvonly\r\n";					/* This plugin doesn't send any frames */
+#define sdp_template \
+		"v=0\r\n" \
+		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
+		"s=VoiceMail %"SCNu64"\r\n"						/* VoiceMail recording ID */ \
+		"t=0 0\r\n" \
+		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
+		"c=IN IP4 1.1.1.1\r\n" \
+		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */ \
+		"a=recvonly\r\n"					/* This plugin doesn't send any frames */
 
 
 /* OGG/Opus helpers */
