@@ -177,11 +177,14 @@ typedef struct janus_streaming_mountpoint {
 	janus_streaming_type streaming_type;
 	janus_streaming_source streaming_source;
 	void *source;	/* Can differ according to the source type */
+	GDestroyNotify source_destroy;
 	janus_streaming_codecs codecs;
-	GList *listeners;
+	GList/*<unowned janus_streaming_session>*/ *listeners;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints;
 janus_mutex mountpoints_mutex;
+
+static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp);
 
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
@@ -272,7 +275,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL)
 		janus_config_print(config);
 	
-	mountpoints = g_hash_table_new(NULL, NULL);
+	mountpoints = g_hash_table_new_full(NULL, NULL, NULL,
+	                                    (GDestroyNotify) janus_streaming_mountpoint_free);
 	janus_mutex_init(&mountpoints_mutex);
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
@@ -1301,6 +1305,35 @@ error:
 }
 
 
+/* Helpers to destroy a streaming mountpoint. */
+static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source)
+{
+	free(source);
+}
+
+static void janus_streaming_file_source_free(janus_streaming_file_source *source)
+{
+	g_free(source->filename);
+	free(source);
+}
+
+static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp)
+{
+	g_free(mp->name);
+	g_free(mp->description);
+	g_list_free(mp->listeners);
+
+	if (mp->source != NULL && mp->source_destroy != NULL) {
+		mp->source_destroy(mp->source);
+	}
+
+	g_free(mp->codecs.audio_rtpmap);
+	g_free(mp->codecs.video_rtpmap);
+
+	free(mp);
+}
+
+
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
@@ -1361,6 +1394,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->audio_port = doaudio ? aport : -1;
 	live_rtp_source->video_port = dovideo ? vport : -1;
 	live_rtp->source = live_rtp_source;
+	live_rtp->source_destroy = (GDestroyNotify) janus_streaming_rtp_source_free;
 	live_rtp->codecs.audio_pt = doaudio ? acodec : -1;
 	live_rtp->codecs.audio_rtpmap = doaudio ? g_strdup(artpmap) : NULL;
 	live_rtp->codecs.video_pt = dovideo ? vcodec : -1;
@@ -1436,8 +1470,9 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	}
 	file_source_source->filename = g_strdup(filename);
 	file_source->source = file_source_source;
+	file_source->source_destroy = (GDestroyNotify) janus_streaming_file_source_free;
 	file_source->codecs.audio_pt = strstr(filename, ".alaw") ? 8 : 0;
-	file_source->codecs.audio_rtpmap = strstr(filename, ".alaw") ? "PCMA/8000" : "PCMU/8000";
+	file_source->codecs.audio_rtpmap = g_strdup(strstr(filename, ".alaw") ? "PCMA/8000" : "PCMU/8000");
 	file_source->codecs.video_pt = -1;	/* FIXME We don't support video for this type yet */
 	file_source->codecs.video_rtpmap = NULL;
 	file_source->listeners = NULL;
