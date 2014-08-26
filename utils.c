@@ -45,12 +45,12 @@ gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag) {
 	return FALSE;
 }
 
-/* Easy way to replace multiple occurrences of a string with another: MAY creates a NEW string */
-char *janus_string_replace(char *message, char *old_string, char *new_string, int *modified)
+/* Easy way to replace multiple occurrences of a string with another: ALWAYS creates a NEW string */
+char *janus_string_replace(char *message, const char *old_string, const char *new_string)
 {
-	if(!message || !old_string || !new_string || !modified)
+	if(!message || !old_string || !new_string)
 		return NULL;
-	*modified = 0;
+
 	if(!strstr(message, old_string)) {	/* Nothing to be done (old_string is not there) */
 		return message;
 	}
@@ -70,8 +70,8 @@ char *janus_string_replace(char *message, char *old_string, char *new_string, in
 		}
 		return outgoing;
 	} else {	/* We need to resize */
-		*modified = 1;
 		char *outgoing = strdup(message);
+		free(message);
 		if(outgoing == NULL) {
 			return NULL;
 		}
@@ -86,11 +86,12 @@ char *janus_string_replace(char *message, char *old_string, char *new_string, in
 			pos = tmp;
 		}
 		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
-		*modified = diff*counter;
 		if(diff > 0) {	/* Resize now */
 			tmp = realloc(outgoing, new_stringlen);
-			if(!tmp)
+			if(!tmp) {
+				free(outgoing);
 				return NULL;
+			}
 			outgoing = tmp;
 		}
 		/* Replace string */
@@ -113,8 +114,10 @@ char *janus_string_replace(char *message, char *old_string, char *new_string, in
 		}
 		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
 			tmp = realloc(outgoing, new_stringlen);
-			if(!tmp)
+			if(!tmp) {
+				free(outgoing);
 				return NULL;
+			}
 			outgoing = tmp;
 		}
 		outgoing[strlen(outgoing)] = '\0';

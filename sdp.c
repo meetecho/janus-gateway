@@ -1042,11 +1042,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 
 	/* Do we need to update the msid-semantic attribute? */
 	if(planb) {
-		int modified = 0;
-		char *tempsdp = janus_string_replace(sdp, "WMS janus", wms, &modified);
-		if(modified)
-			g_free(sdp);
-		sdp = tempsdp;
+		sdp = janus_string_replace(sdp, "WMS janus", wms);
 	}
 	
 	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");

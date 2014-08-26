@@ -1068,32 +1068,19 @@ static void *janus_sip_handler(void *data) {
 				sprintf(error_cause, "Memory error");
 				goto error;
 			}
-			int modified = 0;
-			char *temp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
-			temp = janus_string_replace(sdp, "1.1.1.1", local_ip, &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
+			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
+			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=audio %d", session->media.local_audio_rtp_port);
-				temp = janus_string_replace(sdp, "m=audio 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=audio 1", mline);
 			}
 			if(session->media.has_video) {
 				JANUS_LOG(LOG_VERB, "Setting local video port: %d\n", session->media.local_video_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=video %d", session->media.local_video_rtp_port);
-				temp = janus_string_replace(sdp, "m=video 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=video 1", mline);
 			}
 			/* Send INVITE */
 			if(session->stack->s_nh_i != NULL)
@@ -1161,32 +1148,19 @@ static void *janus_sip_handler(void *data) {
 				sprintf(error_cause, "Memory error");
 				goto error;
 			}
-			int modified = 0;
-			char *temp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
-			temp = janus_string_replace(sdp, "1.1.1.1", local_ip, &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
+			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
+			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=audio %d", session->media.local_audio_rtp_port);
-				temp = janus_string_replace(sdp, "m=audio 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=audio 1", mline);
 			}
 			if(session->media.has_video) {
 				JANUS_LOG(LOG_VERB, "Setting local video port: %d\n", session->media.local_video_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=video %d", session->media.local_video_rtp_port);
-				temp = janus_string_replace(sdp, "m=video 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=video 1", mline);
 			}
 			/* Send 200 OK */
 			session->status = janus_sip_status_incall;
