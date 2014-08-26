@@ -134,15 +134,6 @@ janus_config *janus_config_parse(const char *config_file) {
 				/* Configuration name */
 				if(name) {
 					jc->name = g_strdup(name);
-					if(jc->name == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						g_free(iterator);
-						free_ini_config(config);
-						if(config_errors != NULL)
-							free_ini_config_errors(config_errors);
-						janus_config_destroy(jc);
-						return NULL;
-					}
 				}
 			} else if(col_get_item_type(item) == COL_TYPE_COLLECTIONREF) {
 				/* Configuration category */
@@ -162,15 +153,6 @@ janus_config *janus_config_parse(const char *config_file) {
 				ncg->next = NULL;
 				if(name) {
 					ncg->name = g_strdup(name);
-					if(ncg->name == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						g_free(iterator);
-						free_ini_config(config);
-						if(config_errors != NULL)
-							free_ini_config_errors(config_errors);
-						janus_config_destroy(jc);
-						return NULL;
-					}
 				}
 				if(jc->categories == NULL) {
 					jc->categories = ncg;
@@ -208,28 +190,10 @@ janus_config *janus_config_parse(const char *config_file) {
 				nci->next = NULL;
 				if(name) {
 					nci->name = g_strdup(name);
-					if(nci->name == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						g_free(iterator);
-						free_ini_config(config);
-						if(config_errors != NULL)
-							free_ini_config_errors(config_errors);
-						janus_config_destroy(jc);
-						return NULL;
-					}
 				}
 				if(value) {
 					nci->value = g_strdup(value);
 					g_free((gpointer)value);
-					if(nci->value == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						g_free(iterator);
-						free_ini_config(config);
-						if(config_errors != NULL)
-							free_ini_config_errors(config_errors);
-						janus_config_destroy(jc);
-						return NULL;
-					}
 				}
 				if(cg == NULL) {
 					/* Uncategorized item */
@@ -265,11 +229,6 @@ janus_config *janus_config_create(const char *name) {
 	}
 	if(name != NULL) {
 		jc->name = g_strdup(name);
-		if(jc->name == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			janus_config_destroy(jc);
-			return NULL;
-		}
 	}
 	return jc;
 }
@@ -337,11 +296,6 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 			return NULL;
 		}
 		c->name = g_strdup(category);
-		if(c->name == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			g_free((gpointer)c);
-			return NULL;
-		}
 		c->next = NULL;
 		if(config->categories == NULL) {
 			config->categories = c;
@@ -365,18 +319,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 			return NULL;
 		}
 		item->name = g_strdup(name);
-		if(item->name == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			g_free((gpointer)item);
-			return NULL;
-		}
 		item->value = g_strdup(value);
-		if(item->value == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			g_free((gpointer)item->name);
-			g_free((gpointer)item);
-			return NULL;
-		}
 		item->next = NULL;
 		if(c->items == NULL) {
 			c->items = item;
@@ -393,10 +336,6 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	} else {
 		/* Update it */
 		char *item_value = g_strdup(value);
-		if(item_value == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return NULL;
-		}
 		if(item->value)
 			g_free((gpointer)item->value);
 		item->value = item_value;
