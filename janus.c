@@ -1897,7 +1897,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 		}
 		event->code = 200;
 		/*! \todo Improve the Janus protocol keep-alive mechanism in JavaScript */
-		event->payload = max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]";
+		event->payload = g_strdup (max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]");
 		event->allocated = 0;
 	}
 	if(list != NULL) {
@@ -2713,7 +2713,7 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		configs_folder = "./conf";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+		configs_folder = g_strdup ("./conf");	/* FIXME This is a relative path to where the executable is, not from where it was started... */
 	}
 	if(config_file == NULL) {
 		char file[255];
@@ -2934,7 +2934,6 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Pre-parse the web server path, if any */
-	ws_path = "/janus";
 	item = janus_config_get_item_drilldown(config, "webserver", "base_path");
 	if(item && item->value) {
 		if(item->value[0] != '/') {
@@ -2946,6 +2945,8 @@ gint main(int argc, char *argv[])
 			/* Remove the trailing slash, it makes things harder when we parse requests later */
 			ws_path[strlen(ws_path)-1] = '\0';
 		}
+	} else {
+		ws_path = g_strdup("/janus");
 	}
 	/* Is there any API secret to consider? */
 	ws_api_secret = NULL;
@@ -2959,7 +2960,6 @@ gint main(int argc, char *argv[])
 
 	/* Do the same for the admin/monitor interface */
 	/* Pre-parse the web server path, if any */
-	admin_ws_path = "/admin";
 	item = janus_config_get_item_drilldown(config, "admin", "admin_base_path");
 	if(item && item->value) {
 		if(item->value[0] != '/') {
@@ -2971,6 +2971,8 @@ gint main(int argc, char *argv[])
 			/* Remove the trailing slash, it makes things harder when we parse requests later */
 			admin_ws_path[strlen(admin_ws_path)-1] = '\0';
 		}
+	} else {
+		admin_ws_path = g_strdup("/admin");
 	}
 	/* Is there any API secret to consider? */
 	admin_ws_api_secret = NULL;

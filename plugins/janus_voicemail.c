@@ -220,9 +220,9 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		config = NULL;
 	}
 	if(recordings_path == NULL)
-		recordings_path = "./html/recordings/";
+		recordings_path = g_strdup("./html/recordings/");
 	if(recordings_base == NULL)
-		recordings_base = "/recordings/";
+		recordings_base = g_strdup("/recordings/");
 	JANUS_LOG(LOG_VERB, "Recordings path: %s\n", recordings_path);
 	JANUS_LOG(LOG_VERB, "Recordings base: %s\n", recordings_base);
 	/* Create the folder, if needed */

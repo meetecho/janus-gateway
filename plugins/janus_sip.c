@@ -363,7 +363,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		}
 		if(local_ip == NULL) {
 			JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 for c-lines... (which is NOT going to work out of your machine)\n");
-			local_ip = "127.0.0.1";
+			local_ip = g_strdup("127.0.0.1");
 		} else {
 			JANUS_LOG(LOG_VERB, "Going to use %s as a c-line in the SDPs\n", local_ip);
 		}
