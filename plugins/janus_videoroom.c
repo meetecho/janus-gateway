@@ -1351,7 +1351,8 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				if(feeds && json_array_size(feeds) > 0) {
-					int i=0, problem = 0;
+					unsigned int i = 0;
+					int problem = 0;
 					for(i=0; i<json_array_size(feeds); i++) {
 						json_t *feed = json_array_get(feeds, i);
 						if(!feed || !json_is_integer(feed)) {
@@ -1622,7 +1623,8 @@ static void *janus_videoroom_handler(void *data) {
 					sprintf(error_cause, "Invalid element (feeds should be a non-empty array)");
 					goto error;
 				}
-				int i=0, problem = 0;
+				unsigned int i = 0;
+				int problem = 0;
 				for(i=0; i<json_array_size(feeds); i++) {
 					json_t *feed = json_array_get(feeds, i);
 					if(!feed || !json_is_integer(feed)) {
@@ -1670,7 +1672,8 @@ static void *janus_videoroom_handler(void *data) {
 					sprintf(error_cause, "Invalid element (feeds should be a non-empty array)");
 					goto error;
 				}
-				int i=0, error = 0;
+				unsigned int i = 0;
+				int error = 0;
 				for(i=0; i<json_array_size(feeds); i++) {
 					json_t *feed = json_array_get(feeds, i);
 					if(!feed || !json_is_integer(feed)) {

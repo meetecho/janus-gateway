@@ -83,7 +83,7 @@ typedef struct janus_ice_component janus_ice_component;
 struct janus_ice_handle {
 	/*! \brief Opaque pointer to the gateway/peer session */
 	void *session;
-	/*! \brief Handle identifier */
+	/*! \brief Handle identifier, guaranteed to be non-zero */
 	guint64 handle_id;
 	/*! \brief Opaque application (plugin) pointer */
 	void *app;
@@ -102,11 +102,11 @@ struct janus_ice_handle {
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
 	/*! \brief libnice ICE audio ID */
-	gint audio_id;
+	guint audio_id;
 	/*! \brief libnice ICE video ID */
-	gint video_id;
+	guint video_id;
 	/*! \brief libnice ICE SCTP ID */
-	gint data_id;
+	guint data_id;
 	/*! \brief Number of streams */
 	gint streams_num;
 	/*! \brief GLib hash table of streams (IDs are the keys) */
