@@ -141,7 +141,6 @@ static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_videoroom_handler(void *data);
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
-char *string_replace(char *message, char *old, char *new, int *modified);
 
 typedef enum janus_videoroom_p_type {
 	janus_videoroom_p_type_none = 0,
@@ -1832,15 +1831,10 @@ static void *janus_videoroom_handler(void *data) {
 					audio_mline,					/* Audio m-line, if any */
 					video_mline);					/* Video m-line, if any */
 
-				int modified = 0;
-				char *newsdp = g_strdup(sdp), *tempsdp = NULL;
+				char *newsdp = g_strdup(sdp);
 				if(video && b == 0) {
 					/* Remove useless bandwidth attribute */
-					tempsdp = string_replace(newsdp, "b=AS:0\r\n", "", &modified);
-					if(modified) {
-						g_free(newsdp);
-						newsdp = tempsdp;
-					}
+					newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
 				}
 				/* Is this room recorded? */
 				if(videoroom->record) {
@@ -1866,11 +1860,7 @@ static void *janus_videoroom_handler(void *data) {
 				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, newsdp);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
-				tempsdp = string_replace(newsdp, "recvonly", "sendonly", &modified);
-				if(modified) {
-					g_free(newsdp);
-					newsdp = tempsdp;
-				}
+				newsdp = janus_string_replace(newsdp, "recvonly", "sendonly");
 				if(res != JANUS_OK) {
 					/* TODO Failed to negotiate? We should remove this publisher */
 				} else {
@@ -2109,15 +2099,10 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 		muxed_listener->room->room_name,	/* Video room name */
 		audio_mline,					/* Audio m-line, if any */
 		video_mline);					/* Video m-line, if any */
-	int modified = 0;
-	char *newsdp = g_strdup(sdp), *tempsdp = NULL;
+	char *newsdp = g_strdup(sdp);
 	if(video) {
 		/* Remove useless bandwidth attribute */
-		tempsdp = string_replace(newsdp, "b=AS:0\r\n", "", &modified);
-		if(modified) {
-			g_free(newsdp);
-			newsdp = tempsdp;
-		}
+		newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
 	}
 	/* How long will the gateway take to push the event? */
 	gint64 start = janus_get_monotonic_time();
@@ -2160,84 +2145,6 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 	if(gateway != NULL)	/* FIXME What about RTCP? */
 		gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
 	return;
-}
-
-/* Easy way to replace multiple occurrences of a string with another: ALWAYS creates a NEW string */
-char *string_replace(char *message, char *old, char *new, int *modified)
-{
-	if(!message || !old || !new || !modified)
-		return NULL;
-	*modified = 0;
-	if(!strstr(message, old)) {	/* Nothing to be done (old is not there) */
-		return message;
-	}
-	if(!strcmp(old, new)) {	/* Nothing to be done (old=new) */
-		return message;
-	}
-	if(strlen(old) == strlen(new)) {	/* Just overwrite */
-		char *outgoing = message;
-		char *pos = strstr(outgoing, old), *tmp = NULL;
-		int i = 0;
-		while(pos) {
-			i++;
-			memcpy(pos, new, strlen(new));
-			pos += strlen(old);
-			tmp = strstr(pos, old);
-			pos = tmp;
-		}
-		return outgoing;
-	} else {	/* We need to resize */
-		*modified = 1;
-		char *outgoing = strdup(message);
-		if(outgoing == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return NULL;
-		}
-		int diff = strlen(new) - strlen(old);
-		/* Count occurrences */
-		int counter = 0;
-		char *pos = strstr(outgoing, old), *tmp = NULL;
-		while(pos) {
-			counter++;
-			pos += strlen(old);
-			tmp = strstr(pos, old);
-			pos = tmp;
-		}
-		uint16_t oldlen = strlen(outgoing)+1, newlen = oldlen + diff*counter;
-		*modified = diff*counter;
-		if(diff > 0) {	/* Resize now */
-			tmp = realloc(outgoing, newlen);
-			if(!tmp)
-				return NULL;
-			outgoing = tmp;
-		}
-		/* Replace string */
-		pos = strstr(outgoing, old);
-		while(pos) {
-			if(diff > 0) {	/* Move to the right (new is larger than old) */
-				uint16_t len = strlen(pos)+1;
-				memmove(pos + diff, pos, len);
-				memcpy(pos, new, strlen(new));
-				pos += strlen(new);
-				tmp = strstr(pos, old);
-			} else {	/* Move to the left (new is smaller than old) */
-				uint16_t len = strlen(pos - diff)+1;
-				memmove(pos, pos - diff, len);
-				memcpy(pos, new, strlen(new));
-				pos += strlen(old);
-				tmp = strstr(pos, old);
-			}
-			pos = tmp;
-		}
-		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
-			tmp = realloc(outgoing, newlen);
-			if(!tmp)
-				return NULL;
-			outgoing = tmp;
-		}
-		outgoing[strlen(outgoing)] = '\0';
-		return outgoing;
-	}
 }
 
 
