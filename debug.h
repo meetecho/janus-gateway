@@ -52,7 +52,7 @@ extern int log_level;
 #define LOG_MAX LOG_DBG
 
 /*! \brief Coloured prefixes for errors and warnings logging. */
-static char *log_prefix[] = {
+static const char *log_prefix[] = {
 	"",
 	ANSI_COLOR_MAGENTA"[FATAL]"ANSI_COLOR_RESET" ",
 	ANSI_COLOR_RED"[ERR]"ANSI_COLOR_RESET" ",

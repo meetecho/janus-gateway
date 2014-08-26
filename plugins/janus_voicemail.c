@@ -602,7 +602,7 @@ static void *janus_voicemail_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
-			char *type = NULL;
+			const char *type = NULL;
 			if(!strcasecmp(msg->sdp_type, "offer"))
 				type = "answer";
 			if(!strcasecmp(msg->sdp_type, "answer"))
@@ -723,8 +723,8 @@ ogg_packet *op_opushead() {
 
 /* Manufacture a generic OpusTags packet */
 ogg_packet *op_opustags() {
-	char *identifier = "OpusTags";
-	char *vendor = "Janus VoiceMail plugin";
+	const char *identifier = "OpusTags";
+	const char *vendor = "Janus VoiceMail plugin";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
 	unsigned char *data = malloc(size);
 	ogg_packet *op = malloc(sizeof(*op));

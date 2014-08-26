@@ -1747,7 +1747,7 @@ static void *janus_videoroom_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
-			char *type = NULL;
+			const char *type = NULL;
 			if(!strcasecmp(msg->sdp_type, "offer")) {
 				/* We need to answer */
 				type = "answer";

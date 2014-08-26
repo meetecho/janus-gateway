@@ -161,8 +161,8 @@ void janus_handle_signal(int signum)
  * gateway is handled here.
  */
 ///@{
-int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp);
-json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, char *sdp_type, char *sdp);
+int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
+json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, const char *sdp_type, const char *sdp);
 void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_relay_data(janus_plugin_session *handle, char *buf, int len);
@@ -2332,7 +2332,7 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp) {
+int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
 	if(!plugin || !message)
 		return -1;
 	if(!handle || handle->stopped)
@@ -2399,7 +2399,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	return JANUS_OK;
 }
 
-json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, char *sdp_type, char *sdp) {
+json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
 	if(handle == NULL || handle->stopped || plugin == NULL || sdp_type == NULL || sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
@@ -3085,7 +3085,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load plugins */
-	char *path = "./plugins";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+	const char *path = "./plugins";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;

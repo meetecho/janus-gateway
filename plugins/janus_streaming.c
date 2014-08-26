@@ -725,7 +725,8 @@ static void *janus_streaming_handler(void *data) {
 		}
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
-		char *sdp_type = NULL, *sdp = NULL;
+		const char *sdp_type = NULL;
+		char *sdp = NULL;
 		if(!strcasecmp(request_text, "list")) {
 			result = json_object();
 			json_t *list = json_array();
