@@ -385,7 +385,7 @@ void janus_config_destroy(janus_config *config) {
 				g_free((gpointer)i->value);
 			tmp = i;
 			i = i->next;
-			g_free((gpointer)tmp);
+			free((gpointer)tmp);
 			tmp = NULL;
 		}
 	}
@@ -405,18 +405,18 @@ void janus_config_destroy(janus_config *config) {
 						g_free((gpointer)i->value);
 					tmp2 = i;
 					i = i->next;
-					g_free((gpointer)tmp2);
+					free((gpointer)tmp2);
 					tmp2 = NULL;
 				}
 			}
 			tmp = c;
 			c = c->next;
-			g_free((gpointer)tmp);
+			free((gpointer)tmp);
 			tmp = NULL;
 		}
 	}
 	if(config->name)
 		g_free((gpointer)config->name);
-	g_free((gpointer)config);
+	free((gpointer)config);
 	config = NULL;
 }
