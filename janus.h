@@ -172,7 +172,7 @@ int janus_process_success(janus_request_source *source, const char *transaction,
  * number of arguments, if needed; if format is NULL, a pre-configured string
  * associated with the error code is used
  * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_process_error(janus_request_source *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...);
+int janus_process_error(janus_request_source *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 ///@}
 
 
