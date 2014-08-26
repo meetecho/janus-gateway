@@ -1387,7 +1387,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			g_free(live_rtp->name);
 		if(description)
 			g_free(description);
-		if(live_rtp_source);
+		if(live_rtp_source)
 			g_free(live_rtp_source);
 		g_free(live_rtp);
 		return NULL;
@@ -1464,7 +1464,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 			g_free(file_source->name);
 		if(description)
 			g_free(description);
-		if(file_source_source);
+		if(file_source_source)
 			g_free(file_source_source);
 		g_free(file_source);
 		return NULL;

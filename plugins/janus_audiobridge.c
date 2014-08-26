@@ -937,7 +937,7 @@ static void *janus_audiobridge_handler(void *data) {
 			error = 0;
 			participant->decoder = opus_decoder_create(audiobridge->sampling_rate, 1, &error);
 			if(error != OPUS_OK) {
-				if(participant->display);
+				if(participant->display)
 					g_free(participant->display);
 				if(participant->encoder)
 					opus_encoder_destroy(participant->encoder);
