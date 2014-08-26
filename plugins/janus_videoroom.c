@@ -196,6 +196,8 @@ typedef struct janus_videoroom {
 GHashTable *rooms;
 janus_mutex rooms_mutex;
 
+static void janus_videoroom_free(janus_videoroom *room);
+
 typedef struct janus_videoroom_session {
 	janus_plugin_session *handle;
 	janus_videoroom_p_type participant_type;
@@ -227,6 +229,8 @@ typedef struct janus_videoroom_participant {
 	janus_mutex listeners_mutex;
 } janus_videoroom_participant;
 
+static void janus_videoroom_participant_free(janus_videoroom_participant *p);
+
 typedef struct janus_videoroom_listener {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
@@ -234,6 +238,8 @@ typedef struct janus_videoroom_listener {
 	struct janus_videoroom_listener_muxed *parent;	/* Overall subscriber, if this is a sub-listener in a Multiplexed one */
 	gboolean paused;
 } janus_videoroom_listener;
+
+static void janus_videoroom_listener_free(janus_videoroom_listener *l);
 
 typedef struct janus_videoroom_listener_muxed {
 	janus_videoroom_session *session;
@@ -319,7 +325,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL)
 		janus_config_print(config);
 
-	rooms = g_hash_table_new(NULL, NULL);
+	rooms = g_hash_table_new_full(NULL, NULL, NULL,
+	                              (GDestroyNotify) janus_videoroom_free);
 	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
@@ -390,7 +397,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				}
 			}
 			videoroom->destroy = 0;
-			videoroom->participants = g_hash_table_new(NULL, NULL);
+			videoroom->participants = g_hash_table_new_full(NULL, NULL, NULL,
+			                                                (GDestroyNotify) janus_videoroom_participant_free);
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
@@ -2227,4 +2235,41 @@ char *string_replace(char *message, char *old, char *new, int *modified)
 		outgoing[strlen(outgoing)] = '\0';
 		return outgoing;
 	}
+}
+
+
+/* Helper to free janus_videoroom structs. */
+static void janus_videoroom_free(janus_videoroom *room)
+{
+	g_free(room->room_name);
+	g_free(room->room_secret);
+	g_free(room->rec_dir);
+	g_hash_table_unref(room->participants);
+
+	free(room);
+}
+
+static void janus_videoroom_listener_free(janus_videoroom_listener *l)
+{
+	free(l);
+}
+
+static void janus_videoroom_participant_free(janus_videoroom_participant *p)
+{
+	g_free(p->display);
+	g_free(p->sdp);
+
+	if (p->arc) {
+		janus_recorder_free(p->arc);
+	}
+	if (p->vrc) {
+		janus_recorder_free(p->vrc);
+	}
+
+	g_slist_free_full(p->listeners,
+	                  (GDestroyNotify) janus_videoroom_listener_free);
+
+	janus_mutex_destroy(&p->listeners_mutex);
+
+	free(p);
 }
