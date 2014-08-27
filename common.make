@@ -6,7 +6,7 @@ OPTS = -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
        -Wwrite-strings -Wno-missing-field-initializers -Wno-unused-parameter \
        -Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
        -Wmissing-include-dirs -Waggregate-return -Wunused-but-set-variable \
-       -Warray-bounds
+       -Warray-bounds -Wold-style-definition
 GDB = -fstack-protector-all -g -ggdb -rdynamic #-gstabs
 
 %.o: %.c

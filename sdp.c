@@ -25,7 +25,7 @@ static su_home_t *home = NULL;
 
 
 /* SDP Initialization */
-int janus_sdp_init() {
+int janus_sdp_init(void) {
 	home = su_home_new(sizeof(su_home_t));
 	if(su_home_init(home) < 0) {
 		JANUS_LOG(LOG_FATAL, "Ops, error setting up sofia-sdp?\n");
@@ -34,7 +34,7 @@ int janus_sdp_init() {
 	return 0;
 }
 
-void janus_sdp_deinit() {
+void janus_sdp_deinit(void) {
 	su_home_deinit(home);
 	su_home_unref(home);
 	home = NULL;

@@ -438,7 +438,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	return 0;
 }
 
-void janus_videoroom_destroy() {
+void janus_videoroom_destroy(void) {
 	if(!initialized)
 		return;
 	stopping = 1;
@@ -460,27 +460,27 @@ void janus_videoroom_destroy() {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VIDEOROOM_NAME);
 }
 
-int janus_videoroom_get_version() {
+int janus_videoroom_get_version(void) {
 	return JANUS_VIDEOROOM_VERSION;
 }
 
-const char *janus_videoroom_get_version_string() {
+const char *janus_videoroom_get_version_string(void) {
 	return JANUS_VIDEOROOM_VERSION_STRING;
 }
 
-const char *janus_videoroom_get_description() {
+const char *janus_videoroom_get_description(void) {
 	return JANUS_VIDEOROOM_DESCRIPTION;
 }
 
-const char *janus_videoroom_get_name() {
+const char *janus_videoroom_get_name(void) {
 	return JANUS_VIDEOROOM_NAME;
 }
 
-const char *janus_videoroom_get_author() {
+const char *janus_videoroom_get_author(void) {
 	return JANUS_VIDEOROOM_AUTHOR;
 }
 
-const char *janus_videoroom_get_package() {
+const char *janus_videoroom_get_package(void) {
 	return JANUS_VIDEOROOM_PACKAGE;
 }
 

@@ -250,7 +250,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	return 0;
 }
 
-void janus_voicemail_destroy() {
+void janus_voicemail_destroy(void) {
 	if(!initialized)
 		return;
 	stopping = 1;
@@ -268,27 +268,27 @@ void janus_voicemail_destroy() {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VOICEMAIL_NAME);
 }
 
-int janus_voicemail_get_version() {
+int janus_voicemail_get_version(void) {
 	return JANUS_VOICEMAIL_VERSION;
 }
 
-const char *janus_voicemail_get_version_string() {
+const char *janus_voicemail_get_version_string(void) {
 	return JANUS_VOICEMAIL_VERSION_STRING;
 }
 
-const char *janus_voicemail_get_description() {
+const char *janus_voicemail_get_description(void) {
 	return JANUS_VOICEMAIL_DESCRIPTION;
 }
 
-const char *janus_voicemail_get_name() {
+const char *janus_voicemail_get_name(void) {
 	return JANUS_VOICEMAIL_NAME;
 }
 
-const char *janus_voicemail_get_author() {
+const char *janus_voicemail_get_author(void) {
 	return JANUS_VOICEMAIL_AUTHOR;
 }
 
-const char *janus_voicemail_get_package() {
+const char *janus_voicemail_get_package(void) {
 	return JANUS_VOICEMAIL_PACKAGE;
 }
 
@@ -689,7 +689,7 @@ void le16(unsigned char *p, int v) {
 }
 
 /* ;anufacture a generic OpusHead packet */
-ogg_packet *op_opushead() {
+ogg_packet *op_opushead(void) {
 	int size = 19;
 	unsigned char *data = malloc(size);
 	ogg_packet *op = malloc(sizeof(*op));
@@ -722,7 +722,7 @@ ogg_packet *op_opushead() {
 }
 
 /* Manufacture a generic OpusTags packet */
-ogg_packet *op_opustags() {
+ogg_packet *op_opustags(void) {
 	const char *identifier = "OpusTags";
 	const char *vendor = "Janus VoiceMail plugin";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;

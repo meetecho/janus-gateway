@@ -95,11 +95,11 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 
 
 static SSL_CTX *ssl_ctx = NULL;
-SSL_CTX *janus_dtls_get_ssl_ctx() {
+SSL_CTX *janus_dtls_get_ssl_ctx(void) {
 	return ssl_ctx;
 }
 static gchar local_fingerprint[160];
-gchar *janus_dtls_get_local_fingerprint() {
+gchar *janus_dtls_get_local_fingerprint(void) {
 	return (gchar *)local_fingerprint;
 }
 

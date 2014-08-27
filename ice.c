@@ -32,10 +32,10 @@
 static char *janus_stun_server;
 static uint16_t janus_stun_port;
 
-char *janus_ice_get_stun_server() {
+char *janus_ice_get_stun_server(void) {
 	return janus_stun_server;
 }
-uint16_t janus_ice_get_stun_port() {
+uint16_t janus_ice_get_stun_port(void) {
 	return janus_stun_port;
 }
 

@@ -97,11 +97,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 /* Certificates */
 static char *server_pem = NULL;
-gchar *janus_get_server_pem() {
+gchar *janus_get_server_pem(void) {
 	return server_pem;
 }
 static char *server_key = NULL;
-gchar *janus_get_server_key() {
+gchar *janus_get_server_key(void) {
 	return server_key;
 }
 
@@ -109,11 +109,11 @@ gchar *janus_get_server_key() {
 /* Information */
 static gchar *info_text = NULL;
 static gchar *local_ip = NULL;
-gchar *janus_get_local_ip() {
+gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
 static gchar *public_ip = NULL;
-gchar *janus_get_public_ip() {
+gchar *janus_get_public_ip(void) {
 	/* Fallback to the local IP, if we have no public one */
 	return public_ip ? public_ip : local_ip;
 }
@@ -125,7 +125,7 @@ void janus_set_public_ip(const char *ip) {
 	public_ip = g_strdup(ip);
 }
 static gint stop = 0;
-gint janus_is_stopping() {
+gint janus_is_stopping(void) {
 	return stop;
 }
 
