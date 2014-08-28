@@ -322,20 +322,8 @@ void janus_session_free(janus_session *session) {
 	}
 	if(session->messages != NULL) {
 		janus_mutex_lock(&session->qmutex);
-		if(!g_queue_is_empty(session->messages)) {
-			janus_http_event *event = NULL;
-			while(!g_queue_is_empty(session->messages)) {
-				event = g_queue_pop_head(session->messages);
-				if(event != NULL) {
-					if(event->payload && event->allocated) {
-						g_free(event->payload);
-						event->payload = NULL;
-					}
-					g_free(event);
-				}
-			}
-		}
-		g_queue_free (session->messages);
+		g_queue_free_full (session->messages,
+		                   (GDestroyNotify) janus_http_event_free);
 		janus_mutex_unlock(&session->qmutex);
 		session->messages = NULL;
 	}
@@ -2200,18 +2188,16 @@ void *janus_wss_thread(void *data) {
 					continue;
 				}
 				janus_mutex_lock(&session->qmutex);
-				if(!g_queue_is_empty(session->messages)) {
-					while(!g_queue_is_empty(session->messages)) {
-						janus_http_event *event = g_queue_pop_head(session->messages);
-						if(!client->destroy && session && !session->destroy && !stop && event && event->payload) {
-							/* Gotcha! */
-							JANUS_LOG(LOG_VERB, "#%d: Sending event (%zu bytes)...\n", fd, strlen(event->payload));
-							int res = libwebsock_send_text(client->state, event->payload);
-							JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
-						}
+				janus_http_event *event;
+				while ((event = g_queue_pop_head(session->messages)) != NULL) {
+					if(!client->destroy && session && !session->destroy && !stop && event && event->payload) {
+						/* Gotcha! */
+						JANUS_LOG(LOG_VERB, "#%d: Sending event (%zu bytes)...\n", fd, strlen(event->payload));
+						int res = libwebsock_send_text(client->state, event->payload);
+						JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
 					}
 				}
-				if(g_queue_is_empty(session->messages) && session->timeout) {
+				if(session->timeout) {
 					/* Close the websocket */
 					janus_mutex_unlock(&session->qmutex);
 					libwebsock_close(client->state);
@@ -3647,4 +3633,18 @@ gint main(int argc, char *argv[])
 
 	JANUS_PRINT("Bye!\n");
 	exit(0);
+}
+
+
+void janus_http_event_free(janus_http_event *event)
+{
+	if (event == NULL) {
+		return;
+	}
+
+	if (event->payload && event->allocated) {
+		g_free(event->payload);
+	}
+
+	free(event);
 }

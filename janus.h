@@ -65,6 +65,7 @@ typedef struct janus_http_event {
 	/*! \brief Whether the payload has been allocated (and thus needs to be freed) or not */
 	gint allocated:1;
 } janus_http_event;
+void janus_http_event_free(janus_http_event *event);
 
 
 /*! \brief Gateway-Client session */
