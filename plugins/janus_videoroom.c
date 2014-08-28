@@ -156,7 +156,7 @@ typedef struct janus_videoroom_message {
 	char *sdp_type;
 	char *sdp;
 } janus_videoroom_message;
-GQueue *messages;
+static GAsyncQueue *messages = NULL;
 
 void janus_videoroom_message_free(janus_videoroom_message *msg);
 void janus_videoroom_message_free(janus_videoroom_message *msg) {
@@ -329,7 +329,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
-	messages = g_queue_new();
+
+	messages = g_async_queue_new();
+
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
@@ -446,15 +448,22 @@ void janus_videoroom_destroy(void) {
 		g_thread_join(handler_thread);
 	}
 	handler_thread = NULL;
+
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
+
 	janus_mutex_lock(&rooms_mutex);
 	g_hash_table_destroy(rooms);
-	janus_mutex_unlock(&rooms_mutex);
-	g_queue_free(messages);
 	rooms = NULL;
+	janus_mutex_unlock(&rooms_mutex);
+	janus_mutex_destroy(&rooms_mutex);
+
+	g_async_queue_unref(messages);
+	messages = NULL;
+
 	initialized = 0;
 	stopping = 0;
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VIDEOROOM_NAME);
@@ -588,7 +597,8 @@ void janus_videoroom_handle_message(janus_plugin_session *handle, char *transact
 	msg->message = message;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
-	g_queue_push_tail(messages, msg);
+
+	g_async_queue_push(messages, msg);
 }
 
 void janus_videoroom_setup_media(janus_plugin_session *handle) {
@@ -852,10 +862,11 @@ static void *janus_videoroom_handler(void *data) {
 		return NULL;
 	}
 	while(initialized && !stopping) {
-		if(!messages || (msg = g_queue_pop_head(messages)) == NULL) {
+		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
 		}
+
 		janus_videoroom_session *session = (janus_videoroom_session *)msg->handle->plugin_handle;	
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
