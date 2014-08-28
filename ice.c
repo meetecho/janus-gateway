@@ -307,7 +307,6 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
-		g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
 		janus_mutex_unlock(&session->mutex);
 		return 0;
 	}
@@ -316,7 +315,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	int error = 0;
 	handle->app_handle->stopped = 1;	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
 	plugin_t->destroy_session(handle->app_handle, &error);
-	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("detached"));

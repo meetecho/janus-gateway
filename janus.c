@@ -288,20 +288,22 @@ gint janus_session_destroy(guint64 session_id) {
 		return -1;
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
-	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+	if (session->ice_handles != NULL) {
+		GHashTableIter iter;
+		gpointer value;
+
 		/* Remove all handles */
-		GList *handles_list = g_hash_table_get_values(session->ice_handles);
-		GList *h = handles_list;
-		while(h) {
-			janus_ice_handle *handle = (janus_ice_handle *)h->data;
+		g_hash_table_iter_init(&iter, session->ice_handles);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_ice_handle *handle = value;
+
 			if(!handle || stop) {
-				h = h->next;
 				continue;
 			}
+
 			janus_ice_handle_destroy(session, handle->handle_id);
-			h = h->next;
+			g_hash_table_iter_remove(&iter);
 		}
-		g_list_free(handles_list);
 	}
 
 	/* TODO Actually destroy session */
@@ -875,6 +877,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if((error = janus_ice_handle_attach_plugin(session, handle_id, plugin_t)) != 0) {
 			/* TODO Make error struct to pass verbose information */
 			janus_ice_handle_destroy(session, handle_id);
+			janus_mutex_lock(&session->mutex);
+			g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+			janus_mutex_unlock(&session->mutex);
+
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
 			goto jsondone;
 		}
@@ -936,8 +942,12 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
 			goto jsondone;
 		}
-		int error = 0;
-		if((error = janus_ice_handle_destroy(session, handle_id)) != 0) {
+		int error = janus_ice_handle_destroy(session, handle_id);
+		janus_mutex_lock(&session->mutex);
+		g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+		janus_mutex_unlock(&session->mutex);
+
+		if(error != 0) {
 			/* TODO Make error struct to pass verbose information */
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
 			/* TODO Delete handle instance */
@@ -1652,22 +1662,27 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
+
 		/* List handles */
+		GHashTableIter iter;
+		gpointer value;
 		json_t *list = json_array();
+
 		janus_mutex_lock(&session->mutex);
-		GList *handles_list = g_hash_table_get_values(session->ice_handles);
-		GList *h = handles_list;
-		while(h) {
-			janus_ice_handle *handle = (janus_ice_handle *)h->data;
-			if(session == NULL) {
-				h = h->next;
+
+		g_hash_table_iter_init(&iter, session->ice_handles);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_ice_handle *handle = value;
+
+			if(handle == NULL) {
 				continue;
 			}
+
 			json_array_append_new(list, json_integer(handle->handle_id));
-			h = h->next;
 		}
-		g_list_free(handles_list);
+
 		janus_mutex_unlock(&session->mutex);
+
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
