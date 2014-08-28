@@ -197,22 +197,25 @@ void *janus_sessions_watchdog(void *data) {
 	gint64 now = 0;
 	while(!stop) {
 		janus_mutex_lock(&sessions_mutex);
-		if(sessions != NULL && g_hash_table_size(sessions) > 0) {
+		if(sessions != NULL) {
+			GHashTableIter iter;
+			gpointer value;
+
 			/* Iterate on all the sessions and check the last activity */
 			now = janus_get_monotonic_time();
-			GList *sessions_list = g_hash_table_get_values(sessions);
-			GList *s = sessions_list;
-			while(s) {
-				janus_session *session = (janus_session *)s->data;
+
+			g_hash_table_iter_init(&iter, sessions);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+
 				if(!session || session->destroy || stop) {
-					s = s->next;
 					continue;
 				}
+
 				if(now-session->last_activity >= (SESSION_TIMEOUT+3)*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the session only after a few seconds */
-					janus_mutex_unlock(&sessions_mutex);
 					janus_session_destroy(session->session_id);
-					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_iter_remove(&iter);
 				} else if(now-session->last_activity >= SESSION_TIMEOUT*G_USEC_PER_SEC && !session->timeout) {
 					/* Timeout! */
 					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
@@ -227,7 +230,6 @@ void *janus_sessions_watchdog(void *data) {
 					janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
 					if(notification == NULL) {
 						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						s = s->next;
 						continue;
 					}
 					notification->code = 200;
@@ -236,9 +238,7 @@ void *janus_sessions_watchdog(void *data) {
 					g_async_queue_push(session->messages, notification);
 					session->timeout = 1;
 				}
-				s = s->next;
 			}
-			g_list_free(sessions_list);
 		}
 		janus_mutex_unlock(&sessions_mutex);
 		g_usleep(2000000);
@@ -281,6 +281,7 @@ janus_session *janus_session_find(guint64 session_id) {
 	return session;
 }
 
+/* Destroys a session but does not remove it from the sessions hash table. */
 gint janus_session_destroy(guint64 session_id) {
 	janus_session *session = janus_session_find(session_id);
 	if(session == NULL)
@@ -302,9 +303,7 @@ gint janus_session_destroy(guint64 session_id) {
 		}
 		g_list_free(handles_list);
 	}
-	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
-	janus_mutex_unlock(&sessions_mutex);
+
 	/* TODO Actually destroy session */
 	return 0;
 }
@@ -912,6 +911,11 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		}
 #endif
 		janus_session_destroy(session_id);	/* FIXME Should we check if this actually succeeded, or can we ignore it? */
+
+		janus_mutex_lock(&sessions_mutex);
+		g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
+		janus_mutex_unlock(&sessions_mutex);
+
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
