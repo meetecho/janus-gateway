@@ -327,7 +327,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
 
-	messages = g_async_queue_new();
+	messages = g_async_queue_new_full((GDestroyNotify) janus_videoroom_message_free);
 
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
