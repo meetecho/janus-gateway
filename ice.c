@@ -330,9 +330,8 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		notification->code = 200;
 		notification->payload = event_text;
 		notification->allocated = 1;
-		janus_mutex_lock(&session->qmutex);
-		g_queue_push_tail(session->messages, notification);
-		janus_mutex_unlock(&session->qmutex);
+
+		g_async_queue_push(session->messages, notification);
 	}
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
@@ -618,9 +617,8 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			notification->code = 200;
 			notification->payload = event_text;
 			notification->allocated = 1;
-			janus_mutex_lock(&session->qmutex);
-			g_queue_push_tail(session->messages, notification);
-			janus_mutex_unlock(&session->qmutex);
+
+			g_async_queue_push(session->messages, notification);
 		}
 	}
 }
@@ -1450,7 +1448,6 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	notification->code = 200;
 	notification->payload = event_text;
 	notification->allocated = 1;
-	janus_mutex_lock(&session->qmutex);
-	g_queue_push_tail(session->messages, notification);
-	janus_mutex_unlock(&session->qmutex);
+
+	g_async_queue_push(session->messages, notification);
 }

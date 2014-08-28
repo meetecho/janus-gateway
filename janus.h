@@ -75,9 +75,7 @@ typedef struct janus_session {
 	/*! \brief Map of handles this session is managing */
 	GHashTable *ice_handles;
 	/*! \brief Queue of outgoing messages to push */
-	GQueue *messages;
-	/*! \brief Mutex to lock/unlock the messages queue */
-	janus_mutex qmutex;
+	GAsyncQueue *messages;
 	/*! \brief Time of the last activity on the session */
 	gint64 last_activity;
 	/*! \brief Flag to trigger a lazy session destruction */

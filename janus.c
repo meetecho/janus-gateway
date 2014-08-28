@@ -233,10 +233,8 @@ void *janus_sessions_watchdog(void *data) {
 					notification->code = 200;
 					notification->payload = event_text;
 					notification->allocated = 1;
-					janus_mutex_lock(&session->qmutex);
-					g_queue_push_tail(session->messages, notification);
+					g_async_queue_push(session->messages, notification);
 					session->timeout = 1;
-					janus_mutex_unlock(&session->qmutex);
 				}
 				s = s->next;
 			}
@@ -266,10 +264,9 @@ janus_session *janus_session_create(guint64 session_id) {
 		return NULL;
 	}
 	session->session_id = session_id;
-	session->messages = g_queue_new();
+	session->messages = g_async_queue_new_full((GDestroyNotify) janus_http_event_free);
 	session->destroy = 0;
 	session->last_activity = janus_get_monotonic_time();
-	janus_mutex_init(&session->qmutex);
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
@@ -321,10 +318,7 @@ void janus_session_free(janus_session *session) {
 		session->ice_handles = NULL;
 	}
 	if(session->messages != NULL) {
-		janus_mutex_lock(&session->qmutex);
-		g_queue_free_full (session->messages,
-		                   (GDestroyNotify) janus_http_event_free);
-		janus_mutex_unlock(&session->qmutex);
+		g_async_queue_unref (session->messages);
 		session->messages = NULL;
 	}
 	janus_mutex_unlock(&session->mutex);
@@ -607,9 +601,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		JANUS_LOG(LOG_VERB, "Session %"SCNu64" found... returning up to %d messages\n", session->session_id, max_events);
 		/* Handle GET, taking the first message from the list */
-		janus_mutex_lock(&session->qmutex);
-		janus_http_event *event = g_queue_pop_head(session->messages);
-		janus_mutex_unlock(&session->qmutex);
+		janus_http_event *event = g_async_queue_try_pop(session->messages);
 		if(event != NULL) {
 			if(max_events == 1) {
 				/* Return just this message and leave */
@@ -629,9 +621,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				event = NULL;
 				int events = 1;
 				while(events < max_events) {
-					janus_mutex_lock(&session->qmutex);
-					event = g_queue_pop_head(session->messages);
-					janus_mutex_unlock(&session->qmutex);
+					event = g_async_queue_try_pop(session->messages);
 					if(event == NULL)
 						break;
 					if(event->payload) {
@@ -1826,9 +1816,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 	gboolean found = FALSE;
 	/* We have a timeout for the long poll: 30 seconds */
 	while(end-start < 30*G_USEC_PER_SEC) {
-		janus_mutex_lock(&session->qmutex);
-		event = g_queue_pop_head(session->messages);
-		janus_mutex_unlock(&session->qmutex);
+		event = g_async_queue_try_pop(session->messages);
 		if(!session || session->destroy || stop || event != NULL) {
 			if(event == NULL)
 				break;
@@ -1851,9 +1839,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 				event = NULL;
 				int events = 1;
 				while(events < max_events) {
-					janus_mutex_lock(&session->qmutex);
-					event = g_queue_pop_head(session->messages);
-					janus_mutex_unlock(&session->qmutex);
+					event = g_async_queue_try_pop(session->messages);
 					if(event == NULL)
 						break;
 					if(event->payload) {
@@ -2187,9 +2173,8 @@ void *janus_wss_thread(void *data) {
 					s = s->next;
 					continue;
 				}
-				janus_mutex_lock(&session->qmutex);
 				janus_http_event *event;
-				while ((event = g_queue_pop_head(session->messages)) != NULL) {
+				while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
 					if(!client->destroy && session && !session->destroy && !stop && event && event->payload) {
 						/* Gotcha! */
 						JANUS_LOG(LOG_VERB, "#%d: Sending event (%zu bytes)...\n", fd, strlen(event->payload));
@@ -2199,12 +2184,10 @@ void *janus_wss_thread(void *data) {
 				}
 				if(session->timeout) {
 					/* Close the websocket */
-					janus_mutex_unlock(&session->qmutex);
 					libwebsock_close(client->state);
 					//~ janus_wss_onclose(client->state);
 					break;
 				}
-				janus_mutex_unlock(&session->qmutex);
 				s = s->next;
 			}
 			g_list_free(sessions_list);
@@ -2379,9 +2362,9 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	notification->code = 200;
 	notification->payload = reply_text;
 	notification->allocated = 1;
-	janus_mutex_lock(&session->qmutex);
-	g_queue_push_tail(session->messages, notification);
-	janus_mutex_unlock(&session->qmutex);
+
+	g_async_queue_push(session->messages, notification);
+
 	return JANUS_OK;
 }
 
@@ -2629,9 +2612,8 @@ void janus_close_pc(janus_plugin_session *handle) {
 	notification->code = 200;
 	notification->payload = event_text;
 	notification->allocated = 1;
-	janus_mutex_lock(&session->qmutex);
-	g_queue_push_tail(session->messages, notification);
-	janus_mutex_unlock(&session->qmutex);
+
+	g_async_queue_push(session->messages, notification);
 	
 	/* Notify the plugin */
 	janus_plugin *plugin = (janus_plugin *)ice_handle->app;
