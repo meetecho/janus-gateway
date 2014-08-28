@@ -236,12 +236,14 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 	handle->app = NULL;
 	handle->app_handle = NULL;
 	janus_mutex_init(&handle->mutex);
-		/* Setup other stuff */
+
+	/* Set up other stuff. */
+	janus_mutex_lock(&session->mutex);
 	if(session->ice_handles == NULL)
 		session->ice_handles = g_hash_table_new(NULL, NULL);
-	janus_mutex_lock(&session->mutex);
 	g_hash_table_insert(session->ice_handles, GUINT_TO_POINTER(handle_id), handle);
 	janus_mutex_unlock(&session->mutex);
+
 	return handle;
 }
 
