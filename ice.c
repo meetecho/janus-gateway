@@ -308,6 +308,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
 		g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+		janus_mutex_unlock(&session->mutex);
 		return 0;
 	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
