@@ -158,25 +158,22 @@ typedef struct janus_videoroom_message {
 } janus_videoroom_message;
 static GAsyncQueue *messages = NULL;
 
-void janus_videoroom_message_free(janus_videoroom_message *msg);
-void janus_videoroom_message_free(janus_videoroom_message *msg) {
+static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 	if(!msg)
 		return;
+
 	msg->handle = NULL;
-	if(msg->transaction != NULL)
-		g_free(msg->transaction);
+
+	g_free(msg->transaction);
 	msg->transaction = NULL;
-	if(msg->message != NULL)
-		g_free(msg->message);
+	g_free(msg->message);
 	msg->message = NULL;
-	if(msg->sdp_type != NULL)
-		g_free(msg->sdp_type);
+	g_free(msg->sdp_type);
 	msg->sdp_type = NULL;
-	if(msg->sdp != NULL)
-		g_free(msg->sdp);
+	g_free(msg->sdp);
 	msg->sdp = NULL;
+
 	g_free(msg);
-	msg = NULL;
 }
 
 
