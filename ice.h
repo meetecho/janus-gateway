@@ -173,6 +173,8 @@ struct janus_ice_component {
 	guint stream_id;
 	/*! \brief libnice ICE component ID */
 	guint component_id;
+	/*! \brief libnice ICE component state */
+	guint state;
 	/*! \brief GLib list of libnice remote candidates for this component */
 	GSList *candidates;
 	/*! \brief GLib list of local candidates for this component (summary) */

@@ -4,11 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: About Janus</title>
+<title>Janus WebRTC Gateway: Admin/Monitor</title>
 <script type="text/javascript" src="jquery.min.js" ></script>
 <script type="text/javascript" src="js/bootstrap.js"></script>
+<script type="text/javascript" src="js/bootbox.min.js"></script>
+<script type="text/javascript" src="admin.js"></script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
 </head>
 <body>
 	
@@ -26,10 +29,10 @@
 	</div>
 	<div class="navbar-collapse collapse">
 		<ul class="nav navbar-nav">
-			<li class="active"><a href="index.html">Home</a></li>
-			<li class="dropdown"><a href="#" class="dropdown-toggle" data-toggle="dropdown">Demos <b class="caret"></b></a>
+			<li><a href="index.html">Home</a></li>
+			<li class="dropdown active"><a href="#" class="dropdown-toggle" data-toggle="dropdown">Demos <b class="caret"></b></a>
 				<ul class="dropdown-menu">
-					<li><a href="demos.html">Index</a></li>
+					<li class="active"><a href="demos.html">Index</a></li>
 					<li class="divider"></li>
 					<li><a href="echotest.html">Echo Test</a></li>
 					<li><a href="streamingtest.html">Streaming</a></li>
@@ -59,25 +62,28 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>About</h1>
+				<h1>Janus WebRTC Gateway: Admin/Monitor</h1>
 			</div>
-			<h3>Janus: the general purpose WebRTC Gateway</h3>
-			<p>Janus is a WebRTC Gateway developed by <a href="http://www.meetecho.com">Meetecho</a>
-			conceived to be a general purpose one. As such, it doesn't provide any functionality per
-			se other than implementing the means to set up a WebRTC media communication with a browser,
-			exchanging JSON messages with it, and relaying RTP/RTCP and messages between browsers and
-			the server-side application logic they're attached to. Any specific feature/application is provided by server side
-			plugins, that browsers can then contact via the gateway to take advantage of the
-			functionality they provide. Example of such plugins can be implementations of applications
-			like echo tests, conference bridges, media recorders, SIP gateways and the like.</p>
-			<p>The reason for this is simple: we wanted something that would have a
-			<code>small footprint</code> (hence a C implementation) and that we could only
-			equip with what was <code>really needed</code> (hence pluggable modules). That is,
-			something that would allow us to deploy either a full-fledged WebRTC
-			gateway on the cloud, or a small nettop/box to handle a specific use case.</p>
-			<div class="alert alert-info">Check the <a class="alert-link" href="docs">Documentation</a>
-			for more details about Janus, or check out the <a class="alert-link" href="demos.html">Demos</a>
-			to see it in action.</div>
+			<p>This is just an example of how you can build an UI on top of the
+			existing <code>Admin/Monitor</code> interface. This page will only
+			work as it is if you enabled the API (which is disabled by default)
+			and you're using the default values. Edit the backend settings in
+			the <code>admin.js</code> JavaScript code to adapt it to your
+			configuration if you changed anything.</p>
+			<div id="sessions" class="col-md-2">
+				<h4>Sessions <i id="update-sessions" class="fa fa-refresh" title="Update list of sessions"></i></h4>
+				<div id="sessions-list" class="list-group">
+				</div>
+			</div>
+			<div id="handles" class="col-md-2">
+				<h4>Handles <i id="update-handles" class="fa fa-refresh" title="Update list of handles"></i></h4>
+				<div id="handles-list" class="list-group">
+				</div>
+			</div>
+			<div id="info" class="col-md-8">
+				<h4>Handle Info <i id="update-handle" class="fa fa-refresh" title="Update handle info"></i></h4>
+				<pre id="handle-info"></pre>
+			</div>
 		</div>
 	</div>
 

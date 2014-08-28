@@ -553,19 +553,20 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		handle ? handle->handle_id : -1, component_id, stream_id, state, janus_get_ice_state_name(state));
 	if(!handle)
 		return;
+	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
+	if(!stream) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
+		return;
+	}
+	janus_ice_component *component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(component_id));
+	if(!component) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component %d in stream %d??\n", handle->handle_id, component_id, stream_id);
+		return;
+	}
+	component->state = state;
 	if(state == NICE_COMPONENT_STATE_CONNECTED) {	/* FIXME Was NICE_COMPONENT_STATE_READY, but this gives us a working pair anyway */
 		/* Now we can start the DTLS handshake */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Component is ready, starting DTLS handshake...\n", handle->handle_id);
-		janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
-		if(!stream) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
-			return;
-		}
-		janus_ice_component *component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(component_id));
-		if(!component) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component %d in stream %d??\n", handle->handle_id, component_id, stream_id);
-			return;
-		}
 		/* Have we been here before? (might happen, when trickling) */
 		if(component->dtls != NULL)
 			return;
@@ -1199,7 +1200,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->stream = data_stream;
 		data_component->candidates = NULL;
 		data_component->local_candidates = NULL;
-		data_component->remote_candidates = NULL;
 		janus_mutex_init(&data_component->mutex);
 		g_hash_table_insert(data_stream->components, GUINT_TO_POINTER(1), data_component);
 		data_stream->rtp_component = data_component;	/* We use the component called 'RTP' for data */

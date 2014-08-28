@@ -44,6 +44,8 @@
 					<li><a href="audiobridgetest.html">Audio Conference</a></li>
 					<li><a href="voicemailtest.html">Voice Mail</a></li>
 					<li class="active"><a href="screensharingtest.html">Screen Sharing</a></li>
+					<li class="divider"></li>
+					<li><a href="admin.html">Admin/Monitor</a></li>
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
@@ -83,7 +85,9 @@
 						<div class="alert alert-info"><b>Note well!</b> Sharing your screen only works if you're
 						using Chrome. Besides, if you didn't already, you'll need to enable the Chrome flag
 						<b>chrome://flags/#enable-usermedia-screen-capture</b>
-						or otherwise you'll get a permission error. (PS: we're already working on <i>chooseDesktopMedia</i>
+						or otherwise you'll get a permission error. Besides, recent versions of Chrome may only
+						support the feature if you explicitly pass the <code>--enable-usermedia-screen-capturing</code>
+						parameter on the command line (PS: we're already working on <i>chooseDesktopMedia</i>
 						support, so stay tuned for that).</div>
 						<div class="alert alert-info"><b>Note well (part 2)!</b> If you want to share your screen, you'll need to open
 						the <b>HTTPS</b> version of this page. If the gateway is not behind the same webserver

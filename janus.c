@@ -2270,6 +2270,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		return NULL;
 	json_t *c = json_object();
 	json_object_set_new(c, "id", json_integer(component->component_id));
+	json_object_set_new(c, "state", json_string(janus_get_ice_state_name(component->state)));
 	if(component->local_candidates) {
 		json_t *cs = json_array();
 		GSList *candidates = component->local_candidates, *i = NULL;
