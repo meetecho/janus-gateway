@@ -834,10 +834,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	/* What is this? */
 	if(!strcasecmp(message_text, "keepalive")) {
 		/* Just a keep-alive message, reply with an ack */
-		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session->session_id);
+		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session_id);
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("ack"));
-		json_object_set_new(reply, "session_id", json_integer(session->session_id));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -887,7 +887,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
-		json_object_set_new(reply, "session_id", json_integer(session->session_id));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
