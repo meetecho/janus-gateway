@@ -1,5 +1,5 @@
-STUFF = $(shell pkg-config --cflags libavutil libavcodec libavformat ogg) -ldl
-LIBS = $(shell pkg-config --libs libavutil libavcodec libavformat ogg) -ldl
+STUFF = $(shell pkg-config --cflags glib-2.0 libavutil libavcodec libavformat ogg) -ldl
+LIBS = $(shell pkg-config --libs glib-2.0 libavutil libavcodec libavformat ogg) -ldl
 OBJS=janus-pp-rec.o pp-webm.o pp-opus.o
 BINS=janus-pp-rec
 
