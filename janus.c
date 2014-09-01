@@ -124,9 +124,9 @@ void janus_set_public_ip(const char *ip) {
 		g_free(public_ip);
 	public_ip = g_strdup(ip);
 }
-static gint stop = 0;
+static volatile gint stop = 0;
 gint janus_is_stopping(void) {
-	return stop;
+	return g_atomic_int_get(&stop);
 }
 
 
@@ -138,7 +138,7 @@ int log_level = 0;
 void janus_handle_signal(int signum);
 void janus_handle_signal(int signum)
 {
-	switch(stop) {
+	switch(g_atomic_int_get(&stop)) {
 		case 0:
 			JANUS_PRINT("Stopping gateway, please wait...\n");
 			break;
@@ -149,8 +149,8 @@ void janus_handle_signal(int signum)
 			JANUS_PRINT("Ok, leaving immediately...\n");
 			break;
 	}
-	stop++;
-	if(stop > 2)
+	g_atomic_int_inc(&stop);
+	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
 }
 
@@ -195,7 +195,7 @@ void *janus_sessions_watchdog(void *data);
 void *janus_sessions_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
 	gint64 now = 0;
-	while(!stop) {
+	while(!g_atomic_int_get(&stop)) {
 		janus_mutex_lock(&sessions_mutex);
 		if(sessions != NULL) {
 			GHashTableIter iter;
@@ -208,7 +208,7 @@ void *janus_sessions_watchdog(void *data) {
 			while (g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_session *session = value;
 
-				if(!session || session->destroy || stop) {
+				if(!session || session->destroy || g_atomic_int_get(&stop)) {
 					continue;
 				}
 
@@ -297,7 +297,7 @@ gint janus_session_destroy(guint64 session_id) {
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_ice_handle *handle = value;
 
-			if(!handle || stop) {
+			if(!handle || g_atomic_int_get(&stop)) {
 				continue;
 			}
 
@@ -1836,7 +1836,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 	/* We have a timeout for the long poll: 30 seconds */
 	while(end-start < 30*G_USEC_PER_SEC) {
 		event = g_async_queue_try_pop(session->messages);
-		if(!session || session->destroy || stop || event != NULL) {
+		if(!session || session->destroy || g_atomic_int_get(&stop) || event != NULL) {
 			if(event == NULL)
 				break;
 			/* Gotcha! */
@@ -2180,7 +2180,7 @@ void *janus_wss_thread(void *data) {
 	}
 	int fd = client->state->sockfd;
 	JANUS_LOG(LOG_INFO, "Joining WebSocket thread: #%d\n", fd);
-	while(!client->destroy && !stop) {
+	while(!client->destroy && !g_atomic_int_get(&stop)) {
 		janus_mutex_lock(&client->mutex);
 		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
 			/* Iterate on all the sessions handled by this WebSocket client */
@@ -2188,13 +2188,13 @@ void *janus_wss_thread(void *data) {
 			GList *s = sessions_list;
 			while(s) {
 				janus_session *session = (janus_session *)s->data;
-				if(client->destroy || !session || session->destroy || stop) {
+				if(client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
 					s = s->next;
 					continue;
 				}
 				janus_http_event *event;
 				while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
-					if(!client->destroy && session && !session->destroy && !stop && event && event->payload) {
+					if(!client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
 						/* Gotcha! */
 						JANUS_LOG(LOG_VERB, "#%d: Sending event (%zu bytes)...\n", fd, strlen(event->payload));
 						int res = libwebsock_send_text(client->state, event->payload);
@@ -3565,16 +3565,16 @@ gint main(int argc, char *argv[])
 	if(wss || swss) {
 		/* The libwebsock wait is our loop */
 		libwebsock_wait(wss ? wss : swss);
-		if(!stop)
+		if(!g_atomic_int_get(&stop))
 			janus_handle_signal(SIGINT);
 	} else {
-		while(!stop) {
+		while(!g_atomic_int_get(&stop)) {
 			/* Loop until we have to stop */
 			g_usleep(250000);
 		}
 	}
 #else
-	while(!stop) {
+	while(!g_atomic_int_get(&stop)) {
 		/* Loop until we have to stop */
 		g_usleep(250000);
 	}
