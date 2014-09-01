@@ -156,8 +156,8 @@ ogg_packet *op_opushead(void) {
 
 /* Manufacture a generic OpusTags packet */
 ogg_packet *op_opustags(void) {
-	char *identifier = "OpusTags";
-	char *vendor = "Janus post-processing";
+	const char *identifier = "OpusTags";
+	const char *vendor = "Janus post-processing";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
 	unsigned char *data = malloc(size);
 	ogg_packet *op = malloc(sizeof(*op));
