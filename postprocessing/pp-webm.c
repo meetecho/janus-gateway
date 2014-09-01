@@ -350,7 +350,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 }
 
 /* Close WebM file */
-void janus_pp_webm_close() {
+void janus_pp_webm_close(void) {
 	if(fctx != NULL)
 		av_write_trailer(fctx);
 	if(vStream->codec != NULL)

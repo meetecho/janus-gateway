@@ -122,7 +122,7 @@ void le16(unsigned char *p, int v) {
 }
 
 /* ;anufacture a generic OpusHead packet */
-ogg_packet *op_opushead() {
+ogg_packet *op_opushead(void) {
 	int size = 19;
 	unsigned char *data = malloc(size);
 	ogg_packet *op = malloc(sizeof(*op));
@@ -155,7 +155,7 @@ ogg_packet *op_opushead() {
 }
 
 /* Manufacture a generic OpusTags packet */
-ogg_packet *op_opustags() {
+ogg_packet *op_opustags(void) {
 	char *identifier = "OpusTags";
 	char *vendor = "Janus post-processing";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
@@ -213,7 +213,7 @@ void op_free(ogg_packet *op) {
 }
 
 /* Write out available ogg pages */
-int ogg_write() {
+int ogg_write(void) {
 	ogg_page page;
 	size_t written;
 
@@ -237,7 +237,7 @@ int ogg_write() {
 }
 
 /* Flush remaining ogg data */
-int ogg_flush() {
+int ogg_flush(void) {
 	ogg_page page;
 	size_t written;
 
