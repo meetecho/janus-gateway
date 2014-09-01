@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	fseek(file, 0L, SEEK_END);
-	size_t fsize = ftell(file);
+	long fsize = ftell(file);
 	fseek(file, 0L, SEEK_SET);
 	JANUS_LOG(LOG_INFO, "File is %zu bytes\n", fsize);
 
