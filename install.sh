@@ -152,7 +152,7 @@ fi
 if test $NOWEBSOCKETS -eq 0
 then
 	export WS_LIB="-lwebsock"
-	export HAVE_WS="-DHAVE_WS"
+	export HAVE_WEBSOCKETS="-DHAVE_WEBSOCKETS"
 	$MAKE wstest
 	if [ $? != 0 ]
 	then

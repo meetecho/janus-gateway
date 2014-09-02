@@ -26,7 +26,7 @@
 
 #include <jansson.h>
 #include <microhttpd.h>
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 #include <websock/websock.h>
 #endif
 
@@ -86,7 +86,7 @@ typedef struct janus_session {
 	janus_mutex mutex;
 } janus_session;
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /*! \brief WebSocket client session */
 typedef struct janus_websocket_client {
 	/*! \brief The libwebsock client instance */
@@ -212,7 +212,7 @@ void janus_ws_request_completed (void *cls, struct MHD_Connection *connection, v
 int janus_ws_notifier(janus_request_source *source, int max_events);
 ///@}
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /** @name Janus WebSockets server
  * \details Browsers can also make use WebSockets to make requests to the
  * gateway (as long as, of course, support for them has been built, since

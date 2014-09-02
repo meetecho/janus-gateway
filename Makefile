@@ -1,5 +1,5 @@
-STUFF = $(shell pkg-config --cflags glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP) $(HAVE_WS)
-LIBS = $(shell pkg-config --libs glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -lsrtp $(SCTP_LIB) $(WS_LIB) -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP) $(HAVE_WS)
+STUFF = $(shell pkg-config --cflags glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP) $(HAVE_WEBSOCKETS)
+LIBS = $(shell pkg-config --libs glib-2.0 nice libmicrohttpd jansson libssl libcrypto sofia-sip-ua ini_config) -ldl -lsrtp $(SCTP_LIB) $(WS_LIB) -D_GNU_SOURCE $(HAVE_PORTRANGE) $(HAVE_SCTP) $(HAVE_WEBSOCKETS)
 OBJS=janus.o cmdline.o config.o apierror.o rtcp.o dtls.o sctp.o ice.o sdp.o record.o utils.o
 BINS=janus
 

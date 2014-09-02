@@ -48,7 +48,7 @@ static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
 static char *ws_api_secret = NULL;
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /* libwebsock WS server */
 static libwebsock_context *wss = NULL, *swss = NULL;
 #endif
@@ -180,7 +180,7 @@ static janus_callbacks janus_handler_plugin =
 ///@}
 
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /* WebSocket sessions */
 static janus_mutex wss_mutex;
 static GHashTable *wss_sessions = NULL;
@@ -754,7 +754,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto jsondone;
 		}
 		session_id = session->session_id;
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Add the new session to the list of sessions created by this WS client */
 			janus_websocket_client *client = (janus_websocket_client *)source->source;
@@ -904,7 +904,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Remove the session from the list of sessions created by this WS client */
 			janus_websocket_client *client = (janus_websocket_client *)source->source;
@@ -1958,7 +1958,7 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		MHD_destroy_response(response);
 		return ret;
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		/* FIXME We should check the return value */
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		libwebsock_send_text(client->state, payload);
@@ -1999,7 +1999,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 				MHD_destroy_response(response);
 				return ret;
 			} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 				/* TODO We should send an error to the client... */
 				return MHD_NO;
 #else
@@ -2053,7 +2053,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		MHD_destroy_response(response);
 		return ret;
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		/* FIXME We should check the return value */
 		libwebsock_send_text(client->state, reply_text);
@@ -2069,7 +2069,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 }
 
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /* WebSockets */
 int janus_wss_onopen(libwebsock_client_state *state) {
 	JANUS_LOG(LOG_INFO, "WebSocket onopen: #%d\n", state->sockfd);
@@ -3156,7 +3156,7 @@ gint main(int argc, char *argv[])
 #else
 	json_object_set_new(info, "data_channels", json_integer(0));
 #endif
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	json_object_set_new(info, "websockets", json_integer(1));
 #else
 	json_object_set_new(info, "websockets", json_integer(0));
@@ -3336,7 +3336,7 @@ gint main(int argc, char *argv[])
 		}
 	}
 	/* Enable the websockets server, if enabled */
-#ifndef HAVE_WS
+#ifndef HAVE_WEBSOCKETS
 	JANUS_LOG(LOG_WARN, "WebSockets support not compiled\n");
 #else
 	item = janus_config_get_item_drilldown(config, "webserver", "ws");
@@ -3392,7 +3392,7 @@ gint main(int argc, char *argv[])
 	}
 #endif
 	/* Do we have anything up? */
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	if(!ws && !sws && !wss && !swss) {
 #else
 	if(!ws && !sws) {
@@ -3561,7 +3561,7 @@ gint main(int argc, char *argv[])
 		}
 	}
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	if(wss || swss) {
 		/* The libwebsock wait is our loop */
 		libwebsock_wait(wss ? wss : swss);
@@ -3607,7 +3607,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Destroying sessions...\n");
 	if(sessions != NULL)
 		g_hash_table_destroy(sessions);
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	if(wss_sessions != NULL)
 		g_hash_table_destroy(wss_sessions);
 #endif
