@@ -82,8 +82,10 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
 		if(last_seq == 0)
 			last_seq = tmp->seq;
-		if(tmp->seq < last_seq)
+		if(tmp->seq < last_seq) {
+			last_seq = tmp->seq;
 			steps++;
+		}
 		pos = tmp->seq-list->seq+1+steps*65535;
 		JANUS_LOG(LOG_VERB, "pos: %04"SCNu64", writing %d bytes out of %d\n", pos, bytes, tmp->len);
 		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
