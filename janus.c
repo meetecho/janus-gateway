@@ -161,13 +161,13 @@ void janus_handle_signal(int signum)
  * gateway is handled here.
  */
 ///@{
-int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
-json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, const char *sdp_type, const char *sdp);
-void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_relay_data(janus_plugin_session *handle, char *buf, int len);
-void janus_close_pc(janus_plugin_session *handle);
-void janus_end_session(janus_plugin_session *handle);
+int janus_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
+json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp);
+void janus_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
+void janus_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
+void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len);
+void janus_close_pc(janus_plugin_session *plugin_session);
+void janus_end_session(janus_plugin_session *plugin_session);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_push_event,
@@ -2563,45 +2563,45 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 	return jsep;
 }
 
-void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(!handle || handle->stopped || buf == NULL || len < 1)
+void janus_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
+	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
 		return;
-	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
-	janus_ice_relay_rtp(session, video, buf, len);
+	janus_ice_relay_rtp(handle, video, buf, len);
 }
 
-void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(!handle || handle->stopped || buf == NULL || len < 1)
+void janus_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
+	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
 		return;
-	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
-	janus_ice_relay_rtcp(session, video, buf, len);
+	janus_ice_relay_rtcp(handle, video, buf, len);
 }
 
-void janus_relay_data(janus_plugin_session *handle, char *buf, int len) {
-	if(!handle || handle->stopped || buf == NULL || len < 1)
+void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len) {
+	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
 		return;
-	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 #ifdef HAVE_SCTP
-	janus_ice_relay_data(session, buf, len);
+	janus_ice_relay_data(handle, buf, len);
 #else
 	JANUS_LOG(LOG_WARN, "Asked to relay data, but Data Channels support has not been compiled...\n");
 #endif
 }
 
-void janus_close_pc(janus_plugin_session *handle) {
+void janus_close_pc(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a PeerConnection */
-	if(!handle)
+	if(!plugin_session)
 		return;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
 		return;
 	janus_session *session = (janus_session *)ice_handle->session;
@@ -2637,14 +2637,14 @@ void janus_close_pc(janus_plugin_session *handle) {
 	/* Notify the plugin */
 	janus_plugin *plugin = (janus_plugin *)ice_handle->app;
 	if(plugin && plugin->hangup_media)
-		plugin->hangup_media(handle);
+		plugin->hangup_media(plugin_session);
 }
 
-void janus_end_session(janus_plugin_session *handle) {
+void janus_end_session(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a handle */
-	if(!handle)
+	if(!plugin_session)
 		return;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
 		return;
 	/* Destroy the handle */
