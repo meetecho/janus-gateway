@@ -1875,14 +1875,16 @@ static void *janus_videoroom_handler(void *data) {
 					/* Store the participant's SDP for interested listeners */
 					participant->sdp = newsdp;
 					/* Notify all other participants that there's a new boy in town */
+					json_t *list = json_array();
 					json_t *pl = json_object();
 					json_object_set_new(pl, "id", json_integer(participant->user_id));
 					if(participant->display)
 						json_object_set_new(pl, "display", json_string(participant->display));
+					json_array_append_new(list, pl);
 					json_t *pub = json_object();
 					json_object_set_new(pub, "videoroom", json_string("event"));
 					json_object_set_new(pub, "room", json_integer(participant->room->room_id));
-					json_object_set_new(pub, "newPublisher", pl);
+					json_object_set_new(pub, "publishers", list);
 					char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 					json_decref(pub);
 					GList *participants_list = g_hash_table_get_values(participant->room->participants);
