@@ -171,7 +171,7 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_por
 	socklen_t addrlen = sizeof(remote);
 	bytes = recvfrom(fd, buf, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
-	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) < 0) {
+	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
 		return -1;
 	}

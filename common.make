@@ -17,6 +17,9 @@ OPTS += -Wredundant-decls  # sophiasip also contains redundant declarations
 GDB = -fstack-protector-all -g -ggdb -rdynamic #-gstabs
 
 %.o: %.c
+ifndef INSTALLSH
+	$(error Please use the install.sh script to compile $(BINS))
+endif
 	$(CC) $(STUFF) -fPIC $(GDB) -c $< -o $@ $(OPTS) $(CFLAGS)
 
 $(BINS): $(OBJS)

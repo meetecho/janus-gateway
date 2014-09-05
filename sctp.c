@@ -79,7 +79,7 @@ janus_sctp_message *janus_sctp_message_create(char *buffer, size_t length);
 void janus_sctp_message_destroy(janus_sctp_message *message);
 
 static gboolean sctp_running;
-int janus_sctp_init() {
+int janus_sctp_init(void) {
 	/* Initialize the SCTP stack */
 	usrsctp_init(0, janus_sctp_data_to_dtls, NULL);
 	sctp_running = TRUE;
@@ -112,7 +112,7 @@ int janus_sctp_init() {
 	return 0;
 }
 
-void janus_sctp_deinit() {
+void janus_sctp_deinit(void) {
 	usrsctp_finish();
 	sctp_running = FALSE;
 }
@@ -478,7 +478,7 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	req.priority = htons(0); /* XXX: add support */
 	req.reliability_params = htonl((uint32_t)pr_value);
 	req.label_length = htons(16);
-	char *label = "JanusDataChannel";
+	const char *label = "JanusDataChannel";
 	memcpy(&req.label, label, 16);
 	memset(&sndinfo, 0, sizeof(struct sctp_sndinfo));
 	sndinfo.snd_sid = stream;

@@ -8,9 +8,6 @@ all: cmdline janus plugins
 .PHONY: plugins docs sctptest wstest
 
 plugins:
-ifndef INSTALLSH
-	$(error Please use the install.sh script to compile Janus)
-endif
 	$(MAKE) -C plugins
 
 docs:
@@ -25,7 +22,7 @@ sctptest:
 wstest:
 	$(MAKE) -C wstest
 
-clean :
+clean:
 	rm -f janus *.o plugins/*.o plugins/*.so
 	rm -f sctptest/test sctptest/*.o
 	rm -f wstest/test wstest/*.o

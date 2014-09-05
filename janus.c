@@ -3390,7 +3390,7 @@ gint main(int argc, char *argv[])
 		}
 		char port[50];
 		g_sprintf(port, "%d", wsport);
-		libwebsock_bind(wss, "0.0.0.0", port);
+		libwebsock_bind(wss, (char *)"0.0.0.0", port);
 		JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
 		wss->onopen = janus_wss_onopen;
 		wss->onmessage = janus_wss_onmessage;
@@ -3417,7 +3417,7 @@ gint main(int argc, char *argv[])
 			}
 			char port[50];
 			g_sprintf(port, "%d", wsport);
-			libwebsock_bind_ssl(swss, "0.0.0.0", port, server_key, server_pem);
+			libwebsock_bind_ssl(swss, (char *)"0.0.0.0", port, server_key, server_pem);
 			JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 			swss->onopen = janus_wss_onopen;
 			swss->onmessage = janus_wss_onmessage;

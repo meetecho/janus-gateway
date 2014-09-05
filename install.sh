@@ -8,6 +8,8 @@ DOT=`which dot`
 WGET=`which wget`
 CURL=`which curl`
 
+export INSTALLSH="install.sh"
+
 NODOCS=0
 NODATACHANS=0
 NOWEBSOCKETS=0
@@ -176,7 +178,6 @@ fi
 echo
 echo "Compiling..."
 $MAKE cmdline
-export INSTALLSH="install.sh"
 $MAKE
 if test $? -eq 0
 then
