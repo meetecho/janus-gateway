@@ -91,7 +91,7 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 	rc->video = video;
 	/* Write file header */
 	fwrite(header, sizeof(char), strlen(header), rc->file);
-	char *type = video ? "video" : "audio";
+	const char *type = video ? "video" : "audio";
 	uint16_t header_bytes = htons(strlen(type));
 	fwrite(&header_bytes, sizeof(uint16_t), 1, rc->file);
 	fwrite(type, sizeof(char), strlen(type), rc->file);

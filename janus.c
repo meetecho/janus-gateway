@@ -48,7 +48,7 @@ static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
 static char *ws_api_secret = NULL;
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /* libwebsock WS server */
 static libwebsock_context *wss = NULL, *swss = NULL;
 #endif
@@ -97,11 +97,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 /* Certificates */
 static char *server_pem = NULL;
-gchar *janus_get_server_pem() {
+gchar *janus_get_server_pem(void) {
 	return server_pem;
 }
 static char *server_key = NULL;
-gchar *janus_get_server_key() {
+gchar *janus_get_server_key(void) {
 	return server_key;
 }
 
@@ -109,11 +109,11 @@ gchar *janus_get_server_key() {
 /* Information */
 static gchar *info_text = NULL;
 static gchar *local_ip = NULL;
-gchar *janus_get_local_ip() {
+gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
 static gchar *public_ip = NULL;
-gchar *janus_get_public_ip() {
+gchar *janus_get_public_ip(void) {
 	/* Fallback to the local IP, if we have no public one */
 	return public_ip ? public_ip : local_ip;
 }
@@ -124,9 +124,9 @@ void janus_set_public_ip(const char *ip) {
 		g_free(public_ip);
 	public_ip = g_strdup(ip);
 }
-static gint stop = 0;
-gint janus_is_stopping() {
-	return stop;
+static volatile gint stop = 0;
+gint janus_is_stopping(void) {
+	return g_atomic_int_get(&stop);
 }
 
 
@@ -138,7 +138,7 @@ int log_level = 0;
 void janus_handle_signal(int signum);
 void janus_handle_signal(int signum)
 {
-	switch(stop) {
+	switch(g_atomic_int_get(&stop)) {
 		case 0:
 			JANUS_PRINT("Stopping gateway, please wait...\n");
 			break;
@@ -149,8 +149,8 @@ void janus_handle_signal(int signum)
 			JANUS_PRINT("Ok, leaving immediately...\n");
 			break;
 	}
-	stop++;
-	if(stop > 2)
+	g_atomic_int_inc(&stop);
+	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
 }
 
@@ -161,13 +161,13 @@ void janus_handle_signal(int signum)
  * gateway is handled here.
  */
 ///@{
-int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp);
-json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, char *sdp_type, char *sdp);
-void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
-void janus_relay_data(janus_plugin_session *handle, char *buf, int len);
-void janus_close_pc(janus_plugin_session *handle);
-void janus_end_session(janus_plugin_session *handle);
+int janus_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
+json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp);
+void janus_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
+void janus_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
+void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len);
+void janus_close_pc(janus_plugin_session *plugin_session);
+void janus_end_session(janus_plugin_session *plugin_session);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_push_event,
@@ -180,7 +180,7 @@ static janus_callbacks janus_handler_plugin =
 ///@}
 
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /* WebSocket sessions */
 static janus_mutex wss_mutex;
 static GHashTable *wss_sessions = NULL;
@@ -195,24 +195,27 @@ void *janus_sessions_watchdog(void *data);
 void *janus_sessions_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
 	gint64 now = 0;
-	while(!stop) {
+	while(!g_atomic_int_get(&stop)) {
 		janus_mutex_lock(&sessions_mutex);
-		if(sessions != NULL && g_hash_table_size(sessions) > 0) {
+		if(sessions != NULL) {
+			GHashTableIter iter;
+			gpointer value;
+
 			/* Iterate on all the sessions and check the last activity */
 			now = janus_get_monotonic_time();
-			GList *sessions_list = g_hash_table_get_values(sessions);
-			GList *s = sessions_list;
-			while(s) {
-				janus_session *session = (janus_session *)s->data;
-				if(!session || session->destroy || stop) {
-					s = s->next;
+
+			g_hash_table_iter_init(&iter, sessions);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+
+				if(!session || session->destroy || g_atomic_int_get(&stop)) {
 					continue;
 				}
+
 				if(now-session->last_activity >= (SESSION_TIMEOUT+3)*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the session only after a few seconds */
-					janus_mutex_unlock(&sessions_mutex);
 					janus_session_destroy(session->session_id);
-					janus_mutex_lock(&sessions_mutex);
+					g_hash_table_iter_remove(&iter);
 				} else if(now-session->last_activity >= SESSION_TIMEOUT*G_USEC_PER_SEC && !session->timeout) {
 					/* Timeout! */
 					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
@@ -227,20 +230,15 @@ void *janus_sessions_watchdog(void *data) {
 					janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
 					if(notification == NULL) {
 						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						s = s->next;
 						continue;
 					}
 					notification->code = 200;
 					notification->payload = event_text;
 					notification->allocated = 1;
-					janus_mutex_lock(&session->qmutex);
-					g_queue_push_tail(session->messages, notification);
+					g_async_queue_push(session->messages, notification);
 					session->timeout = 1;
-					janus_mutex_unlock(&session->qmutex);
 				}
-				s = s->next;
 			}
-			g_list_free(sessions_list);
 		}
 		janus_mutex_unlock(&sessions_mutex);
 		g_usleep(2000000);
@@ -266,10 +264,9 @@ janus_session *janus_session_create(guint64 session_id) {
 		return NULL;
 	}
 	session->session_id = session_id;
-	session->messages = g_queue_new();
+	session->messages = g_async_queue_new_full((GDestroyNotify) janus_http_event_free);
 	session->destroy = 0;
 	session->last_activity = janus_get_monotonic_time();
-	janus_mutex_init(&session->qmutex);
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
@@ -284,30 +281,31 @@ janus_session *janus_session_find(guint64 session_id) {
 	return session;
 }
 
+/* Destroys a session but does not remove it from the sessions hash table. */
 gint janus_session_destroy(guint64 session_id) {
 	janus_session *session = janus_session_find(session_id);
 	if(session == NULL)
 		return -1;
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
-	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+	if (session->ice_handles != NULL) {
+		GHashTableIter iter;
+		gpointer value;
+
 		/* Remove all handles */
-		GList *handles_list = g_hash_table_get_values(session->ice_handles);
-		GList *h = handles_list;
-		while(h) {
-			janus_ice_handle *handle = (janus_ice_handle *)h->data;
-			if(!handle || stop) {
-				h = h->next;
+		g_hash_table_iter_init(&iter, session->ice_handles);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_ice_handle *handle = value;
+
+			if(!handle || g_atomic_int_get(&stop)) {
 				continue;
 			}
+
 			janus_ice_handle_destroy(session, handle->handle_id);
-			h = h->next;
+			g_hash_table_iter_remove(&iter);
 		}
-		g_list_free(handles_list);
 	}
-	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
-	janus_mutex_unlock(&sessions_mutex);
+
 	/* TODO Actually destroy session */
 	return 0;
 }
@@ -321,22 +319,7 @@ void janus_session_free(janus_session *session) {
 		session->ice_handles = NULL;
 	}
 	if(session->messages != NULL) {
-		janus_mutex_lock(&session->qmutex);
-		if(!g_queue_is_empty(session->messages)) {
-			janus_http_event *event = NULL;
-			while(!g_queue_is_empty(session->messages)) {
-				event = g_queue_pop_head(session->messages);
-				if(event != NULL) {
-					if(event->payload && event->allocated) {
-						g_free(event->payload);
-						event->payload = NULL;
-					}
-					g_free(event);
-				}
-			}
-		}
-		g_queue_free (session->messages);
-		janus_mutex_unlock(&session->qmutex);
+		g_async_queue_unref (session->messages);
 		session->messages = NULL;
 	}
 	janus_mutex_unlock(&session->mutex);
@@ -620,9 +603,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		JANUS_LOG(LOG_VERB, "Session %"SCNu64" found... returning up to %d messages\n", session->session_id, max_events);
 		/* Handle GET, taking the first message from the list */
-		janus_mutex_lock(&session->qmutex);
-		janus_http_event *event = g_queue_pop_head(session->messages);
-		janus_mutex_unlock(&session->qmutex);
+		janus_http_event *event = g_async_queue_try_pop(session->messages);
 		if(event != NULL) {
 			if(max_events == 1) {
 				/* Return just this message and leave */
@@ -642,9 +623,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				event = NULL;
 				int events = 1;
 				while(events < max_events) {
-					janus_mutex_lock(&session->qmutex);
-					event = g_queue_pop_head(session->messages);
-					janus_mutex_unlock(&session->qmutex);
+					event = g_async_queue_try_pop(session->messages);
 					if(event == NULL)
 						break;
 					if(event->payload) {
@@ -776,7 +755,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto jsondone;
 		}
 		session_id = session->session_id;
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Add the new session to the list of sessions created by this WS client */
 			janus_websocket_client *client = (janus_websocket_client *)source->source;
@@ -856,10 +835,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	/* What is this? */
 	if(!strcasecmp(message_text, "keepalive")) {
 		/* Just a keep-alive message, reply with an ack */
-		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session->session_id);
+		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session_id);
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("ack"));
-		json_object_set_new(reply, "session_id", json_integer(session->session_id));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -899,13 +878,17 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if((error = janus_ice_handle_attach_plugin(session, handle_id, plugin_t)) != 0) {
 			/* TODO Make error struct to pass verbose information */
 			janus_ice_handle_destroy(session, handle_id);
+			janus_mutex_lock(&session->mutex);
+			g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+			janus_mutex_unlock(&session->mutex);
+
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
 			goto jsondone;
 		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
-		json_object_set_new(reply, "session_id", json_integer(session->session_id));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
@@ -922,7 +905,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Remove the session from the list of sessions created by this WS client */
 			janus_websocket_client *client = (janus_websocket_client *)source->source;
@@ -935,6 +918,11 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		}
 #endif
 		janus_session_destroy(session_id);	/* FIXME Should we check if this actually succeeded, or can we ignore it? */
+
+		janus_mutex_lock(&sessions_mutex);
+		g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
+		janus_mutex_unlock(&sessions_mutex);
+
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -955,8 +943,12 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
 			goto jsondone;
 		}
-		int error = 0;
-		if((error = janus_ice_handle_destroy(session, handle_id)) != 0) {
+		int error = janus_ice_handle_destroy(session, handle_id);
+		janus_mutex_lock(&session->mutex);
+		g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+		janus_mutex_unlock(&session->mutex);
+
+		if(error != 0) {
 			/* TODO Make error struct to pass verbose information */
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
 			/* TODO Delete handle instance */
@@ -1704,22 +1696,27 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
+
 		/* List handles */
+		GHashTableIter iter;
+		gpointer value;
 		json_t *list = json_array();
+
 		janus_mutex_lock(&session->mutex);
-		GList *handles_list = g_hash_table_get_values(session->ice_handles);
-		GList *h = handles_list;
-		while(h) {
-			janus_ice_handle *handle = (janus_ice_handle *)h->data;
-			if(session == NULL) {
-				h = h->next;
+
+		g_hash_table_iter_init(&iter, session->ice_handles);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_ice_handle *handle = value;
+
+			if(handle == NULL) {
 				continue;
 			}
+
 			json_array_append_new(list, json_integer(handle->handle_id));
-			h = h->next;
 		}
-		g_list_free(handles_list);
+
 		janus_mutex_unlock(&session->mutex);
+
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -1874,10 +1871,8 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 	gboolean found = FALSE;
 	/* We have a timeout for the long poll: 30 seconds */
 	while(end-start < 30*G_USEC_PER_SEC) {
-		janus_mutex_lock(&session->qmutex);
-		event = g_queue_pop_head(session->messages);
-		janus_mutex_unlock(&session->qmutex);
-		if(!session || session->destroy || stop || event != NULL) {
+		event = g_async_queue_try_pop(session->messages);
+		if(!session || session->destroy || g_atomic_int_get(&stop) || event != NULL) {
 			if(event == NULL)
 				break;
 			/* Gotcha! */
@@ -1899,9 +1894,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 				event = NULL;
 				int events = 1;
 				while(events < max_events) {
-					janus_mutex_lock(&session->qmutex);
-					event = g_queue_pop_head(session->messages);
-					janus_mutex_unlock(&session->qmutex);
+					event = g_async_queue_try_pop(session->messages);
 					if(event == NULL)
 						break;
 					if(event->payload) {
@@ -1933,7 +1926,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 		}
 		event->code = 200;
 		/*! \todo Improve the Janus protocol keep-alive mechanism in JavaScript */
-		event->payload = max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]";
+		event->payload = g_strdup (max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]");
 		event->allocated = 0;
 	}
 	if(list != NULL) {
@@ -2001,7 +1994,7 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		MHD_destroy_response(response);
 		return ret;
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		/* FIXME We should check the return value */
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		libwebsock_send_text(client->state, payload);
@@ -2042,7 +2035,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 				MHD_destroy_response(response);
 				return ret;
 			} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 				/* TODO We should send an error to the client... */
 				return MHD_NO;
 #else
@@ -2096,7 +2089,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		MHD_destroy_response(response);
 		return ret;
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		/* FIXME We should check the return value */
 		libwebsock_send_text(client->state, reply_text);
@@ -2112,7 +2105,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 }
 
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /* WebSockets */
 int janus_wss_onopen(libwebsock_client_state *state) {
 	JANUS_LOG(LOG_INFO, "WebSocket onopen: #%d\n", state->sockfd);
@@ -2223,7 +2216,7 @@ void *janus_wss_thread(void *data) {
 	}
 	int fd = client->state->sockfd;
 	JANUS_LOG(LOG_INFO, "Joining WebSocket thread: #%d\n", fd);
-	while(!client->destroy && !stop) {
+	while(!client->destroy && !g_atomic_int_get(&stop)) {
 		janus_mutex_lock(&client->mutex);
 		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
 			/* Iterate on all the sessions handled by this WebSocket client */
@@ -2231,30 +2224,25 @@ void *janus_wss_thread(void *data) {
 			GList *s = sessions_list;
 			while(s) {
 				janus_session *session = (janus_session *)s->data;
-				if(client->destroy || !session || session->destroy || stop) {
+				if(client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
 					s = s->next;
 					continue;
 				}
-				janus_mutex_lock(&session->qmutex);
-				if(!g_queue_is_empty(session->messages)) {
-					while(!g_queue_is_empty(session->messages)) {
-						janus_http_event *event = g_queue_pop_head(session->messages);
-						if(!client->destroy && session && !session->destroy && !stop && event && event->payload) {
-							/* Gotcha! */
-							JANUS_LOG(LOG_VERB, "#%d: Sending event (%zu bytes)...\n", fd, strlen(event->payload));
-							int res = libwebsock_send_text(client->state, event->payload);
-							JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
-						}
+				janus_http_event *event;
+				while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
+					if(!client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
+						/* Gotcha! */
+						JANUS_LOG(LOG_VERB, "#%d: Sending event (%zu bytes)...\n", fd, strlen(event->payload));
+						int res = libwebsock_send_text(client->state, event->payload);
+						JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
 					}
 				}
-				if(g_queue_is_empty(session->messages) && session->timeout) {
+				if(session->timeout) {
 					/* Close the websocket */
-					janus_mutex_unlock(&session->qmutex);
 					libwebsock_close(client->state);
 					//~ janus_wss_onclose(client->state);
 					break;
 				}
-				janus_mutex_unlock(&session->qmutex);
 				s = s->next;
 			}
 			g_list_free(sessions_list);
@@ -2368,7 +2356,7 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp) {
+int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
 	if(!plugin || !message)
 		return -1;
 	if(!handle || handle->stopped)
@@ -2429,13 +2417,13 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, char *t
 	notification->code = 200;
 	notification->payload = reply_text;
 	notification->allocated = 1;
-	janus_mutex_lock(&session->qmutex);
-	g_queue_push_tail(session->messages, notification);
-	janus_mutex_unlock(&session->qmutex);
+
+	g_async_queue_push(session->messages, notification);
+
 	return JANUS_OK;
 }
 
-json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, char *sdp_type, char *sdp) {
+json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
 	if(handle == NULL || handle->stopped || plugin == NULL || sdp_type == NULL || sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
@@ -2611,45 +2599,45 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, cha
 	return jsep;
 }
 
-void janus_relay_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(!handle || handle->stopped || buf == NULL || len < 1)
+void janus_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
+	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
 		return;
-	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
-	janus_ice_relay_rtp(session, video, buf, len);
+	janus_ice_relay_rtp(handle, video, buf, len);
 }
 
-void janus_relay_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(!handle || handle->stopped || buf == NULL || len < 1)
+void janus_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
+	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
 		return;
-	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
-	janus_ice_relay_rtcp(session, video, buf, len);
+	janus_ice_relay_rtcp(handle, video, buf, len);
 }
 
-void janus_relay_data(janus_plugin_session *handle, char *buf, int len) {
-	if(!handle || handle->stopped || buf == NULL || len < 1)
+void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len) {
+	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
 		return;
-	janus_ice_handle *session = (janus_ice_handle *)handle->gateway_handle;
-	if(!session || janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
-			|| janus_flags_is_set(&session->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
+	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
 		return;
 #ifdef HAVE_SCTP
-	janus_ice_relay_data(session, buf, len);
+	janus_ice_relay_data(handle, buf, len);
 #else
 	JANUS_LOG(LOG_WARN, "Asked to relay data, but Data Channels support has not been compiled...\n");
 #endif
 }
 
-void janus_close_pc(janus_plugin_session *handle) {
+void janus_close_pc(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a PeerConnection */
-	if(!handle)
+	if(!plugin_session)
 		return;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
 		return;
 	janus_session *session = (janus_session *)ice_handle->session;
@@ -2679,21 +2667,20 @@ void janus_close_pc(janus_plugin_session *handle) {
 	notification->code = 200;
 	notification->payload = event_text;
 	notification->allocated = 1;
-	janus_mutex_lock(&session->qmutex);
-	g_queue_push_tail(session->messages, notification);
-	janus_mutex_unlock(&session->qmutex);
+
+	g_async_queue_push(session->messages, notification);
 	
 	/* Notify the plugin */
 	janus_plugin *plugin = (janus_plugin *)ice_handle->app;
 	if(plugin && plugin->hangup_media)
-		plugin->hangup_media(handle);
+		plugin->hangup_media(plugin_session);
 }
 
-void janus_end_session(janus_plugin_session *handle) {
+void janus_end_session(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a handle */
-	if(!handle)
+	if(!plugin_session)
 		return;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
 		return;
 	/* Destroy the handle */
@@ -2722,7 +2709,9 @@ gint main(int argc, char *argv[])
 	signal(SIGINT, janus_handle_signal);
 
 	/* Setup Glib */
+#if !GLIB_CHECK_VERSION(2, 36, 0)
 	g_type_init();
+#endif
 	
 	/* Logging level: default is info */
 	log_level = LOG_INFO;
@@ -2749,7 +2738,7 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		configs_folder = "./conf";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+		configs_folder = g_strdup ("./conf");	/* FIXME This is a relative path to where the executable is, not from where it was started... */
 	}
 	if(config_file == NULL) {
 		char file[255];
@@ -2970,7 +2959,6 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Pre-parse the web server path, if any */
-	ws_path = "/janus";
 	item = janus_config_get_item_drilldown(config, "webserver", "base_path");
 	if(item && item->value) {
 		if(item->value[0] != '/') {
@@ -2982,6 +2970,8 @@ gint main(int argc, char *argv[])
 			/* Remove the trailing slash, it makes things harder when we parse requests later */
 			ws_path[strlen(ws_path)-1] = '\0';
 		}
+	} else {
+		ws_path = g_strdup("/janus");
 	}
 	/* Is there any API secret to consider? */
 	ws_api_secret = NULL;
@@ -2995,7 +2985,6 @@ gint main(int argc, char *argv[])
 
 	/* Do the same for the admin/monitor interface */
 	/* Pre-parse the web server path, if any */
-	admin_ws_path = "/admin";
 	item = janus_config_get_item_drilldown(config, "admin", "admin_base_path");
 	if(item && item->value) {
 		if(item->value[0] != '/') {
@@ -3007,6 +2996,8 @@ gint main(int argc, char *argv[])
 			/* Remove the trailing slash, it makes things harder when we parse requests later */
 			admin_ws_path[strlen(admin_ws_path)-1] = '\0';
 		}
+	} else {
+		admin_ws_path = g_strdup("/admin");
 	}
 	/* Is there any API secret to consider? */
 	admin_ws_api_secret = NULL;
@@ -3121,7 +3112,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load plugins */
-	char *path = "./plugins";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+	const char *path = "./plugins";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;
@@ -3201,7 +3192,7 @@ gint main(int argc, char *argv[])
 #else
 	json_object_set_new(info, "data_channels", json_integer(0));
 #endif
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	json_object_set_new(info, "websockets", json_integer(1));
 #else
 	json_object_set_new(info, "websockets", json_integer(0));
@@ -3381,7 +3372,7 @@ gint main(int argc, char *argv[])
 		}
 	}
 	/* Enable the websockets server, if enabled */
-#ifndef HAVE_WS
+#ifndef HAVE_WEBSOCKETS
 	JANUS_LOG(LOG_WARN, "WebSockets support not compiled\n");
 #else
 	item = janus_config_get_item_drilldown(config, "webserver", "ws");
@@ -3437,7 +3428,7 @@ gint main(int argc, char *argv[])
 	}
 #endif
 	/* Do we have anything up? */
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	if(!ws && !sws && !wss && !swss) {
 #else
 	if(!ws && !sws) {
@@ -3606,20 +3597,20 @@ gint main(int argc, char *argv[])
 		}
 	}
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	if(wss || swss) {
 		/* The libwebsock wait is our loop */
 		libwebsock_wait(wss ? wss : swss);
-		if(!stop)
+		if(!g_atomic_int_get(&stop))
 			janus_handle_signal(SIGINT);
 	} else {
-		while(!stop) {
+		while(!g_atomic_int_get(&stop)) {
 			/* Loop until we have to stop */
 			g_usleep(250000);
 		}
 	}
 #else
-	while(!stop) {
+	while(!g_atomic_int_get(&stop)) {
 		/* Loop until we have to stop */
 		g_usleep(250000);
 	}
@@ -3652,7 +3643,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Destroying sessions...\n");
 	if(sessions != NULL)
 		g_hash_table_destroy(sessions);
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 	if(wss_sessions != NULL)
 		g_hash_table_destroy(wss_sessions);
 #endif
@@ -3679,4 +3670,18 @@ gint main(int argc, char *argv[])
 
 	JANUS_PRINT("Bye!\n");
 	exit(0);
+}
+
+
+void janus_http_event_free(janus_http_event *event)
+{
+	if (event == NULL) {
+		return;
+	}
+
+	if (event->payload && event->allocated) {
+		g_free(event->payload);
+	}
+
+	free(event);
 }

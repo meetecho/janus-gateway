@@ -26,7 +26,7 @@
 
 #include <jansson.h>
 #include <microhttpd.h>
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 #include <websock/websock.h>
 #endif
 
@@ -65,6 +65,7 @@ typedef struct janus_http_event {
 	/*! \brief Whether the payload has been allocated (and thus needs to be freed) or not */
 	gint allocated:1;
 } janus_http_event;
+void janus_http_event_free(janus_http_event *event);
 
 
 /*! \brief Gateway-Client session */
@@ -74,9 +75,7 @@ typedef struct janus_session {
 	/*! \brief Map of handles this session is managing */
 	GHashTable *ice_handles;
 	/*! \brief Queue of outgoing messages to push */
-	GQueue *messages;
-	/*! \brief Mutex to lock/unlock the messages queue */
-	janus_mutex qmutex;
+	GAsyncQueue *messages;
 	/*! \brief Time of the last activity on the session */
 	gint64 last_activity;
 	/*! \brief Flag to trigger a lazy session destruction */
@@ -87,7 +86,7 @@ typedef struct janus_session {
 	janus_mutex mutex;
 } janus_session;
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /*! \brief WebSocket client session */
 typedef struct janus_websocket_client {
 	/*! \brief The libwebsock client instance */
@@ -172,7 +171,7 @@ int janus_process_success(janus_request_source *source, const char *transaction,
  * number of arguments, if needed; if format is NULL, a pre-configured string
  * associated with the error code is used
  * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_process_error(janus_request_source *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...);
+int janus_process_error(janus_request_source *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 ///@}
 
 
@@ -213,7 +212,7 @@ void janus_ws_request_completed (void *cls, struct MHD_Connection *connection, v
 int janus_ws_notifier(janus_request_source *source, int max_events);
 ///@}
 
-#ifdef HAVE_WS
+#ifdef HAVE_WEBSOCKETS
 /** @name Janus WebSockets server
  * \details Browsers can also make use WebSockets to make requests to the
  * gateway (as long as, of course, support for them has been built, since

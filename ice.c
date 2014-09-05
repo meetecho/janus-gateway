@@ -32,10 +32,10 @@
 static char *janus_stun_server;
 static uint16_t janus_stun_port;
 
-char *janus_ice_get_stun_server() {
+char *janus_ice_get_stun_server(void) {
 	return janus_stun_server;
 }
-uint16_t janus_ice_get_stun_port() {
+uint16_t janus_ice_get_stun_port(void) {
 	return janus_stun_port;
 }
 
@@ -236,12 +236,14 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 	handle->app = NULL;
 	handle->app_handle = NULL;
 	janus_mutex_init(&handle->mutex);
-		/* Setup other stuff */
+
+	/* Set up other stuff. */
+	janus_mutex_lock(&session->mutex);
 	if(session->ice_handles == NULL)
 		session->ice_handles = g_hash_table_new(NULL, NULL);
-	janus_mutex_lock(&session->mutex);
 	g_hash_table_insert(session->ice_handles, GUINT_TO_POINTER(handle_id), handle);
 	janus_mutex_unlock(&session->mutex);
+
 	return handle;
 }
 
@@ -307,7 +309,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
-		g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+		janus_mutex_unlock(&session->mutex);
 		return 0;
 	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
@@ -315,7 +317,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	int error = 0;
 	handle->app_handle->stopped = 1;	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
 	plugin_t->destroy_session(handle->app_handle, &error);
-	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("detached"));
@@ -330,9 +332,8 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		notification->code = 200;
 		notification->payload = event_text;
 		notification->allocated = 1;
-		janus_mutex_lock(&session->qmutex);
-		g_queue_push_tail(session->messages, notification);
-		janus_mutex_unlock(&session->qmutex);
+
+		g_async_queue_push(session->messages, notification);
 	}
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
@@ -440,11 +441,11 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
 }
 
-void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream) {
+void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 	if(stream == NULL)
 		return;
-	if(container != NULL)
-		g_hash_table_remove(container, stream);
+	if(streams != NULL)
+		g_hash_table_remove(streams, stream);
 	if(stream->components != NULL) {
 		janus_ice_component_free(stream->components, stream->rtp_component);
 		stream->rtp_component = NULL;
@@ -465,7 +466,7 @@ void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream) {
 	stream = NULL;
 }
 
-void janus_ice_component_free(GHashTable *container, janus_ice_component *component) {
+void janus_ice_component_free(GHashTable *components, janus_ice_component *component) {
 	if(component == NULL)
 		return;
 	janus_ice_stream *stream = component->stream;
@@ -475,8 +476,8 @@ void janus_ice_component_free(GHashTable *container, janus_ice_component *compon
 	if(handle == NULL)
 		return;
 	//~ janus_mutex_lock(&handle->mutex);
-	if(container != NULL)
-		g_hash_table_remove(container, component);
+	if(components != NULL)
+		g_hash_table_remove(components, component);
 	component->stream = NULL;
 	if(component->source != NULL) {
 		g_source_destroy(component->source);
@@ -550,7 +551,7 @@ void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gp
 void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice) {
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Component state changed for component %d in stream %d: %d (%s)\n",
-		handle ? handle->handle_id : -1, component_id, stream_id, state, janus_get_ice_state_name(state));
+		handle ? handle->handle_id : 0, component_id, stream_id, state, janus_get_ice_state_name(state));
 	if(!handle)
 		return;
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
@@ -618,9 +619,8 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			notification->code = 200;
 			notification->payload = event_text;
 			notification->allocated = 1;
-			janus_mutex_lock(&session->qmutex);
-			g_queue_push_tail(session->messages, notification);
-			janus_mutex_unlock(&session->qmutex);
+
+			g_async_queue_push(session->messages, notification);
 		}
 	}
 }
@@ -1450,7 +1450,6 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	notification->code = 200;
 	notification->payload = event_text;
 	notification->allocated = 1;
-	janus_mutex_lock(&session->qmutex);
-	g_queue_push_tail(session->messages, notification);
-	janus_mutex_unlock(&session->qmutex);
+
+	g_async_queue_push(session->messages, notification);
 }

@@ -95,11 +95,11 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 
 
 static SSL_CTX *ssl_ctx = NULL;
-SSL_CTX *janus_dtls_get_ssl_ctx() {
+SSL_CTX *janus_dtls_get_ssl_ctx(void) {
 	return ssl_ctx;
 }
 static gchar local_fingerprint[160];
-gchar *janus_dtls_get_local_fingerprint() {
+gchar *janus_dtls_get_local_fingerprint(void) {
 	return (gchar *)local_fingerprint;
 }
 
@@ -158,7 +158,7 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 		return -7;
 	}
 	char *lfp = (char *)&local_fingerprint;
-	int i = 0;
+	unsigned int i = 0;
 	for(i = 0; i < size; i++) {
 		sprintf(lfp, "%.2X:", fingerprint[i]);
 		lfp += 3;
@@ -338,7 +338,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			}
 			X509_free(rcert);
 			rcert = NULL;
-			int i = 0;
+			unsigned int i = 0;
 			for(i = 0; i < rsize; i++) {
 				sprintf(rfp, "%.2X:", rfingerprint[i]);
 				rfp += 3;

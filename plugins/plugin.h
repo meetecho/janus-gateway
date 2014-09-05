@@ -234,7 +234,7 @@ struct janus_callbacks {
 	 * @param[in] message The stringified version of the JSON message
 	 * @param[in] sdp_type The type of the SDP attached to the message/event, if any (offer/answer)
 	 * @param[in] sdp The SDP attached to the message/event, if any (in case the plugin is requesting or responding to a media setup) */
-	int (* const push_event)(janus_plugin_session *handle, janus_plugin *plugin, char *transaction, char *message, char *sdp_type, char *sdp);
+	int (* const push_event)(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
 
 	/*! \brief Callback to relay RTP packets to a peer
 	 * @param[in] handle The plugin/gateway session used for this peer

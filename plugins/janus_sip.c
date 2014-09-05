@@ -363,7 +363,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		}
 		if(local_ip == NULL) {
 			JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 for c-lines... (which is NOT going to work out of your machine)\n");
-			local_ip = "127.0.0.1";
+			local_ip = g_strdup("127.0.0.1");
 		} else {
 			JANUS_LOG(LOG_VERB, "Going to use %s as a c-line in the SDPs\n", local_ip);
 		}
@@ -392,7 +392,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	return 0;
 }
 
-void janus_sip_destroy() {
+void janus_sip_destroy(void) {
 	if(!initialized)
 		return;
 	stopping = 1;
@@ -409,27 +409,27 @@ void janus_sip_destroy() {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIP_NAME);
 }
 
-int janus_sip_get_version() {
+int janus_sip_get_version(void) {
 	return JANUS_SIP_VERSION;
 }
 
-const char *janus_sip_get_version_string() {
+const char *janus_sip_get_version_string(void) {
 	return JANUS_SIP_VERSION_STRING;
 }
 
-const char *janus_sip_get_description() {
+const char *janus_sip_get_description(void) {
 	return JANUS_SIP_DESCRIPTION;
 }
 
-const char *janus_sip_get_name() {
+const char *janus_sip_get_name(void) {
 	return JANUS_SIP_NAME;
 }
 
-const char *janus_sip_get_author() {
+const char *janus_sip_get_author(void) {
 	return JANUS_SIP_AUTHOR;
 }
 
-const char *janus_sip_get_package() {
+const char *janus_sip_get_package(void) {
 	return JANUS_SIP_PACKAGE;
 }
 
@@ -1068,32 +1068,19 @@ static void *janus_sip_handler(void *data) {
 				sprintf(error_cause, "Memory error");
 				goto error;
 			}
-			int modified = 0;
-			char *temp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
-			temp = janus_string_replace(sdp, "1.1.1.1", local_ip, &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
+			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
+			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=audio %d", session->media.local_audio_rtp_port);
-				temp = janus_string_replace(sdp, "m=audio 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=audio 1", mline);
 			}
 			if(session->media.has_video) {
 				JANUS_LOG(LOG_VERB, "Setting local video port: %d\n", session->media.local_video_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=video %d", session->media.local_video_rtp_port);
-				temp = janus_string_replace(sdp, "m=video 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=video 1", mline);
 			}
 			/* Send INVITE */
 			if(session->stack->s_nh_i != NULL)
@@ -1161,32 +1148,19 @@ static void *janus_sip_handler(void *data) {
 				sprintf(error_cause, "Memory error");
 				goto error;
 			}
-			int modified = 0;
-			char *temp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP", &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
-			temp = janus_string_replace(sdp, "1.1.1.1", local_ip, &modified);
-			if(modified)
-				g_free(sdp);
-			sdp = temp;
+			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
+			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=audio %d", session->media.local_audio_rtp_port);
-				temp = janus_string_replace(sdp, "m=audio 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=audio 1", mline);
 			}
 			if(session->media.has_video) {
 				JANUS_LOG(LOG_VERB, "Setting local video port: %d\n", session->media.local_video_rtp_port);
 				char mline[20];
 				sprintf(mline, "m=video %d", session->media.local_video_rtp_port);
-				temp = janus_string_replace(sdp, "m=video 1", mline, &modified);
-				if(modified)
-					g_free(sdp);
-				sdp = temp;
+				sdp = janus_string_replace(sdp, "m=video 1", mline);
 			}
 			/* Send 200 OK */
 			session->status = janus_sip_status_incall;

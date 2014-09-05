@@ -370,7 +370,7 @@ int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate) {
 						uint8_t newbrexp = 0;
 						uint32_t newbrmantissa = 0;
 						for(b=0; b<64; b++) {
-							if(bitrate <= (0x3FFFF << b)) {
+							if(bitrate <= ((uint64_t) 0x3FFFF << b)) {
 								newbrexp = b;
 								break;
 							}
@@ -420,7 +420,7 @@ int janus_rtcp_remb(char *packet, int len, uint64_t bitrate) {
 	uint8_t newbrexp = 0;
 	uint32_t newbrmantissa = 0;
 	for(b=0; b<64; b++) {
-		if(bitrate <= (0x3FFFF << b)) {
+		if(bitrate <= ((uint64_t) 0x3FFFF << b)) {
 			newbrexp = b;
 			break;
 		}

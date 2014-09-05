@@ -19,7 +19,7 @@
 #include <libavformat/avformat.h>
 
 #include "pp-webm.h"
-#include "pp-debug.h"
+#include "../debug.h"
 
 
 /* WebRTC stuff (VP8) */
@@ -30,6 +30,11 @@
 #else
 	# define swap2(d) d
 #endif
+
+#define LIBAVCODEC_VER_AT_LEAST(major, minor) \
+	(LIBAVCODEC_VERSION_MAJOR > major || \
+	 (LIBAVCODEC_VERSION_MAJOR == major && \
+	  LIBAVCODEC_VERSION_MINOR >= minor))
 
 
 /* WebM output */
@@ -63,8 +68,16 @@ int janus_pp_webm_create(char *destination) {
 		return -1;
 	}
 	//~ avcodec_get_context_defaults2(vStream->codec, CODEC_TYPE_VIDEO);
+#if LIBAVCODEC_VER_AT_LEAST(53, 21)
+	avcodec_get_context_defaults3(vStream->codec, AVMEDIA_TYPE_VIDEO);
+#else
 	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
+#endif
+#if LIBAVCODEC_VER_AT_LEAST(54, 25)
 	vStream->codec->codec_id = AV_CODEC_ID_VP8;
+#else
+	vStream->codec->codec_id = CODEC_ID_VP8;
+#endif
 	//~ vStream->codec->codec_type = CODEC_TYPE_VIDEO;
 	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;
 	vStream->codec->time_base = (AVRational){1, fps};
@@ -337,7 +350,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 }
 
 /* Close WebM file */
-void janus_pp_webm_close() {
+void janus_pp_webm_close(void) {
 	if(fctx != NULL)
 		av_write_trailer(fctx);
 	if(vStream->codec != NULL)

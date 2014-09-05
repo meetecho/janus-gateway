@@ -52,7 +52,7 @@ extern int log_level;
 #define LOG_MAX LOG_DBG
 
 /*! \brief Coloured prefixes for errors and warnings logging. */
-static char *log_prefix[] = {
+static const char *log_prefix[] = {
 	"",
 	ANSI_COLOR_MAGENTA"[FATAL]"ANSI_COLOR_RESET" ",
 	ANSI_COLOR_RED"[ERR]"ANSI_COLOR_RESET" ",
@@ -70,14 +70,18 @@ static char *log_prefix[] = {
 /*! \brief Simple wrapper to g_print/printf */
 #define JANUS_PRINT g_print
 /*! \brief Logger based on different levels, which can either be displayed
- * or not according to the configuration of the gateway */
-#define JANUS_LOG(level, ...) \
+ * or not according to the configuration of the gateway.
+ * The format must be a string literal. */
+#define JANUS_LOG(level, format, ...) \
 	if (level > LOG_NONE && level <= LOG_MAX && level <= log_level) { \
-		g_print(log_prefix[level]); \
 		if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
-			g_print("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); \
+			g_print("%s[%s:%s:%d:] " format, log_prefix[level], \
+			        __FILE__, __FUNCTION__, __LINE__, \
+			        ##__VA_ARGS__); \
+		} else { \
+			g_print("%s" format, log_prefix[level], \
+			        ##__VA_ARGS__); \
 		} \
-		g_print(__VA_ARGS__); \
 	}
 ///@}
 

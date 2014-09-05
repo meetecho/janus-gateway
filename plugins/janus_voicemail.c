@@ -148,15 +148,15 @@ static char *recordings_path = NULL;
 static char *recordings_base = NULL;
 
 /* SDP offer/answer template */
-static const char *sdp_template =
-		"v=0\r\n"
-		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */
-		"s=VoiceMail %"SCNu64"\r\n"						/* VoiceMail recording ID */
-		"t=0 0\r\n"
-		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */
-		"c=IN IP4 1.1.1.1\r\n"
-		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
-		"a=recvonly\r\n";					/* This plugin doesn't send any frames */
+#define sdp_template \
+		"v=0\r\n" \
+		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
+		"s=VoiceMail %"SCNu64"\r\n"						/* VoiceMail recording ID */ \
+		"t=0 0\r\n" \
+		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
+		"c=IN IP4 1.1.1.1\r\n" \
+		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */ \
+		"a=recvonly\r\n"					/* This plugin doesn't send any frames */
 
 
 /* OGG/Opus helpers */
@@ -220,9 +220,9 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		config = NULL;
 	}
 	if(recordings_path == NULL)
-		recordings_path = "./html/recordings/";
+		recordings_path = g_strdup("./html/recordings/");
 	if(recordings_base == NULL)
-		recordings_base = "/recordings/";
+		recordings_base = g_strdup("/recordings/");
 	JANUS_LOG(LOG_VERB, "Recordings path: %s\n", recordings_path);
 	JANUS_LOG(LOG_VERB, "Recordings base: %s\n", recordings_base);
 	/* Create the folder, if needed */
@@ -250,7 +250,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	return 0;
 }
 
-void janus_voicemail_destroy() {
+void janus_voicemail_destroy(void) {
 	if(!initialized)
 		return;
 	stopping = 1;
@@ -268,27 +268,27 @@ void janus_voicemail_destroy() {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VOICEMAIL_NAME);
 }
 
-int janus_voicemail_get_version() {
+int janus_voicemail_get_version(void) {
 	return JANUS_VOICEMAIL_VERSION;
 }
 
-const char *janus_voicemail_get_version_string() {
+const char *janus_voicemail_get_version_string(void) {
 	return JANUS_VOICEMAIL_VERSION_STRING;
 }
 
-const char *janus_voicemail_get_description() {
+const char *janus_voicemail_get_description(void) {
 	return JANUS_VOICEMAIL_DESCRIPTION;
 }
 
-const char *janus_voicemail_get_name() {
+const char *janus_voicemail_get_name(void) {
 	return JANUS_VOICEMAIL_NAME;
 }
 
-const char *janus_voicemail_get_author() {
+const char *janus_voicemail_get_author(void) {
 	return JANUS_VOICEMAIL_AUTHOR;
 }
 
-const char *janus_voicemail_get_package() {
+const char *janus_voicemail_get_package(void) {
 	return JANUS_VOICEMAIL_PACKAGE;
 }
 
@@ -602,7 +602,7 @@ static void *janus_voicemail_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		} else {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
-			char *type = NULL;
+			const char *type = NULL;
 			if(!strcasecmp(msg->sdp_type, "offer"))
 				type = "answer";
 			if(!strcasecmp(msg->sdp_type, "answer"))
@@ -689,7 +689,7 @@ void le16(unsigned char *p, int v) {
 }
 
 /* ;anufacture a generic OpusHead packet */
-ogg_packet *op_opushead() {
+ogg_packet *op_opushead(void) {
 	int size = 19;
 	unsigned char *data = malloc(size);
 	ogg_packet *op = malloc(sizeof(*op));
@@ -722,9 +722,9 @@ ogg_packet *op_opushead() {
 }
 
 /* Manufacture a generic OpusTags packet */
-ogg_packet *op_opustags() {
-	char *identifier = "OpusTags";
-	char *vendor = "Janus VoiceMail plugin";
+ogg_packet *op_opustags(void) {
+	const char *identifier = "OpusTags";
+	const char *vendor = "Janus VoiceMail plugin";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
 	unsigned char *data = malloc(size);
 	ogg_packet *op = malloc(sizeof(*op));
