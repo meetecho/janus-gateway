@@ -544,7 +544,6 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		json_object_set_new(event, "leaving", json_integer(participant->user_id));
 		char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
-		g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
 		GList *participants_list = g_hash_table_get_values(participant->room->participants);
 		GList *ps = participants_list;
 		while(ps) {
@@ -569,6 +568,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_recorder_close(participant->vrc);
 			JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
 		}
+		g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Detaching this listener from its publisher is already done by hangup_media */
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
@@ -1046,7 +1046,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 			}
 			videoroom->destroy = 0;
-			videoroom->participants = g_hash_table_new(NULL, NULL);
+			videoroom->participants = g_hash_table_new_full(NULL, NULL, NULL,
+			                                                (GDestroyNotify) janus_videoroom_participant_free);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->room_secret ? videoroom->room_secret : "no secret");
 			if(videoroom->record) {
@@ -1114,10 +1115,6 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 			}
-			/* Remove room */
-			janus_mutex_lock(&rooms_mutex);
-			g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
-			janus_mutex_unlock(&rooms_mutex);
 			/* Notify all participants that the fun is over, and that they'll be kicked */
 			JANUS_LOG(LOG_VERB, "Notifying all participants\n");
 			json_t *destroyed = json_object();
@@ -1141,6 +1138,10 @@ static void *janus_videoroom_handler(void *data) {
 			}
 			json_decref(destroyed);
 			g_list_free(participants_list);
+			/* Remove room */
+			janus_mutex_lock(&rooms_mutex);
+			g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
+			janus_mutex_unlock(&rooms_mutex);
 			/* Done */
 			event = json_object();
 			json_object_set_new(event, "videoroom", json_string("destroyed"));
