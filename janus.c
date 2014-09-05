@@ -1621,18 +1621,16 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		/* List sessions */
 		json_t *list = json_array();
 		janus_mutex_lock(&sessions_mutex);
-		GList *sessions_list = g_hash_table_get_values(sessions);
-		GList *s = sessions_list;
-		while(s) {
-			janus_session *session = (janus_session *)s->data;
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, sessions);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_session *session = value;
 			if(session == NULL) {
-				s = s->next;
 				continue;
 			}
 			json_array_append_new(list, json_integer(session->session_id));
-			s = s->next;
 		}
-		g_list_free(sessions_list);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
@@ -2220,12 +2218,12 @@ void *janus_wss_thread(void *data) {
 		janus_mutex_lock(&client->mutex);
 		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
 			/* Iterate on all the sessions handled by this WebSocket client */
-			GList *sessions_list = g_hash_table_get_values(client->sessions);
-			GList *s = sessions_list;
-			while(s) {
-				janus_session *session = (janus_session *)s->data;
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, sessions);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
 				if(client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
-					s = s->next;
 					continue;
 				}
 				janus_http_event *event;
@@ -2243,9 +2241,7 @@ void *janus_wss_thread(void *data) {
 					//~ janus_wss_onclose(client->state);
 					break;
 				}
-				s = s->next;
 			}
-			g_list_free(sessions_list);
 		}
 		janus_mutex_unlock(&client->mutex);
 		/* Sleep 100ms */
@@ -3198,12 +3194,12 @@ gint main(int argc, char *argv[])
 	json_object_set_new(info, "websockets", json_integer(0));
 #endif
 	json_t *data = json_object();
-	GList *plugins_list = g_hash_table_get_values(plugins);
-	GList *ps = plugins_list;
-	while(ps) {
-		janus_plugin *p = (janus_plugin *)ps->data;
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, plugins);
+	while (g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_plugin *p = value;
 		if(p == NULL) {
-			ps = ps->next;
 			continue;
 		}
 		json_t *plugin = json_object();
@@ -3212,10 +3208,8 @@ gint main(int argc, char *argv[])
 		json_object_set_new(plugin, "description", json_string(p->get_description()));
 		json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
 		json_object_set_new(plugin, "version", json_integer(p->get_version()));
-		ps = ps->next;
 		json_object_set_new(data, p->get_package(), plugin);
 	}
-	g_list_free(plugins_list);
 	json_object_set_new(info, "plugins", data);
 	/* Convert to a string */
 	info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);

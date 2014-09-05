@@ -121,27 +121,25 @@ typedef struct janus_sip_message {
 	char *sdp_type;
 	char *sdp;
 } janus_sip_message;
-GQueue *messages;
+static GAsyncQueue *messages = NULL;
 
 void janus_sip_message_free(janus_sip_message *msg);
 void janus_sip_message_free(janus_sip_message *msg) {
 	if(!msg)
 		return;
+
 	msg->handle = NULL;
-	if(msg->transaction != NULL)
-		g_free(msg->transaction);
+
+	g_free(msg->transaction);
 	msg->transaction = NULL;
-	if(msg->message != NULL)
-		g_free(msg->message);
+	g_free(msg->message);
 	msg->message = NULL;
-	if(msg->sdp_type != NULL)
-		g_free(msg->sdp_type);
+	g_free(msg->sdp_type);
 	msg->sdp_type = NULL;
-	if(msg->sdp != NULL)
-		g_free(msg->sdp);
+	g_free(msg->sdp);
 	msg->sdp = NULL;
+
 	g_free(msg);
-	msg = NULL;
 }
 
 
@@ -374,7 +372,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
-	messages = g_queue_new();
+	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
@@ -402,7 +400,8 @@ void janus_sip_destroy(void) {
 	handler_thread = NULL;
 	/* FIXME We should destroy the sessions cleanly */
 	g_hash_table_destroy(sessions);
-	g_queue_free(messages);
+	g_async_queue_unref(messages);
+	messages = NULL;
 	sessions = NULL;
 	initialized = 0;
 	stopping = 0;
@@ -535,7 +534,7 @@ void janus_sip_handle_message(janus_plugin_session *handle, char *transaction, c
 	msg->message = message;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
-	g_queue_push_tail(messages, msg);
+	g_async_queue_push(messages, msg);
 }
 
 void janus_sip_setup_media(janus_plugin_session *handle) {
@@ -642,7 +641,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	msg->transaction = NULL;
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
-	g_queue_push_tail(messages, msg);
+	g_async_queue_push(messages, msg);
 }
 
 /* Thread to handle incoming messages */
@@ -656,7 +655,7 @@ static void *janus_sip_handler(void *data) {
 		return NULL;
 	}
 	while(initialized && !stopping) {
-		if(!messages || (msg = g_queue_pop_head(messages)) == NULL) {
+		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
 		}

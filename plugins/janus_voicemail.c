@@ -105,27 +105,25 @@ typedef struct janus_voicemail_message {
 	char *sdp_type;
 	char *sdp;
 } janus_voicemail_message;
-GQueue *messages;
+static GAsyncQueue *messages = NULL;
 
 void janus_voicemail_message_free(janus_voicemail_message *msg);
 void janus_voicemail_message_free(janus_voicemail_message *msg) {
 	if(!msg)
 		return;
+
 	msg->handle = NULL;
-	if(msg->transaction != NULL)
-		g_free(msg->transaction);
+
+	g_free(msg->transaction);
 	msg->transaction = NULL;
-	if(msg->message != NULL)
-		g_free(msg->message);
+	g_free(msg->message);
 	msg->message = NULL;
-	if(msg->sdp_type != NULL)
-		g_free(msg->sdp_type);
+	g_free(msg->sdp_type);
 	msg->sdp_type = NULL;
-	if(msg->sdp != NULL)
-		g_free(msg->sdp);
+	g_free(msg->sdp);
 	msg->sdp = NULL;
+
 	g_free(msg);
-	msg = NULL;
 }
 
 
@@ -203,7 +201,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
-	messages = g_queue_new();
+	messages = g_async_queue_new_full((GDestroyNotify) janus_voicemail_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
@@ -262,7 +260,8 @@ void janus_voicemail_destroy(void) {
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
 	janus_mutex_unlock(&sessions_mutex);
-	g_queue_free(messages);
+	g_async_queue_unref(messages);
+	messages = NULL;
 	sessions = NULL;
 	initialized = 0;
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VOICEMAIL_NAME);
@@ -368,7 +367,7 @@ void janus_voicemail_handle_message(janus_plugin_session *handle, char *transact
 	msg->message = message;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
-	g_queue_push_tail(messages, msg);
+	g_async_queue_push(messages, msg);
 }
 
 void janus_voicemail_setup_media(janus_plugin_session *handle) {
@@ -418,7 +417,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 		msg->transaction = NULL;
 		msg->sdp_type = NULL;
 		msg->sdp = NULL;
-		g_queue_push_tail(messages, msg);
+		g_async_queue_push(messages, msg);
 		return;
 	}
 	/* Save the frame */
@@ -473,7 +472,7 @@ static void *janus_voicemail_handler(void *data) {
 		return NULL;
 	}
 	while(initialized && !stopping) {
-		if(!messages || (msg = g_queue_pop_head(messages)) == NULL) {
+		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
 		}

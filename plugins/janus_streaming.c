@@ -204,27 +204,25 @@ typedef struct janus_streaming_message {
 	char *sdp_type;
 	char *sdp;
 } janus_streaming_message;
-GQueue *messages;
+static GAsyncQueue *messages = NULL;
 
 void janus_streaming_message_free(janus_streaming_message *msg);
 void janus_streaming_message_free(janus_streaming_message *msg) {
 	if(!msg)
 		return;
+
 	msg->handle = NULL;
-	if(msg->transaction != NULL)
-		g_free(msg->transaction);
+
+	g_free(msg->transaction);
 	msg->transaction = NULL;
-	if(msg->message != NULL)
-		g_free(msg->message);
+	g_free(msg->message);
 	msg->message = NULL;
-	if(msg->sdp_type != NULL)
-		g_free(msg->sdp_type);
+	g_free(msg->sdp_type);
 	msg->sdp_type = NULL;
-	if(msg->sdp != NULL)
-		g_free(msg->sdp);
+	g_free(msg->sdp);
 	msg->sdp = NULL;
+
 	g_free(msg);
-	msg = NULL;
 }
 
 
@@ -459,21 +457,20 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	}
 	/* Show available mountpoints */
 	janus_mutex_lock(&mountpoints_mutex);
-	GList *mountpoints_list = g_hash_table_get_values(mountpoints);
-	GList *m = mountpoints_list;
-	while(m) {
-		janus_streaming_mountpoint *mp = (janus_streaming_mountpoint *)m->data;
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, mountpoints);
+	while (g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_streaming_mountpoint *mp = value;
 		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %s (%s, %s)\n", mp->id, mp->name, mp->description,
 			mp->streaming_type == janus_streaming_type_live ? "live" : "on demand",
 			mp->streaming_source == janus_streaming_source_rtp ? "RTP source" : "file source");
-		m = m->next;
 	}
-	g_list_free(mountpoints_list);
 	janus_mutex_unlock(&mountpoints_mutex);
 
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
-	messages = g_queue_new();
+	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
@@ -504,7 +501,8 @@ void janus_streaming_destroy(void) {
 	g_hash_table_destroy(mountpoints);
 	janus_mutex_unlock(&mountpoints_mutex);
 	g_hash_table_destroy(sessions);
-	g_queue_free(messages);
+	g_async_queue_unref(messages);
+	messages = NULL;
 	sessions = NULL;
 	initialized = 0;
 	stopping = 0;
@@ -594,7 +592,7 @@ void janus_streaming_handle_message(janus_plugin_session *handle, char *transact
 	msg->transaction = transaction;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
-	g_queue_push_tail(messages, msg);
+	g_async_queue_push(messages, msg);
 }
 
 void janus_streaming_setup_media(janus_plugin_session *handle) {
@@ -659,7 +657,7 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	msg->transaction = NULL;
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
-	g_queue_push_tail(messages, msg);
+	g_async_queue_push(messages, msg);
 }
 
 /* Thread to handle incoming messages */
@@ -673,7 +671,7 @@ static void *janus_streaming_handler(void *data) {
 		return NULL;
 	}
 	while(initialized && !stopping) {
-		if(!messages || (msg = g_queue_pop_head(messages)) == NULL) {
+		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
 		}
@@ -733,19 +731,18 @@ static void *janus_streaming_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Request for the list of mountpoints\n");
 			/* Return a list of all available mountpoints */
 			janus_mutex_lock(&mountpoints_mutex);
-			GList *mountpoints_list = g_hash_table_get_values(mountpoints);
-			GList *m = mountpoints_list;
-			while(m) {
-				janus_streaming_mountpoint *mp = (janus_streaming_mountpoint *)m->data;
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, mountpoints);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_streaming_mountpoint *mp = value;
 				json_t *ml = json_object();
 				json_object_set_new(ml, "id", json_integer(mp->id));
 				json_object_set_new(ml, "description", json_string(mp->description));
 				json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
 				json_array_append_new(list, ml);
-				m = m->next;
 			}
 			json_object_set_new(result, "list", list);
-			g_list_free(mountpoints_list);
 			janus_mutex_unlock(&mountpoints_mutex);
 		} else if(!strcasecmp(request_text, "create")) {
 			/* Create a new stream */
