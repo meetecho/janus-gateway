@@ -563,7 +563,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		msg->session_id = session_id;
 		if(handle_path) {
-			char location[50];
+			char *location = (char *)calloc(strlen(ws_path) + strlen(session_path) + 2, sizeof(char));
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
@@ -575,6 +575,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
 			ret = MHD_queue_response(connection, 302, response);
 			MHD_destroy_response(response);
+			g_free(location);
 			goto done;
 		}
 		janus_session *session = janus_session_find(session_id);
@@ -1237,6 +1238,15 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
 				goto jsondone;
 			}
+			json_t *mline = json_object_get(candidate, "sdpMLineIndex");
+			if(!mline) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMLineIndex)");
+				goto jsondone;
+			}
+			if(!json_is_integer(mline)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex should be an integer)");
+				goto jsondone;
+			}
 			json_t *rc = json_object_get(candidate, "candidate");
 			if(!rc) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
@@ -1276,11 +1286,35 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				}
 			}
 			/* Parse it */
-			int video = (strcmp(json_string_value(mid), "video") == 0);
-#ifdef HAVE_SCTP
-			int data = (strcmp(json_string_value(mid), "data") == 0);
-#else
-			int data = 0;
+			int sdpMLineIndex = json_integer_value(mline);
+			int video = 0, data = 0;
+			/* FIXME badly, we should have an array of m-lines in the handle object */
+			switch(sdpMLineIndex) {
+				case 0:
+					if(handle->audio_stream == NULL) {
+						video = handle->video_stream ? 1 : 0;
+						data = !video;
+					}
+					break;
+				case 1:
+					if(handle->audio_stream == NULL) {
+						data = 1;
+					} else {
+						video = handle->video_stream ? 1 : 0;
+						data = !video;
+					}
+					break;
+				case 2:
+					data = 1;
+					break;
+				default:
+					/* FIXME We don't support more than 3 m-lines right now */
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex not [0,2])");
+					goto jsondone;
+					break;
+			}
+#ifndef HAVE_SCTP
+			data = 0;
 #endif
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 					&& (
@@ -1707,6 +1741,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		/* Prepare info */
 		janus_mutex_lock(&handle->mutex);
 		json_t *info = json_object();
+		json_object_set_new(info, "session_id", json_integer(session_id));
+		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->app) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			json_object_set_new(info, "plugin", json_string(plugin->get_package()));
