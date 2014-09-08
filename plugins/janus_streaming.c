@@ -233,8 +233,8 @@ typedef struct janus_streaming_session {
 	gboolean stopping;
 	gboolean destroy;
 } janus_streaming_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex;
 
 /* Packets we get from gstreamer and relay */
 typedef struct janus_streaming_rtp_relay_packet {

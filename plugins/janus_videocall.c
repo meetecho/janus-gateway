@@ -134,8 +134,8 @@ typedef struct janus_videocall_session {
 	struct janus_videocall_session *peer;
 	gboolean destroy;
 } janus_videocall_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex;
 
 
 /* Error codes */

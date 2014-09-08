@@ -149,8 +149,8 @@ typedef struct janus_audiobridge_room {
 	GHashTable *participants;	/* Map of participants */
 	janus_mutex mutex;			/* Mutex to lock this room instance */
 } janus_audiobridge_room;
-GHashTable *rooms;
-janus_mutex rooms_mutex;
+static GHashTable *rooms;
+static janus_mutex rooms_mutex;
 
 typedef struct janus_audiobridge_session {
 	janus_plugin_session *handle;
@@ -159,8 +159,8 @@ typedef struct janus_audiobridge_session {
 	gboolean stopping;
 	gboolean destroy;
 } janus_audiobridge_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex;
 
 typedef struct janus_audiobridge_participant {
 	janus_audiobridge_session *session;

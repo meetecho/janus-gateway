@@ -112,8 +112,8 @@ typedef struct janus_echotest_session {
 	uint64_t bitrate;
 	gboolean destroy;
 } janus_echotest_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex;
 
 void janus_echotest_message_free(janus_echotest_message *msg);
 void janus_echotest_message_free(janus_echotest_message *msg) {

@@ -193,8 +193,8 @@ typedef struct janus_sip_session {
 	gboolean destroy;
 	janus_mutex mutex;
 } janus_sip_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex;
 
 
 #undef SU_ROOT_MAGIC_T
