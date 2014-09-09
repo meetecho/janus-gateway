@@ -189,8 +189,8 @@ typedef struct janus_videoroom {
 	gboolean destroy;			/* Value to flag the room for destruction */
 	GHashTable *participants;	/* Map of potential publishers (we get listeners from them) */
 } janus_videoroom;
-GHashTable *rooms;
-janus_mutex rooms_mutex;
+static GHashTable *rooms;
+static janus_mutex rooms_mutex;
 
 static void janus_videoroom_free(janus_videoroom *room);
 
@@ -202,8 +202,8 @@ typedef struct janus_videoroom_session {
 	gboolean stopping;
 	gboolean destroy;
 } janus_videoroom_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex;
 
 typedef struct janus_videoroom_participant {
 	janus_videoroom_session *session;

@@ -139,8 +139,8 @@ typedef struct janus_voicemail_session {
 	gboolean stopping;
 	gboolean destroy;
 } janus_voicemail_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static janus_mutex sessions_mutex;
 
 static char *recordings_path = NULL;
 static char *recordings_base = NULL;
