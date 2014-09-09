@@ -172,8 +172,31 @@ janus_config *janus_config_parse(const char *config_file) {
 					janus_config_destroy(jc);
 					return NULL;
 				}
-				if((c = strrchr(temp, ';')) != NULL)
-					*c = '\0';
+				/* Strip comments from the value */
+				char *sc = temp;
+				while((c = strchr(sc, ';')) != NULL) {
+					if(c == temp) {
+						/* Comment starts here */
+						*c = '\0';
+						break;
+					}
+					c--;
+					if(*c != '\\') {
+						/* Comment starts here */
+						*c = '\0';
+						break;
+					}
+					/* Escaped semicolon, remove the slash */
+					sc = c;
+					int len = strlen(temp)-(sc-temp), pos = 0;
+					for(pos = 0; pos < len; pos++)
+						sc[pos] = sc[pos+1];
+					sc[len-1] = '\0';
+					if(len == 2)
+						break;
+					/* Go on */
+					sc++;
+				}
 				value = trim(temp);
 				janus_config_item *nci = calloc(1, sizeof(janus_config_item));
 				if(nci == NULL) {

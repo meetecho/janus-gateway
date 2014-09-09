@@ -3179,6 +3179,7 @@ gint main(int argc, char *argv[])
 
 	/* Prepare a summary on the gateway */
 	json_t *info = json_object();
+	json_object_set_new(info, "janus", json_string("server_info"));
 	json_object_set_new(info, "name", json_string(JANUS_NAME));
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
