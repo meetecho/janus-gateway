@@ -1144,7 +1144,7 @@ static void *janus_videoroom_handler(void *data) {
 		if(session->participant_type == janus_videoroom_p_type_none) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			/* Not configured yet, we need to do this now */
-			if(strcasecmp(request_text, "join")) {
+			if(strcasecmp(request_text, "join") && strcasecmp(request_text, "joinandconfigure")) {
 				JANUS_LOG(LOG_ERR, "Invalid request on unconfigured participant\n");
 				error_code = JANUS_VIDEOROOM_ERROR_JOIN_FIRST;
 				sprintf(error_cause, "Invalid request on unconfigured participant");
@@ -1226,6 +1226,31 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				JANUS_LOG(LOG_VERB, "  -- Publisher ID: %"SCNu64"\n", user_id);
+				json_t *audio = NULL, *video = NULL, *bitrate = NULL;
+				if(!strcasecmp(request_text, "joinandconfigure")) {
+					/* Also configure (or publish a new feed) audio/video/bitrate for this new publisher */
+					audio = json_object_get(root, "audio");
+					if(audio && !json_is_boolean(audio)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						sprintf(error_cause, "Invalid value (audio should be a boolean)");
+						goto error;
+					}
+					video = json_object_get(root, "video");
+					if(video && !json_is_boolean(video)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						sprintf(error_cause, "Invalid value (video should be a boolean)");
+						goto error;
+					}
+					bitrate = json_object_get(root, "bitrate");
+					if(bitrate && !json_is_integer(bitrate)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+						sprintf(error_cause, "Invalid value (bitrate should be an integer)");
+						goto error;
+					}
+				}
 				janus_videoroom_participant *publisher = calloc(1, sizeof(janus_videoroom_participant));
 				if(publisher == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -1248,6 +1273,19 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->video_ssrc = g_random_int();
 				publisher->fir_latest = 0;
 				publisher->fir_seq = 0;
+				/* In case we also wanted to configure */
+				if(audio) {
+					publisher->audio_active = json_is_true(audio);
+					JANUS_LOG(LOG_VERB, "Setting audio property: %s (room %"SCNu64", user %"SCNu64")\n", publisher->audio_active ? "true" : "false", publisher->room->room_id, publisher->user_id);
+				}
+				if(video) {
+					publisher->video_active = json_is_true(video);
+					JANUS_LOG(LOG_VERB, "Setting video property: %s (room %"SCNu64", user %"SCNu64")\n", publisher->video_active ? "true" : "false", publisher->room->room_id, publisher->user_id);
+				}
+				if(bitrate) {
+					publisher->bitrate = json_integer_value(bitrate);
+					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64" (room %"SCNu64", user %"SCNu64")\n", publisher->bitrate, publisher->room->room_id, publisher->user_id);
+				}
 				/* Done */
 				session->participant_type = janus_videoroom_p_type_publisher;
 				session->participant = publisher;
@@ -1430,7 +1468,7 @@ static void *janus_videoroom_handler(void *data) {
 				sprintf(error_cause, "Invalid participant instance");
 				goto error;
 			}
-			if(!strcasecmp(request_text, "join")) {
+			if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")) {
 				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
 				sprintf(error_cause, "Already in as a publisher on this handle");
