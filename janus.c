@@ -978,7 +978,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] There's a message for %s\n", handle->handle_id, plugin_t->get_name());
 		json_t *body = json_object_get(root, "body");
 		if(body == NULL) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (body)");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (body)");
 			goto jsondone;
 		}
 		if(!json_is_object(body)) {
@@ -1210,120 +1210,266 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto jsondone;
 		}
 		json_t *candidate = json_object_get(root, "candidate");
-		if(candidate == NULL) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (candidate)");
+		json_t *candidates = json_object_get(root, "candidates");
+		if(candidate == NULL && candidates == NULL) {
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (candidate|candidates)");
 			goto jsondone;
 		}
-		if(!json_is_object(candidate)) {
-			JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
-			janus_mutex_lock(&handle->mutex);
-			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
-			janus_mutex_unlock(&handle->mutex);
-		} else {
-			/* Handle remote candidate */
-			json_t *mid = json_object_get(candidate, "sdpMid");
-			if(!mid) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
-				goto jsondone;
-			}
-			if(!json_is_string(mid)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
-				goto jsondone;
-			}
-			json_t *mline = json_object_get(candidate, "sdpMLineIndex");
-			if(!mline) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMLineIndex)");
-				goto jsondone;
-			}
-			if(!json_is_integer(mline)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex should be an integer)");
-				goto jsondone;
-			}
-			json_t *rc = json_object_get(candidate, "candidate");
-			if(!rc) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
-				goto jsondone;
-			}
-			if(!json_is_string(rc)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (candidate should be a string)");
-				goto jsondone;
-			}
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
-			/* Is there any stream ready? this trickle may get here before the SDP it relates to */
-			if(handle->audio_stream == NULL && handle->video_stream == NULL) {
-				/* No stream available, wait a bit */
-				gint64 waited = 0;
-				while(handle->audio_stream == NULL && handle->video_stream == NULL) {
-					JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
-					g_usleep(100000);
-					waited += 100000;
-					if(waited >= 3*G_USEC_PER_SEC) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
-						break;
-					}
-				}
-			}
-			/* Is the ICE stack ready already? */
-			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-				/* Still processing the offer, wait a bit */
-				gint64 waited = 0;
-				while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
-					g_usleep(100000);
-					waited += 100000;
-					if(waited >= 5*G_USEC_PER_SEC) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 5 seconds, that's enough!\n", handle->handle_id);
-						break;
-					}
-				}
-			}
-			/* Parse it */
-			int sdpMLineIndex = json_integer_value(mline);
-			int video = 0, data = 0;
-			/* FIXME badly, we should have an array of m-lines in the handle object */
-			switch(sdpMLineIndex) {
-				case 0:
-					if(handle->audio_stream == NULL) {
-						video = handle->video_stream ? 1 : 0;
-						data = !video;
-					}
-					break;
-				case 1:
-					if(handle->audio_stream == NULL) {
-						data = 1;
-					} else {
-						video = handle->video_stream ? 1 : 0;
-						data = !video;
-					}
-					break;
-				case 2:
-					data = 1;
-					break;
-				default:
-					/* FIXME We don't support more than 3 m-lines right now */
-					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex not [0,2])");
-					goto jsondone;
-					break;
-			}
-#ifndef HAVE_SCTP
-			data = 0;
-#endif
-			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
-					&& (
-						((video || data) && handle->audio_stream != NULL) || 
-							((data) && handle->video_stream != NULL))
-						) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
+		if(candidate != NULL && candidates != NULL) {
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Can't have both candidate and candidates");
+			goto jsondone;
+		}
+		if(candidate != NULL) {
+			/* We got a single candidate */
+			if(!json_is_object(candidate)) {
+				JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
+				janus_mutex_lock(&handle->mutex);
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+				janus_mutex_unlock(&handle->mutex);
 			} else {
-				janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
-				if(stream == NULL) {
-					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
+				/* Handle remote candidate */
+				json_t *mid = json_object_get(candidate, "sdpMid");
+				if(!mid) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
 					goto jsondone;
 				}
-				int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
-				if(res != 0) {
-					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
+				if(!json_is_string(mid)) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
+					goto jsondone;
 				}
+				json_t *mline = json_object_get(candidate, "sdpMLineIndex");
+				if(!mline) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMLineIndex)");
+					goto jsondone;
+				}
+				if(!json_is_integer(mline)) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex should be an integer)");
+					goto jsondone;
+				}
+				json_t *rc = json_object_get(candidate, "candidate");
+				if(!rc) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
+					goto jsondone;
+				}
+				if(!json_is_string(rc)) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (candidate should be a string)");
+					goto jsondone;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
+				/* Is there any stream ready? this trickle may get here before the SDP it relates to */
+				if(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+					/* No stream available, wait a bit */
+					gint64 waited = 0;
+					while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+						JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
+						g_usleep(100000);
+						waited += 100000;
+						if(waited >= 3*G_USEC_PER_SEC) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
+							break;
+						}
+					}
+				}
+				/* Is the ICE stack ready already? */
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+					/* Still processing the offer, wait a bit */
+					gint64 waited = 0;
+					while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
+						g_usleep(100000);
+						waited += 100000;
+						if(waited >= 5*G_USEC_PER_SEC) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 5 seconds, that's enough!\n", handle->handle_id);
+							break;
+						}
+					}
+				}
+				/* Parse it */
+				int sdpMLineIndex = json_integer_value(mline);
+				int video = 0, data = 0;
+				/* FIXME badly, we should have an array of m-lines in the handle object */
+				switch(sdpMLineIndex) {
+					case 0:
+						if(handle->audio_stream == NULL) {
+							video = handle->video_stream ? 1 : 0;
+							data = !video;
+						}
+						break;
+					case 1:
+						if(handle->audio_stream == NULL) {
+							data = 1;
+						} else {
+							video = handle->video_stream ? 1 : 0;
+							data = !video;
+						}
+						break;
+					case 2:
+						data = 1;
+						break;
+					default:
+						/* FIXME We don't support more than 3 m-lines right now */
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex not [0,2])");
+						goto jsondone;
+						break;
+				}
+#ifndef HAVE_SCTP
+				data = 0;
+#endif
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+						&& (
+							((video || data) && handle->audio_stream != NULL) || 
+								((data) && handle->video_stream != NULL))
+							) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
+				} else {
+					janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
+					if(stream == NULL) {
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
+						goto jsondone;
+					}
+					int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
+					if(res != 0) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
+					}
+				}
+			}
+		} else {
+			/* We got multiple candidates in an array */
+			if(!json_is_array(candidates)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Can't have both candidate and candidates");
+				goto jsondone;
+			}
+			JANUS_LOG(LOG_INFO, "Got multiple candidates (%zu)\n", json_array_size(candidates));
+			gboolean last_candidate = FALSE;
+			if(json_array_size(candidates) > 0) {
+				/* Handle remote candidates */
+				size_t i = 0;
+				for(i=0; i<json_array_size(candidates); i++) {
+					json_t *candidate = json_array_get(candidates, i);
+					if(candidate == NULL || !json_is_object(candidate)) {
+						/* A 'NULL' candidate is our cue */
+						last_candidate = TRUE;
+						continue;
+					}
+					json_t *mid = json_object_get(candidate, "sdpMid");
+					if(!mid) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMid)", i);
+						continue;
+					}
+					if(!json_is_string(mid)) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMid should be a string)", i);
+						continue;
+					}
+					json_t *mline = json_object_get(candidate, "sdpMLineIndex");
+					if(!mline) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMLineIndex)", i);
+						continue;
+					}
+					if(!json_is_integer(mline)) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex should be an integer)", i);
+						continue;
+					}
+					json_t *rc = json_object_get(candidate, "candidate");
+					if(!rc) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (candidate)", i);
+						continue;
+					}
+					if(!json_is_string(rc)) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (candidate should be a string)", i);
+						continue;
+					}
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate at index %zu (%s): %s\n", handle->handle_id, i, json_string_value(mid), json_string_value(rc));
+					/* Parse it */
+					int sdpMLineIndex = json_integer_value(mline);
+					if(sdpMLineIndex < 0 || sdpMLineIndex > 2) {
+						/* FIXME We don't support more than 3 m-lines right now */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex not [0,2])", i);
+						continue;
+					}
+					/* Is there any stream ready? this trickle may get here before the SDP it relates to */
+					if(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+						/* No stream available, wait a bit */
+						gint64 waited = 0;
+						while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+							JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
+							g_usleep(100000);
+							waited += 100000;
+							if(waited >= 3*G_USEC_PER_SEC) {
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
+								break;
+							}
+						}
+					}
+					/* Is the ICE stack ready already? */
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+						/* Still processing the offer, wait a bit */
+						gint64 waited = 0;
+						while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
+							g_usleep(100000);
+							waited += 100000;
+							if(waited >= 5*G_USEC_PER_SEC) {
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 5 seconds, that's enough!\n", handle->handle_id);
+								break;
+							}
+						}
+					}
+					int video = 0, data = 0;
+					/* FIXME badly, we should have an array of m-lines in the handle object */
+					switch(sdpMLineIndex) {
+						case 0:
+							if(handle->audio_stream == NULL) {
+								video = handle->video_stream ? 1 : 0;
+								data = !video;
+							}
+							break;
+						case 1:
+							if(handle->audio_stream == NULL) {
+								data = 1;
+							} else {
+								video = handle->video_stream ? 1 : 0;
+								data = !video;
+							}
+							break;
+						case 2:
+							data = 1;
+							break;
+						default:
+							break;
+					}
+#ifndef HAVE_SCTP
+					data = 0;
+#endif
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+							&& (
+								((video || data) && handle->audio_stream != NULL) || 
+									((data) && handle->video_stream != NULL))
+								) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
+					} else {
+						janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
+						if(stream == NULL) {
+							JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, no %s stream", i, json_string_value(mid));
+							continue;
+						}
+						int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
+						if(res != 0) {
+							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate at index %zu... (%d)\n", handle->handle_id, i, res);
+						}
+					}
+				}
+			}
+			if(last_candidate) {
+				JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
+				janus_mutex_lock(&handle->mutex);
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+				janus_mutex_unlock(&handle->mutex);
 			}
 		}
 		/* We reply right away, not to block the web server... */
@@ -2109,7 +2255,7 @@ int janus_wss_onopen(libwebsock_client_state *state) {
 	JANUS_LOG(LOG_INFO, "WebSocket onopen: #%d\n", state->sockfd);
 	janus_mutex_lock(&wss_mutex);
 	if(g_hash_table_lookup(wss_sessions, state) != NULL) {
-		JANUS_LOG(LOG_INFO, "  -- Client already handled\n");
+		JANUS_LOG(LOG_WARN, "  -- Client already handled\n");
 		janus_mutex_unlock(&wss_mutex);
 		return 0;
 	}
