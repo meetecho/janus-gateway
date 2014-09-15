@@ -994,22 +994,165 @@ function Janus(gatewayCallbacks) {
 						callbacks.error("Screen sharing only works on HTTPS, try the https:// version of this page");
 						return;
 					}
-					if(!navigator.mozGetUserMedia) {
-						videoSupport = {"mandatory": {"chromeMediaSource": "screen", "maxHeight": "720", "maxWidth": "1280"}, "optional": []};
-						Janus.log("Adding media constraint (screen capture)");
-						Janus.log(videoSupport);
-					} else {
-						Janus.log("Firefox doesn't support screen sharing at the moment");
-						pluginHandle.consentDialog(false);
-						callbacks.error("Firefox doesn't support screen sharing at the moment");
-						return;
-					}
+          /**
+           * Screen sharing
+           * - fix for Chrome 34+
+           * - demo support for Firefox 33+
+           * - use code from getScreenMedia.js
+           *
+           * @see https://github.com/henrikjoreteg/getscreenmedia
+           */
+
+          // cache for constraints and callback
+          var cache = {};
+
+          /**
+           * Run WebRTC stuff
+           * @param stream
+           * @param error
+           */
+          function callbackUserMedia ( error, stream ) {
+            pluginHandle.consentDialog(false);
+            if ( error ) {
+              callbacks.error(error);
+            } else {
+              streamsDone(handleId, jsep, media, callbacks, stream);
+            }
+          }
+
+          /**
+           * Setup callbacks for getUserMedia()
+           * @param constraints
+           * @param callback
+           */
+          function getScreenMedia ( constraints, callback ) {
+            Janus.log("Adding media constraint (screen capture)");
+            Janus.log(constraints);
+            getUserMedia(
+              constraints,
+              function( stream ) {
+                callback( null, stream);
+              },
+              function( error ) {
+                callback( error );
+              }
+            );
+          }
+
+          if (window.navigator.userAgent.match('Chrome')) {
+            var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
+            var maxver = 33;
+            // "known" crash in chrome 34 and 35 on linux
+            if (window.navigator.userAgent.match('Linux')) maxver = 35;
+            if (chromever >= 26 && chromever <= maxver) {
+              // chrome 26 - chrome 33 way to do it -- requires bad chrome://flags
+              // note: this is basically in maintenance mode and will go away soon
+              constraints = {
+                video: {
+                  mandatory: {
+                    googLeakyBucket: true,
+                    maxWidth: window.screen.width,
+                    maxHeight: window.screen.height,
+                    maxFrameRate: 3,
+                    chromeMediaSource: 'screen'
+                  }
+                },
+                audio: isAudioSendEnabled(media)
+              };
+              getScreenMedia(constraints, callbackUserMedia);
+            } else {
+              // chrome 34+ way requiring an extension
+              var pending = window.setTimeout(function () {
+                error = new Error('NavigatorUserMediaError');
+                error.name = 'EXTENSION_UNAVAILABLE';
+                return callbacks.error(error);
+              }, 1000);
+              cache[pending] = [callbackUserMedia, null];
+              window.postMessage({ type: 'getScreen', id: pending }, '*');
+            }
+          } else if (window.navigator.userAgent.match('Firefox')) {
+            var ffver = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+            if (ffver >= 33) {
+              constraints = {
+                video: {
+                  mozMediaSource: 'window',
+                  mediaSource: 'window'
+                },
+                audio: isAudioSendEnabled(media)
+              };
+              getScreenMedia(constraints, function (err, stream) {
+                callbackUserMedia(err, stream);
+                // workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=1045810
+                if (!err) {
+                  var lastTime = stream.currentTime;
+                  var polly = window.setInterval(function () {
+                    if (!stream) window.clearInterval(polly);
+                    if (stream.currentTime == lastTime) {
+                      window.clearInterval(polly);
+                      if (stream.onended) {
+                        stream.onended();
+                      }
+                    }
+                    lastTime = stream.currentTime;
+                  }, 500);
+                }
+              });
+            } else {
+              var error = new Error('NavigatorUserMediaError');
+              error.name = 'EXTENSION_UNAVAILABLE'; // does not make much sense but...
+              callbacks.error(error);
+              return;
+            }
+          }
+
+          /**
+           * Listen events from Chrome Extension
+           */
+          window.addEventListener('message', function (event) {
+            if (event.origin != window.location.origin) {
+              return;
+            }
+            if (event.data.type == 'gotScreen' && cache[event.data.id]) {
+              var data = cache[event.data.id];
+              var callback = data[0];
+              delete cache[event.data.id];
+
+              if (event.data.sourceId === '') { // user canceled
+                var error = new Error('NavigatorUserMediaError');
+                error.name = 'PERMISSION_DENIED';
+                callback(error);
+              } else {
+                constraints = {
+                  audio: isAudioSendEnabled(media),
+                  video: {
+                    mandatory: {
+                      chromeMediaSource: 'desktop',
+                      maxWidth: window.screen.width,
+                      maxHeight: window.screen.height,
+                      maxFrameRate: 3
+                    },
+                    optional: [
+                      {googLeakyBucket: true},
+                      {googTemporalLayeredScreencast: true}
+                    ]
+                  }};
+                constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
+                getScreenMedia(constraints, callback);
+              }
+            } else if (event.data.type == 'getScreenPending') {
+              window.clearTimeout(event.data.id);
+            }
+          });
 				}
 			}
-			getUserMedia(
-				{audio:isAudioSendEnabled(media), video:videoSupport},
-				function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-				function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+
+      // Only for 'lowres'|'hires'
+      if(media.video !== 'screen') {
+        getUserMedia(
+          {audio:isAudioSendEnabled(media), video:videoSupport},
+          function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
+          function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+      }
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away
 			streamsDone(handleId, jsep, media, callbacks);
