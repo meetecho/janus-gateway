@@ -1,6 +1,25 @@
 // List of sessions
 Janus.sessions = {};
 
+// Screensharing Chrome Extension ID
+Janus.extensionId = "hapfgfdkleiggjjpfpenajgdnfckjpaj";
+Janus.isExtensionEnabled = function() {
+	if(window.navigator.userAgent.match('Chrome')) {
+		var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
+		var maxver = 33;
+		if(window.navigator.userAgent.match('Linux'))
+			maxver = 35;	// "known" crash in chrome 34 and 35 on linux
+		if(chromever >= 26 && chromever <= maxver) {
+			// Older versions of Chrome don't support this extension-based approach, so lie
+			return true;
+		}
+		return ($('#janus-extension-installed').length > 0);
+	} else {
+		// Firefox of others, no need for the extension (but this doesn't mean it will work)
+		return true;
+	}
+};
+
 Janus.noop = function() {};
 
 // Initialization
@@ -119,6 +138,7 @@ function Janus(gatewayCallbacks) {
 	this.getSessionId = function() { return sessionId; };
 	this.destroy = function(callbacks) { destroySession(callbacks); };
 	this.attach = function(callbacks) { createHandle(callbacks); };
+
 	
 	// Private method to create random identifiers (e.g., transaction)
 	function randomString(len) {
@@ -994,165 +1014,146 @@ function Janus(gatewayCallbacks) {
 						callbacks.error("Screen sharing only works on HTTPS, try the https:// version of this page");
 						return;
 					}
-          /**
-           * Screen sharing
-           * - fix for Chrome 34+
-           * - demo support for Firefox 33+
-           * - use code from getScreenMedia.js
-           *
-           * @see https://github.com/henrikjoreteg/getscreenmedia
-           */
+					// We're going to try and use the extension for Chrome 34+, the old approach
+					// for older versions of Chrome, or the experimental support in Firefox 33+
+					var cache = {};
+					function callbackUserMedia (error, stream) {
+						pluginHandle.consentDialog(false);
+						if(error) {
+							callbacks.error(error);
+						} else {
+							streamsDone(handleId, jsep, media, callbacks, stream);
+						}
+					};
+					function getScreenMedia(constraints, gsmCallback) {
+						Janus.log("Adding media constraint (screen capture)");
+						Janus.log(constraints);
+						getUserMedia(constraints,
+							function(stream) {
+								gsmCallback(null, stream);
+							},
+							function(error) {
+								pluginHandle.consentDialog(false);
+								gsmCallback(error);
+							}
+						);
+					};
+					if(window.navigator.userAgent.match('Chrome')) {
+						var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
+						var maxver = 33;
+						if(window.navigator.userAgent.match('Linux'))
+							maxver = 35;	// "known" crash in chrome 34 and 35 on linux
+						if(chromever >= 26 && chromever <= maxver) {
+							// Chrome 26->33 requires some awkward chrome://flags manipulation
+							constraints = {
+								video: {
+									mandatory: {
+										googLeakyBucket: true,
+										maxWidth: window.screen.width,
+										maxHeight: window.screen.height,
+										maxFrameRate: 3,
+										chromeMediaSource: 'screen'
+									}
+								},
+								audio: isAudioSendEnabled(media)
+							};
+							getScreenMedia(constraints, callbackUserMedia);
+						} else {
+							// Chrome 34+ requires an extension
+							var pending = window.setTimeout(
+								function () {
+									error = new Error('NavigatorUserMediaError');
+									error.name = 'The required Chrome extension is not installed: click <a href="#">here</a> to install it. (NOTE: this will need you to refresh the page)';
+									pluginHandle.consentDialog(false);
+									return callbacks.error(error);
+								}, 1000);
+							cache[pending] = [callbackUserMedia, null];
+							window.postMessage({ type: 'janusGetScreen', id: pending }, '*');
+						}
+					} else if (window.navigator.userAgent.match('Firefox')) {
+						var ffver = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+						if(ffver >= 33) {
+							// Firefox 33+ has experimental support for screen sharing
+							constraints = {
+								video: {
+									mozMediaSource: 'window',
+									mediaSource: 'window'
+								},
+								audio: isAudioSendEnabled(media)
+							};
+							getScreenMedia(constraints, function (err, stream) {
+								callbackUserMedia(err, stream);
+								// Workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=1045810
+								if (!err) {
+									var lastTime = stream.currentTime;
+									var polly = window.setInterval(function () {
+										if(!stream)
+											window.clearInterval(polly);
+										if(stream.currentTime == lastTime) {
+											window.clearInterval(polly);
+											if(stream.onended) {
+												stream.onended();
+											}
+										}
+										lastTime = stream.currentTime;
+									}, 500);
+								}
+							});
+						} else {
+							var error = new Error('NavigatorUserMediaError');
+							error.name = 'Your version of Firefox does not support screen sharing, please install Firefox 33 (or more recent versions)';
+							pluginHandle.consentDialog(false);
+							callbacks.error(error);
+							return;
+						}
+					}
 
-          // cache for constraints and callback
-          var cache = {};
+					// Wait for events from the Chrome Extension
+					window.addEventListener('message', function (event) {
+						if(event.origin != window.location.origin)
+							return;
+						if(event.data.type == 'janusGotScreen' && cache[event.data.id]) {
+							var data = cache[event.data.id];
+							var callback = data[0];
+							delete cache[event.data.id];
 
-          /**
-           * Run WebRTC stuff
-           * @param stream
-           * @param error
-           */
-          function callbackUserMedia ( error, stream ) {
-            pluginHandle.consentDialog(false);
-            if ( error ) {
-              callbacks.error(error);
-            } else {
-              streamsDone(handleId, jsep, media, callbacks, stream);
-            }
-          }
-
-          /**
-           * Setup callbacks for getUserMedia()
-           * @param constraints
-           * @param callback
-           */
-          function getScreenMedia ( constraints, callback ) {
-            Janus.log("Adding media constraint (screen capture)");
-            Janus.log(constraints);
-            getUserMedia(
-              constraints,
-              function( stream ) {
-                callback( null, stream);
-              },
-              function( error ) {
-                callback( error );
-              }
-            );
-          }
-
-          if (window.navigator.userAgent.match('Chrome')) {
-            var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
-            var maxver = 33;
-            // "known" crash in chrome 34 and 35 on linux
-            if (window.navigator.userAgent.match('Linux')) maxver = 35;
-            if (chromever >= 26 && chromever <= maxver) {
-              // chrome 26 - chrome 33 way to do it -- requires bad chrome://flags
-              // note: this is basically in maintenance mode and will go away soon
-              constraints = {
-                video: {
-                  mandatory: {
-                    googLeakyBucket: true,
-                    maxWidth: window.screen.width,
-                    maxHeight: window.screen.height,
-                    maxFrameRate: 3,
-                    chromeMediaSource: 'screen'
-                  }
-                },
-                audio: isAudioSendEnabled(media)
-              };
-              getScreenMedia(constraints, callbackUserMedia);
-            } else {
-              // chrome 34+ way requiring an extension
-              var pending = window.setTimeout(function () {
-                error = new Error('NavigatorUserMediaError');
-                error.name = 'EXTENSION_UNAVAILABLE';
-                return callbacks.error(error);
-              }, 1000);
-              cache[pending] = [callbackUserMedia, null];
-              window.postMessage({ type: 'getScreen', id: pending }, '*');
-            }
-          } else if (window.navigator.userAgent.match('Firefox')) {
-            var ffver = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
-            if (ffver >= 33) {
-              constraints = {
-                video: {
-                  mozMediaSource: 'window',
-                  mediaSource: 'window'
-                },
-                audio: isAudioSendEnabled(media)
-              };
-              getScreenMedia(constraints, function (err, stream) {
-                callbackUserMedia(err, stream);
-                // workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=1045810
-                if (!err) {
-                  var lastTime = stream.currentTime;
-                  var polly = window.setInterval(function () {
-                    if (!stream) window.clearInterval(polly);
-                    if (stream.currentTime == lastTime) {
-                      window.clearInterval(polly);
-                      if (stream.onended) {
-                        stream.onended();
-                      }
-                    }
-                    lastTime = stream.currentTime;
-                  }, 500);
-                }
-              });
-            } else {
-              var error = new Error('NavigatorUserMediaError');
-              error.name = 'EXTENSION_UNAVAILABLE'; // does not make much sense but...
-              callbacks.error(error);
-              return;
-            }
-          }
-
-          /**
-           * Listen events from Chrome Extension
-           */
-          window.addEventListener('message', function (event) {
-            if (event.origin != window.location.origin) {
-              return;
-            }
-            if (event.data.type == 'gotScreen' && cache[event.data.id]) {
-              var data = cache[event.data.id];
-              var callback = data[0];
-              delete cache[event.data.id];
-
-              if (event.data.sourceId === '') { // user canceled
-                var error = new Error('NavigatorUserMediaError');
-                error.name = 'PERMISSION_DENIED';
-                callback(error);
-              } else {
-                constraints = {
-                  audio: isAudioSendEnabled(media),
-                  video: {
-                    mandatory: {
-                      chromeMediaSource: 'desktop',
-                      maxWidth: window.screen.width,
-                      maxHeight: window.screen.height,
-                      maxFrameRate: 3
-                    },
-                    optional: [
-                      {googLeakyBucket: true},
-                      {googTemporalLayeredScreencast: true}
-                    ]
-                  }};
-                constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
-                getScreenMedia(constraints, callback);
-              }
-            } else if (event.data.type == 'getScreenPending') {
-              window.clearTimeout(event.data.id);
-            }
-          });
+							if (event.data.sourceId === '') {
+								// user canceled
+								var error = new Error('NavigatorUserMediaError');
+								error.name = 'You cancelled the request for permission, giving up...';
+								pluginHandle.consentDialog(false);
+								callbacks.error(error);
+							} else {
+								constraints = {
+									audio: isAudioSendEnabled(media),
+									video: {
+										mandatory: {
+										chromeMediaSource: 'desktop',
+										maxWidth: window.screen.width,
+										maxHeight: window.screen.height,
+										maxFrameRate: 3
+									},
+									optional: [
+										{googLeakyBucket: true},
+										{googTemporalLayeredScreencast: true}
+									]
+								}};
+								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
+								getScreenMedia(constraints, callback);
+							}
+						} else if (event.data.type == 'janusGetScreenPending') {
+							window.clearTimeout(event.data.id);
+						}
+					});
 				}
 			}
-
-      // Only for 'lowres'|'hires'
-      if(media.video !== 'screen') {
-        getUserMedia(
-          {audio:isAudioSendEnabled(media), video:videoSupport},
-          function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-          function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
-      }
+			// If we got here, we're not screensharing
+			if(media.video !== 'screen') {
+				getUserMedia(
+					{audio:isAudioSendEnabled(media), video:videoSupport},
+					function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
+					function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+			}
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away
 			streamsDone(handleId, jsep, media, callbacks);

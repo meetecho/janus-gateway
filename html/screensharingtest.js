@@ -275,6 +275,12 @@ function shareScreen() {
 		$('#start').attr('disabled', true);
 		return;
 	}
+	if(!Janus.isExtensionEnabled()) {
+		bootbox.alert("You're using a recent version of Chrome but don't have the screensharing extension installed: click <b><a href='https://chrome.google.com/webstore/detail/janus-webrtc-screensharin/hapfgfdkleiggjjpfpenajgdnfckjpaj' target='_blank'>here</a></b> to do so", function() {
+			window.location.reload();
+		});
+		return;
+	}
 	// Create a new room
 	$('#desc').attr('disabled', true);
 	$('#create').attr('disabled', true).unbind('click');
