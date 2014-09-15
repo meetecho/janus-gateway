@@ -185,9 +185,11 @@ struct janus_ice_component {
 	GSource *source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
+	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
+	GList *retransmit_buffer;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
-	/*! \brief Mutex to lock/unlock this stream */
+	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
 };
 

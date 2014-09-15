@@ -162,26 +162,26 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
 					if(fixssrc && newssrcr) {
 						rtcpfb->media = htonl(newssrcr);
 					}
-					//~ int nacks = ntohs(rtcp->length)-2;	/* Skip SSRCs */
-					//~ if(nacks > 0) {
-						//~ JANUS_LOG(LOG_HUGE, "        Got %d nacks\n", nacks);
-						//~ rtcp_nack *nack = NULL;
-						//~ uint16_t pid = 0;
-						//~ uint16_t blp = 0;
-						//~ int i=0, j=0;
-						//~ char bitmask[20];
-						//~ for(i=0; i< nacks; i++) {
-							//~ nack = (rtcp_nack *)rtcpfb->fci + i;
-							//~ pid = ntohs(nack->pid);
-							//~ blp = ntohs(nack->blp);
-							//~ memset(bitmask, 0, 20);
-							//~ for(j=0; j<16; j++) {
-								//~ bitmask[j] = (blp & ( 1 << j )) >> j ? '1' : '0';
-							//~ }
-							//~ bitmask[16] = '\n';
-							//~ JANUS_LOG(LOG_HUGE, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
-						//~ }
-					//~ }
+					int nacks = ntohs(rtcp->length)-2;	/* Skip SSRCs */
+					if(nacks > 0) {
+						JANUS_LOG(LOG_DBG, "        Got %d nacks\n", nacks);
+						rtcp_nack *nack = NULL;
+						uint16_t pid = 0;
+						uint16_t blp = 0;
+						int i=0, j=0;
+						char bitmask[20];
+						for(i=0; i< nacks; i++) {
+							nack = (rtcp_nack *)rtcpfb->fci + i;
+							pid = ntohs(nack->pid);
+							blp = ntohs(nack->blp);
+							memset(bitmask, 0, 20);
+							for(j=0; j<16; j++) {
+								bitmask[j] = (blp & ( 1 << j )) >> j ? '1' : '0';
+							}
+							bitmask[16] = '\n';
+							JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
+						}
+					}
 				} else if(fmt == 3) {	/* rfc5104 */
 					/* TMMBR: http://tools.ietf.org/html/rfc5104#section-4.2.1.1 */
 					JANUS_LOG(LOG_HUGE, "     #%d TMMBR -- RTPFB (205)\n", pno);
@@ -300,7 +300,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 				rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
 				int nacks = ntohs(rtcp->length)-2;	/* Skip SSRCs */
 				if(nacks > 0) {
-					JANUS_LOG(LOG_VERB, "        Got %d nacks\n", nacks);
+					JANUS_LOG(LOG_DBG, "        Got %d nacks\n", nacks);
 					rtcp_nack *nack = NULL;
 					uint16_t pid = 0;
 					uint16_t blp = 0;
@@ -318,7 +318,7 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 								list = g_slist_append(list, GUINT_TO_POINTER(pid+j+1));
 						}
 						bitmask[16] = '\n';
-						JANUS_LOG(LOG_VERB, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
+						JANUS_LOG(LOG_DBG, "[%d] %"SCNu16" / %s\n", i, pid, bitmask);
 					}
 				}
 			}
@@ -333,6 +333,55 @@ GSList *janus_rtcp_get_nacks(char *packet, int len) {
 		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
 	}
 	return list;
+}
+
+int janus_rtcp_remove_nacks(char *packet, int len) {
+	if(packet == NULL || len == 0)
+		return len;
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return len;
+	/* Find the NACK message */
+	char *nacks = NULL;
+	int total = len, nacks_len = 0;
+	while(rtcp) {
+		if(rtcp->type == RTCP_RTPFB) {
+			gint fmt = rtcp->rc;
+			if(fmt == 1) {
+				nacks = (char *)rtcp;
+			}
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		if(nacks != NULL) {
+			nacks_len = length*4+4;
+			break;
+		}
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	if(nacks != NULL) {
+		total = len - ((nacks-packet)+nacks_len);
+		JANUS_LOG(LOG_INFO, "Total: %d!\n", total);
+		if(total < 0) {
+			/* FIXME Should never happen, but you never know: do nothing */
+			return len;
+		} else if(total == 0) {
+			/* NACK was the last compound packet, easy enough */
+			return len-nacks_len;
+		} else {
+			/* NACK is between two compound packets, move them around */
+			int i=0;
+			for(i=0; i<total; i++)
+				*(nacks+i) = *(nacks+nacks_len+i);
+			return len-nacks_len;
+		}
+	}
+	return len;
 }
 
 /* Change an existing REMB message */

@@ -141,7 +141,7 @@ or on the command line:
 
 	./janus --help
 	
-	janus 0.0.4
+	janus 0.0.5
 
 	Usage: janus [OPTIONS]...
 
@@ -159,6 +159,25 @@ or on the command line:
                                   secure WebSockets)
 	-N, --no-websockets           Disable insecure WebSockets server  
                                   (default=off)
+	-m, --admin-port=portnumber   Admin/monitor web server HTTP port 
+                                  (default=7088)
+	-M, --admin-secure-port=portnumber
+                                  Admin/monitor web server HTTPS port (default=no 
+                                  HTTPS)
+	-O, --no-admin                Disable insecure HTTP admin/monitor web server  
+                                  (default=off)
+	-B, --admin-base-path=basepath
+                                  Base path to bind to in the HTTP/HTTPS 
+                                  admin/monitor web server (default=/admin) 
+	-Q, --admin-secret=randomstring
+                                  Admin/monitor secret all requests need to pass 
+                                  in order to be accepted by Janus (useful a 
+                                  crude form of authentication, none by 
+                                  default)
+	-L, --admin-acl=list          Comma-separated list of IP addresses allowed to 
+                                  use the Admin/monitor; partial strings are 
+                                  supported (e.g., 192.168.0.1,10.0.0.1 or 
+                                  192.168., default=no restriction)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)

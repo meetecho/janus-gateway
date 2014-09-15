@@ -81,8 +81,8 @@ rec_dir = <folder where recordings should be stored, when enabled>
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			3
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.3"
+#define JANUS_VIDEOROOM_VERSION			4
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.4"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing MCU for Janus, something like Licode."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -99,7 +99,7 @@ const char *janus_videoroom_get_name(void);
 const char *janus_videoroom_get_author(void);
 const char *janus_videoroom_get_package(void);
 void janus_videoroom_create_session(janus_plugin_session *handle, int *error);
-void janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
 void janus_videoroom_setup_media(janus_plugin_session *handle);
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -577,14 +577,14 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
-void janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, stopping ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_videoroom_message *msg = calloc(1, sizeof(janus_videoroom_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 	}
 	msg->handle = handle;
 	msg->transaction = transaction;
@@ -593,6 +593,9 @@ void janus_videoroom_handle_message(janus_plugin_session *handle, char *transact
 	msg->sdp = sdp;
 
 	g_async_queue_push(messages, msg);
+
+	/* All the requests to this plugin are handled asynchronously */
+	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
 }
 
 void janus_videoroom_setup_media(janus_plugin_session *handle) {

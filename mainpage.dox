@@ -856,8 +856,12 @@ GET http://host:port/janus/<sessionid>?max_events=5
 }
 \endverbatim
  *
+ * Plugins may handle this requests synchronously or asynchronously. In
+ * the former, plugins would return a response to the request itself
+ * immediately; in the latter, instead, the plugin would only notify a
+ * successful reception of the request, which it would process later.
  * Considering the asynchronous nature of the Janus API, a successful
- * management of such messages within the gateway will simply result in
+ * management of such messages within the gateway would in such case result in
  * a \c janus "ack" messages being sent back to the client. A logical response
  * to those messages, if needed, would be provided as an event in the
  * long-poll interface described previously, and clients would be able
@@ -879,8 +883,8 @@ GET http://host:port/janus/<sessionid>?max_events=5
 }
 \endverbatim
  *
- * If you receive this ack, you can be sure the plugin has received the
- * message, and is going to process it soon.
+ * If you receive this ack instead of a "success" response, you can be
+ * sure the plugin has received the message, and is going to process it soon.
  *
  * In case of an error, instead, you'll receive an error message as the one
  * introduced before. This request, if issued with a POST to a valid plugin

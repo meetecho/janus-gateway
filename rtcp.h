@@ -206,6 +206,16 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
  * @returns A list of janus_nack elements containing the sequence numbers to send again */
 GSList *janus_rtcp_get_nacks(char *packet, int len);
 
+/*! \brief Method to remove an RTCP NACK message
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns The new message data length in bytes
+ * @note This is mostly a placeholder: for the sake of simplicity, whenever we handle
+ * some sequence numbers in a NACK, we remove the NACK as a whole before forwarding the
+ * RTCP message. Future versions will only selectively remove the sequence numbers that
+ * have been handled. */
+int janus_rtcp_remove_nacks(char *packet, int len);
+
 /*! \brief Method to modify an existing RTCP REMB message to cap the reported bitrate
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes

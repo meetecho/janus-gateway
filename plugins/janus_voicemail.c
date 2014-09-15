@@ -38,8 +38,8 @@
 
 
 /* Plugin information */
-#define JANUS_VOICEMAIL_VERSION			3
-#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.3"
+#define JANUS_VOICEMAIL_VERSION			4
+#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.4"
 #define JANUS_VOICEMAIL_DESCRIPTION		"This is a plugin implementing a very simple VoiceMail service for Janus, recording Opus streams."
 #define JANUS_VOICEMAIL_NAME			"JANUS VoiceMail plugin"
 #define JANUS_VOICEMAIL_AUTHOR			"Meetecho s.r.l."
@@ -56,7 +56,7 @@ const char *janus_voicemail_get_name(void);
 const char *janus_voicemail_get_author(void);
 const char *janus_voicemail_get_package(void);
 void janus_voicemail_create_session(janus_plugin_session *handle, int *error);
-void janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
 void janus_voicemail_setup_media(janus_plugin_session *handle);
 void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -353,14 +353,14 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
-void janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, stopping ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_voicemail_message *msg = calloc(1, sizeof(janus_voicemail_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 	}
 	msg->handle = handle;
 	msg->transaction = transaction;
@@ -368,6 +368,9 @@ void janus_voicemail_handle_message(janus_plugin_session *handle, char *transact
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
 	g_async_queue_push(messages, msg);
+
+	/* All the requests to this plugin are handled asynchronously */
+	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
 }
 
 void janus_voicemail_setup_media(janus_plugin_session *handle) {

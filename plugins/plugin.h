@@ -148,6 +148,8 @@ typedef struct janus_callbacks janus_callbacks;
 typedef struct janus_plugin janus_plugin;
 /*! \brief Plugin-Gateway session mapping */
 typedef struct janus_plugin_session janus_plugin_session;
+/*! \brief Result of individual requests passed to plugins */
+typedef struct janus_plugin_result janus_plugin_result;
 
 /*! \brief Plugin-Gateway session mapping */
 struct janus_plugin_session {
@@ -190,8 +192,10 @@ struct janus_plugin {
 	/*! \brief Method to handle an incoming message/request from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] transaction The transaction identifier for this message/request
-	 * @param[in] message The stringified version of the message/request JSON */
-	void (* const handle_message)(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+	 * @param[in] message The stringified version of the message/request JSON
+	 * @returns A janus_plugin_result instance that may contain a response (for immediate/synchronous replies), an ack
+	 * (for asynchronously managed requests) or an error */
+	struct janus_plugin_result * (* const handle_message)(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
 	/*! \brief Callback to be notified when the associated PeerConnection is up and ready to be used
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const setup_media)(janus_plugin_session *handle);
@@ -269,6 +273,65 @@ struct janus_callbacks {
 
 /*! \brief The hook that plugins need to implement to be created from the gateway */
 typedef janus_plugin* create_p(void);
+
+
+/** @name Janus plugin results
+ * @brief When a client sends a message to a plugin (e.g., a request or a
+ * command) this is notified to the plugin through a handle_message()
+ * callback. The plugin can then either handle the request immediately
+ * and provide a response (synchronous approach) or decide to queue it
+ * and process it later (asynchronous approach). In both cases the plugin
+ * must return a janus_plugin_result instance to the core, that will allow
+ * the client to: 1. know whether a response is immediately available or
+ * it will be later on through notifications, and 2. what the actual content
+ * of the result might be. Of course, notifications related to the
+ * transaction may occur later on even for synchronous requests, if the
+ * plugin was implemented with use cases that envisage this approach.
+ * @note An error may be returned as well, but this would cause a core-level
+ * error to be returned to the client. If you want to provide indications
+ * about a failed operation for application-level reason, the correct
+ * approach is to return a success with a plugin-specific payload describing
+ * the error.
+ */
+///@{
+/*! \brief Result types */
+typedef enum janus_plugin_result_type {
+	/*! \brief A severe error happened (not an application level error) */
+	JANUS_PLUGIN_ERROR = -1,
+	/*! \brief The request was correctly handled and a response is provided (synchronous) */
+	JANUS_PLUGIN_OK,
+	/*! \brief The request was correctly handled and notifications will follow with more info (asynchronous) */
+	JANUS_PLUGIN_OK_WAIT,
+} janus_plugin_result_type;
+
+/*! \brief Janus plugin result */
+struct janus_plugin_result {
+	/*! \brief Result type */
+	janus_plugin_result_type type;
+	/*! \brief Result content
+	 * @note This MUST be a valid JSON payload in case of JANUS_PLUGIN_OK (even when
+	 * returning application level errors), and MUST be a generic string
+	 * in case of JANUS_PLUGIN_ERROR. If returning a JANUS_PLUGIN_OK_WAIT,
+	 * the content is optional, but if provided (e.g., if the plugin wants
+	 * to provide verbose info about the reasons for choosing an async approach)
+	 * the content MUST be a generic string, as it will end up in a string
+	 * element in the JSON ack response. */
+	char *content;
+};
+
+/*! \brief Helper to quickly create a janus_plugin_result instance
+ * @param[in] type The type of result
+ * @param[in] content The content of the result
+ * @note The content is always strdup-ed, if available, so remember to free the original
+ * string yourself, if you allocated it
+ * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
+janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *content);
+
+/*! \brief Helper to quickly destroy a janus_plugin_result instance
+ * @param[in] result The janus_plugin_result instance to destroy
+ * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
+void janus_plugin_result_destroy(janus_plugin_result *result);
+///@}
 
 
 #endif

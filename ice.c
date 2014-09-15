@@ -94,6 +94,10 @@ gboolean janus_is_rtcp(gchar *buf) {
 }
 
 
+/* Maximum value for the NACK queue */
+#define MAX_NACK_QUEUE	300
+
+
 /* libnice initialization */
 gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port) {
 	if(stun_server == NULL)
@@ -489,6 +493,19 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 		janus_dtls_srtp_destroy(component->dtls);
 		component->dtls = NULL;
 	}
+	if(component->retransmit_buffer != NULL) {
+		janus_rtp_packet *p = NULL;
+		GList *first = g_list_first(component->retransmit_buffer);
+		while(first != NULL) {
+			p = (janus_rtp_packet *)first->data;
+			first->data = NULL;
+			component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+			g_free(p->data);
+			p->data = NULL;
+			g_free(p);
+			first = g_list_first(component->retransmit_buffer);
+		}
+	}
 	if(component->candidates != NULL) {
 		GSList *i = NULL, *candidates = component->candidates;
 		for (i = candidates; i; i = i->next) {
@@ -730,17 +747,37 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
 				if(nacks != NULL) {
-					/* TODO Actually handle NACK */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS we should probably handle...\n", handle->handle_id);
-					JANUS_LOG(LOG_HUGE, "           >>");
+					gboolean done = FALSE;
+					/* Handle NACK */
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS we should handle...\n", handle->handle_id);
 					GSList *list = nacks;
+					janus_mutex_lock(&component->mutex);
 					while(list->next) {
-						JANUS_LOG(LOG_HUGE, " %u", GPOINTER_TO_UINT(list->data));
+						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
+						JANUS_LOG(LOG_HUGE, "  >> %u\n", seqnr);
+						GList *rp = component->retransmit_buffer;
+						while(rp) {
+							janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
+							if(p) {
+								rtp_header *rh = (rtp_header *)p->data;
+								if(ntohs(rh->seq_number) == seqnr) {
+									/* Retransmit this packet */
+									JANUS_LOG(LOG_HUGE, "  >> >> Retransmitting!\n");
+									nice_agent_send(handle->agent, stream->stream_id, component->component_id, p->length, p->data);
+								}
+							}
+							rp = rp->next;
+						}
 						list = list->next;
 					}
+					janus_mutex_unlock(&component->mutex);
 					JANUS_LOG(LOG_HUGE, "\n");
 					g_slist_free(nacks);
 					nacks = NULL;
+					if(done) {
+						/* FIXME Remove the NACK compound packet, we've handled it */
+						buflen = janus_rtcp_remove_nacks(buf, buflen);
+					}
 				}
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtcp)
@@ -1075,6 +1112,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->candidates = NULL;
 		audio_rtp->local_candidates = NULL;
 		audio_rtp->remote_candidates = NULL;
+		audio_rtp->source = NULL;
+		audio_rtp->dtls = NULL;
+		audio_rtp->retransmit_buffer = NULL;
 		janus_mutex_init(&audio_rtp->mutex);
 		g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(1), audio_rtp);
 		audio_stream->rtp_component = audio_rtp;
@@ -1093,6 +1133,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->candidates = NULL;
 			audio_rtcp->local_candidates = NULL;
 			audio_rtcp->remote_candidates = NULL;
+			audio_rtcp->source = NULL;
+			audio_rtcp->dtls = NULL;
+			audio_rtcp->retransmit_buffer = NULL;
 			janus_mutex_init(&audio_rtcp->mutex);
 			g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(2), audio_rtcp);
 			audio_stream->rtcp_component = audio_rtcp;
@@ -1138,6 +1181,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->candidates = NULL;
 		video_rtp->local_candidates = NULL;
 		video_rtp->remote_candidates = NULL;
+		video_rtp->source = NULL;
+		video_rtp->dtls = NULL;
+		video_rtp->retransmit_buffer = NULL;
 		janus_mutex_init(&video_rtp->mutex);
 		g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(1), video_rtp);
 		video_stream->rtp_component = video_rtp;
@@ -1156,6 +1202,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->candidates = NULL;
 			video_rtcp->local_candidates = NULL;
 			video_rtcp->remote_candidates = NULL;
+			video_rtcp->source = NULL;
+			video_rtcp->dtls = NULL;
+			video_rtcp->retransmit_buffer = NULL;
 			janus_mutex_init(&video_rtcp->mutex);
 			g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(2), video_rtcp);
 			video_stream->rtcp_component = video_rtcp;
@@ -1200,6 +1249,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->stream = data_stream;
 		data_component->candidates = NULL;
 		data_component->local_candidates = NULL;
+		data_component->source = NULL;
+		data_component->dtls = NULL;
+		data_component->retransmit_buffer = NULL;
 		janus_mutex_init(&data_component->mutex);
 		g_hash_table_insert(data_stream->components, GUINT_TO_POINTER(1), data_component);
 		data_stream->rtp_component = data_component;	/* We use the component called 'RTP' for data */
@@ -1269,6 +1321,24 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 		if(sent < protected) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
 		}
+		/* Save the packet for retransmissions that may be needed later */
+		janus_rtp_packet *p = (janus_rtp_packet *)calloc(1, sizeof(janus_rtp_packet));
+		p->data = (char *)calloc(protected, sizeof(char));
+		memcpy(p->data, (char *)&sbuf, protected);
+		p->length = protected;
+		janus_mutex_lock(&component->mutex);
+		component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
+		if(g_list_length(component->retransmit_buffer) > MAX_NACK_QUEUE) {
+			/* We only keep a limited window of packets, get rid of the oldest one */
+			GList *first = g_list_first(component->retransmit_buffer);
+			p = (janus_rtp_packet *)first->data;
+			first->data = NULL;
+			component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+			g_free(p->data);
+			p->data = NULL;
+			g_free(p);
+		}
+		janus_mutex_unlock(&component->mutex);
 	}
 }
 

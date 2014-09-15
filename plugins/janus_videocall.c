@@ -35,8 +35,8 @@
 
 
 /* Plugin information */
-#define JANUS_VIDEOCALL_VERSION			2
-#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.2"
+#define JANUS_VIDEOCALL_VERSION			3
+#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.3"
 #define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
@@ -53,7 +53,7 @@ const char *janus_videocall_get_name(void);
 const char *janus_videocall_get_author(void);
 const char *janus_videocall_get_package(void);
 void janus_videocall_create_session(janus_plugin_session *handle, int *error);
-void janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
 void janus_videocall_setup_media(janus_plugin_session *handle);
 void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -289,14 +289,14 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
-void janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, stopping ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_videocall_message *msg = calloc(1, sizeof(janus_videocall_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 	}
 	msg->handle = handle;
 	msg->transaction = transaction;
@@ -304,6 +304,9 @@ void janus_videocall_handle_message(janus_plugin_session *handle, char *transact
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
 	g_async_queue_push(messages, msg);
+
+	/* All the requests to this plugin are handled asynchronously */
+	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
 }
 
 void janus_videocall_setup_media(janus_plugin_session *handle) {
@@ -357,6 +360,8 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 		}
 		if(session->destroy || session->peer->destroy)
 			return;
+		if((!video && !session->audio_active) || (video && !session->video_active))
+			len = janus_rtcp_remove_nacks(buf, len);
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
 		gateway->relay_rtcp(session->peer->handle, video, buf, len);
