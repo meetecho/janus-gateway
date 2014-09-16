@@ -204,7 +204,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 typedef struct janus_streaming_message {
 	janus_plugin_session *handle;
 	char *transaction;
-	char *message;
+	json_t *message;
 	char *sdp_type;
 	char *sdp;
 } janus_streaming_message;
@@ -219,7 +219,8 @@ void janus_streaming_message_free(janus_streaming_message *msg) {
 
 	g_free(msg->transaction);
 	msg->transaction = NULL;
-	g_free(msg->message);
+	if(msg->message)
+		json_decref(msg->message);
 	msg->message = NULL;
 	g_free(msg->sdp_type);
 	msg->sdp_type = NULL;
@@ -256,6 +257,7 @@ typedef struct janus_streaming_rtp_relay_packet {
 #define JANUS_STREAMING_ERROR_INVALID_ELEMENT		454
 #define JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT	455
 #define JANUS_STREAMING_ERROR_CANT_CREATE			456
+#define JANUS_STREAMING_ERROR_UNKNOWN_ERROR			470
 
 
 /* Plugin implementation */
@@ -595,15 +597,552 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 	}
-	msg->handle = handle;
-	msg->message = message;
-	msg->transaction = transaction;
-	msg->sdp_type = sdp_type;
-	msg->sdp = sdp;
-	g_async_queue_push(messages, msg);
 
-	/* All the requests to this plugin are handled asynchronously */
-	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
+	/* Pre-parse the message */
+	int error_code = 0;
+	char error_cause[512];	/* FIXME 512 should be enough, but anyway... */
+	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;	
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+		sprintf(error_cause, "%s", "session associated with this handle...");
+		goto error;
+	}
+	if(session->destroy) {
+		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
+		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+		sprintf(error_cause, "%s", "Session has already been destroyed...");
+		goto error;
+	}
+	error_code = 0;
+	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
+	if(message == NULL) {
+		JANUS_LOG(LOG_ERR, "No message??\n");
+		error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
+		sprintf(error_cause, "%s", "No message??");
+		goto error;
+	}
+	json_error_t error;
+	json_t *root = json_loads(message, 0, &error);
+	if(!root) {
+		JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+		error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
+		sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
+		goto error;
+	}
+	if(!json_is_object(root)) {
+		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
+		error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
+		sprintf(error_cause, "JSON error: not an object");
+		goto error;
+	}
+	/* Get the request first */
+	json_t *request = json_object_get(root, "request");
+	if(!request) {
+		JANUS_LOG(LOG_ERR, "Missing element (request)\n");
+		error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+		sprintf(error_cause, "Missing element (request)");
+		goto error;
+	}
+	if(!json_is_string(request)) {
+		JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
+		error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+		sprintf(error_cause, "Invalid element (request should be a string)");
+		goto error;
+	}
+	/* Some requests ('create' and 'destroy') can be handled synchronously */
+	const char *request_text = json_string_value(request);
+	if(!strcasecmp(request_text, "list")) {
+		json_t *list = json_array();
+		JANUS_LOG(LOG_VERB, "Request for the list of mountpoints\n");
+		/* Return a list of all available mountpoints */
+		janus_mutex_lock(&mountpoints_mutex);
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, mountpoints);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_streaming_mountpoint *mp = value;
+			json_t *ml = json_object();
+			json_object_set_new(ml, "id", json_integer(mp->id));
+			json_object_set_new(ml, "description", json_string(mp->description));
+			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+			json_array_append_new(list, ml);
+		}
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Send info back */
+		json_t *response = json_object();
+		json_object_set_new(response, "streaming", json_string("list"));
+		json_object_set_new(response, "list", list);
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
+	} else if(!strcasecmp(request_text, "create")) {
+		/* Create a new stream */
+		json_t *type = json_object_get(root, "type");
+		if(!type) {
+			JANUS_LOG(LOG_ERR, "Missing element (type)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+			sprintf(error_cause, "Missing element (type)");
+			goto error;
+		}
+		if(!json_is_string(type)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (type should be a string)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			sprintf(error_cause, "Invalid element (type should be a string)");
+			goto error;
+		}
+		const char *type_text = json_string_value(type);
+		janus_streaming_mountpoint *mp = NULL;
+		if(!strcasecmp(type_text, "rtp")) {
+			/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
+			json_t *id = json_object_get(root, "id");
+			if(id && !json_is_integer(id)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (id should be an integer)");
+				goto error;
+			}
+			json_t *name = json_object_get(root, "name");
+			if(name && !json_is_string(name)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (name should be a string)");
+				goto error;
+			}
+			json_t *desc = json_object_get(root, "description");
+			if(desc && !json_is_string(desc)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (desc should be a string)");
+				goto error;
+			}
+			json_t *audio = json_object_get(root, "audio");
+			if(audio && !json_is_boolean(audio)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid value (audio should be a boolean)");
+				goto error;
+			}
+			json_t *video = json_object_get(root, "video");
+			if(video && !json_is_boolean(video)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid value (video should be a boolean)");
+				goto error;
+			}
+			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
+			gboolean dovideo = video ? json_is_true(video) : FALSE;
+			if(!doaudio && !dovideo) {
+				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio or video have to be streamed...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Can't add 'rtp' stream, no audio or video have to be streamed...");
+				goto error;
+			}
+			uint16_t aport = 0;
+			uint8_t acodec = 0;
+			char *artpmap = NULL, *afmtp = NULL;
+			if(doaudio) {
+				json_t *audioport = json_object_get(root, "audioport");
+				if(!audioport) {
+					JANUS_LOG(LOG_ERR, "Missing element (audioport)\n");
+					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (audioport)");
+					goto error;
+				}
+				if(!json_is_integer(audioport)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audioport should be an integer)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (audioport should be an integer)");
+					goto error;
+				}
+				aport = json_integer_value(audioport);
+				json_t *audiopt = json_object_get(root, "audiopt");
+				if(!audiopt) {
+					JANUS_LOG(LOG_ERR, "Missing element (audiopt)\n");
+					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (audiopt)");
+					goto error;
+				}
+				if(!json_is_integer(audiopt)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audiopt should be an integer)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (audiopt should be an integer)");
+					goto error;
+				}
+				acodec = json_integer_value(audiopt);
+				json_t *audiortpmap = json_object_get(root, "audiortpmap");
+				if(!audiortpmap) {
+					JANUS_LOG(LOG_ERR, "Missing element (audiortpmap)\n");
+					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (audiortpmap)");
+					goto error;
+				}
+				if(!json_is_string(audiortpmap)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audiortpmap should be a string)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (audiortpmap should be a string)");
+					goto error;
+				}
+				artpmap = (char *)json_string_value(audiortpmap);
+				json_t *audiofmtp = json_object_get(root, "audiofmtp");
+				if(audiofmtp && !json_is_string(audiofmtp)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audiofmtp should be a string)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (audiofmtp should be a string)");
+					goto error;
+				}
+				afmtp = (char *)json_string_value(audiofmtp);
+			}
+			uint16_t vport = 0;
+			uint8_t vcodec = 0;
+			char *vrtpmap = NULL, *vfmtp = NULL;
+			if(dovideo) {
+				json_t *videoport = json_object_get(root, "videoport");
+				if(!videoport) {
+					JANUS_LOG(LOG_ERR, "Missing element (videoport)\n");
+					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (videoport)");
+					goto error;
+				}
+				if(!json_is_integer(videoport)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (videoport should be an integer)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (videoport should be an integer)");
+					goto error;
+				}
+				vport = json_integer_value(videoport);
+				json_t *videopt = json_object_get(root, "videopt");
+				if(!videopt) {
+					JANUS_LOG(LOG_ERR, "Missing element (videopt)\n");
+					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (videopt)");
+					goto error;
+				}
+				if(!json_is_integer(videopt)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (videopt should be an integer)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (videopt should be an integer)");
+					goto error;
+				}
+				vcodec = json_integer_value(videopt);
+				json_t *videortpmap = json_object_get(root, "videortpmap");
+				if(!videortpmap) {
+					JANUS_LOG(LOG_ERR, "Missing element (videortpmap)\n");
+					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+					sprintf(error_cause, "Missing element (videortpmap)");
+					goto error;
+				}
+				if(!json_is_string(videortpmap)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (videortpmap should be a string)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (videortpmap should be a string)");
+					goto error;
+				}
+				vrtpmap = (char *)json_string_value(videortpmap);
+				json_t *videofmtp = json_object_get(root, "videofmtp");
+				if(videofmtp && !json_is_string(videofmtp)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (videofmtp should be a string)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					sprintf(error_cause, "Invalid element (videofmtp should be a string)");
+					goto error;
+				}
+				vfmtp = (char *)json_string_value(videofmtp);
+			}
+			if(id == NULL) {
+				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+			} else {
+				janus_mutex_lock(&mountpoints_mutex);
+				mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+				janus_mutex_unlock(&mountpoints_mutex);
+				if(mp != NULL) {
+					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
+					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+					sprintf(error_cause, "A stream with the provided ID already exists");
+					goto error;
+				}
+			}
+			JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
+			mp = janus_streaming_create_rtp_source(
+					id ? json_integer_value(id) : 0,
+					name ? (char *)json_string_value(name) : NULL,
+					desc ? (char *)json_string_value(desc) : NULL,
+					doaudio, aport, acodec, artpmap, afmtp,
+					dovideo, vport, vcodec, vrtpmap, vfmtp);
+			if(mp == NULL) {
+				JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Error creating 'rtp' stream");
+				goto error;
+			}
+		} else if(!strcasecmp(type_text, "live")) {
+			/* File live source */
+			json_t *id = json_object_get(root, "id");
+			if(id && !json_is_integer(id)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (id should be an integer)");
+				goto error;
+			}
+			json_t *name = json_object_get(root, "name");
+			if(name && !json_is_string(name)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (name should be a string)");
+				goto error;
+			}
+			json_t *desc = json_object_get(root, "description");
+			if(desc && !json_is_string(desc)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (desc should be a string)");
+				goto error;
+			}
+			json_t *file = json_object_get(root, "file");
+			if(file && !json_is_string(file)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (file should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (file should be a string)");
+				goto error;
+			}
+			json_t *audio = json_object_get(root, "audio");
+			if(audio && !json_is_boolean(audio)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid value (audio should be a boolean)");
+				goto error;
+			}
+			json_t *video = json_object_get(root, "video");
+			if(video && !json_is_boolean(video)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid value (video should be a boolean)");
+				goto error;
+			}
+			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
+			gboolean dovideo = video ? json_is_true(video) : FALSE;
+			/* TODO We should support something more than raw a-Law and mu-Law streams... */
+			if(!doaudio || dovideo) {
+				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, we only support audio file streaming right now...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Can't add 'live' stream, we only support audio file streaming right now...");
+				goto error;
+			}
+			char *filename = (char *)json_string_value(file);
+			if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
+				goto error;
+			}
+			if(id == NULL) {
+				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+			} else {
+				janus_mutex_lock(&mountpoints_mutex);
+				mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+				janus_mutex_unlock(&mountpoints_mutex);
+				if(mp != NULL) {
+					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
+					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+					sprintf(error_cause, "A stream with the provided ID already exists");
+					goto error;
+				}
+			}
+			mp = janus_streaming_create_file_source(
+					id ? json_integer_value(id) : 0,
+					name ? (char *)json_string_value(name) : NULL,
+					desc ? (char *)json_string_value(desc) : NULL,
+					filename,
+					TRUE, doaudio, dovideo);
+			if(mp == NULL) {
+				JANUS_LOG(LOG_ERR, "Error creating 'live' stream...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Error creating 'live' stream");
+				goto error;
+			}
+		} else if(!strcasecmp(type_text, "ondemand")) {
+			/* mu-Law file on demand source */
+			json_t *id = json_object_get(root, "id");
+			if(id && !json_is_integer(id)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (id should be an integer)");
+				goto error;
+			}
+			json_t *name = json_object_get(root, "name");
+			if(name && !json_is_string(name)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (name should be a string)");
+				goto error;
+			}
+			json_t *desc = json_object_get(root, "description");
+			if(desc && !json_is_string(desc)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (desc should be a string)");
+				goto error;
+			}
+			json_t *file = json_object_get(root, "file");
+			if(file && !json_is_string(file)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (file should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid element (file should be a string)");
+				goto error;
+			}
+			json_t *audio = json_object_get(root, "audio");
+			if(audio && !json_is_boolean(audio)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid value (audio should be a boolean)");
+				goto error;
+			}
+			json_t *video = json_object_get(root, "video");
+			if(video && !json_is_boolean(video)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				sprintf(error_cause, "Invalid value (video should be a boolean)");
+				goto error;
+			}
+			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
+			gboolean dovideo = video ? json_is_true(video) : FALSE;
+			/* TODO We should support something more than raw a-Law and mu-Law streams... */
+			if(!doaudio || dovideo) {
+				JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, we only support audio file streaming right now...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Can't add 'ondemand' stream, we only support audio file streaming right now...");
+				goto error;
+			}
+			char *filename = (char *)json_string_value(file);
+			if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
+				JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
+				goto error;
+			}
+			if(id == NULL) {
+				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+			} else {
+				janus_mutex_lock(&mountpoints_mutex);
+				mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+				janus_mutex_unlock(&mountpoints_mutex);
+				if(mp != NULL) {
+					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
+					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+					sprintf(error_cause, "A stream with the provided ID already exists");
+					goto error;
+				}
+			}
+			mp = janus_streaming_create_file_source(
+					id ? json_integer_value(id) : 0,
+					name ? (char *)json_string_value(name) : NULL,
+					desc ? (char *)json_string_value(desc) : NULL,
+					filename,
+					FALSE, doaudio, dovideo);
+			if(mp == NULL) {
+				JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				sprintf(error_cause, "Error creating 'ondemand' stream");
+				goto error;
+			}
+		} else {
+			JANUS_LOG(LOG_ERR, "Unknown stream type '%s'...\n", type_text);
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			sprintf(error_cause, "Unknown stream type '%s'...\n", type_text);
+		}
+		/* Send info back */
+		json_t *response = json_object();
+		json_object_set_new(response, "streaming", json_string("created"));
+		json_object_set_new(response, "created", json_string(mp->name));
+		json_t *ml = json_object();
+		json_object_set_new(ml, "id", json_integer(mp->id));
+		json_object_set_new(ml, "description", json_string(mp->description));
+		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+		json_object_set_new(response, "stream", ml);
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
+	} else if(!strcasecmp(request_text, "destroy")) {
+		/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
+		json_t *id = json_object_get(root, "id");
+		if(!id) {
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+			sprintf(error_cause, "Missing element (id)");
+			goto error;
+		}
+		if(!json_is_integer(id)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			sprintf(error_cause, "Invalid element (id should be an integer)");
+			goto error;
+		}
+		gint64 id_value = json_integer_value(id);
+		janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		if(mp == NULL) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			sprintf(error_cause, "No such mountpoint/stream %"SCNu64"", id_value);
+			goto error;
+		}
+		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
+		/* FIXME Should we kick the current viewers as well? */
+		g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Send info back */
+		json_t *response = json_object();
+		json_object_set_new(response, "streaming", json_string("destroyed"));
+		json_object_set_new(response, "destroyed", json_integer(id_value));
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
+	} else if(!strcasecmp(request_text, "watch") || !strcasecmp(request_text, "start")
+			|| !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "stop")) {
+		/* These messages are handled asynchronously */
+		goto async;
+	} else {
+		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
+		error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
+		sprintf(error_cause, "Unknown request '%s'", request_text);
+		goto error;
+	}
+
+error:
+		{
+			if(root != NULL)
+				json_decref(root);
+			/* Prepare JSON error event */
+			json_t *event = json_object();
+			json_object_set_new(event, "videoroom", json_string("event"));
+			json_object_set_new(event, "error_code", json_integer(error_code));
+			json_object_set_new(event, "error", json_string(error_cause));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(event);
+			janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, event_text);
+			g_free(event_text);
+			return result;
+		}
+
+async:
+		{
+			/* All the other requests to this plugin are handled asynchronously */
+			msg->handle = handle;
+			msg->transaction = transaction;
+			msg->message = root;
+			msg->sdp_type = sdp_type;
+			msg->sdp = sdp;
+
+			g_async_queue_push(messages, msg);
+
+			return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
+		}
 }
 
 void janus_streaming_setup_media(janus_plugin_session *handle) {
@@ -664,7 +1203,7 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	msg->handle = handle;
-	msg->message = g_strdup("{\"request\":\"stop\"}");
+	msg->message = json_loads("{\"request\":\"stop\"}", 0, NULL);
 	msg->transaction = NULL;
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
@@ -698,27 +1237,14 @@ static void *janus_streaming_handler(void *data) {
 		}
 		/* Handle request */
 		error_code = 0;
-		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
-		json_error_t error;
-		json_t *root = json_loads(msg->message, 0, &error);
-		if(!root) {
-			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
-			error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
-			goto error;
-		}
-		if(!json_is_object(root)) {
-			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: not an object");
-			goto error;
-		}
+		json_t *root = msg->message;
+		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
 		if(!request) {
 			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
@@ -736,436 +1262,8 @@ static void *janus_streaming_handler(void *data) {
 		json_t *result = NULL;
 		const char *sdp_type = NULL;
 		char *sdp = NULL;
-		if(!strcasecmp(request_text, "list")) {
-			result = json_object();
-			json_t *list = json_array();
-			JANUS_LOG(LOG_VERB, "Request for the list of mountpoints\n");
-			/* Return a list of all available mountpoints */
-			janus_mutex_lock(&mountpoints_mutex);
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, mountpoints);
-			while (g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_streaming_mountpoint *mp = value;
-				json_t *ml = json_object();
-				json_object_set_new(ml, "id", json_integer(mp->id));
-				json_object_set_new(ml, "description", json_string(mp->description));
-				json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
-				json_array_append_new(list, ml);
-			}
-			json_object_set_new(result, "list", list);
-			janus_mutex_unlock(&mountpoints_mutex);
-		} else if(!strcasecmp(request_text, "create")) {
-			/* Create a new stream */
-			json_t *type = json_object_get(root, "type");
-			if(!type) {
-				JANUS_LOG(LOG_ERR, "Missing element (type)\n");
-				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-				sprintf(error_cause, "Missing element (type)");
-				goto error;
-			}
-			if(!json_is_string(type)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (type should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Invalid element (type should be a string)");
-				goto error;
-			}
-			const char *type_text = json_string_value(type);
-			janus_streaming_mountpoint *mp = NULL;
-			if(!strcasecmp(type_text, "rtp")) {
-				/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
-				json_t *id = json_object_get(root, "id");
-				if(id && !json_is_integer(id)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (id should be an integer)");
-					goto error;
-				}
-				json_t *name = json_object_get(root, "name");
-				if(name && !json_is_string(name)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (name should be a string)");
-					goto error;
-				}
-				json_t *desc = json_object_get(root, "desc");
-				if(desc && !json_is_string(desc)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (desc should be a string)");
-					goto error;
-				}
-				json_t *audio = json_object_get(root, "audio");
-				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid value (audio should be a boolean)");
-					goto error;
-				}
-				json_t *video = json_object_get(root, "video");
-				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid value (video should be a boolean)");
-					goto error;
-				}
-				gboolean doaudio = audio ? json_is_true(audio) : FALSE;
-				gboolean dovideo = video ? json_is_true(video) : FALSE;
-				if(!doaudio && !dovideo) {
-					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio or video have to be streamed...\n");
-					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-					sprintf(error_cause, "Can't add 'rtp' stream, no audio or video have to be streamed...");
-					goto error;
-				}
-				uint16_t aport = 0;
-				uint8_t acodec = 0;
-				char *artpmap = NULL, *afmtp = NULL;
-				if(doaudio) {
-					json_t *audioport = json_object_get(root, "audioport");
-					if(!audioport) {
-						JANUS_LOG(LOG_ERR, "Missing element (audioport)\n");
-						error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-						sprintf(error_cause, "Missing element (audioport)");
-						goto error;
-					}
-					if(!json_is_integer(audioport)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (audioport should be an integer)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (audioport should be an integer)");
-						goto error;
-					}
-					aport = json_integer_value(audioport);
-					json_t *audiopt = json_object_get(root, "audiopt");
-					if(!audiopt) {
-						JANUS_LOG(LOG_ERR, "Missing element (audiopt)\n");
-						error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-						sprintf(error_cause, "Missing element (audiopt)");
-						goto error;
-					}
-					if(!json_is_integer(audiopt)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (audiopt should be an integer)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (audiopt should be an integer)");
-						goto error;
-					}
-					acodec = json_integer_value(audiopt);
-					json_t *audiortpmap = json_object_get(root, "audiortpmap");
-					if(!audiortpmap) {
-						JANUS_LOG(LOG_ERR, "Missing element (audiortpmap)\n");
-						error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-						sprintf(error_cause, "Missing element (audiortpmap)");
-						goto error;
-					}
-					if(!json_is_string(audiortpmap)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (audiortpmap should be a string)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (audiortpmap should be a string)");
-						goto error;
-					}
-					artpmap = (char *)json_string_value(audiortpmap);
-					json_t *audiofmtp = json_object_get(root, "audiofmtp");
-					if(audiofmtp && !json_is_string(audiofmtp)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (audiofmtp should be a string)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (audiofmtp should be a string)");
-						goto error;
-					}
-					afmtp = (char *)json_string_value(audiofmtp);
-				}
-				uint16_t vport = 0;
-				uint8_t vcodec = 0;
-				char *vrtpmap = NULL, *vfmtp = NULL;
-				if(dovideo) {
-					json_t *videoport = json_object_get(root, "videoport");
-					if(!videoport) {
-						JANUS_LOG(LOG_ERR, "Missing element (videoport)\n");
-						error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-						sprintf(error_cause, "Missing element (videoport)");
-						goto error;
-					}
-					if(!json_is_integer(videoport)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (videoport should be an integer)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (videoport should be an integer)");
-						goto error;
-					}
-					vport = json_integer_value(videoport);
-					json_t *videopt = json_object_get(root, "videopt");
-					if(!videopt) {
-						JANUS_LOG(LOG_ERR, "Missing element (videopt)\n");
-						error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-						sprintf(error_cause, "Missing element (videopt)");
-						goto error;
-					}
-					if(!json_is_integer(videopt)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (videopt should be an integer)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (videopt should be an integer)");
-						goto error;
-					}
-					vcodec = json_integer_value(videopt);
-					json_t *videortpmap = json_object_get(root, "videortpmap");
-					if(!videortpmap) {
-						JANUS_LOG(LOG_ERR, "Missing element (videortpmap)\n");
-						error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-						sprintf(error_cause, "Missing element (videortpmap)");
-						goto error;
-					}
-					if(!json_is_string(videortpmap)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (videortpmap should be a string)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (videortpmap should be a string)");
-						goto error;
-					}
-					vrtpmap = (char *)json_string_value(videortpmap);
-					json_t *videofmtp = json_object_get(root, "videofmtp");
-					if(videofmtp && !json_is_string(videofmtp)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (videofmtp should be a string)\n");
-						error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-						sprintf(error_cause, "Invalid element (videofmtp should be a string)");
-						goto error;
-					}
-					vfmtp = (char *)json_string_value(videofmtp);
-				}
-				if(id == NULL) {
-					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
-				} else {
-					janus_mutex_lock(&mountpoints_mutex);
-					mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
-					janus_mutex_unlock(&mountpoints_mutex);
-					if(mp != NULL) {
-						JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
-						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-						sprintf(error_cause, "A stream with the provided ID already exists");
-						goto error;
-					}
-				}
-				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
-				mp = janus_streaming_create_rtp_source(
-						id ? json_integer_value(id) : 0,
-						name ? (char *)json_string_value(name) : NULL,
-						desc ? (char *)json_string_value(desc) : NULL,
-						doaudio, aport, acodec, artpmap, afmtp,
-						dovideo, vport, vcodec, vrtpmap, vfmtp);
-				if(mp == NULL) {
-					JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream...\n");
-					continue;
-				}
-				/* TODO Reply */
-			} else if(!strcasecmp(type_text, "live")) {
-				/* File live source */
-				json_t *id = json_object_get(root, "id");
-				if(id && !json_is_integer(id)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (id should be an integer)");
-					goto error;
-				}
-				json_t *name = json_object_get(root, "name");
-				if(name && !json_is_string(name)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (name should be a string)");
-					goto error;
-				}
-				json_t *desc = json_object_get(root, "desc");
-				if(desc && !json_is_string(desc)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (desc should be a string)");
-					goto error;
-				}
-				json_t *file = json_object_get(root, "file");
-				if(file && !json_is_string(file)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (file should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (file should be a string)");
-					goto error;
-				}
-				json_t *audio = json_object_get(root, "audio");
-				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid value (audio should be a boolean)");
-					goto error;
-				}
-				json_t *video = json_object_get(root, "video");
-				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid value (video should be a boolean)");
-					goto error;
-				}
-				gboolean doaudio = audio ? json_is_true(audio) : FALSE;
-				gboolean dovideo = video ? json_is_true(video) : FALSE;
-				/* TODO We should support something more than raw a-Law and mu-Law streams... */
-				if(!doaudio || dovideo) {
-					JANUS_LOG(LOG_ERR, "Can't add 'live' stream, we only support audio file streaming right now...\n");
-					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-					sprintf(error_cause, "Can't add 'live' stream, we only support audio file streaming right now...");
-					goto error;
-				}
-				char *filename = (char *)json_string_value(file);
-				if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
-					JANUS_LOG(LOG_ERR, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
-					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-					sprintf(error_cause, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
-					goto error;
-				}
-				if(id == NULL) {
-					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
-				} else {
-					janus_mutex_lock(&mountpoints_mutex);
-					mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
-					janus_mutex_unlock(&mountpoints_mutex);
-					if(mp != NULL) {
-						JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
-						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-						sprintf(error_cause, "A stream with the provided ID already exists");
-						goto error;
-					}
-				}
-				mp = janus_streaming_create_file_source(
-						id ? json_integer_value(id) : 0,
-						name ? (char *)json_string_value(name) : NULL,
-						desc ? (char *)json_string_value(desc) : NULL,
-						filename,
-						TRUE, doaudio, dovideo);
-				if(mp == NULL) {
-					JANUS_LOG(LOG_ERR, "Error creating 'live' stream...\n");
-					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-					sprintf(error_cause, "Error creating 'live' stream");
-					goto error;
-				}
-			} else if(!strcasecmp(type_text, "ondemand")) {
-				/* mu-Law file on demand source */
-				json_t *id = json_object_get(root, "id");
-				if(id && !json_is_integer(id)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (id should be an integer)");
-					goto error;
-				}
-				json_t *name = json_object_get(root, "name");
-				if(name && !json_is_string(name)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (name should be a string)");
-					goto error;
-				}
-				json_t *desc = json_object_get(root, "desc");
-				if(desc && !json_is_string(desc)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (desc should be a string)");
-					goto error;
-				}
-				json_t *file = json_object_get(root, "file");
-				if(file && !json_is_string(file)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (file should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid element (file should be a string)");
-					goto error;
-				}
-				json_t *audio = json_object_get(root, "audio");
-				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid value (audio should be a boolean)");
-					goto error;
-				}
-				json_t *video = json_object_get(root, "video");
-				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					sprintf(error_cause, "Invalid value (video should be a boolean)");
-					goto error;
-				}
-				gboolean doaudio = audio ? json_is_true(audio) : FALSE;
-				gboolean dovideo = video ? json_is_true(video) : FALSE;
-				/* TODO We should support something more than raw a-Law and mu-Law streams... */
-				if(!doaudio || dovideo) {
-					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, we only support audio file streaming right now...\n");
-					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-					sprintf(error_cause, "Can't add 'ondemand' stream, we only support audio file streaming right now...");
-					goto error;
-				}
-				char *filename = (char *)json_string_value(file);
-				if(!strstr(filename, ".alaw") && !strstr(filename, ".mulaw")) {
-					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)\n");
-					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-					sprintf(error_cause, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
-					goto error;
-				}
-				if(id == NULL) {
-					JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
-				} else {
-					janus_mutex_lock(&mountpoints_mutex);
-					mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
-					janus_mutex_unlock(&mountpoints_mutex);
-					if(mp != NULL) {
-						JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
-						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-						sprintf(error_cause, "A stream with the provided ID already exists");
-						goto error;
-					}
-				}
-				mp = janus_streaming_create_file_source(
-						id ? json_integer_value(id) : 0,
-						name ? (char *)json_string_value(name) : NULL,
-						desc ? (char *)json_string_value(desc) : NULL,
-						filename,
-						FALSE, doaudio, dovideo);
-				if(mp == NULL) {
-					JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream...\n");
-					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-					sprintf(error_cause, "Error creating 'ondemand' stream");
-					goto error;
-				}
-			} else {
-				JANUS_LOG(LOG_ERR, "Unknown stream type '%s'...\n", type_text);
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Unknown stream type '%s'...\n", type_text);
-			}
-			result = json_object();
-			json_object_set_new(result, "created", json_string(mp->name));
-			json_t *ml = json_object();
-			json_object_set_new(ml, "id", json_integer(mp->id));
-			json_object_set_new(ml, "description", json_string(mp->description));
-			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
-			json_object_set_new(result, "stream", ml);
-		} else if(!strcasecmp(request_text, "destroy")) {
-			/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
-			json_t *id = json_object_get(root, "id");
-			if(!id) {
-				JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-				sprintf(error_cause, "Missing element (id)");
-				goto error;
-			}
-			if(!json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Invalid element (id should be an integer)");
-				goto error;
-			}
-			gint64 id_value = json_integer_value(id);
-			janus_mutex_lock(&mountpoints_mutex);
-			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
-			if(mp == NULL) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
-				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-				sprintf(error_cause, "No such mountpoint/stream %"SCNu64"", id_value);
-				goto error;
-			}
-			JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
-			/* FIXME Should we kick the current viewers as well? */
-			g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
-			janus_mutex_unlock(&mountpoints_mutex);
-			result = json_object();
-			json_object_set_new(result, "destroyed", json_integer(id_value));
-		} else if(!strcasecmp(request_text, "watch")) {
+		/* All these requests can only be handled asynchronously */
+		if(!strcasecmp(request_text, "watch")) {
 			json_t *id = json_object_get(root, "id");
 			if(!id) {
 				JANUS_LOG(LOG_ERR, "Missing element (id)\n");
@@ -1269,7 +1367,7 @@ static void *janus_streaming_handler(void *data) {
 		} else if(!strcasecmp(request_text, "stop")) {
 			if(session->stopping || !session->started) {
 				/* Been there, done that: ignore */
-				json_decref(root);
+				janus_streaming_message_free(msg);
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Stopping the streaming\n");
@@ -1299,7 +1397,6 @@ static void *janus_streaming_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (but we really don't care):\n%s\n", msg->sdp_type, msg->sdp);
 		}
 
-		json_decref(root);
 		/* Prepare JSON event */
 		json_t *event = json_object();
 		json_object_set_new(event, "streaming", json_string("event"));
@@ -1320,8 +1417,6 @@ static void *janus_streaming_handler(void *data) {
 		
 error:
 		{
-			if(root != NULL)
-				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "streaming", json_string("event"));

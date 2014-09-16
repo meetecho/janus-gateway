@@ -1303,9 +1303,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		outpkt->data->timestamp = htonl(ts);
 		outpkt->data->ssrc = htonl(1);	/* The gateway will fix this anyway */
 		/* Mix all contributions */
-		janus_mutex_lock(&audiobridge->mutex);
+		janus_mutex_lock_nodebug(&audiobridge->mutex);
 		GList *participants_list = g_hash_table_get_values(audiobridge->participants);
-		janus_mutex_unlock(&audiobridge->mutex);
+		janus_mutex_unlock_nodebug(&audiobridge->mutex);
 		for(i=0; i<320; i++)
 			buffer[i] = 0;
 		GList *ps = participants_list;

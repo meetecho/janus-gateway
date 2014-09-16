@@ -84,9 +84,8 @@ $(document).ready(function() {
 									streaming = pluginHandle;
 									console.log("Plugin attached! (" + streaming.getPlugin() + ", id=" + streaming.getId() + ")");
 									// Setup streaming session
-									var body = { "request": "list" };
-									console.log("Sending message (" + JSON.stringify(body) + ")");
-									streaming.send({"message": body});
+									$('#update-streams').click(updateStreamsList);
+									updateStreamsList();
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
@@ -105,25 +104,6 @@ $(document).ready(function() {
 									console.log(JSON.stringify(msg));
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
-										if(result["list"] !== undefined && result["list"] !== null) {
-											$('#streams').removeClass('hide').show();
-											$('#streamslist').empty();
-											$('#watch').attr('disabled', true).unbind('click');
-											var list = result["list"];
-											console.log("Got a list of available streams:");
-											console.log(list);
-											for(var mp in list) {
-												console.log("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
-												$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</a></li>");
-											}
-											$('#streamslist a').unbind('click').click(function() {
-												selectedStream = $(this).attr("id");
-												$('#streamset').html($(this).html()).parent().removeClass('open');
-												return false;
-
-											});
-											$('#watch').removeAttr('disabled').click(startStream);
-										}
 										if(result["status"] !== undefined && result["status"] !== null) {
 											var status = result["status"];
 											if(status === 'starting')
@@ -185,6 +165,40 @@ $(document).ready(function() {
 		});
 	}});
 });
+
+function updateStreamsList() {
+	$('#update-streams').unbind('click').addClass('fa-spin');
+	var body = { "request": "list" };
+	console.log("Sending message (" + JSON.stringify(body) + ")");
+	streaming.send({"message": body, success: function(result) {
+		setTimeout(function() {
+			$('#update-streams').removeClass('fa-spin').click(updateStreamsList);
+		}, 500);
+		if(result === null || result === undefined) {
+			bootbox.alert("Got no response to our query for available streams");
+			return;
+		}
+		if(result["list"] !== undefined && result["list"] !== null) {
+			$('#streams').removeClass('hide').show();
+			$('#streamslist').empty();
+			$('#watch').attr('disabled', true).unbind('click');
+			var list = result["list"];
+			console.log("Got a list of available streams:");
+			console.log(list);
+			for(var mp in list) {
+				console.log("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
+				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</a></li>");
+			}
+			$('#streamslist a').unbind('click').click(function() {
+				selectedStream = $(this).attr("id");
+				$('#streamset').html($(this).html()).parent().removeClass('open');
+				return false;
+
+			});
+			$('#watch').removeAttr('disabled').click(startStream);
+		}
+	}});
+}
 
 function startStream() {
 	console.log("Selected video id #" + selectedStream);
