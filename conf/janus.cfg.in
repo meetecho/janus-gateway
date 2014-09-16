@@ -2,8 +2,8 @@
 ; can be found, default interface to use, debug/logging level and, if
 ; needed, shared apisecret between application(s) and Janus.
 [general]
-configs_folder = ./conf		; Configuration files folder
-plugins_folder = ./plugins	; Plugins folder
+configs_folder = @confdir@		; Configuration files folder
+plugins_folder = @plugindir@		; Plugins folder
 ;interface = 1.2.3.4		; Interface to use (will be used in SDP)
 debug_level = 4				; Debug/logging level, valid values are 0-7
 ;apisecret = janusrocks		; String that all Janus requests must contain
@@ -64,8 +64,8 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 
 ; Certificate and key to use for DTLS and/or HTTPS/WSS.
 [certificates]
-cert_pem = certs/mycert.pem
-cert_key = certs/mycert.key
+;cert_pem = certs/mycert.pem
+;cert_key = certs/mycert.key
 
 
 ; Media-related stuff: right now, you can only configure the range of

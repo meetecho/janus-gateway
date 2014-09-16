@@ -3,5 +3,3 @@ cmdline.h
 docs/html/
 janus
 plugins/*.so
-plugins/streams/music.mulaw
-plugins/streams/radio.alaw

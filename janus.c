@@ -3014,7 +3014,7 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		configs_folder = g_strdup ("./conf");	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+		configs_folder = g_strdup (CONFDIR);
 	}
 	if(config_file == NULL) {
 		char file[255];
@@ -3388,7 +3388,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load plugins */
-	const char *path = "./plugins";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+	const char *path = PLUGINDIR;
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;
