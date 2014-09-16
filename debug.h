@@ -9,12 +9,12 @@
  * \ref core
  */
 
-#include <glib.h>
-#include <glib/gprintf.h>
- 
 #ifndef _JANUS_DEBUG_H
 #define _JANUS_DEBUG_H
 
+#include <glib.h>
+#include <glib/gprintf.h>
+ 
 extern int log_level;
 
 /** @name Janus log colors

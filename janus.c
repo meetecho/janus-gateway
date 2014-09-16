@@ -132,6 +132,7 @@ gint janus_is_stopping(void) {
 
 /* Logging */
 int log_level = 0;
+int lock_debug = 0;
 
 
 /*! \brief Signal handler (just used to intercept CTRL+C) */
@@ -214,7 +215,9 @@ void *janus_sessions_watchdog(void *data) {
 
 				if(now-session->last_activity >= (SESSION_TIMEOUT+3)*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the session only after a few seconds */
+					janus_mutex_unlock(&sessions_mutex);
 					janus_session_destroy(session->session_id);
+					janus_mutex_lock(&sessions_mutex);
 					g_hash_table_iter_remove(&iter);
 				} else if(now-session->last_activity >= SESSION_TIMEOUT*G_USEC_PER_SEC && !session->timeout) {
 					/* Timeout! */
@@ -1803,13 +1806,10 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 	const gchar *message_text = json_string_value(message);
 	
 	if(session_id == 0 && handle_id == 0) {
-		/* Can only be a 'Get all sessions' or 'Get info' request */
+		/* Can only be a 'Get all sessions' or some general setting manipulation request */
 		if(!strcasecmp(message_text, "info")) {
+			/* The generic info request */
 			ret = janus_process_success(source, "application/json", info_text);
-			goto jsondone;
-		}
-		if(strcasecmp(message_text, "list_sessions")) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 		if(admin_ws_api_secret != NULL) {
@@ -1820,32 +1820,109 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 				goto jsondone;
 			}
 		}
-		session_id = 0;
-		/* List sessions */
-		json_t *list = json_array();
-		janus_mutex_lock(&sessions_mutex);
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, sessions);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_session *session = value;
-			if(session == NULL) {
-				continue;
+		if(!strcasecmp(message_text, "get_status")) {
+			/* Return some info on the settings (mostly debug-related, at the moment) */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_t *status = json_object();
+			json_object_set_new(status, "log_level", json_integer(log_level));
+			json_object_set_new(status, "locking_debug", json_integer(0));
+			json_object_set_new(reply, "status", status);
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_log_level")) {
+			/* Change the debug logging level */
+			json_t *level = json_object_get(root, "level");
+			if(!level) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (level)");
+				goto jsondone;
 			}
-			json_array_append_new(list, json_integer(session->session_id));
+			if(!json_is_integer(level)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be an integer)");
+				goto jsondone;
+			}
+			int level_num = json_integer_value(level);
+			if(level_num < LOG_NONE || level_num > LOG_MAX) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be between %d and %d)", LOG_NONE, LOG_MAX);
+				goto jsondone;
+			}
+			log_level = level_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "level", json_integer(log_level));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_locking_debug")) {
+			/* Enable/disable the locking debug (would show a message on the console for every lock attempt) */
+			json_t *debug = json_object_get(root, "debug");
+			if(!debug) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (debug)");
+				goto jsondone;
+			}
+			if(!json_is_integer(debug)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be an integer)");
+				goto jsondone;
+			}
+			int debug_num = json_integer_value(debug);
+			if(debug_num < 0 || debug_num > 1) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be either 0 or 1)");
+				goto jsondone;
+			}
+			lock_debug = debug_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "debug", json_integer(lock_debug));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "list_sessions")) {
+			/* List sessions */
+			session_id = 0;
+			json_t *list = json_array();
+			janus_mutex_lock(&sessions_mutex);
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, sessions);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+				if(session == NULL) {
+					continue;
+				}
+				json_array_append_new(list, json_integer(session->session_id));
+			}
+			janus_mutex_unlock(&sessions_mutex);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "sessions", list);
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else {
+			/* No message we know of */
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			goto jsondone;
 		}
-		janus_mutex_unlock(&sessions_mutex);
-		/* Prepare JSON reply */
-		json_t *reply = json_object();
-		json_object_set_new(reply, "janus", json_string("success"));
-		json_object_set_new(reply, "transaction", json_string(transaction_text));
-		json_object_set_new(reply, "sessions", list);
-		/* Convert to a string */
-		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(reply);
-		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
-		goto jsondone;
 	}
 	if(session_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid session\n");
