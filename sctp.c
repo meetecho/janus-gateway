@@ -189,15 +189,6 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 		sctp = NULL;
 		return NULL;
 	}
-	/* Allow resetting streams */
-	av.assoc_id = SCTP_ALL_ASSOC;
-	av.assoc_value = 1;
-	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET\n", handle_id);
-		free(sctp);
-		sctp = NULL;
-		return NULL;
-	}
 	/* Disable Nagle */
 	uint32_t nodelay = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay))) {
