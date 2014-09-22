@@ -27,6 +27,9 @@ bin_PROGRAMS = janus
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg
 
+certdir = $(datadir)/janus/certs
+cert_DATA = certs/mycert.key certs/mycert.pem
+
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL)
 
@@ -35,7 +38,11 @@ stream_DATA = $(NULL)
 
 %.cfg: %.cfg.in
 	$(MKDIR_P) $(@D)
-	$(AM_V_GEN) sed -e "s|[@]confdir[@]|$(confdir)|;s|[@]plugindir[@]|$(plugindir)|;s|[@]streamdir[@]|$(streamdir)|" \
+	$(AM_V_GEN) sed -e "\
+	    s|[@]confdir[@]|$(confdir)|;\
+	    s|[@]certdir[@]|$(certdir)|;\
+	    s|[@]plugindir[@]|$(plugindir)|;\
+	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
 EXTRA_DIST += conf/janus.cfg.in
@@ -93,7 +100,7 @@ BUILT_SOURCES = cmdline.c
 cmdline.c: janus.ggo
 	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
 
-EXTRA_DIST += janus.ggo certs/mycert.key certs/mycert.pem
+EXTRA_DIST += janus.ggo
 CLEANFILES += cmdline.c
 
 ##

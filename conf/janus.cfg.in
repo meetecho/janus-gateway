@@ -64,8 +64,8 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 
 ; Certificate and key to use for DTLS and/or HTTPS/WSS.
 [certificates]
-;cert_pem = certs/mycert.pem
-;cert_key = certs/mycert.key
+cert_pem = @certdir@/mycert.pem
+cert_key = @certdir@/mycert.key
 
 
 ; Media-related stuff: right now, you can only configure the range of
