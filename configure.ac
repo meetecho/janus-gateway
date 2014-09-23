@@ -202,6 +202,7 @@ AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xye
 
 AC_CONFIG_FILES([
   Makefile
+  html/Makefile
   docs/Makefile
 ])
 

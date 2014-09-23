@@ -33,6 +33,9 @@ cert_DATA = certs/mycert.key certs/mycert.pem
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL)
 
+SUBDIRS = html
+html_DATA = README.md
+
 streamdir = $(datadir)/janus/streams
 stream_DATA = $(NULL)
 
@@ -162,7 +165,9 @@ plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.streaming.cfg
 stream_DATA += \
 	plugins/streams/music.mulaw \
-	plugins/streams/radio.alaw
+	plugins/streams/radio.alaw \
+	plugins/streams/test_gstreamer.sh \
+	plugins/streams/test_gstreamer_1.sh
 EXTRA_DIST += \
 	conf/janus.plugin.streaming.cfg.in \
 	$(stream_DATA)
@@ -230,5 +235,5 @@ endif
 ##
 
 if ENABLE_DOCS
-SUBDIRS = docs
+SUBDIRS += docs
 endif

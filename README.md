@@ -109,37 +109,40 @@ On Ubuntu/Debian:
 ##Compile
 Once you have installed all the dependencies, just use:
 
-	sh install.sh
+	sh autogen.sh
 
-to start the whole compilation process. If you're not interested in
-Data Channels or WebSockets (or you don't care about either of them)
-you can pass a specific compilation flag to disable them: 
+to generate the configure file. After that, configure and compile as
+usual to start the whole compilation process:
 
-	sh install.sh nodatachans nowebsockets
+	./configure --prefix=/opt/janus
+	make
+	make install
 
-As the flag names suggest, 'nodatachans' disables support for Data
-Channels, while 'nowebsockets' disables WebSockets.
+If you're not interested in Data Channels or WebSockets (or you don't
+care about either of them) you can disable them when configuring: 
 
-The script will then try to check whether you have all the dependencies
-installed, and then issue a 'make' for you to start compiling. If
-Doxygen and graphviz are available, it will also build the documentation
-for you as well in the docs/html subfolder. If you prefer not to build
-the documentation (or not to build it again and again every time you
-compile!) use the 'nodocs' option (along 'nodatachans' and
-'nowebsockets', if needed):
+	./configure --disable-websockets --disable-data-channels
 
-	sh install.sh nodocs
+If Doxygen and graphviz are available, the process will also build the
+documentation for you. If you prefer not to build it, use the
+--disable-docs configuration option:
+
+	./configure --disable-docs
+
+You can also selectively enable/disable other features (e.g., specific
+plugins you don't care about). Use the --help option when configuring
+for more info.
 
 
 ##Configure and start
 To start the gateway, you can use the janus executable. There are several
 things you can configure, either in a configuration file:
 
-	./conf/janus.cfg
+	<installdir>/etc/janus/janus.cfg
 
 or on the command line:
 
-	./janus --help
+	<installdir>/bin/janus --help
 	
 	janus 0.0.5
 
@@ -203,7 +206,7 @@ or on the command line:
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:
 
-	./janus
+	<installdir>/bin/janus
 
 This will start the gateway, and have it look at the configuration file.
 By default, only an HTTP webserver is started. To enable HTTPS support,
@@ -222,7 +225,7 @@ specify in the command line are the ones related to the DTLS certificate.
 A default certificate is provided with this package in the certs folder,
 which you can use launching the executable with these parameters:
 
-	./janus -c certs/mycert.pem -k certs/mycert.key
+	<installdir>/bin/janus -c /path/to/mycert.pem -k /path/to/mycert.key
 
 At this point, the gateway will be listening on the 8088 port (or whatever
 you changed that to) of your machine. To test whether it's working
