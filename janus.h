@@ -29,6 +29,11 @@
 #ifdef HAVE_WEBSOCKETS
 #include <websock/websock.h>
 #endif
+#ifdef HAVE_WEBSOCKETS
+#include <amqp.h>
+#include <amqp_framing.h>
+#include <amqp_tcp_socket.h>
+#endif
 
 #include "mutex.h"
 #include "dtls.h"
@@ -102,6 +107,40 @@ typedef struct janus_websocket_client {
 } janus_websocket_client;
 #endif
 
+#ifdef HAVE_RABBITMQ
+/*! \brief RabbitMQ client session */
+typedef struct janus_rabbitmq_client {
+	/*! \brief List of gateway sessions this client has created and is managing */
+	GHashTable *sessions;
+	/*! \brief Queue of outgoing responses to push */
+	GAsyncQueue *responses;
+	/*! \brief Threads to handle messaging */
+	GThread *in_thread, *out_thread;
+	/*! \brief Thread pool to serve requests */
+	GThreadPool *thread_pool;
+	/*! \brief Mutex to lock/unlock this session */
+	janus_mutex mutex;
+	/*! \brief Flag to trigger a lazy session destruction */
+	gint destroy:1;
+} janus_rabbitmq_client;
+
+/*! \brief RabbitMQ request */
+typedef struct janus_rabbitmq_request {
+	/*! \brief Opaque pointer to a janus_request_source instance (where the request came from) */
+	void *source;
+	/*! \brief Opaque pointer to the payload of the request (json_t *) */
+	void *request;
+} janus_rabbitmq_request;
+
+/*! \brief RabbitMQ response */
+typedef struct janus_rabbitmq_response {
+	/*! \brief Correlation ID, if any */
+	gchar *correlation_id;
+	/*! \brief Payload to send to the client */
+	gchar *payload;
+} janus_rabbitmq_response;
+#endif
+
 
 /** @name Janus Gateway-Client session methods
  */
@@ -135,7 +174,9 @@ void janus_session_free(janus_session *session);
 #define JANUS_SOURCE_PLAIN_HTTP		1
 /*! \brief WebSocket source */
 #define JANUS_SOURCE_WEBSOCKETS		2
-/*! \brief Helper to address request sources (e.g., a specific HTTP connection or websocket) */
+/*! \brief RabbitMQ source */
+#define JANUS_SOURCE_RABBITMQ		3
+/*! \brief Helper to address request sources (e.g., a specific HTTP connection, websocket or RabbitMQ queue) */
 typedef struct janus_request_source {
 	/*! \brief The source type */
 	int type;
@@ -144,6 +185,16 @@ typedef struct janus_request_source {
 	/*! \brief Opaque pointer to the original request, if available */
 	void *msg;
 } janus_request_source;
+/*! \brief Helper to allocate a janus_request_source instance
+ * @param[in] type The source type
+ * @param[in] source Opaque pointer to the source
+ * @param[in] msg Opaque pointer to the original request, if available
+ * @returns A pointer to a janus_request_source instance if successful, NULL otherwise */
+janus_request_source *janus_request_source_new(int type, void *source, void *msg);
+/*! \brief Helper to destroy a janus_request_source instance
+ * @param[in] req_source The janus_request_source instance to destroy
+ * @note The opaque pointers in the instance are not destroyed, that's up to you */
+void janus_request_source_destroy(janus_request_source *req_source);
 /*! \brief Helper to process an incoming request, no matter where it comes from
  * @param[in] source The source that originated the request
  * @param[in] request The JSON request
@@ -254,6 +305,57 @@ int janus_wss_onclose(libwebsock_client_state *state);
  * @param[in] data Opaque pointer to the janus_websocket_client this thread refers to
  * @returns Nothing important */
 void *janus_wss_thread(void *data);
+///@}
+#endif
+
+
+#ifdef HAVE_RABBITMQ
+/** @name Janus RabbitMQ support
+ * \details Recent versions of Janus now also support RabbitMQ based messaging as
+ * an alternative "transport" for API requests, responses and notifications.
+ * This is only useful when you're wrapping Janus requests in your server
+ * application, and handling the communication with clients your own way.
+ * At the moment, only a single "application" can be handled at the same
+ * time, meaning that Janus won't implement multiple queues to handle
+ * multiple concurrent "application servers" taking advantage of its
+ * features. Support for this is planned, though (e.g., through some kind
+ * of negotiation to create queues on the fly). Right now, you can only
+ * configure the address of the RabbitMQ server to use, and the queues to
+ * make use of to receive (to-janus) and send (from-janus) messages
+ * from/to an external application. As with WebSockets, considering that
+ * requests wouldn't include a path to address some mandatory information,
+ * these requests addressed to Janus should include as part of their payload,
+ * when needed, additional pieces of information like \c session_id and
+ * \c handle_id. That is, where you'd send a Janus request related to a
+ * specific session to the \c /janus/<session> path, with RabbitMQ
+ * you'd have to send the same request with an additional \c session_id
+ * field in the JSON payload.
+ * \note When you create a session using RabbitMQ, a subscription to the
+ * events related to it is done automatically through the outgoing queue,
+ * so no need for an explicit request as the GET in the plain HTTP API.
+ */
+///@{
+/*! \brief Worker to handle incoming messages coming from the external
+ * application.
+ * @param[in] data Currently unused
+ * @returns Nothing important */
+void *janus_rmq_in_thread(void *data);
+/*! \brief Worker to handle responses and push notifications from the
+ * core or the plugins
+ * \details Unlike the long poll mechanism needed for the plain HTTP approach,
+ * with RabbitMQ both responses and notifications travel on the same outgoing
+ * queue. A simple way to discriminate them is to place a correlation_id
+ * property in the requests: responses will include it (as part of the RPC
+ * pattern), notifications won't. You'll still be able to associate notifications
+ * to requests by looking at the transaction identifier in the messages.
+ * @param[in] data Currently unused
+ * @returns Nothing important */
+void *janus_rmq_out_thread(void *data);
+/*! \brief Worker to have a new request server by the thread pool
+ * @param[in] data Opaque pointer to a janus_rmq_request instance
+ * @param[in] user_data Opaque pointer to a janus_rabbitmq_client instance
+ * @returns Nothing important */
+void janus_rmq_task(gpointer data, gpointer user_data);
 ///@}
 #endif
 

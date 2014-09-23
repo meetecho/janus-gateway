@@ -583,6 +583,7 @@ static void *janus_audiobridge_handler(void *data) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
+	json_t *root = NULL;
 	while(initialized && !stopping) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
@@ -600,6 +601,7 @@ static void *janus_audiobridge_handler(void *data) {
 		}
 		/* Handle request */
 		error_code = 0;
+		root = NULL;
 		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
@@ -608,7 +610,7 @@ static void *janus_audiobridge_handler(void *data) {
 			goto error;
 		}
 		json_error_t error;
-		json_t *root = json_loads(msg->message, 0, &error);
+		root = json_loads(msg->message, 0, &error);
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_JSON;
@@ -1324,14 +1326,14 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				buffer[i] += curBuffer[i];
 			ps = ps->next;
 		}
-		/* Are we recording the mix? (only do it if there's someone in, though...) */ 
-		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) { 
-			for(i=0; i<320; i++) { 
-				/* FIXME Smoothen/Normalize instead of truncating? */ 
-				outBuffer[i] = buffer[i]; 
-			} 
-			fwrite(outBuffer, sizeof(opus_int16), 320, audiobridge->recording); 
-		} 
+		/* Are we recording the mix? (only do it if there's someone in, though...) */
+		if(audiobridge->recording != NULL && g_list_length(participants_list) > 0) {
+			for(i=0; i<320; i++) {
+				/* FIXME Smoothen/Normalize instead of truncating? */
+				outBuffer[i] = buffer[i];
+			}
+			fwrite(outBuffer, sizeof(opus_int16), 320, audiobridge->recording);
+		}
 		/* Send proper packet to each participant (remove own contribution) */
 		ps = participants_list;
 		while(ps) {

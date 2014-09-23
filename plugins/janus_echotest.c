@@ -404,6 +404,7 @@ static void *janus_echotest_handler(void *data) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
+	json_t *root = NULL;
 	while(initialized && !stopping) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
@@ -421,6 +422,7 @@ static void *janus_echotest_handler(void *data) {
 		}
 		/* Handle request */
 		error_code = 0;
+		root = NULL;
 		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
@@ -429,7 +431,7 @@ static void *janus_echotest_handler(void *data) {
 			goto error;
 		}
 		json_error_t error;
-		json_t *root = json_loads(msg->message, 0, &error);
+		root = json_loads(msg->message, 0, &error);
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_JSON;

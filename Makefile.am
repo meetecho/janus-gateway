@@ -98,13 +98,13 @@ janus_LDADD = \
 	-lsrtp \
 	$(NULL)
 
-BUILT_SOURCES = cmdline.c
+BUILT_SOURCES = cmdline.c cmdline.h
 
 cmdline.c: janus.ggo
 	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
 
 EXTRA_DIST += janus.ggo
-CLEANFILES += cmdline.c
+CLEANFILES += cmdline.c cmdline.h
 
 ##
 # Plugins

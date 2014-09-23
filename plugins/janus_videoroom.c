@@ -591,6 +591,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	/* Pre-parse the message */
 	int error_code = 0;
 	char error_cause[512];	/* FIXME 512 should be enough, but anyway... */
+	json_t *root = NULL;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -613,7 +614,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto error;
 	}
 	json_error_t error;
-	json_t *root = json_loads(message, 0, &error);
+	root = json_loads(message, 0, &error);
 	if(!root) {
 		JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 		error_code = JANUS_VIDEOROOM_ERROR_INVALID_JSON;
@@ -1185,6 +1186,7 @@ static void *janus_videoroom_handler(void *data) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
+	json_t *root = NULL;
 	while(initialized && !stopping) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
@@ -1203,13 +1205,14 @@ static void *janus_videoroom_handler(void *data) {
 		}
 		/* Handle request */
 		error_code = 0;
+		root = NULL;
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_VIDEOROOM_ERROR_NO_MESSAGE;
 			sprintf(error_cause, "%s", "No message??");
 			goto error;
 		}
-		json_t *root = msg->message;
+		root = msg->message;
 		/* Get the request first */
 		json_t *request = json_object_get(root, "request");
 		if(!request) {

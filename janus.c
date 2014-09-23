@@ -32,8 +32,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			5
-#define JANUS_VERSION_STRING	"0.0.5"
+#define JANUS_VERSION			6
+#define JANUS_VERSION_STRING	"0.0.6"
 
 
 static janus_config *config = NULL;
@@ -51,6 +51,13 @@ static char *ws_api_secret = NULL;
 #ifdef HAVE_WEBSOCKETS
 /* libwebsock WS server */
 static libwebsock_context *wss = NULL, *swss = NULL;
+#endif
+
+#ifdef HAVE_RABBITMQ
+/* RabbitMQ support */
+amqp_connection_state_t rmq_conn = NULL;
+amqp_channel_t rmq_channel = 0;
+amqp_bytes_t to_janus_queue, from_janus_queue;
 #endif
 
 /* Admin/Monitor MHD Web Server */
@@ -187,18 +194,23 @@ static janus_mutex wss_mutex;
 static GHashTable *wss_sessions = NULL;
 #endif
 
+#ifdef HAVE_RABBITMQ
+/* FIXME RabbitMQ session (always 1 at the moment) */
+janus_rabbitmq_client *rmq_client = NULL;
+#endif
+
 /* Gateway Sessions */
 static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL;
 
+
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
 
-static gboolean cleanup_session(gpointer user_data)
+static gboolean janus_cleanup_session(gpointer user_data)
 {
 	janus_session *session = (janus_session *) user_data;
 
-	JANUS_LOG(LOG_INFO, "Cleaning up session %" G_GUINT64_FORMAT "...\n",
-			session->session_id);
+	JANUS_LOG(LOG_INFO, "Cleaning up session %"SCNu64"...\n", session->session_id);
 	janus_session_destroy(session->session_id);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
@@ -207,8 +219,7 @@ static gboolean cleanup_session(gpointer user_data)
 	return G_SOURCE_REMOVE;
 }
 
-static gboolean check_sessions(gpointer user_data)
-{
+static gboolean janus_check_sessions(gpointer user_data) {
 	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
 	if (sessions) {
@@ -224,10 +235,8 @@ static gboolean check_sessions(gpointer user_data)
 			}
 
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC
-					&& !session->timeout) {
-				JANUS_LOG(LOG_INFO, "Timeout expired for session %" G_GUINT64_FORMAT "...\n",
-						session->session_id);
+			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
+				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 
 				json_t *event = json_object();
 				json_object_set_new(event, "janus", json_string("timeout"));
@@ -244,7 +253,7 @@ static gboolean check_sessions(gpointer user_data)
 
 				/* Schedule the session for deletion */
 				GSource *timeout_source = g_timeout_source_new_seconds(3);
-				g_source_set_callback(timeout_source, cleanup_session, session, NULL);
+				g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
 				g_source_attach(timeout_source, watchdog_context);
 				g_source_unref(timeout_source);
 			}
@@ -255,14 +264,13 @@ static gboolean check_sessions(gpointer user_data)
 	return G_SOURCE_CONTINUE;
 }
 
-static gpointer janus_sessions_watchdog(gpointer user_data)
-{
+static gpointer janus_sessions_watchdog(gpointer user_data) {
 	GMainLoop *loop = (GMainLoop *) user_data;
 	GMainContext *watchdog_context = g_main_loop_get_context(loop);
 	GSource *timeout_source;
 
 	timeout_source = g_timeout_source_new_seconds(2);
-	g_source_set_callback(timeout_source, check_sessions, watchdog_context, NULL);
+	g_source_set_callback(timeout_source, janus_check_sessions, watchdog_context, NULL);
 	g_source_attach(timeout_source, watchdog_context);
 	g_source_unref(timeout_source);
 
@@ -381,6 +389,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	char *payload = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
+	gchar *session_path = NULL, *handle_path = NULL;
+	gchar **basepath = NULL, **path = NULL;
 
 	JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
 	/* Is this the first round? */
@@ -429,7 +439,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		MHD_destroy_response(response);
 	}
 	/* Get path components */
-	gchar **basepath = NULL, **path = NULL;
 	if(strcasecmp(url, ws_path)) {
 		if(strlen(ws_path) > 1) {
 			basepath = g_strsplit(url, ws_path, -1);
@@ -470,7 +479,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	if(firstround)
 		return ret;
 	JANUS_LOG(LOG_VERB, " ... parsing request...\n");
-	gchar *session_path = NULL, *handle_path = NULL;
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
 		if(session_path == NULL) {
@@ -704,6 +712,22 @@ done:
 	return ret;
 }
 
+janus_request_source *janus_request_source_new(int type, void *source, void *msg) {
+	janus_request_source *req_source = (janus_request_source *)calloc(1, sizeof(janus_request_source));
+	req_source->type = type;
+	req_source->source = source;
+	req_source->msg = msg;
+	return req_source;
+}
+
+void janus_request_source_destroy(janus_request_source *req_source) {
+	if(req_source == NULL)
+		return;
+	req_source->source = NULL;
+	req_source->msg = NULL;
+	g_free(req_source);
+}
+
 int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	int ret = MHD_NO;
 	if(source == NULL || root == NULL) {
@@ -794,6 +818,19 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					/* Create a thread for notifications related to this session as well */
 					client->thread = g_thread_new("wss_client", &janus_wss_thread, client);
 				}
+				janus_mutex_unlock(&client->mutex);
+			}
+		}
+#endif
+#ifdef HAVE_RABBITMQ
+		if(source->type == JANUS_SOURCE_RABBITMQ) {
+			/* Add the new session to the list of sessions created by this WS client */
+			janus_rabbitmq_client *client = (janus_rabbitmq_client *)source->source;
+			if(client) {
+				janus_mutex_lock(&client->mutex);
+				if(client->sessions == NULL)
+					client->sessions = g_hash_table_new(NULL, NULL);
+				g_hash_table_insert(client->sessions, GUINT_TO_POINTER(session_id), session);
 				janus_mutex_unlock(&client->mutex);
 			}
 		}
@@ -1582,6 +1619,8 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	char *payload = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
+	gchar *session_path = NULL, *handle_path = NULL;
+	gchar **basepath = NULL, **path = NULL;
 
 	JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 	/* Is this the first round? */
@@ -1630,7 +1669,6 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 		MHD_destroy_response(response);
 	}
 	/* Get path components */
-	gchar **basepath = NULL, **path = NULL;
 	if(strcasecmp(url, admin_ws_path)) {
 		if(strlen(admin_ws_path) > 1) {
 			basepath = g_strsplit(url, admin_ws_path, -1);
@@ -1671,7 +1709,6 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	if(firstround)
 		return ret;
 	JANUS_LOG(LOG_VERB, " ... parsing request...\n");
-	gchar *session_path = NULL, *handle_path = NULL;
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
 		if(session_path == NULL) {
@@ -2277,8 +2314,10 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 	if(source->type == JANUS_SOURCE_PLAIN_HTTP) {
 		struct MHD_Connection *connection = (struct MHD_Connection *)source->source;
 		janus_http_msg *msg = (janus_http_msg *)source->msg;
-		if(!connection || !msg)
+		if(!connection || !msg) {
+			g_free(payload);
 			return MHD_NO;
+		}
 		/* Send the reply */
 		struct MHD_Response *response = MHD_create_response_from_data(
 			strlen(payload),
@@ -2299,13 +2338,29 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		/* FIXME We should check the return value */
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		libwebsock_send_text(client->state, payload);
+		g_free(payload);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
+		g_free(payload);
+		return MHD_NO;
+#endif
+	} else if(source->type == JANUS_SOURCE_RABBITMQ) {
+#ifdef HAVE_RABBITMQ
+		/* FIXME Add to the queue of outgoing responses */
+		janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+		response->payload = payload;
+		response->correlation_id = (char *)source->msg;
+		g_async_queue_push(rmq_client->responses, response);
+		return MHD_YES;
+#else
+		JANUS_LOG(LOG_ERR, "RabbitMQ support not compiled\n");
+		g_free(payload);
 		return MHD_NO;
 #endif
 	} else {
 		/* WTF? */
+		g_free(payload);
 		return MHD_NO;
 	}
 }
@@ -2335,14 +2390,9 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 				int ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 				MHD_destroy_response(response);
 				return ret;
-			} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WEBSOCKETS
+			} else if(source->type == JANUS_SOURCE_WEBSOCKETS || source->type == JANUS_SOURCE_RABBITMQ) {
 				/* TODO We should send an error to the client... */
 				return MHD_NO;
-#else
-				JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
-				return MHD_NO;
-#endif
 			} else {
 				/* WTF? */
 				return MHD_NO;
@@ -2352,7 +2402,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		va_end(ap);
 	}
 	/* Done preparing error */
-	JANUS_LOG(LOG_VERB, "[ws][%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
+	JANUS_LOG(LOG_VERB, "[%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
 	/* Prepare JSON error */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("error"));
@@ -2373,8 +2423,10 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	if(source->type == JANUS_SOURCE_PLAIN_HTTP) {
 		struct MHD_Connection *connection = (struct MHD_Connection *)source->source;
 		janus_http_msg *msg = (janus_http_msg *)source->msg;
-		if(!connection || !msg)
+		if(!connection || !msg) {
+			g_free(reply_text);
 			return MHD_NO;
+		}
 		struct MHD_Response *response = MHD_create_response_from_data(
 			strlen(reply_text),
 			(void*)reply_text,
@@ -2394,13 +2446,29 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		/* FIXME We should check the return value */
 		libwebsock_send_text(client->state, reply_text);
+		g_free(reply_text);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
+		g_free(reply_text);
+		return MHD_NO;
+#endif
+	} else if(source->type == JANUS_SOURCE_RABBITMQ) {
+#ifdef HAVE_RABBITMQ
+		/* FIXME Add to the queue of outgoing responses */
+		janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+		response->payload = reply_text;
+		response->correlation_id = (char *)source->msg;
+		g_async_queue_push(rmq_client->responses, response);
+		return MHD_YES;
+#else
+		JANUS_LOG(LOG_ERR, "RabbitMQ support not compiled\n");
+		g_free(reply_text);
 		return MHD_NO;
 #endif
 	} else {
 		/* WTF? */
+		g_free(reply_text);
 		return MHD_NO;
 	}
 }
@@ -2552,6 +2620,198 @@ void *janus_wss_thread(void *data) {
 	}
 	JANUS_LOG(LOG_INFO, "Leaving WebSocket thread: #%d\n", fd);
 	return NULL;
+}
+#endif
+
+
+#ifdef HAVE_RABBITMQ
+void *janus_rmq_in_thread(void *data) {
+	if(rmq_client == NULL) {
+		JANUS_LOG(LOG_ERR, "No RabbitMQ connection??\n");
+		return NULL;
+	}
+	JANUS_LOG(LOG_VERB, "Joining RabbitMQ in thread\n");
+
+	struct timeval timeout;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 20000;
+	amqp_frame_t frame;
+	while(!rmq_client->destroy && !g_atomic_int_get(&stop)) {
+		amqp_maybe_release_buffers(rmq_conn);
+		/* Wait for a frame */
+		int res = amqp_simple_wait_frame_noblock(rmq_conn, &frame, &timeout);
+		if(res != AMQP_STATUS_OK) {
+			/* No data */
+			if(res == AMQP_STATUS_TIMEOUT)
+				continue;
+			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
+			break;
+		}
+		/* We expect method first */
+		JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
+		if(frame.frame_type != AMQP_FRAME_METHOD)
+			continue;
+		JANUS_LOG(LOG_VERB, "Method %s\n", amqp_method_name(frame.payload.method.id));
+		if(frame.payload.method.id == AMQP_BASIC_DELIVER_METHOD) {
+			amqp_basic_deliver_t *d = (amqp_basic_deliver_t *)frame.payload.method.decoded;
+			JANUS_LOG(LOG_VERB, "Delivery #%u, %.*s\n", (unsigned) d->delivery_tag, (int) d->routing_key.len, (char *) d->routing_key.bytes);
+		}
+		/* Then the header */
+		amqp_simple_wait_frame(rmq_conn, &frame);
+		JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
+		if(frame.frame_type != AMQP_FRAME_HEADER)
+			continue;
+		amqp_basic_properties_t *p = (amqp_basic_properties_t *)frame.payload.properties.decoded;
+		if(p->_flags & AMQP_BASIC_REPLY_TO_FLAG) {
+			JANUS_LOG(LOG_VERB, "  -- Reply-to: %.*s\n", (int) p->reply_to.len, (char *) p->reply_to.bytes);
+		}
+		char *correlation = NULL;
+		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
+			correlation = (char *)calloc(p->correlation_id.len+1, sizeof(char));
+			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
+			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
+		}
+		if(p->_flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+			JANUS_LOG(LOG_VERB, "  -- Content-type: %.*s\n", (int) p->content_type.len, (char *) p->content_type.bytes);
+		}
+		/* And the body */
+		uint64_t total = frame.payload.properties.body_size, received = 0;
+		char *payload = (char *)calloc(total+1, sizeof(char)), *index = payload;
+		while(received < total) {
+			amqp_simple_wait_frame(rmq_conn, &frame);
+			JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
+			if(frame.frame_type != AMQP_FRAME_BODY)
+				break;
+			sprintf(index, "%.*s", (int) frame.payload.body_fragment.len, (char *) frame.payload.body_fragment.bytes);
+			received += frame.payload.body_fragment.len;
+			index = payload+received;
+		}
+		JANUS_LOG(LOG_VERB, "Got %"SCNu64"/%"SCNu64" bytes (%"SCNu64")\n", received, total, frame.payload.body_fragment.len);
+		JANUS_LOG(LOG_VERB, "%s\n", payload);
+		/* Parse it */
+		janus_request_source *source = janus_request_source_new(JANUS_SOURCE_RABBITMQ, (void *)rmq_client, (void *)correlation);
+		/* Parse the JSON payload */
+		json_error_t error;
+		json_t *root = json_loads(payload, 0, &error);
+		if(!root) {
+			janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+			g_free(payload);
+			continue;
+		}
+		if(!json_is_object(root)) {
+			janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+			g_free(payload);
+			json_decref(root);
+			continue;
+		}
+		g_free(payload);
+		/* Parse the request now */
+		janus_rabbitmq_request *request = (janus_rabbitmq_request *)calloc(1, sizeof(janus_rabbitmq_request));
+		request->source = source;
+		request->request = root;
+		GError *tperror = NULL;
+		g_thread_pool_push(rmq_client->thread_pool, request, &tperror);
+		if(tperror != NULL) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+		}
+	}
+	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ in thread\n");
+	return NULL;
+}
+
+void *janus_rmq_out_thread(void *data) {
+	if(rmq_client == NULL) {
+		JANUS_LOG(LOG_ERR, "No RabbitMQ connection??\n");
+		return NULL;
+	}
+	JANUS_LOG(LOG_VERB, "Joining RabbitMQ out thread\n");
+	while(!rmq_client->destroy && !g_atomic_int_get(&stop)) {
+		janus_mutex_lock(&rmq_client->mutex);
+		/* We send responses from here as well, not only notifications */
+		janus_rabbitmq_response *response = NULL;
+		while ((response = g_async_queue_try_pop(rmq_client->responses)) != NULL) {
+			if(!g_atomic_int_get(&stop) && response && response->payload) {
+				/* Gotcha! */
+				JANUS_LOG(LOG_VERB, "Sending response to RabbitMQ (%zu bytes)...\n", strlen(response->payload));
+				JANUS_LOG(LOG_VERB, "%s\n", response->payload);
+				amqp_basic_properties_t props;
+				props._flags = 0;
+				props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
+				props.reply_to = amqp_cstring_bytes("Janus");
+				if(response->correlation_id) {
+					props._flags |= AMQP_BASIC_CORRELATION_ID_FLAG;
+					props.correlation_id = amqp_cstring_bytes(response->correlation_id);
+				}
+				props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
+				props.content_type = amqp_cstring_bytes("application/json");
+				amqp_bytes_t message = amqp_cstring_bytes(response->payload);
+				int status = amqp_basic_publish(rmq_conn, rmq_channel, amqp_empty_bytes, from_janus_queue, 0, 0, &props, message);
+				if(status != AMQP_STATUS_OK) {
+					JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
+				}
+				g_free(response->correlation_id);
+				response->correlation_id = NULL;
+				g_free(response->payload);
+				response->payload = NULL;
+				g_free(response);
+			}
+		}
+		if(rmq_client->sessions != NULL && g_hash_table_size(rmq_client->sessions) > 0) {
+			/* Iterate on all the sessions handled by this rmq_client */
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, rmq_client->sessions);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+				if(rmq_client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
+					continue;
+				}
+				janus_http_event *event;
+				while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
+					if(!rmq_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
+						/* Gotcha! */
+						JANUS_LOG(LOG_VERB, "Sending event to RabbitMQ (%zu bytes)...\n", strlen(event->payload));
+						JANUS_LOG(LOG_VERB, "%s\n", event->payload);
+						amqp_basic_properties_t props;
+						props._flags = 0;
+						props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
+						props.reply_to = amqp_cstring_bytes("Janus");
+						props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
+						props.content_type = amqp_cstring_bytes("application/json");
+						amqp_bytes_t message = amqp_cstring_bytes(event->payload);
+						int status = amqp_basic_publish(rmq_conn, rmq_channel, amqp_empty_bytes, from_janus_queue, 0, 0, &props, message);
+						if(status != AMQP_STATUS_OK) {
+							JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
+						}
+					}
+				}
+				if(session->timeout) {
+					/* A session timed out, anything we should do? */
+					continue;
+				}
+			}
+		}
+		janus_mutex_unlock(&rmq_client->mutex);
+		/* Sleep 100ms */
+		g_usleep(100000);
+	}
+	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ out thread\n");
+	return NULL;
+}
+
+void janus_rmq_task(gpointer data, gpointer user_data) {
+	JANUS_LOG(LOG_VERB, "Thread pool, serving request\n");
+	janus_rabbitmq_request *request = (janus_rabbitmq_request *)data;
+	janus_rabbitmq_client *client = (janus_rabbitmq_client *)data;
+	if(request == NULL || client == NULL) {
+		JANUS_LOG(LOG_ERR, "Missing request or client\n");
+		return;
+	}
+	janus_request_source *source = (janus_request_source *)request->source;
+	json_t *root = (json_t *)request->request;
+	janus_process_incoming_request(source, root);
+	janus_request_source_destroy(source);
 }
 #endif
 
@@ -3127,6 +3387,30 @@ gint main(int argc, char *argv[])
 		sprintf(port, "%d", args_info.ws_secure_port_arg);
 		janus_config_add_item(config, "webserver", "ws_secure_port", port);
 	}
+	if(args_info.enable_rabbitmq_given) {
+		janus_config_add_item(config, "rabbitmq", "enable", "yes");
+	}
+	if(args_info.rabbitmq_server_given) {
+		/* Split in server and port (if port missing, use AMQP_PROTOCOL_PORT as default) */
+		char *rmqport = strrchr(args_info.stun_server_arg, ':');
+		if(rmqport != NULL) {
+			*rmqport = '\0';
+			rmqport++;
+			janus_config_add_item(config, "rabbitmq", "host", args_info.rabbitmq_server_arg);
+			janus_config_add_item(config, "rabbitmq", "port", rmqport);
+		} else {
+			janus_config_add_item(config, "rabbitmq", "host", args_info.rabbitmq_server_arg);
+			char port[10];
+			sprintf(port, "%d", AMQP_PROTOCOL_PORT);
+			janus_config_add_item(config, "rabbitmq", "port", port);
+		}
+	}
+	if(args_info.rabbitmq_in_queue_given) {
+		janus_config_add_item(config, "rabbitmq", "to_janus", args_info.rabbitmq_in_queue_arg);
+	}
+	if(args_info.rabbitmq_out_queue_given) {
+		janus_config_add_item(config, "rabbitmq", "from_janus", args_info.rabbitmq_out_queue_arg);
+	}
 	if(args_info.admin_secret_given) {
 		janus_config_add_item(config, "admin", "admin_secret", args_info.admin_secret_arg);
 	}
@@ -3277,9 +3561,6 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "api_secret");
 	if(item && item->value) {
 		ws_api_secret = g_strdup(item->value);
-		if(ws_api_secret != NULL) {
-			JANUS_LOG(LOG_WARN, "An API secret has been specified: %s (make sure your requests will contain it or they will fail!)\n", ws_api_secret);
-		}
 	}
 
 	/* Do the same for the admin/monitor interface */
@@ -3303,9 +3584,6 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "admin", "admin_secret");
 	if(item && item->value) {
 		admin_ws_api_secret = g_strdup(item->value);
-		if(admin_ws_api_secret != NULL) {
-			JANUS_LOG(LOG_WARN, "An admin/monitor secret has been specified: %s (make sure your requests will contain it or they will fail!)\n", admin_ws_api_secret);
-		}
 	}
 	/* Any ACL? */
 	item = janus_config_get_item_drilldown(config, "admin", "admin_acl");
@@ -3496,6 +3774,11 @@ gint main(int argc, char *argv[])
 	json_object_set_new(info, "websockets", json_integer(1));
 #else
 	json_object_set_new(info, "websockets", json_integer(0));
+#endif
+#ifdef HAVE_RABBITMQ
+	json_object_set_new(info, "rabbitmq", json_integer(1));
+#else
+	json_object_set_new(info, "rabbitmq", json_integer(0));
 #endif
 	json_t *data = json_object();
 	GHashTableIter iter;
@@ -3697,7 +3980,7 @@ gint main(int argc, char *argv[])
 		janus_mutex_init(&wss_mutex);
 	}
 	item = janus_config_get_item_drilldown(config, "webserver", "ws_ssl");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !strcasecmp(item->value, "no")) {
 		JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
 	} else {
 		if(wss != NULL) {
@@ -3725,13 +4008,126 @@ gint main(int argc, char *argv[])
 		}
 	}
 #endif
-	/* Do we have anything up? */
-#ifdef HAVE_WEBSOCKETS
-	if(!ws && !sws && !wss && !swss) {
+	/* Enable the RabbitMQ integration, if enabled */
+#ifndef HAVE_RABBITMQ
+	JANUS_LOG(LOG_WARN, "RabbitMQ support not compiled\n");
 #else
-	if(!ws && !sws) {
+	item = janus_config_get_item_drilldown(config, "rabbitmq", "enable");
+	if(!item || !item->value || !strcasecmp(item->value, "no")) {
+		JANUS_LOG(LOG_WARN, "RammitMQ support disabled\n");
+	} else {
+		/* Parse configuration */
+		const char *rmqhost = "localhost";
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "host");
+		if(item && item->value)
+			rmqhost = g_strdup(item->value);
+		else
+			rmqhost = g_strdup("localhost");
+		int rmqport = AMQP_PROTOCOL_PORT;
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "port");
+		if(item && item->value)
+			rmqport = atoi(item->value);
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "to_janus");
+		if(!item || !item->value) {
+			JANUS_LOG(LOG_FATAL, "Missing name of incoming queue for RabbitMQ integration...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		const char *to_janus = g_strdup(item->value);
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "from_janus");
+		if(!item || !item->value) {
+			JANUS_LOG(LOG_FATAL, "Missing name of outgoing queue for RabbitMQ integration...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		const char *from_janus = g_strdup(item->value);
+		JANUS_LOG(LOG_INFO, "RabbitMQ support enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus, from_janus);
+		/* Connect */
+		rmq_conn = amqp_new_connection();
+		JANUS_LOG(LOG_VERB, "Creating RabbitMQ socket...\n");
+		amqp_socket_t *socket = amqp_tcp_socket_new(rmq_conn);
+		if(socket == NULL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error creating socket...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Connecting to RabbitMQ server...\n");
+		int status = amqp_socket_open(socket, rmqhost, rmqport);
+		if(status != AMQP_STATUS_OK) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error opening socket... (%s)\n", amqp_error_string2(status));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Logging in...\n");
+		amqp_rpc_reply_t result = amqp_login(rmq_conn, "/", 0, 131072, 0, AMQP_SASL_METHOD_PLAIN, "guest", "guest");
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error logging in... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		rmq_channel = 1;
+		JANUS_LOG(LOG_VERB, "Opening channel...\n");
+		amqp_channel_open(rmq_conn, rmq_channel);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error opening channel... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", to_janus);
+		to_janus_queue = amqp_cstring_bytes(to_janus);
+		amqp_queue_declare(rmq_conn, rmq_channel, to_janus_queue, 0, 0, 0, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", from_janus);
+		from_janus_queue = amqp_cstring_bytes(from_janus);
+		amqp_queue_declare(rmq_conn, rmq_channel, from_janus_queue, 0, 0, 0, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		amqp_basic_consume(rmq_conn, rmq_channel, to_janus_queue, amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error consuming... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		/* FIXME We currently support a single application, create a new janus_rabbitmq_client instance */
+		rmq_client = calloc(1, sizeof(janus_rabbitmq_client));
+		if(rmq_client == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		rmq_client->sessions = NULL;
+		rmq_client->responses = g_async_queue_new();
+		rmq_client->destroy = 0;
+		rmq_client->in_thread = g_thread_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client);
+		rmq_client->out_thread = g_thread_new("rmq_out_thread", &janus_rmq_out_thread, rmq_client);
+		/* rabbitmq-c is single threaded, we need a thread pool to serve requests */
+		GError *error = NULL;
+		rmq_client->thread_pool = g_thread_pool_new(janus_rmq_task, rmq_client, -1, FALSE, &error);
+		if(error != NULL) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch pool thread...\n", error->code, error->message ? error->message : "??");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		janus_mutex_init(&rmq_client->mutex);
+		/* Done */
+		JANUS_LOG(LOG_INFO, "Setup of RabbitMQ integration completed\n");
+	}
 #endif
-		JANUS_LOG(LOG_FATAL, "No webserver (HTTP/HTTPS/WS) started, giving up...\n"); 
+	/* Do we have anything up? */
+	int something = 0;
+	if(ws || sws)
+		something++;
+#ifdef HAVE_WEBSOCKETS
+	if(wss || swss)
+		something++;
+#endif
+#ifdef HAVE_RABBITMQ
+	if(rmq_channel)	/* FIXME */
+		something++;
+#endif
+	if(something == 0) {
+		JANUS_LOG(LOG_FATAL, "No transport (HTTP/HTTPS/WebSockets/RabbitMQ) started, giving up...\n"); 
 		exit(1);
 	}
 
@@ -3744,8 +4140,7 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 
-	/* Admin/monitor time */
-	/* Start web server, if enabled */
+	/* Admin/monitor time: start web server, if enabled */
 	threads = 0;
 	item = janus_config_get_item_drilldown(config, "admin", "admin_threads");
 	if(item && item->value) {
@@ -3939,6 +4334,17 @@ gint main(int argc, char *argv[])
 	if(admin_sws)
 		MHD_stop_daemon(admin_sws);
 	sws = NULL;
+#ifdef HAVE_RABBITMQ
+	if(rmq_channel) {
+		if(rmq_client) {
+			g_thread_join(rmq_client->in_thread);
+			g_thread_join(rmq_client->out_thread);
+		}
+		amqp_channel_close(rmq_conn, rmq_channel, AMQP_REPLY_SUCCESS);
+		amqp_connection_close(rmq_conn, AMQP_REPLY_SUCCESS);
+		amqp_destroy_connection(rmq_conn);
+	}
+#endif
 	if(cert_pem_bytes != NULL)
 		g_free((gpointer)cert_pem_bytes);
 	cert_pem_bytes = NULL;

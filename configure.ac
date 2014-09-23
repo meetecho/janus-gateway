@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.0.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.0.6],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_MACRO_DIR([m4])
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -26,15 +26,21 @@ AC_ARG_ENABLE([docs],
 
 AC_ARG_ENABLE([websockets],
               [AS_HELP_STRING([--disable-websockets],
-                              [Disable websockets])],
+                              [Disable WebSockets support])],
               [],
               [enable_websockets=yes])
 
 AC_ARG_ENABLE([data-channels],
               [AS_HELP_STRING([--disable-data-channels],
-                              [Disable data channels])],
+                              [Disable DataChannels])],
               [],
               [enable_data_channels=yes])
+
+AC_ARG_ENABLE([rabbitmq],
+              [AS_HELP_STRING([--disable-rabbitmq],
+                              [Disable RabbitMQ integration])],
+              [],
+              [enable_rabbitmq=yes])
 
 PKG_CHECK_MODULES([JANUS],
                   [
@@ -74,7 +80,7 @@ AC_CHECK_LIB([websock],
              ],
              [
                AS_IF([test "x$enable_websockets" = "xyes"],
-                     [AC_MSG_ERROR([libwebsocket not found. See README for installation instructions or use --disable-websockets])])
+                     [AC_MSG_ERROR([libwebsocket not found. See README.md for installation instructions or use --disable-websockets])])
              ])
 
 AC_CHECK_LIB([usrsctp],
@@ -85,7 +91,18 @@ AC_CHECK_LIB([usrsctp],
              ],
              [
                AS_IF([test "x$enable_data_channels" = "xyes"],
-                     [AC_MSG_ERROR([libusrsctp not found. See README for installation instructions or use --disable-data-channels])])
+                     [AC_MSG_ERROR([libusrsctp not found. See README.md for installation instructions or use --disable-data-channels])])
+             ])
+
+AC_CHECK_LIB([rabbitmq],
+             [amqp_error_string2],
+             [
+               AC_DEFINE(HAVE_RABBITMQ)
+               JANUS_MANUAL_LIBS+=" -lrabbitmq"
+             ],
+             [
+               AS_IF([test "x$enable_rabbitmq" = "xyes"],
+                     [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq])])
              ])
 
 AC_CHECK_PROG([DOXYGEN],

@@ -36,7 +36,8 @@
  * reference should you be interested in writing a new plugin from
  * scratch (and you're definitely welcome to!). A \ref pluginapi to
  * create new plugins, or understand how they're conceived, is documented
- * as well. A documentation on the web and JavaScript API to use the
+ * as well. A documentation on the available HTTP/WebSocket/RabbitMQ 
+ * tranports and the HTTP/WebSocket JavaScript API to use the
  * gateway and the plugins it makes available in your web application
  * can be found in the \ref JS and \ref rest pages. If you're interested
  * in monitoring Janus resources, you can refer to the \ref admin page.
@@ -78,13 +79,12 @@
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
  * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
- * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (optional, Data Channels)
- * - \b libwebsock: https://github.com/payden/libwebsock/ (optional, v1.0.4, WebSockets)
- * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
- * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
+ * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
+ * - \b libwebsock: https://github.com/payden/libwebsock/ (\c optional, v1.0.4, WebSockets)
+ * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, WebSockets)
+ * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
+ * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  *
- * In case you install them, or have them installed, in non-standard paths,
- * and pkg-config can't find them, make sure to edit all the Makefiles accordingly.
  */
 
 /*! \page JS JavaScript API
@@ -497,19 +497,19 @@ janus.attach(
  * 
  */
 
-/*! \page rest RESTful and WebSockets API
+/*! \page rest RESTful, WebSockets and RabbitMQ API
  *
- * Since version \c 0.0.4, there are two different ways to interact with a
- * Janus instance: a \ref plainhttp (the default) and a \ref WS
- * (optional, needs an external library to be available). Both
+ * Since version \c 0.0.6, there are three different ways to interact with a
+ * Janus instance: a \ref plainhttp (the default), a \ref WS and a \ref rabbit
+ * (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
  * and notifications), so almost all the concepts described in the
- * \ref plainhttp section apply to the WebSocket interface as well.
- * As it will be explained later in the \ref WS section below, the only
- * differences come when addressing specific sessions/handles and in part
- * in how you handle notifications using WebSockets: in fact,
- * since with WebSockets there's no REST-based path involved, you'll need
- * a couple of additional identifiers to bridge the gap.
+ * \ref plainhttp section apply to the WebSocket/RabbitMQ interfaces as well.
+ * As it will be explained later in the \ref WS and \ref rabbit sections
+ * below, the only differences come when addressing specific sessions/handles
+ * and in part in how you handle notifications using WebSockets: in fact,
+ * since with WebSockets and RabbitMQ there's no REST-based path involved,
+ * you'll need a couple of additional identifiers to bridge the gap.
  * 
  * \section plainhttp Plain HTTP REST Interface
  * As anticipated in the \ref JS documentation, the gateway deploys a
@@ -581,12 +581,13 @@ janus.attach(
  *
 \verbatim
 {
-	"version_string": "0.0.4",
+	"version_string": "0.0.6",
 	"author": "Meetecho s.r.l.",
 	"name": "Janus WebRTC Gateway",
 	"version": 4,
 	"websockets": 1,		// WebSockets are supported
 	"data_channels": 1,		// Data Channels are supported
+	"rabbitmq": 1,			// RabbitMQ is supported
 	"plugins": {
 		"janus.plugin.sip": {		// The SIP plugin is available
 			"version_string": "0.0.2",
@@ -1096,6 +1097,42 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * Janus server address during the initialization and the library will
  * use one or the other according to the protocol prefix.
  * 
+ * \section rabbit RabbitMQ interface
+ * The semantics of how the requests have to be built, when compared to
+ * the usage of plain HTTP, is exactly the same as for WebSockets, so 
+ * refer to the \ref WS documentation for details about that.
+ * 
+ * Of course, there are other aspects that differ when making use of 
+ * RabbitMQ messaging to talk to Janus, rather than using HTTP messages
+ * or WebSockets. Specifically, RabbitMQ just basically forwards messages
+ * on queues, and as such implementing a pseudo-bidirectional channel
+ * as the Janus API requires needs some precaution.
+ * 
+ * In particular, when configuring Janus to use RabbitMQ you'll have to
+ * specify \b two \b queues:
+ *
+ * - a queue for \b incoming messages (application -> Janus);
+ * - a queue for \b outgoing messages (Janus -> application).
+ *
+ * The proper usage of these queues will allow you to implement the kind
+ * of bidirectional channel Janus needs.
+ *
+ * Another aspect to point out is that Janus requires all requests to
+ * have a random \c correlation_id identifier. In fact, as pointed out
+ * in the previous sections, the Janus API is conceived as a request/response
+ * protocol that can involve asynchronous notifications as well. In order
+ * to make sure that an application can match a received response to one
+ * of the requests made earlier, Janus copies the \c correlation_id
+ * identifier from the original request in the response to it: this is
+ * compliant with the
+ * <a href="https://www.rabbitmq.com/tutorials/tutorial-six-python.html">RPC pattern</a>
+ * as specified in the RabbitMQ documentation. Notifications originated by
+ * Janus, instead, will not include a \c correlation_id identifier, and as
+ * such applications shouldn't expect any: applications will still be able
+ * to match a notification to a request, if the involved plugin was
+ * implemented to do so, by looking at the Janus-level \c transaction
+ * identifier.
+ * 
  */
 
 /*! \page admin Admin/Monitor API
@@ -1105,8 +1142,8 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * want to debug issues at the media level.
  *
  * \note Right now, this new API only allows you to retrieve information,
- * but not act on it: to do so (e.g., to force a session removal), you can
- * rely on the existing \ref rest for the purpose.
+ * but not act on part of it: for more interaction (e.g., to force a
+ * session removal), you can rely on the existing \ref rest for the purpose.
  *
  * The API, for security reasons, is not enabled by default. You can enable
  * it by editing the \c [admin] section in the \c janus.cfg configuration
@@ -1116,14 +1153,18 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * need to provide and access lists based on full/partial addresses.
  *
  * For what concerns the syntax, it's very similar to the \ref rest and
- * so this page will briefly discuss the differences. At the moment, three
+ * so this page will briefly discuss the differences. At the moment, a few
  * different methods are exposed:
  *
  * - \c list_sessions: list all the sessions currently active in Janus
  * (returns an array of session identifiers);
  * - \c list_handles: list all the ICE handles currently active in a Janus
  * session (returns an array of handle identifiers);
- * - \c handle_info: list all the available info on a specific ICE handle.
+ * - \c handle_info: list all the available info on a specific ICE handle;
+ * - \c set_log_level: change the log level in Janus on the fly;
+ * - \c set_locking_debug: selectively enable/disable a live debugging of
+ * the locks in Janus on the fly (useful if you're experiencing deadlocks
+ * and want to investigate them).
  *
  * Following the same spirit of the \ref rest these methods need to be
  * invoked on the right path and/or providing the right \c session_id and
@@ -1227,6 +1268,32 @@ POST /admin/12345678/98765432
  * \note At the moment, no plugin-related information is available through
  * this API. The only plugin-related information you can find is which
  * plugin a specific handle is attached to.
+ *
+ * Finally, the syntax for the \c set_log_level and \c set_locking_debug
+ * commands is quite straightforward:
+ *
+\verbatim
+POST /admin
+{
+	"janus" : "set_log_level",
+	"level" : <integer between 0 and 7, see debug.h>,
+	"transaction" : "<random alphanumeric string>",
+	"admin_secret" : "<password specified in janus.cfg, if any>"
+}
+\endverbatim
+ *
+\verbatim
+POST /admin
+{
+	"janus" : "set_locking_debug",
+	"debug" : <0 to disable, 1 to enable>,
+	"transaction" : "<random alphanumeric string>",
+	"admin_secret" : "<password specified in janus.cfg, if any>"
+}
+\endverbatim
+ *
+ * Both commands will return the updated level/debug setting if successful,
+ * and an error otherwise.
  *
  */
 
@@ -1537,7 +1604,7 @@ var servers = [ws_server, http_server];
  *    awesome and mythology rules... ;-)  
  *    \n\n
  *    .
- * -# <b>Why is the license AGPL? Do you provide alternative license mechanisms as well?</b>\n
+ * -# <b>Is the license AGPL or GPL? Do you provide alternative license mechanisms as well?</b>\n
  *    .
  *    First, a word of update: we recently switched from AGPLv3 to GPLv3,
  *    so if AGPL was your concern, we hope this simple choice managed to
@@ -1578,7 +1645,7 @@ var servers = [ws_server, http_server];
  *    .
  * -# <b>Are Data Channels supported?</b>\n
  *    .
- *    Yes we do! Starting from version \c 0.0.3 of Janus, we added a first
+ *    Yes they are! Starting from version \c 0.0.3 of Janus, we added a first
  *    experimental support to Data Channels, that can as such be used in
  *    plugins that choose to support them. Right now, they are only
  *    handled in the Echo Test plugin, but this will be added to other
@@ -1590,8 +1657,8 @@ var servers = [ws_server, http_server];
  * -# <b>I don't care about Data Channels, do I have to compile usrsctp anyway?</b>\n
  *    .
  *    Support for Data Channels is optional. If you don't care about them,
- *    but only about audio and/or video, pass the \c nodatachans option
- *    to the \c install.sh script. If you already attempted an install
+ *    but only about audio and/or video, pass the \c --disable-data-channels
+ *    option to the configure script. If you already attempted an install
  *    previously, issue a \c make \c clean before compiling again, or
  *    you might encounter issues with pre-existing symbols.\n\n
  *    .
@@ -1681,8 +1748,37 @@ var servers = [ws_server, http_server];
  *    server side integrators as well, e.g., in terms of overhead and use of
  *    resources. For this reason, we added an optional (meaning you can
  *    skip it if you want) support for WebSockets that uses the same API
- *    already available in HTTP. Please beware that support for WbeSockets
+ *    already available in HTTP, as documented in the \ref WS. \n
+ *    \note Please beware that support for WebSockets
  *    is still \b highly \b experimental, so handle that with care!\n\n
+ *    .
+ * -# <b>Can I use RabbitMQ instead of HTTP/WebSockets to interact with Janus?</b>\n
+ *    .
+ *    Since version \c 0.0.6, you can! This is a feature that several
+ *    developers asked for, especially those that are interested in wrapping
+ *    the Janus API on the server side, and implement the communication
+ *    on the client side their own way. Specificaly, Janus now supports
+ *    RabbitMQ based messaging as an alternative "transport" for API
+ *    requests, responses and notifications, meaning it can be used with
+ *    or without HTTP and WebSockets, depending on your requirements.
+ *    To implement a pseudo-bidirectional channel using RabbitMQ, Janus
+ *    makes use of two different queues: one to receive messages, and another
+ *    one to send responses and notifications. Since this support is in its
+ *    early stages, right now you can only have a single "application"
+ *    talking to a specific Janus instance using RabbitMQ messaging,
+ *    meaning that Janus won't implement multiple queues to handle
+ *    multiple concurrent "application servers" taking advantage of its
+ *    features. Support for this is planned, though (e.g., through some kind
+ *    of negotiation to create queues on the fly). If you're going to use
+ *    the same RabbitMQ server for handling multiple Janus instances from
+ *    the same application or different ones, make sure you configure
+ *    different queues for each of them (e.g., from-janus-1/to-janus-1 and
+ *    from-janus-2/to-janus-2), or otherwise in case of "conflicts" more
+ *    instances will end making use of the same queues and messages will get lost.\n
+ *    Just as with WebSockets, the Janus API usage when involving RabbitMQ
+ *    is exactly the same as the one for HTTP and WebSockets, as documented
+ *    in \ref rabbit. \n \note Please beware that support for RabbitMQ is
+ *    still \b highly \b experimental, so handle that with care!\n\n
  *    .
  * -# <b>Can I use Janus with node.js or other frameworks?</b>\n
  *    .

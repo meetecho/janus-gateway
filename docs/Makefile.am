@@ -4,6 +4,8 @@ doxygendir = $(htmldir)/janus-gateway-$(VERSION)
 
 EXTRA_DIST = html
 
+all: html-local
+
 html-local:
 	doxygen janus-doxygen.cfg
 	cp doxy-boot.js html/

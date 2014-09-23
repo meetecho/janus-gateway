@@ -29,6 +29,8 @@ To install it, you'll need to satisfy the following dependencies:
 are interested in Data Channels)
 * [libwebsock](https://github.com/payden/libwebsock) (only needed if
 you are interested in WebSockets support)
+* [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
+you are interested in RabbitMQ support)
 
 A couple of plugins depend on a few more libraries:
 
@@ -91,8 +93,27 @@ later version. In fact, recent versions of libwebsock added support for
 threading in the library, but it is currently experimental and doesn't
 work as expected in Janus.
 
-Should you be interested in building the gateway documentation as well,
-you'll need an additional component installed too:
+Finally, the same can be said for rabbitmq-c as well, which is needed
+for the optional RabbitMQ support. In fact, several different versions
+of the library can be found, and the versions usually available in most
+distribution repositories are not up-do-date with respect to the current
+state of the development. As such, if you're interested in integrating
+RabbitMQ queues as an alternative (or replacement) to HTTP and/or
+WebSockets to control Janus, you can install the latest version with the
+following steps:
+
+    git clone https://github.com/alanxz/rabbitmq-c
+    cd rabbitmq-c
+    git submodule init
+    git submodule update
+    autoreconf -i
+    configure --prefix=/usr && make && sudo make install
+
+* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+script if you're installing on a x86_64 distribution.
+
+To conclude, should you be interested in building the gateway
+documentation as well, you'll need some additional tools too:
 
 * [Doxygen](http://www.doxygen.org)
 * [Graphviz](http://www.graphviz.org/)
@@ -118,10 +139,15 @@ usual to start the whole compilation process:
 	make
 	make install
 
-If you're not interested in Data Channels or WebSockets (or you don't
-care about either of them) you can disable them when configuring: 
+* *Note:* please beware that subsequent ```make install``` commands will
+likely overwrite any configuration file you may have edited, so make
+sure you backup them before updating a Janus installation.
 
-	./configure --disable-websockets --disable-data-channels
+If you're not interested in Data Channels, WebSockets and/or RabbitMQ
+(or you don't care about either of them) you can disable them when
+configuring: 
+
+	./configure --disable-websockets --disable-data-channels --disable-rabbitmq
 
 If Doxygen and graphviz are available, the process will also build the
 documentation for you. If you prefer not to build it, use the
@@ -144,7 +170,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 	
-	janus 0.0.5
+	janus 0.0.6
 
 	Usage: janus [OPTIONS]...
 
@@ -202,6 +228,15 @@ or on the command line:
                                   to be accepted by Janus (useful when wrapping 
                                   Janus API requests in a server, none by 
                                   default)
+	-R, --enable-rabbitmq         Enable RabbitMQ support  (default=off)
+	-H, --rabbitmq-host=string    Address (host:port) of the RabbitMQ server to 
+                                  use (default=localhost:5672)
+	-t, --rabbitmq-in-queue=string
+                                  Name of the RabbitMQ queue for incoming 
+                                  messages (no default)
+	-f, --rabbitmq-out-queue=string
+                                  Name of the RabbitMQ queue for outgoing 
+                                  messages (no default)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:
