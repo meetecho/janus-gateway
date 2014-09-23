@@ -192,61 +192,84 @@ static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL;
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
-void *janus_sessions_watchdog(void *data);
-void *janus_sessions_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
-	gint64 now = 0;
-	while(!g_atomic_int_get(&stop)) {
-		janus_mutex_lock(&sessions_mutex);
-		if(sessions != NULL) {
-			GHashTableIter iter;
-			gpointer value;
 
-			/* Iterate on all the sessions and check the last activity */
-			now = janus_get_monotonic_time();
+static gboolean cleanup_session(gpointer user_data)
+{
+	janus_session *session = (janus_session *) user_data;
 
-			g_hash_table_iter_init(&iter, sessions);
-			while (g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_session *session = value;
+	JANUS_LOG(LOG_INFO, "Cleaning up session %" G_GUINT64_FORMAT "...\n",
+			session->session_id);
+	janus_session_destroy(session->session_id);
+	janus_mutex_lock(&sessions_mutex);
+	g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
+	janus_mutex_unlock(&sessions_mutex);
 
-				if(!session || session->destroy || g_atomic_int_get(&stop)) {
-					continue;
-				}
+	return G_SOURCE_REMOVE;
+}
 
-				if(now-session->last_activity >= (SESSION_TIMEOUT+3)*G_USEC_PER_SEC) {
-					/* We're lazy and actually get rid of the session only after a few seconds */
-					janus_mutex_unlock(&sessions_mutex);
-					janus_session_destroy(session->session_id);
-					janus_mutex_lock(&sessions_mutex);
-					g_hash_table_iter_remove(&iter);
-				} else if(now-session->last_activity >= SESSION_TIMEOUT*G_USEC_PER_SEC && !session->timeout) {
-					/* Timeout! */
-					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
-					/* Prepare JSON event to notify user/application */
-					json_t *event = json_object();
-					json_object_set_new(event, "janus", json_string("timeout"));
-					json_object_set_new(event, "session_id", json_integer(session->session_id));
-					/* Convert to a string */
-					char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-					json_decref(event);
-					/* Send the event */
-					janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
-					if(notification == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						continue;
-					}
-					notification->code = 200;
-					notification->payload = event_text;
-					notification->allocated = 1;
-					g_async_queue_push(session->messages, notification);
-					session->timeout = 1;
-				}
+static gboolean check_sessions(gpointer user_data)
+{
+	GMainContext *watchdog_context = (GMainContext *) user_data;
+	janus_mutex_lock(&sessions_mutex);
+	if (sessions) {
+		GHashTableIter iter;
+		gpointer value;
+
+		g_hash_table_iter_init(&iter, sessions);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_session *session = (janus_session *) value;
+
+			if (!session || session->destroy) {
+				continue;
+			}
+
+			gint64 now = janus_get_monotonic_time();
+			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC
+					&& !session->timeout) {
+				JANUS_LOG(LOG_INFO, "Timeout expired for session %" G_GUINT64_FORMAT "...\n",
+						session->session_id);
+
+				json_t *event = json_object();
+				json_object_set_new(event, "janus", json_string("timeout"));
+				json_object_set_new(event, "session_id", json_integer(session->session_id));
+				gchar *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(event);
+
+				janus_http_event *notification = calloc(1, sizeof(janus_http_event));
+				notification->code = 200;
+				notification->payload = event_text;
+				notification->allocated = 1;
+				g_async_queue_push(session->messages, notification);
+				session->timeout = 1;
+
+				/* Schedule the session for deletion */
+				GSource *timeout_source = g_timeout_source_new_seconds(3);
+				g_source_set_callback(timeout_source, cleanup_session, session, NULL);
+				g_source_attach(timeout_source, watchdog_context);
+				g_source_unref(timeout_source);
 			}
 		}
-		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(2000000);
 	}
-	JANUS_LOG(LOG_INFO, "Sessions watchdog stopped\n");
+	janus_mutex_unlock(&sessions_mutex);
+
+	return G_SOURCE_CONTINUE;
+}
+
+static gpointer janus_sessions_watchdog(gpointer user_data)
+{
+	GMainLoop *loop = (GMainLoop *) user_data;
+	GMainContext *watchdog_context = g_main_loop_get_context(loop);
+	GSource *timeout_source;
+
+	timeout_source = g_timeout_source_new_seconds(2);
+	g_source_set_callback(timeout_source, check_sessions, watchdog_context, NULL);
+	g_source_attach(timeout_source, watchdog_context);
+	g_source_unref(timeout_source);
+
+	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
+
+	g_main_loop_run(loop);
+
 	return NULL;
 }
 
@@ -3014,7 +3037,7 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		configs_folder = g_strdup ("./conf");	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+		configs_folder = g_strdup (CONFDIR);
 	}
 	if(config_file == NULL) {
 		char file[255];
@@ -3388,7 +3411,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load plugins */
-	const char *path = "./plugins";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+	const char *path = PLUGINDIR;
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;
@@ -3713,7 +3736,9 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("watchdog", &janus_sessions_watchdog, NULL);
+	GMainContext *watchdog_context = g_main_context_new();
+	GMainLoop *watchdog_loop = g_main_loop_new(watchdog_context, FALSE);
+	GThread *watchdog = g_thread_new("watchdog", &janus_sessions_watchdog, watchdog_loop);
 	if(!watchdog) {
 		JANUS_LOG(LOG_FATAL, "Couldn't start sessions watchdog...\n");
 		exit(1);
@@ -3877,7 +3902,7 @@ gint main(int argc, char *argv[])
 		/* The libwebsock wait is our loop */
 		libwebsock_wait(wss ? wss : swss);
 		if(!g_atomic_int_get(&stop))
-			janus_handle_signal(SIGINT);
+			g_atomic_int_inc(&stop);
 	} else {
 		while(!g_atomic_int_get(&stop)) {
 			/* Loop until we have to stop */
@@ -3892,8 +3917,13 @@ gint main(int argc, char *argv[])
 #endif
 
 	/* Done */
+	JANUS_LOG(LOG_INFO, "Ending watchdog mainloop...\n");
+	g_main_loop_quit(watchdog_loop);
 	g_thread_join(watchdog);
 	watchdog = NULL;
+	g_main_loop_unref(watchdog_loop);
+	g_main_context_unref(watchdog_context);
+
 	if(config)
 		janus_config_destroy(config);
 	JANUS_LOG(LOG_INFO, "Closing webserver(s)...\n");

@@ -42,7 +42,7 @@ videortpmap = VP8/90000
 type = live
 id = 2
 description = a-law file source (radio broadcast)
-filename = ./plugins/streams/radio.alaw		; See install.sh
+filename = @streamdir@/radio.alaw		; See install.sh
 audio = yes
 video = no
 
@@ -50,6 +50,6 @@ video = no
 type = ondemand
 id = 3
 description = mu-law file source (music)
-filename = ./plugins/streams/music.mulaw	; See install.sh
+filename = @streamdir@/music.mulaw	; See install.sh
 audio = yes
 video = no
