@@ -3390,6 +3390,7 @@ gint main(int argc, char *argv[])
 	if(args_info.enable_rabbitmq_given) {
 		janus_config_add_item(config, "rabbitmq", "enable", "yes");
 	}
+#ifdef HAVE_RABBITMQ
 	if(args_info.rabbitmq_server_given) {
 		/* Split in server and port (if port missing, use AMQP_PROTOCOL_PORT as default) */
 		char *rmqport = strrchr(args_info.stun_server_arg, ':');
@@ -3411,6 +3412,7 @@ gint main(int argc, char *argv[])
 	if(args_info.rabbitmq_out_queue_given) {
 		janus_config_add_item(config, "rabbitmq", "from_janus", args_info.rabbitmq_out_queue_arg);
 	}
+#endif
 	if(args_info.admin_secret_given) {
 		janus_config_add_item(config, "admin", "admin_secret", args_info.admin_secret_arg);
 	}
