@@ -29,7 +29,7 @@
 #ifdef HAVE_WEBSOCKETS
 #include <websock/websock.h>
 #endif
-#ifdef HAVE_WEBSOCKETS
+#ifdef HAVE_RABBITMQ
 #include <amqp.h>
 #include <amqp_framing.h>
 #include <amqp_tcp_socket.h>
