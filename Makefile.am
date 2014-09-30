@@ -130,7 +130,7 @@ if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
 plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
 plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) -lopus
 plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.audiobridge.cfg
 EXTRA_DIST += conf/janus.plugin.audiobridge.cfg
@@ -198,7 +198,7 @@ if ENABLE_PLUGIN_VOICEMAIL
 plugin_LTLIBRARIES += plugins/libjanus_voicemail.la
 plugins_libjanus_voicemail_la_SOURCES = plugins/janus_voicemail.c
 plugins_libjanus_voicemail_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
 plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.voicemail.cfg
 EXTRA_DIST += conf/janus.plugin.voicemail.cfg
