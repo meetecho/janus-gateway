@@ -637,7 +637,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 		"v=0\r\n", BUFSIZE);
 	/* Origin o= */
 	if(anon->sdp_origin) {
-		g_sprintf(buffer,
+		g_snprintf(buffer, 512,
 			"o=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",	/* FIXME Should we fix the address? */
 				anon->sdp_origin->o_username ? anon->sdp_origin->o_username : "-",
 				anon->sdp_origin->o_id, anon->sdp_origin->o_version);
@@ -645,17 +645,17 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	} else {
 		gint64 sessid = janus_get_monotonic_time();
 		gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
-		g_sprintf(buffer,
+		g_snprintf(buffer, 512,
 			"o=%s %"SCNi64" %"SCNi64" IN IP4 127.0.0.1\r\n",	/* FIXME Should we fix the address? */
 				"-", sessid, version);
 		g_strlcat(sdp, buffer, BUFSIZE);
 	}
 	/* Session name s= */
-	g_sprintf(buffer,
+	g_snprintf(buffer, 512,
 		"s=%s\r\n", anon->sdp_subject ? anon->sdp_subject : "Meetecho Janus");
 	g_strlcat(sdp, buffer, BUFSIZE);
 	/* Timing t= */
-	g_sprintf(buffer,
+	g_snprintf(buffer, 512,
 		"t=%lu %lu\r\n", anon->sdp_time ? anon->sdp_time->t_start : 0, anon->sdp_time ? anon->sdp_time->t_stop : 0);
 	g_strlcat(sdp, buffer, BUFSIZE);
 	/* bundle: add new global attribute */
@@ -686,11 +686,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 		sdp_attribute_t *a = anon->sdp_attributes;
 		while(a) {
 			if(a->a_value == NULL) {
-				g_sprintf(buffer,
+				g_snprintf(buffer, 512,
 					"a=%s\r\n", a->a_name);
 				g_strlcat(sdp, buffer, BUFSIZE);
 			} else {
-				g_sprintf(buffer,
+				g_snprintf(buffer, 512,
 					"a=%s:%s\r\n", a->a_name, a->a_value);
 				g_strlcat(sdp, buffer, BUFSIZE);
 			}
@@ -712,7 +712,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have %d audio lines, and the id is %d)\n", handle->handle_id, audio, handle->audio_id);
 					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
-					g_sprintf(buffer,
+					g_snprintf(buffer, 512,
 						"c=IN IP4 %s\r\n", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
@@ -724,7 +724,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (invalid stream %d)\n", handle->handle_id, handle->audio_id);
 					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
-					g_sprintf(buffer,
+					g_snprintf(buffer, 512,
 						"c=IN IP4 %s\r\n", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
@@ -741,7 +741,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_id : handle->video_id);
 					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
-					g_sprintf(buffer,
+					g_snprintf(buffer, 512,
 						"c=IN IP4 %s\r\n", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
@@ -753,7 +753,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (invalid stream %d)\n", handle->handle_id, id);
 					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
-					g_sprintf(buffer,
+					g_snprintf(buffer, 512,
 						"c=IN IP4 %s\r\n", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
@@ -771,12 +771,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
 					if(data > 1 || !id) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping SCTP line (we have %d SCTP lines, and the id is %d)\n", handle->handle_id, data, id);
-						g_sprintf(buffer,
+						g_snprintf(buffer, 512,
 							"m=%s 0 %s 0\r\n",
 							m->m_type_name, m->m_proto_name);
 						g_strlcat(sdp, buffer, BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
-						g_sprintf(buffer,
+						g_snprintf(buffer, 512,
 							"c=IN IP4 %s\r\n", janus_get_public_ip());
 						g_strlcat(sdp, buffer, BUFSIZE);
 						m = m->m_next;
@@ -786,12 +786,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 					if(stream == NULL) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping SCTP line (invalid stream %d)\n", handle->handle_id, id);
-						g_sprintf(buffer,
+						g_snprintf(buffer, 512,
 							"m=%s 0 %s 0\r\n",
 							m->m_type_name, m->m_proto_name);
 						g_strlcat(sdp, buffer, BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
-						g_sprintf(buffer,
+						g_snprintf(buffer, 512,
 							"c=IN IP4 %s\r\n", janus_get_public_ip());
 						g_strlcat(sdp, buffer, BUFSIZE);
 						m = m->m_next;
@@ -800,7 +800,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=application 1 DTLS/SCTP", BUFSIZE);
 				} else {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
-					g_sprintf(buffer,
+					g_snprintf(buffer, 512,
 						"m=%s 0 %s 0\r\n",
 						m->m_type_name, m->m_proto_name);
 					g_strlcat(sdp, buffer, BUFSIZE);
@@ -810,12 +810,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 #endif
 			} else {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
-				g_sprintf(buffer,
+				g_snprintf(buffer, 512,
 					"m=%s 0 %s 0\r\n",
 					m->m_type_name, m->m_proto_name);
 				g_strlcat(sdp, buffer, BUFSIZE);
 				/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
-				g_sprintf(buffer,
+				g_snprintf(buffer, 512,
 					"c=IN IP4 %s\r\n", janus_get_public_ip());
 				g_strlcat(sdp, buffer, BUFSIZE);
 				m = m->m_next;
@@ -830,7 +830,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				} else {
 					sdp_list_t *fmt = m->m_format;
 					while(fmt) {
-						g_sprintf(buffer, " %s", fmt->l_text);
+						g_snprintf(buffer, 512, " %s", fmt->l_text);
 						g_strlcat(sdp, buffer, BUFSIZE);
 						fmt = fmt->l_next;
 					}
@@ -838,7 +838,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			} else {
 				sdp_rtpmap_t *r = m->m_rtpmaps;
 				while(r) {
-					g_sprintf(buffer, " %d", r->rm_pt);
+					g_snprintf(buffer, 512, " %d", r->rm_pt);
 					g_strlcat(sdp, buffer, BUFSIZE);
 					r = r->rm_next;
 				}
@@ -847,15 +847,15 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			/* a=mid:(audio|video|data) */
 			switch(m->m_type) {
 				case sdp_media_audio:
-					g_sprintf(buffer, "a=mid:audio\r\n");
+					g_snprintf(buffer, 512, "a=mid:audio\r\n");
 					break;
 				case sdp_media_video:
-					g_sprintf(buffer, "a=mid:video\r\n");
+					g_snprintf(buffer, 512, "a=mid:video\r\n");
 					break;
 #ifdef HAVE_SCTP
 				case sdp_media_application:
 					/* FIXME sctpmap and webrtc-datachannel should be dynamic */
-					g_sprintf(buffer, "a=mid:data\r\na=sctpmap:5000 webrtc-datachannel 16\r\n");
+					g_snprintf(buffer, 512, "a=mid:data\r\na=sctpmap:5000 webrtc-datachannel 16\r\n");
 					break;
 #endif
 				default:
@@ -864,14 +864,14 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			g_strlcat(sdp, buffer, BUFSIZE);
 			/* Any bandwidth? */
 			if(m->m_bandwidths) {
-				g_sprintf(buffer,
+				g_snprintf(buffer, 512,
 					"b=%s:%lu\r\n",	/* FIXME Are we doing this correctly? */
 						m->m_bandwidths->b_modifier_name ? m->m_bandwidths->b_modifier_name : "AS",
 						m->m_bandwidths->b_value);
 				g_strlcat(sdp, buffer, BUFSIZE);
 			}
 			/* Media connection c= */
-			g_sprintf(buffer,
+			g_snprintf(buffer, 512,
 				"c=IN IP4 %s\r\n", janus_get_public_ip());
 			g_strlcat(sdp, buffer, BUFSIZE);
 			/* What is the direction? */
@@ -901,13 +901,13 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			}
 			if(m->m_type != sdp_media_application) {
 				/* rtcp-mux */
-				g_sprintf(buffer, "a=rtcp-mux\n");
+				g_snprintf(buffer, 512, "a=rtcp-mux\n");
 				g_strlcat(sdp, buffer, BUFSIZE);
 				/* RTP maps */
 				if(m->m_rtpmaps) {
 					sdp_rtpmap_t *rm = NULL;
 					for(rm = m->m_rtpmaps; rm; rm = rm->rm_next) {
-						g_sprintf(buffer, "a=rtpmap:%u %s/%lu%s%s\r\n",
+						g_snprintf(buffer, 512, "a=rtpmap:%u %s/%lu%s%s\r\n",
 							rm->rm_pt, rm->rm_encoding, rm->rm_rate,
 							rm->rm_params ? "/" : "", 
 							rm->rm_params ? rm->rm_params : "");
@@ -915,7 +915,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					}
 					for(rm = m->m_rtpmaps; rm; rm = rm->rm_next) {
 						if(rm->rm_fmtp) {
-							g_sprintf(buffer, "a=fmtp:%u %s\r\n", rm->rm_pt, rm->rm_fmtp);
+							g_snprintf(buffer, 512, "a=fmtp:%u %s\r\n", rm->rm_pt, rm->rm_fmtp);
 							g_strlcat(sdp, buffer, BUFSIZE);
 						}
 					}
@@ -926,7 +926,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			gchar *password = NULL;
 			nice_agent_get_local_credentials(handle->agent, stream->stream_id, &ufrag, &password);
 			memset(buffer, 0, 100);
-			g_sprintf(buffer,
+			g_snprintf(buffer, 512,
 				"a=ice-ufrag:%s\r\n"
 				"a=ice-pwd:%s\r\n"
 				"a=ice-options:trickle\r\n"
@@ -953,11 +953,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						continue;
 					}
 					if(a->a_value == NULL) {
-						g_sprintf(buffer,
+						g_snprintf(buffer, 512,
 							"a=%s\r\n", a->a_name);
 						g_strlcat(sdp, buffer, BUFSIZE);
 					} else {
-						g_sprintf(buffer,
+						g_snprintf(buffer, 512,
 							"a=%s:%s\r\n", a->a_name, a->a_value);
 						g_strlcat(sdp, buffer, BUFSIZE);
 					}
@@ -968,7 +968,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			if(!planb) {
 				/* Single SSRC */
 				if(m->m_type == sdp_media_audio) {
-					g_sprintf(buffer,
+					g_snprintf(buffer, 512,
 						"a=ssrc:%"SCNu32" cname:janusaudio\r\n"
 						"a=ssrc:%"SCNu32" msid:janus janusa0\r\n"
 						"a=ssrc:%"SCNu32" mslabel:janus\r\n"
@@ -976,7 +976,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 							stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc);
 					g_strlcat(sdp, buffer, BUFSIZE);
 				} else if(m->m_type == sdp_media_video) {
-					g_sprintf(buffer,
+					g_snprintf(buffer, 512,
 						"a=ssrc:%"SCNu32" cname:janusvideo\r\n"
 						"a=ssrc:%"SCNu32" msid:janus janusv0\r\n"
 						"a=ssrc:%"SCNu32" mslabel:janus\r\n"
@@ -1005,14 +1005,14 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						JANUS_LOG(LOG_VERB, "Parsing 'planb' attribute: %s\n", a->a_value);
 						/* Add proper SSRC attributes */
 						if(m->m_type == sdp_media_audio) {
-							g_sprintf(buffer,
+							g_snprintf(buffer, 512,
 								"a=ssrc:%"SCNu32" cname:%saudio\r\n"
 								"a=ssrc:%"SCNu32" msid:%s %sa0\r\n"
 								"a=ssrc:%"SCNu32" mslabel:%s\r\n"
 								"a=ssrc:%"SCNu32" label:%sa0\r\n",
 									ssrc, id, ssrc, id, id, ssrc, id, ssrc, id);
 						} else if(m->m_type == sdp_media_video) {
-							g_sprintf(buffer,
+							g_snprintf(buffer, 512,
 								"a=ssrc:%"SCNu32" cname:%svideo\r\n"
 								"a=ssrc:%"SCNu32" msid:%s %sv0\r\n"
 								"a=ssrc:%"SCNu32" mslabel:%s\r\n"
@@ -1022,7 +1022,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						g_strlcat(sdp, buffer, BUFSIZE);
 						/* Add to msid-semantic, if needed */
 						if(!strstr(wms, id)) {
-							sprintf(mslabel, " %s", id);
+							g_snprintf(mslabel, 255, " %s", id);
 							g_strlcat(wms, mslabel, BUFSIZE);
 						}
 						/* Go on */

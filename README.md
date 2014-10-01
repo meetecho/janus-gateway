@@ -139,9 +139,10 @@ usual to start the whole compilation process:
 	make
 	make install
 
-* *Note:* please beware that subsequent ```make install``` commands will
-likely overwrite any configuration file you may have edited, so make
-sure you backup them before updating a Janus installation.
+To also automatically install the default configuration files to use,
+also do a:
+
+	make configs
 
 If you're not interested in Data Channels, WebSockets and/or RabbitMQ
 (or you don't care about either of them) you can disable them when

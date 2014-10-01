@@ -154,7 +154,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	sprintf(filename, "%s/%s.cfg", config_path, JANUS_ECHOTEST_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_ECHOTEST_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
@@ -361,7 +361,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to bounce back: %s\n", strlen(text), text);
 		char reply[1<<16];
 		memset(reply, 0, 1<<16);
-		sprintf(reply, "Janus EchoTest here! You wrote: %s", text);
+		g_snprintf(reply, 1<<16, "Janus EchoTest here! You wrote: %s", text);
 		free(text);
 		gateway->relay_data(handle, reply, strlen(reply));
 	}
@@ -427,7 +427,7 @@ static void *janus_echotest_handler(void *data) {
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_ECHOTEST_ERROR_NO_MESSAGE;
-			sprintf(error_cause, "%s", "No message??");
+			g_snprintf(error_cause, 512, "%s", "No message??");
 			goto error;
 		}
 		json_error_t error;
@@ -435,34 +435,34 @@ static void *janus_echotest_handler(void *data) {
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
+			g_snprintf(error_cause, 512, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: not an object");
+			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			sprintf(error_cause, "Invalid value (audio should be a boolean)");
+			g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
 			goto error;
 		}
 		json_t *video = json_object_get(root, "video");
 		if(video && !json_is_boolean(video)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			sprintf(error_cause, "Invalid value (video should be a boolean)");
+			g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
 			goto error;
 		}
 		json_t *bitrate = json_object_get(root, "bitrate");
 		if(bitrate && !json_is_integer(bitrate)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			sprintf(error_cause, "Invalid value (bitrate should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid value (bitrate should be an integer)");
 			goto error;
 		}
 		if(audio) {

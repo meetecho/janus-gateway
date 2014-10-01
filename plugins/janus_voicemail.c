@@ -193,7 +193,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	sprintf(filename, "%s/%s.cfg", config_path, JANUS_VOICEMAIL_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_VOICEMAIL_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
@@ -307,7 +307,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	session->start_time = 0;
 	session->stream = NULL;
 	char f[255];
-	sprintf(f, "%s/janus-voicemail-%"SCNu64".opus", recordings_path, session->recording_id);
+	g_snprintf(f, 255, "%s/janus-voicemail-%"SCNu64".opus", recordings_path, session->recording_id);
 	session->filename = g_strdup(f);
 	if(session->filename == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -497,7 +497,7 @@ static void *janus_voicemail_handler(void *data) {
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_VOICEMAIL_ERROR_NO_MESSAGE;
-			sprintf(error_cause, "%s", "No message??");
+			g_snprintf(error_cause, 512, "%s", "No message??");
 			goto error;
 		}
 		json_error_t error;
@@ -505,13 +505,13 @@ static void *janus_voicemail_handler(void *data) {
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			error_code = JANUS_VOICEMAIL_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
+			g_snprintf(error_cause, 512, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			error_code = JANUS_VOICEMAIL_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: not an object");
+			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
 		/* Get the request first */
@@ -519,13 +519,13 @@ static void *janus_voicemail_handler(void *data) {
 		if(!request) {
 			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
 			error_code = JANUS_VOICEMAIL_ERROR_MISSING_ELEMENT;
-			sprintf(error_cause, "Missing element (request)");
+			g_snprintf(error_cause, 512, "Missing element (request)");
 			goto error;
 		}
 		if(!json_is_string(request)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
 			error_code = JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT;
-			sprintf(error_cause, "Invalid element (request should be a string)");
+			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -535,27 +535,27 @@ static void *janus_voicemail_handler(void *data) {
 			if(session->file != NULL) {
 				JANUS_LOG(LOG_ERR, "Already recording (%s)\n", session->filename ? session->filename : "??");
 				error_code = JANUS_VOICEMAIL_ERROR_ALREADY_RECORDING;
-				sprintf(error_cause, "Already recording");
+				g_snprintf(error_cause, 512, "Already recording");
 				goto error;
 			}
 			session->stream = malloc(sizeof(ogg_stream_state));
 			if(session->stream == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
 				error_code = JANUS_VOICEMAIL_ERROR_UNKNOWN_ERROR;
-				sprintf(error_cause, "Couldn't allocate stream struct");
+				g_snprintf(error_cause, 512, "Couldn't allocate stream struct");
 				goto error;
 			}
 			if(ogg_stream_init(session->stream, rand()) < 0) {
 				JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
 				error_code = JANUS_VOICEMAIL_ERROR_LIBOGG_ERROR;
-				sprintf(error_cause, "Couldn't initialize Ogg stream state\n");
+				g_snprintf(error_cause, 512, "Couldn't initialize Ogg stream state\n");
 				goto error;
 			}
 			session->file = fopen(session->filename, "wb");
 			if(session->file == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open output file\n");
 				error_code = JANUS_VOICEMAIL_ERROR_IO_ERROR;
-				sprintf(error_cause, "Couldn't open output file");
+				g_snprintf(error_cause, 512, "Couldn't open output file");
 				goto error;
 			}
 			session->seq = 0;
@@ -586,12 +586,12 @@ static void *janus_voicemail_handler(void *data) {
 			json_object_set_new(event, "voicemail", json_string("event"));
 			json_object_set_new(event, "status", json_string("done"));
 			char url[1024];
-			sprintf(url, "%s/janus-voicemail-%"SCNu64".opus", recordings_base, session->recording_id);
+			g_snprintf(url, 1024, "%s/janus-voicemail-%"SCNu64".opus", recordings_base, session->recording_id);
 			json_object_set_new(event, "recording", json_string(url));
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_VOICEMAIL_ERROR_INVALID_REQUEST;
-			sprintf(error_cause, "Unknown request '%s'", request_text);
+			g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
 			goto error;
 		}
 
@@ -624,7 +624,7 @@ static void *janus_voicemail_handler(void *data) {
 				opus_pt = atoi(fmtp);
 			}
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
-			g_sprintf(sdp, sdp_template,
+			g_snprintf(sdp, 1024, sdp_template,
 				janus_get_monotonic_time(),		/* We need current time here */
 				janus_get_monotonic_time(),		/* We need current time here */
 				session->recording_id,			/* Recording ID */

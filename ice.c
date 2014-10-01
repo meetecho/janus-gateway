@@ -865,7 +865,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 		gchar buffer[100];
 		if(c->type == NICE_CANDIDATE_TYPE_HOST) {
 			/* 'host' candidate */
-			g_sprintf(buffer,
+			g_snprintf(buffer, 100,
 				"a=candidate:%s %d %s %d %s %d typ host\r\n", 
 					c->foundation,
 					c->component_id,
@@ -877,7 +877,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			/* 'srflx' candidate */
 			nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
 			gint base_port = nice_address_get_port(&(c->base_addr));
-			g_sprintf(buffer,
+			g_snprintf(buffer, 100,
 				"a=candidate:%s %d %s %d %s %d typ srflx raddr %s rport %d\r\n", 
 					c->foundation,
 					c->component_id,
@@ -889,7 +889,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 					base_port);
 		} else if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 			/* 'prflx' candidate */
-			g_sprintf(buffer,
+			g_snprintf(buffer, 100,
 				"a=candidate:%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n", 
 					c->foundation,
 					c->component_id,
@@ -901,7 +901,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 					base_port);
 		} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
 			/* 'relay' candidate */
-			g_sprintf(buffer,
+			g_snprintf(buffer, 100,
 				"a=candidate:%s %d %s %d %s %d typ relay raddr %s rport %d\r\n", 
 					c->foundation,
 					c->component_id,

@@ -160,7 +160,7 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 	char *lfp = (char *)&local_fingerprint;
 	unsigned int i = 0;
 	for(i = 0; i < size; i++) {
-		sprintf(lfp, "%.2X:", fingerprint[i]);
+		g_snprintf(lfp, 4, "%.2X:", fingerprint[i]);
 		lfp += 3;
 	}
 	*(lfp-1) = 0;
@@ -340,7 +340,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			rcert = NULL;
 			unsigned int i = 0;
 			for(i = 0; i < rsize; i++) {
-				sprintf(rfp, "%.2X:", rfingerprint[i]);
+				g_snprintf(rfp, 4, "%.2X:", rfingerprint[i]);
 				rfp += 3;
 			}
 			*(rfp-1) = 0;

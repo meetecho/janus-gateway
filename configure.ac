@@ -126,6 +126,8 @@ PKG_CHECK_MODULES([PLUGINS],
                   [
                     glib-2.0 >= glib_version
                     sofia-sip-ua
+                    jansson
+                    ini_config
                   ])
 
 AC_ARG_ENABLE([plugin-audiobridge],

@@ -98,13 +98,25 @@ typedef struct janus_websocket_client {
 	libwebsock_client_state *state;
 	/*! \brief List of gateway sessions this client has created and is managing */
 	GHashTable *sessions;
-	/*! \brief Thread to handle push notifications */
+	/*! \brief Queue of outgoing responses to push */
+	GAsyncQueue *responses;
+	/*! \brief Thread to handle messaging */
 	GThread *thread;
+	/*! \brief Thread pool to serve requests */
+	GThreadPool *thread_pool;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 	/*! \brief Flag to trigger a lazy session destruction */
 	gint destroy:1;
 } janus_websocket_client;
+
+/*! \brief WebSocket request */
+typedef struct janus_websocket_request {
+	/*! \brief Opaque pointer to a janus_request_source instance (where the request came from) */
+	void *source;
+	/*! \brief Opaque pointer to the payload of the request (json_t *) */
+	void *request;
+} janus_websocket_request;
 #endif
 
 #ifdef HAVE_RABBITMQ
@@ -305,6 +317,11 @@ int janus_wss_onclose(libwebsock_client_state *state);
  * @param[in] data Opaque pointer to the janus_websocket_client this thread refers to
  * @returns Nothing important */
 void *janus_wss_thread(void *data);
+/*! \brief Worker to have a new request server by the thread pool
+ * @param[in] data Opaque pointer to the content of the response
+ * @param[in] user_data Opaque pointer to a janus_websocket_client instance
+ * @returns Nothing important */
+void janus_wss_task(gpointer data, gpointer user_data);
 ///@}
 #endif
 

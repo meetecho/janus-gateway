@@ -25,7 +25,7 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 confdir = $(sysconfdir)/janus
-conf_DATA = conf/janus.cfg
+conf_DATA = conf/janus.cfg.sample
 
 certdir = $(datadir)/janus/certs
 cert_DATA = certs/mycert.key certs/mycert.pem
@@ -39,7 +39,7 @@ html_DATA = README.md
 streamdir = $(datadir)/janus/streams
 stream_DATA = $(NULL)
 
-%.cfg: %.cfg.in
+%.sample: %.sample.in
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
 	    s|[@]confdir[@]|$(confdir)|;\
@@ -48,8 +48,8 @@ stream_DATA = $(NULL)
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
-EXTRA_DIST += conf/janus.cfg.in
-CLEANFILES += conf/janus.cfg
+EXTRA_DIST += conf/janus.cfg.sample.in
+CLEANFILES += conf/janus.cfg.sample
 
 ##
 # Janus
@@ -132,8 +132,8 @@ plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
 plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) -lopus
 plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.audiobridge.cfg
-EXTRA_DIST += conf/janus.plugin.audiobridge.cfg
+conf_DATA += conf/janus.plugin.audiobridge.cfg.sample
+EXTRA_DIST += conf/janus.plugin.audiobridge.cfg.sample
 endif
 
 if ENABLE_PLUGIN_ECHOTEST
@@ -142,8 +142,8 @@ plugins_libjanus_echotest_la_SOURCES = plugins/janus_echotest.c
 plugins_libjanus_echotest_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_echotest_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_echotest_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.echotest.cfg
-EXTRA_DIST += conf/janus.plugin.echotest.cfg
+conf_DATA += conf/janus.plugin.echotest.cfg.sample
+EXTRA_DIST += conf/janus.plugin.echotest.cfg.sample
 endif
 
 if ENABLE_PLUGIN_SIP
@@ -152,8 +152,8 @@ plugins_libjanus_sip_la_SOURCES = plugins/janus_sip.c
 plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(PLUGIN_SIP_CFLAGS)
 plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(PLUGIN_SIP_LDFLAGS)
 plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(PLUGIN_SIP_LIBADD)
-conf_DATA += conf/janus.plugin.sip.cfg
-EXTRA_DIST += conf/janus.plugin.sip.cfg
+conf_DATA += conf/janus.plugin.sip.cfg.sample
+EXTRA_DIST += conf/janus.plugin.sip.cfg.sample
 endif
 
 if ENABLE_PLUGIN_STREAMING
@@ -162,16 +162,16 @@ plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
 plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.streaming.cfg
+conf_DATA += conf/janus.plugin.streaming.cfg.sample
 stream_DATA += \
 	plugins/streams/music.mulaw \
 	plugins/streams/radio.alaw \
 	plugins/streams/test_gstreamer.sh \
 	plugins/streams/test_gstreamer_1.sh
 EXTRA_DIST += \
-	conf/janus.plugin.streaming.cfg.in \
+	conf/janus.plugin.streaming.cfg.sample.in \
 	$(stream_DATA)
-CLEANFILES += conf/janus.plugin.streaming.cfg
+CLEANFILES += conf/janus.plugin.streaming.cfg.sample
 endif
 
 if ENABLE_PLUGIN_VIDEOCALL
@@ -180,8 +180,8 @@ plugins_libjanus_videocall_la_SOURCES = plugins/janus_videocall.c
 plugins_libjanus_videocall_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_videocall_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_videocall_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.videocall.cfg
-EXTRA_DIST += conf/janus.plugin.videocall.cfg
+conf_DATA += conf/janus.plugin.videocall.cfg.sample
+EXTRA_DIST += conf/janus.plugin.videocall.cfg.sample
 endif
 
 if ENABLE_PLUGIN_VIDEOROOM
@@ -190,8 +190,8 @@ plugins_libjanus_videoroom_la_SOURCES = plugins/janus_videoroom.c
 plugins_libjanus_videoroom_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_videoroom_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_videoroom_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.videoroom.cfg
-EXTRA_DIST += conf/janus.plugin.videoroom.cfg
+conf_DATA += conf/janus.plugin.videoroom.cfg.sample
+EXTRA_DIST += conf/janus.plugin.videoroom.cfg.sample
 endif
 
 if ENABLE_PLUGIN_VOICEMAIL
@@ -200,8 +200,8 @@ plugins_libjanus_voicemail_la_SOURCES = plugins/janus_voicemail.c
 plugins_libjanus_voicemail_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
 plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
-conf_DATA += conf/janus.plugin.voicemail.cfg
-EXTRA_DIST += conf/janus.plugin.voicemail.cfg
+conf_DATA += conf/janus.plugin.voicemail.cfg.sample
+EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample
 endif
 
 ##
@@ -237,3 +237,11 @@ endif
 if ENABLE_DOCS
 SUBDIRS += docs
 endif
+
+##
+# Configuration
+##
+
+configs:
+	$(MKDIR_P) $(confdir)
+	$(foreach config,$(conf_DATA),cp "$(CURDIR)/$(config)" "$(confdir)/$(notdir $(basename $(config) .sample))";)

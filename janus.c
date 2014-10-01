@@ -814,10 +814,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				if(client->sessions == NULL)
 					client->sessions = g_hash_table_new(NULL, NULL);
 				g_hash_table_insert(client->sessions, GUINT_TO_POINTER(session_id), session);
-				if(client->thread == NULL) {
-					/* Create a thread for notifications related to this session as well */
-					client->thread = g_thread_new("wss_client", &janus_wss_thread, client);
-				}
 				janus_mutex_unlock(&client->mutex);
 			}
 		}
@@ -2335,10 +2331,8 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		return ret;
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 #ifdef HAVE_WEBSOCKETS
-		/* FIXME We should check the return value */
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		libwebsock_send_text(client->state, payload);
-		g_free(payload);
+		g_async_queue_push(client->responses, payload);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
@@ -2444,9 +2438,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 #ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		/* FIXME We should check the return value */
-		libwebsock_send_text(client->state, reply_text);
-		g_free(reply_text);
+		g_async_queue_push(client->responses, reply_text);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
@@ -2492,9 +2484,23 @@ int janus_wss_onopen(libwebsock_client_state *state) {
 		libwebsock_close(state);
 		return 0;
 	}
+	/* Create a thread pool to handle incoming requests */
+	GError *error = NULL;
+	GThreadPool *thread_pool = g_thread_pool_new(janus_wss_task, ws_client, -1, FALSE, &error);
+	if(error != NULL) {
+		/* Something went wrong... */
+		g_free(ws_client);
+		janus_mutex_unlock(&wss_mutex);
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch pool thread...\n", error->code, error->message ? error->message : "??");
+		libwebsock_close(state);
+		return 0;
+	}
+	ws_client->thread_pool = thread_pool;
 	ws_client->state = state;
+	ws_client->responses = g_async_queue_new();
 	ws_client->sessions = NULL;
-	ws_client->thread = NULL;
+	/* Create a thread for notifications related to this session as well */
+	ws_client->thread = g_thread_new("wss_client", &janus_wss_thread, ws_client);
 	ws_client->destroy = 0;
 	janus_mutex_init(&ws_client->mutex);
 	
@@ -2527,25 +2533,37 @@ int janus_wss_onmessage(libwebsock_client_state *state, libwebsock_message *msg)
 			return 0;
 		}
 	}
-	janus_request_source source = {
-		.type = JANUS_SOURCE_WEBSOCKETS,
-		.source = (void *)client,
-		.msg = (void *)msg
-	};
+	/* Parse it */
+	janus_request_source *source = janus_request_source_new(JANUS_SOURCE_WEBSOCKETS, (void *)client, (void *)msg);
 	/* Parse the JSON payload */
 	json_error_t error;
 	json_t *root = json_loads(msg->payload, 0, &error);
 	if(!root) {
-		janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		janus_request_source_destroy(source);
 		return 0;
 	}
 	if(!json_is_object(root)) {
-		janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		janus_request_source_destroy(source);
 		json_decref(root);
 		return 0;
 	}
 	/* Parse the request now */
-	janus_process_incoming_request(&source, root);
+	janus_websocket_request *request = (janus_websocket_request *)calloc(1, sizeof(janus_websocket_request));
+	request->source = source;
+	request->request = root;
+	GError *tperror = NULL;
+	g_thread_pool_push(client->thread_pool, request, &tperror);
+	if(tperror != NULL) {
+		/* Something went wrong... */
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+		json_t *transaction = json_object_get(root, "transaction");
+		const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
+		janus_process_error(source, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
+		janus_request_source_destroy(source);
+		json_decref(root);
+	}
 	return 0;
 }
 
@@ -2558,6 +2576,7 @@ int janus_wss_onclose(libwebsock_client_state *state) {
 	if(client != NULL) {
 		JANUS_LOG(LOG_INFO, "Destroying WebSocket client #%d\n", state->sockfd);
 		client->destroy = 1;
+		g_thread_pool_free(client->thread_pool, FALSE, FALSE);
 		if(client->thread != NULL) {
 			JANUS_LOG(LOG_INFO, "Joining thread #%d\n", state->sockfd);
 			g_thread_join(client->thread);
@@ -2587,8 +2606,19 @@ void *janus_wss_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "Joining WebSocket thread: #%d\n", fd);
 	while(!client->destroy && !g_atomic_int_get(&stop)) {
 		janus_mutex_lock(&client->mutex);
+		/* Responses first */
+		char *response = NULL;
+		while ((response = g_async_queue_try_pop(client->responses)) != NULL) {
+			if(!client->destroy && !g_atomic_int_get(&stop) && response) {
+				/* Gotcha! */
+				JANUS_LOG(LOG_VERB, "#%d: Sending response (%zu bytes)...\n", fd, strlen(response));
+				int res = libwebsock_send_text(client->state, response);
+				JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
+			}
+			g_free(response);
+		}
+		/* Now iterate on all the sessions handled by this WebSocket client */
 		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
-			/* Iterate on all the sessions handled by this WebSocket client */
 			GHashTableIter iter;
 			gpointer value;
 			g_hash_table_iter_init(&iter, sessions);
@@ -2620,6 +2650,23 @@ void *janus_wss_thread(void *data) {
 	}
 	JANUS_LOG(LOG_INFO, "Leaving WebSocket thread: #%d\n", fd);
 	return NULL;
+}
+
+void janus_wss_task(gpointer data, gpointer user_data) {
+	JANUS_LOG(LOG_VERB, "Thread pool, serving request\n");
+	janus_websocket_request *request = (janus_websocket_request *)data;
+	janus_websocket_client *client = (janus_websocket_client *)data;
+	if(request == NULL || client == NULL) {
+		JANUS_LOG(LOG_ERR, "Missing request or client\n");
+		return;
+	}
+	janus_request_source *source = (janus_request_source *)request->source;
+	json_t *root = (json_t *)request->request;
+	janus_process_incoming_request(source, root);
+	janus_request_source_destroy(source);
+	request->source = NULL;
+	request->request = NULL;
+	g_free(request);
 }
 #endif
 
@@ -2812,6 +2859,9 @@ void janus_rmq_task(gpointer data, gpointer user_data) {
 	json_t *root = (json_t *)request->request;
 	janus_process_incoming_request(source, root);
 	janus_request_source_destroy(source);
+	request->source = NULL;
+	request->request = NULL;
+	g_free(request);
 }
 #endif
 
@@ -3301,7 +3351,7 @@ gint main(int argc, char *argv[])
 	}
 	if(config_file == NULL) {
 		char file[255];
-		sprintf(file, "%s/janus.cfg", configs_folder);
+		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
 		config_file = g_strdup(file);
 		if(config_file == NULL) {
 			JANUS_PRINT("Memory error!\n");
@@ -3324,7 +3374,7 @@ gint main(int argc, char *argv[])
 	janus_config_print(config);
 	if(args_info.debug_level_given) {
 		char debug[5];
-		sprintf(debug, "%d", args_info.debug_level_arg);
+		g_snprintf(debug, 5, "%d", args_info.debug_level_arg);
 		janus_config_add_item(config, "general", "debug_level", debug);
 	} else {
 		/* No command line directive on logging, try the configuration file */
@@ -3361,13 +3411,13 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.port_given) {
 		char port[20];
-		sprintf(port, "%d", args_info.port_arg);
+		g_snprintf(port, 20, "%d", args_info.port_arg);
 		janus_config_add_item(config, "webserver", "port", port);
 	}
 	if(args_info.secure_port_given) {
 		janus_config_add_item(config, "webserver", "https", "yes");
 		char port[20];
-		sprintf(port, "%d", args_info.secure_port_arg);
+		g_snprintf(port, 20, "%d", args_info.secure_port_arg);
 		janus_config_add_item(config, "webserver", "secure_port", port);
 	}
 	if(args_info.base_path_given) {
@@ -3378,13 +3428,13 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.ws_port_given) {
 		char port[20];
-		sprintf(port, "%d", args_info.port_arg);
+		g_snprintf(port, 20, "%d", args_info.port_arg);
 		janus_config_add_item(config, "webserver", "ws_port", port);
 	}
 	if(args_info.ws_secure_port_given) {
 		janus_config_add_item(config, "webserver", "ws_ssl", "yes");
 		char port[20];
-		sprintf(port, "%d", args_info.ws_secure_port_arg);
+		g_snprintf(port, 20, "%d", args_info.ws_secure_port_arg);
 		janus_config_add_item(config, "webserver", "ws_secure_port", port);
 	}
 	if(args_info.enable_rabbitmq_given) {
@@ -3402,7 +3452,7 @@ gint main(int argc, char *argv[])
 		} else {
 			janus_config_add_item(config, "rabbitmq", "host", args_info.rabbitmq_server_arg);
 			char port[10];
-			sprintf(port, "%d", AMQP_PROTOCOL_PORT);
+			g_snprintf(port, 10, "%d", AMQP_PROTOCOL_PORT);
 			janus_config_add_item(config, "rabbitmq", "port", port);
 		}
 	}
@@ -3421,13 +3471,13 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.admin_port_given) {
 		char port[20];
-		sprintf(port, "%d", args_info.admin_port_arg);
+		g_snprintf(port, 20, "%d", args_info.admin_port_arg);
 		janus_config_add_item(config, "admin", "admin_port", port);
 	}
 	if(args_info.admin_secure_port_given) {
 		janus_config_add_item(config, "admin", "admin_https", "yes");
 		char port[20];
-		sprintf(port, "%d", args_info.admin_secure_port_arg);
+		g_snprintf(port, 20, "%d", args_info.admin_secure_port_arg);
 		janus_config_add_item(config, "admin", "admin_secure_port", port);
 	}
 	if(args_info.admin_base_path_given) {
@@ -3713,7 +3763,7 @@ gint main(int argc, char *argv[])
 		}
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 255);
-		sprintf(pluginpath, "%s/%s", path, pluginent->d_name);
+		g_snprintf(pluginpath, 255, "%s/%s", path, pluginent->d_name);
 		void *plugin = dlopen(pluginpath, RTLD_LAZY);
 		if (!plugin) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
@@ -3972,7 +4022,7 @@ gint main(int argc, char *argv[])
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		char port[50];
-		g_sprintf(port, "%d", wsport);
+		g_snprintf(port, 50, "%d", wsport);
 		libwebsock_bind(wss, (char *)"0.0.0.0", port);
 		JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
 		wss->onopen = janus_wss_onopen;
@@ -3999,7 +4049,7 @@ gint main(int argc, char *argv[])
 				exit(1);	/* FIXME Should we really give up? */
 			}
 			char port[50];
-			g_sprintf(port, "%d", wsport);
+			g_snprintf(port, 50, "%d", wsport);
 			libwebsock_bind_ssl(swss, (char *)"0.0.0.0", port, server_key, server_pem);
 			JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 			swss->onopen = janus_wss_onopen;

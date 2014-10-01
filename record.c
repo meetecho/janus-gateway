@@ -67,10 +67,10 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 	memset(newname, 0, 1024);
 	if(filename == NULL) {
 		/* Choose a random username */
-		sprintf(newname, "janus-recording-%"SCNu32".mjr", g_random_int());
+		g_snprintf(newname, 1024, "janus-recording-%"SCNu32".mjr", g_random_int());
 	} else {
 		/* Just append the extension */
-		sprintf(newname, "%s.mjr", filename);
+		g_snprintf(newname, 1024, "%s.mjr", filename);
 	}
 	/* Try opening the file now */
 	if(dir == NULL) {
@@ -78,7 +78,7 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 	} else {
 		char path[1024];
 		memset(path, 0, 1024);
-		sprintf(path, "%s/%s", dir, newname);
+		g_snprintf(path, 1024, "%s/%s", dir, newname);
 		rc->file = fopen(path, "wb");
 	}
 	if(rc->file == NULL) {
