@@ -1211,10 +1211,11 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
 		Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
+		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = {
 			'mandatory': {
-				'OfferToReceiveAudio':isAudioRecvEnabled(media), 
-				'OfferToReceiveVideo':isVideoRecvEnabled(media)
+				'OfferToReceiveAudio':isAudioRecvEnabled(media) || isAudioSendEnabled(media), 
+				'OfferToReceiveVideo':isVideoRecvEnabled(media) || isVideoSendEnabled(media)
 			}
 		};
 		Janus.log(mediaConstraints);
