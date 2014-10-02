@@ -1279,7 +1279,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	if(!stream->cdone) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s candidates not gathered yet for stream??\n", handle->handle_id, video ? "video" : "audio");
-			stream->noerrorlog = 1;	/* Don't flood with thre same error all over again */
+			stream->noerrorlog = 1;	/* Don't flood with the same error all over again */
 		}
 		return;
 	}
@@ -1287,7 +1287,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	if(!component->dtls || !component->dtls->srtp_valid) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s stream component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio");
-			component->noerrorlog = 1;	/* Don't flood with thre same error all over again */
+			component->noerrorlog = 1;	/* Don't flood with the same error all over again */
 		}
 		return;
 	}
@@ -1354,7 +1354,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	if(!stream->cdone) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s candidates not gathered yet for stream??\n", handle->handle_id, video ? "video" : "audio");
-			stream->noerrorlog = 1;	/* Don't flood with thre same error all over again */
+			stream->noerrorlog = 1;	/* Don't flood with the same error all over again */
 		}
 		return;
 	}
@@ -1362,7 +1362,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	if(!component->dtls || !component->dtls->srtp_valid) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s stream (#%u) component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio", stream->stream_id);
-			component->noerrorlog = 1;	/* Don't flood with thre same error all over again */
+			component->noerrorlog = 1;	/* Don't flood with the same error all over again */
 		}
 		return;
 	}
@@ -1424,7 +1424,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	if(!stream->cdone) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SCTP candidates not gathered yet for stream??\n", handle->handle_id);
-			stream->noerrorlog = 1;	/* Don't flood with thre same error all over again */
+			stream->noerrorlog = 1;	/* Don't flood with the same error all over again */
 		}
 		return;
 	}
@@ -1432,7 +1432,7 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	if(!component->dtls) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SCTP stream component has no valid DTLS session (yet?)\n", handle->handle_id);
-			component->noerrorlog = 1;	/* Don't flood with thre same error all over again */
+			component->noerrorlog = 1;	/* Don't flood with the same error all over again */
 		}
 		return;
 	}

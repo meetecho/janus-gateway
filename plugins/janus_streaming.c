@@ -187,6 +187,7 @@ typedef struct janus_streaming_mountpoint {
 	GDestroyNotify source_destroy;
 	janus_streaming_codecs codecs;
 	GList/*<unowned janus_streaming_session>*/ *listeners;
+	janus_mutex mutex;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints;
 janus_mutex mountpoints_mutex;
@@ -581,7 +582,9 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	JANUS_LOG(LOG_VERB, "Removing streaming session...\n");
 	if(session->mountpoint) {
+		janus_mutex_lock(&session->mountpoint->mutex);
 		session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
+		janus_mutex_unlock(&session->mountpoint->mutex);
 	}
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
@@ -1464,7 +1467,9 @@ static void *janus_streaming_handler(void *data) {
 				g_thread_new(session->mountpoint->name, &janus_streaming_ondemand_thread, session);
 			}
 			/* TODO Check if user is already watching a stream, if the video is active, etc. */
+			janus_mutex_lock(&mp->mutex);
 			mp->listeners = g_list_append(mp->listeners, session);
+			janus_mutex_unlock(&mp->mutex);
 			sdp_type = "offer";	/* We're always going to do the offer ourselves, never answer */
 			char sdptemp[1024];
 			memset(sdptemp, 0, 1024);
@@ -1545,11 +1550,13 @@ static void *janus_streaming_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "status", json_string("stopping"));
 			if(session->mountpoint) {
+				janus_mutex_lock(&session->mountpoint->mutex);
 				JANUS_LOG(LOG_VERB, "  -- Removing the session from the mountpoint listeners\n");
 				if(g_list_find(session->mountpoint->listeners, session) != NULL) {
 					JANUS_LOG(LOG_VERB, "  -- -- Found!\n");
 				}
 				session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
+				janus_mutex_unlock(&session->mountpoint->mutex);
 			}
 			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
@@ -1707,6 +1714,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->codecs.video_rtpmap = dovideo ? g_strdup(vrtpmap) : NULL;
 	live_rtp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
 	live_rtp->listeners = NULL;
+	janus_mutex_init(&live_rtp->mutex);
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtp->id), live_rtp);
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -1783,6 +1791,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->codecs.video_pt = -1;	/* FIXME We don't support video for this type yet */
 	file_source->codecs.video_rtpmap = NULL;
 	file_source->listeners = NULL;
+	janus_mutex_init(&file_source->mutex);
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(file_source->id), file_source);
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -1998,7 +2007,9 @@ static void *janus_streaming_filesource_thread(void *data) {
 		packet.data = header;
 		packet.length = RTP_HEADER_SIZE + read;
 		packet.is_video = 0;
+		janus_mutex_lock(&mountpoint->mutex);
 		g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+		janus_mutex_unlock(&mountpoint->mutex);
 		/* Update header */
 		seq++;
 		header->seq_number = htons(seq);
