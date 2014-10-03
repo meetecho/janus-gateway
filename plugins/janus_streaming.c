@@ -1628,7 +1628,9 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
 	g_free(mp->name);
 	g_free(mp->description);
+	janus_mutex_lock(&mp->mutex);
 	g_list_free(mp->listeners);
+	janus_mutex_unlock(&mp->mutex);
 
 	if (mp->source != NULL && mp->source_destroy != NULL) {
 		mp->source_destroy(mp->source);
@@ -2134,7 +2136,9 @@ static void *janus_streaming_relay_thread(void *data) {
 				janus_recorder_save_frame(source->arc, buffer, bytes);
 			}
 			/* Go! */
+			janus_mutex_lock(&mountpoint->mutex);
 			g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+			janus_mutex_unlock(&mountpoint->mutex);
 			continue;
 		}
 		if(video_fd > 0 && FD_ISSET(video_fd, &readfds)) {
@@ -2173,7 +2177,9 @@ static void *janus_streaming_relay_thread(void *data) {
 				janus_recorder_save_frame(source->vrc, buffer, bytes);
 			}
 			/* Go! */
+			janus_mutex_lock(&mountpoint->mutex);
 			g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+			janus_mutex_unlock(&mountpoint->mutex);
 			continue;
 		}
 	}

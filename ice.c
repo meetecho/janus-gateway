@@ -1018,11 +1018,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_DRAFT19);
 	/* Any STUN server to use? */
 	if(janus_stun_server != NULL && janus_stun_port > 0) {
-		g_object_set (G_OBJECT(handle->agent),
+		g_object_set(G_OBJECT(handle->agent),
 			"stun-server", janus_stun_server,
 			"stun-server-port", janus_stun_port,
 			NULL);
 	}
+	g_object_set(G_OBJECT(handle->agent), "upnp", FALSE, NULL);
 	g_object_set(G_OBJECT(handle->agent), "controlling-mode", !offer, NULL);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (%s mode)\n", handle->handle_id, offer ? "controlled" : "controlling");
 	g_signal_connect (G_OBJECT (handle->agent), "candidate-gathering-done",

@@ -68,6 +68,7 @@ function updateSessions() {
 			console.log(json);
 			$('#sessions-list').empty();
 			var sessions = json["sessions"];
+			$('#sessions-num').text(sessions.length);
 			for(var i=0; i<sessions.length; i++) {
 				var s = sessions[i];
 				$('#sessions-list').append(
@@ -153,6 +154,7 @@ function updateHandles() {
 			console.log(json);
 			$('#handles-list').empty();
 			var handles = json["handles"];
+			$('#handles-num').text(handles.length);
 			for(var i=0; i<handles.length; i++) {
 				var h = handles[i];
 				$('#handles-list').append(
