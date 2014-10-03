@@ -206,8 +206,7 @@ static GHashTable *sessions = NULL;
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
 
-static gboolean janus_cleanup_session(gpointer user_data)
-{
+static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
 
 	JANUS_LOG(LOG_INFO, "Cleaning up session %"SCNu64"...\n", session->session_id);
@@ -768,7 +767,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	if(session_id == 0 && handle_id == 0) {
 		/* Can only be a 'Create new session' or 'Get info' request */
 		if(!strcasecmp(message_text, "info")) {
-			ret = janus_process_success(source, "application/json", info_text);
+			ret = janus_process_success(source, "application/json", g_strdup(info_text));
 			goto jsondone;
 		}
 		if(strcasecmp(message_text, "create")) {
@@ -2802,6 +2801,7 @@ void *janus_rmq_out_thread(void *data) {
 				g_free(response->payload);
 				response->payload = NULL;
 				g_free(response);
+				response = NULL;
 			}
 		}
 		if(rmq_client->sessions != NULL && g_hash_table_size(rmq_client->sessions) > 0) {

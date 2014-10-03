@@ -511,6 +511,7 @@ void janus_streaming_destroy(void) {
 	}
 	handler_thread = NULL;
 	/* FIXME We should destroy the sessions cleanly */
+	usleep(500000);
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_destroy(mountpoints);
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -1619,14 +1620,12 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source)
 	free(source);
 }
 
-static void janus_streaming_file_source_free(janus_streaming_file_source *source)
-{
+static void janus_streaming_file_source_free(janus_streaming_file_source *source) {
 	g_free(source->filename);
 	free(source);
 }
 
-static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp)
-{
+static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
 	g_free(mp->name);
 	g_free(mp->description);
 	g_list_free(mp->listeners);
@@ -2007,9 +2006,9 @@ static void *janus_streaming_filesource_thread(void *data) {
 		packet.data = header;
 		packet.length = RTP_HEADER_SIZE + read;
 		packet.is_video = 0;
-		janus_mutex_lock(&mountpoint->mutex);
+		janus_mutex_lock_nodebug(&mountpoint->mutex);
 		g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
-		janus_mutex_unlock(&mountpoint->mutex);
+		janus_mutex_unlock_nodebug(&mountpoint->mutex);
 		/* Update header */
 		seq++;
 		header->seq_number = htons(seq);
@@ -2130,7 +2129,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				// ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			packet.data->type = mountpoint->codecs.audio_pt;
 			/* Is there a recorder? */
-			if(source->arc) {
+			if(!stopping && source->arc) {
 				JANUS_LOG(LOG_HUGE, "Saving audio frame (%d bytes)\n", bytes);
 				janus_recorder_save_frame(source->arc, buffer, bytes);
 			}
@@ -2169,7 +2168,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			packet.data->type = mountpoint->codecs.video_pt;
 			/* Is there a recorder? */
-			if(source->vrc) {
+			if(!stopping && source->vrc) {
 				JANUS_LOG(LOG_HUGE, "Saving video frame (%d bytes)\n", bytes);
 				janus_recorder_save_frame(source->vrc, buffer, bytes);
 			}
