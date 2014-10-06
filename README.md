@@ -102,12 +102,12 @@ RabbitMQ queues as an alternative (or replacement) to HTTP and/or
 WebSockets to control Janus, you can install the latest version with the
 following steps:
 
-    git clone https://github.com/alanxz/rabbitmq-c
-    cd rabbitmq-c
-    git submodule init
-    git submodule update
-    autoreconf -i
-    configure --prefix=/usr && make && sudo make install
+	git clone https://github.com/alanxz/rabbitmq-c
+	cd rabbitmq-c
+	git submodule init
+	git submodule update
+	autoreconf -i
+	./configure --prefix=/usr && make && sudo make install
 
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
