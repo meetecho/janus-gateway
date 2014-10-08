@@ -2620,7 +2620,7 @@ void *janus_wss_thread(void *data) {
 		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
 			GHashTableIter iter;
 			gpointer value;
-			g_hash_table_iter_init(&iter, sessions);
+			g_hash_table_iter_init(&iter, client->sessions);
 			while (g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_session *session = value;
 				if(client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
