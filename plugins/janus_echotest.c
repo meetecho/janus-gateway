@@ -333,8 +333,6 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 		}
 		if(session->destroy)
 			return;
-		if((!video && !session->audio_active) || (video && !session->video_active))
-			len = janus_rtcp_remove_nacks(buf, len);
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
 		gateway->relay_rtcp(handle, video, buf, len);

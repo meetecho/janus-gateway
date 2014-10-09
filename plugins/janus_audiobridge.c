@@ -26,6 +26,8 @@
 description = This is my awesome room
 secret = <password needed for manipulating (e.g. destroying) the room>
 sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
+record = yes/no (if yes, a raw mix of the recording will be saved)
+record_file =	/path/to/recording.wav (where to save the recording)
 \endverbatim
  *
  * \ingroup plugins
@@ -144,6 +146,7 @@ typedef struct janus_audiobridge_room {
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
 	uint32_t sampling_rate;		/* Sampling rate of the mix (e.g., 16000 for wideband) */
 	gboolean record;			/* Whether this room has to be recorded or not */
+	gchar *record_file;			/* Path of the recording file */
 	FILE *recording;			/* File to record the room into */
 	gboolean destroy;			/* Value to flag the room for destruction */
 	GHashTable *participants;	/* Map of participants */
@@ -274,6 +277,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *sampling = janus_config_get_item(cat, "sampling_rate");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
 			janus_config_item *record = janus_config_get_item(cat, "record");
+			janus_config_item *recfile = janus_config_get_item(cat, "record_file");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the audio room, missing mandatory information...\n");
 				cat = cat->next;
@@ -307,6 +311,8 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->record = FALSE;
 			if(record && record->value && !strcasecmp(record->value, "yes"))
 				audiobridge->record = TRUE;
+			if(recfile && recfile->value)
+				audiobridge->record_file = g_strdup(recfile->value);
 			audiobridge->recording = NULL;
 			audiobridge->destroy = 0;
 			audiobridge->participants = g_hash_table_new(NULL, NULL);
@@ -670,6 +676,13 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid value (record should be a boolean)");
 				goto error;
 			}
+			json_t *recfile = json_object_get(root, "record_file");
+			if(recfile && !json_is_string(record)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (record_file should be a string)\n");
+				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (record_file should be a string)");
+				goto error;
+			}
 			guint64 room_id = 0;
 			json_t *room = json_object_get(root, "room");
 			if(room && !json_is_integer(room)) {
@@ -742,6 +755,8 @@ static void *janus_audiobridge_handler(void *data) {
 			audiobridge->record = FALSE;
 			if(record && json_is_true(record))
 				audiobridge->record = TRUE;
+			if(recfile)
+				audiobridge->record_file = g_strdup(json_string_value(recfile));
 			audiobridge->recording = NULL;
 			audiobridge->destroy = 0;
 			audiobridge->participants = g_hash_table_new(NULL, NULL);
@@ -1218,7 +1233,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	/* Do we need to record the mix? */
 	if(audiobridge->record) {
 		char filename[255];
-		g_snprintf(filename, 255, "/tmp/janus-audioroom-%"SCNu64".wav", audiobridge->room_id);
+		if(audiobridge->record_file)
+			g_snprintf(filename, 255, "%s", audiobridge->record_file);
+		else
+			g_snprintf(filename, 255, "/tmp/janus-audioroom-%"SCNu64".wav", audiobridge->room_id);
 		audiobridge->recording = fopen(filename, "wb");
 		if(audiobridge->recording == NULL) {
 			JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);

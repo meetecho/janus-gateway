@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 
 	/* Pre-parse */
 	JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
-	int video;
+	int video = 0;
 	int bytes = 0, skip = 0;
 	long offset = 0;
 	uint16_t len = 0, count = 0;

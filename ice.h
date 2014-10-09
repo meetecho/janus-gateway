@@ -63,6 +63,8 @@ typedef struct janus_ice_handle janus_ice_handle;
 typedef struct janus_ice_stream janus_ice_stream;
 /*! \brief Janus ICE component */
 typedef struct janus_ice_component janus_ice_component;
+/*! \brief Janus enqueued (S)RTP/(S)RTCP packet to send */
+typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 
 
 #define JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER	(1 << 0)
@@ -125,6 +127,10 @@ struct janus_ice_handle {
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
 	gchar *remote_sdp;
+	/*! \brief Queue of outgoing packets to send */
+	GAsyncQueue *queued_packets;
+	/*! \brief GLib thread for sending outgoing packets */
+	GThread *send_thread;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };
@@ -191,6 +197,23 @@ struct janus_ice_component {
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
+};
+
+#define JANUS_ICE_PACKET_AUDIO	0
+#define JANUS_ICE_PACKET_VIDEO	1
+#define JANUS_ICE_PACKET_DATA	2
+/*! \brief Janus enqueued (S)RTP/(S)RTCP packet to send */
+struct janus_ice_queued_packet {
+	/*! \brief Packet data */
+	char *data;
+	/*! \brief Packet length */
+	gint length;
+	/*! \brief Type of data (audio/video/data, or RTCP related to any of them) */
+	gint type;
+	/*! \brief Whether this is an RTCP message or not */
+	gboolean control;
+	/*! \brief Whether the data is already encrypted or not */
+	gboolean encrypted;
 };
 
 /** @name Janus ICE handle methods
@@ -299,6 +322,8 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 ///@{
 /*! \brief Janus ICE handle thread */
 void *janus_ice_thread(void *data);
+/*! \brief Janus ICE thread for sending outgoing packets */
+void *janus_ice_send_thread(void *data);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER

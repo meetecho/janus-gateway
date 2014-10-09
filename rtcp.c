@@ -366,7 +366,6 @@ int janus_rtcp_remove_nacks(char *packet, int len) {
 	}
 	if(nacks != NULL) {
 		total = len - ((nacks-packet)+nacks_len);
-		JANUS_LOG(LOG_INFO, "Total: %d!\n", total);
 		if(total < 0) {
 			/* FIXME Should never happen, but you never know: do nothing */
 			return len;
