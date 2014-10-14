@@ -428,14 +428,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			if(firfreq != NULL && firfreq->value != NULL)
 				videoroom->fir_freq = atol(firfreq->value);
 			if(record && record->value) {
-				if(!strcasecmp(record->value, "true"))
-					videoroom->record = TRUE;
-				else if(!strcasecmp(record->value, "false"))
-					videoroom->record = FALSE;
-				else {
-					JANUS_LOG(LOG_WARN, "Invalid value '%s' for 'record', recording disabled\n", record->value);
-					videoroom->record = FALSE;
-				}
+				videoroom->record = janus_is_true(record->value);
 				if(rec_dir && rec_dir->value) {
 					videoroom->rec_dir = g_strdup(rec_dir->value);
 				}
@@ -1172,6 +1165,15 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->video_active = FALSE;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
+		janus_mutex_lock(&participant->listeners_mutex);
+		while(participant->listeners) {
+			janus_videoroom_listener *l = (janus_videoroom_listener *)participant->listeners->data;
+			if(l) {
+				participant->listeners = g_slist_remove(participant->listeners, l);
+				l->feed = NULL;
+			}
+		}
+		janus_mutex_unlock(&participant->listeners_mutex);
 		json_t *event = json_object();
 		json_object_set_new(event, "videoroom", json_string("event"));
 		json_object_set_new(event, "room", json_integer(participant->room->room_id));
@@ -1992,9 +1994,9 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				list = g_list_reverse(list);
 				if(janus_videoroom_muxed_unsubscribe(listener, list, msg->transaction) < 0) {
-					JANUS_LOG(LOG_ERR, "Error subscribing!\n");
+					JANUS_LOG(LOG_ERR, "Error unsubscribing!\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;	/* FIXME */
-					g_snprintf(error_cause, 512, "Error subscribing!");
+					g_snprintf(error_cause, 512, "Error unsubscribing!");
 					goto error;
 				}
 				continue;
@@ -2272,7 +2274,7 @@ int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listen
 	if(!muxed_listener || !feeds)
 		return -1;
 	janus_mutex_lock(&muxed_listener->listeners_mutex);
-	JANUS_LOG(LOG_INFO, "Subscribing to %d feeds\n", g_list_length(feeds));
+	JANUS_LOG(LOG_VERB, "Subscribing to %d feeds\n", g_list_length(feeds));
 	janus_videoroom *videoroom = muxed_listener->room;
 	GList *ps = feeds;
 	json_t *list = json_array();
@@ -2318,7 +2320,7 @@ int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listen
 		publisher->listeners = g_slist_append(publisher->listeners, listener);
 		janus_mutex_unlock(&publisher->listeners_mutex);
 		muxed_listener->listeners = g_slist_append(muxed_listener->listeners, listener);
-		JANUS_LOG(LOG_WARN, "Now subscribed to %d feeds\n", g_slist_length(muxed_listener->listeners));
+		JANUS_LOG(LOG_VERB, "Now subscribed to %d feeds\n", g_slist_length(muxed_listener->listeners));
 		/* Add to feeds in the answer */
 		added_feeds++;
 		json_t *f = json_object();
@@ -2347,7 +2349,7 @@ int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listen
 
 int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_listener, GList *feeds, char *transaction) {
 	janus_mutex_lock(&muxed_listener->listeners_mutex);
-	JANUS_LOG(LOG_INFO, "Unsubscribing from %d feeds\n", g_list_length(feeds));
+	JANUS_LOG(LOG_VERB, "Unsubscribing from %d feeds\n", g_list_length(feeds));
 	janus_videoroom *videoroom = muxed_listener->room;
 	GList *ps = feeds;
 	json_t *list = json_array();
@@ -2369,7 +2371,7 @@ int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_list
 				janus_mutex_unlock(&publisher->listeners_mutex);
 				listener->feed = NULL;
 				muxed_listener->listeners = g_slist_remove(muxed_listener->listeners, listener);
-				JANUS_LOG(LOG_WARN, "Now subscribed to %d feeds\n", g_slist_length(muxed_listener->listeners));
+				JANUS_LOG(LOG_VERB, "Now subscribed to %d feeds\n", g_slist_length(muxed_listener->listeners));
 				/* Add to feeds in the answer */
 				removed_feeds++;
 				json_t *f = json_object();
@@ -2405,12 +2407,33 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 	 * that will translate to multiple SSRCs when merging the SDP */
 	int audio = 0, video = 0;
 	char audio_muxed[1024], video_muxed[1024], temp[255];
+	char sdp[2048], audio_mline[512], video_mline[512];
 	memset(audio_muxed, 0, 1024);
 	memset(video_muxed, 0, 1024);
+	memset(audio_mline, 0, 512);
+	memset(video_mline, 0, 512);
+	/* Prepare the m-lines (FIXME this will result in an audio line even for video-only rooms, but we don't care) */
+	g_snprintf(audio_mline, 512, sdp_a_template,
+		OPUS_PT,						/* Opus payload type */
+		"sendonly",						/* The publisher gets a recvonly back */
+		OPUS_PT); 						/* Opus payload type */
+	g_snprintf(video_mline, 512, sdp_v_template,
+		VP8_PT,							/* VP8 payload type */
+		0,								/* Bandwidth */
+		"sendonly",						/* The publisher gets a recvonly back */
+		VP8_PT, 						/* VP8 payload type */
+		VP8_PT, 						/* VP8 payload type */
+		VP8_PT, 						/* VP8 payload type */
+		VP8_PT, 						/* VP8 payload type */
+		VP8_PT); 						/* VP8 payload type */
+	/* FIXME Add a fake user/SSRC just to avoid the "Failed to set max send bandwidth for video content" bug */
+	g_strlcat(audio_muxed, "a=planb:mcu0 1\r\n", 1024);
+	g_strlcat(video_muxed, "a=planb:mcu0 2\r\n", 1024);
+	/* Go through all the available publishers */
 	GSList *ps = muxed_listener->listeners;
 	while(ps) {
 		janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
-		if(l && l->feed && l->feed->sdp) {
+		if(l && l->feed) { //~ && l->feed->sdp) {
 			if(strstr(l->feed->sdp, "m=audio")) {
 				audio++;
 				g_snprintf(temp, 255, "a=planb:mcu%"SCNu64" %"SCNu32"\r\n", l->feed->user_id, l->feed->audio_ssrc);
@@ -2425,42 +2448,24 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 		ps = ps->next;
 	}
 	/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
-	char sdp[2048], audio_mline[256], video_mline[512];
 	if(audio) {
-		g_snprintf(audio_mline, 256, sdp_a_template,
-			OPUS_PT,						/* Opus payload type */
-			"sendonly",						/* The publisher gets a recvonly back */
-			OPUS_PT); 						/* Opus payload type */
 		g_strlcat(audio_mline, audio_muxed, 2048);
-	} else {
-		audio_mline[0] = '\0';
 	}
 	if(video) {
-		g_snprintf(video_mline, 512, sdp_v_template,
-			VP8_PT,							/* VP8 payload type */
-			0,								/* Bandwidth */
-			"sendonly",						/* The publisher gets a recvonly back */
-			VP8_PT, 						/* VP8 payload type */
-			VP8_PT, 						/* VP8 payload type */
-			VP8_PT, 						/* VP8 payload type */
-			VP8_PT, 						/* VP8 payload type */
-			VP8_PT); 						/* VP8 payload type */
 		g_strlcat(video_mline, video_muxed, 2048);
-	} else {
-		video_mline[0] = '\0';
 	}
 	g_snprintf(sdp, 2048, sdp_template,
 		janus_get_monotonic_time(),		/* We need current time here */
 		janus_get_monotonic_time(),		/* We need current time here */
 		muxed_listener->room->room_name,	/* Video room name */
-		audio_mline,					/* Audio m-line, if any */
-		video_mline);					/* Video m-line, if any */
+		audio_mline,					/* Audio m-line */
+		video_mline);					/* Video m-line */
 	char *newsdp = g_strdup(sdp);
 	if(video) {
-		/* Remove useless bandwidth attribute */
+		/* Remove useless bandwidth attribute, if any */
 		newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
 	}
-	JANUS_LOG(LOG_WARN, "%s", newsdp);
+	JANUS_LOG(LOG_VERB, "%s", newsdp);
 	/* How long will the gateway take to push the event? */
 	gint64 start = janus_get_monotonic_time();
 	int res = gateway->push_event(muxed_listener->session->handle, &janus_videoroom_plugin, transaction, event_text, "offer", newsdp);
@@ -2537,6 +2542,15 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 		janus_recorder_free(p->vrc);
 	}
 
+	janus_mutex_lock(&p->listeners_mutex);
+	while(p->listeners) {
+		janus_videoroom_listener *l = (janus_videoroom_listener *)p->listeners->data;
+		if(l) {
+			p->listeners = g_slist_remove(p->listeners, l);
+			l->feed = NULL;
+		}
+	}
+	janus_mutex_unlock(&p->listeners_mutex);
 	g_slist_free(p->listeners);
 
 	janus_mutex_destroy(&p->listeners_mutex);

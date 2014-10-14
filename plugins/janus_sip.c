@@ -23,9 +23,9 @@
  * need to fork in the same place. This specific functionality, though, has
  * not been implemented as of yet.
  * 
- * \todo Only Asterisk has been tested as a SIP server (which explains why
- * the plugin talks of extensions and not generic SIP URIs), and specifically
- * only basic audio calls have been tested: this plugin needs a lot of work.
+ * \todo Only Asterisk and Kamailio have been tested as a SIP server, and
+ * specifically only with basic audio calls: this plugin needs some work
+ * to make it more stable and reliable.
  * 
  * \ingroup plugins
  * \ref plugins

@@ -2,7 +2,6 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \brief    Semaphors and Mutexes
  * \details  Implementation (based on pthread) of a locking mechanism based on mutexes.
- * \todo     This is mostly unused right now, involve mutexes more in later versions.
  * 
  * \ingroup core
  * \ref core

@@ -886,7 +886,7 @@ function Janus(gatewayCallbacks) {
 				config.iceDone = true;
 				if(config.trickle === true) {
 					// Notify end of candidates
-					sendTrickleCandidate(handleId, null);
+					sendTrickleCandidate(handleId, {"completed": true});
 				} else {
 					// No trickle, time to send the complete SDP (including all candidates) 
 					sendSDP(handleId, callbacks);

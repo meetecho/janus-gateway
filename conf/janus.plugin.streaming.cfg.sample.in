@@ -8,6 +8,8 @@
 ;                   (multiple listeners = different streaming contexts)
 ; id = <unique numeric ID> (if missing, a random one will be generated)
 ; description = This is my awesome stream
+; secret = <optional password needed for manipulating (e.g., destroying
+;			or enabling/disabling) the stream>
 ; filename = path to the local file to stream (only for live/ondemand)
 ; audio = yes|no (do/don't stream audio)
 ; video = yes|no (do/don't stream video)
@@ -37,6 +39,7 @@ audiortpmap = opus/48000/2
 videoport = 5004
 videopt = 100
 videortpmap = VP8/90000
+secret = adminpwd
 
 [file-live-sample]
 type = live
@@ -45,6 +48,7 @@ description = a-law file source (radio broadcast)
 filename = @streamdir@/radio.alaw		; See install.sh
 audio = yes
 video = no
+secret = adminpwd
 
 [file-ondemand-sample]
 type = ondemand
@@ -53,3 +57,22 @@ description = mu-law file source (music)
 filename = @streamdir@/music.mulaw	; See install.sh
 audio = yes
 video = no
+secret = adminpwd
+
+;
+; Firefox Nightly supports H.264 through Cisco's OpenH264 plugin. The only
+; supported profile is the baseline one. This is an example of how to create
+; a H.264 mountpoint: you can feed it an x264enc+rtph264pay pipeline in
+; gstreamer.
+;
+;[h264-sample]
+;type = rtp
+;id = 10
+;description = H.264 live stream coming from gstreamer
+;audio = no
+;video = yes
+;videoport = 8004
+;videopt = 126
+;videortpmap = H264/90000
+;videofmtp = profile-level-id=42e01f\;packetization-mode=1
+

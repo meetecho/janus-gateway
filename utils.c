@@ -19,6 +19,9 @@ gint64 janus_get_monotonic_time(void) {
 	return (ts.tv_sec*G_GINT64_CONSTANT(1000000)) + (ts.tv_nsec/G_GINT64_CONSTANT(1000));
 }
 
+gboolean janus_is_true(const char *value) {
+	return value && (!strcasecmp(value, "yes") || !strcasecmp(value, "true") || !strcasecmp(value, "1"));
+}
 
 void janus_flags_reset(janus_flags *flags) {
 	if(flags != NULL)

@@ -201,8 +201,6 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	}
 	/* Create SSL context, at last */
 	dtls->srtp_valid = 0;
-	dtls->dtls_last_msg = NULL;
-	dtls->dtls_last_len = 0;
 	dtls->ssl = SSL_new(janus_dtls_get_ssl_ctx());
 	if(!dtls->ssl) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component DTLS SSL session??\n", handle->handle_id);
@@ -280,12 +278,6 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	if(!dtls->ssl || !dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No DTLS stuff for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
 		return;
-	}
-	/* We just got a message, can we get rid of the last sent message? */
-	if(dtls->dtls_last_msg != NULL) {
-		g_free(dtls->dtls_last_msg);
-		dtls->dtls_last_msg = NULL;
-		dtls->dtls_last_len = 0;
 	}
 	janus_dtls_fd_bridge(dtls);
 	int written = BIO_write(dtls->read_bio, buf, len);
@@ -490,10 +482,6 @@ void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 		}
 		/* FIXME What about dtls->remote_policy and dtls->local_policy? */
 	}
-	if(dtls->dtls_last_msg != NULL) {
-		g_free(dtls->dtls_last_msg);
-		dtls->dtls_last_msg = NULL;
-	}
 	g_free(dtls);
 	dtls = NULL;
 }
@@ -580,20 +568,6 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> Read %d bytes from the write_BIO...\n", handle->handle_id, pending);
 		int bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, out, outgoing);
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
-
-		/* Take note of the last sent message */
-		if(dtls->dtls_last_msg != NULL) {
-			g_free(dtls->dtls_last_msg);
-			dtls->dtls_last_msg = NULL;
-			dtls->dtls_last_len = 0;
-		}
-		dtls->dtls_last_msg = calloc(pending, sizeof(char));
-		if(dtls->dtls_last_msg == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return;
-		}
-		memcpy(dtls->dtls_last_msg, &outgoing, out);
-		dtls->dtls_last_len = out;
 	}
 }
 
@@ -654,19 +628,18 @@ gboolean janus_dtls_retry(gpointer stack) {
 		return FALSE;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		return FALSE;
-	//~ struct timeval timeout;
-	//~ DTLSv1_get_timeout(dtls->ssl, &timeout);
-	//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout.tv_sec*1000000+timeout.tv_usec);
-	//~ DTLSv1_handle_timeout(dtls->ssl);
-	//~ janus_dtls_fd_bridge(dtls);
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] A second has passed on component %d of stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
 	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
 		return FALSE;
 	}
-	if(dtls->dtls_last_msg != NULL) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Retransmitting last message (len=%d)\n", handle->handle_id, dtls->dtls_last_len);
-		nice_agent_send(handle->agent, component->stream_id, component->component_id, dtls->dtls_last_len, dtls->dtls_last_msg);
+	struct timeval timeout;
+	DTLSv1_get_timeout(dtls->ssl, &timeout);
+	guint64 timeout_value = timeout.tv_sec*1000 + timeout.tv_usec/1000;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
+	if(timeout_value == 0) {
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS timeout on component %d of stream %d, retransmitting\n", handle->handle_id, component->component_id, stream->stream_id);
+		DTLSv1_handle_timeout(dtls->ssl);
+		janus_dtls_fd_bridge(dtls);
 	}
 	return TRUE;
 }

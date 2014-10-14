@@ -104,7 +104,7 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_por
 		return 0;	/* No initialization needed */
 	if(stun_port == 0)
 		stun_port = 3478;
-	/*! \todo The RTP/RTCP port range configuration may be just a placeholder: for
+	/*! \note The RTP/RTCP port range configuration may be just a placeholder: for
 	 * instance, libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails
 	 * when linking with an undefined reference to \c nice_agent_set_port_range 
 	 * so this is checked by the install.sh script in advance. */
@@ -595,7 +595,7 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			return;
 		}
 		/* Create retransmission timer */
-		component->source = g_timeout_source_new_seconds(1);
+		component->source = g_timeout_source_new(500);
 		g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
 		guint id = g_source_attach(component->source, handle->icectx);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
@@ -681,7 +681,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		//~ JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTP packet (%s stream)!\n", handle->handle_id,
 			//~ janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? "bundled" : (stream->stream_id == handle->audio_id ? "audio" : "video"));
 		if(!component->dtls || !component->dtls->srtp_valid) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Missing valid SRTP session, skipping...\n", handle->handle_id);
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			int buflen = len;
 			err_status_t res = srtp_unprotect(component->dtls->srtp_in, buf, &buflen);
@@ -726,7 +726,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTCP packet (%s stream)!\n", handle->handle_id,
 			janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? "bundled" : (stream->stream_id == handle->audio_id ? "audio" : "video"));
 		if(!component->dtls || !component->dtls->srtp_valid) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Missing valid SRTP session, skipping...\n", handle->handle_id);
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			int buflen = len;
 			err_status_t res = srtp_unprotect_rtcp(component->dtls->srtp_in, buf, &buflen);
@@ -771,7 +771,6 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 									pkt->control = FALSE;
 									pkt->encrypted = TRUE;	/* This was already encrypted before */
 									g_async_queue_push(handle->queued_packets, pkt);
-									//~ nice_agent_send(handle->agent, stream->stream_id, component->component_id, p->length, p->data);
 								}
 							}
 							rp = rp->next;

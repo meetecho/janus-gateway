@@ -26,7 +26,7 @@
 description = This is my awesome room
 secret = <password needed for manipulating (e.g. destroying) the room>
 sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
-record = yes/no (if yes, a raw mix of the recording will be saved)
+record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
 \endverbatim
  *
@@ -309,7 +309,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				audiobridge->room_secret = g_strdup(secret->value);
 			}
 			audiobridge->record = FALSE;
-			if(record && record->value && !strcasecmp(record->value, "yes"))
+			if(record && record->value && janus_is_true(record->value))
 				audiobridge->record = TRUE;
 			if(recfile && recfile->value)
 				audiobridge->record_file = g_strdup(recfile->value);

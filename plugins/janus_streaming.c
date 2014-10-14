@@ -49,6 +49,8 @@ type = rtp|live|ondemand
 id = <unique numeric ID>
 description = This is my awesome stream
 filename = path to the local file to stream (only for live/ondemand)
+secret = <optional password needed for manipulating (e.g., destroying
+		or enabling/disabling) the stream>
 audio = yes|no (do/don't stream audio)
 video = yes|no (do/don't stream video)
    The following options are only valid for the 'rtp' type:
@@ -180,6 +182,8 @@ typedef struct janus_streaming_mountpoint {
 	gint64 id;
 	char *name;
 	char *description;
+	char *secret;
+	gboolean enabled;
 	gboolean active;
 	janus_streaming_type streaming_type;
 	janus_streaming_source streaming_source;
@@ -261,6 +265,7 @@ typedef struct janus_streaming_rtp_relay_packet {
 #define JANUS_STREAMING_ERROR_INVALID_ELEMENT		454
 #define JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT	455
 #define JANUS_STREAMING_ERROR_CANT_CREATE			456
+#define JANUS_STREAMING_ERROR_UNAUTHORIZED			457
 #define JANUS_STREAMING_ERROR_UNKNOWN_ERROR			470
 
 
@@ -305,6 +310,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				janus_config_item *aport = janus_config_get_item(cat, "audioport");
@@ -315,8 +321,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vcodec = janus_config_get_item(cat, "videopt");
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
 				janus_config_item *vfmtp = janus_config_get_item(cat, "videofmtp");
-				gboolean doaudio = audio && audio->value && !strcasecmp(audio->value, "yes");
-				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
+				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
+				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				if(!doaudio && !dovideo) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', no audio or video have to be streamed...\n", cat->name);
 					cat = cat->next;
@@ -351,7 +357,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					}
 				}
 				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
-				if(!janus_streaming_create_rtp_source(
+				janus_streaming_mountpoint *mp = NULL;
+				if((mp = janus_streaming_create_rtp_source(
 						(id && id->value) ? atoi(id->value) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
@@ -364,14 +371,17 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(vport && vport->value) ? atoi(vport->value) : 0,
 						(vcodec && vcodec->value) ? atoi(vcodec->value) : 0,
 						vrtpmap ? (char *)vrtpmap->value : NULL,
-						vfmtp ? (char *)vfmtp->value : NULL)) {
+						vfmtp ? (char *)vfmtp->value : NULL)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream '%s'...\n", cat->name);
 					continue;
 				}
+				if(secret && secret->value)
+					mp->secret = g_strdup(secret->value);
 			} else if(!strcasecmp(type->value, "live")) {
 				/* File live source */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
@@ -380,8 +390,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cat = cat->next;
 					continue;
 				}
-				gboolean doaudio = audio && audio->value && !strcasecmp(audio->value, "yes");
-				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
+				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
+				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
 				if(!doaudio || dovideo) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' stream '%s', we only support audio file streaming right now...\n", cat->name);
@@ -405,19 +415,23 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						continue;
 					}
 				}
-				if(!janus_streaming_create_file_source(
+				janus_streaming_mountpoint *mp = NULL;
+				if((mp = janus_streaming_create_file_source(
 						(id && id->value) ? atoi(id->value) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value,
-						TRUE, doaudio, dovideo)) {
+						TRUE, doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'live' stream '%s'...\n", cat->name);
 					continue;
 				}
+				if(secret && secret->value)
+					mp->secret = g_strdup(secret->value);
 			} else if(!strcasecmp(type->value, "ondemand")) {
 				/* mu-Law file on demand source */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
@@ -426,8 +440,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cat = cat->next;
 					continue;
 				}
-				gboolean doaudio = audio && audio->value && !strcasecmp(audio->value, "yes");
-				gboolean dovideo = video && video->value && !strcasecmp(video->value, "yes");
+				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
+				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
 				if(!doaudio || dovideo) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream '%s', we only support audio file streaming right now...\n", cat->name);
@@ -451,15 +465,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						continue;
 					}
 				}
-				if(!janus_streaming_create_file_source(
+				janus_streaming_mountpoint *mp = NULL;
+				if((mp = janus_streaming_create_file_source(
 						(id && id->value) ? atoi(id->value) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value,
-						FALSE, doaudio, dovideo)) {
+						FALSE, doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream '%s'...\n", cat->name);
 					continue;
 				}
+				if(secret && secret->value)
+					mp->secret = g_strdup(secret->value);
 			} else {
 				JANUS_LOG(LOG_WARN, "Ignoring unknown stream type '%s' (%s)...\n", type->value, cat->name);
 			}
@@ -702,6 +719,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			goto error;
 		}
 		const char *type_text = json_string_value(type);
+		json_t *secret = json_object_get(root, "secret");
+		if(secret && !json_is_string(secret)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
+			goto error;
+		}
 		janus_streaming_mountpoint *mp = NULL;
 		if(!strcasecmp(type_text, "rtp")) {
 			/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
@@ -1058,7 +1082,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Unknown stream type '%s'...\n", type_text);
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Unknown stream type '%s'...\n", type_text);
+			goto error;
 		}
+		/* Any secret? */
+		if(secret)
+			mp->secret = g_strdup(json_string_value(secret));
 		/* Send info back */
 		json_t *response = json_object();
 		json_object_set_new(response, "streaming", json_string("created"));
@@ -1097,6 +1125,28 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
 			goto error;
+		}
+		if(mp->secret) {
+			/* This action requires an authorized user */
+			json_t *secret = json_object_get(root, "secret");
+			if(!secret) {
+				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
+				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (secret)");
+				goto error;
+			}
+			if(!json_is_string(secret)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
+				goto error;
+			}
+			if(strcmp(mp->secret, json_string_value(secret))) {
+				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
+				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
+				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
+				goto error;
+			}
 		}
 		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
 		/* FIXME Should we kick the current viewers as well? */
@@ -1162,6 +1212,28 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
 			g_snprintf(error_cause, 512, "Recording is only available on RTP-based live streams");
 			goto error;
+		}
+		if(mp->secret) {
+			/* This action requires an authorized user */
+			json_t *secret = json_object_get(root, "secret");
+			if(!secret) {
+				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
+				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (secret)");
+				goto error;
+			}
+			if(!json_is_string(secret)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
+				goto error;
+			}
+			if(strcmp(mp->secret, json_string_value(secret))) {
+				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
+				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
+				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
+				goto error;
+			}
 		}
 		janus_streaming_rtp_source *source = mp->source;
 		if(!strcasecmp(action_text, "start")) {
@@ -1274,6 +1346,92 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_free(response_text);
 			return result;
 		}
+	} else if(!strcasecmp(request_text, "enable") || !strcasecmp(request_text, "disable")) {
+		/* A request to enable/disable a mountpoint */
+		json_t *id = json_object_get(root, "id");
+		if(!id) {
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (id)");
+			goto error;
+		}
+		if(!json_is_integer(id)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+			goto error;
+		}
+		gint64 id_value = json_integer_value(id);
+		janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		if(mp == NULL) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
+			goto error;
+		}
+		if(mp->secret) {
+			/* This action requires an authorized user */
+			json_t *secret = json_object_get(root, "secret");
+			if(!secret) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
+				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (secret)");
+				goto error;
+			}
+			if(!json_is_string(secret)) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
+				goto error;
+			}
+			if(strcmp(mp->secret, json_string_value(secret))) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
+				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
+				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
+				goto error;
+			}
+		}
+		if(!strcasecmp(request_text, "enable")) {
+			/* Enable a previously disabled mountpoint */
+			JANUS_LOG(LOG_INFO, "[%s] Stream enabled\n", mp->name);
+			mp->enabled = TRUE;
+			/* FIXME: Should we notify the listeners, or is this up to the controller application? */
+		} else {
+			/* Disable a previously enabled mountpoint */
+			JANUS_LOG(LOG_INFO, "[%s] Stream disabled\n", mp->name);
+			mp->enabled = FALSE;
+			/* Any recording to close? */
+			janus_streaming_rtp_source *source = mp->source;
+			if(source->arc) {
+				janus_recorder_close(source->arc);
+				JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mp->name, source->arc->filename ? source->arc->filename : "??");
+				janus_recorder *tmp = source->arc;
+				source->arc = NULL;
+				janus_recorder_free(tmp);
+			}
+			if(source->vrc) {
+				janus_recorder_close(source->vrc);
+				JANUS_LOG(LOG_INFO, "[%s] Closed video recording %s\n", mp->name, source->vrc->filename ? source->vrc->filename : "??");
+				janus_recorder *tmp = source->vrc;
+				source->vrc = NULL;
+				janus_recorder_free(tmp);
+			}
+			/* FIXME: Should we notify the listeners, or is this up to the controller application? */
+		}
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Send a success response back */
+		json_t *response = json_object();
+		json_object_set_new(response, "streaming", json_string("ok"));
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
 	} else if(!strcasecmp(request_text, "watch") || !strcasecmp(request_text, "start")
 			|| !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
@@ -1687,6 +1845,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	else
 		description = g_strdup(name ? name : tempname);
 	live_rtp->description = description;
+	live_rtp->enabled = TRUE;
 	live_rtp->active = FALSE;
 	live_rtp->streaming_type = janus_streaming_type_live;
 	live_rtp->streaming_source = janus_streaming_source_rtp;
@@ -1769,6 +1928,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	else
 		description = g_strdup(name ? name : tempname);
 	file_source->description = description;
+	file_source->enabled = TRUE;
 	file_source->active = FALSE;
 	file_source->streaming_type = live ? janus_streaming_type_live : janus_streaming_type_on_demand;
 	file_source->streaming_source = janus_streaming_source_file;
@@ -1881,7 +2041,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 			before.tv_usec -= 1000000;
 		}
 		/* If not started or paused, wait some more */
-		if(!session->started)
+		if(!session->started || !mountpoint->enabled)
 			continue;
 		/* Read frame from file... */
 		read = fread(buf + RTP_HEADER_SIZE, sizeof(char), 160, audio);
@@ -1989,6 +2149,9 @@ static void *janus_streaming_filesource_thread(void *data) {
 			before.tv_sec++;
 			before.tv_usec -= 1000000;
 		}
+		/* If paused, wait some more */
+		if(!mountpoint->enabled)
+			continue;
 		/* Read frame from file... */
 		read = fread(buf + RTP_HEADER_SIZE, sizeof(char), 160, audio);
 		if(feof(audio)) {
@@ -2107,6 +2270,9 @@ static void *janus_streaming_relay_thread(void *data) {
 			addrlen = sizeof(remote);
 			bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			// JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
+			/* If paused, ignore this packet */
+			if(!mountpoint->enabled)
+				continue;
 			rtp_header *rtp = (rtp_header *)buffer;
 			// JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				// ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
@@ -2148,6 +2314,9 @@ static void *janus_streaming_relay_thread(void *data) {
 			addrlen = sizeof(remote);
 			bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
+			/* If paused, ignore this packet */
+			if(!mountpoint->enabled)
+				continue;
 			rtp_header *rtp = (rtp_header *)buffer;
 			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));

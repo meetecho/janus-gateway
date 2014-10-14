@@ -28,6 +28,10 @@ gint64 janus_get_monotonic_time(void);
  * @returns A pointer to the updated text string (re-allocated or just updated) */
 char *janus_string_replace(char *message, const char *old_string, const char *new_string) G_GNUC_WARN_UNUSED_RESULT;
 
+/*! \brief Helper to parse yes/no|true/false configuration values
+ * @param value The configuration value to parse
+ * @returns true if the value contains a "yes", "YES", "true", TRUE", "1", false otherwise */
+gboolean janus_is_true(const char *value);
 
 /** @name Flags helper methods
  */

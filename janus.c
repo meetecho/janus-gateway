@@ -1336,7 +1336,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		}
 		if(candidate != NULL) {
 			/* We got a single candidate */
-			if(!json_is_object(candidate)) {
+			if(!json_is_object(candidate) || json_object_get(candidate, "completed") != NULL) {
 				JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
 				janus_mutex_lock(&handle->mutex);
 				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
@@ -1461,7 +1461,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				size_t i = 0;
 				for(i=0; i<json_array_size(candidates); i++) {
 					json_t *candidate = json_array_get(candidates, i);
-					if(candidate == NULL || !json_is_object(candidate)) {
+					if(candidate == NULL || !json_is_object(candidate) || json_object_get(candidate, "completed") != NULL) {
 						/* A 'NULL' candidate is our cue */
 						last_candidate = TRUE;
 						continue;
@@ -3875,7 +3875,7 @@ gint main(int argc, char *argv[])
 		}
 	}
 	item = janus_config_get_item_drilldown(config, "webserver", "http");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
 	} else {
 		int wsport = 8088;
@@ -3915,7 +3915,7 @@ gint main(int argc, char *argv[])
 	/* Do we also have to provide an HTTPS one? */
 	char *cert_pem_bytes = NULL, *cert_key_bytes = NULL; 
 	item = janus_config_get_item_drilldown(config, "webserver", "https");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
 	} else {
 		item = janus_config_get_item_drilldown(config, "webserver", "secure_port");
@@ -4009,7 +4009,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "WebSockets support not compiled\n");
 #else
 	item = janus_config_get_item_drilldown(config, "webserver", "ws");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
 	} else {
 		int wsport = 8188;
@@ -4032,7 +4032,7 @@ gint main(int argc, char *argv[])
 		janus_mutex_init(&wss_mutex);
 	}
 	item = janus_config_get_item_drilldown(config, "webserver", "ws_ssl");
-	if(!item || !item->value || !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
 	} else {
 		if(wss != NULL) {
@@ -4065,7 +4065,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "RabbitMQ support not compiled\n");
 #else
 	item = janus_config_get_item_drilldown(config, "rabbitmq", "enable");
-	if(!item || !item->value || !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "RammitMQ support disabled\n");
 	} else {
 		/* Parse configuration */
@@ -4211,7 +4211,7 @@ gint main(int argc, char *argv[])
 		}
 	}
 	item = janus_config_get_item_drilldown(config, "admin", "admin_http");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
 	} else {
 		int wsport = 7088;
@@ -4250,7 +4250,7 @@ gint main(int argc, char *argv[])
 	}
 	/* Do we also have to provide an HTTPS one? */
 	item = janus_config_get_item_drilldown(config, "admin", "admin_https");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "Admin/monitor HTTPS webserver disabled\n");
 	} else {
 		item = janus_config_get_item_drilldown(config, "admin", "admin_secure_port");

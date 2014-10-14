@@ -12,10 +12,8 @@
  * 
  * \todo Right now, we only support sessions with up to a single audio
  * and/or a single video stream (as in, a single audio and/or video
- * m-line). Later versions of the gateway will add support for more
- * audio and video streams in the same session. Besides, DataChannels
- * are not supported as of yet either: this is something we'll start
- * working in the future as well.
+ * m-line) plus an optional DataChannel. Later versions of the gateway
+ * will add support for more media streams of the same type in a session.
  * 
  * \ingroup protocols
  * \ref protocols
