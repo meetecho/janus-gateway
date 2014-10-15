@@ -2104,7 +2104,9 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT"); 
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
-				int b = (int)(videoroom->bitrate/1000);
+				int b = 0;
+				if(participant->firefox)	/* Don't add any b=AS attribute for Chrome */
+					b = (int)(videoroom->bitrate/1000);
 				char sdp[1024], audio_mline[256], video_mline[512];
 				if(audio) {
 					g_snprintf(audio_mline, 256, sdp_a_template,
