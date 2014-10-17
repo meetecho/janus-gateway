@@ -142,14 +142,7 @@ $(document).ready(function() {
 									var event = msg["videoroom"];
 									console.log("Event: " + event);
 									if(event != undefined && event != null) {
-										if(event === "created") {
-											// Our own screen sharing session has been created, join it
-											room = msg["room"];
-											console.log("Screen sharing session created: " + room);
-											myusername = randomString(12);
-											var register = { "request": "join", "room": room, "ptype": "publisher", "display": myusername };
-											screentest.send({"message": register});
-										} else if(event === "joined") {
+										if(event === "joined") {
 											myid = msg["id"];
 											$('#session').html(room);
 											$('#title').html(msg["description"]);
@@ -297,7 +290,18 @@ function shareScreen() {
 	}
 	role = "publisher";
 	var create = { "request": "create", "description": desc, "bitrate": 0, "publishers": 1 };
-	screentest.send({"message": create});
+	screentest.send({"message": create, success: function(result) {
+	   var event = result["videoroom"];
+      console.log("Event: " + event);
+	   if(event != undefined && event != null) {
+			// Our own screen sharing session has been created, join it
+			room = result["room"];
+			console.log("Screen sharing session created: " + room);
+			myusername = randomString(12);
+			var register = { "request": "join", "room": room, "ptype": "publisher", "display": myusername };
+			screentest.send({"message": register});
+      }
+   }});
 }
 
 function checkEnterJoin(field, event) {
