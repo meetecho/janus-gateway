@@ -802,8 +802,8 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	if(len > 16)
 		len = 16;
 	if(len > 0) {
-		memcpy(&label, req->label, 16);
-		label[16] = '\0'; 
+		memcpy(&label, req->label, len);
+		label[len] = '\0'; 
 	} else {
 		label[0] = '?';
 		label[1] = '?';
