@@ -798,7 +798,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	}
 	/* Read label */
 	char label[20];
-	int len = req->label_length;
+	int len = ntohs(req->label_length);
 	if(len > 16)
 		len = 16;
 	if(len > 0) {
