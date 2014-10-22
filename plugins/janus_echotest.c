@@ -110,9 +110,10 @@ typedef struct janus_echotest_session {
 	gboolean audio_active;
 	gboolean video_active;
 	uint64_t bitrate;
-	gboolean destroy;
+	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_echotest_session;
 static GHashTable *sessions;
+static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
 void janus_echotest_message_free(janus_echotest_message *msg);
@@ -139,6 +140,45 @@ void janus_echotest_message_free(janus_echotest_message *msg) {
 #define JANUS_ECHOTEST_ERROR_NO_MESSAGE			411
 #define JANUS_ECHOTEST_ERROR_INVALID_JSON		412
 #define JANUS_ECHOTEST_ERROR_INVALID_ELEMENT	413
+
+
+/* EchoTest watchdog/garbage collector (sort of) */
+void *janus_echotest_watchdog(void *data);
+void *janus_echotest_watchdog(void *data) {
+	JANUS_LOG(LOG_INFO, "Echotest watchdog started\n");
+	gint64 now = 0;
+	while(initialized && !stopping) {
+		janus_mutex_lock(&sessions_mutex);
+		/* Iterate on all the sessions */
+		now = janus_get_monotonic_time();
+		if(old_sessions != NULL) {
+			GList *sl = old_sessions;
+			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			while(sl) {
+				janus_echotest_session *session = (janus_echotest_session *)sl->data;
+				if(!session || !initialized || stopping) {
+					sl = sl->next;
+					continue;
+				}
+				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					GList *rm = sl->next;
+					old_sessions = g_list_delete_link(old_sessions, sl);
+					sl = rm;
+					session->handle = NULL;
+					g_free(session);
+					session = NULL;
+					continue;
+				}
+				sl = sl->next;
+			}
+		}
+		janus_mutex_unlock(&sessions_mutex);
+		g_usleep(2000000);
+	}
+	JANUS_LOG(LOG_INFO, "EchoTest watchdog stopped\n");
+	return NULL;
+}
 
 
 /* Plugin implementation */
@@ -170,6 +210,12 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	gateway = callback;
 
 	initialized = 1;
+	/* Start the sessions watchdog */
+	GThread *watchdog = g_thread_new("etest watchdog", &janus_echotest_watchdog, NULL);
+	if(!watchdog) {
+		JANUS_LOG(LOG_FATAL, "Couldn't start EchoTest watchdog...\n");
+		return -1;
+	}
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus echotest handler", janus_echotest_handler, NULL, &error);
@@ -240,6 +286,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
+	session->destroyed = 0;
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -264,7 +311,10 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroy = TRUE;
+	session->destroyed = janus_get_monotonic_time();
+	janus_mutex_lock(&sessions_mutex);
+	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
 
@@ -297,7 +347,7 @@ void janus_echotest_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* We really don't care, as we only send RTP/RTCP we get in the first place back anyway */
 }
@@ -313,7 +363,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(session->destroy)
+		if(session->destroyed)
 			return;
 		if((!video && session->audio_active) || (video && session->video_active)) {
 			gateway->relay_rtp(handle, video, buf, len);
@@ -331,7 +381,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(session->destroy)
+		if(session->destroyed)
 			return;
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
@@ -349,7 +399,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(session->destroy)
+		if(session->destroyed)
 			return;
 		if(buf == NULL || len <= 0)
 			return;
@@ -374,7 +424,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -414,7 +464,7 @@ static void *janus_echotest_handler(void *data) {
 			janus_echotest_message_free(msg);
 			continue;
 		}
-		if(session->destroy) {
+		if(session->destroyed) {
 			janus_echotest_message_free(msg);
 			continue;
 		}

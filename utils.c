@@ -11,7 +11,11 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <errno.h>
+
 #include "utils.h"
+#include "debug.h"
 
 gint64 janus_get_monotonic_time(void) {
 	struct timespec ts;
@@ -126,4 +130,81 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		outgoing[strlen(outgoing)] = '\0';
 		return outgoing;
 	}
+}
+
+int janus_mkdir(const char *dir, mode_t mode) {
+	char tmp[256];
+	char *p = NULL;
+	size_t len;
+
+	int res = 0;
+	g_snprintf(tmp, sizeof(tmp), "%s", dir);
+	len = strlen(tmp);
+	if(tmp[len - 1] == '/')
+		tmp[len - 1] = 0;
+	for(p = tmp + 1; *p; p++) {
+		if(*p == '/') {
+			*p = 0;
+			res = mkdir(tmp, mode);
+			if(res != 0 && errno != EEXIST) {
+				JANUS_LOG(LOG_ERR, "Error creating folder %s\n", tmp);
+				return res;
+			}
+			*p = '/';
+		}
+	}
+	res = mkdir(tmp, mode);
+	if(res != 0 && errno != EEXIST)
+		return res;
+	return 0;
+}
+
+int janus_get_opus_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || !strstr(sdp, "opus/48000"))	/* FIXME Should be case insensitive */
+		return -1;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "opus/48000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d opus/48000/2", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -1;
+}
+
+int janus_get_vp8_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=video") || !strstr(sdp, "VP8/90000"))	/* FIXME Should be case insensitive */
+		return -1;
+	const char *line = strstr(sdp, "m=video");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "VP8/90000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d VP8/90000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -1;
 }

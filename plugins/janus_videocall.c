@@ -32,6 +32,7 @@
 #include "../config.h"
 #include "../mutex.h"
 #include "../rtcp.h"
+#include "../utils.h"
 
 
 /* Plugin information */
@@ -132,9 +133,10 @@ typedef struct janus_videocall_session {
 	gboolean video_active;
 	uint64_t bitrate;
 	struct janus_videocall_session *peer;
-	gboolean destroy;
+	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videocall_session;
 static GHashTable *sessions;
+static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
 
@@ -153,6 +155,45 @@ static janus_mutex sessions_mutex;
 #define JANUS_VIDEOCALL_ERROR_ALREADY_IN_CALL		480
 #define JANUS_VIDEOCALL_ERROR_NO_CALL				481
 #define JANUS_VIDEOCALL_ERROR_MISSING_SDP			482
+
+
+/* VideoCall watchdog/garbage collector (sort of) */
+void *janus_videocall_watchdog(void *data);
+void *janus_videocall_watchdog(void *data) {
+	JANUS_LOG(LOG_INFO, "VideoCall watchdog started\n");
+	gint64 now = 0;
+	while(initialized && !stopping) {
+		janus_mutex_lock(&sessions_mutex);
+		/* Iterate on all the sessions */
+		now = janus_get_monotonic_time();
+		if(old_sessions != NULL) {
+			GList *sl = old_sessions;
+			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			while(sl) {
+				janus_videocall_session *session = (janus_videocall_session *)sl->data;
+				if(!session || !initialized || stopping) {
+					sl = sl->next;
+					continue;
+				}
+				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					GList *rm = sl->next;
+					old_sessions = g_list_delete_link(old_sessions, sl);
+					sl = rm;
+					session->handle = NULL;
+					g_free(session);
+					session = NULL;
+					continue;
+				}
+				sl = sl->next;
+			}
+		}
+		janus_mutex_unlock(&sessions_mutex);
+		g_usleep(2000000);
+	}
+	JANUS_LOG(LOG_INFO, "VideoCall watchdog stopped\n");
+	return NULL;
+}
 
 
 /* Plugin implementation */
@@ -184,6 +225,12 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	gateway = callback;
 
 	initialized = 1;
+	/* Start the sessions watchdog */
+	GThread *watchdog = g_thread_new("vcall watchdog", &janus_videocall_watchdog, NULL);
+	if(!watchdog) {
+		JANUS_LOG(LOG_FATAL, "Couldn't start VideoCall watchdog...\n");
+		return -1;
+	}
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus videocall handler", janus_videocall_handler, NULL, &error);
@@ -256,6 +303,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->bitrate = 0;	/* No limit */
 	session->peer = NULL;
 	session->username = NULL;
+	session->destroyed = 0;
 	handle->plugin_handle = session;
 
 	return;
@@ -272,7 +320,7 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	if(session->destroy) {
+	if(session->destroyed) {
 		JANUS_LOG(LOG_VERB, "Session already destroyed...\n");
 		return;
 	}
@@ -285,7 +333,10 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 		janus_mutex_unlock(&sessions_mutex);
 	}
 	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroy = TRUE;
+	session->destroyed = janus_get_monotonic_time();
+	janus_mutex_lock(&sessions_mutex);
+	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
 
@@ -318,7 +369,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* We really don't care, as we only relay RTP/RTCP we get in the first place anyway */
 }
@@ -337,7 +388,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(session->destroy || session->peer->destroy)
+		if(session->destroyed || session->peer->destroyed)
 			return;
 		if((!video && session->audio_active) || (video && session->video_active)) {
 			gateway->relay_rtp(session->peer->handle, video, buf, len);
@@ -358,7 +409,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(session->destroy || session->peer->destroy)
+		if(session->destroyed || session->peer->destroyed)
 			return;
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
@@ -379,7 +430,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(session->destroy || session->peer->destroy)
+		if(session->destroyed || session->peer->destroyed)
 			return;
 		if(buf == NULL || len <= 0)
 			return;
@@ -401,7 +452,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	janus_mutex_lock(&sessions_mutex);
 	if(session->peer) {
@@ -450,7 +501,7 @@ static void *janus_videocall_handler(void *data) {
 			janus_videocall_message_free(msg);
 			continue;
 		}
-		if(session->destroy) {
+		if(session->destroyed) {
 			janus_videocall_message_free(msg);
 			continue;
 		}
@@ -590,7 +641,7 @@ static void *janus_videocall_handler(void *data) {
 			}
 			janus_mutex_lock(&sessions_mutex);
 			janus_videocall_session *peer = g_hash_table_lookup(sessions, username_text);
-			if(peer == NULL || peer->destroy) {
+			if(peer == NULL || peer->destroyed) {
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_ERR, "Username '%s' doesn't exist\n", username_text);
 				error_code = JANUS_VIDEOCALL_ERROR_NO_SUCH_USERNAME;

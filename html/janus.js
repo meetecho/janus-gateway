@@ -119,6 +119,9 @@ function Janus(gatewayCallbacks) {
 	var iceServers = gatewayCallbacks.iceServers;
 	if(iceServers === undefined || iceServers === null)
 		iceServers = [{"url": "stun:stun.l.google.com:19302"}];
+	var ipv6Support = gatewayCallbacks.ipv6;
+	if(ipv6Support === undefined || ipv6Support === null)
+		ipv6Support = false;
 	var maxev = null;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
 		maxev = gatewayCallbacks.max_poll_events;
@@ -873,6 +876,11 @@ function Janus(gatewayCallbacks) {
 		var pc_constraints = {
 			"optional": [{"DtlsSrtpKeyAgreement": true}]
 		};
+		if(ipv6Support === true) {
+			// FIXME This is only supported in Chrome right now
+			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262 
+			pc_constraints.optional.push({"googIPv6":true});
+		}
 		Janus.log("Creating PeerConnection:");
 		Janus.log(pc_constraints);
 		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
@@ -1168,7 +1176,7 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 			// If we got here, we're not screensharing
-			if(media.video !== 'screen') {
+			if(media === null || media === undefined || media.video !== 'screen') {
 				getUserMedia(
 					{audio:isAudioSendEnabled(media), video:videoSupport},
 					function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },

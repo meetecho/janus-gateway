@@ -40,6 +40,13 @@ uint16_t janus_ice_get_stun_port(void) {
 }
 
 
+/* IPv6 support (still mostly WIP) */
+static gboolean janus_ipv6_enabled;
+gboolean janus_ice_is_ipv6_enabled(void) {
+	return janus_ipv6_enabled;
+}
+
+
 /* Interface/IP ignore list */
 GList *janus_ice_ignore_list = NULL;
 janus_mutex ignore_list_mutex;
@@ -99,7 +106,9 @@ gboolean janus_is_rtcp(gchar *buf) {
 
 
 /* libnice initialization */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port) {
+gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6) {
+	janus_ipv6_enabled = ipv6;
+	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (IPv6 candidates %s)\n", janus_ipv6_enabled ? "enabled" : "disabled");
 	if(stun_server == NULL)
 		return 0;	/* No initialization needed */
 	if(stun_port == 0)
@@ -440,7 +449,22 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		g_free(handle->remote_sdp);
 		handle->remote_sdp = NULL;
 	}
+	if(handle->queued_packets != NULL) {
+		janus_ice_queued_packet *pkt = NULL;
+		while(g_async_queue_length(handle->queued_packets) > 0) {
+			pkt = g_async_queue_try_pop(handle->queued_packets);
+			if(pkt != NULL) {
+				g_free(pkt->data);
+				pkt->data = NULL;
+				g_free(pkt);
+				pkt = NULL;
+			}
+		}
+		g_async_queue_unref(handle->queued_packets);
+		handle->queued_packets = NULL;
+	}
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
 }
@@ -813,8 +837,13 @@ void *janus_ice_thread(void *data) {
 	janus_ice_handle *handle = data;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started, looping...\n", handle->handle_id);
 	GMainLoop *loop = handle->iceloop;
+	if(loop == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid loop...\n", handle->handle_id);
+		return NULL;
+	}
 	g_usleep (100000);
 	g_main_loop_run (loop);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
@@ -993,6 +1022,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 
 	/* Note: in case this is not an OFFER, we don't know whether DataChannels are supported on the other side or not yet */
 	if(data) {
@@ -1059,8 +1089,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			family = ifa->ifa_addr->sa_family;
 			if(family != AF_INET && family != AF_INET6)
 				continue;
-			/* FIXME We skip IPv6 addresses for now: browser don't negotiate them yet anyway */
-			if(family == AF_INET6)
+			/* We only add IPv6 addresses if support for them has been explicitly enabled (still WIP, mostly) */
+			if(family == AF_INET6 && !janus_ipv6_enabled)
 				continue;
 			/* Check the interface name first: we can ignore that as well */
 			if(ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
@@ -1072,8 +1102,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_ERR, "getnameinfo() failed: %s\n", gai_strerror(s));
 				continue;
 			}
-			/* Skip localhost */
-			if(!strcmp(host, "127.0.0.1") || !strcmp(host, "::1") || !strcmp(host, "0.0.0.0"))
+			/* Skip localhost and 0.0.0.0 */
+			if(!strcmp(host, "127.0.0.1") || !strcmp(host, "0.0.0.0")
+					|| !strcmp(host, "::1") || !strcmp(host, "::") || strchr(host, '%'))
 				continue;
 			/* Check if this IP address is in the ignore list, now */
 			if(janus_ice_is_ignored(host))
@@ -1082,7 +1113,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_VERB, "Adding %s to the addresses to gather candidates for\n", host);
 			NiceAddress addr_local;
 			nice_address_init (&addr_local);
-			nice_address_set_from_string (&addr_local, host);
+			if(!nice_address_set_from_string (&addr_local, host)) {
+				JANUS_LOG(LOG_WARN, "Skipping invalid address %s\n", host);
+				continue;
+			}
 			nice_agent_add_local_address (handle->agent, &addr_local);
 		}
 		freeifaddrs(ifaddr);

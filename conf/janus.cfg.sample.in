@@ -93,11 +93,13 @@ cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key
 
 
-; Media-related stuff: right now, you can only configure the range of
+; Media-related stuff: right now, you can only configure whether you want
+; to enable IPv6 support (still WIP, so handle with care) and the range of
 ; ports to use for RTP and RTCP (by default, no range is envisaged).
-; If you configure a range in the lines below, remember to uncomment the
-; [media] category as well!
+; If you change any setting in the lines below, remember to uncomment the
+; [media] category as well, which is commented by default!
 ;[media]
+;ipv6 = true
 ;rtp_port_range = 20000-40000
 
 

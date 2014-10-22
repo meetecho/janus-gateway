@@ -114,7 +114,7 @@ AC_CHECK_PROG([DOT],
 AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
       [
         AS_IF([test "x$enable_docs" = "xyes"],
-              [AC_MSG_ERROR([doxygen or dot not found. Docs cannot be built.])])
+              [AC_MSG_NOTICE([doxygen or dot not found. Docs cannot be built.])])
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 
@@ -141,6 +141,12 @@ AC_ARG_ENABLE([plugin-echotest],
                               [Disable echotest plugin])],
               [],
               [enable_plugin_echotest=yes])
+
+AC_ARG_ENABLE([plugin-recordplay],
+              [AS_HELP_STRING([--disable-plugin-recordplay],
+                              [Disable record&play plugin])],
+              [],
+              [enable_plugin_recordplay=yes])
 
 AC_ARG_ENABLE([plugin-sip],
               [AS_HELP_STRING([--disable-plugin-sip],
@@ -190,6 +196,7 @@ PKG_CHECK_MODULES([OGG],
 
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])

@@ -340,6 +340,8 @@ gint janus_session_destroy(guint64 session_id) {
 	}
 
 	/* TODO Actually destroy session */
+	//~ janus_session_free(session);
+
 	return 0;
 }
 
@@ -1068,6 +1070,20 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				goto jsondone;
 			}
 			type = NULL;
+			/* Are we still cleaning up from a previous media session? */
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
+				gint64 waited = 0;
+				while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
+					g_usleep(100000);
+					waited += 100000;
+					if(waited >= 3*G_USEC_PER_SEC) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
+						break;
+					}
+				}
+			}
 			/* Check the JSEP type */
 			int offer = 0;
 			if(!strcasecmp(jsep_type, "offer")) {
@@ -1110,15 +1126,15 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			/* FIXME We're only handling single audio/video lines for now... */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated\n", handle->handle_id, audio ? "has" : "has NOT");
 			if(audio > 1) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", handle->handle_id);
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video %s been negotiated\n", handle->handle_id, video ? "has" : "has NOT");
 			if(video > 1) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", handle->handle_id);
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP/DataChannels %s been negotiated\n", handle->handle_id, data ? "have" : "have NOT");
 			if(data > 1) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one data line? only going to negotiate one...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one data line? only going to negotiate one...\n", handle->handle_id);
 			}
 #ifndef HAVE_SCTP
 			if(data) {
@@ -1134,7 +1150,18 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				/* New session */
 				if(offer) {
 					/* Setup ICE locally (we received an offer) */
-					janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle);
+					if(janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle) < 0) {
+						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error setting ICE locally");
+						goto jsondone;
+					}
+				} else {
+					/* Make sure we're waiting for an ANSWER in the first place */
+					if(!handle->agent) {
+						JANUS_LOG(LOG_ERR, "Unexpected ANSWER (did we offer?)\n");
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Unexpected ANSWER (did we offer?)");
+						goto jsondone;
+					}
 				}
 				janus_sdp_parse(handle, parsed_sdp);
 				janus_sdp_free(parsed_sdp);
@@ -2090,6 +2117,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_object_set_new(flags, "trickle-synced", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED)));
 		json_object_set_new(flags, "data-channels", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)));
 		json_object_set_new(flags, "plan-b", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)));
+		json_object_set_new(flags, "cleaning", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)));
 		json_object_set_new(info, "flags", flags);
 		json_t *sdps = json_object();
 		if(json_string(handle->local_sdp))
@@ -2582,9 +2610,29 @@ int janus_wss_onclose(libwebsock_client_state *state) {
 		}
 		client->thread = NULL;
 		client->state = NULL;
-		/* TODO: Remove all sessions (and handles) created by this client */
-		if(client->sessions != NULL)
+		if(client->sessions != NULL) {
+			/* Remove all sessions (and handles) created by this client */
+			janus_mutex_lock(&sessions_mutex);
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, client->sessions);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+				if(!session)
+					continue;
+				session->last_activity = 0;	/* This will trigger a timeout */
+			}
+			janus_mutex_unlock(&sessions_mutex);
 			g_hash_table_destroy(client->sessions);
+		}
+		/* Remove responses queue too, if needed */
+		if(client->responses != NULL) {
+			char *response = NULL;
+			while((response = g_async_queue_try_pop(client->responses)) != NULL) {
+				g_free(response);
+			}
+			g_async_queue_unref(client->responses);
+		}
 		client->sessions = NULL;
 		g_free(client);
 		client = NULL;
@@ -3082,9 +3130,26 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- DataChannels have been negotiated, but support for them has not been compiled...\n", ice_handle->handle_id);
 		}
 #endif
+		/* Are we still cleaning up from a previous media session? */
+		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", ice_handle->handle_id);
+			gint64 waited = 0;
+			while(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", ice_handle->handle_id);
+				g_usleep(100000);
+				waited += 100000;
+				if(waited >= 3*G_USEC_PER_SEC) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", ice_handle->handle_id);
+					break;
+				}
+			}
+		}
 		if(ice_handle->agent == NULL) {
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
-			janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle);
+			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle) < 0) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
+				return NULL;
+			}
 		} else {
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
@@ -3511,6 +3576,9 @@ gint main(int argc, char *argv[])
 	if(args_info.ice_ignore_list_given) {
 		janus_config_add_item(config, "nat", "ice_ignore_list", args_info.ice_ignore_list_arg);
 	}
+	if(args_info.ipv6_candidates_given) {
+		janus_config_add_item(config, "media", "ipv6", "true");
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
@@ -3661,6 +3729,9 @@ gint main(int argc, char *argv[])
 	char *stun_server = NULL;
 	uint16_t stun_port = 0;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
+	gboolean ipv6 = FALSE;
+	item = janus_config_get_item_drilldown(config, "media", "ipv6");
+	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
 	if(item && item->value) {
 		/* Split in min and max port */
@@ -3688,7 +3759,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "stun_port");
 	if(item && item->value)
 		stun_port = atoi(item->value);
-	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port) < 0) {
+	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port, ipv6) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
 	}
@@ -3752,7 +3823,7 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 	struct dirent *pluginent = NULL;
-	char pluginpath[255];
+	char pluginpath[1024];
 	while((pluginent = readdir(dir))) {
 		int len = strlen(pluginent->d_name);
 		if (len < 4) {
@@ -3762,8 +3833,8 @@ gint main(int argc, char *argv[])
 			continue;
 		}
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
-		memset(pluginpath, 0, 255);
-		g_snprintf(pluginpath, 255, "%s/%s", path, pluginent->d_name);
+		memset(pluginpath, 0, 1024);
+		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
 		void *plugin = dlopen(pluginpath, RTLD_LAZY);
 		if (!plugin) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());

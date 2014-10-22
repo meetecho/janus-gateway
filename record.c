@@ -22,6 +22,7 @@
 
 #include "record.h"
 #include "debug.h"
+#include "utils.h"
 
 
 /* Frame header in the structured recording*/
@@ -44,7 +45,7 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 		if(err == -1) {
 			if(ENOENT == errno) {
 				/* Directory does not exist, try creating it */
-				if(mkdir(dir, 0755) < 0) {
+				if(janus_mkdir(dir, 0755) < 0) {
 					JANUS_LOG(LOG_ERR, "mkdir error: %d\n", errno);
 					return NULL;
 				}
@@ -55,7 +56,7 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 		} else {
 			if(S_ISDIR(s.st_mode)) {
 				/* Directory exists */
-				JANUS_LOG(LOG_INFO, "Directory exists: %s\n", dir);
+				JANUS_LOG(LOG_VERB, "Directory exists: %s\n", dir);
 			} else {
 				/* File exists but it's not a directory? */
 				JANUS_LOG(LOG_ERR, "Not a directory? %s\n", dir);

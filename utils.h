@@ -58,7 +58,23 @@ void janus_flags_clear(janus_flags *flags, uint32_t flag);
  * \param[in] flag The flag to check
  * \returns true if the flag is set, false otherwise */
 gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag);
-
 ///@}
+
+/*! \brief Helper to create a new directory, and recursively create parent directories if needed
+ * @param dir Path to the new folder to create
+ * @param mode File permissions for the new directory file
+ * @returns An integer like the regular mkdir does
+ * @note A failure may indicate that creating any of the subdirectories failed: some may still have been created */
+int janus_mkdir(const char *dir, mode_t mode);
+
+/*! \brief Ugly and dirty helper to quickly get the Opus payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The Opus payload type, if found, -1 otherwise */
+int janus_get_opus_pt(const char *sdp);
+
+/*! \brief Ugly and dirty helper to quickly get the VP8 payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The VP8 payload type, if found, -1 otherwise */
+int janus_get_vp8_pt(const char *sdp);
 
 #endif

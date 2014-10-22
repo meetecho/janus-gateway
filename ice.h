@@ -31,8 +31,9 @@
  * @param[in] stun_port STUN port to use, if any
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used
+ * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port);
+gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);
@@ -49,6 +50,9 @@ void janus_ice_ignore_interface(const char *ip);
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the ignore list, false otherwise */
 gboolean janus_ice_is_ignored(const char *ip);
+/*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
+ * @returns true if IPv6 candidates are enabled/supported, false otherwise */
+gboolean janus_ice_is_ipv6_enabled(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -79,6 +83,7 @@ typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
 #define JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS		(1 << 10)
 #define JANUS_ICE_HANDLE_WEBRTC_PLAN_B				(1 << 11)
+#define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 12)
 
 
 /*! \brief Janus ICE handle */

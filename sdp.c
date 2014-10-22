@@ -322,12 +322,19 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		return -2;
 	janus_mutex_lock(&handle->mutex);
 	janus_ice_component *component = NULL;
-	char rfoundation[32], rtransport[4], rip[24], rtype[6], rrelip[24];
+	char rfoundation[32], rtransport[4], rip[40], rtype[6], rrelip[40];
 	guint32 rcomponent, rpriority, rport, rrelport;
-	int res = 0;
-	if((res = sscanf(candidate, "%31s %30u %3s %30u %23s %30u typ %5s %*s %23s %*s %30u",
+	int res = sscanf(candidate, "%31s %30u %3s %30u %39s %30u typ %5s %*s %39s %*s %30u",
 		rfoundation, &rcomponent, rtransport, &rpriority,
-			rip, &rport, rtype, rrelip, &rrelport)) >= 7) {
+			rip, &rport, rtype, rrelip, &rrelport);
+	if(res < 7) {
+		/* Failed to parse this address, can it be IPv6? */
+		if(!janus_ice_is_ipv6_enabled()) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Received IPv6 candidate, but IPv6 support is disabled...\n", handle->handle_id);
+			return res;
+		}
+	}
+	if(res >= 7) {
 		/* Add remote candidate */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding remote candidate for component %d to stream %d\n", handle->handle_id, rcomponent, stream->stream_id);
 		component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(rcomponent));

@@ -244,9 +244,10 @@ typedef struct janus_streaming_session {
 	janus_streaming_mountpoint *mountpoint;
 	gboolean started;
 	gboolean stopping;
-	gboolean destroy;
+	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_streaming_session;
 static GHashTable *sessions;
+static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
 /* Packets we get from gstreamer and relay */
@@ -267,6 +268,45 @@ typedef struct janus_streaming_rtp_relay_packet {
 #define JANUS_STREAMING_ERROR_CANT_CREATE			456
 #define JANUS_STREAMING_ERROR_UNAUTHORIZED			457
 #define JANUS_STREAMING_ERROR_UNKNOWN_ERROR			470
+
+
+/* Streaming watchdog/garbage collector (sort of) */
+void *janus_streaming_watchdog(void *data);
+void *janus_streaming_watchdog(void *data) {
+	JANUS_LOG(LOG_INFO, "Streaming watchdog started\n");
+	gint64 now = 0;
+	while(initialized && !stopping) {
+		janus_mutex_lock(&sessions_mutex);
+		/* Iterate on all the sessions */
+		now = janus_get_monotonic_time();
+		if(old_sessions != NULL) {
+			GList *sl = old_sessions;
+			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			while(sl) {
+				janus_streaming_session *session = (janus_streaming_session *)sl->data;
+				if(!session || !initialized || stopping) {
+					sl = sl->next;
+					continue;
+				}
+				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					GList *rm = sl->next;
+					old_sessions = g_list_delete_link(old_sessions, sl);
+					sl = rm;
+					session->handle = NULL;
+					g_free(session);
+					session = NULL;
+					continue;
+				}
+				sl = sl->next;
+			}
+		}
+		janus_mutex_unlock(&sessions_mutex);
+		g_usleep(2000000);
+	}
+	JANUS_LOG(LOG_INFO, "Streaming watchdog stopped\n");
+	return NULL;
+}
 
 
 /* Plugin implementation */
@@ -506,6 +546,12 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	gateway = callback;
 
 	initialized = 1;
+	/* Start the sessions watchdog */
+	GThread *watchdog = g_thread_new("streaming watchdog", &janus_streaming_watchdog, NULL);
+	if(!watchdog) {
+		JANUS_LOG(LOG_FATAL, "Couldn't start Streaming watchdog...\n");
+		return -1;
+	}
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus streaming handler", janus_streaming_handler, NULL, &error);
@@ -579,6 +625,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	session->handle = handle;
 	session->mountpoint = NULL;	/* This will happen later */
 	session->started = FALSE;	/* This will happen later */
+	session->destroyed = 0;
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -608,7 +655,10 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroy = TRUE;
+	session->destroyed = janus_get_monotonic_time();
+	janus_mutex_lock(&sessions_mutex);
+	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
 
@@ -633,7 +683,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
 		goto error;
 	}
-	if(session->destroy) {
+	if(session->destroyed) {
 		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
 		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 		g_snprintf(error_cause, 512, "%s", "Session has already been destroyed...");
@@ -1483,7 +1533,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* TODO Only start streaming when we get this event */
 	session->started = TRUE;
@@ -1523,7 +1573,7 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
@@ -1561,7 +1611,7 @@ static void *janus_streaming_handler(void *data) {
 			janus_streaming_message_free(msg);
 			continue;
 		}
-		if(session->destroy) {
+		if(session->destroyed) {
 			janus_streaming_message_free(msg);
 			continue;
 		}
@@ -2020,7 +2070,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	/* Loop */
 	gint read = 0;
 	janus_streaming_rtp_relay_packet packet;
-	while(!stopping && !session->stopping && !session->destroy) {
+	while(!stopping && !session->stopping && !session->destroyed) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
 		d_s = now.tv_sec - before.tv_sec;

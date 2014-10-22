@@ -305,10 +305,10 @@ int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_list
 int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, char *transaction, char *event_text);
 
 
-/* Videoroom watchdog/garbage collector (sort of) */
+/* VideoRoom watchdog/garbage collector (sort of) */
 void *janus_videoroom_watchdog(void *data);
 void *janus_videoroom_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "Videoroom watchdog started\n");
+	JANUS_LOG(LOG_INFO, "VideoRoom watchdog started\n");
 	gint64 now = 0;
 	while(initialized && !stopping) {
 		janus_mutex_lock(&sessions_mutex);
@@ -335,6 +335,8 @@ void *janus_videoroom_watchdog(void *data) {
 					} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
 						janus_videoroom_muxed_listener_free(session->participant);
 					}
+					session->handle = NULL;
+					g_free(session);
 					continue;
 				}
 				sl = sl->next;
@@ -343,7 +345,7 @@ void *janus_videoroom_watchdog(void *data) {
 		janus_mutex_unlock(&sessions_mutex);
 		g_usleep(2000000);
 	}
-	JANUS_LOG(LOG_INFO, "Videoroom watchdog stopped\n");
+	JANUS_LOG(LOG_INFO, "VideoRoom watchdog stopped\n");
 	return NULL;
 }
 
@@ -464,7 +466,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	/* Start the sessions watchdog */
 	GThread *watchdog = g_thread_new("vroom watchdog", &janus_videoroom_watchdog, NULL);
 	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start videoroom watchdog...\n");
+		JANUS_LOG(LOG_FATAL, "Couldn't start VideoRoom watchdog...\n");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
@@ -547,6 +549,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	session->handle = handle;
 	session->participant_type = janus_videoroom_p_type_none;
 	session->participant = NULL;
+	session->destroyed = 0;
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1726,6 +1729,7 @@ static void *janus_videoroom_handler(void *data) {
 					} else if(participant->recording_active && participant->sdp) {
 						/* We've started recording, send a PLI/FIR and go on */
 						char filename[255];
+						gint64 now = janus_get_monotonic_time();
 						if(strstr(participant->sdp, "m=audio")) {
 							memset(filename, 0, 255);
 							if(participant->recording_base) {
@@ -1738,7 +1742,7 @@ static void *janus_videoroom_handler(void *data) {
 							} else {
 								/* Build a filename */
 								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
-									participant->room->room_id, participant->user_id, janus_get_monotonic_time());
+									participant->room->room_id, participant->user_id, now);
 								participant->arc = janus_recorder_create(participant->room->rec_dir, 0, filename);
 								if(participant->arc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
@@ -1757,7 +1761,7 @@ static void *janus_videoroom_handler(void *data) {
 							} else {
 								/* Build a filename */
 								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
-									participant->room->room_id, participant->user_id, janus_get_monotonic_time());
+									participant->room->room_id, participant->user_id, now);
 								participant->vrc = janus_recorder_create(participant->room->rec_dir, 1, filename);
 								if(participant->vrc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
@@ -2144,6 +2148,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Is this room recorded? */
 				if(videoroom->record || participant->recording_active) {
 					char filename[255];
+					gint64 now = janus_get_monotonic_time();
 					if(audio) {
 						memset(filename, 0, 255);
 						if(participant->recording_base) {
@@ -2156,7 +2161,7 @@ static void *janus_videoroom_handler(void *data) {
 						} else {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
-								videoroom->room_id, participant->user_id, janus_get_monotonic_time());
+								videoroom->room_id, participant->user_id, now);
 							participant->arc = janus_recorder_create(videoroom->rec_dir, 0, filename);
 							if(participant->arc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
@@ -2175,7 +2180,7 @@ static void *janus_videoroom_handler(void *data) {
 						} else {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
-								videoroom->room_id, participant->user_id, janus_get_monotonic_time());
+								videoroom->room_id, participant->user_id, now);
 							participant->vrc = janus_recorder_create(videoroom->rec_dir, 1, filename);
 							if(participant->vrc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");

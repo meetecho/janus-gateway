@@ -137,9 +137,10 @@ typedef struct janus_voicemail_session {
 	int seq;
 	gboolean started;
 	gboolean stopping;
-	gboolean destroy;
+	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_voicemail_session;
 static GHashTable *sessions;
+static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
 static char *recordings_path = NULL;
@@ -178,6 +179,45 @@ int ogg_flush(janus_voicemail_session *session);
 #define JANUS_VOICEMAIL_ERROR_ALREADY_RECORDING	465
 #define JANUS_VOICEMAIL_ERROR_IO_ERROR			466
 #define JANUS_VOICEMAIL_ERROR_LIBOGG_ERROR		467
+
+
+/* VoiceMail watchdog/garbage collector (sort of) */
+void *janus_voicemail_watchdog(void *data);
+void *janus_voicemail_watchdog(void *data) {
+	JANUS_LOG(LOG_INFO, "VoiceMail watchdog started\n");
+	gint64 now = 0;
+	while(initialized && !stopping) {
+		janus_mutex_lock(&sessions_mutex);
+		/* Iterate on all the sessions */
+		now = janus_get_monotonic_time();
+		if(old_sessions != NULL) {
+			GList *sl = old_sessions;
+			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			while(sl) {
+				janus_voicemail_session *session = (janus_voicemail_session *)sl->data;
+				if(!session || !initialized || stopping) {
+					sl = sl->next;
+					continue;
+				}
+				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					GList *rm = sl->next;
+					old_sessions = g_list_delete_link(old_sessions, sl);
+					sl = rm;
+					session->handle = NULL;
+					g_free(session);
+					session = NULL;
+					continue;
+				}
+				sl = sl->next;
+			}
+		}
+		janus_mutex_unlock(&sessions_mutex);
+		g_usleep(2000000);
+	}
+	JANUS_LOG(LOG_INFO, "VoiceMail watchdog stopped\n");
+	return NULL;
+}
 
 
 /* Plugin implementation */
@@ -226,15 +266,21 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 	/* Create the folder, if needed */
 	struct stat st = {0};
 	if(stat(recordings_path, &st) == -1) {
-		int res = mkdir(recordings_path, 0755);
+		int res = janus_mkdir(recordings_path, 0755);
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
-		if(res < 0) {
+		if(res != 0) {
 			JANUS_LOG(LOG_ERR, "%s", strerror(res));
 			return -1;	/* No point going on... */
 		}
 	}
 	
 	initialized = 1;
+	/* Start the sessions watchdog */
+	GThread *watchdog = g_thread_new("vmail watchdog", &janus_voicemail_watchdog, NULL);
+	if(!watchdog) {
+		JANUS_LOG(LOG_FATAL, "Couldn't start VoiceMail watchdog...\n");
+		return -1;
+	}
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus voicemail handler", janus_voicemail_handler, NULL, &error);
@@ -318,7 +364,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	session->seq = 0;
 	session->started = FALSE;
 	session->stopping = FALSE;
-	session->destroy = FALSE;
+	session->destroyed = 0;
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -338,7 +384,7 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	if(session->destroy) {
+	if(session->destroyed) {
 		JANUS_LOG(LOG_WARN, "Session already destroyed...\n");
 		return;
 	}
@@ -348,7 +394,10 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_unlock(&sessions_mutex);
 	janus_voicemail_hangup_media(handle);
 	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroy = TRUE;
+	session->destroyed = janus_get_monotonic_time();
+	janus_mutex_lock(&sessions_mutex);
+	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
 
 	return;
 }
@@ -382,7 +431,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* Only start recording this peer when we get this event */
 	session->start_time = janus_get_monotonic_time();
@@ -403,7 +452,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
-	if(!session || session->destroy || session->stopping || !session->started || session->start_time == 0)
+	if(!session || session->destroyed || session->stopping || !session->started || session->start_time == 0)
 		return;
 	gint64 now = janus_get_monotonic_time();
 	/* Have 10 seconds passed? */
@@ -451,10 +500,9 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	session->started = FALSE;
-	session->destroy = 1;
 	/* Close and reset stuff */
 	if(session->file)
 		fclose(session->file);
@@ -486,7 +534,7 @@ static void *janus_voicemail_handler(void *data) {
 			janus_voicemail_message_free(msg);
 			continue;
 		}
-		if(session->destroy) {
+		if(session->destroyed) {
 			janus_voicemail_message_free(msg);
 			continue;
 		}

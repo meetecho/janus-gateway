@@ -190,10 +190,11 @@ typedef struct janus_sip_session {
 	janus_sip_status status;
 	janus_sip_media media;
 	char *callee;
-	gboolean destroy;
+	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 	janus_mutex mutex;
 } janus_sip_session;
 static GHashTable *sessions;
+static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
 
@@ -270,6 +271,45 @@ gboolean janus_sip_is_ignored(const char *ip) {
 #define JANUS_SIP_ERROR_MISSING_SDP			448
 #define JANUS_SIP_ERROR_LIBSOFIA_ERROR		449
 #define JANUS_SIP_ERROR_IO_ERROR			450
+
+
+/* SIP watchdog/garbage collector (sort of) */
+void *janus_sip_watchdog(void *data);
+void *janus_sip_watchdog(void *data) {
+	JANUS_LOG(LOG_INFO, "SIP watchdog started\n");
+	gint64 now = 0;
+	while(initialized && !stopping) {
+		janus_mutex_lock(&sessions_mutex);
+		/* Iterate on all the sessions */
+		now = janus_get_monotonic_time();
+		if(old_sessions != NULL) {
+			GList *sl = old_sessions;
+			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			while(sl) {
+				janus_sip_session *session = (janus_sip_session *)sl->data;
+				if(!session || !initialized || stopping) {
+					sl = sl->next;
+					continue;
+				}
+				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					GList *rm = sl->next;
+					old_sessions = g_list_delete_link(old_sessions, sl);
+					sl = rm;
+					session->handle = NULL;
+					g_free(session);
+					session = NULL;
+					continue;
+				}
+				sl = sl->next;
+			}
+		}
+		janus_mutex_unlock(&sessions_mutex);
+		g_usleep(2000000);
+	}
+	JANUS_LOG(LOG_INFO, "SIP watchdog stopped\n");
+	return NULL;
+}
 
 
 /* Plugin implementation */
@@ -377,6 +417,12 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	gateway = callback;
 
 	initialized = 1;
+	/* Start the sessions watchdog */
+	GThread *watchdog = g_thread_new("sip watchdog", &janus_sip_watchdog, NULL);
+	if(!watchdog) {
+		JANUS_LOG(LOG_FATAL, "Couldn't start SIP watchdog...\n");
+		return -1;
+	}
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus sip handler", janus_sip_handler, NULL, &error);
@@ -482,6 +528,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
+	session->destroyed = 0;
 	su_home_init(session->stack->s_home);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
@@ -504,7 +551,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	if(session->destroy) {
+	if(session->destroyed) {
 		JANUS_LOG(LOG_VERB, "Session already destroyed...\n");
 		return;
 	}
@@ -516,7 +563,10 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	/* Shutdown the NUA */
 	nua_shutdown(session->stack->s_nua);
 	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroy = TRUE;
+	session->destroyed = janus_get_monotonic_time();
+	janus_mutex_lock(&sessions_mutex);
+	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
 
@@ -549,7 +599,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
@@ -560,7 +610,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 	if(gateway) {
 		/* Honour the audio/video active flags */
 		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
-		if(!session || session->destroy) {
+		if(!session || session->destroyed) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -594,7 +644,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		return;
 	if(gateway) {
 		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
-		if(!session || session->destroy) {
+		if(!session || session->destroyed) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -629,7 +679,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	if(session->status < janus_sip_status_inviting || session->status > janus_sip_status_incall)
 		return;
@@ -669,7 +719,7 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_message_free(msg);
 			continue;
 		}
-		if(session->destroy) {
+		if(session->destroyed) {
 			janus_sip_message_free(msg);
 			continue;
 		}
@@ -1991,7 +2041,7 @@ static void *janus_sip_relay_thread(void *data) {
 	FD_ZERO(&readfds);
 	char buffer[1500];
 	memset(buffer, 0, 1500);
-	while(session != NULL && !session->destroy &&
+	while(session != NULL && !session->destroyed &&
 			session->status > janus_sip_status_registered &&
 			session->status < janus_sip_status_closing) {	/* FIXME We need a per-call watchdog as well */
 		/* Wait for some data */
@@ -2008,7 +2058,7 @@ static void *janus_sip_relay_thread(void *data) {
 		resfd = select(maxfd+1, &readfds, NULL, NULL, &timeout);
 		if(resfd < 0)
 			break;
-		if(session == NULL || session->destroy ||
+		if(session == NULL || session->destroyed ||
 				session->status <= janus_sip_status_registered ||
 				session->status >= janus_sip_status_closing)
 			break;

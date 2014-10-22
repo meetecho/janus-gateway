@@ -39,12 +39,16 @@ html_DATA = README.md
 streamdir = $(datadir)/janus/streams
 stream_DATA = $(NULL)
 
+recordingsdir = $(datadir)/janus/recordings
+recordings_DATA = $(NULL)
+
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
 	    s|[@]confdir[@]|$(confdir)|;\
 	    s|[@]certdir[@]|$(certdir)|;\
 	    s|[@]plugindir[@]|$(plugindir)|;\
+	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
@@ -144,6 +148,23 @@ plugins_libjanus_echotest_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_echotest_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.echotest.cfg.sample
 EXTRA_DIST += conf/janus.plugin.echotest.cfg.sample
+endif
+
+if ENABLE_PLUGIN_RECORDPLAY
+plugin_LTLIBRARIES += plugins/libjanus_recordplay.la
+plugins_libjanus_recordplay_la_SOURCES = plugins/janus_recordplay.c
+plugins_libjanus_recordplay_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_recordplay_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_recordplay_la_LIBADD = $(plugins_libadd)
+conf_DATA += conf/janus.plugin.recordplay.cfg.sample
+recordings_DATA += \
+	plugins/recordings/1234.nfo \
+	plugins/recordings/rec-sample-audio.mjr \
+	plugins/recordings/rec-sample-video.mjr
+EXTRA_DIST += \
+	conf/janus.plugin.recordplay.cfg.sample.in \
+	$(recordings_DATA)
+CLEANFILES += conf/janus.plugin.recordplay.cfg.sample
 endif
 
 if ENABLE_PLUGIN_SIP

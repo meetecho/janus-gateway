@@ -439,6 +439,7 @@ done:
 			} else {
 				/* Something went wrong in either DTLS or SRTP... tell the plugin about it */
 				janus_dtls_callback(dtls->ssl, SSL_CB_ALERT, 0);
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 			}
 		}
 	}
@@ -509,7 +510,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		return;
 	}
 	janus_ice_handle *handle = stream->handle;
-	if(!stream) {
+	if(!handle) {
 		JANUS_LOG(LOG_ERR, "No ICE handle related to this alert...\n");
 		return;
 	}
@@ -519,6 +520,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert received on stream %"SCNu16", closing...\n", handle->handle_id, stream->stream_id);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		if(handle->iceloop)
