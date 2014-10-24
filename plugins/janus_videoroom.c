@@ -103,6 +103,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 void janus_videoroom_setup_media(janus_plugin_session *handle);
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
+void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
 
@@ -124,6 +125,7 @@ static janus_plugin janus_videoroom_plugin =
 		.setup_media = janus_videoroom_setup_media,
 		.incoming_rtp = janus_videoroom_incoming_rtp,
 		.incoming_rtcp = janus_videoroom_incoming_rtcp,
+		.incoming_data = janus_videoroom_incoming_data,
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
 	}; 
@@ -141,6 +143,7 @@ static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_videoroom_handler(void *data);
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
+static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data);
 
 typedef enum janus_videoroom_p_type {
 	janus_videoroom_p_type_none = 0,
@@ -253,6 +256,11 @@ typedef struct janus_videoroom_rtp_relay_packet {
 	gint is_video;
 } janus_videoroom_rtp_relay_packet;
 
+typedef struct janus_videoroom_data_relay_packet {
+	char *data;
+	gint length;
+} janus_videoroom_data_relay_packet;
+
 /* SDP offer/answer templates */
 #define OPUS_PT		111
 #define VP8_PT		100
@@ -261,7 +269,7 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
 		"s=%s\r\n"							/* Video room name */ \
 		"t=0 0\r\n" \
-		"%s%s"								/* Audio and/or video m-lines */
+		"%s%s%s"				/* Audio, video and/or data channel m-lines */
 #define sdp_a_template \
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
@@ -277,6 +285,11 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"a=rtcp-fb:%d nack\r\n"				/* VP8 payload type */ \
 		"a=rtcp-fb:%d nack pli\r\n"			/* VP8 payload type */ \
 		"a=rtcp-fb:%d goog-remb\r\n"		/* VP8 payload type */
+#define sdp_d_template \
+		"m=application 1 DTLS/SCTP 5000\r\n" \
+		"c=IN IP4 1.1.1.1\r\n" \
+		"a=%s\r\n"				/* Media direction */ \
+		"a=sctpmap:5000 webrtc-datachannel 16\r\n"
 
 
 /* Error codes */
@@ -1142,6 +1155,21 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 			}
 		}
 	}
+}
+
+void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+	if(handle == NULL || handle->stopped || stopping || !initialized || !gateway)
+		return;
+	if(buf == NULL || len <= 0)
+		return;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
+		return;
+	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+	janus_videoroom_data_relay_packet packet;
+	packet.data = buf;
+	packet.length = len;
+	g_slist_foreach(participant->listeners, janus_videoroom_relay_data_packet, &packet);
 }
 
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
@@ -2099,7 +2127,7 @@ static void *janus_videoroom_handler(void *data) {
 					participant->firefox = TRUE;
 				}
 				/* Which media are available? */
-				int audio = 0, video = 0;
+				int audio = 0, video = 0, data = 0;
 				if(strstr(msg->sdp, "m=audio")) {
 					audio++;
 				}
@@ -2108,11 +2136,17 @@ static void *janus_videoroom_handler(void *data) {
 					video++;
 				}
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT"); 
+#ifdef HAVE_SCTP
+				if(strstr(msg->sdp, "DTLS/SCTP")) {
+					data++;
+				}
+#endif
+				JANUS_LOG(LOG_VERB, "The publisher %s going to open a data channel\n", data ? "is" : "is NOT");
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
 				int b = 0;
 				if(participant->firefox)	/* Don't add any b=AS attribute for Chrome */
 					b = (int)(videoroom->bitrate/1000);
-				char sdp[1024], audio_mline[256], video_mline[512];
+				char sdp[1280], audio_mline[256], video_mline[512], data_mline[256];
 				if(audio) {
 					g_snprintf(audio_mline, 256, sdp_a_template,
 						OPUS_PT,						/* Opus payload type */
@@ -2134,12 +2168,19 @@ static void *janus_videoroom_handler(void *data) {
 				} else {
 					video_mline[0] = '\0';
 				}
-				g_snprintf(sdp, 1024, sdp_template,
+				if(data) {
+					g_snprintf(data_mline, 256, sdp_d_template,
+						"sendrecv");				/* Data channels can be safely open both ways */
+				} else {
+					data_mline[0] = '\0';
+				}
+				g_snprintf(sdp, 1280, sdp_template,
 					janus_get_monotonic_time(),		/* We need current time here */
 					janus_get_monotonic_time(),		/* We need current time here */
 					participant->room->room_name,	/* Video room name */
 					audio_mline,					/* Audio m-line, if any */
-					video_mline);					/* Video m-line, if any */
+					video_mline,					/* Video m-line, if any */
+					data_mline);					/* Data channel m-line, if any */
 
 				char *newsdp = g_strdup(sdp);
 				if(video && b == 0) {
@@ -2415,7 +2456,8 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 	 * that will translate to multiple SSRCs when merging the SDP */
 	int audio = 0, video = 0;
 	char audio_muxed[1024], video_muxed[1024], temp[255];
-	char sdp[2048], audio_mline[512], video_mline[512];
+	char sdp[2048], audio_mline[512], video_mline[512], data_mline[1];
+	data_mline[0] = '\0'; /* Multiplexed streams do not support data channels */
 	memset(audio_muxed, 0, 1024);
 	memset(video_muxed, 0, 1024);
 	memset(audio_mline, 0, 512);
@@ -2467,7 +2509,8 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 		janus_get_monotonic_time(),		/* We need current time here */
 		muxed_listener->room->room_name,	/* Video room name */
 		audio_mline,					/* Audio m-line */
-		video_mline);					/* Video m-line */
+		video_mline,					/* Video m-line */
+		data_mline);					/* Data channel m-line */
 	char *newsdp = g_strdup(sdp);
 	if(video) {
 		/* Remove useless bandwidth attribute, if any */
@@ -2517,6 +2560,32 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 	return;
 }
 
+static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data) {
+	janus_videoroom_data_relay_packet *packet = (janus_videoroom_data_relay_packet *)user_data;
+	janus_videoroom_listener *listener = (janus_videoroom_listener *)data;
+	if(!listener || !listener->session) {
+		return;
+	}
+	if(listener->paused) {
+		return;
+	}
+	janus_videoroom_session *session = listener->session;
+	if(!session || !session->handle) {
+		return;
+	}
+	if(!session->started) {
+		return;
+	}
+	if(gateway != NULL) {
+		char text[1<<16];
+		memset(text, 0, 1<<16);
+		memcpy(text, packet->data, packet->length);
+		text[packet->length] = '\0';
+		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+		gateway->relay_data(session->handle, text, strlen(text));
+	}
+	return;
+}
 
 /* Helper to free janus_videoroom structs. */
 static void janus_videoroom_free(janus_videoroom *room) {
