@@ -1857,29 +1857,30 @@ static void *janus_videoroom_handler(void *data) {
 				listener->paused = FALSE;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
-				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
 				json_object_set_new(event, "started", json_string("ok"));
-				/* Send a FIR */
-				char buf[20];
-				memset(buf, 0, 20);
-				if(!publisher->firefox)
-					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
-				else
-					janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
-				JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
-				gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
-				/* Send a PLI too, just in case... */
-				memset(buf, 0, 12);
-				janus_rtcp_pli((char *)&buf, 12);
-				JANUS_LOG(LOG_VERB, "Resuming publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
-				gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+				if(publisher) {
+					/* Send a FIR */
+					char buf[20];
+					memset(buf, 0, 20);
+					if(!publisher->firefox)
+						janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
+					else
+						janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
+					JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+					gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
+					/* Send a PLI too, just in case... */
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					JANUS_LOG(LOG_VERB, "Resuming publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+					gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+				}
 			} else if(!strcasecmp(request_text, "pause")) {
 				/* Stop receiving the publisher streams for a while */
-				janus_videoroom_participant *publisher = listener->feed;
 				listener->paused = TRUE;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
-				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
 				json_object_set_new(event, "paused", json_string("ok"));
 			} else if(!strcasecmp(request_text, "leave")) {
 				janus_videoroom_participant *publisher = listener->feed;
@@ -1891,7 +1892,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
-				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
 				json_object_set_new(event, "left", json_string("ok"));
 				session->started = FALSE;
 			} else {
