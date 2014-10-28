@@ -233,10 +233,19 @@ typedef struct janus_videoroom_participant {
 } janus_videoroom_participant;
 static void janus_videoroom_participant_free(janus_videoroom_participant *p);
 
+typedef struct janus_videoroom_listener_context {
+	/* Needed to fix seq and ts in case of publisher switching */
+	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
+			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
+	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
+			v_last_seq, v_base_seq, v_base_seq_prev;
+} janus_videoroom_listener_context;
+
 typedef struct janus_videoroom_listener {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	janus_videoroom_participant *feed;	/* Participant this listener is subscribed to */
+	janus_videoroom_listener_context context;	/* Needed in case there are publisher switches on this listener */
 	struct janus_videoroom_listener_muxed *parent;	/* Overall subscriber, if this is a sub-listener in a Multiplexed one */
 	gboolean paused;
 } janus_videoroom_listener;
@@ -251,9 +260,12 @@ typedef struct janus_videoroom_listener_muxed {
 static void janus_videoroom_muxed_listener_free(janus_videoroom_listener_muxed *l);
 
 typedef struct janus_videoroom_rtp_relay_packet {
-	char *data;
+	rtp_header *data;
 	gint length;
 	gint is_video;
+	uint32_t timestamp;
+	uint16_t seq_number;
+
 } janus_videoroom_rtp_relay_packet;
 
 typedef struct janus_videoroom_data_relay_packet {
@@ -947,7 +959,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		return result;
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
-			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "stop")
+			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "switch") || !strcasecmp(request_text, "stop")
 			|| !strcasecmp(request_text, "add") || !strcasecmp(request_text, "remove") || !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
 		goto async;
@@ -1077,9 +1089,13 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			janus_recorder_save_frame(participant->arc, buf, len);
 		/* Done, relay it */
 		janus_videoroom_rtp_relay_packet packet;
-		packet.data = buf;
+		packet.data = rtp;
 		packet.length = len;
 		packet.is_video = video;
+		/* Backup the actual timestamp and sequence number set by the publisher, in case switching is involved */
+		packet.timestamp = ntohl(packet.data->timestamp);
+		packet.seq_number = ntohs(packet.data->seq_number);
+		/* Go */
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
 		if(video && participant->video_active && (participant->room->fir_freq > 0)) {
 			/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
@@ -1545,6 +1561,22 @@ static void *janus_videoroom_handler(void *data) {
 					listener->session = session;
 					listener->room = videoroom;
 					listener->feed = publisher;
+					/* Initialize the listener context */
+					listener->context.a_last_ssrc = 0;
+					listener->context.a_last_ssrc = 0;
+					listener->context.a_last_ts = 0;
+					listener->context.a_base_ts = 0;
+					listener->context.a_base_ts_prev = 0;
+					listener->context.v_last_ssrc = 0;
+					listener->context.v_last_ts = 0;
+					listener->context.v_base_ts = 0;
+					listener->context.v_base_ts_prev = 0;
+					listener->context.a_last_seq = 0;
+					listener->context.a_base_seq = 0;
+					listener->context.a_base_seq_prev = 0;
+					listener->context.v_last_seq = 0;
+					listener->context.v_base_seq = 0;
+					listener->context.v_base_seq_prev = 0;
 					listener->paused = TRUE;	/* We need an explicit start from the listener */
 					listener->parent = NULL;
 					session->participant = listener;
@@ -1910,6 +1942,67 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(listener->room->room_id));
 				json_object_set_new(event, "paused", json_string("ok"));
+			} else if(!strcasecmp(request_text, "switch")) {
+				/* This listener wants to switch to a different publisher */
+				json_t *feed = json_object_get(root, "feed");
+				if(!feed) {
+					JANUS_LOG(LOG_ERR, "Missing element (feed)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
+					g_snprintf(error_cause, 512, "Missing element (feed)");
+					goto error;
+				}
+				if(!json_is_integer(feed)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feed should be an integer)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (feed should be an integer)");
+					goto error;
+				}
+				guint64 feed_id = json_integer_value(feed);
+				janus_videoroom_participant *publisher = g_hash_table_lookup(listener->room->participants, GUINT_TO_POINTER(feed_id));
+				if(publisher == NULL || publisher->sdp == NULL) {
+					JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
+					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+					g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
+					goto error;
+				}
+				gboolean paused = listener->paused;
+				listener->paused = TRUE;
+				/* Unsubscribe from the previous publisher */
+				janus_videoroom_participant *prev_feed = listener->feed;
+				if(prev_feed) {
+					janus_mutex_lock(&prev_feed->listeners_mutex);
+					prev_feed->listeners = g_slist_remove(prev_feed->listeners, listener);
+					janus_mutex_unlock(&prev_feed->listeners_mutex);
+					listener->feed = NULL;
+				}
+				/* Subscribe to the new one */
+				janus_mutex_lock(&publisher->listeners_mutex);
+				publisher->listeners = g_slist_append(publisher->listeners, listener);
+				janus_mutex_unlock(&publisher->listeners_mutex);
+				listener->feed = publisher;
+				/* Send a FIR to the new publisher */
+				char buf[20];
+				memset(buf, 0, 20);
+				if(!publisher->firefox)
+					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
+				else
+					janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
+				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+				gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
+				/* Send a PLI too, just in case... */
+				memset(buf, 0, 12);
+				janus_rtcp_pli((char *)&buf, 12);
+				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+				gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+				/* Done */
+				listener->paused = paused;
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "switched", json_string("ok"));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
+				json_object_set_new(event, "id", json_integer(feed_id));
+				if(publisher->display)
+					json_object_set_new(event, "display", json_string(publisher->display));
 			} else if(!strcasecmp(request_text, "leave")) {
 				janus_videoroom_participant *publisher = listener->feed;
 				if(publisher != NULL) {
@@ -2555,8 +2648,50 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		// JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
-	if(gateway != NULL)	/* FIXME What about RTCP? */
-		gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+	
+	/* Make sure there hasn't been a publisher switch by checking the SSRC */
+	if(packet->is_video) {
+		if(ntohl(packet->data->ssrc) != listener->context.v_last_ssrc) {
+			listener->context.v_last_ssrc = ntohl(packet->data->ssrc);
+			listener->context.v_base_ts_prev = listener->context.v_last_ts;
+			listener->context.v_base_ts = packet->timestamp;
+			listener->context.v_base_seq_prev = listener->context.v_last_seq;
+			listener->context.v_base_seq = packet->seq_number;
+		}
+		/* Compute a coherent timestamp and sequence number */
+		listener->context.v_last_ts = (packet->timestamp-listener->context.v_base_ts)
+			+ listener->context.v_base_ts_prev+4500;	/* FIXME When switching, we assume 15fps */
+		listener->context.v_last_seq = (packet->seq_number-listener->context.v_base_seq)+listener->context.v_base_seq_prev+1;
+		/* Update the timestamp and sequence number in the RTP packet, and send it */
+		packet->data->timestamp = htonl(listener->context.v_last_ts);
+		packet->data->seq_number = htons(listener->context.v_last_seq);
+		if(gateway != NULL)
+			gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+		/* Restore the timestamp and sequence number to what the publisher set them to */
+		packet->data->timestamp = htonl(packet->timestamp);
+		packet->data->seq_number = htons(packet->seq_number);
+	} else {
+		if(ntohl(packet->data->ssrc) != listener->context.a_last_ssrc) {
+			listener->context.a_last_ssrc = ntohl(packet->data->ssrc);
+			listener->context.a_base_ts_prev = listener->context.a_last_ts;
+			listener->context.a_base_ts = packet->timestamp;
+			listener->context.a_base_seq_prev = listener->context.a_last_seq;
+			listener->context.a_base_seq = packet->seq_number;
+		}
+		/* Compute a coherent timestamp and sequence number */
+		listener->context.a_last_ts = (packet->timestamp-listener->context.a_base_ts)
+			+ listener->context.a_base_ts_prev+960;	/* FIXME When switching, we assume Opus and so a 960 ts step */
+		listener->context.a_last_seq = (packet->seq_number-listener->context.a_base_seq)+listener->context.a_base_seq_prev+1;
+		/* Update the timestamp and sequence number in the RTP packet, and send it */
+		packet->data->timestamp = htonl(listener->context.a_last_ts);
+		packet->data->seq_number = htons(listener->context.a_last_seq);
+		if(gateway != NULL)
+			gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+		/* Restore the timestamp and sequence number to what the publisher set them to */
+		packet->data->timestamp = htonl(packet->timestamp);
+		packet->data->seq_number = htons(packet->seq_number);
+	}
+
 	return;
 }
 
