@@ -1307,7 +1307,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "session_id", json_integer(session->session_id));
 			json_object_set_new(reply, "sender", json_integer(handle->handle_id));
-			json_object_set_new(reply, "transaction_text", json_string(transaction_text));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
 			json_object_set(plugin_data, "data", event);
