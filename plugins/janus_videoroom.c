@@ -329,6 +329,35 @@ int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listen
 int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_listener, GList *feeds, char *transaction);
 int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, char *transaction, char *event_text);
 
+/* Convenience function for freeing a session */
+static void session_free(gpointer data) {
+	if(data) {
+		janus_videoroom_session* session = (janus_videoroom_session*)data;
+		switch(session->participant_type) {
+		case janus_videoroom_p_type_publisher: 
+			janus_videoroom_participant_free(session->participant);
+			break;   
+		case janus_videoroom_p_type_subscriber:
+			janus_videoroom_listener_free(session->participant);
+			break;
+		case janus_videoroom_p_type_subscriber_muxed:
+			janus_videoroom_muxed_listener_free(session->participant);
+			break;
+		default:
+			break;
+		}
+		session->handle = NULL;
+		g_free(session);
+	}
+}
+
+/* Convenience wrapper function for session_free that corresponds to GHRFunc() format for hash table cleanup */
+static gboolean session_hash_table_remove(gpointer key, gpointer value, gpointer not_used) {
+	if(value) {
+		session_free(value);
+	}
+	return TRUE;
+}
 
 /* VideoRoom watchdog/garbage collector (sort of) */
 void *janus_videoroom_watchdog(void *data);
@@ -344,7 +373,11 @@ void *janus_videoroom_watchdog(void *data) {
 			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_videoroom_session *session = (janus_videoroom_session *)sl->data;
-				if(!session || !initialized || stopping) {
+				/* If we are stopping, their is no point to continue to iterate */
+				if(!initialized || stopping) {
+					break;
+				}
+				if(!session) {
 					sl = sl->next;
 					continue;
 				}
@@ -353,15 +386,8 @@ void *janus_videoroom_watchdog(void *data) {
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
-					if(session->participant_type == janus_videoroom_p_type_publisher) {
-						janus_videoroom_participant_free(session->participant);
-					} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
-						janus_videoroom_listener_free(session->participant);
-					} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
-						janus_videoroom_muxed_listener_free(session->participant);
-					}
-					session->handle = NULL;
-					g_free(session);
+					g_hash_table_steal(sessions, session->handle);
+					session_free(session);
 					continue;
 				}
 				sl = sl->next;
@@ -518,11 +544,13 @@ void janus_videoroom_destroy(void) {
 
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
+	g_hash_table_foreach_remove(sessions, (GHRFunc)session_hash_table_remove, NULL);
 	g_hash_table_destroy(sessions);
 	sessions = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 
 	janus_mutex_lock(&rooms_mutex);
+
 	g_hash_table_destroy(rooms);
 	rooms = NULL;
 	janus_mutex_unlock(&rooms_mutex);
@@ -795,7 +823,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				goto error;
 			}
 		}
-		/* Create the audio bridge room */
+		/* Create the room */
 		janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
 		if(videoroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
@@ -900,23 +928,25 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 			goto error;
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		if(videoroom->room_secret) {
 			/* A secret is required for this action */
 			json_t *secret = json_object_get(root, "secret");
 			if(!secret) {
+				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 				g_snprintf(error_cause, 512, "Missing element (secret)");
 				goto error;
 			}
 			if(!json_is_string(secret)) {
+				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
 			if(strcmp(videoroom->room_secret, json_string_value(secret))) {
+				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
@@ -929,7 +959,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(destroyed, "videoroom", json_string("destroyed"));
 		json_object_set_new(destroyed, "room", json_integer(videoroom->room_id));
 		char *destroyed_text = json_dumps(destroyed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		janus_mutex_lock(&rooms_mutex);
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, videoroom->participants);
@@ -945,7 +974,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		json_decref(destroyed);
 		/* Remove room */
-		janus_mutex_lock(&rooms_mutex);
 		g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
 		janus_mutex_unlock(&rooms_mutex);
 		/* Done */
