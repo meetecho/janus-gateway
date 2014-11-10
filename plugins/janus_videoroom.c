@@ -744,7 +744,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
 		goto error;
 	}
-	/* Some requests ('create', 'destroy', 'exists', 'list', 'details') can be handled synchronously */
+	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "create")) {
 		/* Create a new videoroom */
