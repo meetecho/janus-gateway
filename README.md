@@ -132,7 +132,7 @@ Once you have installed all the dependencies, just use:
 
 	sh autogen.sh
 
-to generate the configure file. After that, configure and compile as
+to generate the configure file (Note that this requires the 'autoconf' package on debian). After that, configure and compile as
 usual to start the whole compilation process:
 
 	./configure --prefix=/opt/janus
