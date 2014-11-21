@@ -3857,7 +3857,6 @@ gint main(int argc, char *argv[])
 					!janus_plugin->get_description ||
 					!janus_plugin->get_package ||
 					!janus_plugin->get_name ||
-					!janus_plugin->get_name ||
 					!janus_plugin->create_session ||
 					!janus_plugin->handle_message ||
 					!janus_plugin->setup_media ||
