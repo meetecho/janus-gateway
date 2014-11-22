@@ -902,6 +902,7 @@ static void *janus_recordplay_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Not a playout session, can't start\n");
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
 				g_snprintf(error_cause, 512, "Not a playout session, can't start");
+				goto error;
 			}
 			/* Just a final message we make use of, e.g., to receive an ANSWER to our OFFER for a playout */
 			if(!msg->sdp) {

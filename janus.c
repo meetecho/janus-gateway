@@ -767,9 +767,19 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	const gchar *message_text = json_string_value(message);
 	
 	if(session_id == 0 && handle_id == 0) {
-		/* Can only be a 'Create new session' or 'Get info' request */
+		/* Can only be a 'Create new session', a 'Get info' or a 'Ping/Pong' request */
 		if(!strcasecmp(message_text, "info")) {
 			ret = janus_process_success(source, "application/json", g_strdup(info_text));
+			goto jsondone;
+		}
+		if(!strcasecmp(message_text, "ping")) {
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("pong"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			ret = janus_process_success(source, "application/json", g_strdup(reply_text));
 			goto jsondone;
 		}
 		if(strcasecmp(message_text, "create")) {

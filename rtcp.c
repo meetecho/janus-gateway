@@ -383,6 +383,48 @@ int janus_rtcp_remove_nacks(char *packet, int len) {
 	return len;
 }
 
+/* Query an existing REMB message */
+uint64_t janus_rtcp_get_remb(char *packet, int len) {
+	if(packet == NULL || len == 0)
+		return 0;
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return 0;
+	/* Get REMB bitrate, if any */
+	int total = len;
+	while(rtcp) {
+		if(rtcp->type == RTCP_PSFB) {
+			gint fmt = rtcp->rc;
+			if(fmt == 15) {
+				rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
+				rtcp_remb *remb = (rtcp_remb *)rtcpfb->fci;
+				if(remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
+					/* FIXME From rtcp_utility.cc */
+					unsigned char *_ptrRTCPData = (unsigned char *)remb;
+					_ptrRTCPData += 4;	/* Skip unique identifier and num ssrc */
+					//~ JANUS_LOG(LOG_VERB, " %02X %02X %02X %02X\n", _ptrRTCPData[0], _ptrRTCPData[1], _ptrRTCPData[2], _ptrRTCPData[3]);
+					uint8_t brExp = (_ptrRTCPData[1] >> 2) & 0x3F;
+					uint32_t brMantissa = (_ptrRTCPData[1] & 0x03) << 16;
+					brMantissa += (_ptrRTCPData[2] << 8);
+					brMantissa += (_ptrRTCPData[3]);
+					uint64_t bitrate = brMantissa << brExp;
+					JANUS_LOG(LOG_VERB, "Got REMB bitrate %"SCNu64"\n", bitrate);
+					return bitrate;
+				}
+			}
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return 0;
+}
+
 /* Change an existing REMB message */
 int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate) {
 	if(packet == NULL || len == 0)

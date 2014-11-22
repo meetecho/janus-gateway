@@ -857,6 +857,71 @@ GET http://host:port/janus/<sessionid>?max_events=5
 }
 \endverbatim
  *
+ * If you're going to \c trickle candidates rather than including them
+ * all in an SDP OFFER or ANSWER, there is an ad-hoc message you can use
+ * to do so which is called, unsurprisingly, \c trickle and which you
+ * can use to send one or more trickle candidates to Janus. Since such
+ * a message is related to a specific PeerConnection, it will need to be
+ * addressed to the right Handle just as the \c message introduced
+ * previously. A \c trickle message can contain three different kind of
+ * information:
+ *
+ *  - a single trickle candidate;
+ *  - an array of trickle candidates;
+ *  - a null candidate or a \c completed JSON object to notify the end of the
+ * candidates.
+ *
+ * This is an example of a single candidate being trickled:
+ *
+\verbatim
+{
+	"janus" : "trickle",
+	"transaction" : "hehe83hd8dw12e",
+	"candidate" : {
+		"sdpMid" : "video",
+		"sdpMLineIndex" : 1,
+		"candidate" : "..."
+	}
+}
+\endverbatim
+ *
+ * This, instead, is an example of how to group more trickle candidates
+ * in a single request (particularly useful if you're wrapping Janus in
+ * your server and want to reduce the number of transactions):
+ *
+\verbatim
+{
+	"janus" : "trickle",
+	"transaction" : "hehe83hd8dw12e",
+	"candidate" : [ 
+		{
+			"sdpMid" : "video",
+			"sdpMLineIndex" : 1,
+			"candidate" : "..."
+		},
+		{
+			"sdpMid" : "video",
+			"sdpMLineIndex" : 1,
+			"candidate" : "..."
+		},
+		[..]
+	]
+}
+\endverbatim
+ *
+ * Finally, this is how you can tell Janus that you sent all the trickle
+ * candidates that were gathered:
+ *
+\verbatim
+{
+	"janus" : "trickle",
+	"transaction" : "hehe83hd8dw12e",
+	"candidate" : {
+		"completed" : true
+	}
+}
+\endverbatim
+ *
  * Plugins may handle this requests synchronously or asynchronously. In
  * the former, plugins would return a response to the request itself
  * immediately; in the latter, instead, the plugin would only notify a

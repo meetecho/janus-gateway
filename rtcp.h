@@ -216,6 +216,12 @@ GSList *janus_rtcp_get_nacks(char *packet, int len);
  * have been handled. */
 int janus_rtcp_remove_nacks(char *packet, int len);
 
+/*! \brief Inspect an existing RTCP REMB message to retrieve the reported bitrate
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns The reported bitrate if successful, 0 if no REMB packet was available */
+uint64_t janus_rtcp_get_remb(char *packet, int len);
+
 /*! \brief Method to modify an existing RTCP REMB message to cap the reported bitrate
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes

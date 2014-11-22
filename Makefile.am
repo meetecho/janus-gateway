@@ -14,7 +14,7 @@ AM_CFLAGS += -Wredundant-decls  # sophiasip also contains redundant declarations
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
 
-AM_CFLAGS += -fstack-protector-all -g -ggdb -rdynamic
+AM_CFLAGS += -fstack-protector-all -g -ggdb -fPIC -rdynamic
 
 # FIXME: make docs work with distcheck
 DISTCHECK_CONFIGURE_FLAGS = --disable-docs --enable-post-processing
