@@ -1919,7 +1919,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
 			json_object_set_new(status, "log_level", json_integer(log_level));
-			json_object_set_new(status, "locking_debug", json_integer(0));
+			json_object_set_new(status, "locking_debug", json_integer(lock_debug));
+			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
 			json_object_set_new(reply, "status", status);
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -1977,6 +1978,34 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "debug", json_integer(lock_debug));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_max_nack_queue")) {
+			/* Change the current value for the max NACK queue */
+			json_t *mnq = json_object_get(root, "max_nack_queue");
+			if(!mnq) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (max_nack_queue)");
+				goto jsondone;
+			}
+			if(!json_is_integer(mnq)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be an integer)");
+				goto jsondone;
+			}
+			int mnq_num = json_integer_value(mnq);
+			if(mnq_num < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be a positive integer)");
+				goto jsondone;
+			}
+			janus_set_max_nack_queue(mnq_num);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
@@ -3589,6 +3618,11 @@ gint main(int argc, char *argv[])
 	if(args_info.ipv6_candidates_given) {
 		janus_config_add_item(config, "media", "ipv6", "true");
 	}
+	if(args_info.max_nack_queue_given) {
+		char mnq[20];
+		g_snprintf(mnq, 20, "%d", args_info.max_nack_queue_arg);
+		janus_config_add_item(config, "media", "max_nack_queue", mnq);
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
@@ -3773,6 +3807,15 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
 	}
+	item = janus_config_get_item_drilldown(config, "media", "max_nack_queue");
+	if(item && item->value) {
+		int mnq = atoi(item->value);
+		if(mnq < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's not a positive integer\n");
+		} else {
+			janus_set_max_nack_queue(mnq);
+		}
+	}
 
 	/* Is there a public_ip value to be used for NAT traversal instead? */
 	item = janus_config_get_item_drilldown(config, "nat", "public_ip");
@@ -3866,6 +3909,7 @@ gint main(int argc, char *argv[])
 					!janus_plugin->get_version_string ||
 					!janus_plugin->get_description ||
 					!janus_plugin->get_package ||
+					!janus_plugin->get_name ||
 					!janus_plugin->get_name ||
 					!janus_plugin->create_session ||
 					!janus_plugin->handle_message ||

@@ -236,6 +236,9 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
 					rtcp_remb *remb = (rtcp_remb *)rtcpfb->fci;
 					if(remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
 						JANUS_LOG(LOG_HUGE, "     #%d REMB -- PSFB (206)\n", pno);
+						if(fixssrc && newssrcr) {
+							remb->ssrc[0] = htonl(newssrcr);
+						}
 						/* FIXME From rtcp_utility.cc */
 						unsigned char *_ptrRTCPData = (unsigned char *)remb;
 						_ptrRTCPData += 4;	// Skip unique identifier and num ssrc
@@ -248,10 +251,6 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
 						uint64_t bitRate = brMantissa << brExp;
 						JANUS_LOG(LOG_HUGE, "       -- -- -- REMB: %u * 2^%u = %"SCNu64" (%d SSRCs, %u)\n",
 							brMantissa, brExp, bitRate, numssrc, ntohl(remb->ssrc[0]));
-
-						if(fixssrc && newssrcr) {
-							remb->ssrc[0] = htonl(newssrcr);
-						}
 					} else {
 						JANUS_LOG(LOG_HUGE, "     #%d AFB ?? -- PSFB (206)\n", pno);
 					}
@@ -269,6 +268,7 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
 		}
 		/* Is this a compound packet? */
 		int length = ntohs(rtcp->length);
+		JANUS_LOG(LOG_HUGE, "       RTCP PT length: %d bytes\n", length*4+4);
 		if(length == 0) {
 			//~ JANUS_LOG(LOG_HUGE, "  0-length, end of compound packet\n");
 			break;

@@ -132,7 +132,7 @@ Once you have installed all the dependencies, just use:
 
 	sh autogen.sh
 
-to generate the configure file (Note that this requires the 'autoconf' package on debian). After that, configure and compile as
+to generate the configure file. After that, configure and compile as
 usual to start the whole compilation process:
 
 	./configure --prefix=/opt/janus
@@ -221,6 +221,8 @@ or on the command line:
                                   vmnet8,192.168.0.1,10.0.0.1 or 
                                   vmnet,192.168., default=vmnet)
 	-e, --public-ip=ipaddress     Public address of the machine, to use in SDP
+	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for 
+                                  retransmissions
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-d, --debug-level=1-7         Debug/logging level (0=disable debugging, 

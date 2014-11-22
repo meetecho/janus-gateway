@@ -53,6 +53,12 @@ gboolean janus_ice_is_ignored(const char *ip);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
+/*! \brief Method to modify the max NACK value (i.e., the number of packets per handle to store for retransmissions)
+ * @param[in] mnq The new max NACK value */
+void janus_set_max_nack_queue(uint mnq);
+/*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
+ * @returns The current max NACK value */
+uint janus_get_max_nack_queue(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state

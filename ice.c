@@ -102,7 +102,15 @@ gboolean janus_is_rtcp(gchar *buf) {
 
 
 /* Maximum value for the NACK queue */
-#define MAX_NACK_QUEUE	300
+#define DEFAULT_MAX_NACK_QUEUE	300
+static uint max_nack_queue = DEFAULT_MAX_NACK_QUEUE;
+void janus_set_max_nack_queue(uint mnq) {
+	max_nack_queue = mnq;
+	JANUS_LOG(LOG_VERB, "Setting max NACK queue to %d\n", max_nack_queue);
+}
+uint janus_get_max_nack_queue(void) {
+	return max_nack_queue;
+}
 
 
 /* libnice initialization */
@@ -1506,7 +1514,7 @@ void *janus_ice_send_thread(void *data) {
 						p->length = protected;
 						janus_mutex_lock(&component->mutex);
 						component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
-						if(g_list_length(component->retransmit_buffer) > MAX_NACK_QUEUE) {
+						if(g_list_length(component->retransmit_buffer) > max_nack_queue) {
 							/* We only keep a limited window of packets, get rid of the oldest one */
 							GList *first = g_list_first(component->retransmit_buffer);
 							p = (janus_rtp_packet *)first->data;
