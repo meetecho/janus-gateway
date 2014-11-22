@@ -744,7 +744,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
 		goto error;
 	}
-	/* Some requests ('create' and 'destroy') can be handled synchronously */
+	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "create")) {
 		/* Create a new videoroom */
@@ -980,6 +980,59 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *response = json_object();
 		json_object_set_new(response, "videoroom", json_string("destroyed"));
 		json_object_set_new(response, "room", json_integer(room_id));
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
+	//lists rooms and their details, does not show the secret of course...	
+	} else if(!strcasecmp(request_text, "list")) {
+		json_t *list = json_array();
+		JANUS_LOG(LOG_VERB, "Request for the list for all video rooms\n");
+		janus_mutex_lock(&rooms_mutex);
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, rooms);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_videoroom *room = value;
+			json_t *rl = json_object();
+			json_object_set_new(rl, "room", json_integer(room->room_id));
+			json_object_set_new(rl, "description", json_string(room->room_name));
+			json_object_set_new(rl, "max_publishers", json_integer(room->max_publishers));
+			json_object_set_new(rl, "bitrate", json_integer(room->bitrate));
+			json_object_set_new(rl, "fir_freq", json_integer(room->fir_freq));
+			json_object_set_new(rl, "record", json_boolean(room->record));
+			json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
+			//TODO: Possibly list participant details...or make it a separate API call for a specific room
+			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
+			json_array_append_new(list, rl);
+		}
+		janus_mutex_unlock(&rooms_mutex);
+		json_t *response = json_object();
+		json_object_set_new(response, "videoroom", json_string("success"));
+		json_object_set_new(response, "list", list);
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
+	//returns whether a given room exists or not, no details given.	
+	} else if(!strcasecmp(request_text, "exists")) {
+		json_t *room = json_object_get(root, "room");
+		if(!room || !json_is_integer(room)) {
+			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be an integer\n");
+			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (room)");
+			goto error;
+		}
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		gboolean room_exists = g_hash_table_contains(rooms, GUINT_TO_POINTER(room_id));
+		janus_mutex_unlock(&rooms_mutex);
+		json_t *response = json_object();
+		json_object_set_new(response, "videoroom", json_string("success"));
+		json_object_set_new(response, "room", json_integer(room_id));
+		json_object_set_new(response, "exists", json_boolean(room_exists));
 		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(response);
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);

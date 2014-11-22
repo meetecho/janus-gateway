@@ -51,7 +51,7 @@ typedef struct janus_recorder {
  * @param[in] video If this recorder is for video or audio
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
-janus_recorder *janus_recorder_create(char *dir, int video, char *filename);
+janus_recorder *janus_recorder_create(const char *dir, int video, const char *filename);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save
