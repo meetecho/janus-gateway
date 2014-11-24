@@ -1481,6 +1481,8 @@ void *janus_ice_send_thread(void *data) {
 				component->noerrorlog = 0;
 				if(pkt->encrypted) {
 					/* Already RTP (probably a retransmission?) */
+					rtp_header *header = (rtp_header *)pkt->data;
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] ... Retransmitting seq.nr %"SCNu16"\n\n", handle->handle_id, ntohs(header->seq_number));
 					int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, pkt->length, (const gchar *)pkt->data);
 					if(sent < pkt->length) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, pkt->length);
