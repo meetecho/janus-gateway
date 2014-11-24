@@ -783,7 +783,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS we should handle...\n", handle->handle_id);
 					GSList *list = nacks;
 					janus_mutex_lock(&component->mutex);
-					while(list->next) {
+					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
 						JANUS_LOG(LOG_HUGE, "  >> %u\n", seqnr);
 						GList *rp = component->retransmit_buffer;
@@ -793,7 +793,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 								rtp_header *rh = (rtp_header *)p->data;
 								if(ntohs(rh->seq_number) == seqnr) {
 									/* Retransmit this packet */
-									JANUS_LOG(LOG_HUGE, "  >> >> Retransmitting!\n");
+									JANUS_LOG(LOG_HUGE, "  >> >> Scheduling %u for retransmission!\n", seqnr);
 									/* Enqueue it */
 									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
 									pkt->data = calloc(p->length, sizeof(char));
@@ -803,6 +803,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 									pkt->control = FALSE;
 									pkt->encrypted = TRUE;	/* This was already encrypted before */
 									g_async_queue_push(handle->queued_packets, pkt);
+									break;
 								}
 							}
 							rp = rp->next;
