@@ -222,6 +222,7 @@ typedef struct janus_videoroom_participant {
 	gboolean video_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
+	gint64 remb_latest;	/* Time of latest sent REMB (to avoid flooding) */
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
 	gboolean recording_active;	/* Whether this publisher has to be recorded or not */
@@ -1105,10 +1106,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 					/* Send a FIR */
 					char buf[20];
 					memset(buf, 0, 20);
-					if(!p->firefox)
-						janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
-					else
-						janus_rtcp_fir_legacy((char *)&buf, 20, &p->fir_seq);
+					janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
 					JANUS_LOG(LOG_VERB, "New listener available, sending FIR to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, buf, 20);
 					/* Send a PLI too, just in case... */
@@ -1132,10 +1130,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 						/* Send a FIR */
 						char buf[20];
 						memset(buf, 0, 20);
-						if(!p->firefox)
-							janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
-						else
-							janus_rtcp_fir_legacy((char *)&buf, 20, &p->fir_seq);
+						janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
 						JANUS_LOG(LOG_VERB, "New Multiplexed listener available, sending FIR to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 						gateway->relay_rtcp(p->session->handle, 1, buf, 20);
 						/* Send a PLI too, just in case... */
@@ -1178,6 +1173,28 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		packet.seq_number = ntohs(packet.data->seq_number);
 		/* Go */
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
+		
+		/* Did we send a REMB already? */
+		if(video && participant->video_active && participant->remb_latest == 0) {
+			participant->remb_latest = janus_get_monotonic_time();
+			char rtcpbuf[200];
+			memset(rtcpbuf, 0, 200);
+			/* FIXME First put a RR (fake)... */
+			int rrlen = 32;
+			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+			rr->header.version = 2;
+			rr->header.type = RTCP_RR;
+			rr->header.rc = 1;
+			rr->header.length = htons((rrlen/4)-1);
+			/* ... then put a SDES... */
+			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+			if(sdeslen > 0) {
+				/* ... and then finally a REMB */
+				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, participant->bitrate ? participant->bitrate : 1024*1024);
+				gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
+			}
+		}
+		/* Generate FIR/PLI too, if needed */
 		if(video && participant->video_active && (participant->room->fir_freq > 0)) {
 			/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
 			gint64 now = janus_get_monotonic_time();
@@ -1187,10 +1204,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				char rtcpbuf[24];
 				memset(rtcpbuf, 0, 24);
 				janus_rtcp_fir((char *)&rtcpbuf, 20, &participant->fir_seq);
-				//~ if(!participant->firefox)
-					//~ janus_rtcp_fir((char *)&rtcpbuf, 20, &participant->fir_seq);
-				//~ else
-					//~ janus_rtcp_fir_legacy((char *)&rtcpbuf, 20, &participant->fir_seq);
 				JANUS_LOG(LOG_VERB, "Sending FIR to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
 				gateway->relay_rtcp(handle, video, rtcpbuf, 20);
 				/* Send a PLI too, just in case... */
@@ -1198,60 +1211,13 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				janus_rtcp_pli((char *)&rtcpbuf, 12);
 				JANUS_LOG(LOG_VERB, "Sending PLI to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
 				gateway->relay_rtcp(handle, video, rtcpbuf, 12);
-				if(participant->firefox && participant->bitrate > 0) {
-					/* Now that we're there, let's send a REMB as well */
-					janus_rtcp_remb((char *)&rtcpbuf, 24, participant->bitrate);
-					gateway->relay_rtcp(handle, video, rtcpbuf, 24);
-				}
 			}
 		}
 	}
 }
 
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized || !gateway)
-		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
-	if(!session || session->destroyed || !session->participant || !video)
-		return;
-	if(session->participant_type == janus_videoroom_p_type_subscriber) {
-		/* FIXME Badly: we're blinding forwarding the listener RTCP to the publisher: this probably means confusing him... */
-		//~ janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
-		//~ if(l && l->feed) {
-			//~ janus_videoroom_participant *p = l->feed;
-			//~ if(p && p->session) {
-				//~ if((!video && p->audio_active) || (video && p->video_active)) {
-					//~ if(p->bitrate > 0)
-						//~ janus_rtcp_cap_remb(buf, len, p->bitrate);
-					//~ gateway->relay_rtcp(p->session->handle, video, buf, len);
-				//~ }
-			//~ }
-		//~ }
-	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
-		/* TODO What should we do here? */
-	} else if(session->participant_type == janus_videoroom_p_type_publisher) {
-		/* FIXME Badly: we're just bouncing the incoming RTCP back with modified REMB, we need to improve this... */
-		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-		if(participant && participant->session) {
-			if((!video && participant->audio_active) || (video && participant->video_active)) {
-				janus_rtcp_fix_ssrc(buf, len, 1, video ? participant->video_ssrc : participant->audio_ssrc, 0);
-				if(participant->bitrate > 0)
-					janus_rtcp_cap_remb(buf, len, participant->bitrate);
-				gateway->relay_rtcp(handle, video, buf, len);
-				//~ /* FIXME Badly: we're also blinding forwarding the publisher RTCP to all the listeners: this probably means confusing them... */
-				//~ if(participant->listeners != NULL) {
-					//~ GSList *ps = participant->listeners;
-					//~ while(ps) {
-						//~ janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
-						//~ if(l->session && l->session->handle) {
-							//~ gateway->relay_rtcp(l->session->handle, video, buf, len);
-						//~ }
-						//~ ps = ps->next;
-					//~ }
-				//~ }
-			}
-		}
-	}
+	/* FIXME We ignore incoming RTCP, should we care? */
 }
 
 void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len) {
@@ -1291,6 +1257,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->firefox = FALSE;
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
+		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
 		janus_mutex_lock(&participant->listeners_mutex);
@@ -1559,6 +1526,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&publisher->listeners_mutex);
 				publisher->audio_ssrc = g_random_int();
 				publisher->video_ssrc = g_random_int();
+				publisher->remb_latest = 0;
 				publisher->fir_latest = 0;
 				publisher->fir_seq = 0;
 				/* In case we also wanted to configure */
@@ -1842,6 +1810,24 @@ static void *janus_videoroom_handler(void *data) {
 				if(bitrate) {
 					participant->bitrate = json_integer_value(bitrate);
 					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64" (room %"SCNu64", user %"SCNu64")\n", participant->bitrate, participant->room->room_id, participant->user_id);
+					/* Send a new REMB */
+					participant->remb_latest = janus_get_monotonic_time();
+					char rtcpbuf[200];
+					memset(rtcpbuf, 0, 200);
+					/* FIXME First put a RR (fake)... */
+					int rrlen = 32;
+					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+					rr->header.version = 2;
+					rr->header.type = RTCP_RR;
+					rr->header.rc = 1;
+					rr->header.length = htons((rrlen/4)-1);
+					/* ... then put a SDES... */
+					int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+					if(sdeslen > 0) {
+						/* ... and then finally a REMB */
+						janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, participant->bitrate ? participant->bitrate : 1024*1024);
+						gateway->relay_rtcp(msg->handle, 1, rtcpbuf, rrlen+sdeslen+24);
+					}
 				}
 				gboolean prev_recording_active = participant->recording_active;
 				if(record) {
@@ -1911,10 +1897,7 @@ static void *janus_videoroom_handler(void *data) {
 							/* Send a FIR */
 							char buf[20];
 							memset(buf, 0, 20);
-							if(!participant->firefox)
-								janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
-							else
-								janus_rtcp_fir_legacy((char *)&buf, 20, &participant->fir_seq);
+							janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
 							JANUS_LOG(LOG_VERB, "Recording video, sending FIR to %"SCNu64" (%s)\n",
 								participant->user_id, participant->display ? participant->display : "??");
 							gateway->relay_rtcp(participant->session->handle, 1, buf, 20);
@@ -2004,10 +1987,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Send a FIR */
 					char buf[20];
 					memset(buf, 0, 20);
-					if(!publisher->firefox)
-						janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
-					else
-						janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
+					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 					JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 					gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 					/* Send a PLI too, just in case... */
@@ -2064,10 +2044,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Send a FIR to the new publisher */
 				char buf[20];
 				memset(buf, 0, 20);
-				if(!publisher->firefox)
-					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
-				else
-					janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
+				janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 				gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 				/* Send a PLI too, just in case... */
@@ -2217,10 +2194,7 @@ static void *janus_videoroom_handler(void *data) {
 				//~ /* Send a FIR */
 				//~ char buf[20];
 				//~ memset(buf, 0, 20);
-				//~ if(!publisher->firefox)
-					//~ janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
-				//~ else
-					//~ janus_rtcp_fir_legacy((char *)&buf, 20, &publisher->fir_seq);
+				//~ janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 				//~ JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 				//~ gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 				//~ /* Send a PLI too, just in case... */

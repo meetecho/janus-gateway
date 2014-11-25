@@ -229,6 +229,14 @@ uint64_t janus_rtcp_get_remb(char *packet, int len);
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate);
 
+/*! \brief Method to generate a new RTCP SDES message
+ * @param[in] packet The buffer data
+ * @param[in] len The buffer data length in bytes
+ * @param[in] cname The CNAME to write
+ * @param[in] cnamelen The CNAME data length in bytes
+ * @returns The size of the message, if successful, -1 on errors */
+int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen);
+
 /*! \brief Method to generate a new RTCP REMB message to cap the reported bitrate
  * @param[in] packet The buffer data (MUST be at least 24 chars)
  * @param[in] len The message data length in bytes (MUST be 24)

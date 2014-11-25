@@ -573,6 +573,8 @@ char *janus_sdp_anonymize(const char *sdp) {
 					sdp_attribute_remove(&m->m_attributes, "candidate");
 				while(sdp_attribute_find(m->m_attributes, "ssrc"))
 					sdp_attribute_remove(&m->m_attributes, "ssrc");
+				while(sdp_attribute_find(m->m_attributes, "ssrc-group"))
+					sdp_attribute_remove(&m->m_attributes, "ssrc-group");
 				while(sdp_attribute_find(m->m_attributes, "extmap"))	/* TODO Actually implement RTP extensions */
 					sdp_attribute_remove(&m->m_attributes, "extmap");
 				while(sdp_attribute_find(m->m_attributes, "sctpmap"))

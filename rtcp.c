@@ -488,6 +488,33 @@ int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate) {
 	return 0;
 }
 
+/* Generate a new SDES message */
+int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen) {
+	if(packet == NULL || len <= 0 || cname == NULL || cnamelen <= 0)
+		return -1;
+	memset(packet, 0, len);
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	/* Set header */
+	rtcp->version = 2;
+	rtcp->type = RTCP_SDES;
+	rtcp->rc = 1;
+	int plen = 12;	/* Header + SSRC + CSRC in chunk */
+	plen += cnamelen+2;
+	if((cnamelen+2)%4)	/* Account for padding */
+		plen += 4;
+	if(len < plen) {
+		JANUS_LOG(LOG_ERR, "Buffer too small for SDES message: %d < %d\n", len, plen);
+		return -1;
+	}
+	rtcp->length = htons((plen/4)-1);
+	/* Now set SDES stuff */
+	rtcp_sdes *rtcpsdes = (rtcp_sdes *)rtcp;
+	rtcpsdes->item.type = 1;
+	rtcpsdes->item.len = cnamelen;
+	memcpy(rtcpsdes->item.content, cname, cnamelen);
+	return plen;
+}
+
 /* Generate a new REMB message */
 int janus_rtcp_remb(char *packet, int len, uint64_t bitrate) {
 	if(packet == NULL || len != 24)
