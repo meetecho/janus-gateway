@@ -80,9 +80,9 @@ WebSockets support. If you're interested in supporting WebSockets to
 control Janus, as an alternative (or replacement) to the default plain
 HTTP REST API, you'll have to install the version ```1.0.4``` manually:
 
-	wget http://paydensutherland.com/libwebsock-1.0.4.tar.gz
-	tar xfv libwebsock-1.0.4.tar.gz
-	cd libwebsock-1.0.4
+	git clone git://github.com/payden/libwebsock.git
+	cd libwebsock
+	git checkout tags/v1.0.4
 	./configure --prefix=/usr && make && sudo make install
 	
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
