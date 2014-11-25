@@ -83,6 +83,7 @@ HTTP REST API, you'll have to install the version ```1.0.4``` manually:
 	git clone git://github.com/payden/libwebsock.git
 	cd libwebsock
 	git checkout tags/v1.0.4
+	autoreconf -i
 	./autogen.sh
 	./configure --prefix=/usr && make && sudo make install
 	
