@@ -56,7 +56,7 @@ On Ubuntu or Debian, it would require something like this:
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libini-config-dev libcollection-dev \
-		pkg-config gengetopt
+		pkg-config gengetopt libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
