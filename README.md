@@ -49,7 +49,8 @@ instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel libini_config-devel pkg-config gengetopt
+       opus-devel libogg-devel libini_config-devel pkg-config gengetopt \
+       libtool autoconf automake
 
 On Ubuntu or Debian, it would require something like this:
 

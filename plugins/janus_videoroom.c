@@ -222,6 +222,7 @@ typedef struct janus_videoroom_participant {
 	gboolean video_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
+	gint64 remb_startup;/* Incremental changes on REMB to reach the target at startup */
 	gint64 remb_latest;	/* Time of latest sent REMB (to avoid flooding) */
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
@@ -1175,8 +1176,15 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
 		
 		/* Did we send a REMB already? */
-		if(video && participant->video_active && participant->remb_latest == 0) {
-			participant->remb_latest = janus_get_monotonic_time();
+		if(video && participant->video_active && participant->remb_latest == 0 && participant->remb_startup > 0) {
+			/* We send a few incremental REMB messages at startup */
+			uint64_t bitrate = (participant->bitrate ? participant->bitrate : 1024*1024);
+			if(participant->remb_startup > 0) {
+				bitrate = bitrate/participant->remb_startup;
+				participant->remb_startup--;
+				if(participant->remb_startup == 0)
+					participant->remb_latest = janus_get_monotonic_time();
+			}
 			char rtcpbuf[200];
 			memset(rtcpbuf, 0, 200);
 			/* FIXME First put a RR (fake)... */
@@ -1190,7 +1198,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
 			if(sdeslen > 0) {
 				/* ... and then finally a REMB */
-				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, participant->bitrate ? participant->bitrate : 1024*1024);
+				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
 				gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
 			}
 		}
@@ -1257,6 +1265,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->firefox = FALSE;
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
+		participant->remb_startup = 4;
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
@@ -1526,6 +1535,7 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&publisher->listeners_mutex);
 				publisher->audio_ssrc = g_random_int();
 				publisher->video_ssrc = g_random_int();
+				publisher->remb_startup = 4;
 				publisher->remb_latest = 0;
 				publisher->fir_latest = 0;
 				publisher->fir_seq = 0;
