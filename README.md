@@ -131,7 +131,12 @@ On Ubuntu/Debian:
 
 
 ##Compile
-Once you have installed all the dependencies, just use:
+Once you have installed all the dependencies, get the code:
+
+	git clone https://github.com/meetecho/janus-gateway.git
+	cd janus-gateway
+
+Then just use:
 
 	sh autogen.sh
 
