@@ -2,8 +2,8 @@
 ; can be found, default interface to use, debug/logging level and, if
 ; needed, shared apisecret between application(s) and Janus.
 [general]
-configs_folder = ./conf		; Configuration files folder
-plugins_folder = ./plugins	; Plugins folder
+configs_folder = @confdir@		; Configuration files folder
+plugins_folder = @plugindir@		; Plugins folder
 ;interface = 1.2.3.4		; Interface to use (will be used in SDP)
 debug_level = 4				; Debug/logging level, valid values are 0-7
 ;apisecret = janusrocks		; String that all Janus requests must contain
@@ -39,6 +39,31 @@ ws_ssl = no					; Whether to enable secure WebSockets
 ;ws_secure_port = 8989;		; WebSockets server secure port, if enabled
 
 
+; Recent versions of Janus now also support RabbitMQ based messaging as
+; an alternative "transport" for API requests, responses and notifications.
+; This is only useful when you're wrapping Janus requests in your server
+; application, and handling the communication with clients your own way.
+; At the moment, only a single "application" can be handled at the same
+; time, meaning that Janus won't implement multiple queues to handle
+; multiple concurrent "application servers" taking advantage of its
+; features. Support for this is planned, though (e.g., through some kind
+; of negotiation to create queues on the fly). Right now, you can only
+; configure the address of the RabbitMQ server to use, and the queues to
+; make use of to receive (to-janus) and send (from-janus) messages
+; from/to an external application. If you're using the same RabbitMQ
+; server instance for multiple Janus instances, make sure you configure
+; different queues for each of them (e.g., from-janus-1/to-janus-1 and
+; from-janus-2/to-janus-2), or otherwise both the instances will make
+; use of the same queues and messages will get lost. The integration
+; is disabled by default, so set enable=yes if you want to use it.
+[rabbitmq]
+enable = no					; Whether the support must be enabled
+host = localhost			; The address of the RabbitMQ server
+;port = 5672				; The port of the RabbitMQ server (5672 by default)
+to_janus = to-janus			; Name of the queue for incoming messages
+from_janus = from-janus		; Name of the queue for outgoing messages
+
+
 ; Janus can also expose an admin/monitor endpoint, to allow you to check
 ; which sessions are up, which handles they're managing, their current
 ; status and so on. This provides a useful aid when debugging potential
@@ -64,15 +89,19 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 
 ; Certificate and key to use for DTLS and/or HTTPS/WSS.
 [certificates]
-cert_pem = certs/mycert.pem
-cert_key = certs/mycert.key
+cert_pem = @certdir@/mycert.pem
+cert_key = @certdir@/mycert.key
 
 
-; Media-related stuff: right now, you can only configure the range of
+; Media-related stuff: right now, you can only configure whether you want
+; to enable IPv6 support (still WIP, so handle with care), the maximum size
+; of the NACK queue for retransmissions per handle and the range of
 ; ports to use for RTP and RTCP (by default, no range is envisaged).
-; If you configure a range in the lines below, remember to uncomment the
-; [media] category as well!
+; If you change any setting in the lines below, remember to uncomment the
+; [media] category as well, which is commented by default!
 ;[media]
+;ipv6 = true
+;max_nack_queue = 300
 ;rtp_port_range = 20000-40000
 
 

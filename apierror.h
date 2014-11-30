@@ -59,6 +59,8 @@
 #define JANUS_ERROR_INVALID_ELEMENT_TYPE		467
 /*! \brief The ID provided to create a new session is already in use */
 #define JANUS_ERROR_SESSION_CONFLICT			468
+/*! \brief We got an ANSWER to an OFFER we never made */
+#define JANUS_ERROR_UNEXPECTED_ANSWER			469
 
 
 /*! \brief Helper method to get a string representation of an API error code

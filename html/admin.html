@@ -41,9 +41,10 @@
 					<li><a href="videomcutest.html">Video MCU</a></li>
 					<li><a href="audiobridgetest.html">Audio Conference</a></li>
 					<li><a href="voicemailtest.html">Voice Mail</a></li>
+					<li><a href="recordplaytest.html">Recorder/Playout</a></li>
 					<li><a href="screensharingtest.html">Screen Sharing</a></li>
 					<li class="divider"></li>
-					<li><a href="admin.html">Admin/Monitor</a></li>
+					<li class="active"><a href="admin.html">Admin/Monitor</a></li>
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
@@ -71,12 +72,12 @@
 			the <code>admin.js</code> JavaScript code to adapt it to your
 			configuration if you changed anything.</p>
 			<div id="sessions" class="col-md-2">
-				<h4>Sessions <i id="update-sessions" class="fa fa-refresh" title="Update list of sessions" style="cursor: pointer;"></i></h4>
+				<h4>Sessions (<span id="sessions-num">0</span>) <i id="update-sessions" class="fa fa-refresh" title="Update list of sessions" style="cursor: pointer;"></i></h4>
 				<div id="sessions-list" class="list-group">
 				</div>
 			</div>
 			<div id="handles" class="col-md-2">
-				<h4>Handles <i id="update-handles" class="fa fa-refresh" title="Update list of handles" style="cursor: pointer;"></i></h4>
+				<h4>Handles (<span id="handles-num"></span>) <i id="update-handles" class="fa fa-refresh" title="Update list of handles" style="cursor: pointer;"></i></h4>
 				<div id="handles-list" class="list-group">
 				</div>
 			</div>

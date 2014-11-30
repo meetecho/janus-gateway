@@ -206,12 +206,36 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
  * @returns A list of janus_nack elements containing the sequence numbers to send again */
 GSList *janus_rtcp_get_nacks(char *packet, int len);
 
+/*! \brief Method to remove an RTCP NACK message
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns The new message data length in bytes
+ * @note This is mostly a placeholder: for the sake of simplicity, whenever we handle
+ * some sequence numbers in a NACK, we remove the NACK as a whole before forwarding the
+ * RTCP message. Future versions will only selectively remove the sequence numbers that
+ * have been handled. */
+int janus_rtcp_remove_nacks(char *packet, int len);
+
+/*! \brief Inspect an existing RTCP REMB message to retrieve the reported bitrate
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns The reported bitrate if successful, 0 if no REMB packet was available */
+uint64_t janus_rtcp_get_remb(char *packet, int len);
+
 /*! \brief Method to modify an existing RTCP REMB message to cap the reported bitrate
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @param[in] bitrate The new bitrate to report (e.g., 128000)
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate);
+
+/*! \brief Method to generate a new RTCP SDES message
+ * @param[in] packet The buffer data
+ * @param[in] len The buffer data length in bytes
+ * @param[in] cname The CNAME to write
+ * @param[in] cnamelen The CNAME data length in bytes
+ * @returns The size of the message, if successful, -1 on errors */
+int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen);
 
 /*! \brief Method to generate a new RTCP REMB message to cap the reported bitrate
  * @param[in] packet The buffer data (MUST be at least 24 chars)

@@ -32,11 +32,12 @@
 #include "../config.h"
 #include "../mutex.h"
 #include "../rtcp.h"
+#include "../utils.h"
 
 
 /* Plugin information */
-#define JANUS_VIDEOCALL_VERSION			2
-#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.2"
+#define JANUS_VIDEOCALL_VERSION			3
+#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.3"
 #define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
@@ -53,7 +54,7 @@ const char *janus_videocall_get_name(void);
 const char *janus_videocall_get_author(void);
 const char *janus_videocall_get_package(void);
 void janus_videocall_create_session(janus_plugin_session *handle, int *error);
-void janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
 void janus_videocall_setup_media(janus_plugin_session *handle);
 void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -132,10 +133,11 @@ typedef struct janus_videocall_session {
 	gboolean video_active;
 	uint64_t bitrate;
 	struct janus_videocall_session *peer;
-	gboolean destroy;
+	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videocall_session;
-GHashTable *sessions;
-janus_mutex sessions_mutex;
+static GHashTable *sessions;
+static GList *old_sessions;
+static janus_mutex sessions_mutex;
 
 
 /* Error codes */
@@ -155,6 +157,45 @@ janus_mutex sessions_mutex;
 #define JANUS_VIDEOCALL_ERROR_MISSING_SDP			482
 
 
+/* VideoCall watchdog/garbage collector (sort of) */
+void *janus_videocall_watchdog(void *data);
+void *janus_videocall_watchdog(void *data) {
+	JANUS_LOG(LOG_INFO, "VideoCall watchdog started\n");
+	gint64 now = 0;
+	while(initialized && !stopping) {
+		janus_mutex_lock(&sessions_mutex);
+		/* Iterate on all the sessions */
+		now = janus_get_monotonic_time();
+		if(old_sessions != NULL) {
+			GList *sl = old_sessions;
+			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			while(sl) {
+				janus_videocall_session *session = (janus_videocall_session *)sl->data;
+				if(!session || !initialized || stopping) {
+					sl = sl->next;
+					continue;
+				}
+				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					GList *rm = sl->next;
+					old_sessions = g_list_delete_link(old_sessions, sl);
+					sl = rm;
+					session->handle = NULL;
+					g_free(session);
+					session = NULL;
+					continue;
+				}
+				sl = sl->next;
+			}
+		}
+		janus_mutex_unlock(&sessions_mutex);
+		g_usleep(2000000);
+	}
+	JANUS_LOG(LOG_INFO, "VideoCall watchdog stopped\n");
+	return NULL;
+}
+
+
 /* Plugin implementation */
 int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	if(stopping) {
@@ -168,7 +209,7 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Read configuration */
 	char filename[255];
-	sprintf(filename, "%s/%s.cfg", config_path, JANUS_VIDEOCALL_PACKAGE);
+	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_VIDEOCALL_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
@@ -184,6 +225,12 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	gateway = callback;
 
 	initialized = 1;
+	/* Start the sessions watchdog */
+	GThread *watchdog = g_thread_new("vcall watchdog", &janus_videocall_watchdog, NULL);
+	if(!watchdog) {
+		JANUS_LOG(LOG_FATAL, "Couldn't start VideoCall watchdog...\n");
+		return -1;
+	}
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus videocall handler", janus_videocall_handler, NULL, &error);
@@ -256,6 +303,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->bitrate = 0;	/* No limit */
 	session->peer = NULL;
 	session->username = NULL;
+	session->destroyed = 0;
 	handle->plugin_handle = session;
 
 	return;
@@ -272,7 +320,7 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	if(session->destroy) {
+	if(session->destroyed) {
 		JANUS_LOG(LOG_VERB, "Session already destroyed...\n");
 		return;
 	}
@@ -285,18 +333,21 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 		janus_mutex_unlock(&sessions_mutex);
 	}
 	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroy = TRUE;
+	session->destroyed = janus_get_monotonic_time();
+	janus_mutex_lock(&sessions_mutex);
+	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
 
-void janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(stopping || !initialized)
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, stopping ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_videocall_message *msg = calloc(1, sizeof(janus_videocall_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 	}
 	msg->handle = handle;
 	msg->transaction = transaction;
@@ -304,6 +355,9 @@ void janus_videocall_handle_message(janus_plugin_session *handle, char *transact
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
 	g_async_queue_push(messages, msg);
+
+	/* All the requests to this plugin are handled asynchronously */
+	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
 }
 
 void janus_videocall_setup_media(janus_plugin_session *handle) {
@@ -315,7 +369,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	/* We really don't care, as we only relay RTP/RTCP we get in the first place anyway */
 }
@@ -334,7 +388,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(session->destroy || session->peer->destroy)
+		if(session->destroyed || session->peer->destroyed)
 			return;
 		if((!video && session->audio_active) || (video && session->video_active)) {
 			gateway->relay_rtp(session->peer->handle, video, buf, len);
@@ -355,7 +409,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(session->destroy || session->peer->destroy)
+		if(session->destroyed || session->peer->destroyed)
 			return;
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
@@ -376,7 +430,7 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 			JANUS_LOG(LOG_ERR, "Session has no peer...\n");
 			return;
 		}
-		if(session->destroy || session->peer->destroy)
+		if(session->destroyed || session->peer->destroyed)
 			return;
 		if(buf == NULL || len <= 0)
 			return;
@@ -398,7 +452,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroy)
+	if(session->destroyed)
 		return;
 	janus_mutex_lock(&sessions_mutex);
 	if(session->peer) {
@@ -435,6 +489,7 @@ static void *janus_videocall_handler(void *data) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
+	json_t *root = NULL;
 	while(initialized && !stopping) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
@@ -446,44 +501,45 @@ static void *janus_videocall_handler(void *data) {
 			janus_videocall_message_free(msg);
 			continue;
 		}
-		if(session->destroy) {
+		if(session->destroyed) {
 			janus_videocall_message_free(msg);
 			continue;
 		}
 		/* Handle request */
 		error_code = 0;
+		root = NULL;
 		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_VIDEOCALL_ERROR_NO_MESSAGE;
-			sprintf(error_cause, "%s", "No message??");
+			g_snprintf(error_cause, 512, "%s", "No message??");
 			goto error;
 		}
 		json_error_t error;
-		json_t *root = json_loads(msg->message, 0, &error);
+		root = json_loads(msg->message, 0, &error);
 		if(!root) {
 			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 			error_code = JANUS_VIDEOCALL_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: on line %d: %s", error.line, error.text);
+			g_snprintf(error_cause, 512, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
 			JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 			error_code = JANUS_VIDEOCALL_ERROR_INVALID_JSON;
-			sprintf(error_cause, "JSON error: not an object");
+			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
 		json_t *request = json_object_get(root, "request");
 		if(!request) {
 			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
 			error_code = JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT;
-			sprintf(error_cause, "Missing element (request)");
+			g_snprintf(error_cause, 512, "Missing element (request)");
 			goto error;
 		}
 		if(!json_is_string(request)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
 			error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-			sprintf(error_cause, "Invalid element (request should be a string)");
+			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
 			goto error;
 		}
 		const char *request_text = json_string_value(request);
@@ -510,20 +566,20 @@ static void *janus_videocall_handler(void *data) {
 			if(session->username != NULL) {
 				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->username);
 				error_code = JANUS_VIDEOCALL_ERROR_ALREADY_REGISTERED;
-				sprintf(error_cause, "Already registered (%s)", session->username);
+				g_snprintf(error_cause, 512, "Already registered (%s)", session->username);
 				goto error;
 			}
 			json_t *username = json_object_get(root, "username");
 			if(!username) {
 				JANUS_LOG(LOG_ERR, "Missing element (username)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT;
-				sprintf(error_cause, "Missing element (username)");
+				g_snprintf(error_cause, 512, "Missing element (username)");
 				goto error;
 			}
 			if(!json_is_string(username)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (username should be a string)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Invalid element (username should be a string)");
+				g_snprintf(error_cause, 512, "Invalid element (username should be a string)");
 				goto error;
 			}
 			const char *username_text = json_string_value(username);
@@ -532,7 +588,7 @@ static void *janus_videocall_handler(void *data) {
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_ERR, "Username '%s' already taken\n", username_text);
 				error_code = JANUS_VIDEOCALL_ERROR_USERNAME_TAKEN;
-				sprintf(error_cause, "Username '%s' already taken", username_text);
+				g_snprintf(error_cause, 512, "Username '%s' already taken", username_text);
 				goto error;
 			}
 			janus_mutex_unlock(&sessions_mutex);
@@ -540,7 +596,7 @@ static void *janus_videocall_handler(void *data) {
 			if(session->username == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				error_code = JANUS_VIDEOCALL_ERROR_UNKNOWN_ERROR;
-				sprintf(error_cause, "Memory error");
+				g_snprintf(error_cause, 512, "Memory error");
 				goto error;
 			}
 			janus_mutex_lock(&sessions_mutex);
@@ -554,42 +610,42 @@ static void *janus_videocall_handler(void *data) {
 			if(session->username == NULL) {
 				JANUS_LOG(LOG_ERR, "Register a username first\n");
 				error_code = JANUS_VIDEOCALL_ERROR_REGISTER_FIRST;
-				sprintf(error_cause, "Register a username first");
+				g_snprintf(error_cause, 512, "Register a username first");
 				goto error;
 			}
 			if(session->peer != NULL) {
 				JANUS_LOG(LOG_ERR, "Already in a call\n");
 				error_code = JANUS_VIDEOCALL_ERROR_ALREADY_IN_CALL;
-				sprintf(error_cause, "Already in a call");
+				g_snprintf(error_cause, 512, "Already in a call");
 				goto error;
 			}
 			json_t *username = json_object_get(root, "username");
 			if(!username) {
 				JANUS_LOG(LOG_ERR, "Missing element (username)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT;
-				sprintf(error_cause, "Missing element (username)");
+				g_snprintf(error_cause, 512, "Missing element (username)");
 				goto error;
 			}
 			if(!json_is_string(username)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (username should be a string)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Invalid element (username should be a string)");
+				g_snprintf(error_cause, 512, "Invalid element (username should be a string)");
 				goto error;
 			}
 			const char *username_text = json_string_value(username);
 			if(!strcmp(username_text, session->username)) {
 				JANUS_LOG(LOG_ERR, "You can't call yourself... use the EchoTest for that\n");
 				error_code = JANUS_VIDEOCALL_ERROR_USE_ECHO_TEST;
-				sprintf(error_cause, "You can't call yourself... use the EchoTest for that");
+				g_snprintf(error_cause, 512, "You can't call yourself... use the EchoTest for that");
 				goto error;
 			}
 			janus_mutex_lock(&sessions_mutex);
 			janus_videocall_session *peer = g_hash_table_lookup(sessions, username_text);
-			if(peer == NULL || peer->destroy) {
+			if(peer == NULL || peer->destroyed) {
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_ERR, "Username '%s' doesn't exist\n", username_text);
 				error_code = JANUS_VIDEOCALL_ERROR_NO_SUCH_USERNAME;
-				sprintf(error_cause, "Username '%s' doesn't exist", username_text);
+				g_snprintf(error_cause, 512, "Username '%s' doesn't exist", username_text);
 				goto error;
 			}
 			if(peer->peer != NULL) {
@@ -605,7 +661,7 @@ static void *janus_videocall_handler(void *data) {
 				if(!msg->sdp) {
 					JANUS_LOG(LOG_ERR, "Missing SDP\n");
 					error_code = JANUS_VIDEOCALL_ERROR_MISSING_SDP;
-					sprintf(error_cause, "Missing SDP");
+					g_snprintf(error_cause, 512, "Missing SDP");
 					goto error;
 				}
 				janus_mutex_lock(&sessions_mutex);
@@ -636,14 +692,14 @@ static void *janus_videocall_handler(void *data) {
 			if(session->peer == NULL) {
 				JANUS_LOG(LOG_ERR, "No incoming call to accept\n");
 				error_code = JANUS_VIDEOCALL_ERROR_NO_CALL;
-				sprintf(error_cause, "No incoming call to accept");
+				g_snprintf(error_cause, 512, "No incoming call to accept");
 				goto error;
 			}
 			/* Any SDP to handle? if not, something's wrong */
 			if(!msg->sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_VIDEOCALL_ERROR_MISSING_SDP;
-				sprintf(error_cause, "Missing SDP");
+				g_snprintf(error_cause, 512, "Missing SDP");
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "%s is accepting a call from %s\n", session->username, session->peer->username);
@@ -670,21 +726,21 @@ static void *janus_videocall_handler(void *data) {
 			if(audio && !json_is_boolean(audio)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Invalid value (audio should be a boolean)");
+				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
 				goto error;
 			}
 			json_t *video = json_object_get(root, "video");
 			if(video && !json_is_boolean(video)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Invalid value (video should be a boolean)");
+				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
 				goto error;
 			}
 			json_t *bitrate = json_object_get(root, "bitrate");
 			if(bitrate && !json_is_integer(bitrate)) {
 				JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				sprintf(error_cause, "Invalid value (bitrate should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid value (bitrate should be an integer)");
 				goto error;
 			}
 			if(audio) {
@@ -747,7 +803,7 @@ static void *janus_videocall_handler(void *data) {
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_VIDEOCALL_ERROR_INVALID_REQUEST;
-			sprintf(error_cause, "Unknown request (%s)", request_text);
+			g_snprintf(error_cause, 512, "Unknown request (%s)", request_text);
 			goto error;
 		}
 

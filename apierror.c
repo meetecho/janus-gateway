@@ -46,6 +46,8 @@ const char *janus_get_api_error(int error) {
 			return "Invalid element type";
 		case JANUS_ERROR_SESSION_CONFLICT:
 			return "Session ID already in use";
+		case JANUS_ERROR_UNEXPECTED_ANSWER:
+			return "Unexpected ANSWER (no OFFER)";
 		default:
 			return "Unknown error";
 	}

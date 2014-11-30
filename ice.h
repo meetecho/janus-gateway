@@ -31,8 +31,9 @@
  * @param[in] stun_port STUN port to use, if any
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used
+ * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port);
+gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);
@@ -49,6 +50,15 @@ void janus_ice_ignore_interface(const char *ip);
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the ignore list, false otherwise */
 gboolean janus_ice_is_ignored(const char *ip);
+/*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
+ * @returns true if IPv6 candidates are enabled/supported, false otherwise */
+gboolean janus_ice_is_ipv6_enabled(void);
+/*! \brief Method to modify the max NACK value (i.e., the number of packets per handle to store for retransmissions)
+ * @param[in] mnq The new max NACK value */
+void janus_set_max_nack_queue(uint mnq);
+/*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
+ * @returns The current max NACK value */
+uint janus_get_max_nack_queue(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -63,6 +73,8 @@ typedef struct janus_ice_handle janus_ice_handle;
 typedef struct janus_ice_stream janus_ice_stream;
 /*! \brief Janus ICE component */
 typedef struct janus_ice_component janus_ice_component;
+/*! \brief Janus enqueued (S)RTP/(S)RTCP packet to send */
+typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 
 
 #define JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER	(1 << 0)
@@ -77,6 +89,7 @@ typedef struct janus_ice_component janus_ice_component;
 #define JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED		(1 << 9)
 #define JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS		(1 << 10)
 #define JANUS_ICE_HANDLE_WEBRTC_PLAN_B				(1 << 11)
+#define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 12)
 
 
 /*! \brief Janus ICE handle */
@@ -125,6 +138,10 @@ struct janus_ice_handle {
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
 	gchar *remote_sdp;
+	/*! \brief Queue of outgoing packets to send */
+	GAsyncQueue *queued_packets;
+	/*! \brief GLib thread for sending outgoing packets */
+	GThread *send_thread;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };
@@ -185,10 +202,29 @@ struct janus_ice_component {
 	GSource *source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
+	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
+	GList *retransmit_buffer;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
-	/*! \brief Mutex to lock/unlock this stream */
+	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
+};
+
+#define JANUS_ICE_PACKET_AUDIO	0
+#define JANUS_ICE_PACKET_VIDEO	1
+#define JANUS_ICE_PACKET_DATA	2
+/*! \brief Janus enqueued (S)RTP/(S)RTCP packet to send */
+struct janus_ice_queued_packet {
+	/*! \brief Packet data */
+	char *data;
+	/*! \brief Packet length */
+	gint length;
+	/*! \brief Type of data (audio/video/data, or RTCP related to any of them) */
+	gint type;
+	/*! \brief Whether this is an RTCP message or not */
+	gboolean control;
+	/*! \brief Whether the data is already encrypted or not */
+	gboolean encrypted;
 };
 
 /** @name Janus ICE handle methods
@@ -297,6 +333,8 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 ///@{
 /*! \brief Janus ICE handle thread */
 void *janus_ice_thread(void *data);
+/*! \brief Janus ICE thread for sending outgoing packets */
+void *janus_ice_send_thread(void *data);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER

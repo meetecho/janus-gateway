@@ -44,4 +44,10 @@ typedef struct rtp_header
 	uint32_t csrc[16];
 } rtp_header;
 
+/*! \brief RTP packet */
+typedef struct janus_rtp_packet {
+	char *data;
+	gint length;
+} janus_rtp_packet;
+
 #endif

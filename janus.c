@@ -32,8 +32,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			4
-#define JANUS_VERSION_STRING	"0.0.4"
+#define JANUS_VERSION			6
+#define JANUS_VERSION_STRING	"0.0.6"
 
 
 static janus_config *config = NULL;
@@ -51,6 +51,13 @@ static char *ws_api_secret = NULL;
 #ifdef HAVE_WEBSOCKETS
 /* libwebsock WS server */
 static libwebsock_context *wss = NULL, *swss = NULL;
+#endif
+
+#ifdef HAVE_RABBITMQ
+/* RabbitMQ support */
+amqp_connection_state_t rmq_conn = NULL;
+amqp_channel_t rmq_channel = 0;
+amqp_bytes_t to_janus_queue, from_janus_queue;
 #endif
 
 /* Admin/Monitor MHD Web Server */
@@ -132,6 +139,7 @@ gint janus_is_stopping(void) {
 
 /* Logging */
 int log_level = 0;
+int lock_debug = 0;
 
 
 /*! \brief Signal handler (just used to intercept CTRL+C) */
@@ -186,64 +194,89 @@ static janus_mutex wss_mutex;
 static GHashTable *wss_sessions = NULL;
 #endif
 
+#ifdef HAVE_RABBITMQ
+/* FIXME RabbitMQ session (always 1 at the moment) */
+janus_rabbitmq_client *rmq_client = NULL;
+#endif
+
 /* Gateway Sessions */
 static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL;
 
+
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
-void *janus_sessions_watchdog(void *data);
-void *janus_sessions_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
-	gint64 now = 0;
-	while(!g_atomic_int_get(&stop)) {
-		janus_mutex_lock(&sessions_mutex);
-		if(sessions != NULL) {
-			GHashTableIter iter;
-			gpointer value;
 
-			/* Iterate on all the sessions and check the last activity */
-			now = janus_get_monotonic_time();
+static gboolean janus_cleanup_session(gpointer user_data) {
+	janus_session *session = (janus_session *) user_data;
 
-			g_hash_table_iter_init(&iter, sessions);
-			while (g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_session *session = value;
+	JANUS_LOG(LOG_INFO, "Cleaning up session %"SCNu64"...\n", session->session_id);
+	janus_session_destroy(session->session_id);
+	janus_mutex_lock(&sessions_mutex);
+	g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
+	janus_mutex_unlock(&sessions_mutex);
 
-				if(!session || session->destroy || g_atomic_int_get(&stop)) {
-					continue;
-				}
+	return G_SOURCE_REMOVE;
+}
 
-				if(now-session->last_activity >= (SESSION_TIMEOUT+3)*G_USEC_PER_SEC) {
-					/* We're lazy and actually get rid of the session only after a few seconds */
-					janus_session_destroy(session->session_id);
-					g_hash_table_iter_remove(&iter);
-				} else if(now-session->last_activity >= SESSION_TIMEOUT*G_USEC_PER_SEC && !session->timeout) {
-					/* Timeout! */
-					JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
-					/* Prepare JSON event to notify user/application */
-					json_t *event = json_object();
-					json_object_set_new(event, "janus", json_string("timeout"));
-					json_object_set_new(event, "session_id", json_integer(session->session_id));
-					/* Convert to a string */
-					char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-					json_decref(event);
-					/* Send the event */
-					janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
-					if(notification == NULL) {
-						JANUS_LOG(LOG_FATAL, "Memory error!\n");
-						continue;
-					}
-					notification->code = 200;
-					notification->payload = event_text;
-					notification->allocated = 1;
-					g_async_queue_push(session->messages, notification);
-					session->timeout = 1;
-				}
+static gboolean janus_check_sessions(gpointer user_data) {
+	GMainContext *watchdog_context = (GMainContext *) user_data;
+	janus_mutex_lock(&sessions_mutex);
+	if (sessions) {
+		GHashTableIter iter;
+		gpointer value;
+
+		g_hash_table_iter_init(&iter, sessions);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_session *session = (janus_session *) value;
+
+			if (!session || session->destroy) {
+				continue;
+			}
+
+			gint64 now = janus_get_monotonic_time();
+			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
+				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
+
+				json_t *event = json_object();
+				json_object_set_new(event, "janus", json_string("timeout"));
+				json_object_set_new(event, "session_id", json_integer(session->session_id));
+				gchar *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(event);
+
+				janus_http_event *notification = calloc(1, sizeof(janus_http_event));
+				notification->code = 200;
+				notification->payload = event_text;
+				notification->allocated = 1;
+				g_async_queue_push(session->messages, notification);
+				session->timeout = 1;
+
+				/* Schedule the session for deletion */
+				GSource *timeout_source = g_timeout_source_new_seconds(3);
+				g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
+				g_source_attach(timeout_source, watchdog_context);
+				g_source_unref(timeout_source);
 			}
 		}
-		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(2000000);
 	}
-	JANUS_LOG(LOG_INFO, "Sessions watchdog stopped\n");
+	janus_mutex_unlock(&sessions_mutex);
+
+	return G_SOURCE_CONTINUE;
+}
+
+static gpointer janus_sessions_watchdog(gpointer user_data) {
+	GMainLoop *loop = (GMainLoop *) user_data;
+	GMainContext *watchdog_context = g_main_loop_get_context(loop);
+	GSource *timeout_source;
+
+	timeout_source = g_timeout_source_new_seconds(2);
+	g_source_set_callback(timeout_source, janus_check_sessions, watchdog_context, NULL);
+	g_source_attach(timeout_source, watchdog_context);
+	g_source_unref(timeout_source);
+
+	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
+
+	g_main_loop_run(loop);
+
 	return NULL;
 }
 
@@ -307,6 +340,8 @@ gint janus_session_destroy(guint64 session_id) {
 	}
 
 	/* TODO Actually destroy session */
+	//~ janus_session_free(session);
+
 	return 0;
 }
 
@@ -355,6 +390,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	char *payload = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
+	gchar *session_path = NULL, *handle_path = NULL;
+	gchar **basepath = NULL, **path = NULL;
 
 	JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
 	/* Is this the first round? */
@@ -403,7 +440,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		MHD_destroy_response(response);
 	}
 	/* Get path components */
-	gchar **basepath = NULL, **path = NULL;
 	if(strcasecmp(url, ws_path)) {
 		if(strlen(ws_path) > 1) {
 			basepath = g_strsplit(url, ws_path, -1);
@@ -444,7 +480,6 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	if(firstround)
 		return ret;
 	JANUS_LOG(LOG_VERB, " ... parsing request...\n");
-	gchar *session_path = NULL, *handle_path = NULL;
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
 		if(session_path == NULL) {
@@ -678,6 +713,22 @@ done:
 	return ret;
 }
 
+janus_request_source *janus_request_source_new(int type, void *source, void *msg) {
+	janus_request_source *req_source = (janus_request_source *)calloc(1, sizeof(janus_request_source));
+	req_source->type = type;
+	req_source->source = source;
+	req_source->msg = msg;
+	return req_source;
+}
+
+void janus_request_source_destroy(janus_request_source *req_source) {
+	if(req_source == NULL)
+		return;
+	req_source->source = NULL;
+	req_source->msg = NULL;
+	g_free(req_source);
+}
+
 int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	int ret = MHD_NO;
 	if(source == NULL || root == NULL) {
@@ -716,9 +767,19 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	const gchar *message_text = json_string_value(message);
 	
 	if(session_id == 0 && handle_id == 0) {
-		/* Can only be a 'Create new session' or 'Get info' request */
+		/* Can only be a 'Create new session', a 'Get info' or a 'Ping/Pong' request */
 		if(!strcasecmp(message_text, "info")) {
-			ret = janus_process_success(source, "application/json", info_text);
+			ret = janus_process_success(source, "application/json", g_strdup(info_text));
+			goto jsondone;
+		}
+		if(!strcasecmp(message_text, "ping")) {
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("pong"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			ret = janus_process_success(source, "application/json", g_strdup(reply_text));
 			goto jsondone;
 		}
 		if(strcasecmp(message_text, "create")) {
@@ -764,10 +825,19 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				if(client->sessions == NULL)
 					client->sessions = g_hash_table_new(NULL, NULL);
 				g_hash_table_insert(client->sessions, GUINT_TO_POINTER(session_id), session);
-				if(client->thread == NULL) {
-					/* Create a thread for notifications related to this session as well */
-					client->thread = g_thread_new("wss_client", &janus_wss_thread, client);
-				}
+				janus_mutex_unlock(&client->mutex);
+			}
+		}
+#endif
+#ifdef HAVE_RABBITMQ
+		if(source->type == JANUS_SOURCE_RABBITMQ) {
+			/* Add the new session to the list of sessions created by this WS client */
+			janus_rabbitmq_client *client = (janus_rabbitmq_client *)source->source;
+			if(client) {
+				janus_mutex_lock(&client->mutex);
+				if(client->sessions == NULL)
+					client->sessions = g_hash_table_new(NULL, NULL);
+				g_hash_table_insert(client->sessions, GUINT_TO_POINTER(session_id), session);
 				janus_mutex_unlock(&client->mutex);
 			}
 		}
@@ -978,7 +1048,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		JANUS_LOG(LOG_INFO, "[%"SCNu64"] There's a message for %s\n", handle->handle_id, plugin_t->get_name());
 		json_t *body = json_object_get(root, "body");
 		if(body == NULL) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (body)");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (body)");
 			goto jsondone;
 		}
 		if(!json_is_object(body)) {
@@ -1010,6 +1080,20 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				goto jsondone;
 			}
 			type = NULL;
+			/* Are we still cleaning up from a previous media session? */
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+				JANUS_LOG(LOG_INFO, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
+				gint64 waited = 0;
+				while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
+					g_usleep(100000);
+					waited += 100000;
+					if(waited >= 3*G_USEC_PER_SEC) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
+						break;
+					}
+				}
+			}
 			/* Check the JSEP type */
 			int offer = 0;
 			if(!strcasecmp(jsep_type, "offer")) {
@@ -1052,15 +1136,15 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			/* FIXME We're only handling single audio/video lines for now... */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated\n", handle->handle_id, audio ? "has" : "has NOT");
 			if(audio > 1) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", handle->handle_id);
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video %s been negotiated\n", handle->handle_id, video ? "has" : "has NOT");
 			if(video > 1) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", handle->handle_id);
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP/DataChannels %s been negotiated\n", handle->handle_id, data ? "have" : "have NOT");
 			if(data > 1) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] More than one data line? only going to negotiate one...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one data line? only going to negotiate one...\n", handle->handle_id);
 			}
 #ifndef HAVE_SCTP
 			if(data) {
@@ -1076,7 +1160,18 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				/* New session */
 				if(offer) {
 					/* Setup ICE locally (we received an offer) */
-					janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle);
+					if(janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle) < 0) {
+						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error setting ICE locally");
+						goto jsondone;
+					}
+				} else {
+					/* Make sure we're waiting for an ANSWER in the first place */
+					if(!handle->agent) {
+						JANUS_LOG(LOG_ERR, "Unexpected ANSWER (did we offer?)\n");
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Unexpected ANSWER (did we offer?)");
+						goto jsondone;
+					}
 				}
 				janus_sdp_parse(handle, parsed_sdp);
 				janus_sdp_free(parsed_sdp);
@@ -1187,18 +1282,75 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		}
 		char *body_text = json_dumps(body, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		/* We reply right away, not to block the web server... */
-		json_t *reply = json_object();
-		json_object_set_new(reply, "janus", json_string("ack"));
-		json_object_set_new(reply, "session_id", json_integer(session_id));
-		json_object_set_new(reply, "transaction", json_string(transaction_text));
-		/* Convert to a string */
-		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(reply);
 		/* Send the message to the plugin */
-		plugin_t->handle_message(handle->app_handle, g_strdup((char *)transaction_text), body_text, jsep_type, jsep_sdp_stripped);
-		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle, g_strdup((char *)transaction_text), body_text, jsep_type, jsep_sdp_stripped);
+		if(result == NULL) {
+			/* Something went horribly wrong! */
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
+			goto jsondone;
+		}
+		if(result->type == JANUS_PLUGIN_OK) {
+			/* The plugin gave a result already (synchronous request/response) */
+			if(result->content == NULL) {
+				/* Missing content... */
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't provide any content for this synchronous response");
+				janus_plugin_result_destroy(result);
+				goto jsondone;
+			}
+			json_error_t error;
+			json_t *event = json_loads(result->content, 0, &error);
+			if(!event) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: on line %d: %s)\n", handle->handle_id, error.line, error.text);
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
+				janus_plugin_result_destroy(result);
+				goto jsondone;
+			}
+			if(!json_is_object(event)) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: not an object)\n", handle->handle_id);
+				json_decref(event);
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
+				janus_plugin_result_destroy(result);
+				goto jsondone;
+			}
+			/* Prepare JSON response */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "session_id", json_integer(session->session_id));
+			json_object_set_new(reply, "sender", json_integer(handle->handle_id));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_t *plugin_data = json_object();
+			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
+			json_object_set(plugin_data, "data", event);
+			json_object_set(reply, "plugindata", plugin_data);
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(event);
+			json_decref(plugin_data);
+			if(jsep != NULL)
+				json_decref(jsep);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+		} else if(result->type == JANUS_PLUGIN_OK_WAIT) {
+			/* The plugin received the request but didn't process it yet, send an ack (asynchronous notifications may follow) */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("ack"));
+			json_object_set_new(reply, "session_id", json_integer(session_id));
+			if(result->content)
+				json_object_set_new(reply, "hint", json_string(result->content));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+		} else {
+			/* Something went horribly wrong! */
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", result->content ? g_strdup(result->content) : "Plugin returned a severe (unknown) error");
+			janus_plugin_result_destroy(result);
+			goto jsondone;
+		}			
+		janus_plugin_result_destroy(result);
 	} else if(!strcasecmp(message_text, "trickle")) {
 		if(handle == NULL) {
 			/* Trickle is an handle-level command */
@@ -1210,120 +1362,266 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto jsondone;
 		}
 		json_t *candidate = json_object_get(root, "candidate");
-		if(candidate == NULL) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Missing mandatory element (candidate)");
+		json_t *candidates = json_object_get(root, "candidates");
+		if(candidate == NULL && candidates == NULL) {
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (candidate|candidates)");
 			goto jsondone;
 		}
-		if(!json_is_object(candidate)) {
-			JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
-			janus_mutex_lock(&handle->mutex);
-			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
-			janus_mutex_unlock(&handle->mutex);
-		} else {
-			/* Handle remote candidate */
-			json_t *mid = json_object_get(candidate, "sdpMid");
-			if(!mid) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
-				goto jsondone;
-			}
-			if(!json_is_string(mid)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
-				goto jsondone;
-			}
-			json_t *mline = json_object_get(candidate, "sdpMLineIndex");
-			if(!mline) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMLineIndex)");
-				goto jsondone;
-			}
-			if(!json_is_integer(mline)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex should be an integer)");
-				goto jsondone;
-			}
-			json_t *rc = json_object_get(candidate, "candidate");
-			if(!rc) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
-				goto jsondone;
-			}
-			if(!json_is_string(rc)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (candidate should be a string)");
-				goto jsondone;
-			}
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
-			/* Is there any stream ready? this trickle may get here before the SDP it relates to */
-			if(handle->audio_stream == NULL && handle->video_stream == NULL) {
-				/* No stream available, wait a bit */
-				gint64 waited = 0;
-				while(handle->audio_stream == NULL && handle->video_stream == NULL) {
-					JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
-					g_usleep(100000);
-					waited += 100000;
-					if(waited >= 3*G_USEC_PER_SEC) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
-						break;
-					}
-				}
-			}
-			/* Is the ICE stack ready already? */
-			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-				/* Still processing the offer, wait a bit */
-				gint64 waited = 0;
-				while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
-					g_usleep(100000);
-					waited += 100000;
-					if(waited >= 5*G_USEC_PER_SEC) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 5 seconds, that's enough!\n", handle->handle_id);
-						break;
-					}
-				}
-			}
-			/* Parse it */
-			int sdpMLineIndex = json_integer_value(mline);
-			int video = 0, data = 0;
-			/* FIXME badly, we should have an array of m-lines in the handle object */
-			switch(sdpMLineIndex) {
-				case 0:
-					if(handle->audio_stream == NULL) {
-						video = handle->video_stream ? 1 : 0;
-						data = !video;
-					}
-					break;
-				case 1:
-					if(handle->audio_stream == NULL) {
-						data = 1;
-					} else {
-						video = handle->video_stream ? 1 : 0;
-						data = !video;
-					}
-					break;
-				case 2:
-					data = 1;
-					break;
-				default:
-					/* FIXME We don't support more than 3 m-lines right now */
-					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex not [0,2])");
-					goto jsondone;
-					break;
-			}
-#ifndef HAVE_SCTP
-			data = 0;
-#endif
-			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
-					&& (
-						((video || data) && handle->audio_stream != NULL) || 
-							((data) && handle->video_stream != NULL))
-						) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
+		if(candidate != NULL && candidates != NULL) {
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_JSON, "Can't have both candidate and candidates");
+			goto jsondone;
+		}
+		if(candidate != NULL) {
+			/* We got a single candidate */
+			if(!json_is_object(candidate) || json_object_get(candidate, "completed") != NULL) {
+				JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
+				janus_mutex_lock(&handle->mutex);
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+				janus_mutex_unlock(&handle->mutex);
 			} else {
-				janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
-				if(stream == NULL) {
-					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
+				/* Handle remote candidate */
+				json_t *mid = json_object_get(candidate, "sdpMid");
+				if(!mid) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMid)");
 					goto jsondone;
 				}
-				int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
-				if(res != 0) {
-					JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
+				if(!json_is_string(mid)) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMid should be a string)");
+					goto jsondone;
 				}
+				json_t *mline = json_object_get(candidate, "sdpMLineIndex");
+				if(!mline) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMLineIndex)");
+					goto jsondone;
+				}
+				if(!json_is_integer(mline)) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex should be an integer)");
+					goto jsondone;
+				}
+				json_t *rc = json_object_get(candidate, "candidate");
+				if(!rc) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (candidate)");
+					goto jsondone;
+				}
+				if(!json_is_string(rc)) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (candidate should be a string)");
+					goto jsondone;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
+				/* Is there any stream ready? this trickle may get here before the SDP it relates to */
+				if(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+					/* No stream available, wait a bit */
+					gint64 waited = 0;
+					while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+						JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
+						g_usleep(100000);
+						waited += 100000;
+						if(waited >= 3*G_USEC_PER_SEC) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
+							break;
+						}
+					}
+				}
+				/* Is the ICE stack ready already? */
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+					/* Still processing the offer, wait a bit */
+					gint64 waited = 0;
+					while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
+						g_usleep(100000);
+						waited += 100000;
+						if(waited >= 5*G_USEC_PER_SEC) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 5 seconds, that's enough!\n", handle->handle_id);
+							break;
+						}
+					}
+				}
+				/* Parse it */
+				int sdpMLineIndex = json_integer_value(mline);
+				int video = 0, data = 0;
+				/* FIXME badly, we should have an array of m-lines in the handle object */
+				switch(sdpMLineIndex) {
+					case 0:
+						if(handle->audio_stream == NULL) {
+							video = handle->video_stream ? 1 : 0;
+							data = !video;
+						}
+						break;
+					case 1:
+						if(handle->audio_stream == NULL) {
+							data = 1;
+						} else {
+							video = handle->video_stream ? 1 : 0;
+							data = !video;
+						}
+						break;
+					case 2:
+						data = 1;
+						break;
+					default:
+						/* FIXME We don't support more than 3 m-lines right now */
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex not [0,2])");
+						goto jsondone;
+						break;
+				}
+#ifndef HAVE_SCTP
+				data = 0;
+#endif
+				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+						&& (
+							((video || data) && handle->audio_stream != NULL) || 
+								((data) && handle->video_stream != NULL))
+							) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
+				} else {
+					janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
+					if(stream == NULL) {
+						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_TRICKE_INVALID_STREAM, "Trickle error: no %s stream", json_string_value(mid));
+						goto jsondone;
+					}
+					int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
+					if(res != 0) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
+					}
+				}
+			}
+		} else {
+			/* We got multiple candidates in an array */
+			if(!json_is_array(candidates)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Can't have both candidate and candidates");
+				goto jsondone;
+			}
+			JANUS_LOG(LOG_INFO, "Got multiple candidates (%zu)\n", json_array_size(candidates));
+			gboolean last_candidate = FALSE;
+			if(json_array_size(candidates) > 0) {
+				/* Handle remote candidates */
+				size_t i = 0;
+				for(i=0; i<json_array_size(candidates); i++) {
+					json_t *candidate = json_array_get(candidates, i);
+					if(candidate == NULL || !json_is_object(candidate) || json_object_get(candidate, "completed") != NULL) {
+						/* A 'NULL' candidate is our cue */
+						last_candidate = TRUE;
+						continue;
+					}
+					json_t *mid = json_object_get(candidate, "sdpMid");
+					if(!mid) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMid)", i);
+						continue;
+					}
+					if(!json_is_string(mid)) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMid should be a string)", i);
+						continue;
+					}
+					json_t *mline = json_object_get(candidate, "sdpMLineIndex");
+					if(!mline) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMLineIndex)", i);
+						continue;
+					}
+					if(!json_is_integer(mline)) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex should be an integer)", i);
+						continue;
+					}
+					json_t *rc = json_object_get(candidate, "candidate");
+					if(!rc) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (candidate)", i);
+						continue;
+					}
+					if(!json_is_string(rc)) {
+						/* Invalid candidate but we don't return an error, we just ignore it */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (candidate should be a string)", i);
+						continue;
+					}
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate at index %zu (%s): %s\n", handle->handle_id, i, json_string_value(mid), json_string_value(rc));
+					/* Parse it */
+					int sdpMLineIndex = json_integer_value(mline);
+					if(sdpMLineIndex < 0 || sdpMLineIndex > 2) {
+						/* FIXME We don't support more than 3 m-lines right now */
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex not [0,2])", i);
+						continue;
+					}
+					/* Is there any stream ready? this trickle may get here before the SDP it relates to */
+					if(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+						/* No stream available, wait a bit */
+						gint64 waited = 0;
+						while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
+							JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
+							g_usleep(100000);
+							waited += 100000;
+							if(waited >= 3*G_USEC_PER_SEC) {
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
+								break;
+							}
+						}
+					}
+					/* Is the ICE stack ready already? */
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+						/* Still processing the offer, wait a bit */
+						gint64 waited = 0;
+						while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
+							g_usleep(100000);
+							waited += 100000;
+							if(waited >= 5*G_USEC_PER_SEC) {
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 5 seconds, that's enough!\n", handle->handle_id);
+								break;
+							}
+						}
+					}
+					int video = 0, data = 0;
+					/* FIXME badly, we should have an array of m-lines in the handle object */
+					switch(sdpMLineIndex) {
+						case 0:
+							if(handle->audio_stream == NULL) {
+								video = handle->video_stream ? 1 : 0;
+								data = !video;
+							}
+							break;
+						case 1:
+							if(handle->audio_stream == NULL) {
+								data = 1;
+							} else {
+								video = handle->video_stream ? 1 : 0;
+								data = !video;
+							}
+							break;
+						case 2:
+							data = 1;
+							break;
+						default:
+							break;
+					}
+#ifndef HAVE_SCTP
+					data = 0;
+#endif
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+							&& (
+								((video || data) && handle->audio_stream != NULL) || 
+									((data) && handle->video_stream != NULL))
+								) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
+					} else {
+						janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
+						if(stream == NULL) {
+							JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, no %s stream", i, json_string_value(mid));
+							continue;
+						}
+						int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
+						if(res != 0) {
+							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate at index %zu... (%d)\n", handle->handle_id, i, res);
+						}
+					}
+				}
+			}
+			if(last_candidate) {
+				JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
+				janus_mutex_lock(&handle->mutex);
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+				janus_mutex_unlock(&handle->mutex);
 			}
 		}
 		/* We reply right away, not to block the web server... */
@@ -1353,6 +1651,8 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	char *payload = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
+	gchar *session_path = NULL, *handle_path = NULL;
+	gchar **basepath = NULL, **path = NULL;
 
 	JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 	/* Is this the first round? */
@@ -1401,7 +1701,6 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 		MHD_destroy_response(response);
 	}
 	/* Get path components */
-	gchar **basepath = NULL, **path = NULL;
 	if(strcasecmp(url, admin_ws_path)) {
 		if(strlen(admin_ws_path) > 1) {
 			basepath = g_strsplit(url, admin_ws_path, -1);
@@ -1442,7 +1741,6 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	if(firstround)
 		return ret;
 	JANUS_LOG(LOG_VERB, " ... parsing request...\n");
-	gchar *session_path = NULL, *handle_path = NULL;
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
 		if(session_path == NULL) {
@@ -1600,13 +1898,10 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 	const gchar *message_text = json_string_value(message);
 	
 	if(session_id == 0 && handle_id == 0) {
-		/* Can only be a 'Get all sessions' or 'Get info' request */
+		/* Can only be a 'Get all sessions' or some general setting manipulation request */
 		if(!strcasecmp(message_text, "info")) {
+			/* The generic info request */
 			ret = janus_process_success(source, "application/json", info_text);
-			goto jsondone;
-		}
-		if(strcasecmp(message_text, "list_sessions")) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
 		if(admin_ws_api_secret != NULL) {
@@ -1617,32 +1912,138 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 				goto jsondone;
 			}
 		}
-		session_id = 0;
-		/* List sessions */
-		json_t *list = json_array();
-		janus_mutex_lock(&sessions_mutex);
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, sessions);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_session *session = value;
-			if(session == NULL) {
-				continue;
+		if(!strcasecmp(message_text, "get_status")) {
+			/* Return some info on the settings (mostly debug-related, at the moment) */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_t *status = json_object();
+			json_object_set_new(status, "log_level", json_integer(log_level));
+			json_object_set_new(status, "locking_debug", json_integer(lock_debug));
+			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			json_object_set_new(reply, "status", status);
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_log_level")) {
+			/* Change the debug logging level */
+			json_t *level = json_object_get(root, "level");
+			if(!level) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (level)");
+				goto jsondone;
 			}
-			json_array_append_new(list, json_integer(session->session_id));
+			if(!json_is_integer(level)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be an integer)");
+				goto jsondone;
+			}
+			int level_num = json_integer_value(level);
+			if(level_num < LOG_NONE || level_num > LOG_MAX) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be between %d and %d)", LOG_NONE, LOG_MAX);
+				goto jsondone;
+			}
+			log_level = level_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "level", json_integer(log_level));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_locking_debug")) {
+			/* Enable/disable the locking debug (would show a message on the console for every lock attempt) */
+			json_t *debug = json_object_get(root, "debug");
+			if(!debug) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (debug)");
+				goto jsondone;
+			}
+			if(!json_is_integer(debug)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be an integer)");
+				goto jsondone;
+			}
+			int debug_num = json_integer_value(debug);
+			if(debug_num < 0 || debug_num > 1) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be either 0 or 1)");
+				goto jsondone;
+			}
+			lock_debug = debug_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "debug", json_integer(lock_debug));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_max_nack_queue")) {
+			/* Change the current value for the max NACK queue */
+			json_t *mnq = json_object_get(root, "max_nack_queue");
+			if(!mnq) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (max_nack_queue)");
+				goto jsondone;
+			}
+			if(!json_is_integer(mnq)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be an integer)");
+				goto jsondone;
+			}
+			int mnq_num = json_integer_value(mnq);
+			if(mnq_num < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be a positive integer)");
+				goto jsondone;
+			}
+			janus_set_max_nack_queue(mnq_num);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "list_sessions")) {
+			/* List sessions */
+			session_id = 0;
+			json_t *list = json_array();
+			janus_mutex_lock(&sessions_mutex);
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, sessions);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+				if(session == NULL) {
+					continue;
+				}
+				json_array_append_new(list, json_integer(session->session_id));
+			}
+			janus_mutex_unlock(&sessions_mutex);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "sessions", list);
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else {
+			/* No message we know of */
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			goto jsondone;
 		}
-		janus_mutex_unlock(&sessions_mutex);
-		/* Prepare JSON reply */
-		json_t *reply = json_object();
-		json_object_set_new(reply, "janus", json_string("success"));
-		json_object_set_new(reply, "transaction", json_string(transaction_text));
-		json_object_set_new(reply, "sessions", list);
-		/* Convert to a string */
-		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(reply);
-		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
-		goto jsondone;
 	}
 	if(session_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid session\n");
@@ -1755,6 +2156,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_object_set_new(flags, "trickle-synced", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED)));
 		json_object_set_new(flags, "data-channels", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)));
 		json_object_set_new(flags, "plan-b", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)));
+		json_object_set_new(flags, "cleaning", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)));
 		json_object_set_new(info, "flags", flags);
 		json_t *sdps = json_object();
 		if(json_string(handle->local_sdp))
@@ -1974,8 +2376,10 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 	if(source->type == JANUS_SOURCE_PLAIN_HTTP) {
 		struct MHD_Connection *connection = (struct MHD_Connection *)source->source;
 		janus_http_msg *msg = (janus_http_msg *)source->msg;
-		if(!connection || !msg)
+		if(!connection || !msg) {
+			g_free(payload);
 			return MHD_NO;
+		}
 		/* Send the reply */
 		struct MHD_Response *response = MHD_create_response_from_data(
 			strlen(payload),
@@ -1993,16 +2397,30 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		return ret;
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 #ifdef HAVE_WEBSOCKETS
-		/* FIXME We should check the return value */
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		libwebsock_send_text(client->state, payload);
+		g_async_queue_push(client->responses, payload);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
+		g_free(payload);
+		return MHD_NO;
+#endif
+	} else if(source->type == JANUS_SOURCE_RABBITMQ) {
+#ifdef HAVE_RABBITMQ
+		/* FIXME Add to the queue of outgoing responses */
+		janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+		response->payload = payload;
+		response->correlation_id = (char *)source->msg;
+		g_async_queue_push(rmq_client->responses, response);
+		return MHD_YES;
+#else
+		JANUS_LOG(LOG_ERR, "RabbitMQ support not compiled\n");
+		g_free(payload);
 		return MHD_NO;
 #endif
 	} else {
 		/* WTF? */
+		g_free(payload);
 		return MHD_NO;
 	}
 }
@@ -2032,14 +2450,9 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 				int ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
 				MHD_destroy_response(response);
 				return ret;
-			} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-#ifdef HAVE_WEBSOCKETS
+			} else if(source->type == JANUS_SOURCE_WEBSOCKETS || source->type == JANUS_SOURCE_RABBITMQ) {
 				/* TODO We should send an error to the client... */
 				return MHD_NO;
-#else
-				JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
-				return MHD_NO;
-#endif
 			} else {
 				/* WTF? */
 				return MHD_NO;
@@ -2049,7 +2462,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		va_end(ap);
 	}
 	/* Done preparing error */
-	JANUS_LOG(LOG_VERB, "[ws][%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
+	JANUS_LOG(LOG_VERB, "[%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
 	/* Prepare JSON error */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("error"));
@@ -2070,8 +2483,10 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	if(source->type == JANUS_SOURCE_PLAIN_HTTP) {
 		struct MHD_Connection *connection = (struct MHD_Connection *)source->source;
 		janus_http_msg *msg = (janus_http_msg *)source->msg;
-		if(!connection || !msg)
+		if(!connection || !msg) {
+			g_free(reply_text);
 			return MHD_NO;
+		}
 		struct MHD_Response *response = MHD_create_response_from_data(
 			strlen(reply_text),
 			(void*)reply_text,
@@ -2089,15 +2504,29 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 #ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		/* FIXME We should check the return value */
-		libwebsock_send_text(client->state, reply_text);
+		g_async_queue_push(client->responses, reply_text);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
+		g_free(reply_text);
+		return MHD_NO;
+#endif
+	} else if(source->type == JANUS_SOURCE_RABBITMQ) {
+#ifdef HAVE_RABBITMQ
+		/* FIXME Add to the queue of outgoing responses */
+		janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+		response->payload = reply_text;
+		response->correlation_id = (char *)source->msg;
+		g_async_queue_push(rmq_client->responses, response);
+		return MHD_YES;
+#else
+		JANUS_LOG(LOG_ERR, "RabbitMQ support not compiled\n");
+		g_free(reply_text);
 		return MHD_NO;
 #endif
 	} else {
 		/* WTF? */
+		g_free(reply_text);
 		return MHD_NO;
 	}
 }
@@ -2109,7 +2538,7 @@ int janus_wss_onopen(libwebsock_client_state *state) {
 	JANUS_LOG(LOG_INFO, "WebSocket onopen: #%d\n", state->sockfd);
 	janus_mutex_lock(&wss_mutex);
 	if(g_hash_table_lookup(wss_sessions, state) != NULL) {
-		JANUS_LOG(LOG_INFO, "  -- Client already handled\n");
+		JANUS_LOG(LOG_WARN, "  -- Client already handled\n");
 		janus_mutex_unlock(&wss_mutex);
 		return 0;
 	}
@@ -2121,9 +2550,23 @@ int janus_wss_onopen(libwebsock_client_state *state) {
 		libwebsock_close(state);
 		return 0;
 	}
+	/* Create a thread pool to handle incoming requests */
+	GError *error = NULL;
+	GThreadPool *thread_pool = g_thread_pool_new(janus_wss_task, ws_client, -1, FALSE, &error);
+	if(error != NULL) {
+		/* Something went wrong... */
+		g_free(ws_client);
+		janus_mutex_unlock(&wss_mutex);
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch pool thread...\n", error->code, error->message ? error->message : "??");
+		libwebsock_close(state);
+		return 0;
+	}
+	ws_client->thread_pool = thread_pool;
 	ws_client->state = state;
+	ws_client->responses = g_async_queue_new();
 	ws_client->sessions = NULL;
-	ws_client->thread = NULL;
+	/* Create a thread for notifications related to this session as well */
+	ws_client->thread = g_thread_new("wss_client", &janus_wss_thread, ws_client);
 	ws_client->destroy = 0;
 	janus_mutex_init(&ws_client->mutex);
 	
@@ -2156,25 +2599,37 @@ int janus_wss_onmessage(libwebsock_client_state *state, libwebsock_message *msg)
 			return 0;
 		}
 	}
-	janus_request_source source = {
-		.type = JANUS_SOURCE_WEBSOCKETS,
-		.source = (void *)client,
-		.msg = (void *)msg
-	};
+	/* Parse it */
+	janus_request_source *source = janus_request_source_new(JANUS_SOURCE_WEBSOCKETS, (void *)client, (void *)msg);
 	/* Parse the JSON payload */
 	json_error_t error;
 	json_t *root = json_loads(msg->payload, 0, &error);
 	if(!root) {
-		janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		janus_request_source_destroy(source);
 		return 0;
 	}
 	if(!json_is_object(root)) {
-		janus_process_error(&source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		janus_request_source_destroy(source);
 		json_decref(root);
 		return 0;
 	}
 	/* Parse the request now */
-	janus_process_incoming_request(&source, root);
+	janus_websocket_request *request = (janus_websocket_request *)calloc(1, sizeof(janus_websocket_request));
+	request->source = source;
+	request->request = root;
+	GError *tperror = NULL;
+	g_thread_pool_push(client->thread_pool, request, &tperror);
+	if(tperror != NULL) {
+		/* Something went wrong... */
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+		json_t *transaction = json_object_get(root, "transaction");
+		const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
+		janus_process_error(source, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
+		janus_request_source_destroy(source);
+		json_decref(root);
+	}
 	return 0;
 }
 
@@ -2187,15 +2642,36 @@ int janus_wss_onclose(libwebsock_client_state *state) {
 	if(client != NULL) {
 		JANUS_LOG(LOG_INFO, "Destroying WebSocket client #%d\n", state->sockfd);
 		client->destroy = 1;
+		g_thread_pool_free(client->thread_pool, FALSE, FALSE);
 		if(client->thread != NULL) {
 			JANUS_LOG(LOG_INFO, "Joining thread #%d\n", state->sockfd);
 			g_thread_join(client->thread);
 		}
 		client->thread = NULL;
 		client->state = NULL;
-		/* TODO: Remove all sessions (and handles) created by this client */
-		if(client->sessions != NULL)
+		if(client->sessions != NULL) {
+			/* Remove all sessions (and handles) created by this client */
+			janus_mutex_lock(&sessions_mutex);
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, client->sessions);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+				if(!session)
+					continue;
+				session->last_activity = 0;	/* This will trigger a timeout */
+			}
+			janus_mutex_unlock(&sessions_mutex);
 			g_hash_table_destroy(client->sessions);
+		}
+		/* Remove responses queue too, if needed */
+		if(client->responses != NULL) {
+			char *response = NULL;
+			while((response = g_async_queue_try_pop(client->responses)) != NULL) {
+				g_free(response);
+			}
+			g_async_queue_unref(client->responses);
+		}
 		client->sessions = NULL;
 		g_free(client);
 		client = NULL;
@@ -2216,11 +2692,22 @@ void *janus_wss_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "Joining WebSocket thread: #%d\n", fd);
 	while(!client->destroy && !g_atomic_int_get(&stop)) {
 		janus_mutex_lock(&client->mutex);
+		/* Responses first */
+		char *response = NULL;
+		while ((response = g_async_queue_try_pop(client->responses)) != NULL) {
+			if(!client->destroy && !g_atomic_int_get(&stop) && response) {
+				/* Gotcha! */
+				JANUS_LOG(LOG_VERB, "#%d: Sending response (%zu bytes)...\n", fd, strlen(response));
+				int res = libwebsock_send_text(client->state, response);
+				JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
+			}
+			g_free(response);
+		}
+		/* Now iterate on all the sessions handled by this WebSocket client */
 		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
-			/* Iterate on all the sessions handled by this WebSocket client */
 			GHashTableIter iter;
 			gpointer value;
-			g_hash_table_iter_init(&iter, sessions);
+			g_hash_table_iter_init(&iter, client->sessions);
 			while (g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_session *session = value;
 				if(client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
@@ -2249,6 +2736,219 @@ void *janus_wss_thread(void *data) {
 	}
 	JANUS_LOG(LOG_INFO, "Leaving WebSocket thread: #%d\n", fd);
 	return NULL;
+}
+
+void janus_wss_task(gpointer data, gpointer user_data) {
+	JANUS_LOG(LOG_VERB, "Thread pool, serving request\n");
+	janus_websocket_request *request = (janus_websocket_request *)data;
+	janus_websocket_client *client = (janus_websocket_client *)data;
+	if(request == NULL || client == NULL) {
+		JANUS_LOG(LOG_ERR, "Missing request or client\n");
+		return;
+	}
+	janus_request_source *source = (janus_request_source *)request->source;
+	json_t *root = (json_t *)request->request;
+	janus_process_incoming_request(source, root);
+	janus_request_source_destroy(source);
+	request->source = NULL;
+	request->request = NULL;
+	g_free(request);
+}
+#endif
+
+
+#ifdef HAVE_RABBITMQ
+void *janus_rmq_in_thread(void *data) {
+	if(rmq_client == NULL) {
+		JANUS_LOG(LOG_ERR, "No RabbitMQ connection??\n");
+		return NULL;
+	}
+	JANUS_LOG(LOG_VERB, "Joining RabbitMQ in thread\n");
+
+	struct timeval timeout;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 20000;
+	amqp_frame_t frame;
+	while(!rmq_client->destroy && !g_atomic_int_get(&stop)) {
+		amqp_maybe_release_buffers(rmq_conn);
+		/* Wait for a frame */
+		int res = amqp_simple_wait_frame_noblock(rmq_conn, &frame, &timeout);
+		if(res != AMQP_STATUS_OK) {
+			/* No data */
+			if(res == AMQP_STATUS_TIMEOUT)
+				continue;
+			JANUS_LOG(LOG_VERB, "Error on amqp_simple_wait_frame_noblock: %d (%s)\n", res, amqp_error_string2(res));
+			break;
+		}
+		/* We expect method first */
+		JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
+		if(frame.frame_type != AMQP_FRAME_METHOD)
+			continue;
+		JANUS_LOG(LOG_VERB, "Method %s\n", amqp_method_name(frame.payload.method.id));
+		if(frame.payload.method.id == AMQP_BASIC_DELIVER_METHOD) {
+			amqp_basic_deliver_t *d = (amqp_basic_deliver_t *)frame.payload.method.decoded;
+			JANUS_LOG(LOG_VERB, "Delivery #%u, %.*s\n", (unsigned) d->delivery_tag, (int) d->routing_key.len, (char *) d->routing_key.bytes);
+		}
+		/* Then the header */
+		amqp_simple_wait_frame(rmq_conn, &frame);
+		JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
+		if(frame.frame_type != AMQP_FRAME_HEADER)
+			continue;
+		amqp_basic_properties_t *p = (amqp_basic_properties_t *)frame.payload.properties.decoded;
+		if(p->_flags & AMQP_BASIC_REPLY_TO_FLAG) {
+			JANUS_LOG(LOG_VERB, "  -- Reply-to: %.*s\n", (int) p->reply_to.len, (char *) p->reply_to.bytes);
+		}
+		char *correlation = NULL;
+		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
+			correlation = (char *)calloc(p->correlation_id.len+1, sizeof(char));
+			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
+			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
+		}
+		if(p->_flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+			JANUS_LOG(LOG_VERB, "  -- Content-type: %.*s\n", (int) p->content_type.len, (char *) p->content_type.bytes);
+		}
+		/* And the body */
+		uint64_t total = frame.payload.properties.body_size, received = 0;
+		char *payload = (char *)calloc(total+1, sizeof(char)), *index = payload;
+		while(received < total) {
+			amqp_simple_wait_frame(rmq_conn, &frame);
+			JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
+			if(frame.frame_type != AMQP_FRAME_BODY)
+				break;
+			sprintf(index, "%.*s", (int) frame.payload.body_fragment.len, (char *) frame.payload.body_fragment.bytes);
+			received += frame.payload.body_fragment.len;
+			index = payload+received;
+		}
+		JANUS_LOG(LOG_VERB, "Got %"SCNu64"/%"SCNu64" bytes (%"SCNu64")\n", received, total, frame.payload.body_fragment.len);
+		JANUS_LOG(LOG_VERB, "%s\n", payload);
+		/* Parse it */
+		janus_request_source *source = janus_request_source_new(JANUS_SOURCE_RABBITMQ, (void *)rmq_client, (void *)correlation);
+		/* Parse the JSON payload */
+		json_error_t error;
+		json_t *root = json_loads(payload, 0, &error);
+		if(!root) {
+			janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+			g_free(payload);
+			continue;
+		}
+		if(!json_is_object(root)) {
+			janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+			g_free(payload);
+			json_decref(root);
+			continue;
+		}
+		g_free(payload);
+		/* Parse the request now */
+		janus_rabbitmq_request *request = (janus_rabbitmq_request *)calloc(1, sizeof(janus_rabbitmq_request));
+		request->source = source;
+		request->request = root;
+		GError *tperror = NULL;
+		g_thread_pool_push(rmq_client->thread_pool, request, &tperror);
+		if(tperror != NULL) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+		}
+	}
+	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ in thread\n");
+	return NULL;
+}
+
+void *janus_rmq_out_thread(void *data) {
+	if(rmq_client == NULL) {
+		JANUS_LOG(LOG_ERR, "No RabbitMQ connection??\n");
+		return NULL;
+	}
+	JANUS_LOG(LOG_VERB, "Joining RabbitMQ out thread\n");
+	while(!rmq_client->destroy && !g_atomic_int_get(&stop)) {
+		janus_mutex_lock(&rmq_client->mutex);
+		/* We send responses from here as well, not only notifications */
+		janus_rabbitmq_response *response = NULL;
+		while ((response = g_async_queue_try_pop(rmq_client->responses)) != NULL) {
+			if(!g_atomic_int_get(&stop) && response && response->payload) {
+				/* Gotcha! */
+				JANUS_LOG(LOG_VERB, "Sending response to RabbitMQ (%zu bytes)...\n", strlen(response->payload));
+				JANUS_LOG(LOG_VERB, "%s\n", response->payload);
+				amqp_basic_properties_t props;
+				props._flags = 0;
+				props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
+				props.reply_to = amqp_cstring_bytes("Janus");
+				if(response->correlation_id) {
+					props._flags |= AMQP_BASIC_CORRELATION_ID_FLAG;
+					props.correlation_id = amqp_cstring_bytes(response->correlation_id);
+				}
+				props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
+				props.content_type = amqp_cstring_bytes("application/json");
+				amqp_bytes_t message = amqp_cstring_bytes(response->payload);
+				int status = amqp_basic_publish(rmq_conn, rmq_channel, amqp_empty_bytes, from_janus_queue, 0, 0, &props, message);
+				if(status != AMQP_STATUS_OK) {
+					JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
+				}
+				g_free(response->correlation_id);
+				response->correlation_id = NULL;
+				g_free(response->payload);
+				response->payload = NULL;
+				g_free(response);
+				response = NULL;
+			}
+		}
+		if(rmq_client->sessions != NULL && g_hash_table_size(rmq_client->sessions) > 0) {
+			/* Iterate on all the sessions handled by this rmq_client */
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, rmq_client->sessions);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_session *session = value;
+				if(rmq_client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
+					continue;
+				}
+				janus_http_event *event;
+				while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
+					if(!rmq_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
+						/* Gotcha! */
+						JANUS_LOG(LOG_VERB, "Sending event to RabbitMQ (%zu bytes)...\n", strlen(event->payload));
+						JANUS_LOG(LOG_VERB, "%s\n", event->payload);
+						amqp_basic_properties_t props;
+						props._flags = 0;
+						props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
+						props.reply_to = amqp_cstring_bytes("Janus");
+						props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
+						props.content_type = amqp_cstring_bytes("application/json");
+						amqp_bytes_t message = amqp_cstring_bytes(event->payload);
+						int status = amqp_basic_publish(rmq_conn, rmq_channel, amqp_empty_bytes, from_janus_queue, 0, 0, &props, message);
+						if(status != AMQP_STATUS_OK) {
+							JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
+						}
+					}
+				}
+				if(session->timeout) {
+					/* A session timed out, anything we should do? */
+					continue;
+				}
+			}
+		}
+		janus_mutex_unlock(&rmq_client->mutex);
+		/* Sleep 100ms */
+		g_usleep(100000);
+	}
+	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ out thread\n");
+	return NULL;
+}
+
+void janus_rmq_task(gpointer data, gpointer user_data) {
+	JANUS_LOG(LOG_VERB, "Thread pool, serving request\n");
+	janus_rabbitmq_request *request = (janus_rabbitmq_request *)data;
+	janus_rabbitmq_client *client = (janus_rabbitmq_client *)data;
+	if(request == NULL || client == NULL) {
+		JANUS_LOG(LOG_ERR, "Missing request or client\n");
+		return;
+	}
+	janus_request_source *source = (janus_request_source *)request->source;
+	json_t *root = (json_t *)request->request;
+	janus_process_incoming_request(source, root);
+	janus_request_source_destroy(source);
+	request->source = NULL;
+	request->request = NULL;
+	g_free(request);
 }
 #endif
 
@@ -2469,9 +3169,26 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- DataChannels have been negotiated, but support for them has not been compiled...\n", ice_handle->handle_id);
 		}
 #endif
+		/* Are we still cleaning up from a previous media session? */
+		if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", ice_handle->handle_id);
+			gint64 waited = 0;
+			while(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", ice_handle->handle_id);
+				g_usleep(100000);
+				waited += 100000;
+				if(waited >= 3*G_USEC_PER_SEC) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", ice_handle->handle_id);
+					break;
+				}
+			}
+		}
 		if(ice_handle->agent == NULL) {
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
-			janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle);
+			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle) < 0) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
+				return NULL;
+			}
 		} else {
 			updating = TRUE;
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Updating existing session\n", ice_handle->handle_id);
@@ -2734,11 +3451,11 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		configs_folder = g_strdup ("./conf");	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+		configs_folder = g_strdup (CONFDIR);
 	}
 	if(config_file == NULL) {
 		char file[255];
-		sprintf(file, "%s/janus.cfg", configs_folder);
+		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
 		config_file = g_strdup(file);
 		if(config_file == NULL) {
 			JANUS_PRINT("Memory error!\n");
@@ -2761,7 +3478,7 @@ gint main(int argc, char *argv[])
 	janus_config_print(config);
 	if(args_info.debug_level_given) {
 		char debug[5];
-		sprintf(debug, "%d", args_info.debug_level_arg);
+		g_snprintf(debug, 5, "%d", args_info.debug_level_arg);
 		janus_config_add_item(config, "general", "debug_level", debug);
 	} else {
 		/* No command line directive on logging, try the configuration file */
@@ -2798,13 +3515,13 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.port_given) {
 		char port[20];
-		sprintf(port, "%d", args_info.port_arg);
+		g_snprintf(port, 20, "%d", args_info.port_arg);
 		janus_config_add_item(config, "webserver", "port", port);
 	}
 	if(args_info.secure_port_given) {
 		janus_config_add_item(config, "webserver", "https", "yes");
 		char port[20];
-		sprintf(port, "%d", args_info.secure_port_arg);
+		g_snprintf(port, 20, "%d", args_info.secure_port_arg);
 		janus_config_add_item(config, "webserver", "secure_port", port);
 	}
 	if(args_info.base_path_given) {
@@ -2815,15 +3532,41 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.ws_port_given) {
 		char port[20];
-		sprintf(port, "%d", args_info.port_arg);
+		g_snprintf(port, 20, "%d", args_info.port_arg);
 		janus_config_add_item(config, "webserver", "ws_port", port);
 	}
 	if(args_info.ws_secure_port_given) {
 		janus_config_add_item(config, "webserver", "ws_ssl", "yes");
 		char port[20];
-		sprintf(port, "%d", args_info.ws_secure_port_arg);
+		g_snprintf(port, 20, "%d", args_info.ws_secure_port_arg);
 		janus_config_add_item(config, "webserver", "ws_secure_port", port);
 	}
+	if(args_info.enable_rabbitmq_given) {
+		janus_config_add_item(config, "rabbitmq", "enable", "yes");
+	}
+#ifdef HAVE_RABBITMQ
+	if(args_info.rabbitmq_server_given) {
+		/* Split in server and port (if port missing, use AMQP_PROTOCOL_PORT as default) */
+		char *rmqport = strrchr(args_info.stun_server_arg, ':');
+		if(rmqport != NULL) {
+			*rmqport = '\0';
+			rmqport++;
+			janus_config_add_item(config, "rabbitmq", "host", args_info.rabbitmq_server_arg);
+			janus_config_add_item(config, "rabbitmq", "port", rmqport);
+		} else {
+			janus_config_add_item(config, "rabbitmq", "host", args_info.rabbitmq_server_arg);
+			char port[10];
+			g_snprintf(port, 10, "%d", AMQP_PROTOCOL_PORT);
+			janus_config_add_item(config, "rabbitmq", "port", port);
+		}
+	}
+	if(args_info.rabbitmq_in_queue_given) {
+		janus_config_add_item(config, "rabbitmq", "to_janus", args_info.rabbitmq_in_queue_arg);
+	}
+	if(args_info.rabbitmq_out_queue_given) {
+		janus_config_add_item(config, "rabbitmq", "from_janus", args_info.rabbitmq_out_queue_arg);
+	}
+#endif
 	if(args_info.admin_secret_given) {
 		janus_config_add_item(config, "admin", "admin_secret", args_info.admin_secret_arg);
 	}
@@ -2832,13 +3575,13 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.admin_port_given) {
 		char port[20];
-		sprintf(port, "%d", args_info.admin_port_arg);
+		g_snprintf(port, 20, "%d", args_info.admin_port_arg);
 		janus_config_add_item(config, "admin", "admin_port", port);
 	}
 	if(args_info.admin_secure_port_given) {
 		janus_config_add_item(config, "admin", "admin_https", "yes");
 		char port[20];
-		sprintf(port, "%d", args_info.admin_secure_port_arg);
+		g_snprintf(port, 20, "%d", args_info.admin_secure_port_arg);
 		janus_config_add_item(config, "admin", "admin_secure_port", port);
 	}
 	if(args_info.admin_base_path_given) {
@@ -2871,6 +3614,14 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.ice_ignore_list_given) {
 		janus_config_add_item(config, "nat", "ice_ignore_list", args_info.ice_ignore_list_arg);
+	}
+	if(args_info.ipv6_candidates_given) {
+		janus_config_add_item(config, "media", "ipv6", "true");
+	}
+	if(args_info.max_nack_queue_given) {
+		char mnq[20];
+		g_snprintf(mnq, 20, "%d", args_info.max_nack_queue_arg);
+		janus_config_add_item(config, "media", "max_nack_queue", mnq);
 	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
@@ -2974,9 +3725,6 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "api_secret");
 	if(item && item->value) {
 		ws_api_secret = g_strdup(item->value);
-		if(ws_api_secret != NULL) {
-			JANUS_LOG(LOG_WARN, "An API secret has been specified: %s (make sure your requests will contain it or they will fail!)\n", ws_api_secret);
-		}
 	}
 
 	/* Do the same for the admin/monitor interface */
@@ -3000,9 +3748,6 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "admin", "admin_secret");
 	if(item && item->value) {
 		admin_ws_api_secret = g_strdup(item->value);
-		if(admin_ws_api_secret != NULL) {
-			JANUS_LOG(LOG_WARN, "An admin/monitor secret has been specified: %s (make sure your requests will contain it or they will fail!)\n", admin_ws_api_secret);
-		}
 	}
 	/* Any ACL? */
 	item = janus_config_get_item_drilldown(config, "admin", "admin_acl");
@@ -3028,6 +3773,9 @@ gint main(int argc, char *argv[])
 	char *stun_server = NULL;
 	uint16_t stun_port = 0;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
+	gboolean ipv6 = FALSE;
+	item = janus_config_get_item_drilldown(config, "media", "ipv6");
+	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
 	if(item && item->value) {
 		/* Split in min and max port */
@@ -3055,9 +3803,18 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "stun_port");
 	if(item && item->value)
 		stun_port = atoi(item->value);
-	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port) < 0) {
+	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port, ipv6) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
+	}
+	item = janus_config_get_item_drilldown(config, "media", "max_nack_queue");
+	if(item && item->value) {
+		int mnq = atoi(item->value);
+		if(mnq < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's not a positive integer\n");
+		} else {
+			janus_set_max_nack_queue(mnq);
+		}
 	}
 
 	/* Is there a public_ip value to be used for NAT traversal instead? */
@@ -3108,7 +3865,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load plugins */
-	const char *path = "./plugins";	/* FIXME This is a relative path to where the executable is, not from where it was started... */
+	const char *path = PLUGINDIR;
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;
@@ -3119,7 +3876,7 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 	struct dirent *pluginent = NULL;
-	char pluginpath[255];
+	char pluginpath[1024];
 	while((pluginent = readdir(dir))) {
 		int len = strlen(pluginent->d_name);
 		if (len < 4) {
@@ -3129,8 +3886,8 @@ gint main(int argc, char *argv[])
 			continue;
 		}
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
-		memset(pluginpath, 0, 255);
-		sprintf(pluginpath, "%s/%s", path, pluginent->d_name);
+		memset(pluginpath, 0, 1024);
+		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
 		void *plugin = dlopen(pluginpath, RTLD_LAZY);
 		if (!plugin) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
@@ -3179,6 +3936,7 @@ gint main(int argc, char *argv[])
 
 	/* Prepare a summary on the gateway */
 	json_t *info = json_object();
+	json_object_set_new(info, "janus", json_string("server_info"));
 	json_object_set_new(info, "name", json_string(JANUS_NAME));
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
@@ -3192,6 +3950,11 @@ gint main(int argc, char *argv[])
 	json_object_set_new(info, "websockets", json_integer(1));
 #else
 	json_object_set_new(info, "websockets", json_integer(0));
+#endif
+#ifdef HAVE_RABBITMQ
+	json_object_set_new(info, "rabbitmq", json_integer(1));
+#else
+	json_object_set_new(info, "rabbitmq", json_integer(0));
 #endif
 	json_t *data = json_object();
 	GHashTableIter iter;
@@ -3236,7 +3999,7 @@ gint main(int argc, char *argv[])
 		}
 	}
 	item = janus_config_get_item_drilldown(config, "webserver", "http");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "HTTP webserver disabled\n");
 	} else {
 		int wsport = 8088;
@@ -3276,7 +4039,7 @@ gint main(int argc, char *argv[])
 	/* Do we also have to provide an HTTPS one? */
 	char *cert_pem_bytes = NULL, *cert_key_bytes = NULL; 
 	item = janus_config_get_item_drilldown(config, "webserver", "https");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
 	} else {
 		item = janus_config_get_item_drilldown(config, "webserver", "secure_port");
@@ -3370,7 +4133,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "WebSockets support not compiled\n");
 #else
 	item = janus_config_get_item_drilldown(config, "webserver", "ws");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
 	} else {
 		int wsport = 8188;
@@ -3383,7 +4146,7 @@ gint main(int argc, char *argv[])
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		char port[50];
-		g_sprintf(port, "%d", wsport);
+		g_snprintf(port, 50, "%d", wsport);
 		libwebsock_bind(wss, (char *)"0.0.0.0", port);
 		JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
 		wss->onopen = janus_wss_onopen;
@@ -3393,7 +4156,7 @@ gint main(int argc, char *argv[])
 		janus_mutex_init(&wss_mutex);
 	}
 	item = janus_config_get_item_drilldown(config, "webserver", "ws_ssl");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
 	} else {
 		if(wss != NULL) {
@@ -3410,7 +4173,7 @@ gint main(int argc, char *argv[])
 				exit(1);	/* FIXME Should we really give up? */
 			}
 			char port[50];
-			g_sprintf(port, "%d", wsport);
+			g_snprintf(port, 50, "%d", wsport);
 			libwebsock_bind_ssl(swss, (char *)"0.0.0.0", port, server_key, server_pem);
 			JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 			swss->onopen = janus_wss_onopen;
@@ -3421,25 +4184,139 @@ gint main(int argc, char *argv[])
 		}
 	}
 #endif
-	/* Do we have anything up? */
-#ifdef HAVE_WEBSOCKETS
-	if(!ws && !sws && !wss && !swss) {
+	/* Enable the RabbitMQ integration, if enabled */
+#ifndef HAVE_RABBITMQ
+	JANUS_LOG(LOG_WARN, "RabbitMQ support not compiled\n");
 #else
-	if(!ws && !sws) {
+	item = janus_config_get_item_drilldown(config, "rabbitmq", "enable");
+	if(!item || !item->value || !janus_is_true(item->value)) {
+		JANUS_LOG(LOG_WARN, "RammitMQ support disabled\n");
+	} else {
+		/* Parse configuration */
+		const char *rmqhost = "localhost";
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "host");
+		if(item && item->value)
+			rmqhost = g_strdup(item->value);
+		else
+			rmqhost = g_strdup("localhost");
+		int rmqport = AMQP_PROTOCOL_PORT;
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "port");
+		if(item && item->value)
+			rmqport = atoi(item->value);
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "to_janus");
+		if(!item || !item->value) {
+			JANUS_LOG(LOG_FATAL, "Missing name of incoming queue for RabbitMQ integration...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		const char *to_janus = g_strdup(item->value);
+		item = janus_config_get_item_drilldown(config, "rabbitmq", "from_janus");
+		if(!item || !item->value) {
+			JANUS_LOG(LOG_FATAL, "Missing name of outgoing queue for RabbitMQ integration...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		const char *from_janus = g_strdup(item->value);
+		JANUS_LOG(LOG_INFO, "RabbitMQ support enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus, from_janus);
+		/* Connect */
+		rmq_conn = amqp_new_connection();
+		JANUS_LOG(LOG_VERB, "Creating RabbitMQ socket...\n");
+		amqp_socket_t *socket = amqp_tcp_socket_new(rmq_conn);
+		if(socket == NULL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error creating socket...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Connecting to RabbitMQ server...\n");
+		int status = amqp_socket_open(socket, rmqhost, rmqport);
+		if(status != AMQP_STATUS_OK) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error opening socket... (%s)\n", amqp_error_string2(status));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Logging in...\n");
+		amqp_rpc_reply_t result = amqp_login(rmq_conn, "/", 0, 131072, 0, AMQP_SASL_METHOD_PLAIN, "guest", "guest");
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error logging in... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		rmq_channel = 1;
+		JANUS_LOG(LOG_VERB, "Opening channel...\n");
+		amqp_channel_open(rmq_conn, rmq_channel);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error opening channel... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", to_janus);
+		to_janus_queue = amqp_cstring_bytes(to_janus);
+		amqp_queue_declare(rmq_conn, rmq_channel, to_janus_queue, 0, 0, 0, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Declaring outgoing queue... (%s)\n", from_janus);
+		from_janus_queue = amqp_cstring_bytes(from_janus);
+		amqp_queue_declare(rmq_conn, rmq_channel, from_janus_queue, 0, 0, 0, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error declaring queue... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		amqp_basic_consume(rmq_conn, rmq_channel, to_janus_queue, amqp_empty_bytes, 0, 1, 0, amqp_empty_table);
+		result = amqp_get_rpc_reply(rmq_conn);
+		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error consuming... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		/* FIXME We currently support a single application, create a new janus_rabbitmq_client instance */
+		rmq_client = calloc(1, sizeof(janus_rabbitmq_client));
+		if(rmq_client == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		rmq_client->sessions = NULL;
+		rmq_client->responses = g_async_queue_new();
+		rmq_client->destroy = 0;
+		rmq_client->in_thread = g_thread_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client);
+		rmq_client->out_thread = g_thread_new("rmq_out_thread", &janus_rmq_out_thread, rmq_client);
+		/* rabbitmq-c is single threaded, we need a thread pool to serve requests */
+		GError *error = NULL;
+		rmq_client->thread_pool = g_thread_pool_new(janus_rmq_task, rmq_client, -1, FALSE, &error);
+		if(error != NULL) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch pool thread...\n", error->code, error->message ? error->message : "??");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		janus_mutex_init(&rmq_client->mutex);
+		/* Done */
+		JANUS_LOG(LOG_INFO, "Setup of RabbitMQ integration completed\n");
+	}
 #endif
-		JANUS_LOG(LOG_FATAL, "No webserver (HTTP/HTTPS/WS) started, giving up...\n"); 
+	/* Do we have anything up? */
+	int something = 0;
+	if(ws || sws)
+		something++;
+#ifdef HAVE_WEBSOCKETS
+	if(wss || swss)
+		something++;
+#endif
+#ifdef HAVE_RABBITMQ
+	if(rmq_channel)	/* FIXME */
+		something++;
+#endif
+	if(something == 0) {
+		JANUS_LOG(LOG_FATAL, "No transport (HTTP/HTTPS/WebSockets/RabbitMQ) started, giving up...\n"); 
 		exit(1);
 	}
 
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("watchdog", &janus_sessions_watchdog, NULL);
+	GMainContext *watchdog_context = g_main_context_new();
+	GMainLoop *watchdog_loop = g_main_loop_new(watchdog_context, FALSE);
+	GThread *watchdog = g_thread_new("watchdog", &janus_sessions_watchdog, watchdog_loop);
 	if(!watchdog) {
 		JANUS_LOG(LOG_FATAL, "Couldn't start sessions watchdog...\n");
 		exit(1);
 	}
 
-	/* Admin/monitor time */
-	/* Start web server, if enabled */
+	/* Admin/monitor time: start web server, if enabled */
 	threads = 0;
 	item = janus_config_get_item_drilldown(config, "admin", "admin_threads");
 	if(item && item->value) {
@@ -3458,7 +4335,7 @@ gint main(int argc, char *argv[])
 		}
 	}
 	item = janus_config_get_item_drilldown(config, "admin", "admin_http");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "Admin/monitor HTTP webserver disabled\n");
 	} else {
 		int wsport = 7088;
@@ -3497,7 +4374,7 @@ gint main(int argc, char *argv[])
 	}
 	/* Do we also have to provide an HTTPS one? */
 	item = janus_config_get_item_drilldown(config, "admin", "admin_https");
-	if(item && item->value && !strcasecmp(item->value, "no")) {
+	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "Admin/monitor HTTPS webserver disabled\n");
 	} else {
 		item = janus_config_get_item_drilldown(config, "admin", "admin_secure_port");
@@ -3596,7 +4473,7 @@ gint main(int argc, char *argv[])
 		/* The libwebsock wait is our loop */
 		libwebsock_wait(wss ? wss : swss);
 		if(!g_atomic_int_get(&stop))
-			janus_handle_signal(SIGINT);
+			g_atomic_int_inc(&stop);
 	} else {
 		while(!g_atomic_int_get(&stop)) {
 			/* Loop until we have to stop */
@@ -3611,8 +4488,13 @@ gint main(int argc, char *argv[])
 #endif
 
 	/* Done */
+	JANUS_LOG(LOG_INFO, "Ending watchdog mainloop...\n");
+	g_main_loop_quit(watchdog_loop);
 	g_thread_join(watchdog);
 	watchdog = NULL;
+	g_main_loop_unref(watchdog_loop);
+	g_main_context_unref(watchdog_context);
+
 	if(config)
 		janus_config_destroy(config);
 	JANUS_LOG(LOG_INFO, "Closing webserver(s)...\n");
@@ -3628,6 +4510,17 @@ gint main(int argc, char *argv[])
 	if(admin_sws)
 		MHD_stop_daemon(admin_sws);
 	sws = NULL;
+#ifdef HAVE_RABBITMQ
+	if(rmq_channel) {
+		if(rmq_client) {
+			g_thread_join(rmq_client->in_thread);
+			g_thread_join(rmq_client->out_thread);
+		}
+		amqp_channel_close(rmq_conn, rmq_channel, AMQP_REPLY_SUCCESS);
+		amqp_connection_close(rmq_conn, AMQP_REPLY_SUCCESS);
+		amqp_destroy_connection(rmq_conn);
+	}
+#endif
 	if(cert_pem_bytes != NULL)
 		g_free((gpointer)cert_pem_bytes);
 	cert_pem_bytes = NULL;

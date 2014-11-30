@@ -4,16 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Voice Mail Demo</title>
+<title>Janus WebRTC Gateway: Recorder/Playout Demo</title>
 <script type="text/javascript" src="jquery.min.js" ></script>
 <script type="text/javascript" src="jquery.blockUI.js" ></script>
 <script type="text/javascript" src="js/bootstrap.js"></script>
 <script type="text/javascript" src="js/bootbox.min.js"></script>
 <script type="text/javascript" src="js/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="voicemailtest.js"></script>
+<script type="text/javascript" src="recordplaytest.js"></script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
 <body>
 
 <a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
@@ -41,8 +42,8 @@
 					<li><a href="siptest.html">SIP Gateway</a></li>
 					<li><a href="videomcutest.html">Video MCU</a></li>
 					<li><a href="audiobridgetest.html">Audio Conference</a></li>
-					<li class="active"><a href="voicemailtest.html">Voice Mail</a></li>
-					<li><a href="recordplaytest.html">Recorder/Playout</a></li>
+					<li><a href="voicemailtest.html">Voice Mail</a></li>
+					<li class="active"><a href="recordplaytest.html">Recorder/Playout</a></li>
 					<li><a href="screensharingtest.html">Screen Sharing</a></li>
 					<li class="divider"></li>
 					<li><a href="admin.html">Admin/Monitor</a></li>
@@ -64,7 +65,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Voice Mail
+				<h1>Plugin Demo: Recorder/Playout
 					<button class="btn btn-default" id="start">Start</button>
 				</h1>
 			</div>
@@ -72,29 +73,53 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This demo showcases the functionality provided by the VoiceMail plugin. It
-						simply records your voice for then seconds, and then returns both a downloadable
-						link to the recording (in .opus format) and a new <code>&lt;audio&gt;</code> element that
-						tries to reproduce the recording on the fly.</p>
+						<p>This demo shows how you can record a WebRTC session, and replay it later. You
+						can choose to either record a new session (e.g., a videomessage) or watch any of
+						the recordings that may be available (including those you made yourself).</p>
+						<p>This application makes use of the integrated recording feature in Janus,
+						specifically the individual recording of audio and video streams in <code>.mjr</code>
+						format: these individual recordings are then used for a live broadcasting
+						of the dumped RTP packets through a sendonly WebRTC PeerConnection
+						when you choose to replay them. To post-process these recordings in a
+						more usable format (e.g., <code>.webm</code> for video or <code>.opus</code>
+						for audio) you can make use of the <code>janus-pp-rec</code> tool that
+						is available as part of the Janus code.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="voicemail">
-				<div class="row">
-					<div class="panel panel-default">
-						<div class="panel-heading">
-							<h3 class="panel-title">Click on the button to start recording your message.</h3>
+			<div class="container hide" id="recordplay">
+				<div id="demo">
+					<div class="col-md-6" id="controls">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">Recorder/Playout</h3>
+							</div>
+							<div class="panel-body">
+								<div class="btn-group btn-group-sm">
+									<button class="btn btn-danger" disabled id="record">Record</button>
+									<button class="btn btn-success" disabled id="play">Play</button>
+									<button class="btn btn-primary" disabled id="list">Update <i id="update-list" class="fa fa-refresh"></i></button>
+								</div>
+								<br/>
+								<div class="btn-group btn-group-sm" style="width: 100%">
+									<div class="btn-group btn-group-sm" style="width: 100%">
+										<button id="recset" class="btn btn-default dropdown-toggle" data-toggle="dropdown" style="width: 100%">
+											Recordings list<span class="caret"></span>
+										</button>
+										<ul id="recslist" class="dropdown-menu" role="menu">
+										</ul>
+									</div>
+								</div>
+							</div>
 						</div>
-						<div class="container">
-							<div class="container">
-								<button class="btn btn-xs btn-danger margin-sm" id="record">Record</button>
-								After about 10 seconds you'll receive an .opus file with the recorded frames</p>
+					</div>
+					<div class="col-md-6 hide" id="video">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title"><span id="videotitle">Remote Video</span> <button class="btn-xs btn-danger pull-right" id="stop">Stop</button></h3>
 							</div>
-							<div id="done" class="alert alert-success hide">Recording concluded! Click
-								<a id="listen" href="#" class="alert-link">here</a> to listen to it, or
-								<a id="download" href="#" target="_blank" class="alert-link">here</a> to download to it.
-							</div>
+							<div class="panel-body" id="videobox"></div>
 						</div>
 					</div>
 				</div>

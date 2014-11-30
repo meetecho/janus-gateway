@@ -189,15 +189,6 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 		sctp = NULL;
 		return NULL;
 	}
-	/* Allow resetting streams */
-	av.assoc_id = SCTP_ALL_ASSOC;
-	av.assoc_value = 1;
-	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET\n", handle_id);
-		free(sctp);
-		sctp = NULL;
-		return NULL;
-	}
 	/* Disable Nagle */
 	uint32_t nodelay = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay))) {
@@ -807,12 +798,12 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	}
 	/* Read label */
 	char label[20];
-	int len = req->label_length;
+	int len = ntohs(req->label_length);
 	if(len > 16)
 		len = 16;
 	if(len > 0) {
-		memcpy(&label, req->label, 16);
-		label[16] = '\0'; 
+		memcpy(&label, req->label, len);
+		label[len] = '\0'; 
 	} else {
 		label[0] = '?';
 		label[1] = '?';

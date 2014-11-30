@@ -29,6 +29,8 @@ To install it, you'll need to satisfy the following dependencies:
 are interested in Data Channels)
 * [libwebsock](https://github.com/payden/libwebsock) (only needed if
 you are interested in WebSockets support)
+* [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
+you are interested in RabbitMQ support)
 
 A couple of plugins depend on a few more libraries:
 
@@ -47,14 +49,15 @@ instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel libini_config-devel pkg-config gengetopt
+       opus-devel libogg-devel libini_config-devel pkg-config gengetopt \
+       libtool autoconf automake
 
 On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libini-config-dev libcollection-dev \
-		pkg-config gengetopt
+		pkg-config gengetopt libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
@@ -78,9 +81,11 @@ WebSockets support. If you're interested in supporting WebSockets to
 control Janus, as an alternative (or replacement) to the default plain
 HTTP REST API, you'll have to install the version ```1.0.4``` manually:
 
-	wget http://paydensutherland.com/libwebsock-1.0.4.tar.gz
-	tar xfv libwebsock-1.0.4.tar.gz
-	cd libwebsock-1.0.4
+	git clone git://github.com/payden/libwebsock.git
+	cd libwebsock
+	git checkout tags/v1.0.4
+	autoreconf -i
+	./autogen.sh
 	./configure --prefix=/usr && make && sudo make install
 	
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
@@ -91,8 +96,27 @@ later version. In fact, recent versions of libwebsock added support for
 threading in the library, but it is currently experimental and doesn't
 work as expected in Janus.
 
-Should you be interested in building the gateway documentation as well,
-you'll need an additional component installed too:
+Finally, the same can be said for rabbitmq-c as well, which is needed
+for the optional RabbitMQ support. In fact, several different versions
+of the library can be found, and the versions usually available in most
+distribution repositories are not up-do-date with respect to the current
+state of the development. As such, if you're interested in integrating
+RabbitMQ queues as an alternative (or replacement) to HTTP and/or
+WebSockets to control Janus, you can install the latest version with the
+following steps:
+
+	git clone https://github.com/alanxz/rabbitmq-c
+	cd rabbitmq-c
+	git submodule init
+	git submodule update
+	autoreconf -i
+	./configure --prefix=/usr && make && sudo make install
+
+* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+script if you're installing on a x86_64 distribution.
+
+To conclude, should you be interested in building the gateway
+documentation as well, you'll need some additional tools too:
 
 * [Doxygen](http://www.doxygen.org)
 * [Graphviz](http://www.graphviz.org/)
@@ -107,41 +131,55 @@ On Ubuntu/Debian:
 
 
 ##Compile
-Once you have installed all the dependencies, just use:
+Once you have installed all the dependencies, get the code:
 
-	sh install.sh
+	git clone https://github.com/meetecho/janus-gateway.git
+	cd janus-gateway
 
-to start the whole compilation process. If you're not interested in
-Data Channels or WebSockets (or you don't care about either of them)
-you can pass a specific compilation flag to disable them: 
+Then just use:
 
-	sh install.sh nodatachans nowebsockets
+	sh autogen.sh
 
-As the flag names suggest, 'nodatachans' disables support for Data
-Channels, while 'nowebsockets' disables WebSockets.
+to generate the configure file. After that, configure and compile as
+usual to start the whole compilation process:
 
-The script will then try to check whether you have all the dependencies
-installed, and then issue a 'make' for you to start compiling. If
-Doxygen and graphviz are available, it will also build the documentation
-for you as well in the docs/html subfolder. If you prefer not to build
-the documentation (or not to build it again and again every time you
-compile!) use the 'nodocs' option (along 'nodatachans' and
-'nowebsockets', if needed):
+	./configure --prefix=/opt/janus
+	make
+	make install
 
-	sh install.sh nodocs
+To also automatically install the default configuration files to use,
+also do a:
+
+	make configs
+
+If you're not interested in Data Channels, WebSockets and/or RabbitMQ
+(or you don't care about either of them) you can disable them when
+configuring: 
+
+	./configure --disable-websockets --disable-data-channels --disable-rabbitmq
+
+If Doxygen and graphviz are available, the process will also build the
+documentation for you. If you prefer not to build it, use the
+--disable-docs configuration option:
+
+	./configure --disable-docs
+
+You can also selectively enable/disable other features (e.g., specific
+plugins you don't care about). Use the --help option when configuring
+for more info.
 
 
 ##Configure and start
 To start the gateway, you can use the janus executable. There are several
 things you can configure, either in a configuration file:
 
-	./conf/janus.cfg
+	<installdir>/etc/janus/janus.cfg
 
 or on the command line:
 
-	./janus --help
+	<installdir>/bin/janus --help
 	
-	janus 0.0.4
+	janus 0.0.6
 
 	Usage: janus [OPTIONS]...
 
@@ -159,6 +197,25 @@ or on the command line:
                                   secure WebSockets)
 	-N, --no-websockets           Disable insecure WebSockets server  
                                   (default=off)
+	-m, --admin-port=portnumber   Admin/monitor web server HTTP port 
+                                  (default=7088)
+	-M, --admin-secure-port=portnumber
+                                  Admin/monitor web server HTTPS port (default=no 
+                                  HTTPS)
+	-O, --no-admin                Disable insecure HTTP admin/monitor web server  
+                                  (default=off)
+	-B, --admin-base-path=basepath
+                                  Base path to bind to in the HTTP/HTTPS 
+                                  admin/monitor web server (default=/admin) 
+	-Q, --admin-secret=randomstring
+                                  Admin/monitor secret all requests need to pass 
+                                  in order to be accepted by Janus (useful a 
+                                  crude form of authentication, none by 
+                                  default)
+	-L, --admin-acl=list          Comma-separated list of IP addresses allowed to 
+                                  use the Admin/monitor; partial strings are 
+                                  supported (e.g., 192.168.0.1,10.0.0.1 or 
+                                  192.168., default=no restriction)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
@@ -172,6 +229,8 @@ or on the command line:
                                   vmnet8,192.168.0.1,10.0.0.1 or 
                                   vmnet,192.168., default=vmnet)
 	-e, --public-ip=ipaddress     Public address of the machine, to use in SDP
+	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for 
+                                  retransmissions
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-d, --debug-level=1-7         Debug/logging level (0=disable debugging, 
@@ -180,11 +239,20 @@ or on the command line:
                                   to be accepted by Janus (useful when wrapping 
                                   Janus API requests in a server, none by 
                                   default)
+	-R, --enable-rabbitmq         Enable RabbitMQ support  (default=off)
+	-H, --rabbitmq-host=string    Address (host:port) of the RabbitMQ server to 
+                                  use (default=localhost:5672)
+	-t, --rabbitmq-in-queue=string
+                                  Name of the RabbitMQ queue for incoming 
+                                  messages (no default)
+	-f, --rabbitmq-out-queue=string
+                                  Name of the RabbitMQ queue for outgoing 
+                                  messages (no default)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:
 
-	./janus
+	<installdir>/bin/janus
 
 This will start the gateway, and have it look at the configuration file.
 By default, only an HTTP webserver is started. To enable HTTPS support,
@@ -203,7 +271,7 @@ specify in the command line are the ones related to the DTLS certificate.
 A default certificate is provided with this package in the certs folder,
 which you can use launching the executable with these parameters:
 
-	./janus -c certs/mycert.pem -k certs/mycert.key
+	<installdir>/bin/janus -c /path/to/mycert.pem -k /path/to/mycert.key
 
 At this point, the gateway will be listening on the 8088 port (or whatever
 you changed that to) of your machine. To test whether it's working

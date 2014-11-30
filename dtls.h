@@ -75,10 +75,6 @@ typedef struct janus_dtls_srtp {
 	srtp_policy_t local_policy;
 	/*! \brief Mutex to lock/unlock this libsrtp context */
 	janus_mutex srtp_mutex;
-	/*! \brief Buffer of the last message the DTLS client tried to send (needed for retransmissions) */
-	char *dtls_last_msg;
-	/*! \brief Length of the last message the DTLS client tried to send (needed for retransmissions) */
-	gint dtls_last_len;
 	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
 	int ready;
 #ifdef HAVE_SCTP
@@ -148,7 +144,6 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
 
 /*! \brief DTLS retransmission timer
  * \details As libnice is going to actually send and receive data, OpenSSL cannot handle retransmissions by itself: this timed callback (g_source_set_callback) deals with this.
- * \todo Improve the rough mechanics implemented here by using DTLSv1_get_timeout() and DTLSv1_handle_timeout() to handle timeout and re-transmissions.
  * @param[in] stack Opaque pointer to the janus_dtls_srtp instance to use
  * @returns true if a retransmission is still needed, false otherwise */
 gboolean janus_dtls_retry(gpointer stack);

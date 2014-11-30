@@ -22,13 +22,14 @@
 
 #include "record.h"
 #include "debug.h"
+#include "utils.h"
 
 
 /* Frame header in the structured recording*/
 static const char *header = "MEETECHO";
 
 
-janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
+janus_recorder *janus_recorder_create(const char *dir, int video, const char *filename) {
 	janus_recorder *rc = calloc(1, sizeof(janus_recorder));
 	if(rc == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -44,7 +45,7 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 		if(err == -1) {
 			if(ENOENT == errno) {
 				/* Directory does not exist, try creating it */
-				if(mkdir(dir, 0755) < 0) {
+				if(janus_mkdir(dir, 0755) < 0) {
 					JANUS_LOG(LOG_ERR, "mkdir error: %d\n", errno);
 					return NULL;
 				}
@@ -55,7 +56,7 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 		} else {
 			if(S_ISDIR(s.st_mode)) {
 				/* Directory exists */
-				JANUS_LOG(LOG_INFO, "Directory exists: %s\n", dir);
+				JANUS_LOG(LOG_VERB, "Directory exists: %s\n", dir);
 			} else {
 				/* File exists but it's not a directory? */
 				JANUS_LOG(LOG_ERR, "Not a directory? %s\n", dir);
@@ -67,10 +68,10 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 	memset(newname, 0, 1024);
 	if(filename == NULL) {
 		/* Choose a random username */
-		sprintf(newname, "janus-recording-%"SCNu32".mjr", g_random_int());
+		g_snprintf(newname, 1024, "janus-recording-%"SCNu32".mjr", g_random_int());
 	} else {
 		/* Just append the extension */
-		sprintf(newname, "%s.mjr", filename);
+		g_snprintf(newname, 1024, "%s.mjr", filename);
 	}
 	/* Try opening the file now */
 	if(dir == NULL) {
@@ -78,7 +79,7 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 	} else {
 		char path[1024];
 		memset(path, 0, 1024);
-		sprintf(path, "%s/%s", dir, newname);
+		g_snprintf(path, 1024, "%s/%s", dir, newname);
 		rc->file = fopen(path, "wb");
 	}
 	if(rc->file == NULL) {
@@ -104,17 +105,17 @@ janus_recorder *janus_recorder_create(char *dir, int video, char *filename) {
 int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length) {
 	if(!recorder)
 		return -1;
-	janus_mutex_lock(&recorder->mutex);
+	janus_mutex_lock_nodebug(&recorder->mutex);
 	if(!buffer || length < 1) {
-		janus_mutex_unlock(&recorder->mutex);
+		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -2;
 	}
 	if(!recorder->file) {
-		janus_mutex_unlock(&recorder->mutex);
+		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -3;
 	}
 	if(!recorder->writable) {
-		janus_mutex_unlock(&recorder->mutex);
+		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
 	}
 	/* Write frame header */
@@ -127,20 +128,20 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length
 		temp = fwrite(buffer+length-tot, sizeof(char), tot, recorder->file);
 		if(temp <= 0) {
 			JANUS_LOG(LOG_ERR, "Error saving frame...\n");
-			janus_mutex_unlock(&recorder->mutex);
+			janus_mutex_unlock_nodebug(&recorder->mutex);
 			return -5;
 		}
 		tot -= temp;
 	}
 	/* Done */
-	janus_mutex_unlock(&recorder->mutex);
+	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
 
 int janus_recorder_close(janus_recorder *recorder) {
 	if(!recorder || !recorder->writable)
 		return -1;
-	janus_mutex_lock(&recorder->mutex);
+	janus_mutex_lock_nodebug(&recorder->mutex);
 	recorder->writable = 0;
 	if(recorder->file) {
 		fseek(recorder->file, 0L, SEEK_END);
@@ -148,7 +149,7 @@ int janus_recorder_close(janus_recorder *recorder) {
 		fseek(recorder->file, 0L, SEEK_SET);
 		JANUS_LOG(LOG_INFO, "File is %zu bytes: %s\n", fsize, recorder->filename);
 	}
-	janus_mutex_unlock(&recorder->mutex);
+	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
 
@@ -156,7 +157,7 @@ int janus_recorder_free(janus_recorder *recorder) {
 	if(!recorder)
 		return -1;
 	janus_recorder_close(recorder);
-	janus_mutex_lock(&recorder->mutex);
+	janus_mutex_lock_nodebug(&recorder->mutex);
 	if(recorder->dir)
 		g_free(recorder->dir);
 	recorder->dir = NULL;
@@ -166,6 +167,6 @@ int janus_recorder_free(janus_recorder *recorder) {
 	if(recorder->file)
 		fclose(recorder->file);
 	recorder->file = NULL;
-	janus_mutex_unlock(&recorder->mutex);
+	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }

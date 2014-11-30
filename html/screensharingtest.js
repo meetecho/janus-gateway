@@ -142,14 +142,7 @@ $(document).ready(function() {
 									var event = msg["videoroom"];
 									console.log("Event: " + event);
 									if(event != undefined && event != null) {
-										if(event === "created") {
-											// Our own screen sharing session has been created, join it
-											room = msg["room"];
-											console.log("Screen sharing session created: " + room);
-											myusername = randomString(12);
-											var register = { "request": "join", "room": room, "ptype": "publisher", "display": myusername };
-											screentest.send({"message": register});
-										} else if(event === "joined") {
+										if(event === "joined") {
 											myid = msg["id"];
 											$('#session').html(room);
 											$('#title').html(msg["description"]);
@@ -275,6 +268,12 @@ function shareScreen() {
 		$('#start').attr('disabled', true);
 		return;
 	}
+	if(!Janus.isExtensionEnabled()) {
+		bootbox.alert("You're using a recent version of Chrome but don't have the screensharing extension installed: click <b><a href='https://chrome.google.com/webstore/detail/janus-webrtc-screensharin/hapfgfdkleiggjjpfpenajgdnfckjpaj' target='_blank'>here</a></b> to do so", function() {
+			window.location.reload();
+		});
+		return;
+	}
 	// Create a new room
 	$('#desc').attr('disabled', true);
 	$('#create').attr('disabled', true).unbind('click');
@@ -291,7 +290,18 @@ function shareScreen() {
 	}
 	role = "publisher";
 	var create = { "request": "create", "description": desc, "bitrate": 0, "publishers": 1 };
-	screentest.send({"message": create});
+	screentest.send({"message": create, success: function(result) {
+		var event = result["videoroom"];
+		console.log("Event: " + event);
+		if(event != undefined && event != null) {
+			// Our own screen sharing session has been created, join it
+			room = result["room"];
+			console.log("Screen sharing session created: " + room);
+			myusername = randomString(12);
+			var register = { "request": "join", "room": room, "ptype": "publisher", "display": myusername };
+			screentest.send({"message": register});
+		}
+	}});
 }
 
 function checkEnterJoin(field, event) {
