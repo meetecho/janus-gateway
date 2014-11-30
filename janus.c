@@ -240,6 +240,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				json_t *event = json_object();
 				json_object_set_new(event, "janus", json_string("timeout"));
 				json_object_set_new(event, "session_id", json_integer(session->session_id));
+				json_object_set_new(event, "responsetype", json_string("ontimeout"));
 				gchar *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 
@@ -699,10 +700,14 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	/* Check if we have session and handle identifiers */
 	guint64 session_id = session_path ? g_ascii_strtoll(session_path, NULL, 10) : 0;
 	guint64 handle_id = handle_path ? g_ascii_strtoll(handle_path, NULL, 10) : 0;
-	if(session_id > 0)
+	if(session_id > 0){
 		json_object_set_new(root, "session_id", json_integer(session_id));
-	if(handle_id > 0)
+		json_object_set_new(root, "responsetype", json_string("onsessionid"));
+	}
+	if(handle_id > 0){
 		json_object_set_new(root, "handle_id", json_integer(handle_id));
+		json_object_set_new(root, "responsetype", json_string("onhandleid"));
+	}
 	ret = janus_process_incoming_request(&source, root);
 
 done:
@@ -845,6 +850,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "responsetype", json_string("oncreate"));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(session_id));
@@ -908,6 +914,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session_id);
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "responsetype", json_string("onkeepalive"));
 		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
@@ -959,7 +966,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
 		json_object_set_new(reply, "session_id", json_integer(session_id));
+		json_object_set_new(reply, "responsetype", json_string("onattached"));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
+
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
 		json_object_set(reply, "data", data);
@@ -996,6 +1005,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "responsetype", json_string("ondestroy"));
 		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
@@ -1028,6 +1038,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
 		json_object_set_new(reply, "session_id", json_integer(session_id));
+		json_object_set_new(reply, "responsetype", json_string("ondetach"));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -1315,6 +1326,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			/* Prepare JSON response */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "responsetype", json_string("onmessage"));
 			json_object_set_new(reply, "session_id", json_integer(session->session_id));
 			json_object_set_new(reply, "sender", json_integer(handle->handle_id));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
@@ -1335,6 +1347,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			/* The plugin received the request but didn't process it yet, send an ack (asynchronous notifications may follow) */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("ack"));
+			json_object_set_new(reply, "responsetype", json_string("onack"));
 			json_object_set_new(reply, "session_id", json_integer(session_id));
 			if(result->content)
 				json_object_set_new(reply, "hint", json_string(result->content));
@@ -1627,6 +1640,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* We reply right away, not to block the web server... */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("ack"));
+		json_object_set_new(reply, "responsetype", json_string("ontrickle"));
 		json_object_set_new(reply, "session_id", json_integer(session_id));
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Convert to a string */

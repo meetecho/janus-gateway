@@ -827,6 +827,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Send info back */
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("created"));
+			json_object_set_new(event, "responsetype", json_string("oncreatedaudiobridge"));
 			json_object_set_new(event, "room", json_integer(audiobridge->room_id));
 		} else if(!strcasecmp(request_text, "destroy")) {
 			JANUS_LOG(LOG_VERB, "Attempt to destroy an existing audiobridge room\n");
@@ -903,6 +904,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Done */
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("destroyed"));
+			json_object_set_new(event, "responsetype", json_string("ondestroyed"));
 			json_object_set_new(event, "room", json_integer(room_id));
 		} else if(!strcasecmp(request_text, "join")) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
@@ -1035,6 +1037,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("joined"));
+			json_object_set_new(event, "responsetype", json_string("onjoin"));
 			json_object_set_new(event, "room", json_integer(audiobridge->room_id));
 			json_object_set_new(event, "id", json_integer(user_id));
 			json_object_set_new(event, "participants", list);
@@ -1115,6 +1118,7 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Done */
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("event"));
+			json_object_set_new(event, "responsetype", json_string("onsdpresponse"));
 			json_object_set_new(event, "room", json_integer(participant->room->room_id));
 			json_object_set_new(event, "result", json_string("ok"));
 		} else if(!strcasecmp(request_text, "leave")) {
@@ -1132,6 +1136,7 @@ static void *janus_audiobridge_handler(void *data) {
 			event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("event"));
 			json_object_set_new(event, "room", json_integer(audiobridge->room_id));
+			json_object_set_new(event, "responsetype", json_string("onleave"));
 			json_object_set_new(event, "leaving", json_integer(participant->user_id));
 			char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			GHashTableIter iter;
