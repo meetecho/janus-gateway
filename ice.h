@@ -204,6 +204,10 @@ struct janus_ice_component {
 	janus_dtls_srtp *dtls;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GList *retransmit_buffer;
+	/*! \brief Last sequence number scheduled for retransmission */
+	guint last_seqnr;
+	/*! \brief Number of consecutive nacks ignored due to being <= last_sqnr */
+	gint ignore_count;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this component */
