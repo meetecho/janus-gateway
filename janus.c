@@ -4190,7 +4190,7 @@ gint main(int argc, char *argv[])
 #else
 	item = janus_config_get_item_drilldown(config, "rabbitmq", "enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
-		JANUS_LOG(LOG_WARN, "RammitMQ support disabled\n");
+		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled\n");
 	} else {
 		/* Parse configuration */
 		const char *rmqhost = "localhost";
