@@ -103,6 +103,9 @@ gboolean janus_is_rtcp(gchar *buf) {
 
 /* Maximum value for the NACK queue */
 #define DEFAULT_MAX_NACK_QUEUE	300
+/* Maximum ignore count after retransmission */
+#define MAX_NACK_IGNORE	5
+
 static uint max_nack_queue = DEFAULT_MAX_NACK_QUEUE;
 void janus_set_max_nack_queue(uint mnq) {
 	max_nack_queue = mnq;
@@ -785,29 +788,35 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					janus_mutex_lock(&component->mutex);
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
-						JANUS_LOG(LOG_HUGE, "  >> %u\n", seqnr);
-						GList *rp = component->retransmit_buffer;
-						while(rp) {
-							janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
-							if(p) {
-								rtp_header *rh = (rtp_header *)p->data;
-								if(ntohs(rh->seq_number) == seqnr) {
-									/* Retransmit this packet */
-									JANUS_LOG(LOG_HUGE, "  >> >> Scheduling %u for retransmission!\n", seqnr);
-									/* Enqueue it */
-									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
-									pkt->data = calloc(p->length, sizeof(char));
-									memcpy(pkt->data, p->data, p->length);
-									pkt->length = p->length;
-									pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
-									pkt->control = FALSE;
-									pkt->encrypted = TRUE;	/* This was already encrypted before */
-									g_async_queue_push(handle->queued_packets, pkt);
-									break;
+						if ((seqnr > component->last_seqnr) || (component->ignore_count>MAX_NACK_IGNORE)) {
+							JANUS_LOG(LOG_HUGE, "  >> %u\n", seqnr);
+							GList *rp = component->retransmit_buffer;
+							while(rp) {
+								janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
+								if(p) {
+									rtp_header *rh = (rtp_header *)p->data;
+									if(ntohs(rh->seq_number) == seqnr) {
+										/* Retransmit this packet */
+										component->last_seqnr = seqnr;
+										component->ignore_count = 0;
+										JANUS_LOG(LOG_HUGE, "  >> >> Scheduling %u for retransmission!\n", seqnr);
+										/* Enqueue it */
+										janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
+										pkt->data = calloc(p->length, sizeof(char));
+										memcpy(pkt->data, p->data, p->length);
+										pkt->length = p->length;
+										pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
+										pkt->control = FALSE;
+										pkt->encrypted = TRUE;	/* This was already encrypted before */
+										g_async_queue_push(handle->queued_packets, pkt);
+										break;
+									}
 								}
+								rp = rp->next;
 							}
-							rp = rp->next;
-						}
+						} else {
+							component->ignore_count++;
+						}	
 						list = list->next;
 					}
 					janus_mutex_unlock(&component->mutex);
@@ -1172,6 +1181,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->source = NULL;
 		audio_rtp->dtls = NULL;
 		audio_rtp->retransmit_buffer = NULL;
+		audio_rtp->last_seqnr = 0;
+		audio_rtp->ignore_count = 0;
 		janus_mutex_init(&audio_rtp->mutex);
 		g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(1), audio_rtp);
 		audio_stream->rtp_component = audio_rtp;
@@ -1193,6 +1204,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->source = NULL;
 			audio_rtcp->dtls = NULL;
 			audio_rtcp->retransmit_buffer = NULL;
+			audio_rtcp->last_seqnr = 0;
+			audio_rtcp->ignore_count = 0;
 			janus_mutex_init(&audio_rtcp->mutex);
 			g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(2), audio_rtcp);
 			audio_stream->rtcp_component = audio_rtcp;
@@ -1241,6 +1254,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->source = NULL;
 		video_rtp->dtls = NULL;
 		video_rtp->retransmit_buffer = NULL;
+		video_rtp->last_seqnr = 0;
+		video_rtp->ignore_count = 0;
 		janus_mutex_init(&video_rtp->mutex);
 		g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(1), video_rtp);
 		video_stream->rtp_component = video_rtp;
@@ -1262,6 +1277,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->source = NULL;
 			video_rtcp->dtls = NULL;
 			video_rtcp->retransmit_buffer = NULL;
+			video_rtcp->last_seqnr = 0;
+			video_rtcp->ignore_count = 0;
 			janus_mutex_init(&video_rtcp->mutex);
 			g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(2), video_rtcp);
 			video_stream->rtcp_component = video_rtcp;
@@ -1309,6 +1326,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->source = NULL;
 		data_component->dtls = NULL;
 		data_component->retransmit_buffer = NULL;
+		data_component->last_seqnr = 0;
+		data_component->ignore_count = 0;
 		janus_mutex_init(&data_component->mutex);
 		g_hash_table_insert(data_stream->components, GUINT_TO_POINTER(1), data_component);
 		data_stream->rtp_component = data_component;	/* We use the component called 'RTP' for data */
