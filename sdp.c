@@ -84,7 +84,7 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int 
 #endif
 	*bundle = strstr(jsep_sdp, "a=group:BUNDLE") ? 1 : 0;	/* FIXME This is a really hacky way of checking... */
 	*rtcpmux = strstr(jsep_sdp, "a=rtcp-mux") ? 1 : 0;	/* FIXME Should we make this check per-medium? */
-	*trickle = strstr(jsep_sdp, "a=candidate") ? 0 : 1;	/* FIXME This is a really hacky way of checking... */
+	*trickle = (strstr(jsep_sdp, "trickle") || strstr(jsep_sdp, "google-ice") || strstr(jsep_sdp, "Mozilla")) ? 1 : 0;	/* FIXME This is a really hacky way of checking... */
 	janus_sdp *sdp = (janus_sdp *)calloc(1, sizeof(janus_sdp));
 	if(sdp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -853,6 +853,18 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				}
 			}
 			g_strlcat(sdp, "\r\n", BUFSIZE);
+			/* Media connection c= */
+			g_snprintf(buffer, 512,
+				"c=IN IP4 %s\r\n", janus_get_public_ip());
+			g_strlcat(sdp, buffer, BUFSIZE);
+			/* Any bandwidth? */
+			if(m->m_bandwidths) {
+				g_snprintf(buffer, 512,
+					"b=%s:%lu\r\n",	/* FIXME Are we doing this correctly? */
+						m->m_bandwidths->b_modifier_name ? m->m_bandwidths->b_modifier_name : "AS",
+						m->m_bandwidths->b_value);
+				g_strlcat(sdp, buffer, BUFSIZE);
+			}
 			/* a=mid:(audio|video|data) */
 			switch(m->m_type) {
 				case sdp_media_audio:
@@ -870,18 +882,6 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				default:
 					break;
 			}
-			g_strlcat(sdp, buffer, BUFSIZE);
-			/* Any bandwidth? */
-			if(m->m_bandwidths) {
-				g_snprintf(buffer, 512,
-					"b=%s:%lu\r\n",	/* FIXME Are we doing this correctly? */
-						m->m_bandwidths->b_modifier_name ? m->m_bandwidths->b_modifier_name : "AS",
-						m->m_bandwidths->b_value);
-				g_strlcat(sdp, buffer, BUFSIZE);
-			}
-			/* Media connection c= */
-			g_snprintf(buffer, 512,
-				"c=IN IP4 %s\r\n", janus_get_public_ip());
 			g_strlcat(sdp, buffer, BUFSIZE);
 			/* What is the direction? */
 			switch(m->m_mode) {
