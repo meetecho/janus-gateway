@@ -101,8 +101,11 @@ gboolean janus_is_rtcp(gchar *buf) {
 }
 
 
-/* Maximum value for the NACK queue */
+/* Maximum values for the NACK queue/retransmissions */
 #define DEFAULT_MAX_NACK_QUEUE	300
+/* Maximum ignore count after retransmission (100ms) */
+#define MAX_NACK_IGNORE			100000
+
 static uint max_nack_queue = DEFAULT_MAX_NACK_QUEUE;
 void janus_set_max_nack_queue(uint mnq) {
 	max_nack_queue = mnq;
@@ -782,6 +785,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					/* Handle NACK */
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS we should handle...\n", handle->handle_id);
 					GSList *list = nacks;
+					gint64 now = janus_get_monotonic_time();
 					janus_mutex_lock(&component->mutex);
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
@@ -792,8 +796,13 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							if(p) {
 								rtp_header *rh = (rtp_header *)p->data;
 								if(ntohs(rh->seq_number) == seqnr) {
-									/* Retransmit this packet */
+									/* Should we retransmit this packet? */
+									if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
+										JANUS_LOG(LOG_HUGE, "  >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", seqnr, now-p->last_retransmit);
+										break;
+									}
 									JANUS_LOG(LOG_HUGE, "  >> >> Scheduling %u for retransmission!\n", seqnr);
+									p->last_retransmit = now;
 									/* Enqueue it */
 									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
 									pkt->data = calloc(p->length, sizeof(char));
@@ -1515,6 +1524,7 @@ void *janus_ice_send_thread(void *data) {
 						p->data = (char *)calloc(protected, sizeof(char));
 						memcpy(p->data, (char *)&sbuf, protected);
 						p->length = protected;
+						p->last_retransmit = 0;
 						janus_mutex_lock(&component->mutex);
 						component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
 						if(g_list_length(component->retransmit_buffer) > max_nack_queue) {
