@@ -131,7 +131,7 @@ $(document).ready(function() {
 											// Publisher/manager created, negotiate WebRTC and attach to existing feeds, if any
 											myid = msg["id"];
 											console.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											publishOwnFeed();
+											publishOwnFeed(true);
 											// Any new feed to attach to?
 											if(msg["publishers"] !== undefined && msg["publishers"] !== null) {
 												var list = msg["publishers"];
@@ -231,7 +231,7 @@ $(document).ready(function() {
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification: we are unpublished now :::");
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
-									$('#publish').click(publishOwnFeed);
+									$('#publish').click(function() { publishOwnFeed(true); });
 								}
 							});
 					},
@@ -291,23 +291,27 @@ function registerUsername() {
 	}
 }
 
-function publishOwnFeed() {
+function publishOwnFeed(useAudio) {
 	// Publish our stream
 	$('#publish').attr('disabled', true).unbind('click');
 	mcutest.createOffer(
 		{
-			media: { audioRecv: false, videoRecv: false},	// Publishers are sendonly
+			media: { audioRecv: false, videoRecv: false, audioSend: useAudio, videoSend: true},	// Publishers are sendonly
 			success: function(jsep) {
 				console.log("Got publisher SDP!");
 				console.log(jsep);
-				var publish = { "request": "configure", "audio": true, "video": true };
+				var publish = { "request": "configure", "audio": useAudio, "video": true };
 				mcutest.send({"message": publish, "jsep": jsep});
 			},
 			error: function(error) {
 				console.log("WebRTC error:");
 				console.log(error);
-				bootbox.alert("WebRTC error... " + JSON.stringify(error));
-				$('#publish').removeAttr('disabled').click(publishOwnFeed);
+				if (useAudio) {
+					 publishOwnFeed(false);
+				} else {
+					bootbox.alert("WebRTC error... " + JSON.stringify(error));
+					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
+				}
 			}
 		});
 }
