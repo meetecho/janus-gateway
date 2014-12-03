@@ -91,6 +91,8 @@ HTTP REST API, you'll have to install the version ```1.0.4``` manually:
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
 
+* *Note:* To correctly configure janus you must install libevent-dev (or libevent-devel) before installing libwebsock ([see also this](https://groups.google.com/forum/#!searchin/meetecho-janus/websockets/meetecho-janus/TqPNJDsUf2s/uBhlT8a4WUMJ)).
+
 Please notice that you have to install version ```1.0.4``` and not any
 later version. In fact, recent versions of libwebsock added support for
 threading in the library, but it is currently experimental and doesn't
