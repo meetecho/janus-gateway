@@ -1244,7 +1244,7 @@ static void *janus_audiobridge_handler(void *data) {
             janus_mutex_unlock(&participant->qmutex);
             janus_mutex_unlock(&audiobridge->mutex);
         }else if (!strcasecmp(request_text, "unpublish")) {
-            JANUS_LOG(LOG_ERR, "On UNPUBLISHED CALLED\n");
+            JANUS_LOG(LOG_ERR, "On Unpublished called\n");
             /*this participants wants to unpublish*/
             janus_audiobridge_participant *participant = (janus_audiobridge_participant *) session->participant;
             if (participant == NULL || participant->room == NULL) {
