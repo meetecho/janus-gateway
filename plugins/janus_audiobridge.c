@@ -1243,41 +1243,6 @@ static void *janus_audiobridge_handler(void *data) {
             }
             janus_mutex_unlock(&participant->qmutex);
             janus_mutex_unlock(&audiobridge->mutex);
-        } else if(!strcasecmp(request_text, "tophleave")){
-            JANUS_LOG(LOG_INFO, "Toph leaving \n");
-
-            if (stopping || !initialized)
-                goto error;
-
-            if (!session) {
-                JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
-                goto error;
-            }
-            if (session->destroyed || !session->participant)
-                goto error;
-
-            /* Get rid of participant */
-            janus_audiobridge_participant *participant = (janus_audiobridge_participant *) session->participant;
-            janus_audiobridge_room *audiobridge = participant->room;
-
-            janus_mutex_lock(&audiobridge->mutex);
-            g_hash_table_remove(audiobridge->participants, GUINT_TO_POINTER(participant->user_id));
-            session->participant = NULL;
-            /* Get rid of queued packets */
-            janus_mutex_lock(&participant->qmutex);
-            while (!g_queue_is_empty(participant->inbuf)) {
-                janus_audiobridge_rtp_relay_packet *pkt = g_queue_pop_head(participant->inbuf);
-                if (pkt == NULL)
-                    continue;
-                if (pkt->data)
-                    g_free(pkt->data);
-                pkt->data = NULL;
-                g_free(pkt);
-                pkt = NULL;
-            }
-            janus_mutex_unlock(&participant->qmutex);
-            janus_mutex_unlock(&audiobridge->mutex);
-
         }else if (!strcasecmp(request_text, "unpublish")) {
             JANUS_LOG(LOG_ERR, "On UNPUBLISHED CALLED\n");
             /*this participants wants to unpublish*/
