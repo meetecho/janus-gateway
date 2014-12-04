@@ -1196,7 +1196,7 @@ static void *janus_audiobridge_handler(void *data) {
             json_object_set_new(event, "room", json_integer(participant->room->room_id));
             json_object_set_new(event, "result", json_string("ok"));
         } else if (!strcasecmp(request_text, "leave")) {
-            JANUS_LOG(LOG_WARN, "On LEAVE CALLED\n");
+            JANUS_LOG(LOG_WARN, "On Leave called\n");
             /* This participant is leaving */
             janus_audiobridge_participant *participant = (janus_audiobridge_participant *) session->participant;
             if (participant == NULL || participant->room == NULL) {
@@ -1230,7 +1230,7 @@ static void *janus_audiobridge_handler(void *data) {
             }
             g_free(leaving_text);
             /* Done */
-
+            participant->unpublished = FALSE;
             participant->audio_active = FALSE;
             session->started = FALSE;
 
