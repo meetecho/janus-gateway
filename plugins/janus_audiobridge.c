@@ -204,6 +204,8 @@ typedef struct janus_audiobridge_participant {
     gchar *display;
     /* Display name (just for fun) */
     gboolean audio_active;
+
+    gboolean unpublished;
     /* RTP stuff */
     GQueue *inbuf;
     janus_mutex qmutex;
@@ -637,7 +639,9 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
     json_object_set_new(event, "leaving", json_integer(participant->user_id));
     char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
     json_decref(event);
-    g_hash_table_remove(audiobridge->participants, GUINT_TO_POINTER(participant->user_id));
+    if(!participant->unpublished)
+        g_hash_table_remove(audiobridge->participants, GUINT_TO_POINTER(participant->user_id));
+
     GHashTableIter iter;
     gpointer value;
     g_hash_table_iter_init(&iter, audiobridge->participants);
@@ -654,8 +658,10 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
     }
     g_free(leaving_text);
     participant->audio_active = 0;
-    session->started = FALSE;
-    session->destroyed = 1;
+    if(!participant->unpublished) {
+        session->started = FALSE;
+        session->destroyed = 1;
+    }
     /* Get rid of queued packets */
     janus_mutex_lock(&participant->qmutex);
     while (!g_queue_is_empty(participant->inbuf)) {
@@ -1111,6 +1117,7 @@ static void *janus_audiobridge_handler(void *data) {
                 g_snprintf(error_cause, 512, "Can't configure (not in a room)");
                 goto error;
             }
+
             /* Configure settings for this participant */
             json_t *audio = json_object_get(root, "audio");
             if (!audio) {
@@ -1127,6 +1134,7 @@ static void *janus_audiobridge_handler(void *data) {
             }
             if (audio) {
                 participant->audio_active = json_is_true(audio);
+                participant->unpublished=FALSE;
                 JANUS_LOG(LOG_WARN, "Setting audio property: %s (room %"
                         SCNu64
                         ", user %"
@@ -1255,13 +1263,8 @@ static void *janus_audiobridge_handler(void *data) {
             }
 
             /* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+            participant->unpublished=TRUE;
             gateway->close_pc(session->handle);
-            /* Done */
-            event = json_object();
-            json_object_set_new(event, "audiobridge", json_string("event"));
-            json_object_set_new(event, "responsetype", json_string("onunpublish"));
-            json_object_set_new(event, "unpublished", json_integer(participant->user_id));
-            json_object_set_new(event, "result", json_string("ok"));
         } else {
             JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
             error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_REQUEST;
