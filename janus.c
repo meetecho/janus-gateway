@@ -3362,7 +3362,7 @@ void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len) 
 }
 
 void janus_close_pc(janus_plugin_session *plugin_session) {
-	JANUS_LOG(LOG_ERR, "JANUS CLOSE PC CALLED");
+	JANUS_LOG(LOG_ERR, "janus close peerconnection\n");
 	/* A plugin asked to get rid of a PeerConnection */
 	if(!plugin_session)
 		return;
