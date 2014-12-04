@@ -1225,9 +1225,24 @@ static void *janus_audiobridge_handler(void *data) {
 
             participant->audio_active = FALSE;
             session->started = FALSE;
+
+            /* Get rid of participant */
+            g_hash_table_remove(audiobridge->participants, GUINT_TO_POINTER(participant->user_id));
+            session->participant = NULL;
+            /* Get rid of queued packets */
+            janus_mutex_lock(&participant->qmutex);
+            while (!g_queue_is_empty(participant->inbuf)) {
+                janus_audiobridge_rtp_relay_packet *pkt = g_queue_pop_head(participant->inbuf);
+                if (pkt == NULL)
+                    continue;
+                if (pkt->data)
+                    g_free(pkt->data);
+                pkt->data = NULL;
+                g_free(pkt);
+                pkt = NULL;
+            }
+            janus_mutex_unlock(&participant->qmutex);
             janus_mutex_unlock(&audiobridge->mutex);
-
-
         } else if(!strcasecmp(request_text, "tophleave")){
             JANUS_LOG(LOG_INFO, "Toph leaving \n");
 
