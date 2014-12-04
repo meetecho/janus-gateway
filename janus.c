@@ -740,6 +740,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		JANUS_LOG(LOG_ERR, "Missing source or payload to process, giving up...\n");
 		return ret;
 	}
+//	JANUS_LOG(LOG_INFO, "Processing incomming request...\n");
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
@@ -3361,6 +3362,7 @@ void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len) 
 }
 
 void janus_close_pc(janus_plugin_session *plugin_session) {
+	JANUS_LOG(LOG_ERR, "JANUS CLOSE PC CALLED");
 	/* A plugin asked to get rid of a PeerConnection */
 	if(!plugin_session)
 		return;
