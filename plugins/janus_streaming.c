@@ -77,6 +77,7 @@ videofmtp = Codec specific parameters, if any
 #include "../config.h"
 #include "../mutex.h"
 #include "../rtp.h"
+#include "../rtcp.h"
 #include "../record.h"
 #include "../utils.h"
 
@@ -1561,6 +1562,12 @@ void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char 
 void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || stopping || !initialized)
 		return;
+	/* We might interested in the available bandwidth that the user advertizes */
+	uint64_t bw = janus_rtcp_get_remb(buf, len);
+	if(bw > 0) {
+		JANUS_LOG(LOG_HUGE, "REMB for this PeerConnection: %"SCNu64"\n", bw);
+		/* TODO Use this somehow (e.g., notification towards application?) */
+	}
 	/* FIXME Maybe we should care about RTCP, but not now */
 }
 
@@ -1680,58 +1687,62 @@ static void *janus_streaming_handler(void *data) {
 			mp->listeners = g_list_append(mp->listeners, session);
 			janus_mutex_unlock(&mp->mutex);
 			sdp_type = "offer";	/* We're always going to do the offer ourselves, never answer */
-			char sdptemp[1024];
-			memset(sdptemp, 0, 1024);
-			gchar buffer[100];
-			memset(buffer, 0, 100);
+			char sdptemp[2048];
+			memset(sdptemp, 0, 2048);
+			gchar buffer[512];
+			memset(buffer, 0, 512);
 			gint64 sessid = janus_get_monotonic_time();
 			gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
-			g_snprintf(buffer, 100,
+			g_snprintf(buffer, 512,
 				"v=0\r\no=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",
 					"-", sessid, version);
-			g_strlcat(sdptemp, buffer, 1024);
-			g_strlcat(sdptemp, "s=Streaming Test\r\nt=0 0\r\n", 1024);
+			g_strlcat(sdptemp, buffer, 2048);
+			g_strlcat(sdptemp, "s=Streaming Test\r\nt=0 0\r\n", 2048);
 			if(mp->codecs.audio_pt >= 0) {
 				/* Add audio line */
-				g_snprintf(buffer, 100,
+				g_snprintf(buffer, 512,
 					"m=audio 1 RTP/SAVPF %d\r\n"
 					"c=IN IP4 1.1.1.1\r\n",
 					mp->codecs.audio_pt);
-				g_strlcat(sdptemp, buffer, 1024);
+				g_strlcat(sdptemp, buffer, 2048);
 				if(mp->codecs.audio_rtpmap) {
-					g_snprintf(buffer, 100,
+					g_snprintf(buffer, 512,
 						"a=rtpmap:%d %s\r\n",
 						mp->codecs.audio_pt, mp->codecs.audio_rtpmap);
-					g_strlcat(sdptemp, buffer, 1024);
+					g_strlcat(sdptemp, buffer, 2048);
 				}
 				if(mp->codecs.audio_fmtp) {
-					g_snprintf(buffer, 100,
+					g_snprintf(buffer, 512,
 						"a=fmtp:%d %s\r\n",
 						mp->codecs.audio_pt, mp->codecs.audio_fmtp);
-					g_strlcat(sdptemp, buffer, 1024);
+					g_strlcat(sdptemp, buffer, 2048);
 				}
-				g_strlcat(sdptemp, "a=sendonly\r\n", 1024);
+				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 			}
 			if(mp->codecs.video_pt >= 0) {
 				/* Add video line */
-				g_snprintf(buffer, 100,
+				g_snprintf(buffer, 512,
 					"m=video 1 RTP/SAVPF %d\r\n"
 					"c=IN IP4 1.1.1.1\r\n",
 					mp->codecs.video_pt);
-				g_strlcat(sdptemp, buffer, 1024);
+				g_strlcat(sdptemp, buffer, 2048);
 				if(mp->codecs.video_rtpmap) {
-					g_snprintf(buffer, 100,
+					g_snprintf(buffer, 512,
 						"a=rtpmap:%d %s\r\n",
 						mp->codecs.video_pt, mp->codecs.video_rtpmap);
-					g_strlcat(sdptemp, buffer, 1024);
+					g_strlcat(sdptemp, buffer, 2048);
 				}
 				if(mp->codecs.video_fmtp) {
-					g_snprintf(buffer, 100,
+					g_snprintf(buffer, 512,
 						"a=fmtp:%d %s\r\n",
 						mp->codecs.video_pt, mp->codecs.video_fmtp);
-					g_strlcat(sdptemp, buffer, 1024);
+					g_strlcat(sdptemp, buffer, 2048);
 				}
-				g_strlcat(sdptemp, "a=sendonly\r\n", 1024);
+				g_snprintf(buffer, 512,
+					"a=rtcp-fb:%d goog-remb\r\n",
+					mp->codecs.video_pt);
+				g_strlcat(sdptemp, buffer, 2048);
+				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 			}
 			sdp = g_strdup(sdptemp);
 			JANUS_LOG(LOG_VERB, "Going to offer this SDP:\n%s\n", sdp);
