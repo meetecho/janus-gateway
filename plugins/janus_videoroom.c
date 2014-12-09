@@ -923,12 +923,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* Show updated rooms list */
 		GHashTableIter iter;
 		gpointer value;
+		g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 		g_hash_table_iter_init(&iter, rooms);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom *vr = value;
 			JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq);
 		}
-		g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 		janus_mutex_unlock(&rooms_mutex);
 		/* Send info back */
 		json_t *response = json_object();
