@@ -154,7 +154,7 @@ $(document).ready(function() {
 											bootbox.alert("The Echo Test is over");
 											if(spinner !== null && spinner !== undefined)
 												spinner.stop();
-											spinenr = null;
+											spinner = null;
 											$('#myvideo').remove();
 											$('#waitingvideo').remove();
 											$('#peervideo').remove();
@@ -266,7 +266,7 @@ $(document).ready(function() {
 									console.log(" ::: Got a cleanup notification :::");
 									if(spinner !== null && spinner !== undefined)
 										spinner.stop();
-									spinenr = null;
+									spinner = null;
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$('#peervideo').remove();
