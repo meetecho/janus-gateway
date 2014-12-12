@@ -8,6 +8,8 @@
 ;                   (multiple listeners = different streaming contexts)
 ; id = <unique numeric ID> (if missing, a random one will be generated)
 ; description = This is my awesome stream
+; private = yes|no (private streams don't appear when you do a 'list'
+;			request)
 ; secret = <optional password needed for manipulating (e.g., destroying
 ;			or enabling/disabling) the stream>
 ; filename = path to the local file to stream (only for live/ondemand)

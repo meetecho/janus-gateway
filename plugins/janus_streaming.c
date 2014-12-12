@@ -48,6 +48,7 @@ type = rtp|live|ondemand
                   (multiple listeners = different streaming contexts)
 id = <unique numeric ID>
 description = This is my awesome stream
+private = yes|no (private streams don't appear when you do a 'list' request)
 filename = path to the local file to stream (only for live/ondemand)
 secret = <optional password needed for manipulating (e.g., destroying
 		or enabling/disabling) the stream>
@@ -183,6 +184,7 @@ typedef struct janus_streaming_mountpoint {
 	gint64 id;
 	char *name;
 	char *description;
+	gboolean private;
 	char *secret;
 	gboolean enabled;
 	gboolean active;
@@ -351,6 +353,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *priv = janus_config_get_item(cat, "private");
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
@@ -362,6 +365,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *vcodec = janus_config_get_item(cat, "videopt");
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
 				janus_config_item *vfmtp = janus_config_get_item(cat, "videofmtp");
+				gboolean private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				if(!doaudio && !dovideo) {
@@ -416,12 +420,14 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream '%s'...\n", cat->name);
 					continue;
 				}
+				mp->private = private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
 			} else if(!strcasecmp(type->value, "live")) {
 				/* File live source */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *priv = janus_config_get_item(cat, "private");
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
@@ -431,6 +437,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cat = cat->next;
 					continue;
 				}
+				gboolean private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
@@ -466,12 +473,14 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_ERR, "Error creating 'live' stream '%s'...\n", cat->name);
 					continue;
 				}
+				mp->private = private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
 			} else if(!strcasecmp(type->value, "ondemand")) {
 				/* mu-Law file on demand source */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *priv = janus_config_get_item(cat, "private");
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
@@ -481,6 +490,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cat = cat->next;
 					continue;
 				}
+				gboolean private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
@@ -516,6 +526,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream '%s'...\n", cat->name);
 					continue;
 				}
+				private = private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
 			} else {
@@ -534,9 +545,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	g_hash_table_iter_init(&iter, mountpoints);
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_streaming_mountpoint *mp = value;
-		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %s (%s, %s)\n", mp->id, mp->name, mp->description,
+		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %s (%s, %s, %s)\n", mp->id, mp->name, mp->description,
 			mp->streaming_type == janus_streaming_type_live ? "live" : "on demand",
-			mp->streaming_source == janus_streaming_source_rtp ? "RTP source" : "file source");
+			mp->streaming_source == janus_streaming_source_rtp ? "RTP source" : "file source",
+			mp->private ? "private" : "public");
 	}
 	janus_mutex_unlock(&mountpoints_mutex);
 
@@ -738,6 +750,11 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		g_hash_table_iter_init(&iter, mountpoints);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_streaming_mountpoint *mp = value;
+			if(mp->private) {
+				/* Skip private stream */
+				JANUS_LOG(LOG_VERB, "Skipping private mountpoint '%s'\n", mp->description);
+				continue;
+			}
 			json_t *ml = json_object();
 			json_object_set_new(ml, "id", json_integer(mp->id));
 			json_object_set_new(ml, "description", json_string(mp->description));
@@ -799,6 +816,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
+				goto error;
+			}
+			json_t *private = json_object_get(root, "private");
+			if(private && !json_is_boolean(private)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (private should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (private should be a boolean)");
 				goto error;
 			}
 			json_t *audio = json_object_get(root, "audio");
@@ -959,6 +983,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Error creating 'rtp' stream");
 				goto error;
 			}
+			mp->private = private ? json_is_true(private) : FALSE;
 		} else if(!strcasecmp(type_text, "live")) {
 			/* File live source */
 			json_t *id = json_object_get(root, "id");
@@ -980,6 +1005,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
+				goto error;
+			}
+			json_t *private = json_object_get(root, "private");
+			if(private && !json_is_boolean(private)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (private should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (private should be a boolean)");
 				goto error;
 			}
 			json_t *file = json_object_get(root, "file");
@@ -1044,6 +1076,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Error creating 'live' stream");
 				goto error;
 			}
+			mp->private = private ? json_is_true(private) : FALSE;
 		} else if(!strcasecmp(type_text, "ondemand")) {
 			/* mu-Law file on demand source */
 			json_t *id = json_object_get(root, "id");
@@ -1065,6 +1098,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
+				goto error;
+			}
+			json_t *private = json_object_get(root, "private");
+			if(private && !json_is_boolean(private)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (private should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (private should be a boolean)");
 				goto error;
 			}
 			json_t *file = json_object_get(root, "file");
@@ -1129,6 +1169,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Error creating 'ondemand' stream");
 				goto error;
 			}
+			mp->private = private ? json_is_true(private) : FALSE;
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown stream type '%s'...\n", type_text);
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
@@ -1146,6 +1187,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		json_object_set_new(ml, "id", json_integer(mp->id));
 		json_object_set_new(ml, "description", json_string(mp->description));
 		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+		json_object_set_new(ml, "private", json_boolean(mp->private));
 		json_object_set_new(response, "stream", ml);
 		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(response);
