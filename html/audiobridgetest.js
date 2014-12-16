@@ -53,6 +53,7 @@ var mixertest = null;
 var started = false;
 var spinner = null;
 
+var myroom = 1234;	// Demo room
 var myusername = null;
 var myid = null;
 var audioenabled = false;
@@ -136,7 +137,7 @@ $(document).ready(function() {
 													success: function(jsep) {
 														console.log("Got SDP!");
 														console.log(jsep);
-														var publish = { "request": "configure", "audio": true };
+														var publish = { "request": "configure", "muted": false };
 														mixertest.send({"message": publish, "jsep": jsep});
 													},
 													error: function(error) {
@@ -146,6 +147,32 @@ $(document).ready(function() {
 													}
 												});
 											// Any room participant?
+											if(msg["participants"] !== undefined && msg["participants"] !== null) {
+												var list = msg["participants"];
+												console.log("Got a list of participants:");
+												console.log(list);
+												for(var f in list) {
+													var id = list[f]["id"];
+													var display = list[f]["display"];
+													var muted = list[f]["muted"];
+													console.log("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													if($('#rp'+id).length === 0) {
+														// Add to the participants list
+														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
+														$('#rp'+id + ' > i').hide();
+													}
+													if(muted === true || muted === "true")
+														$('#rp'+id + ' > i').removeClass('hide').show();
+													else
+														$('#rp'+id + ' > i').hide();
+												}
+											}
+										} else if(event === "roomchanged") {
+											// The user switched to a different room
+											myid = msg["id"];
+											console.log("Moved to room " + msg["room"] + ", new ID: " + myid);
+											// Any room participant?
+											$('#list').empty();
 											if(msg["participants"] !== undefined && msg["participants"] !== null) {
 												var list = msg["participants"];
 												console.log("Got a list of participants:");
@@ -231,7 +258,7 @@ $(document).ready(function() {
 												$('#toggleaudio').html("Mute").removeClass("btn-success").addClass("btn-danger");
 											else
 												$('#toggleaudio').html("Unmute").removeClass("btn-danger").addClass("btn-success");
-											mixertest.send({message: { "request": "configure", "audio": audioenabled }});
+											mixertest.send({message: { "request": "configure", "muted": !audioenabled }});
 										}).removeClass('hide').show();
 
 								},
@@ -294,7 +321,7 @@ function registerUsername() {
 			$('#register').removeAttr('disabled').click(registerUsername);
 			return;
 		}
-		var register = { "request": "join", "room": 1234, "display": username };
+		var register = { "request": "join", "room": myroom, "display": username };
 		myusername = username;
 		mixertest.send({"message": register});
 	}
