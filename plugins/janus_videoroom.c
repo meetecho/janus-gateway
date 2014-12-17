@@ -54,6 +54,7 @@
  * \verbatim
 [<unique room ID>]
 description = This is my awesome room
+private = yes|no (private rooms don't appear when you do a 'list' request)
 secret = <password needed for manipulating (e.g. destroying) the room>
 publishers = <max number of concurrent senders> (e.g., 6 for a video
              conference or 1 for a webinar)
@@ -185,6 +186,7 @@ typedef struct janus_videoroom {
 	guint64 room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
+	gboolean private;			/* Whether this room is 'private' (as in hidden) or not */
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint64_t bitrate;			/* Global bitrate limit */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
@@ -468,6 +470,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			JANUS_LOG(LOG_VERB, "Adding video room '%s'\n", cat->name);
 			janus_config_item *desc = janus_config_get_item(cat, "description");
+			janus_config_item *priv = janus_config_get_item(cat, "private");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
 			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
 			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
@@ -494,6 +497,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			if(secret != NULL && secret->value != NULL) {
 				videoroom->room_secret = g_strdup(secret->value);
 			}
+			videoroom->private = priv && priv->value && janus_is_true(priv->value);
 			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 			if(maxp != NULL && maxp->value != NULL)
 				videoroom->max_publishers = atol(maxp->value);
@@ -519,7 +523,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->room_secret ? videoroom->room_secret : "no secret");
+			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->private ? "private" : "public", videoroom->room_secret ? videoroom->room_secret : "no secret");
 			if(videoroom->record) {
 				JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 			}
@@ -791,6 +795,13 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Invalid element (description should be a string)");
 			goto error;
 		}
+		json_t *private = json_object_get(root, "private");
+		if(private && !json_is_boolean(private)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (private should be a boolean)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (private should be a boolean)");
+			goto error;
+		}
 		json_t *secret = json_object_get(root, "secret");
 		if(secret && !json_is_string(secret)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
@@ -892,6 +903,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 		}
 		videoroom->room_name = description;
+		videoroom->private = private ? json_is_true(private) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
 		videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
@@ -916,7 +928,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->destroyed = 0;
 		janus_mutex_init(&videoroom->participants_mutex);
 		videoroom->participants = g_hash_table_new(NULL, NULL);
-		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->room_secret ? videoroom->room_secret : "no secret");
+		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->private ? "private" : "public", videoroom->room_secret ? videoroom->room_secret : "no secret");
 		if(videoroom->record) {
 			JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 		}
@@ -1032,16 +1044,23 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
 		g_free(response_text);
 		return result;
-	//lists rooms and their details, does not show the secret of course...	
 	} else if(!strcasecmp(request_text, "list")) {
+		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
 		json_t *list = json_array();
-		JANUS_LOG(LOG_VERB, "Request for the list for all video rooms\n");
+		JANUS_LOG(LOG_VERB, "Getting the list of video rooms\n");
 		janus_mutex_lock(&rooms_mutex);
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, rooms);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom *room = value;
+			if(!room)
+				continue;
+			if(room->private) {
+				/* Skip private room */
+				JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
+				continue;
+			}
 			if(!room->destroyed) {
 				json_t *rl = json_object();
 				json_object_set_new(rl, "room", json_integer(room->room_id));
@@ -1049,9 +1068,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_object_set_new(rl, "max_publishers", json_integer(room->max_publishers));
 				json_object_set_new(rl, "bitrate", json_integer(room->bitrate));
 				json_object_set_new(rl, "fir_freq", json_integer(room->fir_freq));
-				json_object_set_new(rl, "record", json_boolean(room->record));
+				json_object_set_new(rl, "record", json_string(room->record ? "true" : "false"));
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
-				//TODO: Possibly list participant details...or make it a separate API call for a specific room
+				/* TODO: Should we list participants as well? or should there be a separate API call on a specific room for this? */
 				json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 				json_array_append_new(list, rl);
 			}
@@ -1065,8 +1084,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
 		g_free(response_text);
 		return result;
-	//returns whether a given room exists or not, no details given.	
 	} else if(!strcasecmp(request_text, "exists")) {
+		/* Check whether a given room exists or not, returns true/false */	
 		json_t *room = json_object_get(root, "room");
 		if(!room || !json_is_integer(room)) {
 			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be an integer\n");
@@ -1081,7 +1100,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", json_integer(room_id));
-		json_object_set_new(response, "exists", json_boolean(room_exists));
+		json_object_set_new(response, "exists", json_string(room_exists ? "true" : "false"));
 		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(response);
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
