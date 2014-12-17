@@ -1265,7 +1265,45 @@ static void *janus_audiobridge_handler(void *data) {
             /* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
             participant->unpublished=TRUE;
             gateway->close_pc(session->handle);
-        } else {
+        } else if(!strcasecmp(request_text, "sendmessage")){
+                /* This publisher is leaving, tell everybody */
+                janus_audiobridge_participant *participant = (janus_audiobridge_participant *) session->participant;
+                if (participant == NULL || participant->room == NULL) {
+                    JANUS_LOG(LOG_ERR, "Can't unpublish (not in a room)\n");
+                    error_code = JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED;
+                    g_snprintf(error_cause, 512, "Can't unpublish (not in a room)");
+                    goto error;
+                }
+
+//                json_t *dmsg = json_object_get(root, "datamessage");
+                event = json_object();
+
+                json_object_set_new(event, "responsetype", json_string("onsendmessage"));
+                json_object_set_new(event, "audiobridge", json_string("event"));
+                json_object_set_new(event, "room", json_integer(participant->room->room_id));
+                json_object_set_new(event, "sending", json_object_get(root, "datamessage"));
+
+                char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+
+                GHashTableIter iter;
+                gpointer value;
+                g_hash_table_iter_init(&iter, participant->room->participants);
+                while (g_hash_table_iter_next(&iter, NULL, &value)) {
+                    janus_audiobridge_participant *p = value;
+                    if(p == participant) {
+                        continue;	/* Skip the new publisher itself */
+                    }
+                    JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+                    int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, leaving_text, NULL, NULL);
+                    JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+                }
+                g_free(leaving_text);
+                /* Done */
+                /*participant->audio_active = FALSE;
+                participant->video_active = FALSE;
+                session->started = FALSE;*/
+                //~ session->destroy = TRUE;
+        } else{
             JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
             error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_REQUEST;
             g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
