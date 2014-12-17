@@ -139,7 +139,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static int initialized = 0, stopping = 0;
+static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -279,7 +279,7 @@ void *janus_streaming_watchdog(void *data);
 void *janus_streaming_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "Streaming watchdog started\n");
 	gint64 now = 0;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
 		/* Iterate on all the sessions */
 		now = janus_get_monotonic_time();
@@ -288,7 +288,7 @@ void *janus_streaming_watchdog(void *data) {
 			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_streaming_session *session = (janus_streaming_session *)sl->data;
-				if(!session || !initialized || stopping) {
+				if(!session) {
 					sl = sl->next;
 					continue;
 				}
@@ -315,7 +315,7 @@ void *janus_streaming_watchdog(void *data) {
 
 /* Plugin implementation */
 int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
-	if(stopping) {
+	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
 	}
@@ -558,20 +558,20 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
+	g_atomic_int_set(&initialized, 1);
 
-	initialized = 1;
+	GError *error = NULL;
 	/* Start the sessions watchdog */
-	watchdog = g_thread_new("streaming watchdog", &janus_streaming_watchdog, NULL);
+	watchdog = g_thread_try_new("streaming watchdog", &janus_streaming_watchdog, NULL, &error);
 	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start Streaming watchdog...\n");
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus streaming handler", janus_streaming_handler, NULL, &error);
 	if(error != NULL) {
-		initialized = 0;
-		/* Something went wrong... */
+		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
@@ -580,13 +580,19 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 }
 
 void janus_streaming_destroy(void) {
-	if(!initialized)
+	if(!g_atomic_int_get(&initialized))
 		return;
-	stopping = 1;
+	g_atomic_int_set(&stopping, 1);
+
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
+		handler_thread = NULL;
 	}
-	handler_thread = NULL;
+	if(watchdog != NULL) {
+		g_thread_join(watchdog);
+		watchdog = NULL;
+	}
+
 	/* FIXME We should destroy the sessions cleanly */
 	usleep(500000);
 	janus_mutex_lock(&mountpoints_mutex);
@@ -599,10 +605,8 @@ void janus_streaming_destroy(void) {
 	messages = NULL;
 	sessions = NULL;
 
-	g_thread_join(watchdog);
-
-	initialized = 0;
-	stopping = 0;
+	g_atomic_int_set(&initialized, 0);
+	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_STREAMING_NAME);
 }
 
@@ -1655,7 +1659,7 @@ static void *janus_streaming_handler(void *data) {
 		return NULL;
 	}
 	json_t *root = NULL;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
@@ -2129,7 +2133,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	/* Loop */
 	gint read = 0;
 	janus_streaming_rtp_relay_packet packet;
-	while(!stopping && !session->stopping && !session->destroyed) {
+	while(!g_atomic_int_get(&stopping) && !session->stopping && !session->destroyed) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
 		d_s = now.tv_sec - before.tv_sec;
@@ -2238,7 +2242,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	/* Loop */
 	gint read = 0;
 	janus_streaming_rtp_relay_packet packet;
-	while(!stopping) {	/* FIXME We need a per-mountpoint watchdog as well */
+	while(!g_atomic_int_get(&stopping)) {	/* FIXME We need a per-mountpoint watchdog as well */
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
 		d_s = now.tv_sec - before.tv_sec;
@@ -2361,7 +2365,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 	janus_streaming_rtp_relay_packet packet;
-	while(!stopping) {	/* FIXME We need a per-mountpoint watchdog as well */
+	while(!g_atomic_int_get(&stopping)) {	/* FIXME We need a per-mountpoint watchdog as well */
 		/* Wait for some data */
 		if(audio_fd > 0)
 			FD_SET(audio_fd, &readfds);
@@ -2406,7 +2410,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				// ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			packet.data->type = mountpoint->codecs.audio_pt;
 			/* Is there a recorder? */
-			if(!stopping && source->arc) {
+			if(source->arc) {
 				JANUS_LOG(LOG_HUGE, "Saving audio frame (%d bytes)\n", bytes);
 				janus_recorder_save_frame(source->arc, buffer, bytes);
 			}
@@ -2450,7 +2454,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 			packet.data->type = mountpoint->codecs.video_pt;
 			/* Is there a recorder? */
-			if(!stopping && source->vrc) {
+			if(source->vrc) {
 				JANUS_LOG(LOG_HUGE, "Saving video frame (%d bytes)\n", bytes);
 				janus_recorder_save_frame(source->vrc, buffer, bytes);
 			}
