@@ -1,6 +1,6 @@
 ; [<unique room ID>]
 ; description = This is my awesome room
-; private = yes|no (whether this room should be in the public list, default=yes)
+; is_private = yes|no (whether this room should be in the public list, default=yes)
 ; secret = <password needed for manipulating (e.g. destroying) the room>
 ; publishers = <max number of concurrent senders> (e.g., 6 for a video
 ;              conference or 1 for a webinar)
