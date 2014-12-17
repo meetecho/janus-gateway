@@ -1,6 +1,6 @@
 ; [<unique room ID>]
 ; description = This is my awesome room
-; private = yes|no (whether this room should be in the public list, default=yes)
+; is_private = yes|no (whether this room should be in the public list, default=yes)
 ; secret = <password needed for manipulating (e.g. destroying) the room>
 ; sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 ; record = true|false (whether this room should be recorded, default=false)

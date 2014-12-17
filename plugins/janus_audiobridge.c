@@ -24,7 +24,7 @@
  * \verbatim
 [<unique room ID>]
 description = This is my awesome room
-private = yes|no (private rooms don't appear when you do a 'list' request)
+is_private = yes|no (private rooms don't appear when you do a 'list' request)
 secret = <password needed for manipulating (e.g. destroying) the room>
 sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 record = true|false (whether this room should be recorded, default=false)
@@ -146,7 +146,7 @@ typedef struct janus_audiobridge_room {
 	guint64 room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
-	gboolean private;			/* Whether this room is 'private' (as in hidden) or not */
+	gboolean is_private;			/* Whether this room is 'private' (as in hidden) or not */
 	uint32_t sampling_rate;		/* Sampling rate of the mix (e.g., 16000 for wideband) */
 	gboolean record;			/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file */
@@ -329,7 +329,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			JANUS_LOG(LOG_VERB, "Adding audio room '%s'\n", cat->name);
 			janus_config_item *desc = janus_config_get_item(cat, "description");
-			janus_config_item *priv = janus_config_get_item(cat, "private");
+			janus_config_item *priv = janus_config_get_item(cat, "is_private");
 			janus_config_item *sampling = janus_config_get_item(cat, "sampling_rate");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
 			janus_config_item *record = janus_config_get_item(cat, "record");
@@ -356,7 +356,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 			}
 			audiobridge->room_name = description;
-			audiobridge->private = priv && priv->value && janus_is_true(priv->value);
+			audiobridge->is_private = priv && priv->value && janus_is_true(priv->value);
 			audiobridge->sampling_rate = atoi(sampling->value);
 			if(audiobridge->sampling_rate != 16000) {
 				JANUS_LOG(LOG_ERR, "We currently only support 16kHz (wideband) as a sampling rate for audio rooms, changing %"SCNu32" to 16000...\n", audiobridge->sampling_rate);
@@ -377,7 +377,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
+			JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->is_private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
 			/* We need a thread for the mix */
 			g_thread_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge);
 			cat = cat->next;
@@ -599,11 +599,11 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 			goto error;
 		}
-		json_t *private = json_object_get(root, "private");
-		if(private && !json_is_boolean(private)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (private should be a boolean)\n");
+		json_t *is_private = json_object_get(root, "is_private");
+		if(is_private && !json_is_boolean(is_private)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (private should be a boolean)");
+			g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
 			goto error;
 		}
 		json_t *sampling = json_object_get(root, "sampling");
@@ -688,7 +688,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			goto error;
 		}
 		audiobridge->room_name = description;
-		audiobridge->private = private ? json_is_true(private) : FALSE;
+		audiobridge->is_private = is_private ? json_is_true(is_private) : FALSE;
 		if(secret)
 			audiobridge->room_secret = g_strdup(json_string_value(secret));
 		if(sampling)
@@ -709,7 +709,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		audiobridge->participants = g_hash_table_new(NULL, NULL);
 		janus_mutex_init(&audiobridge->mutex);
 		g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
-		JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
+		JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->is_private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
 		/* We need a thread for the mix */
 		g_thread_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge);
 		/* Show updated rooms list */
@@ -820,7 +820,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			janus_audiobridge_room *room = value;
 			if(!room)
 				continue;
-			if(room->private) {
+			if(room->is_private) {
 				/* Skip private room */
 				JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
 				continue;
