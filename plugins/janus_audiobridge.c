@@ -1088,6 +1088,10 @@ static void *janus_audiobridge_handler(void *data) {
             GHashTableIter iter;
             gpointer value;
             g_hash_table_iter_init(&iter, audiobridge->participants);
+
+            json_t *pub = json_object();
+            json_object_set_new(pub, "audiobridge", json_string("onpeerjoined"));
+            char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
             while (g_hash_table_iter_next(&iter, NULL, &value)) {
                 janus_audiobridge_participant *p = value;
                 if (p == participant) {
@@ -1100,7 +1104,10 @@ static void *janus_audiobridge_handler(void *data) {
                 //~ json_object_set_new(pl, "muted", json_boolean(!p->audio_active));
                 json_object_set_new(pl, "muted", json_string(p->audio_active ? "false" : "true"));
                 json_array_append_new(list, pl);
+
+                int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, pub_text, NULL, NULL);
             }
+            g_free(pub_text);
             event = json_object();
             json_object_set_new(event, "audiobridge", json_string("joined"));
             json_object_set_new(event, "responsetype", json_string("onjoin"));
@@ -1108,6 +1115,8 @@ static void *janus_audiobridge_handler(void *data) {
             json_object_set_new(event, "id", json_integer(user_id));
             json_object_set_new(event, "participants", list);
             janus_mutex_unlock(&audiobridge->mutex);
+
+
         } else if (!strcasecmp(request_text, "configure")) {
             /* Handle this participant */
             janus_audiobridge_participant *participant = (janus_audiobridge_participant *) session->participant;
