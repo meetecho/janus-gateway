@@ -1090,7 +1090,8 @@ static void *janus_audiobridge_handler(void *data) {
             g_hash_table_iter_init(&iter, audiobridge->participants);
 
             json_t *pub = json_object();
-            json_object_set_new(pub, "audiobridge", json_string("onpeerjoined"));
+            json_object_set_new(pub, "audiobridge", json_string("events"));
+            json_object_set_new(pub, "responsetype", json_string("onpeerjoined"));
             char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
             while (g_hash_table_iter_next(&iter, NULL, &value)) {
                 janus_audiobridge_participant *p = value;
