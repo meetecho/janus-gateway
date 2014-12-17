@@ -4465,7 +4465,7 @@ gint main(int argc, char *argv[])
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
 				MHD_OPTION_END);
 		}
-		if(sws == NULL) {
+		if(admin_sws == NULL) {
 			JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 			exit(1);	/* FIXME Should we really give up? */
 		} else {
@@ -4514,7 +4514,7 @@ gint main(int argc, char *argv[])
 	admin_ws = NULL;
 	if(admin_sws)
 		MHD_stop_daemon(admin_sws);
-	sws = NULL;
+	admin_sws = NULL;
 #ifdef HAVE_RABBITMQ
 	if(rmq_channel) {
 		if(rmq_client) {
