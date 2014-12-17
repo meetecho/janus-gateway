@@ -142,6 +142,7 @@ janus_plugin *create(void) {
 static int initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
+static GThread *watchdog;
 static void *janus_streaming_handler(void *data);
 static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
@@ -560,7 +561,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 
 	initialized = 1;
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("streaming watchdog", &janus_streaming_watchdog, NULL);
+	watchdog = g_thread_new("streaming watchdog", &janus_streaming_watchdog, NULL);
 	if(!watchdog) {
 		JANUS_LOG(LOG_FATAL, "Couldn't start Streaming watchdog...\n");
 		return -1;
@@ -591,10 +592,15 @@ void janus_streaming_destroy(void) {
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_destroy(mountpoints);
 	janus_mutex_unlock(&mountpoints_mutex);
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
+
+	g_thread_join(watchdog);
+
 	initialized = 0;
 	stopping = 0;
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_STREAMING_NAME);

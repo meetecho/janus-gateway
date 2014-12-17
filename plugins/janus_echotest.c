@@ -94,6 +94,7 @@ janus_plugin *create(void) {
 static int initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
+static GThread *watchdog;
 static void *janus_echotest_handler(void *data);
 
 typedef struct janus_echotest_message {
@@ -211,7 +212,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 
 	initialized = 1;
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("etest watchdog", &janus_echotest_watchdog, NULL);
+	watchdog = g_thread_new("etest watchdog", &janus_echotest_watchdog, NULL);
 	if(!watchdog) {
 		JANUS_LOG(LOG_FATAL, "Couldn't start EchoTest watchdog...\n");
 		return -1;
@@ -238,10 +239,15 @@ void janus_echotest_destroy(void) {
 	}
 	handler_thread = NULL;
 	/* FIXME We should destroy the sessions cleanly */
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
+
+	g_thread_join(watchdog);
+
 	initialized = 0;
 	stopping = 0;
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_ECHOTEST_NAME);
