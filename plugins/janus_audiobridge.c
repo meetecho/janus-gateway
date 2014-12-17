@@ -86,6 +86,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 
 void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 
+void janus_audiobridge_incoming_data(janus_plugin_session *handle, char *buf, int len);
+
 void janus_audiobridge_hangup_media(janus_plugin_session *handle);
 
 void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
@@ -108,6 +110,8 @@ static janus_plugin janus_audiobridge_plugin =
                 .setup_media = janus_audiobridge_setup_media,
                 .incoming_rtp = janus_audiobridge_incoming_rtp,
                 .incoming_rtcp = janus_audiobridge_incoming_rtcp,
+                .incoming_data = janus_audiobridge_incoming_data,
+
                 .hangup_media = janus_audiobridge_hangup_media,
                 .destroy_session = janus_audiobridge_destroy_session,
         };
@@ -616,6 +620,62 @@ void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, ch
     if (handle == NULL || handle->stopped || stopping || !initialized)
         return;
     /* FIXME Should we care? */
+}
+
+void janus_audiobridge_incoming_data(janus_plugin_session *handle, char *buf, int len) {
+    if(handle == NULL || handle->stopped || stopping || !initialized)
+        return;
+    if(gateway) {
+        janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
+        if(!session) {
+            JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+            return;
+        }
+        if (session->destroyed || !session->participant){
+            JANUS_LOG(LOG_ERR, "Session has no peer...\n");
+            return;
+        }
+
+        if(buf == NULL || len <= 0)
+            return;
+        char text[1<<16];
+        memset(text, 0, 1<<16);
+        memcpy(text, buf, len);
+        text[len] = '\0';
+        JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+//        gateway->relay_data(session->participant->handle, text, strlen(text));
+
+
+        /* Tell everybody */
+        janus_audiobridge_participant *participant = (janus_audiobridge_participant *) session->participant;
+        janus_audiobridge_room *audiobridge = participant->room;
+        janus_mutex_lock(&audiobridge->mutex);
+        json_t *event = json_object();
+        json_object_set_new(event, "audiobridge", json_string("event"));
+        json_object_set_new(event, "room", json_integer(audiobridge->room_id));
+        json_object_set_new(event, "responsetype", json_string("onrealdatachannel"));
+
+        char *datamsg_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+        json_decref(event);
+        GHashTableIter iter;
+        gpointer value;
+        g_hash_table_iter_init(&iter, audiobridge->participants);
+        while (g_hash_table_iter_next(&iter, NULL, &value)) {
+            janus_audiobridge_participant *p = value;
+            if (p == participant) {
+                continue;    /* Skip the new participant itself */
+            }
+            JANUS_LOG(LOG_VERB, "Notifying participant %"
+                    SCNu64
+                    " (%s)\n", p->user_id, p->display ? p->display : "??");
+            int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, datamsg_text, NULL, NULL);
+            gateway->relay_data(p->session->handle, text, strlen(text));
+            JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+        }
+        g_free(datamsg_text);
+        /* Done */
+        janus_mutex_unlock(&audiobridge->mutex);
+    }
 }
 
 void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
