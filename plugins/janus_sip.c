@@ -107,11 +107,12 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static int initialized = 0, stopping = 0;
+static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static char *local_ip = NULL;
 
 static GThread *handler_thread;
+static GThread *watchdog;
 static void *janus_sip_handler(void *data);
 
 typedef struct janus_sip_message {
@@ -278,7 +279,7 @@ void *janus_sip_watchdog(void *data);
 void *janus_sip_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "SIP watchdog started\n");
 	gint64 now = 0;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
 		/* Iterate on all the sessions */
 		now = janus_get_monotonic_time();
@@ -287,7 +288,7 @@ void *janus_sip_watchdog(void *data) {
 			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_sip_session *session = (janus_sip_session *)sl->data;
-				if(!session || !initialized || stopping) {
+				if(!session) {
 					sl = sl->next;
 					continue;
 				}
@@ -314,7 +315,7 @@ void *janus_sip_watchdog(void *data) {
 
 /* Plugin implementation */
 int janus_sip_init(janus_callbacks *callback, const char *config_path) {
-	if(stopping) {
+	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
 	}
@@ -416,20 +417,21 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
-	initialized = 1;
+	g_atomic_int_set(&initialized, 1);
+
+	GError *error = NULL;
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("sip watchdog", &janus_sip_watchdog, NULL);
-	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start SIP watchdog...\n");
+	watchdog = g_thread_try_new("etest watchdog", &janus_sip_watchdog, NULL, &error);
+	if(error != NULL) {
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus sip handler", janus_sip_handler, NULL, &error);
 	if(error != NULL) {
-		initialized = 0;
-		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SIP_NAME);
@@ -437,20 +439,26 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 }
 
 void janus_sip_destroy(void) {
-	if(!initialized)
+	if(!g_atomic_int_get(&initialized))
 		return;
-	stopping = 1;
+	g_atomic_int_set(&stopping, 1);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
+		handler_thread = NULL;
 	}
-	handler_thread = NULL;
+	if(watchdog != NULL) {
+		g_thread_join(watchdog);
+		watchdog = NULL;
+	}
 	/* FIXME We should destroy the sessions cleanly */
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
-	initialized = 0;
-	stopping = 0;
+	g_atomic_int_set(&initialized, 0);
+	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIP_NAME);
 }
 
@@ -708,7 +716,7 @@ static void *janus_sip_handler(void *data) {
 		return NULL;
 	}
 	json_t *root = NULL;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
@@ -915,7 +923,12 @@ static void *janus_sip_handler(void *data) {
 					/* Start the thread first */
 					GError *error = NULL;
 					g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
-					g_assert (!error);
+					if(error != NULL) {
+						JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
+						error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+						g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread", error->code, error->message ? error->message : "??");
+						goto error;
+					}
 					long int timeout = 0;
 					while(session->stack->s_nua == NULL) {
 						g_usleep(100000);
@@ -987,7 +1000,12 @@ static void *janus_sip_handler(void *data) {
 					/* Start the thread first */
 					GError *error = NULL;
 					g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
-					g_assert (!error);
+					if(error != NULL) {
+						JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
+						error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+						g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread", error->code, error->message ? error->message : "??");
+						goto error;
+					}
 					long int timeout = 0;
 					while(session->stack->s_nua == NULL) {
 						g_usleep(100000);
@@ -1234,8 +1252,8 @@ static void *janus_sip_handler(void *data) {
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
 			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
-			if(error) {
-				JANUS_LOG(LOG_ERR, "Error starting RTP/RTCP thread?\n");
+			if(error != NULL) {
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}
 		} else if(!strcasecmp(request_text, "decline")) {
 			/* Reject an incoming call */
@@ -1640,8 +1658,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
 			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
-			if(error) {
-				JANUS_LOG(LOG_ERR, "Error starting RTP/RTCP thread?\n");
+			if(error != NULL) {
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}
 			/* Send SDP to the browser */
 			session->status = janus_sip_status_incall;
@@ -1937,8 +1955,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 /* Thread to relay RTP/RTCP frames coming from the SIP peer */
 static void *janus_sip_relay_thread(void *data) {
 	janus_sip_session *session = (janus_sip_session *)data;
-	if(!session || !session->account.username || !session->callee)
+	if(!session || !session->account.username || !session->callee) {
+		g_thread_unref(g_thread_self());
 		return NULL;
+	}
 	JANUS_LOG(LOG_VERB, "Starting relay thread (%s <--> %s)\n", session->account.username, session->callee);
 	/* Socket stuff */
 	int maxfd = 0;
@@ -2030,6 +2050,7 @@ static void *janus_sip_relay_thread(void *data) {
 
 	if(!session->callee) {
 		JANUS_LOG(LOG_VERB, "Leaving thread, no callee...\n");
+		g_thread_unref(g_thread_self());
 		return NULL; 
 	}
 	/* Loop */
@@ -2122,14 +2143,17 @@ static void *janus_sip_relay_thread(void *data) {
 		}
 	}
 	JANUS_LOG(LOG_VERB, "Leaving relay thread\n");
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
 /* Sofia Event thread */
 gpointer janus_sip_sofia_thread(gpointer user_data) {
 	janus_sip_session *session = (janus_sip_session *)user_data;
-	if(session == NULL || session->account.username == NULL || session->stack == NULL)
+	if(session == NULL || session->account.username == NULL || session->stack == NULL) {
+		g_thread_unref(g_thread_self());
 		return NULL;
+	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack->s_root = su_root_create(session->stack);
 	char tag_url[100];
@@ -2153,5 +2177,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	su_deinit();
 	//~ stop = 1;
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
+	g_thread_unref(g_thread_self());
 	return NULL;
 }

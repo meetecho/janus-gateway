@@ -106,10 +106,12 @@ typedef struct janus_sctp_association {
 	uint16_t local_port;
 	/*! \brief Remote port to be used for SCTP */
 	uint16_t remote_port;
-	/*! Queue of incoming messages */
+	/*! \brief Queue of incoming messages */
 	GQueue *in_messages;
-	/*! Queue of outgoing messages */
+	/*! \brief Queue of outgoing messages */
 	GQueue *out_messages;
+	/*! \brief Thread for handling SCTP messaging */
+	GThread *thread;
 	/*! \brief Mutex to lock/unlock this instance */
 	janus_mutex mutex;
 } janus_sctp_association;
