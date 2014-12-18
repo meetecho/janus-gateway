@@ -105,9 +105,10 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static int initialized = 0, stopping = 0;
+static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
+static GThread *watchdog;
 static void *janus_audiobridge_handler(void *data);
 static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *janus_audiobridge_mixer_thread(void *data);
@@ -153,6 +154,8 @@ typedef struct janus_audiobridge_room {
 	FILE *recording;			/* File to record the room into */
 	gboolean destroy;			/* Value to flag the room for destruction */
 	GHashTable *participants;	/* Map of participants */
+	GThread *thread;			/* Mixer thread for this room */
+	gint64 destroyed;			/* When this room has been destroyed */
 	janus_mutex mutex;			/* Mutex to lock this room instance */
 } janus_audiobridge_room;
 static GHashTable *rooms;
@@ -258,7 +261,7 @@ void *janus_audiobridge_watchdog(void *data);
 void *janus_audiobridge_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "AudioBridge watchdog started\n");
 	gint64 now = 0;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
 		/* Iterate on all the sessions */
 		now = janus_get_monotonic_time();
@@ -267,7 +270,7 @@ void *janus_audiobridge_watchdog(void *data) {
 			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_audiobridge_session *session = (janus_audiobridge_session *)sl->data;
-				if(!session || !initialized || stopping) {
+				if(!session) {
 					sl = sl->next;
 					continue;
 				}
@@ -294,7 +297,7 @@ void *janus_audiobridge_watchdog(void *data) {
 
 /* Plugin implementation */
 int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
-	if(stopping) {
+	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
 	}
@@ -373,13 +376,20 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->recording = NULL;
 			audiobridge->destroy = 0;
 			audiobridge->participants = g_hash_table_new(NULL, NULL);
+			audiobridge->destroyed = 0;
 			janus_mutex_init(&audiobridge->mutex);
-			janus_mutex_lock(&rooms_mutex);
-			g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
-			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->is_private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
 			/* We need a thread for the mix */
-			g_thread_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge);
+			GError *error = NULL;
+			audiobridge->thread = g_thread_try_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge, &error);
+			if(error != NULL) {
+				/* FIXME We should clear some resources... */
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
+			} else {
+				janus_mutex_lock(&rooms_mutex);
+				g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
+				janus_mutex_unlock(&rooms_mutex);
+			}
 			cat = cat->next;
 		}
 		/* Done */
@@ -399,20 +409,21 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	}
 	janus_mutex_unlock(&rooms_mutex);
 
-	initialized = 1;
+	g_atomic_int_set(&initialized, 1);
+
+	GError *error = NULL;
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("abridge watchdog", &janus_audiobridge_watchdog, NULL);
-	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start AudioBridge watchdog...\n");
+	watchdog = g_thread_try_new("abridge watchdog", &janus_audiobridge_watchdog, NULL, &error);
+	if(error != NULL) {
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the AudioBridge watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus audiobridge handler", janus_audiobridge_handler, NULL, &error);
 	if(error != NULL) {
-		initialized = 0;
-		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the AudioBridge handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_AUDIOBRIDGE_NAME);
@@ -420,13 +431,17 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 }
 
 void janus_audiobridge_destroy(void) {
-	if(!initialized)
+	if(!g_atomic_int_get(&initialized))
 		return;
-	stopping = 1;
+	g_atomic_int_set(&stopping, 1);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
+		handler_thread = NULL;
 	}
-	handler_thread = NULL;
+	if(watchdog != NULL) {
+		g_thread_join(watchdog);
+		watchdog = NULL;
+	}
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
@@ -437,7 +452,8 @@ void janus_audiobridge_destroy(void) {
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
-	initialized = 0;
+	g_atomic_int_set(&initialized, 0);
+	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_AUDIOBRIDGE_NAME);
 }
 
@@ -707,11 +723,29 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		audiobridge->recording = NULL;
 		audiobridge->destroy = 0;
 		audiobridge->participants = g_hash_table_new(NULL, NULL);
+		audiobridge->destroyed = 0;
 		janus_mutex_init(&audiobridge->mutex);
 		g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
 		JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->is_private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
 		/* We need a thread for the mix */
-		g_thread_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge);
+		GError *error = NULL;
+		audiobridge->thread = g_thread_try_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge, &error);
+		if(error != NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
+			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the mixer thread", error->code, error->message ? error->message : "??");
+			g_free(audiobridge->room_name);
+			g_free(audiobridge->room_secret);
+			g_free(audiobridge->record_file);
+			g_hash_table_destroy(audiobridge->participants);
+			g_free(audiobridge);
+			goto error;
+		} else {
+			janus_mutex_lock(&rooms_mutex);
+			g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
+			janus_mutex_unlock(&rooms_mutex);
+		}
 		/* Show updated rooms list */
 		GHashTableIter iter;
 		gpointer value;
@@ -804,7 +838,11 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				gateway->end_session(p->session->handle);
 			}
 		}
+		JANUS_LOG(LOG_VERB, "Waiting for the mixer thread to complete...\n");
+		audiobridge->destroyed = janus_get_monotonic_time();
+		g_thread_join(audiobridge->thread);
 		/* Done */
+		JANUS_LOG(LOG_VERB, "Audiobridge room destroyed\n");
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
 		g_free(response_text);
 		return result;
@@ -1036,7 +1074,7 @@ static void *janus_audiobridge_handler(void *data) {
 		return NULL;
 	}
 	json_t *root = NULL;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
@@ -1759,12 +1797,14 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	janus_audiobridge_rtp_relay_packet *outpkt = calloc(1, sizeof(janus_audiobridge_rtp_relay_packet));
 	if(outpkt == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	outpkt->data = (rtp_header *)calloc(BUFFER_SAMPLES, sizeof(unsigned char));
 	if(outpkt->data == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		g_free(outpkt);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	unsigned char *payload = (unsigned char *)outpkt->data;
@@ -1774,7 +1814,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	gint32 ts = 0;
 	/* Loop */
 	int i=0;
-	while(!stopping) {	/* FIXME We need a per-mountpoint watchdog as well */
+	while(!g_atomic_int_get(&stopping) && audiobridge->destroyed == 0) {	/* FIXME We need a per-room watchdog as well */
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
 		d_s = now.tv_sec - before.tv_sec;
@@ -1880,6 +1920,14 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	if(audiobridge->recording)
 		fclose(audiobridge->recording);
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %"SCNu64" (%s)...\n", audiobridge->room_id, audiobridge->room_name);
+
+	/* Free resources */
+	g_free(audiobridge->room_name);
+	g_free(audiobridge->room_secret);
+	g_free(audiobridge->record_file);
+	g_hash_table_destroy(audiobridge->participants);
+	g_free(audiobridge);
+
 	return NULL;
 }
 

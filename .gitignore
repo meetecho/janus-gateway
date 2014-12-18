@@ -31,5 +31,9 @@ Makefile.in
 /plugins/.libs
 /postprocessing/*.o
 
+/conf/janus.cfg.sample
+/conf/janus.plugin.recordplay.cfg.sample
+/conf/janus.plugin.streaming.cfg.sample
+
 .deps
 .dirstamp

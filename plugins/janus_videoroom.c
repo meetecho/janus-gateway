@@ -139,9 +139,10 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static int initialized = 0, stopping = 0;
+static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
+static GThread *watchdog;
 static void *janus_videoroom_handler(void *data);
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data);
@@ -369,7 +370,7 @@ void *janus_videoroom_watchdog(void *data);
 void *janus_videoroom_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VideoRoom watchdog started\n");
 	gint64 now = 0, room_now = 0;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
 		/* Iterate on all the participants/listeners and check if we need to remove any of them */
 		now = janus_get_monotonic_time();
@@ -432,7 +433,7 @@ void *janus_videoroom_watchdog(void *data) {
 
 /* Plugin implementation */
 int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
-	if(stopping) {
+	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
 	}
@@ -545,20 +546,21 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	}
 	janus_mutex_unlock(&rooms_mutex);
 
-	initialized = 1;
+	g_atomic_int_set(&initialized, 1);
+
+	GError *error = NULL;
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("vroom watchdog", &janus_videoroom_watchdog, NULL);
-	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start VideoRoom watchdog...\n");
+	watchdog = g_thread_try_new("vroom watchdog", &janus_videoroom_watchdog, NULL, &error);
+	if(error != NULL) {
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoRoom watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus videoroom handler", janus_videoroom_handler, NULL, &error);
 	if(error != NULL) {
-		initialized = 0;
-		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoRoom handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_VIDEOROOM_NAME);
@@ -566,13 +568,17 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 }
 
 void janus_videoroom_destroy(void) {
-	if(!initialized)
+	if(!g_atomic_int_get(&initialized))
 		return;
-	stopping = 1;
+	g_atomic_int_set(&stopping, 1);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
+		handler_thread = NULL;
 	}
-	handler_thread = NULL;
+	if(watchdog != NULL) {
+		g_thread_join(watchdog);
+		watchdog = NULL;
+	}
 
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
@@ -591,8 +597,8 @@ void janus_videoroom_destroy(void) {
 	g_async_queue_unref(messages);
 	messages = NULL;
 
-	initialized = 0;
-	stopping = 0;
+	g_atomic_int_set(&initialized, 0);
+	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VIDEOROOM_NAME);
 }
 
@@ -1416,7 +1422,7 @@ static void *janus_videoroom_handler(void *data) {
 		return NULL;
 	}
 	json_t *root = NULL;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;

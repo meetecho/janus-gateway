@@ -424,7 +424,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						g_thread_try_new("DTLS-SCTP", janus_dtls_sctp_setup_thread, dtls, &error);
 						if(error != NULL) {
 							/* Something went wrong... */
-							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 						}
 						dtls->srtp_valid = 1;
 					}
@@ -651,10 +651,14 @@ gboolean janus_dtls_retry(gpointer stack) {
 /* Helper thread to create a SCTP association that will use this DTLS stack */
 void *janus_dtls_sctp_setup_thread(void *data) {
 	if(data == NULL) {
+		JANUS_LOG(LOG_ERR, "No DTLS stack??\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)data;
 	if(dtls->sctp == NULL) {
+		JANUS_LOG(LOG_ERR, "No SCTP stack??\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_sctp_association *sctp = (janus_sctp_association *)dtls->sctp;

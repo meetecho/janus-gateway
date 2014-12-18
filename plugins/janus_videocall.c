@@ -93,9 +93,10 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static int initialized = 0, stopping = 0;
+static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
+static GThread *watchdog;
 static void *janus_videocall_handler(void *data);
 
 typedef struct janus_videocall_message {
@@ -162,7 +163,7 @@ void *janus_videocall_watchdog(void *data);
 void *janus_videocall_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VideoCall watchdog started\n");
 	gint64 now = 0;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
 		/* Iterate on all the sessions */
 		now = janus_get_monotonic_time();
@@ -171,7 +172,7 @@ void *janus_videocall_watchdog(void *data) {
 			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_videocall_session *session = (janus_videocall_session *)sl->data;
-				if(!session || !initialized || stopping) {
+				if(!session) {
 					sl = sl->next;
 					continue;
 				}
@@ -198,7 +199,7 @@ void *janus_videocall_watchdog(void *data) {
 
 /* Plugin implementation */
 int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
-	if(stopping) {
+	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
 	}
@@ -224,20 +225,21 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
-	initialized = 1;
+	g_atomic_int_set(&initialized, 1);
+
+	GError *error = NULL;
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("vcall watchdog", &janus_videocall_watchdog, NULL);
-	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start VideoCall watchdog...\n");
+	watchdog = g_thread_try_new("vcall watchdog", &janus_videocall_watchdog, NULL, &error);
+	if(error != NULL) {
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoCall watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus videocall handler", janus_videocall_handler, NULL, &error);
 	if(error != NULL) {
-		initialized = 0;
-		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoCall handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_VIDEOCALL_NAME);
@@ -245,20 +247,26 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 }
 
 void janus_videocall_destroy(void) {
-	if(!initialized)
+	if(!g_atomic_int_get(&initialized))
 		return;
-	stopping = 1;
+	g_atomic_int_set(&stopping, 1);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
+		handler_thread = NULL;
 	}
-	handler_thread = NULL;
+	if(watchdog != NULL) {
+		g_thread_join(watchdog);
+		watchdog = NULL;
+	}
 	/* FIXME We should destroy the sessions cleanly */
+	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
-	initialized = 0;
-	stopping = 0;
+	g_atomic_int_set(&initialized, 0);
+	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VIDEOCALL_NAME);
 }
 
@@ -490,7 +498,7 @@ static void *janus_videocall_handler(void *data) {
 		return NULL;
 	}
 	json_t *root = NULL;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;

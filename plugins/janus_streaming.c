@@ -195,6 +195,7 @@ typedef struct janus_streaming_mountpoint {
 	GDestroyNotify source_destroy;
 	janus_streaming_codecs codecs;
 	GList/*<unowned janus_streaming_session>*/ *listeners;
+	gint64 destroyed;
 	janus_mutex mutex;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints;
@@ -565,14 +566,14 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	watchdog = g_thread_try_new("streaming watchdog", &janus_streaming_watchdog, NULL, &error);
 	if(!watchdog) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
 	handler_thread = g_thread_try_new("janus streaming handler", janus_streaming_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_STREAMING_NAME);
@@ -1732,7 +1733,14 @@ static void *janus_streaming_handler(void *data) {
 			session->stopping = FALSE;
 			session->mountpoint = mp;
 			if(mp->streaming_type == janus_streaming_type_on_demand) {
-				g_thread_new(session->mountpoint->name, &janus_streaming_ondemand_thread, session);
+				GError *error = NULL;
+				g_thread_try_new(session->mountpoint->name, &janus_streaming_ondemand_thread, session, &error);
+				if(error != NULL) {
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n", error->code, error->message ? error->message : "??");
+					error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the on-demand thread", error->code, error->message ? error->message : "??");
+					goto error;
+				}
 			}
 			/* TODO Check if user is already watching a stream, if the video is active, etc. */
 			janus_mutex_lock(&mp->mutex);
@@ -1897,6 +1905,8 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 }
 
 static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
+	mp->destroyed = janus_get_monotonic_time();
+	
 	g_free(mp->name);
 	g_free(mp->description);
 	janus_mutex_lock(&mp->mutex);
@@ -1987,11 +1997,24 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->codecs.video_rtpmap = dovideo ? g_strdup(vrtpmap) : NULL;
 	live_rtp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
 	live_rtp->listeners = NULL;
+	live_rtp->destroyed = 0;
 	janus_mutex_init(&live_rtp->mutex);
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtp->id), live_rtp);
 	janus_mutex_unlock(&mountpoints_mutex);
-	g_thread_new(live_rtp->name, &janus_streaming_relay_thread, live_rtp);
+	GError *error = NULL;
+	g_thread_try_new(live_rtp->name, &janus_streaming_relay_thread, live_rtp, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n", error->code, error->message ? error->message : "??");
+		if(live_rtp->name)
+			g_free(live_rtp->name);
+		if(description)
+			g_free(description);
+		if(live_rtp_source)
+			g_free(live_rtp_source);
+		g_free(live_rtp);
+		return NULL;
+	}
 	return live_rtp;
 }
 
@@ -2065,12 +2088,26 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->codecs.video_pt = -1;	/* FIXME We don't support video for this type yet */
 	file_source->codecs.video_rtpmap = NULL;
 	file_source->listeners = NULL;
+	file_source->destroyed = 0;
 	janus_mutex_init(&file_source->mutex);
 	janus_mutex_lock(&mountpoints_mutex);
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(file_source->id), file_source);
 	janus_mutex_unlock(&mountpoints_mutex);
-	if(live)
-		g_thread_new(file_source->name, &janus_streaming_filesource_thread, file_source);
+	if(live) {
+		GError *error = NULL;
+		g_thread_try_new(file_source->name, &janus_streaming_filesource_thread, file_source, &error);
+		if(error != NULL) {
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n", error->code, error->message ? error->message : "??");
+			if(file_source->name)
+				g_free(file_source->name);
+			if(description)
+				g_free(description);
+			if(file_source_source)
+				g_free(file_source_source);
+			g_free(file_source);
+			return NULL;
+		}
+	}
 	return file_source;
 }
 
@@ -2081,23 +2118,28 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "Invalid session!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_mountpoint *mountpoint = session->mountpoint;
 	if(!mountpoint) {
 		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_source != janus_streaming_source_file) {
 		JANUS_LOG(LOG_ERR, "Not an file source mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_type != janus_streaming_type_on_demand) {
 		JANUS_LOG(LOG_ERR, "Not an on-demand file source mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_file_source *source = mountpoint->source;
 	if(source == NULL || source->filename == NULL) {
+		g_thread_unref(g_thread_self());
 		JANUS_LOG(LOG_ERR, "Invalid file source mountpoint!\n");
 		return NULL;
 	}
@@ -2105,6 +2147,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	FILE *audio = fopen(source->filename, "rb");
 	if(!audio) {
 		JANUS_LOG(LOG_ERR, "Ooops, audio file missing!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Streaming audio file: %s\n", source->filename);
@@ -2112,6 +2155,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	char *buf = calloc(1024, sizeof(char));
 	if(buf == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	/* Set up RTP */
@@ -2133,7 +2177,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	/* Loop */
 	gint read = 0;
 	janus_streaming_rtp_relay_packet packet;
-	while(!g_atomic_int_get(&stopping) && !session->stopping && !session->destroyed) {
+	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed && !session->stopping && !session->destroyed) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
 		d_s = now.tv_sec - before.tv_sec;
@@ -2186,6 +2230,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Leaving filesource thread\n");
 	g_free(buf);
 	fclose(audio);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -2195,25 +2240,30 @@ static void *janus_streaming_filesource_thread(void *data) {
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
 		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_source != janus_streaming_source_file) {
 		JANUS_LOG(LOG_ERR, "Not an file source mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_type != janus_streaming_type_live) {
 		JANUS_LOG(LOG_ERR, "Not a live file source mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_file_source *source = mountpoint->source;
 	if(source == NULL || source->filename == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid file source mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Opening file source %s...\n", source->filename);
 	FILE *audio = fopen(source->filename, "rb");
 	if(!audio) {
 		JANUS_LOG(LOG_ERR, "Ooops, audio file missing!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Streaming audio file: %s\n", source->filename);
@@ -2221,6 +2271,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	char *buf = calloc(1024, sizeof(char));
 	if(buf == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	/* Set up RTP */
@@ -2242,7 +2293,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	/* Loop */
 	gint read = 0;
 	janus_streaming_rtp_relay_packet packet;
-	while(!g_atomic_int_get(&stopping)) {	/* FIXME We need a per-mountpoint watchdog as well */
+	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
 		d_s = now.tv_sec - before.tv_sec;
@@ -2297,6 +2348,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Leaving filesource thread\n");
 	g_free(buf);
 	fclose(audio);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -2306,15 +2358,18 @@ static void *janus_streaming_relay_thread(void *data) {
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
 		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_source != janus_streaming_source_rtp) {
 		JANUS_LOG(LOG_ERR, "[%s] Not an RTP source mountpoint!\n", mountpoint->name);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_rtp_source *source = mountpoint->source;
 	if(source == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] Invalid RTP source mountpoint!\n", mountpoint->name);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	gint audio_port = source->audio_port;
@@ -2331,6 +2386,7 @@ static void *janus_streaming_relay_thread(void *data) {
 		audio_address.sin_addr.s_addr = INADDR_ANY;
 		if(bind(audio_fd, (struct sockaddr *)(&audio_address), sizeof(struct sockaddr)) < 0) {
 			JANUS_LOG(LOG_ERR, "[%s] Bind failed for audio (port %d)...\n", mountpoint->name, audio_port);
+			g_thread_unref(g_thread_self());
 			return NULL;
 		}
 		JANUS_LOG(LOG_VERB, "[%s] Audio listener bound to port %d\n", mountpoint->name, audio_port);
@@ -2345,6 +2401,7 @@ static void *janus_streaming_relay_thread(void *data) {
 		video_address.sin_addr.s_addr = INADDR_ANY;
 		if(bind(video_fd, (struct sockaddr *)(&video_address), sizeof(struct sockaddr)) < 0) {
 			JANUS_LOG(LOG_ERR, "[%s] Bind failed for video (%d)...\n", mountpoint->name, video_port);
+			g_thread_unref(g_thread_self());
 			return NULL;
 		}
 		JANUS_LOG(LOG_VERB, "[%s] Video listener bound to port %d\n", mountpoint->name, video_port);
@@ -2365,7 +2422,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 	janus_streaming_rtp_relay_packet packet;
-	while(!g_atomic_int_get(&stopping)) {	/* FIXME We need a per-mountpoint watchdog as well */
+	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
 		/* Wait for some data */
 		if(audio_fd > 0)
 			FD_SET(audio_fd, &readfds);
@@ -2466,6 +2523,7 @@ static void *janus_streaming_relay_thread(void *data) {
 		}
 	}
 	JANUS_LOG(LOG_VERB, "Leaving relay thread\n");
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 

@@ -408,7 +408,7 @@ uint64_t janus_rtcp_get_remb(char *packet, int len) {
 					brMantissa += (_ptrRTCPData[2] << 8);
 					brMantissa += (_ptrRTCPData[3]);
 					uint64_t bitrate = brMantissa << brExp;
-					JANUS_LOG(LOG_VERB, "Got REMB bitrate %"SCNu64"\n", bitrate);
+					JANUS_LOG(LOG_HUGE, "Got REMB bitrate %"SCNu64"\n", bitrate);
 					return bitrate;
 				}
 			}
@@ -453,7 +453,7 @@ int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate) {
 					brMantissa += (_ptrRTCPData[3]);
 					uint64_t origbitrate = brMantissa << brExp;
 					if(origbitrate > bitrate) {
-						JANUS_LOG(LOG_VERB, "Got REMB bitrate %"SCNu64", need to cap it to %"SCNu64"\n", origbitrate, bitrate);
+						JANUS_LOG(LOG_HUGE, "Got REMB bitrate %"SCNu64", need to cap it to %"SCNu64"\n", origbitrate, bitrate);
 						JANUS_LOG(LOG_HUGE, "  >> %u * 2^%u = %"SCNu64"\n", brMantissa, brExp, origbitrate);
 						/* bitrate --> brexp/brmantissa */
 						uint8_t b = 0;

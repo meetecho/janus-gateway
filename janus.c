@@ -2562,7 +2562,7 @@ int janus_wss_onopen(libwebsock_client_state *state) {
 		/* Something went wrong... */
 		g_free(ws_client);
 		janus_mutex_unlock(&wss_mutex);
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch pool thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the pool thread...\n", error->code, error->message ? error->message : "??");
 		libwebsock_close(state);
 		return 0;
 	}
@@ -2571,7 +2571,15 @@ int janus_wss_onopen(libwebsock_client_state *state) {
 	ws_client->responses = g_async_queue_new();
 	ws_client->sessions = NULL;
 	/* Create a thread for notifications related to this session as well */
-	ws_client->thread = g_thread_new("wss_client", &janus_wss_thread, ws_client);
+	ws_client->thread = g_thread_try_new("wss_client", &janus_wss_thread, ws_client, &error);
+	if(error != NULL) {
+		/* Something went wrong... */
+		g_free(ws_client);
+		janus_mutex_unlock(&wss_mutex);
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the notifications thread...\n", error->code, error->message ? error->message : "??");
+		libwebsock_close(state);
+		return 0;
+ 	}
 	ws_client->destroy = 0;
 	janus_mutex_init(&ws_client->mutex);
 	
@@ -4280,14 +4288,24 @@ gint main(int argc, char *argv[])
 		rmq_client->sessions = NULL;
 		rmq_client->responses = g_async_queue_new();
 		rmq_client->destroy = 0;
-		rmq_client->in_thread = g_thread_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client);
-		rmq_client->out_thread = g_thread_new("rmq_out_thread", &janus_rmq_out_thread, rmq_client);
-		/* rabbitmq-c is single threaded, we need a thread pool to serve requests */
 		GError *error = NULL;
+		rmq_client->in_thread = g_thread_try_new("rmq_in_thread", &janus_rmq_in_thread, rmq_client, &error);
+		if(error != NULL) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ incoming thread...\n", error->code, error->message ? error->message : "??");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		rmq_client->out_thread = g_thread_try_new("rmq_out_thread", &janus_rmq_out_thread, rmq_client, &error);
+		if(error != NULL) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the RabbitMQ outgoing thread...\n", error->code, error->message ? error->message : "??");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		/* rabbitmq-c is single threaded, we need a thread pool to serve requests */
 		rmq_client->thread_pool = g_thread_pool_new(janus_rmq_task, rmq_client, -1, FALSE, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch pool thread...\n", error->code, error->message ? error->message : "??");
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the pool thread...\n", error->code, error->message ? error->message : "??");
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		janus_mutex_init(&rmq_client->mutex);
@@ -4315,9 +4333,10 @@ gint main(int argc, char *argv[])
 	/* Start the sessions watchdog */
 	GMainContext *watchdog_context = g_main_context_new();
 	GMainLoop *watchdog_loop = g_main_loop_new(watchdog_context, FALSE);
-	GThread *watchdog = g_thread_new("watchdog", &janus_sessions_watchdog, watchdog_loop);
-	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start sessions watchdog...\n");
+	GError *error = NULL;
+	GThread *watchdog = g_thread_try_new("watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
 		exit(1);
 	}
 
