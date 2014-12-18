@@ -1302,6 +1302,7 @@ void *janus_sctp_thread(void *data) {
 	sctp->out_messages = NULL;
 	g_free(sctp);
 	sctp = NULL;
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 

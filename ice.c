@@ -872,6 +872,7 @@ void *janus_ice_thread(void *data) {
 	} else {
 		janus_ice_webrtc_free(handle);
 	}
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -1601,6 +1602,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 	}
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 

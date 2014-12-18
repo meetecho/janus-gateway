@@ -661,6 +661,7 @@ void *janus_dtls_sctp_setup_thread(void *data) {
 	/* Do the accept/connect stuff now */
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Started thread: setup of the SCTP association\n", sctp->handle_id);
 	janus_sctp_association_setup(sctp);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 #endif
