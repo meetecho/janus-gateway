@@ -630,12 +630,10 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			return;
 		}
 		/* Create retransmission timer */
-		component->source = g_timeout_source_new(500);
+		component->source = g_timeout_source_new(100);
 		g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
 		guint id = g_source_attach(component->source, handle->icectx);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
-		/* Do DTLS handshake */
-		janus_dtls_srtp_handshake(component->dtls);
 	} else if(state == NICE_COMPONENT_STATE_FAILED) {
 		/* Failed doesn't mean necessarily we need to give up: we may be trickling */
 		if(handle &&

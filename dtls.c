@@ -272,7 +272,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		return;
 	}
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-		JANUS_LOG(LOG_ERR, "Alert already received, clearing up...\n");
+		JANUS_LOG(LOG_WARN, "Alert already received, clearing up...\n");
 		return;
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
@@ -566,10 +566,18 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 	if (pending > 0) {
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> Going to send DTLS data: %d bytes\n", handle->handle_id, pending);
 		char outgoing[pending];
-		size_t out = BIO_read(dtls->write_bio, outgoing, sizeof(outgoing));
-		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> Read %d bytes from the write_BIO...\n", handle->handle_id, pending);
+		int out = BIO_read(dtls->write_bio, outgoing, sizeof(outgoing));
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> Read %d bytes from the write_BIO...\n", handle->handle_id, out);
+		if(out > 1500) {
+			/* FIXME Just a warning for now, this will need to be solved with proper fragmentation */
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] The DTLS stack is trying to send a packet of %d bytes, this may be larger than the MTU and get dropped!\n", handle->handle_id, out);
+		}
 		int bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, out, outgoing);
-		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
+		if(bytes < out) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message (%d)\n", handle->handle_id, bytes);
+		} else {
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
+		}
 	}
 }
 
@@ -633,6 +641,10 @@ gboolean janus_dtls_retry(gpointer stack) {
 	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
 		return FALSE;
+	}
+	if(dtls->dtls_state == JANUS_DTLS_STATE_CREATED) {
+		/* Not a retransmission check, we are actually starting right now, do DTLS handshake */
+		janus_dtls_srtp_handshake(component->dtls);
 	}
 	struct timeval timeout;
 	DTLSv1_get_timeout(dtls->ssl, &timeout);
