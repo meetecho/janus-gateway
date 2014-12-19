@@ -809,7 +809,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 									pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 									pkt->control = FALSE;
 									pkt->encrypted = TRUE;	/* This was already encrypted before */
-									g_async_queue_push(handle->queued_packets, pkt);
+									if(handle->queued_packets != NULL)
+										g_async_queue_push(handle->queued_packets, pkt);
 									break;
 								}
 							}
@@ -1347,7 +1348,8 @@ void *janus_ice_send_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
 	janus_ice_queued_packet *pkt = NULL;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-		pkt = g_async_queue_try_pop(handle->queued_packets);
+		if(handle->queued_packets != NULL)
+			pkt = g_async_queue_try_pop(handle->queued_packets);
 		if(pkt == NULL) {
 			/* Sleep 10ms */
 			g_usleep(10000);
@@ -1627,7 +1629,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
-	g_async_queue_push(handle->queued_packets, pkt);
+	if(handle->queued_packets != NULL)
+		g_async_queue_push(handle->queued_packets, pkt);
 }
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
@@ -1641,7 +1644,8 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
 	pkt->control = TRUE;
 	pkt->encrypted = FALSE;
-	g_async_queue_push(handle->queued_packets, pkt);
+	if(handle->queued_packets != NULL)
+		g_async_queue_push(handle->queued_packets, pkt);
 }
 
 #ifdef HAVE_SCTP
@@ -1656,7 +1660,8 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	pkt->type = JANUS_ICE_PACKET_DATA;
 	pkt->control = FALSE;
 	pkt->encrypted = FALSE;
-	g_async_queue_push(handle->queued_packets, pkt);
+	if(handle->queued_packets != NULL)
+		g_async_queue_push(handle->queued_packets, pkt);
 }
 #endif
 
