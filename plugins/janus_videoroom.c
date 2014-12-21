@@ -899,6 +899,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* Send info back */
 		json_t *response = json_object();
 		json_object_set_new(response, "videoroom", json_string("created"));
+		json_object_set_new(response, "responsetype", json_string("oncreate"));
 		json_object_set_new(response, "room", json_integer(videoroom->room_id));
 		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(response);
@@ -959,6 +960,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
 		json_t *destroyed = json_object();
 		json_object_set_new(destroyed, "videoroom", json_string("destroyed"));
+		json_object_set_new(destroyed, "responsetype", json_string("ondestroy"));
 		json_object_set_new(destroyed, "room", json_integer(videoroom->room_id));
 		char *destroyed_text = json_dumps(destroyed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		GHashTableIter iter;
@@ -1586,6 +1588,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "description", json_string(videoroom->room_name));
 				json_object_set_new(event, "id", json_integer(user_id));
 				json_object_set_new(event, "publishers", list);
+				json_object_set_new(event, "responsetype", json_string("onjoin"));
 			} else if(!strcasecmp(ptype_text, "listener")) {
 				JANUS_LOG(LOG_VERB, "Configuring new listener\n");
 				/* This is a new listener */
@@ -1925,6 +1928,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "configured", json_string("ok"));
+				json_object_set_new(event, "responsetype", json_string("onsdpresponse"));
 			} else if(!strcasecmp(request_text, "unpublish")) {
 				/* This participant wants to unpublish */
 				if(!participant->sdp) {
@@ -1940,10 +1944,12 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "unpublished", json_string("ok"));
+				json_object_set_new(event, "responsetype", json_string("onunpublish"));
 			} else if(!strcasecmp(request_text, "leave")) {
 				/* This publisher is leaving, tell everybody */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "responsetype", json_string("onleave"));
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "leaving", json_integer(participant->user_id));
 				char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
