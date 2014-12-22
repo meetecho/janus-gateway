@@ -4488,7 +4488,7 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 			exit(1);	/* FIXME Should we really give up? */
 		} else {
-			JANUS_LOG(LOG_INFO, "Admin/monitor HTTPS webserver started (port %d, %s path listener)...\n", swsport, ws_path);
+			JANUS_LOG(LOG_INFO, "Admin/monitor HTTPS webserver started (port %d, %s path listener)...\n", swsport, admin_ws_path);
 		}
 	}
 

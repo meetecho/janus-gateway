@@ -264,5 +264,5 @@ endif
 ##
 
 configs:
-	$(MKDIR_P) $(confdir)
-	$(foreach config,$(conf_DATA),cp "$(CURDIR)/$(config)" "$(confdir)/$(notdir $(basename $(config) .sample))";)
+	$(MKDIR_P) $(DESTDIR)$(confdir)
+	$(foreach config,$(conf_DATA),cp "$(CURDIR)/$(config)" "$(DESTDIR)$(confdir)/$(notdir $(basename $(config) .sample))";)
