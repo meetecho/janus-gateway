@@ -333,6 +333,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		/* Failed to parse this address, can it be IPv6? */
 		if(!janus_ice_is_ipv6_enabled()) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Received IPv6 candidate, but IPv6 support is disabled...\n", handle->handle_id);
+			janus_mutex_unlock(&handle->mutex);
 			return res;
 		}
 	}
@@ -447,6 +448,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 			}
 		}
 	} else {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate (res=%d)...\n", handle->handle_id, res);
 		janus_mutex_unlock(&handle->mutex);
 		return res;
 	}
