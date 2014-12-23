@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stun/usages/bind.h>
+#include <nice/debug.h>
 
 #include "janus.h"
 #include "debug.h"
@@ -120,6 +121,10 @@ uint janus_get_max_nack_queue(void) {
 gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6) {
 	janus_ipv6_enabled = ipv6;
 	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (IPv6 candidates %s)\n", janus_ipv6_enabled ? "enabled" : "disabled");
+	/* enable libnice debugging based on debug_level */
+	if(log_level >= LOG_DBG) {
+		nice_debug_enable(/* with_stun = */ TRUE);
+	}
 	if(stun_server == NULL)
 		return 0;	/* No initialization needed */
 	if(stun_port == 0)
