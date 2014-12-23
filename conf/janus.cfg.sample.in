@@ -108,7 +108,8 @@ cert_key = @certdir@/mycert.key
 ; NAT-related stuff: specifically, you can either manually specify the 
 ; public IP of the machine (i.e., what would be used in SDP) or
 ; configure the STUN server to use to gather candidates if the gateway
-; is behind a NAT, and srflx candidates are needed. By default, this
+; is behind a NAT, and srflx candidates are needed. You can also enable
+; or disable the internal libnice debugging, if needed. By default, this
 ; section is commented as the gateway is assumed to be deployed on a
 ; public network. When configuring the public IP or the STUN
 ; configuration, remember to uncomment the [nat] categoty line as well!
@@ -116,6 +117,7 @@ cert_key = @certdir@/mycert.key
 ;public_ip = 1.2.3.4
 ;stun_server = stun.voip.eutelia.it
 ;stun_port = 3478
+nice_debug = false
 
 ; You can also choose which interfaces or IP addresses should be excluded
 ; and ignored by the gateway for the purpose of ICE candidates gathering.

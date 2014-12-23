@@ -48,6 +48,28 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 }
 
 
+/* libnice debugging */
+static gboolean janus_ice_debugging_enabled;
+gboolean janus_ice_is_ice_debugging_enabled(void) {
+	return janus_ice_debugging_enabled;
+}
+void janus_ice_debugging_enable(void) {
+	JANUS_LOG(LOG_VERB, "Enabling libnice debugging...\n");
+	if(g_getenv("NICE_DEBUG") == NULL) {
+		JANUS_LOG(LOG_WARN, "No NICE_DEBUG environment variable set, setting maximum debug\n");
+		g_setenv("NICE_DEBUG", "all", TRUE);
+	}
+	JANUS_LOG(LOG_VERB, "Debugging NICE_DEBUG=%s\n", g_getenv("NICE_DEBUG"));
+	janus_ice_debugging_enabled = TRUE;
+	nice_debug_enable(strstr(g_getenv("NICE_DEBUG"), "all") || strstr(g_getenv("NICE_DEBUG"), "stun"));
+}
+void janus_ice_debugging_disable(void) {
+	JANUS_LOG(LOG_VERB, "Disabling libnice debugging...\n");
+	janus_ice_debugging_enabled = FALSE;
+	nice_debug_disable(TRUE);
+}
+
+
 /* Interface/IP ignore list */
 GList *janus_ice_ignore_list = NULL;
 janus_mutex ignore_list_mutex;
@@ -121,9 +143,11 @@ uint janus_get_max_nack_queue(void) {
 gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6) {
 	janus_ipv6_enabled = ipv6;
 	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (IPv6 candidates %s)\n", janus_ipv6_enabled ? "enabled" : "disabled");
-	/* enable libnice debugging based on debug_level */
+	/* Automatically enable libnice debugging based on debug_level */
 	if(log_level >= LOG_DBG) {
-		nice_debug_enable(/* with_stun = */ TRUE);
+		janus_ice_debugging_enable();
+	} else {
+		nice_debug_disable(TRUE);
 	}
 	if(stun_server == NULL)
 		return 0;	/* No initialization needed */

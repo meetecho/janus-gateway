@@ -59,6 +59,13 @@ void janus_set_max_nack_queue(uint mnq);
 /*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @returns The current max NACK value */
 uint janus_get_max_nack_queue(void);
+/*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
+ * @returns True if libnice debugging is enabled, FALSE otherwise */
+gboolean janus_ice_is_ice_debugging_enabled(void);
+/*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
+void janus_ice_debugging_enable(void);
+/*! \brief Method to disable libnice debugging (the default) */
+void janus_ice_debugging_disable(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state

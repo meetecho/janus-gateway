@@ -1928,6 +1928,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_t *status = json_object();
 			json_object_set_new(status, "log_level", json_integer(log_level));
 			json_object_set_new(status, "locking_debug", json_integer(lock_debug));
+			json_object_set_new(status, "libnice_debug", json_integer(janus_ice_is_ice_debugging_enabled()));
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
 			json_object_set_new(reply, "status", status);
 			/* Convert to a string */
@@ -1986,6 +1987,38 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "debug", json_integer(lock_debug));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, "application/json", reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
+			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
+			json_t *debug = json_object_get(root, "debug");
+			if(!debug) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (debug)");
+				goto jsondone;
+			}
+			if(!json_is_integer(debug)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be an integer)");
+				goto jsondone;
+			}
+			int debug_num = json_integer_value(debug);
+			if(debug_num < 0 || debug_num > 1) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be either 0 or 1)");
+				goto jsondone;
+			}
+			if(debug_num) {
+				janus_ice_debugging_enable();
+			} else {
+				janus_ice_debugging_disable();
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "debug", json_integer(janus_ice_is_ice_debugging_enabled()));
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
@@ -3822,6 +3855,11 @@ gint main(int argc, char *argv[])
 	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port, ipv6) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
+	}
+	item = janus_config_get_item_drilldown(config, "nat", "nice_debug");
+	if(item && item->value && janus_is_true(item->value)) {
+		/* Enable libnice debugging */
+		janus_ice_debugging_enable();
 	}
 	item = janus_config_get_item_drilldown(config, "media", "max_nack_queue");
 	if(item && item->value) {
