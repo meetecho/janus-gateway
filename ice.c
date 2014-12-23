@@ -1399,8 +1399,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
-	janus_ice_queued_packet *pkt = NULL;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		janus_ice_queued_packet *pkt = NULL;
 		if(handle->queued_packets != NULL)
 			pkt = g_async_queue_try_pop(handle->queued_packets);
 		if(pkt == NULL) {
