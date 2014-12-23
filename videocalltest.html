@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Echo Test</title>
+<title>Janus WebRTC Gateway: Video Call Demo</title>
 <script type="text/javascript" src="jquery.min.js" ></script>
 <script type="text/javascript" src="jquery.blockUI.js" ></script>
 <script type="text/javascript" src="js/bootstrap.js"></script>
 <script type="text/javascript" src="js/bootbox.min.js"></script>
 <script type="text/javascript" src="js/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="echotest.js"></script>
+<script type="text/javascript" src="videocalltest.js"></script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
@@ -36,9 +36,9 @@
 				<ul class="dropdown-menu">
 					<li><a href="demos.html">Index</a></li>
 					<li class="divider"></li>
-					<li class="active"><a href="echotest.html">Echo Test</a></li>
+					<li><a href="echotest.html">Echo Test</a></li>
 					<li><a href="streamingtest.html">Streaming</a></li>
-					<li><a href="videocalltest.html">Video Call</a></li>
+					<li class="active"><a href="videocalltest.html">Video Call</a></li>
 					<li><a href="siptest.html">SIP Gateway</a></li>
 					<li><a href="videomcutest.html">Video MCU</a></li>
 					<li><a href="audiobridgetest.html">Audio Conference</a></li>
@@ -65,7 +65,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Echo Test
+				<h1>Plugin Demo: Video Call
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -73,28 +73,47 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This Echo Test demo just blindly sends you back whatever you
-						send to it. You're basically attached to yourself, and so your audio
-						and video you send to the gateway are echoed back to you. The same
-						is done for RTCP packets as well, with the information properly updated.</p>
-						<p>The demo also provides a few controls to manipulate the media
-						before you send them. You can mute audio and video, for instance,
-						which will tell the gateway to drop the frames and not echo them
-						back to you. You can also try and cap the bitrate: such control
-						will tell the gateway to manipulate the RTCP REMB packets passing
-						through, in order to simulate a bandwidth limitation. Since REMB
-						messages are involved, though, this feature is only available on
-						Chrome.</p>
-						<p>Finally, this demo also includes Data Channels: whatever you
-						write in the text box under your local video, will be sent via
-						Data Channels to the plugins, modified by adding a fixed prefix,
-						and sent back to you in the text area below the remote video.</p>
+						<p>This Video Call demo is basically an example of how you can achieve a
+						scenario like the famous AppRTC demo but with media flowing through Janus. It
+						basically is an extension to the Echo Test demo, where in this case the media
+						packets and statistics are forwarded between the two involved peers.</p>
+						<p>Using the demo is simple. Just choose a simple username to register
+						at the plugin, and then either call another user (provided you know
+						which username was picked) or share your username with a friend and
+						wait for a call. At that point, you'll be in a video call with the
+						remote peer, and you'll have the same controls the Echo Test demo
+						provides to try and control the media: that is, a button to mute/unmute
+						your audio and video, and a knob to try and limit your bandwidth. If
+						the browser supports it, you'll also get a view of the bandwidth
+						currently used by your peer for the video stream.</p>
+						<p>A very simple chat based on Data Channels is available as well:
+						just use the text area under your local video to send messages
+						to your peer. Incoming messages will be displayed below the
+						remote video instead.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="videos">
+			<div class="container hide" id="videocall">
 				<div class="row">
+					<div class="col-md-12">
+						<div class="col-md-6 container hide" id="login">
+							<div class="input-group margin-bottom-sm">
+								<span class="input-group-addon"><i class="fa fa-user fa-fw"></i></span>
+								<input class="form-control" type="text" placeholder="Choose a username" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);"></input>
+							</div>
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="register">Register</button> <span class="hide label label-info" id="youok"></span>
+						</div>
+						<div class="col-md-6 container hide" id="phone">
+							<div class="input-group margin-bottom-sm">
+								<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>
+								<input class="form-control" type="text" placeholder="Who should we call?" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);"></input>
+							</div>
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button>
+						</div>
+					</div>
+				<div/>
+				<div id="videos" class="hide">
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
@@ -103,7 +122,7 @@
 										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
 										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
 										<div class="btn-group btn-group-xs">
-											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+											<button autocomplete="off" id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
 												Bandwidth<span class="caret"></span>
 											</button>
 											<ul id="bitrate" class="dropdown-menu" role="menu">
@@ -123,13 +142,13 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled></input>
+							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
 						</div>
 					</div>
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
+								<h3 class="panel-title">Remote Video <span class="label label-info hide" id="callee"></span> <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
 						</div>

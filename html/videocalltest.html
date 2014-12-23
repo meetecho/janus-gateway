@@ -102,14 +102,14 @@
 								<span class="input-group-addon"><i class="fa fa-user fa-fw"></i></span>
 								<input class="form-control" type="text" placeholder="Choose a username" id="username" onkeypress="return checkEnter(this, event);"></input>
 							</div>
-							<button class="btn btn-success margin-bottom-sm" id="register">Register</button> <span class="hide label label-info" id="youok"></span>
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="register">Register</button> <span class="hide label label-info" id="youok"></span>
 						</div>
 						<div class="col-md-6 container hide" id="phone">
 							<div class="input-group margin-bottom-sm">
 								<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>
 								<input class="form-control" type="text" placeholder="Who should we call?" id="peer" onkeypress="return checkEnter(this, event);"></input>
 							</div>
-							<button class="btn btn-success margin-bottom-sm" id="call">Call</button>
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button>
 						</div>
 					</div>
 				<div/>
@@ -119,10 +119,10 @@
 							<div class="panel-heading">
 								<h3 class="panel-title">Local Video
 									<div class="btn-group btn-group-xs pull-right hide">
-										<button class="btn btn-danger" id="toggleaudio">Disable audio</button>
-										<button class="btn btn-danger" id="togglevideo">Disable video</button>
+										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
+										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
 										<div class="btn-group btn-group-xs">
-											<button id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+											<button autocomplete="off" id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
 												Bandwidth<span class="caret"></span>
 											</button>
 											<ul id="bitrate" class="dropdown-menu" role="menu">
@@ -142,7 +142,7 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
+							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
 						</div>
 					</div>
 					<div class="col-md-6">

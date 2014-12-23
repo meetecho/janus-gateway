@@ -66,7 +66,7 @@
 		<div class="col-md-12">
 			<div class="page-header">
 				<h1>Plugin Demo: Recorder/Playout
-					<button class="btn btn-default" id="start">Start</button>
+					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
 			<div class="container" id="details">
@@ -97,14 +97,14 @@
 							</div>
 							<div class="panel-body">
 								<div class="btn-group btn-group-sm">
-									<button class="btn btn-danger" disabled id="record">Record</button>
-									<button class="btn btn-success" disabled id="play">Play</button>
-									<button class="btn btn-primary" disabled id="list">Update <i id="update-list" class="fa fa-refresh"></i></button>
+									<button class="btn btn-danger" disabled autocomplete="off" id="record">Record</button>
+									<button class="btn btn-success" disabled autocomplete="off" id="play">Play</button>
+									<button class="btn btn-primary" disabled autocomplete="off" id="list">Update <i id="update-list" class="fa fa-refresh"></i></button>
 								</div>
 								<br/>
 								<div class="btn-group btn-group-sm" style="width: 100%">
 									<div class="btn-group btn-group-sm" style="width: 100%">
-										<button id="recset" class="btn btn-default dropdown-toggle" data-toggle="dropdown" style="width: 100%">
+										<button autocomplete="off" id="recset" class="btn btn-default dropdown-toggle" data-toggle="dropdown" style="width: 100%">
 											Recordings list<span class="caret"></span>
 										</button>
 										<ul id="recslist" class="dropdown-menu" role="menu">
@@ -117,7 +117,7 @@
 					<div class="col-md-6 hide" id="video">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title"><span id="videotitle">Remote Video</span> <button class="btn-xs btn-danger pull-right" id="stop">Stop</button></h3>
+								<h3 class="panel-title"><span id="videotitle">Remote Video</span> <button class="btn-xs btn-danger pull-right" autocomplete="off" id="stop">Stop</button></h3>
 							</div>
 							<div class="panel-body" id="videobox"></div>
 						</div>

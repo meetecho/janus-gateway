@@ -94,9 +94,9 @@
 					<div class="col-md-12" id="controls">
 						<div class="input-group margin-bottom-md hide" id="registernow">
 							<span class="input-group-addon">@</span>
-							<input class="form-control" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
+							<input class="form-control" type="text" placeholder="Choose a display name" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);"></input>
 							<span class="input-group-btn">
-								<button class="btn btn-success" id="register">Join the room</button>
+								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
 							</span>
 						</div>
 					</div>
@@ -107,7 +107,8 @@
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Participants <span class="label label-info hide" id="participant"></span><button class="btn-xs btn-danger hide pull-right" id="toggleaudio">Mute</button></h3>
+								<h3 class="panel-title">Participants <span class="label label-info hide" id="participant"></span>
+								<button class="btn-xs btn-danger hide pull-right" autocomplete="off" id="toggleaudio">Mute</button></h3>
 							</div>
 							<div class="panel-body">
 								<ul id="list" class="list-group">
