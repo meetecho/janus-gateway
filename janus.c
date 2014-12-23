@@ -1259,6 +1259,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
 								janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
 						}
+						if(handle->data_id > 0) {
+							janus_ice_setup_remote_candidates(handle, handle->data_id, 1);
+						}
 					}
 					janus_mutex_unlock(&handle->mutex);
 					/* We got our answer */

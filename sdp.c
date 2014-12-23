@@ -341,11 +341,14 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding remote candidate for component %d to stream %d\n", handle->handle_id, rcomponent, stream->stream_id);
 		component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(rcomponent));
 		if(component == NULL) {
-			if(rcomponent == 2 && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d?\n", handle->handle_id, rcomponent, stream->stream_id);
+			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
+			} else {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"]   -- No such component %d in stream %d?\n", handle->handle_id, rcomponent, stream->stream_id);
+			}
 		} else {
 			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
 				janus_mutex_unlock(&handle->mutex);
 				return 0;
 			}
@@ -419,31 +422,27 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 					g_slist_length(component->candidates), stream->stream_id, component->component_id);
 				/* Save for the summary, in case we need it */
 				component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(candidate));
-				if(trickle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)) {
-					/* This is a trickle candidate and ICE has started, we should process it right away */
-					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED)) {
-						/* Actually, ICE has JUST started, take care of the candidates we've added so far */
-						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED);
-						JANUS_LOG(LOG_INFO, "ICE started and trickling, sending connectivity checks for candidates retrieved so far...\n");
-						if(handle->audio_id > 0) {
-							janus_ice_setup_remote_candidates(handle, handle->audio_id, 1);
-							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-								janus_ice_setup_remote_candidates(handle, handle->audio_id, 2);
+				if(trickle) {
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)) {
+						/* This is a trickle candidate and ICE has started, we should process it right away */
+						if(!component->process_started) {
+							/* Actually, ICE has JUST started for this compoment, take care of the candidates we've added so far */
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE just started for this component, setting candidates up\n", handle->handle_id);
+							janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
+						} else {
+							GSList *candidates = NULL;
+							candidates = g_slist_append(candidates, c);
+							if (nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
+								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
+							} else {
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
+							}
+							g_slist_free(candidates);
 						}
-						if(handle->video_id > 0) {
-							janus_ice_setup_remote_candidates(handle, handle->video_id, 1);
-							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-								janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
-						}
-					}
-					GSList *candidates = NULL;
-					candidates = g_slist_append(candidates, c);
-					if (nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
 					} else {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
+						/* FIXME badly */
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Dropping trickle candidate, status is not START yet!\n", handle->handle_id);
 					}
-					g_slist_free(candidates);
 				}
 			}
 		}

@@ -574,7 +574,7 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 		}
 		int bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, out, outgoing);
 		if(bytes < out) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message (%d)\n", handle->handle_id, bytes);
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message on component %d of stream %d (%d)\n", handle->handle_id, component->component_id, stream->stream_id, bytes);
 		} else {
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
 		}
@@ -649,7 +649,7 @@ gboolean janus_dtls_retry(gpointer stack) {
 	struct timeval timeout;
 	DTLSv1_get_timeout(dtls->ssl, &timeout);
 	guint64 timeout_value = timeout.tv_sec*1000 + timeout.tv_usec/1000;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
 	if(timeout_value == 0) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS timeout on component %d of stream %d, retransmitting\n", handle->handle_id, component->component_id, stream->stream_id);
 		DTLSv1_handle_timeout(dtls->ssl);

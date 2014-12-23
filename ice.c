@@ -617,24 +617,8 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		return;
 	}
 	component->state = state;
-	if(state == NICE_COMPONENT_STATE_CONNECTED) {	/* FIXME Was NICE_COMPONENT_STATE_READY, but this gives us a working pair anyway */
-		/* Now we can start the DTLS handshake */
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Component is ready, starting DTLS handshake...\n", handle->handle_id);
-		/* Have we been here before? (might happen, when trickling) */
-		if(component->dtls != NULL)
-			return;
-		/* Create DTLS-SRTP context, at last */
-		component->dtls = janus_dtls_srtp_create(component, stream->dtls_role);
-		if(!component->dtls) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component DTLS-SRTP session??\n", handle->handle_id);
-			return;
-		}
-		/* Create retransmission timer */
-		component->source = g_timeout_source_new(100);
-		g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
-		guint id = g_source_attach(component->source, handle->icectx);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
-	} else if(state == NICE_COMPONENT_STATE_FAILED) {
+	/* FIXME Even in case the state is 'connected', we wait for the 'new-selected-pair' callback to do anything */
+	if(state == NICE_COMPONENT_STATE_FAILED) {
 		/* Failed doesn't mean necessarily we need to give up: we may be trickling */
 		if(handle &&
 				(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES))
@@ -676,7 +660,36 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 }
 
 void janus_ice_cb_new_selected_pair(NiceAgent *agent, guint stream_id, guint component_id, gchar *lfoundation, gchar *rfoundation, gpointer ice) {
-	JANUS_LOG(LOG_VERB, "New selected pair for component %d in stream %d: %s <-> %s\n", component_id, stream_id, lfoundation, rfoundation);
+	janus_ice_handle *handle = (janus_ice_handle *)ice;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] New selected pair for component %d in stream %d: %s <-> %s\n", handle ? handle->handle_id : 0, component_id, stream_id, lfoundation, rfoundation);
+	if(!handle)
+		return;
+	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
+	if(!stream) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
+		return;
+	}
+	janus_ice_component *component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(component_id));
+	if(!component) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component %d in stream %d??\n", handle->handle_id, component_id, stream_id);
+		return;
+	}
+	/* Now we can start the DTLS handshake (FIXME This was on the 'connected' state notification, before) */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Component is ready enough, starting DTLS handshake...\n", handle->handle_id);
+	/* Have we been here before? (might happen, when trickling) */
+	if(component->dtls != NULL)
+		return;
+	/* Create DTLS-SRTP context, at last */
+	component->dtls = janus_dtls_srtp_create(component, stream->dtls_role);
+	if(!component->dtls) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component DTLS-SRTP session??\n", handle->handle_id);
+		return;
+	}
+	/* Create retransmission timer */
+	component->source = g_timeout_source_new(100);
+	g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
+	guint id = g_source_attach(component->source, handle->icectx);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
 }
 
 void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice) {
@@ -990,6 +1003,10 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d: cannot setup remote candidates\n", handle->handle_id, component_id, stream_id);
 		return;
 	}
+	if(component->process_started) {
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Component %d in stream %d has already been set up\n", handle->handle_id, component_id, stream_id);
+		return;
+	}
 	if(!component->candidates || !component->candidates->data) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE)
 				|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) { 
@@ -1030,6 +1047,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to set remote candidates :-(\n", handle->handle_id);
 	} else {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote candidates set!\n", handle->handle_id);
+		component->process_started = TRUE;
 	}
 }
 
@@ -1189,6 +1207,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->candidates = NULL;
 		audio_rtp->local_candidates = NULL;
 		audio_rtp->remote_candidates = NULL;
+		audio_rtp->process_started = FALSE;
 		audio_rtp->source = NULL;
 		audio_rtp->dtls = NULL;
 		audio_rtp->retransmit_buffer = NULL;
@@ -1210,6 +1229,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->candidates = NULL;
 			audio_rtcp->local_candidates = NULL;
 			audio_rtcp->remote_candidates = NULL;
+			audio_rtcp->process_started = FALSE;
 			audio_rtcp->source = NULL;
 			audio_rtcp->dtls = NULL;
 			audio_rtcp->retransmit_buffer = NULL;
@@ -1258,6 +1278,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->candidates = NULL;
 		video_rtp->local_candidates = NULL;
 		video_rtp->remote_candidates = NULL;
+		video_rtp->process_started = FALSE;
 		video_rtp->source = NULL;
 		video_rtp->dtls = NULL;
 		video_rtp->retransmit_buffer = NULL;
@@ -1279,6 +1300,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->candidates = NULL;
 			video_rtcp->local_candidates = NULL;
 			video_rtcp->remote_candidates = NULL;
+			video_rtcp->process_started = FALSE;
 			video_rtcp->source = NULL;
 			video_rtcp->dtls = NULL;
 			video_rtcp->retransmit_buffer = NULL;
@@ -1326,6 +1348,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->stream = data_stream;
 		data_component->candidates = NULL;
 		data_component->local_candidates = NULL;
+		data_component->remote_candidates = NULL;
+		data_component->process_started = FALSE;
 		data_component->source = NULL;
 		data_component->dtls = NULL;
 		data_component->retransmit_buffer = NULL;
@@ -1673,36 +1697,36 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	/* Check if all components are ready */
 	janus_mutex_lock(&handle->mutex);
 	if(handle->audio_stream) {
-		if(handle->audio_stream->rtp_component && handle->audio_stream->rtp_component->dtls &&
-				!handle->audio_stream->rtp_component->dtls->srtp_valid) {
+		if(handle->audio_stream->rtp_component && (!handle->audio_stream->rtp_component->dtls ||
+				!handle->audio_stream->rtp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */
 			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
-		if(handle->audio_stream->rtcp_component && handle->audio_stream->rtcp_component->dtls &&
-				!handle->audio_stream->rtcp_component->dtls->srtp_valid) {
+		if(handle->audio_stream->rtcp_component && (!handle->audio_stream->rtcp_component->dtls ||
+				!handle->audio_stream->rtcp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */
 			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
 	}
 	if(handle->video_stream) {
-		if(handle->video_stream->rtp_component && handle->video_stream->rtp_component->dtls &&
-				!handle->video_stream->rtp_component->dtls->srtp_valid) {
+		if(handle->video_stream->rtp_component && (!handle->video_stream->rtp_component->dtls ||
+				!handle->video_stream->rtp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */
 			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
-		if(handle->video_stream->rtcp_component && handle->video_stream->rtcp_component->dtls &&
-				!handle->video_stream->rtcp_component->dtls->srtp_valid) {
+		if(handle->video_stream->rtcp_component && (!handle->video_stream->rtcp_component->dtls ||
+				!handle->video_stream->rtcp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */
 			janus_mutex_unlock(&handle->mutex);
 			return;
 		}
 	}
 	if(handle->data_stream) {
-		if(handle->data_stream->rtp_component && handle->data_stream->rtp_component->dtls &&
-				!handle->data_stream->rtp_component->dtls->srtp_valid) {
+		if(handle->data_stream->rtp_component && (!handle->data_stream->rtp_component->dtls ||
+				!handle->data_stream->rtp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */
 			janus_mutex_unlock(&handle->mutex);
 			return;

@@ -118,7 +118,7 @@ struct janus_ice_handle {
 	guint audio_id;
 	/*! \brief libnice ICE video ID */
 	guint video_id;
-	/*! \brief libnice ICE SCTP ID */
+	/*! \brief libnice ICE DataChannels ID */
 	guint data_id;
 	/*! \brief Number of streams */
 	gint streams_num;
@@ -198,6 +198,8 @@ struct janus_ice_component {
 	GSList *local_candidates;
 	/*! \brief GLib list of remote candidates for this component (summary) */
 	GSList *remote_candidates;
+	/*! \brief Whether the setup of remote candidates for this component has started or not */
+	gboolean process_started;
 	/*! \brief Re-transmission timer for DTLS */
 	GSource *source;
 	/*! \brief DTLS-SRTP stack */
