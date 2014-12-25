@@ -1615,6 +1615,22 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					NUTAG_AUTH(auth),
 					TAG_END());
 				break;
+			} else if(status == 407) {
+ 				/* Get scheme/realm from 407 error, proxy-auth */
+				sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+				char const* scheme = proxy_auth->au_scheme;
+				const char* realm = msg_params_find(proxy_auth->au_params, "realm=");
+				char auth[100];
+				memset(auth, 0, 100);
+				g_snprintf(auth, 100, "%s:%s:%s:%s", scheme, realm,
+					session->account.username ? session->account.username : "null",
+					session->account.secret ? session->account.secret : "null");
+				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
+				/* Authenticate */
+				nua_authenticate(nh,
+					NUTAG_AUTH(auth),
+					TAG_END());
+				break;
 			} else if(status >= 400) {
 				/* Something went wrong, notify the browser */
 				session->status = janus_sip_status_registered;
