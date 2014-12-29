@@ -2163,6 +2163,7 @@ static void *janus_sip_relay_thread(void *data) {
 	return NULL;
 }
 
+
 /* Sofia Event thread */
 gpointer janus_sip_sofia_thread(gpointer user_data) {
 	janus_sip_session *session = (janus_sip_session *)user_data;
@@ -2182,6 +2183,9 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_FROM_STR(g_strdup(tag_url)),
 				NUTAG_URL("sip:0.0.0.0:*;transport=udp"),
 				//~ NUTAG_OUTBOUND("outbound natify use-rport"),	/* To use the same port used in Contact */
+				// sofia-sip default supported: timer and 100rel
+				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
+				SIPTAG_SUPPORTED_STR("timer"),
 				TAG_NULL());
 	nua_set_params(session->stack->s_nua, TAG_NULL());
 	su_root_run(session->stack->s_root);
