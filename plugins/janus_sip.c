@@ -1615,6 +1615,22 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					NUTAG_AUTH(auth),
 					TAG_END());
 				break;
+			} else if(status == 407) {
+ 				/* Get scheme/realm from 407 error, proxy-auth */
+				sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+				char const* scheme = proxy_auth->au_scheme;
+				const char* realm = msg_params_find(proxy_auth->au_params, "realm=");
+				char auth[100];
+				memset(auth, 0, 100);
+				g_snprintf(auth, 100, "%s:%s:%s:%s", scheme, realm,
+					session->account.username ? session->account.username : "null",
+					session->account.secret ? session->account.secret : "null");
+				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
+				/* Authenticate */
+				nua_authenticate(nh,
+					NUTAG_AUTH(auth),
+					TAG_END());
+				break;
 			} else if(status >= 400) {
 				/* Something went wrong, notify the browser */
 				session->status = janus_sip_status_registered;
@@ -2147,6 +2163,7 @@ static void *janus_sip_relay_thread(void *data) {
 	return NULL;
 }
 
+
 /* Sofia Event thread */
 gpointer janus_sip_sofia_thread(gpointer user_data) {
 	janus_sip_session *session = (janus_sip_session *)user_data;
@@ -2166,6 +2183,9 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_FROM_STR(g_strdup(tag_url)),
 				NUTAG_URL("sip:0.0.0.0:*;transport=udp"),
 				//~ NUTAG_OUTBOUND("outbound natify use-rport"),	/* To use the same port used in Contact */
+				// sofia-sip default supported: timer and 100rel
+				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
+				SIPTAG_SUPPORTED_STR("timer"),
 				TAG_NULL());
 	nua_set_params(session->stack->s_nua, TAG_NULL());
 	su_root_run(session->stack->s_root);
