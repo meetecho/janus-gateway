@@ -354,6 +354,7 @@ static void session_free(gpointer data) {
 		}
 		session->handle = NULL;
 		g_free(session);
+		session = NULL;
 	}
 }
 
