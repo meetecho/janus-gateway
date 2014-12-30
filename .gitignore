@@ -8,6 +8,7 @@ docs/html/
 
 Makefile
 Makefile.in
+/build
 /configure
 /autom4te.cache
 /aclocal.m4
