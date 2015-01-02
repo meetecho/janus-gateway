@@ -328,6 +328,7 @@ $(document).ready(function() {
 								},
 								ondataopen: function(data) {
 									console.log("The DataChannel is available!");
+									$('#videos').removeClass('hide').show();
 									$('#datasend').removeAttr('disabled');
 								},
 								ondata: function(data) {
