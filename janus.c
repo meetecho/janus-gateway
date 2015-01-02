@@ -3128,8 +3128,14 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	if(sdp_type != NULL && sdp != NULL) {
 		jsep = janus_handle_sdp(handle, plugin, sdp_type, sdp);
 		if(jsep == NULL) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: problem with the SDP)\n", ice_handle->handle_id);
-			return JANUS_ERROR_JSEP_INVALID_SDP;
+			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (handle not available anymore or negotiation stopped)\n", ice_handle->handle_id);
+				return JANUS_ERROR_HANDLE_NOT_FOUND;
+			} else {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: problem with the SDP)\n", ice_handle->handle_id);
+				return JANUS_ERROR_JSEP_INVALID_SDP;
+			}
 		}
 	}
 	/* Prepare JSON event */
@@ -3246,6 +3252,11 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 	if(!updating) {
 		/* Wait for candidates-done callback */
 		while(ice_handle->cdone < ice_handle->streams_num) {
+			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Handle detached or PC closed, giving up...!\n", ice_handle ? ice_handle->handle_id : 0);
+				return NULL;
+			}
 			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
 			g_usleep(100000);
 			if(ice_handle->cdone < 0) {
