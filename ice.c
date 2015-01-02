@@ -59,7 +59,12 @@ void janus_ice_debugging_enable(void) {
 		JANUS_LOG(LOG_WARN, "No NICE_DEBUG environment variable set, setting maximum debug\n");
 		g_setenv("NICE_DEBUG", "all", TRUE);
 	}
-	JANUS_LOG(LOG_VERB, "Debugging NICE_DEBUG=%s\n", g_getenv("NICE_DEBUG"));
+	if(g_getenv("G_MESSAGES_DEBUG") == NULL) {
+		JANUS_LOG(LOG_WARN, "No G_MESSAGES_DEBUG environment variable set, setting maximum debug\n");
+		g_setenv("G_MESSAGES_DEBUG", "all", TRUE);
+	}
+	JANUS_LOG(LOG_VERB, "Debugging NICE_DEBUG=%s G_MESSAGES_DEBUG=%s\n",
+		g_getenv("NICE_DEBUG"), g_getenv("G_MESSAGES_DEBUG"));
 	janus_ice_debugging_enabled = TRUE;
 	nice_debug_enable(strstr(g_getenv("NICE_DEBUG"), "all") || strstr(g_getenv("NICE_DEBUG"), "stun"));
 }
@@ -961,52 +966,72 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 		gchar buffer[100];
 		if(c->type == NICE_CANDIDATE_TYPE_HOST) {
 			/* 'host' candidate */
-			g_snprintf(buffer, 100,
-				"a=candidate:%s %d %s %d %s %d typ host\r\n", 
-					c->foundation,
-					c->component_id,
-					"udp",
-					c->priority,
-					host_ip ? host_ip : address,
-					port);
+			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
+				g_snprintf(buffer, 100,
+					"a=candidate:%s %d %s %d %s %d typ host\r\n", 
+						c->foundation,
+						c->component_id,
+						"udp",
+						c->priority,
+						host_ip ? host_ip : address,
+						port);
+			} else {
+				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
+				JANUS_LOG(LOG_WARN, "Skipping local TCP candidate, we don't support them as of yet...\n");
+			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE) {
 			/* 'srflx' candidate */
-			nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
-			gint base_port = nice_address_get_port(&(c->base_addr));
-			g_snprintf(buffer, 100,
-				"a=candidate:%s %d %s %d %s %d typ srflx raddr %s rport %d\r\n", 
-					c->foundation,
-					c->component_id,
-					"udp",
-					c->priority,
-					address,
-					port,
-					base_address,
-					base_port);
+			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
+				nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
+				gint base_port = nice_address_get_port(&(c->base_addr));
+				g_snprintf(buffer, 100,
+					"a=candidate:%s %d %s %d %s %d typ srflx raddr %s rport %d\r\n", 
+						c->foundation,
+						c->component_id,
+						"udp",
+						c->priority,
+						address,
+						port,
+						base_address,
+						base_port);
+			} else {
+				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
+				JANUS_LOG(LOG_WARN, "Skipping srflx TCP candidate, we don't support them as of yet...\n");
+			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 			/* 'prflx' candidate */
-			g_snprintf(buffer, 100,
-				"a=candidate:%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n", 
-					c->foundation,
-					c->component_id,
-					"udp",
-					c->priority,
-					address,
-					port,
-					base_address,
-					base_port);
+			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
+				g_snprintf(buffer, 100,
+					"a=candidate:%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n", 
+						c->foundation,
+						c->component_id,
+						"udp",
+						c->priority,
+						address,
+						port,
+						base_address,
+						base_port);
+			} else {
+				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
+				JANUS_LOG(LOG_WARN, "Skipping prflx TCP candidate, we don't support them as of yet...\n");
+			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
 			/* 'relay' candidate */
-			g_snprintf(buffer, 100,
-				"a=candidate:%s %d %s %d %s %d typ relay raddr %s rport %d\r\n", 
-					c->foundation,
-					c->component_id,
-					"udp",
-					c->priority,
-					address,
-					port,
-					base_address,
-					base_port);
+			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
+				g_snprintf(buffer, 100,
+					"a=candidate:%s %d %s %d %s %d typ relay raddr %s rport %d\r\n", 
+						c->foundation,
+						c->component_id,
+						"udp",
+						c->priority,
+						address,
+						port,
+						base_address,
+						base_port);
+			} else {
+				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
+				JANUS_LOG(LOG_WARN, "Skipping relay TCP candidate, we don't support them as of yet...\n");
+			}
 		}
 		g_strlcat(sdp, buffer, BUFSIZE);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s\n", handle->handle_id, buffer);

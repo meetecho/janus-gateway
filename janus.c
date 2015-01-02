@@ -3664,6 +3664,9 @@ gint main(int argc, char *argv[])
 	if(args_info.ice_ignore_list_given) {
 		janus_config_add_item(config, "nat", "ice_ignore_list", args_info.ice_ignore_list_arg);
 	}
+	if(args_info.libnice_debug_given) {
+		janus_config_add_item(config, "nat", "nice_debug", "true");
+	}
 	if(args_info.ipv6_candidates_given) {
 		janus_config_add_item(config, "media", "ipv6", "true");
 	}

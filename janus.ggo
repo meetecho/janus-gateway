@@ -21,6 +21,7 @@ option "stun-server" S "STUN server(:port) to use, if needed (e.g., gateway behi
 option "ice-ignore-list" X "Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet)" string typestr="list" optional
 option "public-ip" e "Public address of the machine, to use in SDP" string typestr="ipaddress" optional
 option "ipv6-candidates" 6 "Whether to enable IPv6 candidates or not (experimental)" flag off
+option "libnice-debug" l "Whether to enable libnice debugging or not" flag off
 option "max-nack-queue" q "Maximum size of the NACK queue per user for retransmissions" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional

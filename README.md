@@ -235,6 +235,10 @@ or on the command line:
                                   vmnet8,192.168.0.1,10.0.0.1 or 
                                   vmnet,192.168., default=vmnet)
 	-e, --public-ip=ipaddress     Public address of the machine, to use in SDP
+	-6, --ipv6-candidates         Whether to enable IPv6 candidates or not 
+                                  (experimental)  (default=off)
+	-l, --libnice-debug           Whether to enable libnice debugging or not  
+                                  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for 
                                   retransmissions
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
