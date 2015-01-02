@@ -1618,6 +1618,8 @@ static void *janus_audiobridge_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			}
 			g_free(leaving_text);
+			/* Actually leave the room... */
+			g_hash_table_remove(audiobridge->participants, GUINT_TO_POINTER(participant->user_id));
 			/* Done */
 			participant->active = FALSE;
 			session->started = FALSE;
