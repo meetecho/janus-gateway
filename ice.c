@@ -1072,8 +1072,10 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]  failed to set remote credentials!\n", handle->handle_id);
 		}
 	}
-	if (nice_agent_set_remote_candidates(handle->agent, stream_id, component_id, component->candidates) < 1) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to set remote candidates :-(\n", handle->handle_id);
+	guint added = nice_agent_set_remote_candidates(handle->agent, stream_id, component_id, component->candidates);
+	if(added < g_slist_length(component->candidates)) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to set remote candidates :-( (added %u, expected %u)\n",
+			handle->handle_id, added, g_slist_length(component->candidates));
 	} else {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote candidates set!\n", handle->handle_id);
 		component->process_started = TRUE;
@@ -1353,7 +1355,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	if(data && ((!audio && !video) || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))) {
 		/* Add a SCTP/DataChannel stream */
 		handle->streams_num++;
-		handle->data_id = nice_agent_add_stream (handle->agent, 3);
+		handle->data_id = nice_agent_add_stream (handle->agent, 1);
 		janus_ice_stream *data_stream = (janus_ice_stream *)calloc(1, sizeof(janus_ice_stream));
 		if(data_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");

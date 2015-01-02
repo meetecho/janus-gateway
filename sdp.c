@@ -324,6 +324,12 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		return -2;
 	janus_mutex_lock(&handle->mutex);
 	janus_ice_component *component = NULL;
+	JANUS_LOG(LOG_INFO, "%s\n", candidate);
+	if(strstr(candidate, "candidate:") == candidate) {
+		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
+		candidate += strlen("candidate:");
+		JANUS_LOG(LOG_INFO, "%s\n", candidate);
+	}
 	char rfoundation[32], rtransport[4], rip[40], rtype[6], rrelip[40];
 	guint32 rcomponent, rpriority, rport, rrelport;
 	int res = sscanf(candidate, "%31s %30u %3s %30u %39s %30u typ %5s %*s %39s %*s %30u",
@@ -433,7 +439,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 						} else {
 							GSList *candidates = NULL;
 							candidates = g_slist_append(candidates, c);
-							if (nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
+							if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
 								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
 							} else {
 								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
