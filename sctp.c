@@ -460,7 +460,12 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	janus_datachannel_open_request req;
 	struct sctp_sndinfo sndinfo;
 
-	memset(&req, 0, sizeof(janus_datachannel_open_request));
+	/* FIXME For open requests we send, we always use this label */
+	const char *label = "JanusDataChannel";
+	guint label_size = strlen(label) + (4-(strlen(label)%4));
+	JANUS_LOG(LOG_WARN, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
+
+	memset(&req, 0, sizeof(janus_datachannel_open_request) + label_size);
 	req.msg_type = DATA_CHANNEL_OPEN_REQUEST;
 	switch (pr_policy) {
 		case SCTP_PR_SCTP_NONE:
@@ -479,15 +484,14 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	}
 	req.priority = htons(0); /* XXX: add support */
 	req.reliability_params = htonl((uint32_t)pr_value);
-	req.label_length = htons(16);
-	const char *label = "JanusDataChannel";
-	memcpy(&req.label, label, 16);
+	req.label_length = htons(label_size);
+	memcpy(&req.label, label, strlen(label));
 	memset(&sndinfo, 0, sizeof(struct sctp_sndinfo));
 	sndinfo.snd_sid = stream;
 	sndinfo.snd_flags = SCTP_EOR;
 	sndinfo.snd_ppid = htonl(DATA_CHANNEL_PPID_CONTROL);
 	if(usrsctp_sendv(sock,
-	                  &req, sizeof(janus_datachannel_open_request),
+	                  &req, sizeof(janus_datachannel_open_request) + label_size,
 	                  NULL, 0,
 	                  &sndinfo, (socklen_t)sizeof(struct sctp_sndinfo),
 	                  SCTP_SENDV_SNDINFO, 0) < 0) {
@@ -807,20 +811,16 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 			}
 		}
 	}
-	/* Read label */
-	char label[20];
-	int len = ntohs(req->label_length);
-	if(len > 16)
-		len = 16;
-	if(len > 0) {
-		memcpy(&label, req->label, len);
+	/* Read label, if available */
+	char *label = NULL;
+	guint len = ntohs(req->label_length);
+	if(len > 0 && len < length) {
+		label = calloc(len+1, sizeof(char));
+		memcpy(label, req->label, len);
 		label[len] = '\0'; 
-	} else {
-		label[0] = '?';
-		label[1] = '?';
-		label[2] = '\0';
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id, label,
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id,
+		label ? label : "??",
 		channel->stream, channel->unordered, channel->pr_policy, channel->pr_value); 
 }
 

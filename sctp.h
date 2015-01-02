@@ -147,8 +147,8 @@ typedef struct janus_datachannel_open_request {
 	uint16_t label_length;
 	/*! \brief Protocol length */
 	uint16_t protocol_length;
-	/*! \brief Label */
-	char label[16];
+	/*! \brief Optional label */
+	char label[0];
 	/* We ignore the Protocol field */
 } janus_datachannel_open_request;
 
