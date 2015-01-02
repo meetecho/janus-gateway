@@ -978,6 +978,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			} else {
 				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
 				JANUS_LOG(LOG_WARN, "Skipping local TCP candidate, we don't support them as of yet...\n");
+				nice_candidate_free(c);
+				continue;
 			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE) {
 			/* 'srflx' candidate */
@@ -997,6 +999,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			} else {
 				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
 				JANUS_LOG(LOG_WARN, "Skipping srflx TCP candidate, we don't support them as of yet...\n");
+				nice_candidate_free(c);
+				continue;
 			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 			/* 'prflx' candidate */
@@ -1014,6 +1018,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			} else {
 				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
 				JANUS_LOG(LOG_WARN, "Skipping prflx TCP candidate, we don't support them as of yet...\n");
+				nice_candidate_free(c);
+				continue;
 			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
 			/* 'relay' candidate */
@@ -1031,6 +1037,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			} else {
 				/* FIXME Skip TCP candidates that may be there when using libnice 0.1.8.1, for now, they need special care */
 				JANUS_LOG(LOG_WARN, "Skipping relay TCP candidate, we don't support them as of yet...\n");
+				nice_candidate_free(c);
+				continue;
 			}
 		}
 		g_strlcat(sdp, buffer, BUFSIZE);
