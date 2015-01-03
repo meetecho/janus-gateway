@@ -324,11 +324,9 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		return -2;
 	janus_mutex_lock(&handle->mutex);
 	janus_ice_component *component = NULL;
-	JANUS_LOG(LOG_INFO, "%s\n", candidate);
 	if(strstr(candidate, "candidate:") == candidate) {
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
 		candidate += strlen("candidate:");
-		JANUS_LOG(LOG_INFO, "%s\n", candidate);
 	}
 	char rfoundation[32], rtransport[4], rip[40], rtype[6], rrelip[40];
 	guint32 rcomponent, rpriority, rport, rrelport;
