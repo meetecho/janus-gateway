@@ -462,8 +462,8 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 
 	/* FIXME For open requests we send, we always use this label */
 	const char *label = "JanusDataChannel";
-	guint label_size = strlen(label) + (4-(strlen(label)%4));
-	JANUS_LOG(LOG_WARN, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
+	guint label_size = (strlen(label)+3) & ~3;
+	JANUS_LOG(LOG_VERB, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
 
 	memset(&req, 0, sizeof(janus_datachannel_open_request) + label_size);
 	req.msg_type = DATA_CHANNEL_OPEN_REQUEST;
