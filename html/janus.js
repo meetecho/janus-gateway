@@ -1177,10 +1177,28 @@ function Janus(gatewayCallbacks) {
 			}
 			// If we got here, we're not screensharing
 			if(media === null || media === undefined || media.video !== 'screen') {
-				getUserMedia(
-					{audio:isAudioSendEnabled(media), video:videoSupport},
-					function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-					function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+
+				//Check media sources
+				MediaStreamTrack.getSources(function(sources) {
+					var audioExist = sources.some(function(source) {
+						return source.kind === 'audio';
+					}),
+					videoExist = sources.some(function(source) {
+						return source.kind === 'video';
+					});
+
+					if(!audioExist && !videoExist) {
+						pluginHandle.consentDialog(false);
+						callbacks.error('Input not found');
+						return false;
+					}
+
+					getUserMedia(
+						{audio: audioExist && isAudioSendEnabled(media), video: videoExist && videoSupport},
+						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
+						function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+				});
+
 			}
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away
