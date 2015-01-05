@@ -733,7 +733,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		return;
 	}
 	if(!component->dtls) {	/* Still waiting for the DTLS stack */
-		JANUS_LOG(LOG_ERR, "Still waiting for the DTLS stack for component %d in stream %d...\n", component_id, stream_id);
+		JANUS_LOG(LOG_WARN, "Still waiting for the DTLS stack for component %d in stream %d...\n", component_id, stream_id);
 		return;
 	}
 	janus_ice_stream *stream = component->stream;

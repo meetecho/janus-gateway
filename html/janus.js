@@ -1177,8 +1177,8 @@ function Janus(gatewayCallbacks) {
 			}
 			// If we got here, we're not screensharing
 			if(media === null || media === undefined || media.video !== 'screen') {
-
-				//Check media sources
+				// Check whether all media sources are actually available or not
+				// as per https://github.com/meetecho/janus-gateway/pull/114
 				MediaStreamTrack.getSources(function(sources) {
 					var audioExist = sources.some(function(source) {
 						return source.kind === 'audio';
@@ -1187,9 +1187,10 @@ function Janus(gatewayCallbacks) {
 						return source.kind === 'video';
 					});
 
+					// FIXME Should we really give up, or just assume recvonly for both?
 					if(!audioExist && !videoExist) {
 						pluginHandle.consentDialog(false);
-						callbacks.error('Input not found');
+						callbacks.error('No capture device found');
 						return false;
 					}
 

@@ -282,7 +282,7 @@ const char *janus_echotest_get_package(void) {
 }
 
 void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
-	if(stopping || !initialized) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
 	}	
@@ -306,7 +306,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 }
 
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
-	if(stopping || !initialized) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
 	}	
@@ -329,8 +329,8 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 }
 
 struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
-	if(stopping || !initialized)
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, stopping ? "Shutting down" : "Plugin not initialized");
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_echotest_message *msg = calloc(1, sizeof(janus_echotest_message));
 	if(msg == NULL) {
@@ -350,7 +350,7 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 
 void janus_echotest_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
-	if(stopping || !initialized)
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
 	if(!session) {
@@ -363,7 +363,7 @@ void janus_echotest_setup_media(janus_plugin_session *handle) {
 }
 
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized)
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -382,7 +382,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 }
 
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized)
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -400,7 +400,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 }
 
 void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized)
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -427,7 +427,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 
 void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
-	if(stopping || !initialized)
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
 	if(!session) {
@@ -567,11 +567,22 @@ static void *janus_echotest_handler(void *data) {
 				type = "answer";
 			if(!strcasecmp(msg->sdp_type, "answer"))
 				type = "offer";
+			/* Any media direction that needs to be fixed? */
+			char *sdp = g_strdup(msg->sdp);
+			if(strstr(sdp, "a=recvonly")) {
+				/* Turn recvonly to inactive, as we simply bounce media back */
+				sdp = janus_string_replace(sdp, "a=recvonly", "a=inactive");
+			} else if(strstr(sdp, "a=sendonly")) {
+				/* Turn sendonly to recvonly */
+				sdp = janus_string_replace(sdp, "a=sendonly", "a=recvonly");
+				/* FIXME We should also actually not echo this media back, though... */
+			}
 			/* How long will the gateway take to push the event? */
 			gint64 start = janus_get_monotonic_time();
-			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, type, msg->sdp);
+			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",
 				res, janus_get_monotonic_time()-start);
+			g_free(sdp);
 		}
 		g_free(event_text);
 		janus_echotest_message_free(msg);

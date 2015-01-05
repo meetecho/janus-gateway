@@ -71,6 +71,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
 #include "plugin.h"
 
 #include <jansson.h>
+#include <sofia-sip/sdp.h>
 
 #include "../apierror.h"
 #include "../config.h"
@@ -143,6 +144,7 @@ static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
+static su_home_t *sdphome = NULL;
 static void *janus_videoroom_handler(void *data);
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data);
@@ -306,7 +308,6 @@ typedef struct janus_videoroom_data_relay_packet {
 #define sdp_d_template \
 		"m=application 1 DTLS/SCTP 5000\r\n" \
 		"c=IN IP4 1.1.1.1\r\n" \
-		"a=%s\r\n"				/* Media direction */ \
 		"a=sctpmap:5000 webrtc-datachannel 16\r\n"
 
 
@@ -328,6 +329,7 @@ typedef struct janus_videoroom_data_relay_packet {
 #define JANUS_VIDEOROOM_ERROR_ALREADY_PUBLISHED	434
 #define JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED		435
 #define JANUS_VIDEOROOM_ERROR_ID_EXISTS			436
+#define JANUS_VIDEOROOM_ERROR_INVALID_SDP		437
 
 
 /* Multiplexing helpers */
@@ -440,6 +442,11 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	}
 	if(callback == NULL || config_path == NULL) {
 		/* Invalid arguments */
+		return -1;
+	}
+	sdphome = su_home_new(sizeof(su_home_t));
+	if(su_home_init(sdphome) < 0) {
+		JANUS_LOG(LOG_FATAL, "Ops, error setting up sofia-sdp?\n");
 		return -1;
 	}
 
@@ -580,6 +587,7 @@ void janus_videoroom_destroy(void) {
 		g_thread_join(watchdog);
 		watchdog = NULL;
 	}
+	su_home_deinit(sdphome);
 
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
@@ -628,7 +636,7 @@ const char *janus_videoroom_get_package(void) {
 }
 
 void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
-	if(stopping || !initialized) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
 	}	
@@ -651,7 +659,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 }
 
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
-	if(stopping || !initialized) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
 	}	
@@ -728,8 +736,8 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 }
 
 struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
-	if(stopping || !initialized)
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, stopping ? "Shutting down" : "Plugin not initialized");
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_videoroom_message *msg = calloc(1, sizeof(janus_videoroom_message));
 	if(msg == NULL) {
@@ -1159,7 +1167,7 @@ async:
 
 void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
-	if(stopping || !initialized)
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
 	if(!session) {
@@ -1221,7 +1229,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 }
 
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized || !gateway)
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
@@ -1302,7 +1310,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 }
 
 void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized || !gateway)
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
 		return;
 	if(buf == NULL || len <= 0)
 		return;
@@ -1318,7 +1326,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
-	if(stopping || !initialized)
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
 	if(!session) {
@@ -2447,19 +2455,75 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Which media are available? */
 				int audio = 0, video = 0, data = 0;
-				if(strstr(msg->sdp, "m=audio")) {
-					audio++;
+				const char *audio_mode = NULL, *video_mode = NULL;
+				sdp_parser_t *parser = sdp_parse(sdphome, msg->sdp, strlen(msg->sdp), 0);
+				sdp_session_t *parsed_sdp = sdp_session(parser);
+				if(!parsed_sdp) {
+					/* Invalid SDP */
+					JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdp_parsing_error(parser));
+					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
+					g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdp_parsing_error(parser));
+					sdp_parser_free(parser);
+					goto error;
 				}
-				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", audio ? "is" : "is NOT"); 
-				if(strstr(msg->sdp, "m=video")) {
-					video++;
-				}
-				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT"); 
+				sdp_media_t *m = parsed_sdp->sdp_media;
+				while(m) {
+					if(m->m_type == sdp_media_audio) {
+						audio++;
+						if(audio > 1) {
+							m = m->m_next;
+							continue;
+						}
+					} else if(m->m_type == sdp_media_video) {
+						video++;
+						if(video > 1) {
+							m = m->m_next;
+							continue;
+						}
 #ifdef HAVE_SCTP
-				if(strstr(msg->sdp, "DTLS/SCTP")) {
-					data++;
-				}
+					} else if(m->m_type == sdp_media_application) {
+						data++;
+						if(data > 1) {
+							m = m->m_next;
+							continue;
+						}
 #endif
+					}
+					if(m->m_type != sdp_media_application) {
+						/* What is the direction? */
+						switch(m->m_mode) {
+							case sdp_recvonly:
+								/* If we're getting a 'recvonly' publisher, we're going to answer with 'inactive' */
+							case sdp_inactive:
+								if(m->m_type == sdp_media_audio) {
+									audio_mode = "inactive";
+								} else {
+									video_mode = "inactive";
+								}
+								break;
+							case sdp_sendonly:
+								/* What we expect, turn this into 'recvonly' */
+							case sdp_sendrecv:
+							default:
+								if(m->m_type == sdp_media_audio) {
+									audio_mode = "recvonly";
+								} else {
+									video_mode = "recvonly";
+								}
+								break;
+						}
+					}
+					m = m->m_next;
+				}
+				sdp_parser_free(parser);
+				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", audio ? "is" : "is NOT");
+				if(audio) {
+					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", audio_mode);
+				}
+				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT");
+				if(video) {
+					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", video_mode);
+				}
 				JANUS_LOG(LOG_VERB, "The publisher %s going to open a data channel\n", data ? "is" : "is NOT");
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
 				int b = 0;
@@ -2469,7 +2533,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(audio) {
 					g_snprintf(audio_mline, 256, sdp_a_template,
 						OPUS_PT,						/* Opus payload type */
-						"recvonly",						/* The publisher gets a recvonly back */
+						audio_mode,						/* The publisher gets a recvonly or inactive back */
 						OPUS_PT); 						/* Opus payload type */
 				} else {
 					audio_mline[0] = '\0';
@@ -2478,7 +2542,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(video_mline, 512, sdp_v_template,
 						VP8_PT,							/* VP8 payload type */
 						b,								/* Bandwidth */
-						"recvonly",						/* The publisher gets a recvonly back */
+						video_mode,						/* The publisher gets a recvonly or inactive back */
 						VP8_PT, 						/* VP8 payload type */
 						VP8_PT, 						/* VP8 payload type */
 						VP8_PT, 						/* VP8 payload type */
@@ -2488,8 +2552,7 @@ static void *janus_videoroom_handler(void *data) {
 					video_mline[0] = '\0';
 				}
 				if(data) {
-					g_snprintf(data_mline, 256, sdp_d_template,
-						"sendrecv");				/* Data channels can be safely open both ways */
+					g_snprintf(data_mline, 256, sdp_d_template);
 				} else {
 					data_mline[0] = '\0';
 				}
@@ -2555,7 +2618,8 @@ static void *janus_videoroom_handler(void *data) {
 				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, newsdp);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
-				newsdp = janus_string_replace(newsdp, "recvonly", "sendonly");
+				if(strstr(newsdp, "recvonly"))
+					newsdp = janus_string_replace(newsdp, "recvonly", "sendonly");
 				if(res != JANUS_OK) {
 					/* TODO Failed to negotiate? We should remove this publisher */
 				} else {

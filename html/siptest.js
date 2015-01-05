@@ -259,6 +259,16 @@ $(document).ready(function() {
 									} else {
 										spinner.spin();
 									}
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No webcam
+										$('#myvideo').hide();
+										$('#videoleft').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No webcam available</span>' +
+											'</div>');
+									}
 								},
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
@@ -266,8 +276,9 @@ $(document).ready(function() {
 									spinner.stop();
 									$('#waitingvideo').remove();
 									if($('#remotevideo').length === 0) {
+										$('#videoright').parent().find('h3').html(
+											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										$('#videoright').append(
-											'<div>DTMF: <div id="dtmf" class="btn-group btn-group-xs"></div></div>' +
 											'<video class="rounded centered" id="remotevideo" width=320 height=240 autoplay/>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
@@ -283,6 +294,16 @@ $(document).ready(function() {
 										});
 									}
 									attachMediaStream($('#remotevideo').get(0), stream);
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+										// No remote video
+										$('#remotevideo').hide();
+										$('#videoright').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No remote video available</span>' +
+											'</div>');
+									}
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
@@ -290,7 +311,7 @@ $(document).ready(function() {
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
 									$('#videos').hide();
-									$('#dtmf').parent().remove();
+									$('#dtmf').parent().html("Remote UA");
 								}
 							});
 					},

@@ -1213,7 +1213,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 							handle->data_stream = NULL;
 							if(handle->data_id > 0) {
 								nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_attach_recv (handle->agent, handle->data_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 							}
 							handle->data_id = 0;
 						} else if(video) {
@@ -1224,7 +1223,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 							handle->data_stream = NULL;
 							if(handle->data_id > 0) {
 								nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_attach_recv (handle->agent, handle->data_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 							}
 							handle->data_id = 0;
 						}
@@ -3308,7 +3306,6 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 					ice_handle->data_stream = NULL;
 					if(ice_handle->data_id > 0) {
 						nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 					}
 					ice_handle->data_id = 0;
 				} else if(video) {
@@ -3319,7 +3316,6 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 					ice_handle->data_stream = NULL;
 					if(ice_handle->data_id > 0) {
 						nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						nice_agent_attach_recv (ice_handle->agent, ice_handle->data_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 					}
 					ice_handle->data_id = 0;
 				}

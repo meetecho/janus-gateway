@@ -290,6 +290,7 @@ function updateRecsList() {
 			$('#record').removeAttr('disabled').click(startRecording);
 			$('#list').removeAttr('disabled').click(updateRecsList);
 			var list = result["list"];
+			list.sort(function(a, b) {return (a["date"] < b["date"]) ? 1 : ((b["date"] < a["date"]) ? -1 : 0);} );
 			console.log("Got a list of available recordings:");
 			console.log(list);
 			for(var mp in list) {

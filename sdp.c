@@ -513,7 +513,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 			sdp_attribute_remove(&anon->sdp_attributes, "msid-semantic");
 	}
 		/* m= */
-	int a_sendrecv = 0, v_sendrecv = 0;
 	if(anon->sdp_media) {
 		int audio = 0, video = 0;
 #ifdef HAVE_SCTP
@@ -587,13 +586,13 @@ char *janus_sdp_anonymize(const char *sdp) {
 				while(sdp_attribute_find(m->m_attributes, "sctpmap"))
 					sdp_attribute_remove(&m->m_attributes, "sctpmap");
 			}
-			/* FIXME sendrecv hack: sofia-sdp doesn't print sendrecv, but we want it to */
-			if(m->m_mode == sdp_sendrecv) {
-				m->m_mode = sdp_inactive;
-				if(m->m_type == sdp_media_audio)
-					a_sendrecv = 1;
-				else if(m->m_type == sdp_media_video)
-					v_sendrecv = 1;
+			if(m->m_type != sdp_media_application && m->m_mode == sdp_sendrecv) {
+				/* FIXME sendrecv hack: sofia-sdp doesn't print sendrecv, but we want it to */
+				sdp_attribute_t *fakedir = calloc(1, sizeof(sdp_attribute_t));
+				fakedir->a_size = sizeof(sdp_attribute_t);
+				fakedir->a_name = g_strdup("jfmod");
+				fakedir->a_value = g_strdup("sr");
+				sdp_attribute_append(&m->m_attributes, fakedir);
 			}
 			m = m->m_next;
 		}
@@ -603,14 +602,12 @@ char *janus_sdp_anonymize(const char *sdp) {
 	if(sdp_message(printer)) {
 		int retval = sdp_message_size(printer);
 		sdp_printer_free(printer);
-		/* FIXME Take care of the sendrecv hack */
-		if(a_sendrecv || v_sendrecv) {
-			char *replace = strstr(buf, "a=inactive");
-			while(replace != NULL) {
-				memcpy(replace, "a=sendrecv", strlen("a=sendrecv"));
-				replace++;
-				replace = strstr(replace, "a=inactive");
-			}
+		/* FIXME Take care of the sendrecv hack, if needed */
+		char *replace = strstr(buf, "a=jfmod:sr");
+		while(replace != NULL) {
+			memcpy(replace, "a=sendrecv", strlen("a=sendrecv"));
+			replace++;
+			replace = strstr(replace, "a=jfmod:sr");
 		}
 		JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
 		JANUS_LOG(LOG_VERB, "  >> Anonymized (%zu --> %d bytes)\n", strlen(sdp), retval);
@@ -890,32 +887,23 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					break;
 			}
 			g_strlcat(sdp, buffer, BUFSIZE);
-			/* What is the direction? */
-			switch(m->m_mode) {
-				case sdp_sendonly:
-					g_strlcat(sdp, "a=sendonly\r\n", BUFSIZE);
-					break;
-				case sdp_recvonly:
-					g_strlcat(sdp, "a=recvonly\r\n", BUFSIZE);
-					break;
-				case sdp_inactive:
-				/*! \note Due to a sofia-sdp bug, when video is the only available
-				 * medium and audio is not there, the mode for the video medium is
-				 * set to sdp_inactive even when it actually is an 'a=sendrecv'. May
-				 * this be caused by the fact that no audio is there, thus implicitly
-				 * setting the whole session media to inactive? Anyway, until this
-				 * is fixed we assume that an inactive is actually a sendrecv: yeah,
-				 * an ugly and bad hack, but we never add an inactive stream in our
-				 * JavaScript anyway... */
-					JANUS_LOG(LOG_VERB, " *** Turning inactive to sendrecv... ***\n");
-					//~ g_strlcat(sdp, "a=inactive\r\n", BUFSIZE);
-					//~ break;
-				case sdp_sendrecv:
-				default:
-					g_strlcat(sdp, "a=sendrecv\r\n", BUFSIZE);
-					break;
-			}
 			if(m->m_type != sdp_media_application) {
+				/* What is the direction? */
+				switch(m->m_mode) {
+					case sdp_sendonly:
+						g_strlcat(sdp, "a=sendonly\r\n", BUFSIZE);
+						break;
+					case sdp_recvonly:
+						g_strlcat(sdp, "a=recvonly\r\n", BUFSIZE);
+						break;
+					case sdp_inactive:
+						g_strlcat(sdp, "a=inactive\r\n", BUFSIZE);
+						break;
+					case sdp_sendrecv:
+					default:
+						g_strlcat(sdp, "a=sendrecv\r\n", BUFSIZE);
+						break;
+				}
 				/* rtcp-mux */
 				g_snprintf(buffer, 512, "a=rtcp-mux\n");
 				g_strlcat(sdp, buffer, BUFSIZE);
@@ -983,7 +971,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			/* Add last attributes, rtcp and ssrc (msid) */
 			if(!planb) {
 				/* Single SSRC */
-				if(m->m_type == sdp_media_audio) {
+				if(m->m_type == sdp_media_audio && m->m_mode != sdp_inactive && m->m_mode != sdp_recvonly) {
 					g_snprintf(buffer, 512,
 						"a=ssrc:%"SCNu32" cname:janusaudio\r\n"
 						"a=ssrc:%"SCNu32" msid:janus janusa0\r\n"
@@ -991,7 +979,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						"a=ssrc:%"SCNu32" label:janusa0\r\n",
 							stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc);
 					g_strlcat(sdp, buffer, BUFSIZE);
-				} else if(m->m_type == sdp_media_video) {
+				} else if(m->m_type == sdp_media_video && m->m_mode != sdp_inactive && m->m_mode != sdp_recvonly) {
 					g_snprintf(buffer, 512,
 						"a=ssrc:%"SCNu32" cname:janusvideo\r\n"
 						"a=ssrc:%"SCNu32" msid:janus janusv0\r\n"

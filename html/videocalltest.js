@@ -253,6 +253,16 @@ $(document).ready(function() {
 									} else {
 										spinner.spin();
 									}
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No webcam
+										$('#myvideo').hide();
+										$('#videoleft').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No webcam available</span>' +
+											'</div>');
+									}
 								},
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
@@ -278,6 +288,16 @@ $(document).ready(function() {
 										}
 									});
 									attachMediaStream($('#remotevideo').get(0), stream);
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+										// No remote video
+										$('#remotevideo').hide();
+										$('#videoright').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No remote video available</span>' +
+											'</div>');
+									}
 									$('#callee').removeClass('hide').html(yourusername).show();
 									// Enable audio/video buttons and bitrate limiter
 									audioenabled = true;
