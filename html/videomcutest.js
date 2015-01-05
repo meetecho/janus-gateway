@@ -224,6 +224,16 @@ $(document).ready(function() {
 									$('#publisher').removeClass('hide').html(myusername).show();
 									attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No webcam
+										$('#myvideo').hide();
+										$('#videolocal').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+												'<span class="no-video-text" style="font-size: 16px;">No webcam available</span>' +
+											'</div>');
+									}
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -419,6 +429,16 @@ function newRemoteFeed(id, display) {
 					}
 				});
 				attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
+				var videoTracks = stream.getVideoTracks();
+				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+					// No remote video
+					$('#remotevideo'+remoteFeed.rfindex).hide();
+					$('#videoremote'+remoteFeed.rfindex).append(
+						'<div class="no-video-container">' +
+							'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
+						'</div>');
+				}
 				if(webrtcDetectedBrowser == "chrome") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {

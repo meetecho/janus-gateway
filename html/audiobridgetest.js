@@ -246,7 +246,7 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									$('#room').removeClass('hide').show();
 									if($('#roomaudio').length === 0) {
-										$('#mixedaudio').append('<video class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
+										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
 									}
 									attachMediaStream($('#roomaudio').get(0), stream);
 									// Mute button
