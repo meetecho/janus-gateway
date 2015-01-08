@@ -955,8 +955,9 @@ function Janus(gatewayCallbacks) {
 				pluginHandle.ondata(event.data);	// FIXME
 			}
 			var onDataChannelStateChange = function() {
-				Janus.log('State change on data channel: ' + config.dataChannel.readyState);
-				if(config.dataChannel.readyState === 'open') {
+				var dcState = config.dataChannel !== null ? config.dataChannel.readyState : "null";
+				Janus.log('State change on data channel: ' + dcState);
+				if(dcState === 'open') {
 					pluginHandle.ondataopen();	// FIXME
 				}
 			}
