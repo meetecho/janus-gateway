@@ -232,6 +232,20 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting accept state (DTLS server)\n", handle->handle_id);
 		SSL_set_accept_state(dtls->ssl);
 	}
+	/* https://code.google.com/p/chromium/issues/detail?id=406458 
+	 * Specify an ECDH group for ECDHE ciphers, otherwise they cannot be
+	 * negotiated when acting as the server. Use NIST's P-256 which is
+	 * commonly supported.
+	 */
+	EC_KEY* ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+	if(ecdh == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group!\n", handle->handle_id);
+		janus_dtls_srtp_destroy(dtls);
+		return NULL;
+	}
+	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
+	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
+	EC_KEY_free(ecdh);
 	dtls->ready = 0;
 #ifdef HAVE_SCTP
 	dtls->sctp = NULL;
@@ -272,7 +286,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		return;
 	}
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-		JANUS_LOG(LOG_WARN, "Alert already received, clearing up...\n");
+		JANUS_LOG(LOG_WARN, "Alert already triggered, clearing up...\n");
 		return;
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
@@ -288,9 +302,19 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	memset(&data, 0, 1500);
 	int read = SSL_read(dtls->ssl, &data, 1500);
 	JANUS_LOG(LOG_HUGE, "    ... and read %d of them from SSL...\n", read);
+	if(read < 0) {
+		unsigned long err = SSL_get_error(dtls->ssl, read);
+		if(err == SSL_ERROR_SSL) {
+			/* Ops, something went wrong with the DTLS handshake */
+			char error[200];
+			ERR_error_string_n(ERR_get_error(), error, 200);
+			JANUS_LOG(LOG_ERR, "Handshake error: %s\n", error);
+			return;
+		}
+	}
 	janus_dtls_fd_bridge(dtls);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) || janus_is_stopping()) {
-		/* DTLS alert received, we should end it here */
+		/* DTLS alert triggered, we should end it here */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forced to stop it here...\n", handle->handle_id);
 		return;
 	}
@@ -516,10 +540,10 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 	}
 	if(stream->stream_id == handle->data_id) {
 		/* FIXME BADLY We got a DTLS alert on the Data channel, we ignore it for now */
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] DTLS alert received on stream %"SCNu16", but it's the data channel so we don't care...\n", handle->handle_id, stream->stream_id);
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16", but it's the data channel so we don't care...\n", handle->handle_id, stream->stream_id);
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert received on stream %"SCNu16", closing...\n", handle->handle_id, stream->stream_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
@@ -641,10 +665,6 @@ gboolean janus_dtls_retry(gpointer stack) {
 	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
 		return FALSE;
-	}
-	if(dtls->dtls_state == JANUS_DTLS_STATE_CREATED) {
-		/* Not a retransmission check, we are actually starting right now, do DTLS handshake */
-		janus_dtls_srtp_handshake(component->dtls);
 	}
 	struct timeval timeout;
 	DTLSv1_get_timeout(dtls->ssl, &timeout);

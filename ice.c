@@ -719,6 +719,7 @@ void janus_ice_cb_new_selected_pair(NiceAgent *agent, guint stream_id, guint com
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component DTLS-SRTP session??\n", handle->handle_id);
 		return;
 	}
+	janus_dtls_srtp_handshake(component->dtls);
 	/* Create retransmission timer */
 	component->source = g_timeout_source_new(100);
 	g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
@@ -732,10 +733,6 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		JANUS_LOG(LOG_ERR, "No component %d in stream %d??\n", component_id, stream_id);
 		return;
 	}
-	if(!component->dtls) {	/* Still waiting for the DTLS stack */
-		JANUS_LOG(LOG_WARN, "Still waiting for the DTLS stack for component %d in stream %d...\n", component_id, stream_id);
-		return;
-	}
 	janus_ice_stream *stream = component->stream;
 	if(!stream) {
 		JANUS_LOG(LOG_ERR, "No stream %d??\n", stream_id);
@@ -746,10 +743,14 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		JANUS_LOG(LOG_ERR, "No handle for stream %d??\n", stream_id);
 		return;
 	}
+	if(!component->dtls) {	/* Still waiting for the DTLS stack */
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still waiting for the DTLS stack for component %d in stream %d...\n", handle->handle_id, component_id, stream_id);
+		return;
+	}
 	/* What is this? */
 	if (janus_is_dtls(buf) || (!janus_is_rtp(buf) && !janus_is_rtcp(buf))) {
 		/* This is DTLS: either handshake stuff, or data coming from SCTP DataChannels */
-		JANUS_LOG(LOG_HUGE, "Looks like DTLS!\n");
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		return;
 	}
