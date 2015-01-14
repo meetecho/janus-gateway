@@ -270,6 +270,19 @@ const gchar *janus_get_ice_state_name(gint state) {
 	return janus_ice_state_name[state];
 }
 
+/* Stats */
+void janus_ice_stats_reset(janus_ice_stats *stats) {
+	if(stats == NULL)
+		return;
+	stats->audio_bytes = 0;
+	stats->audio_bytes_lastsec = 0;
+	stats->video_bytes = 0;
+	stats->video_bytes_lastsec = 0;
+	stats->data_bytes = 0;
+	stats->data_bytes_lastsec = 0;
+}
+
+
 /* ICE Handles */
 janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 	if(gateway_session == NULL)
@@ -752,6 +765,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		/* This is DTLS: either handshake stuff, or data coming from SCTP DataChannels */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
+		/* Update stats (TODO Do the same for the last second window as well) */
+		component->in_stats.data_bytes += len;
 		return;
 	}
 	/* Not DTLS... RTP or RTCP? (http://tools.ietf.org/html/rfc5761#section-4) */
@@ -798,6 +813,14 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp)
 					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
+				/* Update stats (TODO Do the same for the last second window as well) */
+				if(buflen > 0) {
+					if(!video) {
+						component->in_stats.audio_bytes += buflen;
+					} else {
+						component->in_stats.video_bytes += buflen;
+					}
+				}
 			}
 		}
 		return;
@@ -884,6 +907,10 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			&& janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS))) {
 		JANUS_LOG(LOG_INFO, "Not RTP and not RTCP... may these be data channels?\n");
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
+		/* Update stats (TODO Do the same for the last second window as well) */
+		if(len > 0) {
+			component->in_stats.data_bytes += len;
+		}
 		return;
 	}
 }
@@ -1276,6 +1303,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->source = NULL;
 		audio_rtp->dtls = NULL;
 		audio_rtp->retransmit_buffer = NULL;
+		janus_ice_stats_reset(&audio_rtp->in_stats);
+		janus_ice_stats_reset(&audio_rtp->out_stats);
 		janus_mutex_init(&audio_rtp->mutex);
 		g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(1), audio_rtp);
 		audio_stream->rtp_component = audio_rtp;
@@ -1298,6 +1327,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->source = NULL;
 			audio_rtcp->dtls = NULL;
 			audio_rtcp->retransmit_buffer = NULL;
+			janus_ice_stats_reset(&audio_rtcp->in_stats);
+			janus_ice_stats_reset(&audio_rtcp->out_stats);
 			janus_mutex_init(&audio_rtcp->mutex);
 			g_hash_table_insert(audio_stream->components, GUINT_TO_POINTER(2), audio_rtcp);
 			audio_stream->rtcp_component = audio_rtcp;
@@ -1347,6 +1378,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->source = NULL;
 		video_rtp->dtls = NULL;
 		video_rtp->retransmit_buffer = NULL;
+		janus_ice_stats_reset(&video_rtp->in_stats);
+		janus_ice_stats_reset(&video_rtp->out_stats);
 		janus_mutex_init(&video_rtp->mutex);
 		g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(1), video_rtp);
 		video_stream->rtp_component = video_rtp;
@@ -1369,6 +1402,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->source = NULL;
 			video_rtcp->dtls = NULL;
 			video_rtcp->retransmit_buffer = NULL;
+			janus_ice_stats_reset(&video_rtcp->in_stats);
+			janus_ice_stats_reset(&video_rtcp->out_stats);
 			janus_mutex_init(&video_rtcp->mutex);
 			g_hash_table_insert(video_stream->components, GUINT_TO_POINTER(2), video_rtcp);
 			video_stream->rtcp_component = video_rtcp;
@@ -1418,6 +1453,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->source = NULL;
 		data_component->dtls = NULL;
 		data_component->retransmit_buffer = NULL;
+		janus_ice_stats_reset(&data_component->in_stats);
+		janus_ice_stats_reset(&data_component->out_stats);
 		janus_mutex_init(&data_component->mutex);
 		g_hash_table_insert(data_stream->components, GUINT_TO_POINTER(1), data_component);
 		data_stream->rtp_component = data_component;	/* We use the component called 'RTP' for data */
@@ -1619,6 +1656,14 @@ void *janus_ice_send_thread(void *data) {
 						int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, (const gchar *)&sbuf);
 						if(sent < protected) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
+						}
+						/* Update stats (TODO Do the same for the last second window as well) */
+						if(sent > 0) {
+							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
+								component->out_stats.audio_bytes += sent;
+							} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
+								component->out_stats.video_bytes += sent;
+							}
 						}
 						/* Save the packet for retransmissions that may be needed later */
 						janus_rtp_packet *p = (janus_rtp_packet *)calloc(1, sizeof(janus_rtp_packet));

@@ -99,6 +99,27 @@ typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 #define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 12)
 
 
+/*! \brief Janus media statistics
+ * \note To improve with more stuff */
+typedef struct janus_ice_stats {
+	/*! \brief Audio bytes sent or received */
+	guint64 audio_bytes;
+	/*! \brief Audio bytes sent or received in the last second (unused right now) */
+	guint64 audio_bytes_lastsec;
+	/*! \brief Video bytes sent or received */
+	guint64 video_bytes;
+	/*! \brief Video bytes sent or received in the last second (unused right now)  */
+	guint64 video_bytes_lastsec;
+	/*! \brief Data bytes sent or received */
+	guint64 data_bytes;
+	/*! \brief Data bytes sent or received in the last second (unused right now)  */
+	guint64 data_bytes_lastsec;
+} janus_ice_stats;
+/*! \brief Quick helper method to reset stats
+ * @param stats The janus_ice_stats instance to reset */
+void janus_ice_stats_reset(janus_ice_stats *stats);
+
+
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {
 	/*! \brief Opaque pointer to the gateway/peer session */
@@ -213,6 +234,10 @@ struct janus_ice_component {
 	janus_dtls_srtp *dtls;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GList *retransmit_buffer;
+	/*! \brief Stats for incoming data (audio/video/data) */
+	janus_ice_stats in_stats;
+	/*! \brief Stats for outgoing data (audio/video/data) */
+	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this component */

@@ -602,6 +602,11 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 		} else {
 			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
 		}
+		/* Update stats (TODO Do the same for the last second window as well)
+		 * FIXME: the Data stats includes the bytes used for the handshake */
+		if(bytes > 0) {
+			component->out_stats.data_bytes += bytes;
+		}
 	}
 }
 

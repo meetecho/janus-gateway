@@ -3067,6 +3067,16 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "valid", json_integer(dtls->srtp_valid));
 		json_object_set_new(d, "ready", json_integer(dtls->ready));
+		json_t *in_stats = json_object();
+		json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
+		json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
+		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data_bytes));
+		json_object_set_new(d, "in_stats", in_stats);
+		json_t *out_stats = json_object();
+		json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
+		json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
+		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data_bytes));
+		json_object_set_new(d, "out_stats", out_stats);
 #ifdef HAVE_SCTP
 		if(dtls->sctp)	/* FIXME */
 			json_object_set_new(d, "sctp-association", json_integer(1));
