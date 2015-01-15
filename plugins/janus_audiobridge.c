@@ -50,8 +50,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			5
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.5"
+#define JANUS_AUDIOBRIDGE_VERSION			6
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.6"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
@@ -61,6 +61,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 janus_plugin *create(void);
 int janus_audiobridge_init(janus_callbacks *callback, const char *config_path);
 void janus_audiobridge_destroy(void);
+int janus_audiobridge_get_api_compatibility(void);
 int janus_audiobridge_get_version(void);
 const char *janus_audiobridge_get_version_string(void);
 const char *janus_audiobridge_get_description(void);
@@ -74,6 +75,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 void janus_audiobridge_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_audiobridge_hangup_media(janus_plugin_session *handle);
 void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_audiobridge_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_audiobridge_plugin =
@@ -81,6 +83,7 @@ static janus_plugin janus_audiobridge_plugin =
 		.init = janus_audiobridge_init,
 		.destroy = janus_audiobridge_destroy,
 
+		.get_api_compatibility = janus_audiobridge_get_api_compatibility,
 		.get_version = janus_audiobridge_get_version,
 		.get_version_string = janus_audiobridge_get_version_string,
 		.get_description = janus_audiobridge_get_description,
@@ -95,6 +98,7 @@ static janus_plugin janus_audiobridge_plugin =
 		.incoming_rtcp = janus_audiobridge_incoming_rtcp,
 		.hangup_media = janus_audiobridge_hangup_media,
 		.destroy_session = janus_audiobridge_destroy_session,
+		.query_session = janus_audiobridge_query_session,
 	}; 
 
 /* Plugin creator */
@@ -458,6 +462,11 @@ void janus_audiobridge_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_AUDIOBRIDGE_NAME);
 }
 
+int janus_audiobridge_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
+}
+
 int janus_audiobridge_get_version(void) {
 	return JANUS_AUDIOBRIDGE_VERSION;
 }
@@ -532,6 +541,31 @@ void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error)
 	janus_mutex_unlock(&sessions_mutex);
 
 	return;
+}
+
+char *janus_audiobridge_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* Show the participant/room info, if any */
+	json_t *info = json_object();
+	json_object_set_new(info, "state", json_string(session->participant ? "inroom" : "idle"));
+	if(session->participant) {
+		janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
+		janus_audiobridge_room *room = participant->room; 
+		json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
+		json_object_set_new(info, "id", json_integer(participant->user_id));
+		json_object_set_new(info, "muted", json_string(participant->muted ? "true" : "false"));
+	}
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
 }
 
 struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {

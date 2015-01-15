@@ -32,8 +32,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			6
-#define JANUS_VERSION_STRING	"0.0.6"
+#define JANUS_VERSION			7
+#define JANUS_VERSION_STRING	"0.0.7"
 
 
 static janus_config *config = NULL;
@@ -2181,6 +2181,22 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		if(handle->app) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			json_object_set_new(info, "plugin", json_string(plugin->get_package()));
+			if(plugin->query_session) {
+				/* FIXME This check will NOT work with legacy plugins that were compiled BEFORE the method was specified in plugin.h */
+				char *query = plugin->query_session(handle->app_handle);
+				if(query != NULL) {
+					/* Make sure this is JSON */
+					json_error_t error;
+					json_t *query_info = json_loads(query, 0, &error);
+					if(!query_info || !json_is_object(query_info)) {
+						JANUS_LOG(LOG_WARN, "Ignoring invalid query response from the plugin\n");
+					} else {
+						json_object_set_new(info, "plugin_specific", query_info);
+					}
+					g_free(query);
+					query = NULL;
+				}
+			}
 		}
 		json_t *flags = json_object();
 		json_object_set_new(flags, "processing-offer", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)));
@@ -3979,6 +3995,7 @@ gint main(int argc, char *argv[])
 			}
 			/* Are all methods and callbacks implemented? */
 			if(!janus_plugin->init || !janus_plugin->destroy ||
+					!janus_plugin->get_api_compatibility ||
 					!janus_plugin->get_version ||
 					!janus_plugin->get_version_string ||
 					!janus_plugin->get_description ||
@@ -3986,6 +4003,8 @@ gint main(int argc, char *argv[])
 					!janus_plugin->get_name ||
 					!janus_plugin->get_name ||
 					!janus_plugin->create_session ||
+					!janus_plugin->query_session ||
+					!janus_plugin->destroy_session ||
 					!janus_plugin->handle_message ||
 					!janus_plugin->setup_media ||
 					!janus_plugin->incoming_rtp ||	/* FIXME Does this have to be mandatory? (e.g., sendonly plugins) */
@@ -3998,6 +4017,11 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_plugin->get_version(), janus_plugin->get_version_string());
 			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_plugin->get_package(), janus_plugin->get_name());
 			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_plugin->get_description());
+			JANUS_LOG(LOG_VERB, "\t   Plugin API version: %d\n", janus_plugin->get_api_compatibility());
+			if(janus_plugin->get_api_compatibility() < JANUS_PLUGIN_API_VERSION) {
+				JANUS_LOG(LOG_WARN, "The '%s' plugin was compiled against an older version of the API (%d < %d), expect problems...\n",
+					janus_plugin->get_package(), janus_plugin->get_api_compatibility(), JANUS_PLUGIN_API_VERSION);
+			}
 			if(plugins == NULL)
 				plugins = g_hash_table_new(g_str_hash, g_str_equal);
 			g_hash_table_insert(plugins, (gpointer)janus_plugin->get_package(), janus_plugin);

@@ -54,17 +54,18 @@
 
 
 /* Plugin information */
-#define JANUS_RECORDPLAY_VERSION			1
-#define JANUS_RECORDPLAY_VERSION_STRING	"0.0.1"
+#define JANUS_RECORDPLAY_VERSION			2
+#define JANUS_RECORDPLAY_VERSION_STRING		"0.0.2"
 #define JANUS_RECORDPLAY_DESCRIPTION		"This is a trivial Record&Play plugin for Janus, to record WebRTC sessions and replay them."
 #define JANUS_RECORDPLAY_NAME				"JANUS Record&Play plugin"
-#define JANUS_RECORDPLAY_AUTHOR			"Meetecho s.r.l."
+#define JANUS_RECORDPLAY_AUTHOR				"Meetecho s.r.l."
 #define JANUS_RECORDPLAY_PACKAGE			"janus.plugin.recordplay"
 
 /* Plugin methods */
 janus_plugin *create(void);
 int janus_recordplay_init(janus_callbacks *callback, const char *onfig_path);
 void janus_recordplay_destroy(void);
+int janus_recordplay_get_api_compatibility(void);
 int janus_recordplay_get_version(void);
 const char *janus_recordplay_get_version_string(void);
 const char *janus_recordplay_get_description(void);
@@ -79,6 +80,7 @@ void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, cha
 void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
 void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_recordplay_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_recordplay_plugin =
@@ -86,6 +88,7 @@ static janus_plugin janus_recordplay_plugin =
 		.init = janus_recordplay_init,
 		.destroy = janus_recordplay_destroy,
 
+		.get_api_compatibility = janus_recordplay_get_api_compatibility,
 		.get_version = janus_recordplay_get_version,
 		.get_version_string = janus_recordplay_get_version_string,
 		.get_description = janus_recordplay_get_description,
@@ -101,6 +104,7 @@ static janus_plugin janus_recordplay_plugin =
 		.incoming_data = janus_recordplay_incoming_data,
 		.hangup_media = janus_recordplay_hangup_media,
 		.destroy_session = janus_recordplay_destroy_session,
+		.query_session = janus_recordplay_query_session,
 	}; 
 
 /* Plugin creator */
@@ -365,6 +369,11 @@ void janus_recordplay_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_RECORDPLAY_NAME);
 }
 
+int janus_recordplay_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
+}
+
 int janus_recordplay_get_version(void) {
 	return JANUS_RECORDPLAY_VERSION;
 }
@@ -436,6 +445,28 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
+}
+
+char *janus_recordplay_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* In the echo test, every session is the same: we just provide some configure info */
+	json_t *info = json_object();
+	json_object_set_new(info, "type", json_string(session->recorder ? "recorder" : (session->recording ? "player" : "none")));
+	if(session->recording) {
+		json_object_set_new(info, "recording_id", json_integer(session->recording->id));
+		json_object_set_new(info, "recording_name", json_string(session->recording->name));
+	}
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
 }
 
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {

@@ -83,8 +83,8 @@ rec_dir = <folder where recordings should be stored, when enabled>
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			4
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.4"
+#define JANUS_VIDEOROOM_VERSION			5
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.5"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing MCU for Janus, something like Licode."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -94,6 +94,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
 janus_plugin *create(void);
 int janus_videoroom_init(janus_callbacks *callback, const char *config_path);
 void janus_videoroom_destroy(void);
+int janus_videoroom_get_api_compatibility(void);
 int janus_videoroom_get_version(void);
 const char *janus_videoroom_get_version_string(void);
 const char *janus_videoroom_get_description(void);
@@ -108,6 +109,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_videoroom_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_videoroom_plugin =
@@ -115,6 +117,7 @@ static janus_plugin janus_videoroom_plugin =
 		.init = janus_videoroom_init,
 		.destroy = janus_videoroom_destroy,
 
+		.get_api_compatibility = janus_videoroom_get_api_compatibility,
 		.get_version = janus_videoroom_get_version,
 		.get_version_string = janus_videoroom_get_version_string,
 		.get_description = janus_videoroom_get_description,
@@ -130,6 +133,7 @@ static janus_plugin janus_videoroom_plugin =
 		.incoming_data = janus_videoroom_incoming_data,
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
+		.query_session = janus_videoroom_query_session,
 	}; 
 
 /* Plugin creator */
@@ -611,6 +615,11 @@ void janus_videoroom_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VIDEOROOM_NAME);
 }
 
+int janus_videoroom_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
+}
+
 int janus_videoroom_get_version(void) {
 	return JANUS_VIDEOROOM_VERSION;
 }
@@ -733,6 +742,54 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 
 	return;
+}
+
+char *janus_videoroom_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* Show the participant/room info, if any */
+	json_t *info = json_object();
+	if(session->participant) {
+		if(session->participant_type == janus_videoroom_p_type_none) {
+			json_object_set_new(info, "type", json_string("none"));
+		} else if(session->participant_type == janus_videoroom_p_type_publisher) {
+			json_object_set_new(info, "type", json_string("publisher"));
+			janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+			if(participant) {
+				janus_videoroom *room = participant->room; 
+				json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
+				json_object_set_new(info, "id", json_integer(participant->user_id));
+				if(participant->display)
+					json_object_set_new(info, "display", json_integer(participant->display));
+			}
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
+			json_object_set_new(info, "type", json_string("listener"));
+			janus_videoroom_listener *participant = (janus_videoroom_listener *)session->participant;
+			if(participant) {
+				janus_videoroom_participant *feed = (janus_videoroom_participant *)participant->feed;
+				if(feed) {
+					janus_videoroom *room = feed->room; 
+					json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
+					json_object_set_new(info, "feed_id", json_integer(feed->user_id));
+					if(feed->display)
+						json_object_set_new(info, "feed_display", json_integer(feed->display));
+				}
+			}
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+			json_object_set_new(info, "type", json_string("muxed-listener"));
+			/* TODO */
+		}
+	}
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
 }
 
 struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {

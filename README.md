@@ -185,7 +185,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 	
-	janus 0.0.6
+	janus 0.0.7
 
 	Usage: janus [OPTIONS]...
 

@@ -38,8 +38,8 @@
 
 
 /* Plugin information */
-#define JANUS_VOICEMAIL_VERSION			4
-#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.4"
+#define JANUS_VOICEMAIL_VERSION			5
+#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.5"
 #define JANUS_VOICEMAIL_DESCRIPTION		"This is a plugin implementing a very simple VoiceMail service for Janus, recording Opus streams."
 #define JANUS_VOICEMAIL_NAME			"JANUS VoiceMail plugin"
 #define JANUS_VOICEMAIL_AUTHOR			"Meetecho s.r.l."
@@ -49,6 +49,7 @@
 janus_plugin *create(void);
 int janus_voicemail_init(janus_callbacks *callback, const char *config_path);
 void janus_voicemail_destroy(void);
+int janus_voicemail_get_api_compatibility(void);
 int janus_voicemail_get_version(void);
 const char *janus_voicemail_get_version_string(void);
 const char *janus_voicemail_get_description(void);
@@ -62,6 +63,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_voicemail_hangup_media(janus_plugin_session *handle);
 void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_voicemail_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_voicemail_plugin =
@@ -69,6 +71,7 @@ static janus_plugin janus_voicemail_plugin =
 		.init = janus_voicemail_init,
 		.destroy = janus_voicemail_destroy,
 
+		.get_api_compatibility = janus_voicemail_get_api_compatibility,
 		.get_version = janus_voicemail_get_version,
 		.get_version_string = janus_voicemail_get_version_string,
 		.get_description = janus_voicemail_get_description,
@@ -83,6 +86,7 @@ static janus_plugin janus_voicemail_plugin =
 		.incoming_rtcp = janus_voicemail_incoming_rtcp,
 		.hangup_media = janus_voicemail_hangup_media,
 		.destroy_session = janus_voicemail_destroy_session,
+		.query_session = janus_voicemail_query_session,
 	}; 
 
 /* Plugin creator */
@@ -320,6 +324,11 @@ void janus_voicemail_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VOICEMAIL_NAME);
 }
 
+int janus_voicemail_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
+}
+
 int janus_voicemail_get_version(void) {
 	return JANUS_VOICEMAIL_VERSION;
 }
@@ -407,6 +416,29 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_unlock(&sessions_mutex);
 
 	return;
+}
+
+char *janus_voicemail_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* In the echo test, every session is the same: we just provide some configure info */
+	json_t *info = json_object();
+	json_object_set_new(info, "state", json_string(session->stream ? "recording" : "idle"));
+	if(session->stream) {
+		json_object_set_new(info, "id", json_integer(session->recording_id));
+		json_object_set_new(info, "start_time", json_integer(session->start_time));
+		json_object_set_new(info, "filename", session->filename ? json_string(session->filename) : NULL);
+	}
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
 }
 
 struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {

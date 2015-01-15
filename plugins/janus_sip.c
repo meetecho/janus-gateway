@@ -52,8 +52,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			3
-#define JANUS_SIP_VERSION_STRING	"0.0.3"
+#define JANUS_SIP_VERSION			4
+#define JANUS_SIP_VERSION_STRING	"0.0.4"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -63,6 +63,7 @@
 janus_plugin *create(void);
 int janus_sip_init(janus_callbacks *callback, const char *config_path);
 void janus_sip_destroy(void);
+int janus_sip_get_api_compatibility(void);
 int janus_sip_get_version(void);
 const char *janus_sip_get_version_string(void);
 const char *janus_sip_get_description(void);
@@ -76,6 +77,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_sip_hangup_media(janus_plugin_session *handle);
 void janus_sip_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_sip_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_sip_plugin =
@@ -83,6 +85,7 @@ static janus_plugin janus_sip_plugin =
 		.init = janus_sip_init,
 		.destroy = janus_sip_destroy,
 
+		.get_api_compatibility = janus_sip_get_api_compatibility,
 		.get_version = janus_sip_get_version,
 		.get_version_string = janus_sip_get_version_string,
 		.get_description = janus_sip_get_description,
@@ -97,6 +100,7 @@ static janus_plugin janus_sip_plugin =
 		.incoming_rtcp = janus_sip_incoming_rtcp,
 		.hangup_media = janus_sip_hangup_media,
 		.destroy_session = janus_sip_destroy_session,
+		.query_session = janus_sip_query_session,
 	}; 
 
 /* Plugin creator */
@@ -462,6 +466,11 @@ void janus_sip_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIP_NAME);
 }
 
+int janus_sip_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
+}
+
 int janus_sip_get_version(void) {
 	return JANUS_SIP_VERSION;
 }
@@ -576,6 +585,28 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
+}
+
+char *janus_sip_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* Provide some generic info, e.g., if we're in a call and with whom */
+	json_t *info = json_object();
+	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
+	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
+	json_object_set_new(info, "status", json_integer(session->status));
+	if(session->callee)
+		json_object_set_new(info, "callee", json_string(session->callee ? session->callee : "??"));
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
 }
 
 struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {

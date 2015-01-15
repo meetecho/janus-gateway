@@ -34,8 +34,8 @@
 
 
 /* Plugin information */
-#define JANUS_ECHOTEST_VERSION			4
-#define JANUS_ECHOTEST_VERSION_STRING	"0.0.4"
+#define JANUS_ECHOTEST_VERSION			5
+#define JANUS_ECHOTEST_VERSION_STRING	"0.0.5"
 #define JANUS_ECHOTEST_DESCRIPTION		"This is a trivial EchoTest plugin for Janus, just used to showcase the plugin interface."
 #define JANUS_ECHOTEST_NAME				"JANUS EchoTest plugin"
 #define JANUS_ECHOTEST_AUTHOR			"Meetecho s.r.l."
@@ -45,6 +45,7 @@
 janus_plugin *create(void);
 int janus_echotest_init(janus_callbacks *callback, const char *config_path);
 void janus_echotest_destroy(void);
+int janus_echotest_get_api_compatibility(void);
 int janus_echotest_get_version(void);
 const char *janus_echotest_get_version_string(void);
 const char *janus_echotest_get_description(void);
@@ -59,6 +60,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_echotest_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_echotest_plugin =
@@ -66,6 +68,7 @@ static janus_plugin janus_echotest_plugin =
 		.init = janus_echotest_init,
 		.destroy = janus_echotest_destroy,
 
+		.get_api_compatibility = janus_echotest_get_api_compatibility,
 		.get_version = janus_echotest_get_version,
 		.get_version_string = janus_echotest_get_version_string,
 		.get_description = janus_echotest_get_description,
@@ -81,6 +84,7 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_data = janus_echotest_incoming_data,
 		.hangup_media = janus_echotest_hangup_media,
 		.destroy_session = janus_echotest_destroy_session,
+		.query_session = janus_echotest_query_session,
 	}; 
 
 /* Plugin creator */
@@ -257,6 +261,11 @@ void janus_echotest_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_ECHOTEST_NAME);
 }
 
+int janus_echotest_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
+}
+
 int janus_echotest_get_version(void) {
 	return JANUS_ECHOTEST_VERSION;
 }
@@ -326,6 +335,26 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
+}
+
+char *janus_echotest_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* In the echo test, every session is the same: we just provide some configure info */
+	json_t *info = json_object();
+	json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
+	json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
+	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
 }
 
 struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {

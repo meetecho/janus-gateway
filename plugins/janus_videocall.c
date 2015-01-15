@@ -16,7 +16,7 @@
  * echo test one: all frames (RTP/RTCP) coming from one peer are relayed
  * to the other.
  * 
- * Just as in the janus_echotest.c plugin, there are knobs to control
+ * Just as in the janus_videocall.c plugin, there are knobs to control
  * whether audio and/or video should be muted or not, and if the bitrate
  * of the peer needs to be capped by means of REMB messages.
  * 
@@ -36,8 +36,8 @@
 
 
 /* Plugin information */
-#define JANUS_VIDEOCALL_VERSION			3
-#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.3"
+#define JANUS_VIDEOCALL_VERSION			4
+#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.4"
 #define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
@@ -47,6 +47,7 @@
 janus_plugin *create(void);
 int janus_videocall_init(janus_callbacks *callback, const char *config_path);
 void janus_videocall_destroy(void);
+int janus_videocall_get_api_compatibility(void);
 int janus_videocall_get_version(void);
 const char *janus_videocall_get_version_string(void);
 const char *janus_videocall_get_description(void);
@@ -61,6 +62,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int len);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_videocall_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_videocall_plugin =
@@ -68,6 +70,7 @@ static janus_plugin janus_videocall_plugin =
 		.init = janus_videocall_init,
 		.destroy = janus_videocall_destroy,
 
+		.get_api_compatibility = janus_videocall_get_api_compatibility,
 		.get_version = janus_videocall_get_version,
 		.get_version_string = janus_videocall_get_version_string,
 		.get_description = janus_videocall_get_description,
@@ -83,6 +86,7 @@ static janus_plugin janus_videocall_plugin =
 		.incoming_data = janus_videocall_incoming_data,
 		.hangup_media = janus_videocall_hangup_media,
 		.destroy_session = janus_videocall_destroy_session,
+		.query_session = janus_videocall_query_session,
 	}; 
 
 /* Plugin creator */
@@ -270,6 +274,11 @@ void janus_videocall_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VIDEOCALL_NAME);
 }
 
+int janus_videocall_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
+}
+
 int janus_videocall_get_version(void) {
 	return JANUS_VIDEOCALL_VERSION;
 }
@@ -346,6 +355,31 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
+}
+
+char *janus_videocall_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* Provide some generic info, e.g., if we're in a call and with whom */
+	json_t *info = json_object();
+	json_object_set_new(info, "state", json_string(session->peer ? "incall" : "idle"));
+	json_object_set_new(info, "username", session->username ? json_string(session->username) : NULL);
+	if(session->peer) {
+		json_object_set_new(info, "peer", session->peer->username ? json_string(session->peer->username) : NULL);
+		json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
+		json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
+		json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+	}
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
 }
 
 struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
