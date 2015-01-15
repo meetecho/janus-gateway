@@ -766,7 +766,7 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 				json_object_set_new(info, "id", json_integer(participant->user_id));
 				if(participant->display)
-					json_object_set_new(info, "display", json_integer(participant->display));
+					json_object_set_new(info, "display", json_string(participant->display));
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			json_object_set_new(info, "type", json_string("listener"));
@@ -778,7 +778,7 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 					json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 					json_object_set_new(info, "feed_id", json_integer(feed->user_id));
 					if(feed->display)
-						json_object_set_new(info, "feed_display", json_integer(feed->display));
+						json_object_set_new(info, "feed_display", json_string(feed->display));
 				}
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
