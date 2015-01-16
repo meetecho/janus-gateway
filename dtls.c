@@ -286,7 +286,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		return;
 	}
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-		JANUS_LOG(LOG_WARN, "Alert already triggered, clearing up...\n");
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Alert already triggered, clearing up...\n", handle->handle_id);
 		return;
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
@@ -295,20 +295,20 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	janus_dtls_fd_bridge(dtls);
 	int written = BIO_write(dtls->read_bio, buf, len);
-	JANUS_LOG(LOG_HUGE, "    Written %d of those bytes on the read BIO...\n", written);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Written %d of those bytes on the read BIO...\n", handle->handle_id, written);
 	janus_dtls_fd_bridge(dtls);
 	/* Try to read data */
 	char data[1500];	/* FIXME */
 	memset(&data, 0, 1500);
 	int read = SSL_read(dtls->ssl, &data, 1500);
-	JANUS_LOG(LOG_HUGE, "    ... and read %d of them from SSL...\n", read);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     ... and read %d of them from SSL...\n", handle->handle_id, read);
 	if(read < 0) {
 		unsigned long err = SSL_get_error(dtls->ssl, read);
 		if(err == SSL_ERROR_SSL) {
 			/* Ops, something went wrong with the DTLS handshake */
 			char error[200];
 			ERR_error_string_n(ERR_get_error(), error, 200);
-			JANUS_LOG(LOG_ERR, "Handshake error: %s\n", error);
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Handshake error: %s\n", handle->handle_id, error);
 			return;
 		}
 	}
@@ -320,19 +320,19 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	if(!SSL_is_init_finished(dtls->ssl)) {
 		/* Nothing else to do for now */
-		JANUS_LOG(LOG_HUGE, "Initialization not finished yet...\n");
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Initialization not finished yet...\n", handle->handle_id);
 		return;
 	}
 	if(dtls->ready) {
 		/* There's data to be read? */
-		JANUS_LOG(LOG_HUGE, "Any data available?\n");
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Any data available?\n", handle->handle_id);
 #ifdef HAVE_SCTP
 		if(dtls->sctp != NULL && read > 0) {
-			JANUS_LOG(LOG_HUGE, "Sending data (%d bytes) to the SCTP stack...\n", read);
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Sending data (%d bytes) to the SCTP stack...\n", handle->handle_id, read);
 			janus_sctp_data_from_dtls(dtls->sctp, data, read);
 		}
 #else
-		JANUS_LOG(LOG_WARN, "Data available but Data Channels support disabled...\n");
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Data available but Data Channels support disabled...\n", handle->handle_id);
 #endif
 	} else {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS established, yay!\n", handle->handle_id);
