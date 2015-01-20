@@ -133,6 +133,7 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 		JANUS_LOG(LOG_FATAL, "Certificate check error...\n");
 		return -4;
 	}
+	SSL_CTX_set_read_ahead(ssl_ctx,1);
 	BIO *certbio = BIO_new(BIO_s_file());
 	if(certbio == NULL) {
 		JANUS_LOG(LOG_FATAL, "Certificate BIO error...\n");
