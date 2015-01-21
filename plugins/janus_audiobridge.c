@@ -561,6 +561,7 @@ char *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 		json_object_set_new(info, "id", json_integer(participant->user_id));
 		json_object_set_new(info, "muted", json_string(participant->muted ? "true" : "false"));
+		json_object_set_new(info, "started", json_string(session->started ? "true" : "false"));
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -1679,7 +1680,6 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->room = NULL;
 			/* Done */
 			participant->active = FALSE;
-			session->started = FALSE;
 			janus_mutex_unlock(&audiobridge->mutex);
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
