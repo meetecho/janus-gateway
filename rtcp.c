@@ -609,3 +609,36 @@ int janus_rtcp_pli(char *packet, int len) {
 	rtcp->length = htons((len/4)-1);
 	return 0;
 }
+
+/* Generate a new NACK message */
+int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
+	if(packet == NULL || len != 16 || nacks == NULL)
+		return -1;
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	/* Set header */
+	rtcp->version = 2;
+	rtcp->type = RTCP_RTPFB;
+	rtcp->rc = 1;	/* FMT=1 */
+	rtcp->length = htons((len/4)-1);
+	/* Now set NACK stuff */
+	rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
+	rtcp_nack *nack = (rtcp_nack *)rtcpfb->fci;
+	/* FIXME We assume the GSList list is already ordered... */
+	guint16 pid = GPOINTER_TO_UINT(nacks->data);
+	nack->pid = htons(pid);
+	nacks = nacks->next;
+	while(nacks) {
+		guint16 npid = GPOINTER_TO_UINT(nacks->data);
+		if(npid-pid < 1) {
+			JANUS_LOG(LOG_WARN, "Skipping PID to NACK (%"SCNu16" already added)...\n", npid);
+		} else if(npid-pid > 16) {
+			JANUS_LOG(LOG_WARN, "Skipping PID to NACK (%"SCNu16"-%"SCNu16" > %"SCNu16")...\n", npid, pid, npid-pid);
+		} else {
+			uint16_t blp = ntohs(nack->blp);
+			blp |= 1 << (npid-pid-1);
+			nack->blp = htons(blp);
+		}
+		nacks = nacks->next;
+	}
+	return 0;
+}

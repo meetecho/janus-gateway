@@ -104,17 +104,29 @@ typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 typedef struct janus_ice_stats {
 	/*! \brief Audio bytes sent or received */
 	guint64 audio_bytes;
-	/*! \brief Audio bytes sent or received in the last second (unused right now) */
-	guint64 audio_bytes_lastsec;
+	/*! \brief Audio bytes sent or received in the last second */
+	GList *audio_bytes_lastsec;
+	/*! \brief Whether or not we notified about audio lastsec issues already */
+	gboolean audio_notified_lastsec;
 	/*! \brief Video bytes sent or received */
 	guint64 video_bytes;
-	/*! \brief Video bytes sent or received in the last second (unused right now)  */
-	guint64 video_bytes_lastsec;
+	/*! \brief Video bytes sent or received in the last second */
+	GList *video_bytes_lastsec;
+	/*! \brief Whether or not we notified about video lastsec issues already */
+	gboolean video_notified_lastsec;
 	/*! \brief Data bytes sent or received */
 	guint64 data_bytes;
-	/*! \brief Data bytes sent or received in the last second (unused right now)  */
-	guint64 data_bytes_lastsec;
 } janus_ice_stats;
+
+/*! \brief Janus media statistics: received packet info
+ * \note To improve with more stuff */
+typedef struct janus_ice_stats_item {
+	/*! \brief Bytes sent or received */
+	guint64 bytes;
+	/*! \brief Time at which this happened */
+	gint64 when;
+} janus_ice_stats_item;
+
 /*! \brief Quick helper method to reset stats
  * @param stats The janus_ice_stats instance to reset */
 void janus_ice_stats_reset(janus_ice_stats *stats);
@@ -234,6 +246,8 @@ struct janus_ice_component {
 	janus_dtls_srtp *dtls;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GList *retransmit_buffer;
+	/*! \brief List of recently received sequence numbers (as a support to NACK generation) */
+	GList *last_seqs;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */

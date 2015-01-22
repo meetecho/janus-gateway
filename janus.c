@@ -3075,6 +3075,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(c, "remote-candidates", cs);
 	}
 	json_t *d = json_object();
+	json_t *in_stats = json_object();
+	json_t *out_stats = json_object();
 	if(component->dtls) {
 		janus_dtls_srtp *dtls = component->dtls;
 		json_object_set_new(d, "fingerprint", json_string(janus_dtls_get_local_fingerprint()));
@@ -3083,22 +3085,44 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "valid", json_integer(dtls->srtp_valid));
 		json_object_set_new(d, "ready", json_integer(dtls->ready));
-		json_t *in_stats = json_object();
 		json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
 		json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
 		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data_bytes));
-		json_object_set_new(d, "in_stats", in_stats);
-		json_t *out_stats = json_object();
 		json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
 		json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
 		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data_bytes));
-		json_object_set_new(d, "out_stats", out_stats);
+		/* Compute the last second stuff too */
+		gint64 now = janus_get_monotonic_time();
+		guint64 bytes = 0;
+		if(component->in_stats.audio_bytes_lastsec) {
+			GList *lastsec = component->in_stats.audio_bytes_lastsec;
+			while(lastsec) {
+				janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
+				if(s && now-s->when < G_USEC_PER_SEC)
+					bytes += s->bytes;
+				lastsec = lastsec->next;
+			}
+		}
+		json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(bytes));
+		bytes = 0;
+		if(component->in_stats.video_bytes_lastsec) {
+			GList *lastsec = component->in_stats.video_bytes_lastsec;
+			while(lastsec) {
+				janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
+				if(s && now-s->when < G_USEC_PER_SEC)
+					bytes += s->bytes;
+				lastsec = lastsec->next;
+			}
+		}
+		json_object_set_new(in_stats, "video_bytes_lastsec", json_integer(bytes));
 #ifdef HAVE_SCTP
 		if(dtls->sctp)	/* FIXME */
 			json_object_set_new(d, "sctp-association", json_integer(1));
 #endif
 	}
 	json_object_set_new(c, "dtls", d);
+	json_object_set_new(c, "in_stats", in_stats);
+	json_object_set_new(c, "out_stats", out_stats);
 	return c;
 }
 

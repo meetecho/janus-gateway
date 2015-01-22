@@ -260,9 +260,16 @@ int janus_rtcp_fir(char *packet, int len, int *seqnr);
 int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr);
 
 /*! \brief Method to generate a new RTCP PLI message to request a key frame
- * @param[in] packet The buffer data (MUST be at least 20 chars)
- * @param[in] len The message data length in bytes (MUST be 8)
+ * @param[in] packet The buffer data (MUST be at least 12 chars)
+ * @param[in] len The message data length in bytes (MUST be 12)
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_pli(char *packet, int len);
+
+/*! \brief Method to generate a new RTCP NACK message to report lost packets
+ * @param[in] packet The buffer data (MUST be at least 16 chars)
+ * @param[in] len The message data length in bytes (MUST be 16)
+ * @param[in] nacks List of packets to NACK
+ * @returns 0 in case of success, -1 on errors */
+int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
 
 #endif
