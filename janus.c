@@ -2883,7 +2883,7 @@ void *janus_rmq_in_thread(void *data) {
 			index = payload+received;
 		}
 		JANUS_LOG(LOG_VERB, "Got %"SCNu64"/%"SCNu64" bytes (%"SCNu64")\n", received, total, frame.payload.body_fragment.len);
-		JANUS_LOG(LOG_VERB, "%s\n", payload);
+		JANUS_LOG(LOG_HUGE, "%s\n", payload);
 		/* Parse it */
 		janus_request_source *source = janus_request_source_new(JANUS_SOURCE_RABBITMQ, (void *)rmq_client, (void *)correlation);
 		/* Parse the JSON payload */
@@ -2930,7 +2930,7 @@ void *janus_rmq_out_thread(void *data) {
 			if(!g_atomic_int_get(&stop) && response && response->payload) {
 				/* Gotcha! */
 				JANUS_LOG(LOG_VERB, "Sending response to RabbitMQ (%zu bytes)...\n", strlen(response->payload));
-				JANUS_LOG(LOG_VERB, "%s\n", response->payload);
+				JANUS_LOG(LOG_HUGE, "%s\n", response->payload);
 				amqp_basic_properties_t props;
 				props._flags = 0;
 				props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
@@ -2969,7 +2969,7 @@ void *janus_rmq_out_thread(void *data) {
 					if(!rmq_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
 						/* Gotcha! */
 						JANUS_LOG(LOG_VERB, "Sending event to RabbitMQ (%zu bytes)...\n", strlen(event->payload));
-						JANUS_LOG(LOG_VERB, "%s\n", event->payload);
+						JANUS_LOG(LOG_HUGE, "%s\n", event->payload);
 						amqp_basic_properties_t props;
 						props._flags = 0;
 						props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
