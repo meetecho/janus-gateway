@@ -43,6 +43,7 @@
 #include <sofia-sip/sdp.h>
 #include <sofia-sip/sip_status.h>
 
+#include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"

@@ -73,6 +73,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
 #include <jansson.h>
 #include <sofia-sip/sdp.h>
 
+#include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"

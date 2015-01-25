@@ -41,6 +41,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 #include <opus/opus.h>
 #include <sys/time.h>
 
+#include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"

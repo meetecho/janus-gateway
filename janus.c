@@ -25,6 +25,7 @@
 #include "cmdline.h"
 #include "config.h"
 #include "apierror.h"
+#include "debug.h"
 #include "rtcp.h"
 #include "sdp.h"
 #include "utils.h"
