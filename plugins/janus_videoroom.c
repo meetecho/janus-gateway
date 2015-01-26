@@ -726,15 +726,6 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			}
 		}
 		g_free(leaving_text);
-		/* Get rid of the recorders, if available */
-		if(participant->arc) {
-			janus_recorder_close(participant->arc);
-			JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-		}
-		if(participant->vrc) {
-			janus_recorder_close(participant->vrc);
-			JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
-		}
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Detaching this listener from its publisher is already done by hangup_media */
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
@@ -1407,6 +1398,19 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
+		/* Get rid of the recorders, if available */
+		if(participant->arc) {
+			janus_recorder_close(participant->arc);
+			JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
+			janus_recorder_free(participant->arc);
+		}
+		participant->arc = NULL;
+		if(participant->vrc) {
+			janus_recorder_close(participant->vrc);
+			JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
+			janus_recorder_free(participant->vrc);
+		}
+		participant->vrc = NULL;
 		janus_mutex_lock(&participant->listeners_mutex);
 		while(participant->listeners) {
 			janus_videoroom_listener *l = (janus_videoroom_listener *)participant->listeners->data;
@@ -2023,11 +2027,13 @@ static void *janus_videoroom_handler(void *data) {
 						if(participant->arc) {
 							janus_recorder_close(participant->arc);
 							JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
+							janus_recorder_free(participant->arc);
 						}
 						participant->arc = NULL;
 						if(participant->vrc) {
 							janus_recorder_close(participant->vrc);
 							JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
+							janus_recorder_free(participant->vrc);
 						}
 						participant->vrc = NULL;
 					} else if(participant->recording_active && participant->sdp) {
@@ -3101,11 +3107,13 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 	g_free(p->display);
 	g_free(p->sdp);
 
-	if (p->arc) {
+	if(p->arc) {
 		janus_recorder_free(p->arc);
+		p->arc = NULL;
 	}
-	if (p->vrc) {
+	if(p->vrc) {
 		janus_recorder_free(p->vrc);
+		p->vrc = NULL;
 	}
 
 	janus_mutex_lock(&p->listeners_mutex);
