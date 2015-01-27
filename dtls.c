@@ -404,8 +404,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
 					memcpy(dtls->remote_policy.key, remote_key, SRTP_MASTER_KEY_LENGTH);
 					memcpy(dtls->remote_policy.key + SRTP_MASTER_KEY_LENGTH, remote_salt, SRTP_MASTER_SALT_LENGTH);
+#if HAS_DTLS_WINDOW_SIZE
 					dtls->remote_policy.window_size = 128;
 					dtls->remote_policy.allow_repeat_tx = 0;
+#endif
 					dtls->remote_policy.next = NULL;
 						/* Local (outbound) */
 					crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
@@ -415,8 +417,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					dtls->local_policy.key = (unsigned char *)&local_policy_key;
 					memcpy(dtls->local_policy.key, local_key, SRTP_MASTER_KEY_LENGTH);
 					memcpy(dtls->local_policy.key + SRTP_MASTER_KEY_LENGTH, local_salt, SRTP_MASTER_SALT_LENGTH);
+#if HAS_DTLS_WINDOW_SIZE
 					dtls->local_policy.window_size = 128;
 					dtls->local_policy.allow_repeat_tx = 0;
+#endif
 					dtls->local_policy.next = NULL;
 					/* Create SRTP sessions */
 					err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));

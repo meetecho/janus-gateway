@@ -36,6 +36,12 @@
 #define JANUS_VERSION			7
 #define JANUS_VERSION_STRING	"0.0.7"
 
+#ifdef __MACH__
+#define SHLIB_EXT "0.dylib"
+#else
+#define SHLIB_EXT ".so"
+#endif
+
 
 static janus_config *config = NULL;
 static char *config_file = NULL;
@@ -3997,7 +4003,7 @@ gint main(int argc, char *argv[])
 		if (len < 4) {
 			continue;
 		}
-		if (strcasecmp(pluginent->d_name+len-3, ".so")) {
+		if (strcasecmp(pluginent->d_name+len-strlen(SHLIB_EXT), SHLIB_EXT)) {
 			continue;
 		}
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);

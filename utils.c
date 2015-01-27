@@ -17,6 +17,10 @@
 #include "utils.h"
 #include "debug.h"
 
+#if __MACH__
+#include "mach_gettime.h"
+#endif
+
 gint64 janus_get_monotonic_time(void) {
 	struct timespec ts;
 	clock_gettime (CLOCK_MONOTONIC, &ts);

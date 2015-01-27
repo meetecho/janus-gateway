@@ -1,3 +1,5 @@
+ACLOCAL_AMFLAGS = -I m4
+
 # FIXME: These flags should be produced in configure.ac using AX_APPEND_COMPILE_FLAGS
 AM_CFLAGS = \
 	-Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
@@ -121,13 +123,6 @@ plugins_cflags = \
 
 plugins_libadd = \
 	$(PLUGINS_LIBS) \
-	$(NULL)
-
-plugins_ldflags = \
-	-export-dynamic \
-	-no-undefined \
-	-avoid-version \
-	-module \
 	$(NULL)
 
 if ENABLE_PLUGIN_AUDIOBRIDGE

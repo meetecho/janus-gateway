@@ -11,6 +11,17 @@ AC_PROG_CC
 LT_PREREQ([2.2])
 LT_INIT
 
+case "$host_os" in
+darwin*)
+	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib"
+	AM_CONDITIONAL([DARWIN_OS], true)
+	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
+;;
+*)
+	AM_CONDITIONAL([DARWIN_OS], false)
+	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
+esac
+
 glib_version=2.32
 ssl_version=1.0.1
 
