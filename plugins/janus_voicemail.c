@@ -30,6 +30,7 @@
 
 #include <ogg/ogg.h>
 
+#include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"

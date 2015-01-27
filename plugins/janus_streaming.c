@@ -74,6 +74,7 @@ videofmtp = Codec specific parameters, if any
 #include <jansson.h>
 #include <sys/time.h>
 
+#include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"

@@ -11,6 +11,9 @@
 
 #include "plugin.h"
 
+#include "../apierror.h"
+#include "../debug.h"
+
 janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *content) {
 	JANUS_LOG(LOG_HUGE, "Creating plugin result...\n");
 	janus_plugin_result *result = (janus_plugin_result *)calloc(1, sizeof(janus_plugin_result));

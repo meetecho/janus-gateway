@@ -140,9 +140,6 @@ janus_plugin *create(void) {
 #include <unistd.h>
 #include <inttypes.h>
 
-#include "../apierror.h"
-#include "../debug.h"
-
 
 /*! \brief Version of the API, to match the one plugins were compiled against
  * 
