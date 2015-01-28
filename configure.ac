@@ -86,8 +86,11 @@ AC_CHECK_LIB([srtp],
 AC_CHECK_LIB([websock],
              [libwebsock_init],
              [
-               AC_DEFINE(HAVE_WEBSOCKETS)
-               JANUS_MANUAL_LIBS+=" -lwebsock"
+               AS_IF([test "x$enable_websockets" = "xyes"],
+               [
+                  AC_DEFINE(HAVE_WEBSOCKETS)
+                  JANUS_MANUAL_LIBS+=" -lwebsock"
+               ])
              ],
              [
                AS_IF([test "x$enable_websockets" = "xyes"],
@@ -97,8 +100,11 @@ AC_CHECK_LIB([websock],
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
              [
-               AC_DEFINE(HAVE_SCTP)
-               JANUS_MANUAL_LIBS+=" -lusrsctp"
+               AS_IF([test "x$enable_data_channels" = "xyes"],
+               [
+                  AC_DEFINE(HAVE_SCTP)
+                  JANUS_MANUAL_LIBS+=" -lusrsctp"
+               ])
              ],
              [
                AS_IF([test "x$enable_data_channels" = "xyes"],
@@ -108,8 +114,11 @@ AC_CHECK_LIB([usrsctp],
 AC_CHECK_LIB([rabbitmq],
              [amqp_error_string2],
              [
-               AC_DEFINE(HAVE_RABBITMQ)
-               JANUS_MANUAL_LIBS+=" -lrabbitmq"
+               AS_IF([test "x$enable_data_channels" = "xyes"],
+               [
+                  AC_DEFINE(HAVE_RABBITMQ)
+                  JANUS_MANUAL_LIBS+=" -lrabbitmq"
+               ])
              ],
              [
                AS_IF([test "x$enable_rabbitmq" = "xyes"],
