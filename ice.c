@@ -1339,6 +1339,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		freeifaddrs(ifaddr);
 	}
 
+	handle->cdone = 0;
 	handle->streams_num = 0;
 	handle->streams = g_hash_table_new(NULL, NULL);
 	if(audio) {
