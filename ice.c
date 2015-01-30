@@ -690,7 +690,11 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 				(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES))
 					&& !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 			/* FIXME Should we really give up for what may be a failure in only one of the media? */
-			JANUS_LOG(LOG_ERR, "ICE failed for handle %"SCNu64"...\n", handle->handle_id);
+			if(stream->disabled) {
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but stream is disabled so we don't care...\n", handle->handle_id, component_id, stream_id);
+				return;
+			}
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] ICE failed for component %d in stream %d...\n", handle->handle_id, component_id, stream_id);
 			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			if(plugin != NULL) {
@@ -1166,6 +1170,10 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such stream %d: cannot setup remote candidates for component %d\n", handle->handle_id, stream_id, component_id);
 		return;
 	}
+	if(stream->disabled) {
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Stream %d is disabled, skipping remote candidates for component %d\n", handle->handle_id, stream_id, component_id);
+		return;
+	}
 	janus_ice_component *component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(component_id));
 	if(!component) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d: cannot setup remote candidates\n", handle->handle_id, component_id, stream_id);
@@ -1355,6 +1363,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->handle = handle;
 		audio_stream->cdone = 0;
 		audio_stream->payload_type = -1;
+		audio_stream->disabled = FALSE;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		audio_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 		audio_stream->audio_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
@@ -1436,6 +1445,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->stream_id = handle->video_id;
 		video_stream->cdone = 0;
 		video_stream->payload_type = -1;
+		video_stream->disabled = FALSE;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		video_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 		video_stream->video_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
@@ -1517,6 +1527,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_stream->stream_id = handle->data_id;
 		data_stream->cdone = 0;
 		data_stream->payload_type = -1;
+		data_stream->disabled = FALSE;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		data_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 		data_stream->components = g_hash_table_new(NULL, NULL);
@@ -1933,7 +1944,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 		handle->handle_id, component->component_id, component->stream_id);
 	/* Check if all components are ready */
 	janus_mutex_lock(&handle->mutex);
-	if(handle->audio_stream) {
+	if(handle->audio_stream && !handle->audio_stream->disabled) {
 		if(handle->audio_stream->rtp_component && (!handle->audio_stream->rtp_component->dtls ||
 				!handle->audio_stream->rtp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */
@@ -1947,7 +1958,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 			return;
 		}
 	}
-	if(handle->video_stream) {
+	if(handle->video_stream && !handle->video_stream->disabled) {
 		if(handle->video_stream->rtp_component && (!handle->video_stream->rtp_component->dtls ||
 				!handle->video_stream->rtp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */
@@ -1961,7 +1972,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 			return;
 		}
 	}
-	if(handle->data_stream) {
+	if(handle->data_stream && !handle->data_stream->disabled) {
 		if(handle->data_stream->rtp_component && (!handle->data_stream->rtp_component->dtls ||
 				!handle->data_stream->rtp_component->dtls->srtp_valid)) {
 			/* Still waiting for this component to become ready */

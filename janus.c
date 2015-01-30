@@ -67,6 +67,7 @@ amqp_channel_t rmq_channel = 0;
 amqp_bytes_t to_janus_queue, from_janus_queue;
 #endif
 
+
 /* Admin/Monitor MHD Web Server */
 static struct MHD_Daemon *admin_ws = NULL, *admin_sws = NULL;
 static char *admin_ws_path = NULL;
@@ -121,7 +122,57 @@ gchar *janus_get_server_key(void) {
 
 
 /* Information */
-static gchar *info_text = NULL;
+char *janus_info(const char *transaction);
+char *janus_info(const char *transaction) {
+	/* Prepare a summary on the gateway */
+	json_t *info = json_object();
+	json_object_set_new(info, "janus", json_string("server_info"));
+	if(transaction != NULL)
+		json_object_set_new(info, "transaction", json_string(transaction));
+	json_object_set_new(info, "name", json_string(JANUS_NAME));
+	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
+	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
+	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
+#ifdef HAVE_SCTP
+	json_object_set_new(info, "data_channels", json_integer(1));
+#else
+	json_object_set_new(info, "data_channels", json_integer(0));
+#endif
+#ifdef HAVE_WEBSOCKETS
+	json_object_set_new(info, "websockets", json_integer(1));
+#else
+	json_object_set_new(info, "websockets", json_integer(0));
+#endif
+#ifdef HAVE_RABBITMQ
+	json_object_set_new(info, "rabbitmq", json_integer(1));
+#else
+	json_object_set_new(info, "rabbitmq", json_integer(0));
+#endif
+	json_t *data = json_object();
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, plugins);
+	while (g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_plugin *p = value;
+		if(p == NULL) {
+			continue;
+		}
+		json_t *plugin = json_object();
+		json_object_set_new(plugin, "name", json_string(p->get_name()));
+		json_object_set_new(plugin, "author", json_string(p->get_author()));
+		json_object_set_new(plugin, "description", json_string(p->get_description()));
+		json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
+		json_object_set_new(plugin, "version", json_integer(p->get_version()));
+		json_object_set_new(data, p->get_package(), plugin);
+	}
+	json_object_set_new(info, "plugins", data);
+	/* Convert to a string */
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	
+	return info_text;
+}
+
 static gchar *local_ip = NULL;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
@@ -567,7 +618,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			goto done;
 		}
 		/* Send the success reply */
-		ret = janus_process_success(&source, "application/json", g_strdup(info_text));
+		ret = janus_process_success(&source, "application/json", janus_info(NULL));
 		goto done;
 	}
 	
@@ -776,7 +827,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	if(session_id == 0 && handle_id == 0) {
 		/* Can only be a 'Create new session', a 'Get info' or a 'Ping/Pong' request */
 		if(!strcasecmp(message_text, "info")) {
-			ret = janus_process_success(source, "application/json", g_strdup(info_text));
+			ret = janus_process_success(source, "application/json", janus_info(transaction_text));
 			goto jsondone;
 		}
 		if(!strcasecmp(message_text, "ping")) {
@@ -1245,6 +1296,49 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 							nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 							janus_ice_component_free(handle->video_stream->components, handle->video_stream->rtcp_component);
 							handle->video_stream->rtcp_component = NULL;
+						}
+					}
+					/* FIXME Any disabled m-line? */
+					if(strstr(jsep_sdp, "m=audio 0")) {
+						JANUS_LOG(LOG_VERB, "Audio disabled via SDP\n");
+						if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+								|| (!video && !data)) {
+							JANUS_LOG(LOG_VERB, "  -- Marking audio stream as disabled\n");
+							janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
+							if(stream)
+								stream->disabled = TRUE;
+						}
+					}
+					if(strstr(jsep_sdp, "m=video 0")) {
+						JANUS_LOG(LOG_VERB, "Video disabled via SDP\n");
+						if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+								|| (!audio && !data)) {
+							JANUS_LOG(LOG_VERB, "  -- Marking video stream as disabled\n");
+							janus_ice_stream *stream = NULL;
+							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
+							} else {
+								gint id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
+								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+							}
+							if(stream)
+								stream->disabled = TRUE;
+						}
+					}
+					if(strstr(jsep_sdp, "m=application 0 DTLS/SCTP")) {
+						JANUS_LOG(LOG_VERB, "Data Channel disabled via SDP\n");
+						if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+								|| (!audio && !video)) {
+							JANUS_LOG(LOG_VERB, "  -- Marking data channel stream as disabled\n");
+							janus_ice_stream *stream = NULL;
+							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
+							} else {
+								gint id = handle->audio_id > 0 ? handle->audio_id : (handle->video_id > 0 ? handle->video_id : handle->data_id);
+								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+							}
+							if(stream)
+								stream->disabled = TRUE;
 						}
 					}
 					janus_mutex_lock(&handle->mutex);
@@ -1834,7 +1928,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 			goto done;
 		}
 		/* Send the success reply */
-		ret = janus_process_success(&source, "application/json", g_strdup(info_text));
+		ret = janus_process_success(&source, "application/json", janus_info(NULL));
 		goto done;
 	}
 	
@@ -1914,7 +2008,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		/* Can only be a 'Get all sessions' or some general setting manipulation request */
 		if(!strcasecmp(message_text, "info")) {
 			/* The generic info request */
-			ret = janus_process_success(source, "application/json", info_text);
+			ret = janus_process_success(source, "application/json", janus_info(transaction_text));
 			goto jsondone;
 		}
 		if(admin_ws_api_secret != NULL) {
@@ -3030,6 +3124,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	json_t *s = json_object();
 	json_object_set_new(s, "id", json_integer(stream->stream_id));
 	json_object_set_new(s, "ready", json_integer(stream->cdone));
+	json_object_set_new(s, "disabled", json_string(stream->disabled ? "true" : "false"));
 	json_t *ss = json_object();
 	if(stream->audio_ssrc)
 		json_object_set_new(ss, "audio", json_integer(stream->audio_ssrc));
@@ -3334,6 +3429,49 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 		JANUS_LOG(LOG_ERR, "Error merging SDP\n");
 		g_free(sdp_stripped);
 		return NULL;
+	}
+	/* FIXME Any disabled m-line? */
+	if(strstr(sdp_merged, "m=audio 0")) {
+		JANUS_LOG(LOG_VERB, "Audio disabled via SDP\n");
+		if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+				|| (!video && !data)) {
+			JANUS_LOG(LOG_VERB, "  -- Marking audio stream as disabled\n");
+			janus_ice_stream *stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->audio_id));
+			if(stream)
+				stream->disabled = TRUE;
+		}
+	}
+	if(strstr(sdp_merged, "m=video 0")) {
+		JANUS_LOG(LOG_VERB, "Video disabled via SDP\n");
+		if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+				|| (!audio && !data)) {
+			JANUS_LOG(LOG_VERB, "  -- Marking video stream as disabled\n");
+			janus_ice_stream *stream = NULL;
+			if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->video_id));
+			} else {
+				gint id = ice_handle->audio_id > 0 ? ice_handle->audio_id : ice_handle->video_id;
+				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(id));
+			}
+			if(stream)
+				stream->disabled = TRUE;
+		}
+	}
+	if(strstr(sdp_merged, "m=application 0 DTLS/SCTP")) {
+		JANUS_LOG(LOG_VERB, "Data Channel disabled via SDP\n");
+		if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+				|| (!audio && !video)) {
+			JANUS_LOG(LOG_VERB, "  -- Marking data channel stream as disabled\n");
+			janus_ice_stream *stream = NULL;
+			if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->data_id));
+			} else {
+				gint id = ice_handle->audio_id > 0 ? ice_handle->audio_id : (ice_handle->video_id > 0 ? ice_handle->video_id : ice_handle->data_id);
+				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(id));
+			}
+			if(stream)
+				stream->disabled = TRUE;
+		}
 	}
 
 	if(!updating) {
@@ -4062,50 +4200,6 @@ gint main(int argc, char *argv[])
 		}
 	}
 	closedir(dir);
-
-	/* Prepare a summary on the gateway */
-	json_t *info = json_object();
-	json_object_set_new(info, "janus", json_string("server_info"));
-	json_object_set_new(info, "name", json_string(JANUS_NAME));
-	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
-	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
-	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
-#ifdef HAVE_SCTP
-	json_object_set_new(info, "data_channels", json_integer(1));
-#else
-	json_object_set_new(info, "data_channels", json_integer(0));
-#endif
-#ifdef HAVE_WEBSOCKETS
-	json_object_set_new(info, "websockets", json_integer(1));
-#else
-	json_object_set_new(info, "websockets", json_integer(0));
-#endif
-#ifdef HAVE_RABBITMQ
-	json_object_set_new(info, "rabbitmq", json_integer(1));
-#else
-	json_object_set_new(info, "rabbitmq", json_integer(0));
-#endif
-	json_t *data = json_object();
-	GHashTableIter iter;
-	gpointer value;
-	g_hash_table_iter_init(&iter, plugins);
-	while (g_hash_table_iter_next(&iter, NULL, &value)) {
-		janus_plugin *p = value;
-		if(p == NULL) {
-			continue;
-		}
-		json_t *plugin = json_object();
-		json_object_set_new(plugin, "name", json_string(p->get_name()));
-		json_object_set_new(plugin, "author", json_string(p->get_author()));
-		json_object_set_new(plugin, "description", json_string(p->get_description()));
-		json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
-		json_object_set_new(plugin, "version", json_integer(p->get_version()));
-		json_object_set_new(data, p->get_package(), plugin);
-	}
-	json_object_set_new(info, "plugins", data);
-	/* Convert to a string */
-	info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(info);
 
 	/* Start web server, if enabled */
 	sessions = g_hash_table_new(NULL, NULL);

@@ -187,7 +187,7 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 			}
 #endif
 		} else {
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 			m = m->m_next;
 			continue;
 		}
@@ -358,14 +358,14 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 				janus_mutex_unlock(&handle->mutex);
 				return 0;
 			}
-			if(trickle) {
-				if(component->dtls != NULL) {
-					/* This component is already ready, ignore this further candidate */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Ignoring this candidate, the component is already ready\n", handle->handle_id);
-					janus_mutex_unlock(&handle->mutex);
-					return 0;
-				}
-			}
+			//~ if(trickle) {
+				//~ if(component->dtls != NULL) {
+					//~ /* This component is already ready, ignore this further candidate */
+					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Ignoring this candidate, the component is already ready\n", handle->handle_id);
+					//~ janus_mutex_unlock(&handle->mutex);
+					//~ return 0;
+				//~ }
+			//~ }
 			component->component_id = rcomponent;
 			component->stream_id = stream->stream_id;
 			NiceCandidate *c = NULL;
@@ -447,7 +447,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 						}
 					} else {
 						/* Queueing the trickle candidate for now, we'll process it later */
-						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Queueing trickle candidate, status is not START yet\n", handle->handle_id);
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Queueing trickle candidate, status is not START yet\n", handle->handle_id);
 					}
 				}
 			}
@@ -813,7 +813,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					}
 					g_strlcat(sdp, "m=application 1 DTLS/SCTP", BUFSIZE);
 				} else {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported application media line...\n", handle->handle_id);
 					g_snprintf(buffer, 512,
 						"m=%s 0 %s 0\r\n",
 						m->m_type_name, m->m_proto_name);
@@ -823,7 +823,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				}
 #endif
 			} else {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 				g_snprintf(buffer, 512,
 					"m=%s 0 %s 0\r\n",
 					m->m_type_name, m->m_proto_name);

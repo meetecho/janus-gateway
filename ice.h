@@ -194,6 +194,8 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
+	/*! \brief Whether the medium associated with this stream has been disabled (e.g., m=audio 0) */
+	guint disabled;
 	/*! \brief Audio SSRC of the gateway for this stream (may be bundled) */
 	guint32 audio_ssrc;
 	/*! \brief Video SSRC of the gateway for this stream (may be bundled) */
