@@ -1091,7 +1091,7 @@ GET http://host:port/janus/<sessionid>?max_events=5
 \verbatim
 {
 	"janus" : "attach",
-	"session_id" : "<the session identifier>",		// NEW!
+	"session_id" : <the session identifier>,		// NEW!
 	"plugin" : "<the plugin's unique package name>",
 	"transaction" : "<random string>"
 }
@@ -1106,8 +1106,8 @@ GET http://host:port/janus/<sessionid>?max_events=5
 \verbatim
 {
 	"janus" : "message",
-	"session_id" : "<the session identifier>",		// NEW!
-	"handle_id" : "<the handle identifier>",		// NEW!
+	"session_id" : <the session identifier>,		// NEW!
+	"handle_id" : <the handle identifier>,		// NEW!
 	"transaction" : "sBJNyUhH6Vc6",
 	"body" : {
 		"audio" : false
@@ -1137,7 +1137,7 @@ GET http://host:port/janus/<sessionid>?max_events=5
 \verbatim
 {
 	"janus" : "keepalive",
-	"session_id" : "<the session identifier>",
+	"session_id" : <the session identifier>,
 	"transaction" : "sBJNyUhH6Vc6"
 }
 \endverbatim
