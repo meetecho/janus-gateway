@@ -1009,7 +1009,7 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 /* Thread to create agent */
 void *janus_ice_thread(void *data) {
 	janus_ice_handle *handle = data;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started, looping...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started\n", handle->handle_id);
 	GMainLoop *loop = handle->iceloop;
 	if(loop == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid loop...\n", handle->handle_id);
@@ -1017,6 +1017,7 @@ void *janus_ice_thread(void *data) {
 		return NULL;
 	}
 	g_usleep (100000);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	g_main_loop_run (loop);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)

@@ -160,6 +160,32 @@ typedef enum janus_sip_status {
 	janus_sip_status_closing,
 	janus_sip_status_unregistering,
 } janus_sip_status;
+const char *janus_sip_status_string(janus_sip_status status);
+const char *janus_sip_status_string(janus_sip_status status) {
+	switch(status) {
+		case janus_sip_status_failed:
+			return "failed";
+		case janus_sip_status_unregistered:
+			return "unregistered";
+		case janus_sip_status_registering:
+			return "registering";
+		case janus_sip_status_registered:
+			return "registered";
+		case janus_sip_status_inviting:
+			return "inviting";
+		case janus_sip_status_invited:
+			return "invited";
+		case janus_sip_status_incall:
+			return "incall";
+		case janus_sip_status_closing:
+			return "closing";
+		case janus_sip_status_unregistering:
+			return "unregistering";
+		default:
+			break;
+	}
+	return "unknown";
+}
 
 
 /* Sofia stuff */
@@ -601,7 +627,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
-	json_object_set_new(info, "status", json_integer(session->status));
+	json_object_set_new(info, "status", json_string(janus_sip_status_string(session->status)));
 	if(session->callee)
 		json_object_set_new(info, "callee", json_string(session->callee ? session->callee : "??"));
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
@@ -1077,9 +1103,9 @@ static void *janus_sip_handler(void *data) {
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
 			if(session->status >= janus_sip_status_inviting) {
-				JANUS_LOG(LOG_ERR, "Wrong state (already in a call?)\n");
+				JANUS_LOG(LOG_ERR, "Wrong state (already in a call? status=%s)\n", janus_sip_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
-				g_snprintf(error_cause, 512, "Wrong state (already in a call?)");
+				g_snprintf(error_cause, 512, "Wrong state (already in a call? status=%s)", janus_sip_status_string(session->status));
 				goto error;
 			}
 			json_t *uri = json_object_get(root, "uri");
@@ -1209,9 +1235,9 @@ static void *janus_sip_handler(void *data) {
 			json_object_set_new(result, "event", json_string("calling"));
 		} else if(!strcasecmp(request_text, "accept")) {
 			if(session->status != janus_sip_status_invited) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not invited? state=%d)\n", session->status);
+				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
-				g_snprintf(error_cause, 512, "Wrong state (not invited?)");
+				g_snprintf(error_cause, 512, "Wrong state (not invited? status=%s)", janus_sip_status_string(session->status));
 				goto error;
 			}
 			if(session->callee == NULL) {
@@ -1290,7 +1316,7 @@ static void *janus_sip_handler(void *data) {
 		} else if(!strcasecmp(request_text, "decline")) {
 			/* Reject an incoming call */
 			if(session->status != janus_sip_status_invited) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not invited? state=%d)\n", session->status);
+				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_status_string(session->status));
 				/* Ignore */
 				json_decref(root);
 				continue;
@@ -1316,7 +1342,7 @@ static void *janus_sip_handler(void *data) {
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
 			if(session->status < janus_sip_status_inviting || session->status > janus_sip_status_incall) {
-				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? state=%d)\n", session->status);
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_status_string(session->status));
 				/* Ignore */
 				json_decref(root);
 				continue;
@@ -1489,7 +1515,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(session->status >= janus_sip_status_inviting) {
 				/* Busy */
-				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy)\n");
+				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_status_string(session->status));
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
 				break;
 			}

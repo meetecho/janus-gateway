@@ -1520,7 +1520,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					/* No stream available, wait a bit */
 					gint64 waited = 0;
 					while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
-						JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
 						g_usleep(100000);
 						waited += 100000;
 						if(waited >= 3*G_USEC_PER_SEC) {
@@ -1656,7 +1656,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 						/* No stream available, wait a bit */
 						gint64 waited = 0;
 						while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
-							JANUS_LOG(LOG_INFO, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
 							g_usleep(100000);
 							waited += 100000;
 							if(waited >= 3*G_USEC_PER_SEC) {
@@ -3608,10 +3608,27 @@ void janus_close_pc(janus_plugin_session *plugin_session) {
 	if(!session)
 		return;
 		
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Plugin asked to hangup PeerConnection: sending alert\n", ice_handle->handle_id);
 	/* Send an alert on all the DTLS connections */
 	janus_ice_webrtc_hangup(ice_handle);
 	/* Get rid of the PeerConnection */
-	janus_ice_webrtc_free(ice_handle);
+	if(ice_handle->iceloop) {
+		gint64 waited = 0;
+		while(ice_handle->iceloop && !g_main_loop_is_running(ice_handle->iceloop)) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", ice_handle->handle_id);
+			g_usleep (100000);
+			waited += 100000;
+			if(waited >= G_USEC_PER_SEC) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", ice_handle->handle_id);
+				break;
+			}
+		}
+		if(ice_handle->iceloop) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", ice_handle->handle_id, g_main_loop_is_running(ice_handle->iceloop) ? "running" : "NOT running");
+			g_main_loop_quit(ice_handle->iceloop);
+			g_main_context_wakeup(ice_handle->icectx);
+		}
+	}
 	
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
@@ -4416,7 +4433,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled\n");
 	} else {
 		/* Parse configuration */
-		const char *rmqhost = "localhost";
+		char *rmqhost = NULL;
 		item = janus_config_get_item_drilldown(config, "rabbitmq", "host");
 		if(item && item->value)
 			rmqhost = g_strdup(item->value);
@@ -4449,6 +4466,7 @@ gint main(int argc, char *argv[])
 		}
 		JANUS_LOG(LOG_VERB, "Connecting to RabbitMQ server...\n");
 		int status = amqp_socket_open(socket, rmqhost, rmqport);
+		g_free(rmqhost);
 		if(status != AMQP_STATUS_OK) {
 			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error opening socket... (%s)\n", amqp_error_string2(status));
 			exit(1);	/* FIXME Should we really give up? */
