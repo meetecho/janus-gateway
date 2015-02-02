@@ -240,6 +240,8 @@ struct janus_ice_component {
 	GSList *local_candidates;
 	/*! \brief GLib list of remote candidates for this component (summary) */
 	GSList *remote_candidates;
+	/*! \brief String representation of the selected pair as notified by libnice (foundations) */
+	gchar *selected_pair;
 	/*! \brief Whether the setup of remote candidates for this component has started or not */
 	gboolean process_started;
 	/*! \brief Re-transmission timer for DTLS */
@@ -340,10 +342,14 @@ void janus_ice_cb_component_state_changed (NiceAgent *agent, guint stream_id, gu
  * @param[in] agent The libnice agent for which the callback applies
  * @param[in] stream_id The stream ID for which the callback applies
  * @param[in] component_id The component ID for which the callback applies
- * @param[in] lfoundation ICE foundation
- * @param[in] rfoundation ICE foundation
+ * @param[in] local Local candidate (or foundation)
+ * @param[in] remote Remote candidate (or foundation)
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *lfoundation, gchar *rfoundation, gpointer ice);
+#ifndef HAVE_LIBNICE_TCP
+void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice);
+#else
+void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice);
+#endif
 /*! \brief libnice callback to notify when data has been received by an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
  * @param[in] stream_id The stream ID for which the callback applies

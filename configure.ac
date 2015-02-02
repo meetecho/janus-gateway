@@ -70,7 +70,13 @@ AC_SUBST(JANUS_MANUAL_LIBS)
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
              [AC_DEFINE(HAVE_PORTRANGE)],
-             [AC_MSG_NOTICE([libnice does not have nice_agent_set_port_range])]
+             [AC_MSG_NOTICE([libnice version does not have nice_agent_set_port_range])]
+             )
+
+AC_CHECK_LIB([nice],
+             [nice_address_equal_no_port],
+             [AC_DEFINE(HAVE_LIBNICE_TCP)],
+             [AC_MSG_NOTICE([libnice version does not support TCP candidates])]
              )
 
 AC_CHECK_LIB([dl],

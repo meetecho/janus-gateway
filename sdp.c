@@ -371,25 +371,49 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 			NiceCandidate *c = NULL;
 			if(!strcasecmp(rtype, "host")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding host candidate... %s:%d\n", handle->handle_id, rip, rport);
-				/* We only support UDP... */
+				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(strcasecmp(rtransport, "udp")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+#ifdef HAVE_LIBNICE_TCP
+					if(!strcasecmp(rtransport, "tcp")) {
+						c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+					} else {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s\n", handle->handle_id, rtransport);
+					}
+#else
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s\n", handle->handle_id, rtransport);
+#endif
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
 				}
 			} else if(!strcasecmp(rtype, "srflx")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding srflx candidate... %s:%d --> %s:%d \n", handle->handle_id, rrelip, rrelport, rip, rport);
-				/* We only support UDP... */
+				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(strcasecmp(rtransport, "udp")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+#ifdef HAVE_LIBNICE_TCP
+					if(!strcasecmp(rtransport, "tcp")) {
+						c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
+					} else {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s\n", handle->handle_id, rtransport);
+					}
+#else
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s\n", handle->handle_id, rtransport);
+#endif
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
 				}
 			} else if(!strcasecmp(rtype, "prflx")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding prflx candidate... %s:%d --> %s:%d\n", handle->handle_id, rrelip, rrelport, rip, rport);
-				/* We only support UDP... */
+				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(strcasecmp(rtransport, "udp")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+#ifdef HAVE_LIBNICE_TCP
+					if(!strcasecmp(rtransport, "tcp")) {
+						c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
+					} else {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s\n", handle->handle_id, rtransport);
+					}
+#else
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s\n", handle->handle_id, rtransport);
+#endif
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
 				}
@@ -397,7 +421,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding relay candidate... %s:%d --> %s:%d\n", handle->handle_id, rrelip, rrelport, rip, rport);
 				/* We only support UDP/TCP/TLS... */
 				if(strcasecmp(rtransport, "udp") && strcasecmp(rtransport, "tcp") && strcasecmp(rtransport, "tls")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s\n", handle->handle_id, rtransport);
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_RELAYED);
 				}
@@ -408,7 +432,33 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 			if(c != NULL) {
 				c->component_id = rcomponent;
 				c->stream_id = stream->stream_id;
+#ifndef HAVE_LIBNICE_TCP
 				c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+#else
+				if(!strcasecmp(rtransport, "udp")) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: UDP\n", handle->handle_id);
+					c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+				} else {
+					/* Check the type (https://tools.ietf.org/html/rfc6544#section-4.5) */
+					const char *type = NULL;
+					int ctype = 0;
+					if(strstr(candidate, "tcptype active")) {
+						type = "active";
+						ctype = NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE;
+					} else if(strstr(candidate, "tcptype passive")) {
+						type = "passive";
+						ctype = NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE;
+					} else if(strstr(candidate, "tcptype so")) {
+						type = "so";
+						ctype = NICE_CANDIDATE_TRANSPORT_TCP_SO;
+					} else {
+						/* TODO: We should actually stop here... */
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Missing tcptype info for the TCP candidate!\n", handle->handle_id);
+					}
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: TCP (%s)\n", handle->handle_id, type);
+					c->transport = ctype;
+				}
+#endif
 				strncpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
 				c->priority = rpriority;
 				nice_address_set_from_string(&c->addr, rip);

@@ -3176,6 +3176,9 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		}
 		json_object_set_new(c, "remote-candidates", cs);
 	}
+	if(component->selected_pair) {
+		json_object_set_new(c, "selected-pair", json_string(component->selected_pair));
+	}
 	json_t *d = json_object();
 	json_t *in_stats = json_object();
 	json_t *out_stats = json_object();
