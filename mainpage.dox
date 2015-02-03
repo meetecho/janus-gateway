@@ -977,6 +977,102 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * automatically, but implementing the right behaviour in clients would
  * help avoid potential issues nonetheless.
  *
+ * \section events WebRTC-related events
+ *
+ * As anticipated in the previous sections, Janus can send events and
+ * notifications at any time through the long poll channel (or, as it
+ * will be explained later, through the related push mechanisms made
+ * available by the \ref WS and \ref rabbit ). While this channel is
+ * mostly used to convey asynchronous notifications originated by
+ * plugins as part of the messaging they may have with the application
+ * using it, the same channel is actually used by Janus to trigger
+ * events related to different aspects pertaining a specific handle.
+ *
+ * In particular, for each handle involving a PeerConnection Janus
+ * provides notifications about its current state. To do so, the
+ * following events may be received as well:
+ *
+ *  - \c webrtcup: ICE and DTLS succeeded, and so Janus correctly
+ * established a PeerConnection with the user/application;
+ *  - \c media: whether Janus is receiving (\c receiving: \c true/false)
+ * audio/video (\c type: \c "audio/video") on this PeerConnection;
+ *  - \c hangup: the PeerConnection was closed, either by Janus or by
+ * the user/application, and as such cannot be used anymore.
+ *
+ * As such, to monitor the status of a PeerConnection as seen from
+ * Janus you can make use of these events to track what's going on. A
+ * correct flow for an active PeerConnection would be one that, after a
+ * WebRTC negotiation and setup, results in a \c webrtcup event followed
+ * by two \c media events (in case both audio and video have been
+ * negotiated) specifying that the first audio/video packets have been
+ * received. A \c hangup event would inform the user/application that
+ * no media is being exchanged with Janus anymore.
+ *
+ * Here are a few examples of how these events may look like.
+ *
+ * A PeerConnection becoming ready:
+ *
+\verbatim
+{
+	"janus" : "webrtcup",
+	session_id: <the session identifier>,
+	sender: <the handle identifier>
+}
+\endverbatim
+ *
+ * First audio bytes being received by Janus:
+ *
+\verbatim
+{
+	"janus" : "media",
+	session_id: <the session identifier>,
+	sender: <the handle identifier>,
+	"type" : "audio",
+	"receiving" : true
+}
+\endverbatim
+ *
+ * Audio not getting to Janus anymore for some reason:
+ *
+\verbatim
+{
+	"janus" : "media",
+	"session_id" : <the session identifier>,
+	"sender" : <the handle identifier>
+	"type" : "audio",
+	"receiving" : false
+}
+\endverbatim
+ *
+ * Audio getting to Janus again (same message as first audio):
+ *
+\verbatim
+{
+	"janus" : "media",
+	"session_id" : <the session identifier>,
+	"sender" : <the handle identifier>
+	"type" : "audio",
+	"receiving" : true
+}
+\endverbatim
+ *
+ * PeerConnection closed for a DTLS alert (normal shutdown):
+ *
+\verbatim
+{
+	"janus" : "hangup",
+	"session_id" : <the session identifier>,
+	"sender" : <the handle identifier>,
+	"reason" : "DTLS alert"
+}
+\endverbatim
+ *
+ * It is important to point out that the \c media event notifications
+ * only apply if your PeerConnection is going to actually send media to
+ * Janus. A \c recvonly PeerConnection, for instance (e.g., as the
+ * Streaming plugin would create) would never trigger any \c media
+ * event, as Janus would never be receiving media, but only send it.
+ *
  * \section secret Securing the API
  * Several deployers showed an interested in wrapping the Janus API on
  * their server side: this allows them to keep the interaction with their

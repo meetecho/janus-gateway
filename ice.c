@@ -164,6 +164,8 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 		return;
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("media"));
+	json_object_set_new(event, "session_id", json_integer(session->session_id));
+	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
 	json_object_set_new(event, "receiving", json_string(up ? "true" : "false"));
 	/* Convert to a string */
