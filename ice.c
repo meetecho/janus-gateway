@@ -152,6 +152,37 @@ static gint janus_nack_sort(gconstpointer n1, gconstpointer n2) {
 	return (nack1 > nack2 ? +1 : nack1 == nack2 ? 0 : -1);
 }
 
+static void janus_notify_media(janus_ice_handle *handle, gboolean video, gboolean up);
+static void janus_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
+	if(handle == NULL)
+		return;
+	/* Prepare JSON event to notify user/application */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying that we %s receiving %s\n",
+		handle->handle_id, up ? "are" : "are NOT", video ? "video" : "audio");
+	janus_session *session = (janus_session *)handle->session;
+	if(session == NULL)
+		return;
+	json_t *event = json_object();
+	json_object_set_new(event, "janus", json_string("media"));
+	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
+	json_object_set_new(event, "receiving", json_string(up ? "true" : "false"));
+	/* Convert to a string */
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(event);
+	/* Send the event */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
+	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	if(notification == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
+	notification->code = 200;
+	notification->payload = event_text;
+	notification->allocated = 1;
+
+	g_async_queue_push(session->messages, notification);
+}
+
 /* libnice initialization */
 gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6) {
 	janus_ipv6_enabled = ipv6;
@@ -942,6 +973,11 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					s->when = janus_get_monotonic_time();
 					janus_mutex_lock(&component->mutex);
 					if(!video) {
+						if(component->in_stats.audio_bytes == 0 || component->in_stats.audio_notified_lastsec) {
+							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
+							component->in_stats.audio_notified_lastsec = FALSE;
+							janus_notify_media(handle, FALSE, TRUE);
+						}
 						component->in_stats.audio_bytes += buflen;
 						component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
 						if(g_list_length(component->in_stats.audio_bytes_lastsec) > 100) {
@@ -952,6 +988,11 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							g_free(s);
 						}
 					} else {
+						if(component->in_stats.video_bytes == 0 || component->in_stats.video_notified_lastsec) {
+							/* We either received our first video packet, or we started receiving it again after missing more than a second */
+							component->in_stats.video_notified_lastsec = FALSE;
+							janus_notify_media(handle, TRUE, TRUE);
+						}
 						component->in_stats.video_bytes += buflen;
 						component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
 						if(g_list_length(component->in_stats.video_bytes_lastsec) > 100) {
@@ -1779,40 +1820,39 @@ void *janus_ice_send_thread(void *data) {
 	janus_ice_queued_packet *pkt = NULL;
 	gint64 now = janus_get_monotonic_time(), before = now;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		now = janus_get_monotonic_time();
 		if(now-before >= G_USEC_PER_SEC) {
 			/* First of all, let's see if everything's fine on the recv side */
 			if(handle->audio_stream && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
 				GList *lastitem = g_list_last(component->in_stats.audio_bytes_lastsec);
 				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
-				if(last && now-last->when >= G_USEC_PER_SEC) {
-					/* TODO Notify! */
+				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= G_USEC_PER_SEC) {
+					/* Notify that we missed more than a second of audio! */
 					component->in_stats.audio_notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than a second...\n", handle->handle_id);
+					janus_notify_media(handle, FALSE, FALSE);
 				}
-				lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
-				last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
-				if(last && now-last->when >= G_USEC_PER_SEC) {
-					/* TODO Notify! */
-					component->in_stats.video_notified_lastsec = TRUE;
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
+				if(!component->in_stats.video_notified_lastsec && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+					lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
+					last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
+					if(last && now-last->when >= G_USEC_PER_SEC) {
+						/* Notify that we missed more than a second of video! */
+						component->in_stats.video_notified_lastsec = TRUE;
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
+						janus_notify_media(handle, TRUE, FALSE);
+					}
 				}
 			}
 			if(handle->video_stream && handle->video_stream->rtp_component) {
 				janus_ice_component *component = handle->video_stream->rtp_component;
-				GList *lastitem = g_list_last(component->in_stats.audio_bytes_lastsec);
+				GList *lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
 				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
-				if(last && now-last->when >= G_USEC_PER_SEC) {
-					/* TODO Notify! */
-					component->in_stats.audio_notified_lastsec = TRUE;
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than a second...\n", handle->handle_id);
-				}
-				lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
-				last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
-				if(last && now-last->when >= G_USEC_PER_SEC) {
-					/* TODO Notify! */
+				if(!component->in_stats.video_notified_lastsec && last && now-last->when >= G_USEC_PER_SEC) {
+					/* Notify that we missed more than a second of video! */
 					component->in_stats.video_notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
+					janus_notify_media(handle, TRUE, FALSE);
 				}
 			}
 			before = now;

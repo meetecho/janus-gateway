@@ -630,9 +630,9 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 	while(nacks) {
 		guint16 npid = GPOINTER_TO_UINT(nacks->data);
 		if(npid-pid < 1) {
-			JANUS_LOG(LOG_WARN, "Skipping PID to NACK (%"SCNu16" already added)...\n", npid);
+			JANUS_LOG(LOG_HUGE, "Skipping PID to NACK (%"SCNu16" already added)...\n", npid);
 		} else if(npid-pid > 16) {
-			JANUS_LOG(LOG_WARN, "Skipping PID to NACK (%"SCNu16"-%"SCNu16" > %"SCNu16")...\n", npid, pid, npid-pid);
+			JANUS_LOG(LOG_HUGE, "Skipping PID to NACK (%"SCNu16"-%"SCNu16" > %"SCNu16")...\n", npid, pid, npid-pid);
 		} else {
 			uint16_t blp = ntohs(nack->blp);
 			blp |= 1 << (npid-pid-1);

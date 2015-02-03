@@ -56,6 +56,7 @@ var spinner = null;
 var myroom = 1234;	// Demo room
 var myusername = null;
 var myid = null;
+var webrtcUp = false;
 var audioenabled = false;
 
 
@@ -130,22 +131,25 @@ $(document).ready(function() {
 											// Successfully joined, negotiate WebRTC now
 											myid = msg["id"];
 											console.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											// Publish our stream
-											mixertest.createOffer(
-												{
-													media: { video: false},	// This is an audio only room
-													success: function(jsep) {
-														console.log("Got SDP!");
-														console.log(jsep);
-														var publish = { "request": "configure", "muted": false };
-														mixertest.send({"message": publish, "jsep": jsep});
-													},
-													error: function(error) {
-														console.log("WebRTC error:");
-														console.log(error);
-														bootbox.alert("WebRTC error... " + JSON.stringify(error));
-													}
-												});
+											if(!webrtcUp) {
+												webrtcUp = true;
+												// Publish our stream
+												mixertest.createOffer(
+													{
+														media: { video: false},	// This is an audio only room
+														success: function(jsep) {
+															console.log("Got SDP!");
+															console.log(jsep);
+															var publish = { "request": "configure", "muted": false };
+															mixertest.send({"message": publish, "jsep": jsep});
+														},
+														error: function(error) {
+															console.log("WebRTC error:");
+															console.log(error);
+															bootbox.alert("WebRTC error... " + JSON.stringify(error));
+														}
+													});
+											}
 											// Any room participant?
 											if(msg["participants"] !== undefined && msg["participants"] !== null) {
 												var list = msg["participants"];
@@ -263,6 +267,7 @@ $(document).ready(function() {
 
 								},
 								oncleanup: function() {
+									webrtcUp = false;
 									console.log(" ::: Got a cleanup notification :::");
 									$('#participant').empty().hide();
 									$('#list').empty();
