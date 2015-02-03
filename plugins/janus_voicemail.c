@@ -554,7 +554,7 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 
 /* Thread to handle incoming messages */
 static void *janus_voicemail_handler(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining thread\n");
+	JANUS_LOG(LOG_VERB, "Joining VoiceMail handler thread\n");
 	janus_voicemail_message *msg = NULL;
 	int error_code = 0;
 	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
@@ -759,7 +759,7 @@ error:
 		}
 	}
 	g_free(error_cause);
-	JANUS_LOG(LOG_VERB, "Leaving thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving VoiceMail handler thread\n");
 	return NULL;
 }
 
