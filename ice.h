@@ -131,6 +131,11 @@ typedef struct janus_ice_stats_item {
  * @param stats The janus_ice_stats instance to reset */
 void janus_ice_stats_reset(janus_ice_stats *stats);
 
+/*! \brief Quick helper method to notify a WebRTC hangup through the Janus API
+ * @param handle The janus_ice_handle instance this event refers to
+ * @param reason A description of why this happened */
+void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason);
+
 
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {

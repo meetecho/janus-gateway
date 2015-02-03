@@ -152,8 +152,8 @@ static gint janus_nack_sort(gconstpointer n1, gconstpointer n2) {
 	return (nack1 > nack2 ? +1 : nack1 == nack2 ? 0 : -1);
 }
 
-static void janus_notify_media(janus_ice_handle *handle, gboolean video, gboolean up);
-static void janus_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
+void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up);
+void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
 	if(handle == NULL)
 		return;
 	/* Prepare JSON event to notify user/application */
@@ -166,6 +166,37 @@ static void janus_notify_media(janus_ice_handle *handle, gboolean video, gboolea
 	json_object_set_new(event, "janus", json_string("media"));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
 	json_object_set_new(event, "receiving", json_string(up ? "true" : "false"));
+	/* Convert to a string */
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(event);
+	/* Send the event */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
+	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	if(notification == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
+	notification->code = 200;
+	notification->payload = event_text;
+	notification->allocated = 1;
+
+	g_async_queue_push(session->messages, notification);
+}
+
+void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
+	if(handle == NULL)
+		return;
+	/* Prepare JSON event to notify user/application */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying WebRTC hangup\n", handle->handle_id);
+	janus_session *session = (janus_session *)handle->session;
+	if(session == NULL)
+		return;
+	json_t *event = json_object();
+	json_object_set_new(event, "janus", json_string("hangup"));
+	json_object_set_new(event, "session_id", json_integer(session->session_id));
+	json_object_set_new(event, "sender", json_integer(handle->handle_id));
+	if(reason != NULL)
+		json_object_set_new(event, "reason", json_string(reason));
 	/* Convert to a string */
 	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
@@ -736,29 +767,7 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 				if(plugin && plugin->hangup_media)
 					plugin->hangup_media(handle->app_handle);
 			}
-			/* Also prepare JSON event to notify user/application */
-			janus_session *session = (janus_session *)handle->session;
-			if(session == NULL)
-				return;
-			json_t *event = json_object();
-			json_object_set_new(event, "janus", json_string("hangup"));
-			json_object_set_new(event, "session_id", json_integer(session->session_id));
-			json_object_set_new(event, "sender", json_integer(handle->handle_id));
-			/* Convert to a string */
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(event);
-			/* Send the event */
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
-			janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
-			if(notification == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				return;
-			}
-			notification->code = 200;
-			notification->payload = event_text;
-			notification->allocated = 1;
-
-			g_async_queue_push(session->messages, notification);
+			janus_ice_notify_hangup(handle, "ICE failed");
 		}
 	}
 }
@@ -976,7 +985,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						if(component->in_stats.audio_bytes == 0 || component->in_stats.audio_notified_lastsec) {
 							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
 							component->in_stats.audio_notified_lastsec = FALSE;
-							janus_notify_media(handle, FALSE, TRUE);
+							janus_ice_notify_media(handle, FALSE, TRUE);
 						}
 						component->in_stats.audio_bytes += buflen;
 						component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
@@ -991,7 +1000,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						if(component->in_stats.video_bytes == 0 || component->in_stats.video_notified_lastsec) {
 							/* We either received our first video packet, or we started receiving it again after missing more than a second */
 							component->in_stats.video_notified_lastsec = FALSE;
-							janus_notify_media(handle, TRUE, TRUE);
+							janus_ice_notify_media(handle, TRUE, TRUE);
 						}
 						component->in_stats.video_bytes += buflen;
 						component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
@@ -1831,7 +1840,7 @@ void *janus_ice_send_thread(void *data) {
 					/* Notify that we missed more than a second of audio! */
 					component->in_stats.audio_notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than a second...\n", handle->handle_id);
-					janus_notify_media(handle, FALSE, FALSE);
+					janus_ice_notify_media(handle, FALSE, FALSE);
 				}
 				if(!component->in_stats.video_notified_lastsec && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 					lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
@@ -1840,7 +1849,7 @@ void *janus_ice_send_thread(void *data) {
 						/* Notify that we missed more than a second of video! */
 						component->in_stats.video_notified_lastsec = TRUE;
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
-						janus_notify_media(handle, TRUE, FALSE);
+						janus_ice_notify_media(handle, TRUE, FALSE);
 					}
 				}
 			}
@@ -1852,7 +1861,7 @@ void *janus_ice_send_thread(void *data) {
 					/* Notify that we missed more than a second of video! */
 					component->in_stats.video_notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
-					janus_notify_media(handle, TRUE, FALSE);
+					janus_ice_notify_media(handle, TRUE, FALSE);
 				}
 			}
 			before = now;

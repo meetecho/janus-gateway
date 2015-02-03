@@ -3632,32 +3632,6 @@ void janus_close_pc(janus_plugin_session *plugin_session) {
 			g_main_context_wakeup(ice_handle->icectx);
 		}
 	}
-	
-	/* Prepare JSON event to notify user/application */
-	json_t *event = json_object();
-	json_object_set_new(event, "janus", json_string("hangup"));
-	json_object_set_new(event, "session_id", json_integer(session->session_id));
-	json_object_set_new(event, "sender", json_integer(ice_handle->handle_id));
-	/* Convert to a string */
-	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(event);
-	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", ice_handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
-	if(notification == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
-	}
-	notification->code = 200;
-	notification->payload = event_text;
-	notification->allocated = 1;
-
-	g_async_queue_push(session->messages, notification);
-	
-	/* Notify the plugin */
-	janus_plugin *plugin = (janus_plugin *)ice_handle->app;
-	if(plugin && plugin->hangup_media)
-		plugin->hangup_media(plugin_session);
 }
 
 void janus_end_session(janus_plugin_session *plugin_session) {
