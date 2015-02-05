@@ -108,12 +108,16 @@ typedef struct janus_ice_stats {
 	GList *audio_bytes_lastsec;
 	/*! \brief Whether or not we notified about audio lastsec issues already */
 	gboolean audio_notified_lastsec;
+	/*! \brief Number of audio NACKs sent or received */
+	guint32 audio_nacks;
 	/*! \brief Video bytes sent or received */
 	guint64 video_bytes;
 	/*! \brief Video bytes sent or received in the last second */
 	GList *video_bytes_lastsec;
 	/*! \brief Whether or not we notified about video lastsec issues already */
 	gboolean video_notified_lastsec;
+	/*! \brief Number of video NACKs sent or received */
+	guint32 video_nacks;
 	/*! \brief Data bytes sent or received */
 	guint64 data_bytes;
 } janus_ice_stats;

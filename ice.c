@@ -357,11 +357,13 @@ void janus_ice_stats_reset(janus_ice_stats *stats) {
 		g_list_free_full(stats->audio_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->audio_bytes_lastsec = NULL;
 	stats->audio_notified_lastsec = FALSE;
+	stats->audio_nacks = 0;
 	stats->video_bytes = 0;
 	if(stats->video_bytes_lastsec)
 		g_list_free_full(stats->video_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->video_bytes_lastsec = NULL;
 	stats->video_notified_lastsec = FALSE;
+	stats->video_nacks = 0;
 	stats->data_bytes = 0;
 }
 
@@ -970,6 +972,12 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						char buf[16];
 						janus_rtcp_nacks((char *)&buf, 16, nacks);
 						janus_ice_relay_rtcp(handle, video, buf, 16);
+						/* Update stats */
+						if(video) {
+							component->out_stats.video_nacks++;
+						} else {
+							component->out_stats.audio_nacks++;
+						}
 					}
 				}
 				/* Pass the data to the responsible plugin */
@@ -1090,6 +1098,12 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					nacks = NULL;
 					/* FIXME Remove the NACK compound packet, we've handled it */
 					buflen = janus_rtcp_remove_nacks(buf, buflen);
+					/* Update stats */
+					if(video) {
+						component->in_stats.video_nacks++;
+					} else {
+						component->in_stats.audio_nacks++;
+					}
 				}
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtcp)
