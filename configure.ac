@@ -144,6 +144,11 @@ AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 
+AC_CHECK_PROG(GENGETOPT_CHECK, gengetopt ,yes)
+if test x"$GENGETOPT_CHECK" != x"yes" ; then
+    AC_MSG_ERROR([Please install gengetopt before installing.])
+fi
+
 ##
 # Plugins
 ##

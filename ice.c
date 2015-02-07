@@ -30,8 +30,8 @@
 
 
 /* STUN server/port, if any */
-static char *janus_stun_server;
-static uint16_t janus_stun_port;
+static char *janus_stun_server = NULL;
+static uint16_t janus_stun_port = 0;
 
 char *janus_ice_get_stun_server(void) {
 	return janus_stun_server;
@@ -40,6 +40,26 @@ uint16_t janus_ice_get_stun_port(void) {
 	return janus_stun_port;
 }
 
+
+/* TURN server/portand credentials, if any */
+static char *janus_turn_server = NULL;
+static uint16_t janus_turn_port = 0;
+static char *janus_turn_user = NULL, *janus_turn_pwd = NULL;
+static NiceRelayType janus_turn_type = NICE_RELAY_TYPE_TURN_UDP;
+
+char *janus_ice_get_turn_server(void) {
+	return janus_turn_server;
+}
+uint16_t janus_ice_get_turn_port(void) {
+	return janus_turn_port;
+}
+
+
+/* ICE-TCP support (only libnice >= 0.1.8, currently broken) */
+static gboolean janus_ice_tcp_enabled;
+gboolean janus_ice_is_ice_tcp_enabled(void) {
+	return janus_ice_tcp_enabled;
+}
 
 /* IPv6 support (still mostly WIP) */
 static gboolean janus_ipv6_enabled;
@@ -217,9 +237,19 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 }
 
 /* libnice initialization */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6) {
+void janus_ice_init(uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ice_tcp, gboolean ipv6) {
+	janus_ice_tcp_enabled = ice_tcp;
 	janus_ipv6_enabled = ipv6;
-	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (IPv6 candidates %s)\n", janus_ipv6_enabled ? "enabled" : "disabled");
+	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (ICE-TCP candidates %s, IPv6 support %s)\n",
+		janus_ice_tcp_enabled ? "enabled" : "disabled", janus_ipv6_enabled ? "enabled" : "disabled");
+	if(janus_ice_tcp_enabled) {
+#ifndef HAVE_LIBNICE_TCP
+		JANUS_LOG(LOG_WARN, "libnice version < 0.1.8, disabling ICE-TCP support\n");
+		janus_ice_tcp_enabled = FALSE;
+#else
+		JANUS_LOG(LOG_WARN, "ICE-TCP support is currently broken and will probably not work as expected\n");
+#endif
+	}
 	/* Automatically enable libnice debugging based on debug_level */
 	if(log_level >= LOG_DBG) {
 		janus_ice_debugging_enable();
@@ -232,11 +262,18 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_por
 	 * so this is checked by the install.sh script in advance. */
 	rtp_range_min = rtp_min_port;
 	rtp_range_max = rtp_max_port;
+	if(rtp_range_max < rtp_range_min) {
+		JANUS_LOG(LOG_WARN, "Invalid ICE port range: %"SCNu16" > %"SCNu16"\n", rtp_range_min, rtp_range_max);
+	} else if(rtp_range_min > 0 || rtp_range_max > 0) {
 #ifndef HAVE_PORTRANGE
-	JANUS_LOG(LOG_WARN, "nice_agent_set_port_range unavailable, port range disabled\n");
+		JANUS_LOG(LOG_WARN, "nice_agent_set_port_range unavailable, port range disabled\n");
 #else
-	JANUS_LOG(LOG_INFO, "ICE port range: %"SCNu16"-%"SCNu16"\n", rtp_range_min, rtp_range_max);
+		JANUS_LOG(LOG_INFO, "ICE port range: %"SCNu16"-%"SCNu16"\n", rtp_range_min, rtp_range_max);
 #endif
+	}
+}
+
+int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	if(stun_server == NULL)
 		return 0;	/* No initialization needed */
 	if(stun_port == 0)
@@ -324,6 +361,49 @@ gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_por
 		return 0;
 	}
 	return -1;
+}
+
+int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd) {
+	if(turn_server == NULL)
+		return 0;	/* No initialization needed */
+	if(turn_type == NULL)
+		turn_type = (char *)"udp";
+	if(turn_port == 0)
+		turn_port = 3478;
+	JANUS_LOG(LOG_INFO, "TURN server to use: %s:%u (%s)\n", turn_server, turn_port, turn_type);
+	/* Resolve address to get an IP */
+	struct hostent *he = gethostbyname(turn_server);
+	if(he == NULL) {
+		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
+		return -1;
+	}
+	struct in_addr **addr_list = (struct in_addr **)he->h_addr_list;
+	if(addr_list[0] == NULL) {
+		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
+		return -1;
+	}
+	if(!strcasecmp(turn_type, "udp")) {
+		janus_turn_type = NICE_RELAY_TYPE_TURN_UDP;
+	} else if(!strcasecmp(turn_type, "tcp")) {
+		janus_turn_type = NICE_RELAY_TYPE_TURN_TCP;
+	} else if(!strcasecmp(turn_type, "tls")) {
+		janus_turn_type = NICE_RELAY_TYPE_TURN_TLS;
+	} else {
+		JANUS_LOG(LOG_ERR, "Unsupported relay type '%s'...\n", turn_type);
+		return -1;
+	}
+	janus_turn_server = g_strdup(inet_ntoa(*addr_list[0]));
+	if(janus_turn_server == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return -1;
+	}
+	janus_turn_port = turn_port;
+	JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_turn_server, janus_turn_port);
+	if(turn_user)
+		janus_turn_user = g_strdup(turn_user);
+	if(turn_pwd)
+		janus_turn_pwd = g_strdup(turn_pwd);
+	return 0;
 }
 
 /* ICE stuff */
@@ -1214,6 +1294,12 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 						host_ip ? host_ip : address,
 						port);
 			} else {
+				if(!janus_ice_tcp_enabled) {
+					/* ICE-TCP support disabled */
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping host TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+					nice_candidate_free(c);
+					continue;
+				}
 #ifndef HAVE_LIBNICE_TCP
 				/* TCP candidates are only supported since libnice 0.1.8 */
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping host TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
@@ -1268,6 +1354,12 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 						base_address,
 						base_port);
 			} else {
+				if(!janus_ice_tcp_enabled) {
+					/* ICE-TCP support disabled */
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping srflx TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+					nice_candidate_free(c);
+					continue;
+				}
 #ifndef HAVE_LIBNICE_TCP
 				/* TCP candidates are only supported since libnice 0.1.8 */
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping srflx TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
@@ -1322,6 +1414,12 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 						base_address,
 						base_port);
 			} else {
+				if(!janus_ice_tcp_enabled) {
+					/* ICE-TCP support disabled */
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping prflx TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+					nice_candidate_free(c);
+					continue;
+				}
 #ifndef HAVE_LIBNICE_TCP
 				/* TCP candidates are only supported since libnice 0.1.8 */
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping prflx TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
@@ -1376,6 +1474,12 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 						base_address,
 						base_port);
 			} else {
+				if(!janus_ice_tcp_enabled) {
+					/* ICE-TCP support disabled */
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping relay TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+					nice_candidate_free(c);
+					continue;
+				}
 #ifndef HAVE_LIBNICE_TCP
 				/* TCP candidates are only supported since libnice 0.1.8 */
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping relay TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
@@ -1647,6 +1751,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->audio_id), audio_stream);
+		if(janus_turn_server != NULL) {
+			/* We need relay candidates as well */
+			nice_agent_set_relay_info(handle->agent, handle->audio_id, 1,
+				janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+		}
 		handle->audio_stream = audio_stream;
 		janus_ice_component *audio_rtp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
 		if(audio_rtp == NULL) {
@@ -1678,6 +1787,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			if(audio_rtcp == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
+			}
+			if(janus_turn_server != NULL) {
+				/* We need relay candidates as well */
+				nice_agent_set_relay_info(handle->agent, handle->audio_id, 2,
+					janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
 			}
 			audio_rtcp->stream = audio_stream;
 			audio_rtcp->candidates = NULL;
@@ -1733,6 +1847,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		if(janus_turn_server != NULL) {
+			/* We need relay candidates as well */
+			nice_agent_set_relay_info(handle->agent, handle->video_id, 1,
+				janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+		}
 		video_rtp->stream = video_stream;
 		video_rtp->candidates = NULL;
 		video_rtp->local_candidates = NULL;
@@ -1758,6 +1877,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			if(video_rtcp == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
+			}
+			if(janus_turn_server != NULL) {
+				/* We need relay candidates as well */
+				nice_agent_set_relay_info(handle->agent, handle->audio_id, 2,
+					janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
 			}
 			video_rtcp->stream = video_stream;
 			video_rtcp->candidates = NULL;
@@ -1796,6 +1920,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		if(data_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
+		}
+		if(janus_turn_server != NULL) {
+			/* We need relay candidates as well */
+			nice_agent_set_relay_info(handle->agent, handle->data_id, 1,
+				janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
 		}
 		data_stream->handle = handle;
 		data_stream->stream_id = handle->data_id;

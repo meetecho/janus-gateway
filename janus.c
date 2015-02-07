@@ -134,20 +134,32 @@ char *janus_info(const char *transaction) {
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
 #ifdef HAVE_SCTP
-	json_object_set_new(info, "data_channels", json_integer(1));
+	json_object_set_new(info, "data_channels", json_string("true"));
 #else
-	json_object_set_new(info, "data_channels", json_integer(0));
+	json_object_set_new(info, "data_channels", json_string("false"));
 #endif
 #ifdef HAVE_WEBSOCKETS
-	json_object_set_new(info, "websockets", json_integer(1));
+	json_object_set_new(info, "websockets", json_string("true"));
 #else
-	json_object_set_new(info, "websockets", json_integer(0));
+	json_object_set_new(info, "websockets", json_string("false"));
 #endif
 #ifdef HAVE_RABBITMQ
-	json_object_set_new(info, "rabbitmq", json_integer(1));
+	json_object_set_new(info, "rabbitmq", json_string("true"));
 #else
-	json_object_set_new(info, "rabbitmq", json_integer(0));
+	json_object_set_new(info, "rabbitmq", json_string("false"));
 #endif
+	json_object_set_new(info, "ipv6", json_string(janus_ice_is_ipv6_enabled() ? "true" : "false"));
+	json_object_set_new(info, "ice-tcp", json_string(janus_ice_is_ice_tcp_enabled() ? "true" : "false"));
+	if(janus_ice_get_stun_server() != NULL) {
+		char server[255];
+		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
+		json_object_set_new(info, "stun-server", json_string(server));
+	}
+	if(janus_ice_get_turn_server() != NULL) {
+		char server[255];
+		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_turn_server(), janus_ice_get_turn_port());
+		json_object_set_new(info, "turn-server", json_string(server));
+	}
 	json_t *data = json_object();
 	GHashTableIter iter;
 	gpointer value;
@@ -4022,10 +4034,11 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
-	char *stun_server = NULL;
-	uint16_t stun_port = 0;
+	char *stun_server = NULL, *turn_server = NULL;
+	uint16_t stun_port = 0, turn_port = 0;
+	char *turn_type = NULL, *turn_user = NULL, *turn_pwd = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ipv6 = FALSE;
+	gboolean ice_tcp = FALSE, ipv6 = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
@@ -4049,14 +4062,40 @@ gint main(int argc, char *argv[])
 			rtp_max_port = 65535;
 		JANUS_LOG(LOG_INFO, "RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
 	}
+	/* Check if we need to enable ICE-TCP support (still broken) */
+	item = janus_config_get_item_drilldown(config, "nat", "ice_tcp");
+	ice_tcp = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	/* Any STUN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "stun_server");
 	if(item && item->value)
 		stun_server = (char *)item->value;
 	item = janus_config_get_item_drilldown(config, "nat", "stun_port");
 	if(item && item->value)
 		stun_port = atoi(item->value);
-	if(janus_ice_init(stun_server, stun_port, rtp_min_port, rtp_max_port, ipv6) < 0) {
+	/* Any TURN server to use in Janus? */
+	item = janus_config_get_item_drilldown(config, "nat", "turn_server");
+	if(item && item->value)
+		turn_server = (char *)item->value;
+	item = janus_config_get_item_drilldown(config, "nat", "turn_port");
+	if(item && item->value)
+		turn_port = atoi(item->value);
+	item = janus_config_get_item_drilldown(config, "nat", "turn_type");
+	if(item && item->value)
+		turn_type = (char *)item->value;
+	item = janus_config_get_item_drilldown(config, "nat", "turn_user");
+	if(item && item->value)
+		turn_user = (char *)item->value;
+	item = janus_config_get_item_drilldown(config, "nat", "turn_pwd");
+	if(item && item->value)
+		turn_pwd = (char *)item->value;
+	/* Initialize the ICE stack now */
+	janus_ice_init(rtp_min_port, rtp_max_port, ice_tcp, ipv6);
+	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
+		exit(1);
+	}
+	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
+		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
 		exit(1);
 	}
 	item = janus_config_get_item_drilldown(config, "nat", "nice_debug");

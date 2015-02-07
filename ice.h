@@ -27,19 +27,36 @@
 
 
 /*! \brief ICE stuff initialization
- * @param[in] stun_server STUN server address to use, if any
- * @param[in] stun_port STUN port to use, if any
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used
- * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
+ * @param[in] ice_tcp Whether ICE-TCP support should be enabled or not (only libnice >= 0.1.8, currently broken)
+ * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not */
+void janus_ice_init(uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ice_tcp, gboolean ipv6);
+/*! \brief Method to force Janus to use a STUN server when gathering candidates
+ * @param[in] stun_server STUN server address to use
+ * @param[in] stun_port STUN port to use
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6);
+int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port);
+/*! \brief Method to force Janus to use a TURN server when gathering candidates
+ * @param[in] turn_server TURN server address to use
+ * @param[in] turn_port TURN port to use
+ * @param[in] turn_type Relay type (udp, tcp or tls)
+ * @param[in] turn_user TURN username, if needed
+ * @param[in] turn_pwd TURN password, if needed
+ * @returns 0 in case of success, a negative integer on errors */
+int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);
 /*! \brief Method to get the STUN server port
  * @returns The currently used STUN server port, if available, or 0 if not */
 uint16_t janus_ice_get_stun_port(void);
+/*! \brief Method to get the TURN server IP address
+ * @returns The currently used TURN server IP address, if available, or NULL if not */
+char *janus_ice_get_turn_server(void);
+/*! \brief Method to get the TURN server port
+ * @returns The currently used TURN server port, if available, or 0 if not */
+uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
@@ -50,6 +67,9 @@ void janus_ice_ignore_interface(const char *ip);
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the ignore list, false otherwise */
 gboolean janus_ice_is_ignored(const char *ip);
+/*! \brief Method to check whether ICE-TCP support is enabled/supported or not (still WIP)
+ * @returns true if ICE-TCP support is enabled/supported, false otherwise */
+gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
