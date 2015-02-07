@@ -140,11 +140,13 @@ AC_CHECK_PROG([DOT],
 AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
       [
         AS_IF([test "x$enable_docs" = "xyes"],
-              [AC_MSG_NOTICE([doxygen or dot not found. Docs cannot be built.])])
+              [AC_MSG_ERROR([doxygen or dot not found. See README.md for installation instructions or use --disable-docs])])
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 
-AC_CHECK_PROG(GENGETOPT_CHECK, gengetopt ,yes)
+AC_CHECK_PROG([GENGETOPT_CHECK],
+              [gengetopt],
+              [yes])
 if test x"$GENGETOPT_CHECK" != x"yes" ; then
     AC_MSG_ERROR([Please install gengetopt before installing.])
 fi
