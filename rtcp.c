@@ -551,7 +551,7 @@ int janus_rtcp_remb(char *packet, int len, uint64_t bitrate) {
 	_ptrRTCPData[2] = (uint8_t)(newbrmantissa >> 8);
 	_ptrRTCPData[3] = (uint8_t)(newbrmantissa);
 	JANUS_LOG(LOG_HUGE, "[REMB] bitrate=%"SCNu64" (%d bytes)\n", bitrate, 4*(ntohs(rtcp->length)+1));
-	return 0;
+	return 24;
 }
 
 /* Generate a new FIR message */
@@ -572,7 +572,7 @@ int janus_rtcp_fir(char *packet, int len, int *seqnr) {
 	rtcp_fir *fir = (rtcp_fir *)rtcpfb->fci;
 	fir->seqnr = htonl(*seqnr << 24);	/* FCI: Sequence number */
 	JANUS_LOG(LOG_HUGE, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
-	return 0;
+	return 20;
 }
 
 /* Generate a new legacy FIR message */
@@ -594,7 +594,7 @@ int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr) {
 	rtcp_fir *fir = (rtcp_fir *)rtcpfb->fci;
 	fir->seqnr = htonl(*seqnr << 24);	/* FCI: Sequence number */
 	JANUS_LOG(LOG_HUGE, "[FIR] seqnr=%d (%d bytes)\n", *seqnr, 4*(ntohs(rtcp->length)+1));
-	return 0;
+	return 20;
 }
 
 /* Generate a new PLI message */
@@ -607,19 +607,19 @@ int janus_rtcp_pli(char *packet, int len) {
 	rtcp->type = RTCP_PSFB;
 	rtcp->rc = 1;	/* FMT=1 */
 	rtcp->length = htons((len/4)-1);
-	return 0;
+	return 12;
 }
 
 /* Generate a new NACK message */
 int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
-	if(packet == NULL || len != 16 || nacks == NULL)
+	if(packet == NULL || len < 16 || nacks == NULL)
 		return -1;
+	memset(packet, 0, len);
 	rtcp_header *rtcp = (rtcp_header *)packet;
 	/* Set header */
 	rtcp->version = 2;
 	rtcp->type = RTCP_RTPFB;
 	rtcp->rc = 1;	/* FMT=1 */
-	rtcp->length = htons((len/4)-1);
 	/* Now set NACK stuff */
 	rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
 	rtcp_nack *nack = (rtcp_nack *)rtcpfb->fci;
@@ -627,12 +627,23 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 	guint16 pid = GPOINTER_TO_UINT(nacks->data);
 	nack->pid = htons(pid);
 	nacks = nacks->next;
+	int words = 3;
 	while(nacks) {
 		guint16 npid = GPOINTER_TO_UINT(nacks->data);
 		if(npid-pid < 1) {
 			JANUS_LOG(LOG_HUGE, "Skipping PID to NACK (%"SCNu16" already added)...\n", npid);
 		} else if(npid-pid > 16) {
-			JANUS_LOG(LOG_HUGE, "Skipping PID to NACK (%"SCNu16"-%"SCNu16" > %"SCNu16")...\n", npid, pid, npid-pid);
+			/* We need a new block: this sequence number will be its root PID */
+			JANUS_LOG(LOG_HUGE, "Adding another block of NACKs (%"SCNu16"-%"SCNu16" > %"SCNu16")...\n", npid, pid, npid-pid);
+			words++;
+			if(len < (words*4+4)) {
+				JANUS_LOG(LOG_ERR, "Buffer too small: %d < %d (at least %d NACK blocks needed)\n", len, words*4+4, words);
+				return -1;
+			}
+			char *new_block = packet + words*4;
+			nack = (rtcp_nack *)new_block;
+			pid = GPOINTER_TO_UINT(nacks->data);
+			nack->pid = htons(pid);
 		} else {
 			uint16_t blp = ntohs(nack->blp);
 			blp |= 1 << (npid-pid-1);
@@ -640,5 +651,6 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 		}
 		nacks = nacks->next;
 	}
-	return 0;
+	rtcp->length = htons(words);
+	return words*4+4;
 }

@@ -1022,41 +1022,49 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					}
 				}
 				if(video) {
-					/* FIXME Check the sequence number, to see if we missed anything and need to send a NACK */
-					guint16 seq = ntohs(header->seq_number);
-					component->last_seqs = g_list_append(component->last_seqs, GUINT_TO_POINTER(seq));
-					if(g_list_length(component->last_seqs) > 20)
-						component->last_seqs = g_list_delete_link(component->last_seqs, g_list_first(component->last_seqs));
-					component->last_seqs = g_list_sort(component->last_seqs, janus_nack_sort);
-					GSList *nacks = NULL;
-					GList *seqs = component->last_seqs, *prev = seqs;
-					if(seqs != NULL && g_list_length(seqs) > 1) {
-						while(seqs) {
-							if(seqs != prev) {
-								guint16 n = GPOINTER_TO_UINT(seqs->data);
-								guint16 np = GPOINTER_TO_UINT(prev->data);
-								if(n-np > 1 && n-np < 1000) {
-									int i=0;
-									for(i=0; i<n-np; i++) {
-										JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed sequence number %"SCNu16", going to NACK it...\n", handle->handle_id, np+i+1);
-										nacks = g_slist_append(nacks, GUINT_TO_POINTER(np+i+1));
+					/* FIXME Check the sequence number, to see if we missed anything and need to send a NACK... */
+					gint64 now = janus_get_monotonic_time();
+					if(now-component->last_nack_time > 500000) {
+						/* FIXME ... but don't send NACKs too often (max 2 per second) */
+						guint16 seq = ntohs(header->seq_number);
+						component->last_seqs = g_list_append(component->last_seqs, GUINT_TO_POINTER(seq));
+						if(g_list_length(component->last_seqs) > 20)
+							component->last_seqs = g_list_delete_link(component->last_seqs, g_list_first(component->last_seqs));
+						component->last_seqs = g_list_sort(component->last_seqs, janus_nack_sort);
+						GSList *nacks = NULL;
+						GList *seqs = component->last_seqs, *prev = seqs;
+						if(seqs != NULL && g_list_length(seqs) > 1) {
+							while(seqs) {
+								if(seqs != prev) {
+									guint16 n = GPOINTER_TO_UINT(seqs->data);
+									guint16 np = GPOINTER_TO_UINT(prev->data);
+									if(n-np > 1 && n-np < 1000) {
+										int i=0;
+										for(i=0; i<n-np; i++) {
+											JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16", going to NACK it...\n", handle->handle_id, np+i+1);
+											nacks = g_slist_append(nacks, GUINT_TO_POINTER(np+i+1));
+										}
 									}
 								}
+								prev = seqs;
+								seqs = seqs->next;
 							}
-							prev = seqs;
-							seqs = seqs->next;
 						}
-					}
-					if(nacks != NULL) {
-						/* FIXME Generate a NACK and send it */
-						char buf[16];
-						janus_rtcp_nacks((char *)&buf, 16, nacks);
-						janus_ice_relay_rtcp(handle, video, buf, 16);
-						/* Update stats */
-						if(video) {
-							component->out_stats.video_nacks++;
-						} else {
-							component->out_stats.audio_nacks++;
+						if(nacks != NULL) {
+							/* FIXME Generate a NACK and send it */
+							if(now-component->last_nack_time > 2*G_USEC_PER_SEC) {
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed some packets, NACKing them now...\n", handle->handle_id);
+							}
+							component->last_nack_time = now;
+							char buf[16];
+							janus_rtcp_nacks((char *)&buf, 16, nacks);
+							janus_ice_relay_rtcp(handle, video, buf, 16);
+							/* Update stats */
+							if(video) {
+								component->out_stats.video_nacks++;
+							} else {
+								component->out_stats.audio_nacks++;
+							}
 						}
 					}
 				}
@@ -1772,6 +1780,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->dtls = NULL;
 		audio_rtp->retransmit_buffer = NULL;
 		audio_rtp->last_seqs = NULL;
+		audio_rtp->last_nack_time = 0;
 		janus_ice_stats_reset(&audio_rtp->in_stats);
 		janus_ice_stats_reset(&audio_rtp->out_stats);
 		janus_mutex_init(&audio_rtp->mutex);
@@ -1803,6 +1812,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->dtls = NULL;
 			audio_rtcp->retransmit_buffer = NULL;
 			audio_rtcp->last_seqs = NULL;
+			audio_rtcp->last_nack_time = 0;
 			janus_ice_stats_reset(&audio_rtcp->in_stats);
 			janus_ice_stats_reset(&audio_rtcp->out_stats);
 			janus_mutex_init(&audio_rtcp->mutex);
@@ -1862,6 +1872,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->dtls = NULL;
 		video_rtp->retransmit_buffer = NULL;
 		video_rtp->last_seqs = NULL;
+		video_rtp->last_nack_time = 0;
 		janus_ice_stats_reset(&video_rtp->in_stats);
 		janus_ice_stats_reset(&video_rtp->out_stats);
 		janus_mutex_init(&video_rtp->mutex);
@@ -1893,6 +1904,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->dtls = NULL;
 			video_rtcp->retransmit_buffer = NULL;
 			video_rtcp->last_seqs = NULL;
+			video_rtcp->last_nack_time = 0;
 			janus_ice_stats_reset(&video_rtcp->in_stats);
 			janus_ice_stats_reset(&video_rtcp->out_stats);
 			janus_mutex_init(&video_rtcp->mutex);
@@ -1952,6 +1964,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->dtls = NULL;
 		data_component->retransmit_buffer = NULL;
 		data_component->last_seqs = NULL;
+		data_component->last_nack_time = 0;
 		janus_ice_stats_reset(&data_component->in_stats);
 		janus_ice_stats_reset(&data_component->out_stats);
 		janus_mutex_init(&data_component->mutex);

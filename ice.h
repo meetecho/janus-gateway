@@ -281,6 +281,8 @@ struct janus_ice_component {
 	GList *retransmit_buffer;
 	/*! \brief List of recently received sequence numbers (as a support to NACK generation) */
 	GList *last_seqs;
+	/*! \brief Time when the last NACK was sent */
+	gint64 last_nack_time;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */
