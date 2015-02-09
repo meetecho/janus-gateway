@@ -1056,9 +1056,10 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed some packets, NACKing them now...\n", handle->handle_id);
 							}
 							component->last_nack_time = now;
-							char buf[16];
-							janus_rtcp_nacks((char *)&buf, 16, nacks);
-							janus_ice_relay_rtcp(handle, video, buf, 16);
+							char buf[200];
+							int res = janus_rtcp_nacks((char *)&buf, 200, nacks);
+							if(res > 0)
+								janus_ice_relay_rtcp(handle, video, buf, res);
 							/* Update stats */
 							if(video) {
 								component->out_stats.video_nacks++;
