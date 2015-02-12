@@ -1026,7 +1026,7 @@ function Janus(gatewayCallbacks) {
 						height = 720;
 						width  = 1280;
 					} else {
-						janus.log("unrecognized video setting " + media.video);
+						Janus.log("Unrecognized video setting " + media.video);
 						height = 480;
 						width  = 640;
 					}
