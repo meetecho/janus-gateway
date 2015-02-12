@@ -221,6 +221,7 @@ typedef struct janus_sip_session {
 	janus_sip_account account;
 	janus_sip_status status;
 	janus_sip_media media;
+	char *transaction;
 	char *callee;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 	janus_mutex mutex;
@@ -551,6 +552,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->stack->s_nh_r = NULL;
 	session->stack->s_nh_i = NULL;
 	session->stack->s_root = NULL;
+	session->transaction = NULL;
 	session->callee = NULL;
 	session->media.remote_ip = NULL;
 	session->media.ready = 0;
@@ -1230,6 +1232,9 @@ static void *janus_sip_handler(void *data) {
 				TAG_END());
 			g_free(sdp);
 			session->callee = g_strdup(uri_text);
+			if(session->transaction)
+				g_free(session->transaction);
+			session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("calling"));
@@ -1466,10 +1471,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+			if(session->transaction)
+				g_free(session->transaction);
+			session->transaction = NULL;
 			gateway->close_pc(session->handle);
 			break;
 		}
@@ -1488,10 +1496,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+			if(session->transaction)
+				g_free(session->transaction);
+			session->transaction = NULL;
 			gateway->close_pc(session->handle);
 			break;
 		}
@@ -1542,7 +1553,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, "offer", sip->sip_payload->pl_data);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "offer", sip->sip_payload->pl_data);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			/* Send a Ringing back */
@@ -1640,10 +1651,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+			if(session->transaction)
+				g_free(session->transaction);
+			session->transaction = NULL;
 			gateway->close_pc(session->handle);
 			break;
 		case nua_r_cancel:
@@ -1705,10 +1719,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				g_free(call_text);
 				/* Get rid of any PeerConnection that may have been set up in the meanwhile */
+				if(session->transaction)
+					g_free(session->transaction);
+				session->transaction = NULL;
 				gateway->close_pc(session->handle);
 				break;
 			}
@@ -1746,7 +1763,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, "answer", fixed_sdp);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "answer", fixed_sdp);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			break;
@@ -1785,7 +1802,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, call_text, NULL, NULL);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				g_free(call_text);
 			} else if(status == 401) {
@@ -1813,7 +1830,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, NULL, event_text, NULL, NULL);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				g_free(event_text);
 			}

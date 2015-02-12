@@ -3623,6 +3623,9 @@ void janus_close_pc(janus_plugin_session *plugin_session) {
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
 		return;
+	if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
+			|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
 	janus_session *session = (janus_session *)ice_handle->session;
 	if(!session)
 		return;
