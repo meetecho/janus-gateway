@@ -1016,24 +1016,39 @@ function Janus(gatewayCallbacks) {
 			pluginHandle.consentDialog(true);
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
-				if(media.video === 'lowres') {
-					// Add a video constraint (320x240)
-					if(!navigator.mozGetUserMedia) {
-						videoSupport = {"mandatory": {"maxHeight": "240", "maxWidth": "320"}, "optional": []};
-						Janus.log("Adding media constraint (low-res video)");
-						Janus.log(videoSupport);
+				if(media.video && media.video != 'screen') {
+					var width = 0;
+					var height = 0;
+					if       (media.video === 'lowres') {
+						height = 240;
+						width  = 320;
+					} else if(media.video === 'hires' ) {
+						height = 720;
+						width  = 1280;
 					} else {
-						Janus.log("Firefox doesn't support media constraints at the moment, ignoring low-res video");
+						janus.log("unrecognized video setting " + media.video);
+						height = 480;
+						width  = 640;
 					}
-				} else if(media.video === 'hires') {
-					// Add a video constraint (1280x720)
-					if(!navigator.mozGetUserMedia) {
-						videoSupport = {"mandatory": {"minHeight": "720", "minWidth": "1280"}, "optional": []};
-						Janus.log("Adding media constraint (hi-res video)");
-						Janus.log(videoSupport);
+					Janus.log("Adding media constraint " + media.video);
+					if(navigator.mozGetUserMedia) {
+						videoSupport = {
+						    'require': ['height', 'width'],
+						    'height': {'max': height, 'min': height},
+						    'width':  {'max': width,  'min': width}
+						};
 					} else {
-						Janus.log("Firefox doesn't support media constraints at the moment, ignoring hi-res video");
+						videoSupport = {
+						    'mandatory': {
+						        'maxHeight': height,
+						        'minHeight': height,
+						        'maxWidth':  width,
+						        'minWidth':  width
+						    },
+						    'optional': []
+						};
 					}
+					Janus.log(videoSupport);
 				} else if(media.video === 'screen') {
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
