@@ -373,8 +373,13 @@ janus.attach(
  *     - \c videoSend: \c true/false (do or do not send video);
  *     - \c videoRecv: \c true/false (do or do not receive video);
  *     - \c video: \c true/false (do or do not send \b and receive video, takes precedence on the above);
- *     - \c video: \c "hires"/"lowres" (send a 1280x720 or a 320x240 video, takes precedence on the above);
- * this property will affect the resulting getUserMedia that the library will issue;
+ *     - \c video: \c "lowres"/"lowres-16:9"/"stdres"/"stdres-16:9"/"hires"/"hires-16:9"
+ * (send a 320x240/320x180/640x480/640x360/1280x720 video, takes precedence on the above;
+ default is \c "stdres" )
+ * this property will affect the resulting getUserMedia that the library will issue; please
+ * notice that Firefox doesn't support the \c "16:9" variants, which will fallback
+ * to the ones; besides, \c "hires" and \c "hires-16:9" are currently synonymous, as
+ * there's no 4:3 high resolution constraint as of now;
  *     - \c video: \c "screen" (use screensharing for video, disables audio, takes precedence on both audio and video);
  *     - \c data: \c true/false (do or do not use Data Channels, default is false)
  *   - \c trickle: \c true/false, to tell the library whether you want

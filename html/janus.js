@@ -1018,29 +1018,56 @@ function Janus(gatewayCallbacks) {
 			if(videoSupport === true && media != undefined && media != null) {
 				if(media.video && media.video != 'screen') {
 					var width = 0;
-					var height = 0;
-					if       (media.video === 'lowres') {
+					var height = 0, maxHeight = 0;
+					if(media.video === 'lowres') {
+						// Small resolution, 4:3
 						height = 240;
-						width  = 320;
-					} else if(media.video === 'hires' ) {
+						maxHeight = 240;
+						width = 320;
+					} else if(media.video === 'lowres-16:9') {
+						// Small resolution, 16:9
+						height = 180;
+						maxHeight = 240;
+						width = 320;
+					} else if(media.video === 'hires' || media.video === 'hires-16:9' ) {
+						// High resolution is only 16:9
 						height = 720;
-						width  = 1280;
-					} else {
-						Janus.log("Unrecognized video setting " + media.video);
+						maxHeight = 720;
+						width = 1280;
+						if(navigator.mozGetUserMedia) {
+							// Unless this is Firefox, which doesn't support it
+							Janus.log(media.video + " unsupported, falling back to stdres (Firefox)");
+							height = 480;
+							maxHeight = 480;
+							width  = 640;
+						}
+					} else if(media.video === 'stdres') {
+						// Normal resolution, 4:3
 						height = 480;
+						maxHeight = 480;
 						width  = 640;
+					} else if(media.video === 'stdres-16:9') {
+						// Normal resolution, 16:9
+						height = 360;
+						maxHeight = 480;
+						width = 640;
+					} else {
+						Janus.log("Default video setting (" + media.video + ") is stdres 4:3");
+						height = 480;
+						maxHeight = 480;
+						width = 640;
 					}
 					Janus.log("Adding media constraint " + media.video);
 					if(navigator.mozGetUserMedia) {
 						videoSupport = {
 						    'require': ['height', 'width'],
-						    'height': {'max': height, 'min': height},
+						    'height': {'max': maxHeight, 'min': height},
 						    'width':  {'max': width,  'min': width}
 						};
 					} else {
 						videoSupport = {
 						    'mandatory': {
-						        'maxHeight': height,
+						        'maxHeight': maxHeight,
 						        'minHeight': height,
 						        'maxWidth':  width,
 						        'minWidth':  width
