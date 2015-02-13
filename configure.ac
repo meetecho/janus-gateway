@@ -102,6 +102,7 @@ AC_CHECK_LIB([websock],
                AS_IF([test "x$enable_websockets" = "xyes"],
                      [AC_MSG_ERROR([libwebsocket not found. See README.md for installation instructions or use --disable-websockets])])
              ])
+AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
 
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
@@ -116,6 +117,7 @@ AC_CHECK_LIB([usrsctp],
                AS_IF([test "x$enable_data_channels" = "xyes"],
                      [AC_MSG_ERROR([libusrsctp not found. See README.md for installation instructions or use --disable-data-channels])])
              ])
+AM_CONDITIONAL([ENABLE_SCTP], [test "x$enable_data_channels" = "xyes"])
 
 AC_CHECK_LIB([rabbitmq],
              [amqp_error_string2],
@@ -130,6 +132,7 @@ AC_CHECK_LIB([rabbitmq],
                AS_IF([test "x$enable_rabbitmq" = "xyes"],
                      [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq])])
              ])
+AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 
 AC_CHECK_PROG([DOXYGEN],
               [doxygen],
@@ -266,3 +269,53 @@ AC_CONFIG_FILES([
 ])
 
 AC_OUTPUT
+
+##
+# Summary
+##
+echo
+
+AM_COND_IF([ENABLE_RABBITMQ],
+	[echo "RabbitMQ support:          yes"],
+	[echo "RabbitMQ support:          no"])
+AM_COND_IF([ENABLE_WEBSOCKETS],
+	[echo "WebSockets support:        yes"],
+	[echo "WebSockets support:        no"])
+AM_COND_IF([ENABLE_SCTP],
+	[echo "DataChannels support:      yes"],
+	[echo "DataChannels support:      no"])
+AM_COND_IF([ENABLE_POST_PROCESSING],
+	[echo "Recordings post-processor: yes"],
+	[echo "Recordings post-processor: no"])
+AM_COND_IF([ENABLE_DOCS],
+	[echo "Doxygen documentation:     yes"],
+	[echo "Doxygen documentation:     no"])
+echo "Plugins:"
+AM_COND_IF([ENABLE_PLUGIN_ECHOTEST],
+	[echo "    Echo Test:             yes"],
+	[echo "    Echo Test:             no"])
+AM_COND_IF([ENABLE_PLUGIN_STREAMING],
+	[echo "    Streaming:             yes"],
+	[echo "    Streaming:             no"])
+AM_COND_IF([ENABLE_PLUGIN_VIDEOCALL],
+	[echo "    Video Call:            yes"],
+	[echo "    Video Call:            no"])
+AM_COND_IF([ENABLE_PLUGIN_SIP],
+	[echo "    SIP Gateway:           yes"],
+	[echo "    SIP Gateway:           no"])
+AM_COND_IF([ENABLE_PLUGIN_AUDIOBRIDGE],
+	[echo "    Audio Bridge:          yes"],
+	[echo "    Audio Bridge:          no"])
+AM_COND_IF([ENABLE_PLUGIN_VIDEOROOM],
+	[echo "    Video Room:            yes"],
+	[echo "    Video Room:            no"])
+AM_COND_IF([ENABLE_PLUGIN_VOICEMAIL],
+	[echo "    Voice Mail:            yes"],
+	[echo "    Voice Mail:            no"])
+AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
+	[echo "    Record&Play:           yes"],
+	[echo "    Record&Play:           no"])
+
+echo
+echo "If this configuration is ok for you, do a make to start building Janus"
+echo

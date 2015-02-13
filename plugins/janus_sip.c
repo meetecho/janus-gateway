@@ -355,7 +355,7 @@ void *janus_sip_watchdog(void *data) {
 			}
 		}
 		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(2000000);
+		g_usleep(500000);
 	}
 	JANUS_LOG(LOG_INFO, "SIP watchdog stopped\n");
 	return NULL;

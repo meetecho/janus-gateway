@@ -987,6 +987,26 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		if(!component->dtls || !component->dtls->srtp_valid) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
+			rtp_header *header = (rtp_header *)buf;
+			/* Is this audio or video? */
+			int video = 0;
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+				/* Easy enough */
+				video = (stream->stream_id == handle->video_id ? 1 : 0);
+			} else {
+				/* Bundled streams, check SSRC */
+				video = (stream->video_ssrc_peer == ntohl(header->ssrc) ? 1 : 0);
+				//~ JANUS_LOG(LOG_VERB, "[RTP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
+					//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, ntohl(header->ssrc));
+			}
+			if(video) {
+				/* Keep track of the video packets, in case we need to NACK them */
+				guint16 seq = ntohs(header->seq_number);
+				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got sequence number %"SCNu16"\n", handle->handle_id, seq);
+				component->last_seqs = g_list_append(component->last_seqs, GUINT_TO_POINTER(seq));
+				if(g_list_length(component->last_seqs) > 1000)
+					component->last_seqs = g_list_delete_link(component->last_seqs, g_list_first(component->last_seqs));
+			}
 			int buflen = len;
 			err_status_t res = srtp_unprotect(component->dtls->srtp_in, buf, &buflen);
 			if(res != err_status_ok) {
@@ -998,18 +1018,6 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n", handle->handle_id, janus_get_srtp_error(res), len, buflen, timestamp, seq);
 				}
 			} else {
-				/* Is this audio or video? */
-				int video = 0;
-				rtp_header *header = (rtp_header *)buf;
-				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-					/* Easy enough */
-					video = (stream->stream_id == handle->video_id ? 1 : 0);
-				} else {
-					/* Bundled streams, check SSRC */
-					video = (stream->video_ssrc_peer == ntohl(header->ssrc) ? 1 : 0);
-					//~ JANUS_LOG(LOG_VERB, "[RTP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
-						//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, ntohl(header->ssrc));
-				}
 				if(video) {
 					if(stream->video_ssrc_peer == 0) {
 						stream->video_ssrc_peer = ntohl(header->ssrc);
@@ -1019,54 +1027,6 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					if(stream->audio_ssrc_peer == 0) {
 						stream->audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Peer audio SSRC: %u\n", handle->handle_id, stream->audio_ssrc_peer);
-					}
-				}
-				if(video) {
-					/* FIXME Check the sequence number, to see if we missed anything and need to send a NACK... */
-					gint64 now = janus_get_monotonic_time();
-					if(now-component->last_nack_time > 500000) {
-						/* FIXME ... but don't send NACKs too often (max 2 per second) */
-						guint16 seq = ntohs(header->seq_number);
-						component->last_seqs = g_list_append(component->last_seqs, GUINT_TO_POINTER(seq));
-						if(g_list_length(component->last_seqs) > 20)
-							component->last_seqs = g_list_delete_link(component->last_seqs, g_list_first(component->last_seqs));
-						component->last_seqs = g_list_sort(component->last_seqs, janus_nack_sort);
-						GSList *nacks = NULL;
-						GList *seqs = component->last_seqs, *prev = seqs;
-						if(seqs != NULL && g_list_length(seqs) > 1) {
-							while(seqs) {
-								if(seqs != prev) {
-									guint16 n = GPOINTER_TO_UINT(seqs->data);
-									guint16 np = GPOINTER_TO_UINT(prev->data);
-									if(n-np > 1 && n-np < 1000) {
-										int i=0;
-										for(i=0; i<n-np; i++) {
-											JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16", going to NACK it...\n", handle->handle_id, np+i+1);
-											nacks = g_slist_append(nacks, GUINT_TO_POINTER(np+i+1));
-										}
-									}
-								}
-								prev = seqs;
-								seqs = seqs->next;
-							}
-						}
-						if(nacks != NULL) {
-							/* FIXME Generate a NACK and send it */
-							if(now-component->last_nack_time > 2*G_USEC_PER_SEC) {
-								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed some packets, NACKing them now...\n", handle->handle_id);
-							}
-							component->last_nack_time = now;
-							char buf[200];
-							int res = janus_rtcp_nacks((char *)&buf, 200, nacks);
-							if(res > 0)
-								janus_ice_relay_rtcp(handle, video, buf, res);
-							/* Update stats */
-							if(video) {
-								component->out_stats.video_nacks++;
-							} else {
-								component->out_stats.audio_nacks++;
-							}
-						}
 					}
 				}
 				/* Pass the data to the responsible plugin */
@@ -1112,6 +1072,50 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						}
 					}
 					janus_mutex_unlock(&component->mutex);
+				}
+			}
+			if(video) {
+				/* FIXME Check the sequence number, to see if we missed anything and need to send a NACK... */
+				gint64 now = janus_get_monotonic_time();
+				if(now-component->last_nack_time > 500000) {
+					/* FIXME ... but don't send NACKs too often (max 2 per second) */
+					component->last_seqs = g_list_sort(component->last_seqs, janus_nack_sort);
+					GSList *nacks = NULL;
+					GList *seqs = component->last_seqs, *prev = seqs;
+					if(seqs != NULL && g_list_length(seqs) > 1) {
+						while(seqs) {
+							if(seqs != prev) {
+								guint16 n = GPOINTER_TO_UINT(seqs->data);
+								guint16 np = GPOINTER_TO_UINT(prev->data);
+								if(n-np > 1 && n-np < 5000) {
+									int i=0;
+									for(i=0; i<n-np; i++) {
+										JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed sequence number %"SCNu16", going to NACK it...\n", handle->handle_id, np+i+1);
+										nacks = g_slist_append(nacks, GUINT_TO_POINTER(np+i+1));
+									}
+								}
+							}
+							prev = seqs;
+							seqs = seqs->next;
+						}
+					}
+					if(nacks != NULL) {
+						/* FIXME Generate a NACK and send it */
+						//~ if(now-component->last_nack_time > 2*G_USEC_PER_SEC) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed some packets, NACKing them now...\n", handle->handle_id);
+						//~ }
+						char nackbuf[200];
+						int res = janus_rtcp_nacks((char *)&nackbuf, 200, nacks);
+						if(res > 0)
+							janus_ice_relay_rtcp(handle, video, nackbuf, res);
+						/* Update stats */
+						if(video) {
+							component->out_stats.video_nacks++;
+						} else {
+							component->out_stats.audio_nacks++;
+						}
+					}
+					component->last_nack_time = now;
 				}
 			}
 		}
