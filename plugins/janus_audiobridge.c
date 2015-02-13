@@ -12,8 +12,6 @@
  * to the other participants, so that it can be rendered in the UI
  * accordingly.
  * 
- * \todo Right now only wideband (16kHz) mixing is implemented.
- * 
  * Rooms to make available are listed in the plugin configuration file.
  * A pre-filled configuration file is provided in \c conf/janus.plugin.audiobridge.cfg
  * and includes a demo room for testing.
@@ -31,6 +29,36 @@ record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
 \endverbatim
  *
+ * \section bridgeapi Audio Bridge API
+ * 
+ * The Audio Bridge API supports several requests, some of which are
+ * synchronous and some asynchronous. There are some situations, though,
+ * (invalid JSON, invalid request) which will always result in a
+ * synchronous error response even for asynchronous requests. 
+ * 
+ * \c create , \c destroy , \c exists, \c list and \c listparticipants
+ * are synchronous requests, which means you'll
+ * get a response directly within the context of the transaction.
+ * \c create allows you to create a new audio conference bridge
+ * dynamically, as an alternative to using the configuration file;
+ * \c destroy removes an audio conference bridge and destroys it, kicking
+ * all the users out as part of the process; \c exists allows you to
+ * check whether a specific audio conference exists; finally, \c list
+ * lists all the available rooms, while \c listparticipants lists all
+ * the participants of a specific room and their details .
+ * 
+ * The \c join , \c configure , \c changeroom and \c leave requests
+ * instead are all asynchronous, which means you'll get a notification
+ * about their success or failure in an event. \c join allows you to
+ * join a specific audio conference bridge; \c configure can be used
+ * to modify some of the participation settings (e.g., mute/unmute);
+ * \c changeroom can be used to leave the current room and move to a
+ * different one without having to tear down the PeerConnection and
+ * recreate it again (useful for sidebars and "waiting rooms"); finally,
+ * \c leave allows you to leave an audio conference bridge for good.
+ * 
+ * Actual API docs: TBD.
+ * 
  * \ingroup plugins
  * \ref plugins
  */

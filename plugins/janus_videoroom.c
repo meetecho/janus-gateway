@@ -64,6 +64,47 @@ record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
 \endverbatim
  *
+ * \section mcuapi Video Room API
+ * 
+ * The Video Room API supports several requests, some of which are
+ * synchronous and some asynchronous. There are some situations, though,
+ * (invalid JSON, invalid request) which will always result in a
+ * synchronous error response even for asynchronous requests. 
+ * 
+ * \c create , \c destroy , \c exists, \c list and \c listparticipants
+ * are synchronous requests, which means you'll
+ * get a response directly within the context of the transaction.
+ * \c create allows you to create a new video room dynamically, as an
+ * alternative to using the configuration file; \c destroy removes a
+ * video room and destroys it, kicking all the users out as part of the
+ * process; \c exists allows you to check whether a specific video room
+ * exists; finally, \c list lists all the available rooms, while \c
+ * listparticipants lists all the participants of a specific room and
+ * their details .
+ * 
+ * The \c join , \c joinandconfigure , \c configure , \c publish ,
+ * \c unpublish , \c start , \c pause , \c switch , \c stop , \c add ,
+ * \c remove and \c leave requests instead are all asynchronous, which
+ * means you'll get a notification about their success or failure in
+ * an event. \c join allows you to join a specific video room, specifying
+ * whether that specific PeerConnection will be used for publishing or
+ * watching; \c configure can be used to modify some of the participation
+ * settings (e.g., bitrate cap); \c joinandconfigure combines the previous
+ * two requests in a single one (just for publishers); \c publish can be
+ * used to start sending media to broadcast to the other participants,
+ * while \c unpublish does the opposite; \c start allows you to start
+ * receiving media from a publisher you've subscribed to previously by
+ * means of a \c join , while \c pause pauses the delivery of the media;
+ * the \c switch request can be used to change the source of the media
+ * flowing over a specific PeerConnection (e.g., I was watching Alice,
+ * I want to watch Bob now) without having to create a new handle for
+ * that; \c stop interrupts a viewer instance; \c add and \c remove
+ * are just used when involving "Plan B", and are used to add or remove
+ * publishers to be muxed in the single viewer PeerConnection; finally,
+ * \c leave allows you to leave a video room for good.
+ * 
+ * Actual API docs: TBD.
+ * 
  * \ingroup plugins
  * \ref plugins
  */

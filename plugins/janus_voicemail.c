@@ -18,6 +18,79 @@
  * this project, meaning that it can work out of the box with the VoiceMail
  * demo we provide in the same folder.
  *
+ * \section vmailapi VoiceMail API
+ * 
+ * The VoiceMail API supports just two requests, \c record and \c stop 
+ * and they're both asynchronous, which means all responses (successes
+ * and errors) will be delivered as events with the same transaction. 
+ * 
+ * \c record will instruct the plugin to start recording, while \c stop
+ * will make the recording stop before the 10 seconds have passed.
+ * Never send a JSEP offer with any of these requests: it's always the
+ * VoiceMail plugin that originates a JSEP offer, in response to a
+ * \c record request, which means your application will only have to
+ * send a JSEP answer when that happens.
+ * 
+ * The \c record request has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "record"
+}
+\endverbatim
+ *
+ * A successful request will result in an \c starting status event:
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"status": "starting"
+}
+\endverbatim
+ * 
+ * which will be followed by a \c started as soon as the associated
+ * PeerConnection has been made available to the plugin: 
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"status": "started"
+}
+\endverbatim
+ * 
+ * An error instead would provide both an error code and a more verbose
+ * description of the cause of the issue:
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ * 
+ * The \c stop request instead has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "stop"
+}
+\endverbatim
+ *
+ * If the plugin detects a loss of the associated PeerConnection, whether
+ * as a result of a \c stop request or because the 10 seconds passed, a
+ * \c done status notification is triggered to inform the application
+ * the recording session is over, together with the path to the
+ * recording file itself:
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"status" : "done",
+	"recording : "<path to the .opus file>"
+}
+\endverbatim
+ *
  * \ingroup plugins
  * \ref plugins
  */

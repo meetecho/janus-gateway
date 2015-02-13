@@ -27,6 +27,23 @@
  * specifically only with basic audio calls: this plugin needs some work
  * to make it more stable and reliable.
  * 
+ * \section sipapi SIP Plugin API
+ * 
+ * All requests you can send in the SIP Plugin API are asynchronous,
+ * which means all responses (successes and errors) will be delivered
+ * as events with the same transaction. 
+ * 
+ * The supported requests are \c register , \c call , \c accept and
+ * \c hangup . \c register can be used, as the name suggests, to register
+ * a username at a SIP registrar to call and be called; \c call is used
+ * to send an INVITE to a different SIP URI through the plugin, while
+ * \c accept is used to accept the call in case one is invited instead
+ * of inviting; finally, \c hangup can be used to terminate the
+ * communication at any time, either to hangup (BYE) an ongoing call or
+ * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
+ * 
+ * Actual API docs: TBD.
+ * 
  * \ingroup plugins
  * \ref plugins
  */

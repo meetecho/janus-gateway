@@ -65,6 +65,37 @@ videortpmap = RTP map of the video codec (e.g., VP8/90000)
 videofmtp = Codec specific parameters, if any
 \endverbatim
  *
+ * \section streamapi Streaming API
+ * 
+ * The Streaming API supports several requests, some of which are
+ * synchronous and some asynchronous. There are some situations, though,
+ * (invalid JSON, invalid request) which will always result in a
+ * synchronous error response even for asynchronous requests. 
+ * 
+ * \c list , \c create , \c destroy , \c recording , \c enable and
+ * \c disable are synchronous requests, which means you'll
+ * get a response directly within the context of the transaction. \c list
+ * lists all the available streams; \c create allows you to create a new
+ * mountpoint dynamically, as an alternative to using the configuration
+ * file; \c destroy removes a mountpoint and destroys it; \c recording
+ * instructs the plugin on whether or not a live RTP stream should be
+ * recorded while it's broadcasted; \c enable and \c disable respectively
+ * enable and disable a mountpoint, that is decide whether or not a
+ * mountpoint should be available to users without destroying it.
+ * 
+ * The \c watch , \c start , \c pause , \c switch and \c stop requests
+ * instead are all asynchronous, which means you'll get a notification
+ * about their success or failure in an event. \c watch asks the plugin
+ * to prepare the playout of one of the available streams; \c start
+ * starts the actual playout; \c pause allows you to pause a playout
+ * without tearing down the PeerConnection; \c switch allows you to
+ * switch to a different mountpoint of the same kind (note: only live
+ * RTP mountpoints supported as of now) without having to stop and watch
+ * the new one; \c stop stops the playout and tears the PeerConnection
+ * down.
+ * 
+ * Actual API docs: TBD.
+ * 
  * \ingroup plugins
  * \ref plugins
  */

@@ -18,6 +18,64 @@
  * REMB messages before sending them back, in order to trick the peer into
  * thinking the available bandwidth is different).
  * 
+ * \section echoapi Echo Test API
+ * 
+ * There's a single unnamed request you can send and it's asynchronous,
+ * which means all responses (successes and errors) will be delivered
+ * as events with the same transaction. 
+ * 
+ * The request has to be formatted as follows:
+ *
+\verbatim
+{
+	"audio" : true|false,
+	"video" : true|false,
+	"bitrate" : <numeric bitrate value>
+}
+\endverbatim
+ *
+ * \c audio instructs the plugin to do or do not bounce back audio
+ * frames; \c video does the same for video; \c bitrate caps the
+ * bandwidth to force on the browser encoding side (e.g., 128000 for
+ * 128kbps).
+ * 
+ * The first request must be sent together with a JSEP offer to
+ * negotiate a PeerConnection: a JSEP answer will be provided with
+ * the asynchronous response notification. Subsequent requests (e.g., to
+ * dynamically manipulate the bitrate while testing) have to be sent
+ * without any JSEP payload attached.
+ * 
+ * A successful request will result in an \c ok event:
+ * 
+\verbatim
+{
+	"echotest" : "event",
+	"result": "ok"
+}
+\endverbatim
+ * 
+ * An error instead will provide both an error code and a more verbose
+ * description of the cause of the issue:
+ * 
+\verbatim
+{
+	"echotest" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ *
+ * If the plugin detects a loss of the associated PeerConnection, a
+ * "done" notification is triggered to inform the application the Echo
+ * Test session is over:
+ * 
+\verbatim
+{
+	"echotest" : "event",
+	"result": "done"
+}
+\endverbatim
+ *
  * \ingroup plugins
  * \ref plugins
  */

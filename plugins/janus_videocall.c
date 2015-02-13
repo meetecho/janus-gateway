@@ -20,6 +20,198 @@
  * whether audio and/or video should be muted or not, and if the bitrate
  * of the peer needs to be capped by means of REMB messages.
  * 
+ * \section vcallapi Video Call API
+ * 
+ * All requests you can send in the Video Call API are asynchronous,
+ * which means all responses (successes and errors) will be delivered
+ * as events with the same transaction. 
+ * 
+ * The supported requests are \c list , \c register , \c call ,
+ * \c accept , \c set and \c hangup . \c list allows you to get a list
+ * of all the registered peers; \c register can be used to register
+ * a username to call and be called; \c call is used to start a video
+ * call with somebody through the plugin, while \c accept is used to
+ * accept the call in case one is invited instead of inviting; \c set
+ * can be used to configure some call-related settings (e.g., a cap on
+ * the send bandwidth); finally, \c hangup can be used to terminate the
+ * communication at any time, either to hangup an ongoing call or to
+ * cancel/decline a call that hasn't started yet.
+ * 
+ * The \c list request has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "list"
+}
+\endverbatim
+ *
+ * A successful request will result in an array of peers to be returned:
+ * 
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"list": [	// Array of peers
+			"alice78",
+			"bob51",
+			// others
+		]
+	}
+}
+\endverbatim
+ * 
+ * An error instead (and the same applies to all other requests, so this
+ * won't be repeated) would provide both an error code and a more verbose
+ * description of the cause of the issue:
+ * 
+\verbatim
+{
+	"videocall" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ * 
+ * To register a username to call and be called, the \c register request
+ * can be used. This works on a "first come, first served" basis: there's
+ * no authetication involved, you just specify the username you'd like
+ * to use and, if free, it's assigned to you. The \c request has to be
+ * formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "register",
+	"username" : "<desired unique username>"
+}
+\endverbatim
+ * 
+ * If successul, this will result in a \c registered event:
+ * 
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"event" : "registered",
+		"username" : "<same username, registered>"
+	}
+}
+\endverbatim
+ * 
+ * Once you're registered, you can either start a new call or wait to
+ * be called by someone else who knows your username. To start a new
+ * call, the \c call request can be used: this request must be attached
+ * to a JSEP offer containing the WebRTC-related info to setup a new
+ * media session. A \c call request has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "call",
+	"username" : "<username to call>"
+}
+\endverbatim
+ * 
+ * If successul, this will result in a \c calling event:
+ * 
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"event" : "calling",
+		"username" : "<same username, registered>"
+	}
+}
+\endverbatim
+ *
+ * At the same time, the user being called will receive an
+ * \c incomingcall event
+ *  
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"event" : "incomingcall",
+		"username" : "<your username>"
+	}
+}
+\endverbatim
+ * 
+ * To accept the call, the \c accept request can be used. This request
+ * must be attached to a JSEP answer containing the WebRTC-related
+ * information to complete the actual PeerConnection setup. A \c accept
+ * request has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "accept"
+}
+\endverbatim
+ * 
+ * If successul, both the caller and the callee will receive an
+ * \c accepted event to notify them about the success of the signalling:
+ * 
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"event" : "accepted",
+		"username" : "<caller username>"
+	}
+}
+\endverbatim
+ *
+ * At this point, the media-related settings of the call can be modified
+ * on either side by means of a \c set request, which acts pretty much
+ * as the one in the \ref echoapi . The \c set request has to be
+ * formatted as follows:
+ *
+\verbatim
+{
+	"request" : "set",
+	"audio" : true|false,
+	"video" : true|false,
+	"bitrate" : <numeric bitrate value>
+}
+\endverbatim
+ *
+ * \c audio instructs the plugin to do or do not relay audio frames;
+ * \c video does the same for video; \c bitrate caps the bandwidth to
+ * force on the browser encoding side (e.g., 128000 for 128kbps).
+ * A successful request will result in a \c set event:
+ * 
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"event" : "set"
+	}
+}
+\endverbatim
+ * 
+ * To decline an incoming call, cancel an attempt to call or simply
+ * hangup an ongoing conversation, the \c hangup request can be used,
+ * which has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "hangup"
+}
+\endverbatim
+ *
+ * Whatever the reason of a call being closed (e.g., a \c hangup request,
+ * a PeerConnection being closed, or something else), both parties in
+ * the communication will receive a \c hangup event:
+ * 
+\verbatim
+{
+	"videocall" : "event",
+	"result" : {
+		"event" : "hangup",
+		"username" : "<username of who closed the communication>",
+		"reason" : "<description of what happened>"
+	}
+}
+\endverbatim
+ * 
  * \ingroup plugins
  * \ref plugins
  */

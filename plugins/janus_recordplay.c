@@ -32,7 +32,213 @@
  * 		audio = mcu-audio.mjr
  * 		video = mcu-video.mjr
  * 
+ * \section recplayapi Record&Play API
  * 
+ * The Record&Play API supports several requests, some of which are
+ * synchronous and some asynchronous. There are some situations, though,
+ * (invalid JSON, invalid request) which will always result in a
+ * synchronous error response even for asynchronous requests. 
+ * 
+ * \c list and \c update are synchronous requests, which means you'll
+ * get a response directly within the context of the transaction. \c list
+ * lists all the available recordings, while \c update forces the plugin
+ * to scan the folder of recordings again in case some were added manually
+ * and not indexed in the meanwhile.
+ * 
+ * The \c record , \c play , \c start and \c stop requests instead are
+ * all asynchronous, which means you'll get a notification about their
+ * success or failure in an event. \c record asks the plugin to start
+ * recording a session; \c play asks the plugin to prepare the playout
+ * of one of the previously recorded sessions; \c start starts the
+ * actual playout, and \c stop stops whatever the session was for, i.e.,
+ * recording or replaying.
+ * 
+ * The \c list request has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "list"
+}
+\endverbatim
+ *
+ * A successful request will result in an array of recordings:
+ * 
+\verbatim
+{
+	"recordplay" : "list",
+	"list": [	// Array of recording objects
+		{			// Recording #1
+			"id": <numeric ID>,
+			"name": "<Name of the recording>",
+			"date": "<Date of the recording>",
+			"audio": "<Audio rec file, if any; optional>",
+			"video": "<Video rec file, if any; optional>"
+		},
+		<other recordings>
+	]
+}
+\endverbatim
+ * 
+ * An error instead (and the same applies to all other requests, so this
+ * won't be repeated) would provide both an error code and a more verbose
+ * description of the cause of the issue:
+ * 
+\verbatim
+{
+	"recordplay" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ * 
+ * The \c update request instead has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "update"
+}
+\endverbatim
+ *
+ * which will always result in an immediate ack ( \c ok ):
+ * 
+\verbatim
+{
+	"recordplay" : "ok",
+}
+\endverbatim
+ *
+ * Coming to the asynchronous requests, \c record has to be attached to
+ * a JSEP offer (failure to do so will result in an error) and has to be
+ * formatted as follows:
+ *
+\verbatim
+{
+	"request" : "record",
+	"name" : "<Pretty name for the recording>"
+}
+\endverbatim
+ *
+ * A successful management of this request will result in a \c recording
+ * event which will include the unique ID of the recording and a JSEP
+ * answer to complete the setup of the associated PeerConnection to record:
+ * 
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "recording",
+		"id" : <unique numeric ID>
+	}
+}
+\endverbatim
+ *
+ * A \c stop request can interrupt the recording process and tear the
+ * associated PeerConnection down:
+ * 
+\verbatim
+{
+	"request" : "stop",
+}
+\endverbatim
+ * 
+ * This will result in a \c stopped status:
+ * 
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "stopped",
+		"id" : <unique numeric ID of the interrupted recording>
+	}
+}
+\endverbatim
+ * 
+ * For what concerns the playout, instead, the process is slightly
+ * different: you first choose a recording to replay, using \c play ,
+ * and then start its playout using a \c start request. Just as before,
+ * a \c stop request will interrupt the playout and tear the PeerConnection
+ * down. It's very important to point out that no JSEP offer must be
+ * sent for replaying a recording: in this case, it will always be the
+ * plugin to generate a JSON offer (in response to a \c play request),
+ * which means you'll then have to provide a JSEP answer within the
+ * context of the following \c start request which will close the circle.
+ * 
+ * A \c play request has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "play",
+	"id" : <unique numeric ID of the recording to replay>
+}
+\endverbatim
+ * 
+ * This will result in a \c preparing status notification which will be
+ * attached to the JSEP offer originated by the plugin in order to
+ * match the media available in the recording:
+ * 
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "preparing",
+		"id" : <unique numeric ID of the recording>
+	}
+}
+\endverbatim
+ * 
+ * A \c start request, which as anticipated must be attached to the JSEP
+ * answer to the previous offer sent by the plugin, has to be formatted
+ * as follows:
+ * 
+\verbatim
+{
+	"request" : "start",
+}
+\endverbatim
+ * 
+ * This will result in a \c playing status notification:
+ * 
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "playing"
+	}
+}
+\endverbatim
+ * 
+ * Just as before, a \c stop request can interrupt the playout process at
+ * any time, and tear the associated PeerConnection down:
+ * 
+\verbatim
+{
+	"request" : "stop",
+}
+\endverbatim
+ * 
+ * This will result in a \c stopped status:
+ * 
+\verbatim
+{
+	"recordplay" : "event",
+	"result": {
+		"status" : "stopped"
+	}
+}
+\endverbatim
+ * 
+ * If the plugin detects a loss of the associated PeerConnection, whether
+ * as a result of a \c stop request or because the 10 seconds passed, a
+ * \c done result notification is triggered to inform the application
+ * the recording/playout session is over:
+ * 
+\verbatim
+{
+	"recordplay" : "event",
+	"result": "done"
+}
+\endverbatim
+ *
  * \ingroup plugins
  * \ref plugins
  */
@@ -591,7 +797,7 @@ error:
 				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
-			json_object_set_new(event, "videoroom", json_string("event"));
+			json_object_set_new(event, "recordplay", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
 			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -951,9 +1157,9 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			/* Just a final message we make use of, e.g., to receive an ANSWER to our OFFER for a playout */
 			if(!msg->sdp) {
-				JANUS_LOG(LOG_ERR, "Missing SDP offer\n");
+				JANUS_LOG(LOG_ERR, "Missing SDP answer\n");
 				error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing SDP offer");
+				g_snprintf(error_cause, 512, "Missing SDP answer");
 				goto error;
 			}
 			/* Done! */
