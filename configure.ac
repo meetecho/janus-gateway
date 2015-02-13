@@ -120,7 +120,7 @@ AC_CHECK_LIB([usrsctp],
 AC_CHECK_LIB([rabbitmq],
              [amqp_error_string2],
              [
-               AS_IF([test "x$enable_data_channels" = "xyes"],
+               AS_IF([test "x$enable_rabbitmq" = "xyes"],
                [
                   AC_DEFINE(HAVE_RABBITMQ)
                   JANUS_MANUAL_LIBS+=" -lrabbitmq"
