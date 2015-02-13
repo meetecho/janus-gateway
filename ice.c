@@ -1090,7 +1090,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 								if(n-np > 1 && n-np < 5000) {
 									int i=0;
 									for(i=0; i<n-np; i++) {
-										JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed sequence number %"SCNu16", going to NACK it...\n", handle->handle_id, np+i+1);
+										JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Missed sequence number %"SCNu16", going to NACK it...\n", handle->handle_id, np+i+1);
 										nacks = g_slist_append(nacks, GUINT_TO_POINTER(np+i+1));
 									}
 								}
@@ -1101,9 +1101,9 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					}
 					if(nacks != NULL) {
 						/* FIXME Generate a NACK and send it */
-						//~ if(now-component->last_nack_time > 2*G_USEC_PER_SEC) {
+						if(now-component->last_nack_time > 2*G_USEC_PER_SEC) {
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed some packets, NACKing them now...\n", handle->handle_id);
-						//~ }
+						}
 						char nackbuf[200];
 						int res = janus_rtcp_nacks((char *)&nackbuf, 200, nacks);
 						if(res > 0)
