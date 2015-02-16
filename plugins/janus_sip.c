@@ -2089,7 +2089,7 @@ static void *janus_sip_relay_thread(void *data) {
 		if((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {	/* Not a numeric IP... */
 			struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
 			if(!host) {
-				JANUS_LOG(LOG_ERR, "Couldn't get host (%s)\n", session->media.remote_ip);
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
 			} else {
 				server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
 			}
@@ -2097,8 +2097,8 @@ static void *janus_sip_relay_thread(void *data) {
 		server_addr.sin_port = htons(session->media.remote_audio_rtp_port);
 		memset(&(server_addr.sin_zero), '\0', 8);
 		if(connect(session->media.audio_rtp_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1) {
-			JANUS_LOG(LOG_ERR, "Couldn't connect audio RTP? (%s:%d)\n", session->media.remote_ip, session->media.remote_audio_rtp_port);
-			JANUS_LOG(LOG_ERR, "  -- %d (%s)\n", errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't connect audio RTP? (%s:%d)\n", session->account.username, session->media.remote_ip, session->media.remote_audio_rtp_port);
+			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 		}
 	}
 	if(session->media.remote_audio_rtcp_port) {
@@ -2107,7 +2107,7 @@ static void *janus_sip_relay_thread(void *data) {
 		if((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {	/* Not a numeric IP... */
 			struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
 			if(!host) {
-				JANUS_LOG(LOG_ERR, "Couldn't get host (%s)\n", session->media.remote_ip);
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
 			} else {
 				server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
 			}
@@ -2115,8 +2115,8 @@ static void *janus_sip_relay_thread(void *data) {
 		server_addr.sin_port = htons(session->media.remote_audio_rtcp_port);
 		memset(&(server_addr.sin_zero), '\0', 8);
 		if(connect(session->media.audio_rtcp_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1) {
-			JANUS_LOG(LOG_ERR, "Couldn't connect audio RTCP? (%s:%d)\n", session->media.remote_ip, session->media.remote_audio_rtcp_port);
-			JANUS_LOG(LOG_ERR, "  -- %d (%s)\n", errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't connect audio RTCP? (%s:%d)\n", session->account.username, session->media.remote_ip, session->media.remote_audio_rtcp_port);
+			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 		}
 	}
 	if(session->media.remote_video_rtp_port) {
@@ -2125,7 +2125,7 @@ static void *janus_sip_relay_thread(void *data) {
 		if((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {	/* Not a numeric IP... */
 			struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
 			if(!host) {
-				JANUS_LOG(LOG_ERR, "Couldn't get host (%s)\n", session->media.remote_ip);
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
 			} else {
 				server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
 			}
@@ -2133,8 +2133,8 @@ static void *janus_sip_relay_thread(void *data) {
 		server_addr.sin_port = htons(session->media.remote_video_rtp_port);
 		memset(&(server_addr.sin_zero), '\0', 8);
 		if(connect(session->media.video_rtp_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1) {
-			JANUS_LOG(LOG_ERR, "Couldn't connect video RTP? (%s:%d)\n", session->media.remote_ip, session->media.remote_video_rtp_port);
-			JANUS_LOG(LOG_ERR, "  -- %d (%s)\n", errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't connect video RTP? (%s:%d)\n", session->account.username, session->media.remote_ip, session->media.remote_video_rtp_port);
+			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 		}
 	}
 	if(session->media.remote_video_rtcp_port) {
@@ -2143,7 +2143,7 @@ static void *janus_sip_relay_thread(void *data) {
 		if((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {	/* Not a numeric IP... */
 			struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
 			if(!host) {
-				JANUS_LOG(LOG_ERR, "Couldn't get host (%s)\n", session->media.remote_ip);
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
 			} else {
 				server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
 			}
@@ -2151,13 +2151,13 @@ static void *janus_sip_relay_thread(void *data) {
 		server_addr.sin_port = htons(session->media.remote_video_rtcp_port);
 		memset(&(server_addr.sin_zero), '\0', 8);
 		if(connect(session->media.video_rtcp_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1) {
-			JANUS_LOG(LOG_ERR, "Couldn't connect video RTCP? (%s:%d)\n", session->media.remote_ip, session->media.remote_video_rtcp_port);
-			JANUS_LOG(LOG_ERR, "  -- %d (%s)\n", errno, strerror(errno));
+			JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't connect video RTCP? (%s:%d)\n", session->account.username, session->media.remote_ip, session->media.remote_video_rtcp_port);
+			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 		}
 	}
 
 	if(!session->callee) {
-		JANUS_LOG(LOG_VERB, "Leaving thread, no callee...\n");
+		JANUS_LOG(LOG_VERB, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
 		g_thread_unref(g_thread_self());
 		return NULL; 
 	}
@@ -2165,34 +2165,57 @@ static void *janus_sip_relay_thread(void *data) {
 	socklen_t addrlen;
 	struct sockaddr_in remote;
 	int resfd = 0, bytes = 0;
-	struct timeval timeout;
-	fd_set readfds;
-	FD_ZERO(&readfds);
+	struct pollfd fds[4];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 	while(session != NULL && !session->destroyed &&
 			session->status > janus_sip_status_registered &&
 			session->status < janus_sip_status_closing) {	/* FIXME We need a per-call watchdog as well */
 		/* Wait for some data */
-		if(session->media.audio_rtp_fd > 0)
-			FD_SET(session->media.audio_rtp_fd, &readfds);
-		if(session->media.audio_rtcp_fd > 0)
-			FD_SET(session->media.audio_rtcp_fd, &readfds);
-		if(session->media.video_rtp_fd > 0)
-			FD_SET(session->media.video_rtp_fd, &readfds);
-		if(session->media.video_rtcp_fd > 0)
-			FD_SET(session->media.video_rtcp_fd, &readfds);
-		timeout.tv_sec = 1;
-		timeout.tv_usec = 0;
-		resfd = select(maxfd+1, &readfds, NULL, NULL, &timeout);
-		if(resfd < 0)
+		fds[0].fd = 0;
+		fds[0].events = 0;
+		fds[0].revents = 0;
+		if(session->media.audio_rtp_fd > 0) {
+			fds[0].fd = session->media.audio_rtp_fd;
+			fds[0].events = POLLIN;
+		}
+		fds[1].fd = 0;
+		fds[1].events = 0;
+		fds[1].revents = 0;
+		if(session->media.audio_rtcp_fd > 0) {
+			fds[1].fd = session->media.audio_rtcp_fd;
+			fds[1].events = POLLIN;
+		}
+		fds[2].fd = 0;
+		fds[2].events = 0;
+		fds[2].revents = 0;
+		if(session->media.video_rtp_fd > 0) {
+			fds[2].fd = session->media.video_rtp_fd;
+			fds[2].events = POLLIN;
+		}
+		fds[3].fd = 0;
+		fds[3].events = 0;
+		fds[3].revents = 0;
+		if(session->media.video_rtcp_fd > 0) {
+			fds[3].fd = session->media.video_rtcp_fd;
+			fds[3].events = POLLIN;
+		}
+		resfd = poll(fds, 4, 1000);
+		if(resfd < 0) {
+			JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling...\n", session->account.username);
+			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 			break;
+		} else if(resfd == 0) {
+			/* No data, keep going */
+			continue;
+		}
 		if(session == NULL || session->destroyed ||
 				session->status <= janus_sip_status_registered ||
 				session->status >= janus_sip_status_closing)
 			break;
-		if(session->media.audio_rtp_fd && FD_ISSET(session->media.audio_rtp_fd, &readfds)) {
+		if(session->media.audio_rtp_fd && (fds[0].revents & POLLIN)) {
 			/* Got something audio (RTP) */
+			fds[0].revents = 0;
 			addrlen = sizeof(remote);
 			bytes = recvfrom(session->media.audio_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTP channel...\n", bytes);
@@ -2208,8 +2231,9 @@ static void *janus_sip_relay_thread(void *data) {
 			gateway->relay_rtp(session->handle, 0, buffer, bytes);
 			continue;
 		}
-		if(session->media.audio_rtcp_fd && FD_ISSET(session->media.audio_rtcp_fd, &readfds)) {
+		if(session->media.audio_rtcp_fd && (fds[1].revents & POLLIN)) {
 			/* Got something audio (RTCP) */
+			fds[1].revents = 0;
 			addrlen = sizeof(remote);
 			bytes = recvfrom(session->media.audio_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTCP channel...\n", bytes);
@@ -2220,8 +2244,9 @@ static void *janus_sip_relay_thread(void *data) {
 			gateway->relay_rtcp(session->handle, 0, buffer, bytes);
 			continue;
 		}
-		if(session->media.video_rtp_fd && FD_ISSET(session->media.video_rtp_fd, &readfds)) {
+		if(session->media.video_rtp_fd && (fds[2].revents & POLLIN)) {
 			/* Got something video (RTP) */
+			fds[2].revents = 0;
 			addrlen = sizeof(remote);
 			bytes = recvfrom(session->media.video_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTP channel...\n", bytes);
@@ -2237,8 +2262,9 @@ static void *janus_sip_relay_thread(void *data) {
 			gateway->relay_rtp(session->handle, 1, buffer, bytes);
 			continue;
 		}
-		if(session->media.video_rtcp_fd && FD_ISSET(session->media.video_rtcp_fd, &readfds)) {
+		if(session->media.video_rtcp_fd && (fds[3].revents & POLLIN)) {
 			/* Got something video (RTCP) */
+			fds[3].revents = 0;
 			addrlen = sizeof(remote);
 			bytes = recvfrom(session->media.video_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTCP channel...\n", bytes);
