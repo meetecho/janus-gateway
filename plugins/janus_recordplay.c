@@ -903,6 +903,7 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 	g_free(event_text);
 
 	/* FIXME Simulate a "stop" coming from the browser */
+	if(!session->recorder) { return; }
 	janus_recordplay_message *msg = calloc(1, sizeof(janus_recordplay_message));
 	msg->handle = handle;
 	msg->message = json_loads("{\"request\":\"stop\"}", 0, NULL);
