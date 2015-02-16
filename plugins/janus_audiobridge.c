@@ -45,7 +45,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
  * all the users out as part of the process; \c exists allows you to
  * check whether a specific audio conference exists; finally, \c list
  * lists all the available rooms, while \c listparticipants lists all
- * the participants of a specific room and their details .
+ * the participants of a specific room and their details.
  * 
  * The \c join , \c configure , \c changeroom and \c leave requests
  * instead are all asynchronous, which means you'll get a notification
@@ -57,8 +57,288 @@ record_file =	/path/to/recording.wav (where to save the recording)
  * recreate it again (useful for sidebars and "waiting rooms"); finally,
  * \c leave allows you to leave an audio conference bridge for good.
  * 
- * Actual API docs: TBD.
+ * \c create can be used to create a new audio room, and has to be
+ * formatted as follows:
  * 
+\verbatim
+{
+	"request" : "create",
+	"room" : <unique numeric ID, optional, chosen by plugin if missing>,
+	"description" : "<pretty name of the room, optional>",
+	"secret" : "<password required to edit/destroy the room, optional>",
+	"is_private" : <true|false, whether the room should appear in a list request>,
+	"sampling" : <sampling rate of the room, optional, 16000 by default>,
+	"record" : <true|false, whether to record the room or not, default false>,
+	"record_file" : "</path/to/the/recording.wav, optional>",
+}
+\endverbatim
+ *
+ * A successful creation procedure will result in a \c created response:
+ * 
+\verbatim
+{
+	"audiobridge" : "created",
+	"room" : <unique numeric ID>
+}
+\endverbatim
+ *
+ * An error instead (and the same applies to all other requests, so this
+ * won't be repeated) would provide both an error code and a more verbose
+ * description of the cause of the issue:
+ * 
+\verbatim
+{
+	"audiobridge" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ * 
+ * On the other hand, \c destroy can be used to destroy an existing audio
+ * room, whether created dynamically or statically, and has to be
+ * formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "destroy",
+	"room" : <unique numeric ID of the room to destroy>,
+	"secret" : "<room secret, mandatory if configured>"
+}
+\endverbatim
+ *
+ * A successful destruction procedure will result in a \c destroyed response:
+ * 
+\verbatim
+{
+	"audiobridge" : "created",
+	"room" : <unique numeric ID>
+}
+\endverbatim
+ *
+ * You can check whether a room exists using the \c exists request,
+ * which has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "exists",
+	"room" : <unique numeric ID of the room to check>
+}
+\endverbatim
+ *
+ * A successful request will result in a \c success response:
+ * 
+\verbatim
+{
+	"audiobridge" : "success",
+	"room" : <unique numeric ID>,
+	"exists" : <true|false>
+}
+\endverbatim
+ * 
+ * To get a list of the available rooms (excluded those configured or
+ * created as private rooms) you can make use of the \c list request,
+ * which has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "list"
+}
+\endverbatim
+ *
+ * A successful request will produce a list of rooms in a \c success response:
+ * 
+\verbatim
+{
+	"audiobridge" : "success",
+	"rooms" : [		// Array of room objects
+		{	// Room #1
+			"room" : <unique numeric ID>,
+			"description" : "<Name of the room>",
+			"sampling_rate" : <sampling rate of the mixer>,
+			"record" : <true|false, whether the room is being recorded>,
+			"num_participants" : <count of the participants>
+		},
+		// Other rooms
+	]
+}
+\endverbatim
+ *
+ * To get a list of the participants in a specific room, instead, you
+ * can make use of the \c listparticipants request, which has to be
+ * formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "listparticipants",
+	"room" : <unique numeric ID of the room>
+}
+\endverbatim
+ *
+ * A successful request will produce a list of participants in a
+ * \c participants response:
+ * 
+\verbatim
+{
+	"audiobridge" : "participants",
+	"room" : <unique numeric ID of the room>,
+	"participants" : [		// Array of participant objects
+		{	// Participant #1
+			"id" : <unique numeric ID of the participant>,
+			"display" : "<display name of the participant, if any; optional>",
+			"muted" : <true|false, whether user is muted or not>
+		},
+		// Other participants
+	]
+}
+\endverbatim
+ * 
+ * That completes the list of synchronous requests you can send to the
+ * AudioBridge plugin. As anticipated, though, there are also several
+ * asynchronous requests you can send, specifically those related to
+ * joining and updating one's presence as a participant in an audio room.
+ * 
+ * The way you'd interact with the plugin is usually as follows:
+ * 
+ * -# you use a \c join request to join an audio room, and wait for the
+ * \c joined event; this event will also include a list of the other
+ * participants, if any;
+ * -# you send a \c configure request attached to an audio-only JSEP offer
+ * to start configuring your participation in the room (e.g., join unmuted
+ * or muted), and wait for a \c configured event, which will be attached
+ * to a JSEP answer by the plugin to complete the setup of the WebRTC
+ * PeerConnection;
+ * -# you send other \c configure requests (without any JSEP-related
+ * attachment) to mute/unmute yourself during the audio conference;
+ * -# you intercept events originated by the plugin (\c joined , \c leaving )
+ * to notify you about users joining/leaving/muting/unmuting;
+ * -# you eventually send a \c leave request to leave a room; if you leave the
+ * PeerConnection instance intact, you can subsequently join a different
+ * room without requiring a new negotiation (and so just use a \c join + JSEP-less \c configure to join).
+ * 
+ * Notice that there's also a \c changeroom request available: you can use
+ * this request to immediately leave the room you're in and join a different
+ * one, without requiring you to do a \c leave + \c join + \c configure
+ * round. Of course remember not to pass any JSEP-related payload when
+ * doing a \c changeroom as the same pre-existing PeerConnection will be
+ * re-used for the purpose.
+ * 
+ * About the syntax of all the above mentioned requests, \c join has
+ * to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "join",
+	"room" : <numeric ID of the room to join>,
+	"id" : <unique ID to assign to the participant; optional, assigned by the plugin if missing>,
+	"display" : "<display name to have in the room; optional>",
+	"muted" : <true|false, whether to start unmuted or muted>,
+	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>
+}
+\endverbatim
+ *
+ * A successful request will produce a \c joined event:
+ * 
+\verbatim
+{
+	"audiobridge" : "joined",
+	"room" : <numeric ID of the room>,
+	"id" : <unique ID assigned to the participant>,
+	"display" : "<display name of the new participant>",
+	"participants" : [
+		// Array of existing participants in the room
+	]
+}
+\endverbatim
+ * 
+ * The other participants in the room will be notified about the new
+ * participant by means of a different \c joined event, which will only
+ * include the \c room and the new participant as the only object in
+ * a \c participants array.
+ *
+ * At this point, the media-related settings of the participant can be
+ * modified by means of a \c configure request. The \c configure request
+ * has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "configure",
+	"muted" : <true|false, whether to unmute or mute>,
+	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>,
+}
+\endverbatim
+ *
+ * \c muted instructs the plugin to mute or unmute the participant;
+ * \c quality changes the complexity of the Opus encoder for the
+ * participant. A successful request will result in a \c ok event:
+ * 
+\verbatim
+{
+	"audiobridge" : "event",
+	"room" : <numeric ID of the room>,
+	"result" : "ok"
+}
+\endverbatim
+ *
+ * In case the \c muted property was modified, the other participants in
+ * the room will be notified about this by means of a \c event notification,
+ * which will only include the \c room and the updated participant as the
+ * only object in a \c participants array.
+ *
+ * As anticipated, you can leave an audio room using the \c leave request,
+ * which has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "leave"
+}
+\endverbatim
+ * 
+ * All the participants will receive an \c event notification with the
+ * ID of the participant who just left:
+ * 
+\verbatim
+{
+	"audiobridge" : "event",
+	"room" : <numeric ID of the room>,
+	"leaving" : <numeric ID of the participant who left>
+}
+\endverbatim
+ *
+ * For what concerns the \c changeroom request, instead, it's pretty much
+ * the same as a \c join request and as such has to be formatted as follows:
+ * 
+\verbatim
+{
+	"request" : "changeroom",
+	"room" : <numeric ID of the room to move to>,
+	"id" : <unique ID to assign to the participant; optional, assigned by the plugin if missing>,
+	"display" : "<display name to have in the room; optional>",
+	"muted" : <true|false, whether to start unmuted or muted>,
+	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>
+}
+\endverbatim
+ * 
+ * Such a request will trigger all the above-described leaving/joined
+ * events to the other participants, as it is indeed wrapping a \c leave
+ * followed by a \c join and as such the other participants in both rooms
+ * need to be updated accordingly. The participant who switched room
+ * instead will be sent a \c roomchanged event which is pretty similar
+ * to what \c joined looks like:
+ * 
+ * A successful request will produce a \c joined event:
+ * 
+\verbatim
+{
+	"audiobridge" : "roomchanged",
+	"room" : <numeric ID of the new room>,
+	"id" : <unique ID assigned to the participant in the new room>,
+	"display" : "<display name of the new participant>",
+	"participants" : [
+		// Array of existing participants in the new room
+	]
+}
+\endverbatim
+ *  
  * \ingroup plugins
  * \ref plugins
  */
@@ -2061,6 +2341,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	gint32 ts = 0;
 	/* Loop */
 	int i=0;
+	int count = 0, prev_count = 0;
 	while(!g_atomic_int_get(&stopping) && audiobridge->destroyed == 0) {	/* FIXME We need a per-room watchdog as well */
 		/* See if it's time to prepare a frame */
 		gettimeofday(&now, NULL);
@@ -2081,6 +2362,22 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			before.tv_sec++;
 			before.tv_usec -= 1000000;
 		}
+		/* Do we need to mix at all? */
+		janus_mutex_lock_nodebug(&audiobridge->mutex);
+		count = g_hash_table_size(audiobridge->participants);
+		janus_mutex_unlock_nodebug(&audiobridge->mutex);
+		if(count == 0) {
+			/* No participant, do nothing */
+			if(prev_count > 0) {
+				JANUS_LOG(LOG_VERB, "Last user just left room %"SCNu64", going idle...\n", audiobridge->room_id);
+				prev_count = 0;
+			}
+			continue;
+		}
+		if(prev_count == 0) {
+			JANUS_LOG(LOG_VERB, "First user just joined room %"SCNu64", waking it up...\n", audiobridge->room_id);
+		}
+		prev_count = count;
 		/* Update RTP header */
 		outpkt->data->version = 2;
 		outpkt->data->markerbit = 0;	/* FIXME Should be 1 for the first packet */
