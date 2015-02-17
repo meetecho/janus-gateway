@@ -54,6 +54,8 @@ var started = false;
 
 var myusername = null;
 var myid = null;
+var mystream = null;
+var muted = false;
 
 var feeds = [];
 var bitrateTimer = [];
@@ -211,12 +213,16 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									console.log(" ::: Got a local stream :::");
+									mystream = stream;
 									console.log(JSON.stringify(stream));
 									$('#videolocal').empty();
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
 										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="muted"/>');
+										// Add a 'mute' button
+										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
+										$('#mute').click(toggleMute);
 										// Add an 'unpublish' button
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="unpublish" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;">Unpublish</button>');
 										$('#unpublish').click(unpublishOwnFeed);
@@ -240,6 +246,8 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification: we are unpublished now :::");
+									mystream = null;
+									muted = false;
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
 									$('#publish').click(function() { publishOwnFeed(true); });
 								}
@@ -324,6 +332,25 @@ function publishOwnFeed(useAudio) {
 				}
 			}
 		});
+}
+
+function toggleMute() {
+	if(mystream === null || mystream === undefined) {
+		console.log("Cannot " + (muted ? "unmute" : "mute") + ", there's no local stream");
+		return;
+	}
+	if(mystream.getAudioTracks() === null || mystream.getAudioTracks() === undefined) {
+		console.log("Cannot " + (muted ? "unmute" : "mute") + ", there's no audio track");
+		return;
+	}
+	if(mystream.getAudioTracks()[0] === null || mystream.getAudioTracks()[0] === undefined) {
+		console.log("Cannot " + (muted ? "unmute" : "mute") + ", there's no audio track");
+		return;
+	}
+	console.log((muted ? "Unmuting" : "Muting") + " local stream...");
+	mystream.getAudioTracks()[0].enabled = muted;
+	muted = !muted;
+	$('#mute').html(muted ? "Unmute" : "Mute");
 }
 
 function unpublishOwnFeed() {
