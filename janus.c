@@ -318,10 +318,8 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				g_async_queue_push(session->messages, notification);
 				session->timeout = 1;
 
-				janus_mutex_lock(&sessions_mutex);
 				g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
 				g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
-				janus_mutex_unlock(&sessions_mutex);
 
 				/* Schedule the session for deletion */
 				GSource *timeout_source = g_timeout_source_new_seconds(3);
