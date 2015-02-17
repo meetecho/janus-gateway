@@ -538,13 +538,13 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
 	janus_mutex_lock(&session->mutex);
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
-	if(handle->iceloop)
-		g_main_loop_quit(handle->iceloop);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
+		if(handle->iceloop)
+			g_main_loop_quit(handle->iceloop);
 		janus_mutex_unlock(&session->mutex);
 		return 0;
 	}
@@ -553,6 +553,11 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	int error = 0;
 	handle->app_handle->stopped = 1;	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
 	plugin_t->destroy_session(handle->app_handle, &error);
+	/* Get rid of the handle now */
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
+	if(handle->iceloop)
+		g_main_loop_quit(handle->iceloop);
 
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();

@@ -767,11 +767,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
-	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-	}
 
 	/* Pre-parse the message */
 	int error_code = 0;
@@ -1644,6 +1639,11 @@ error:
 async:
 		{
 			/* All the other requests to this plugin are handled asynchronously */
+			janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
+			if(msg == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
+			}
 			msg->handle = handle;
 			msg->transaction = transaction;
 			msg->message = root;

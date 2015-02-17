@@ -80,7 +80,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
  * process; \c exists allows you to check whether a specific video room
  * exists; finally, \c list lists all the available rooms, while \c
  * listparticipants lists all the participants of a specific room and
- * their details .
+ * their details.
  * 
  * The \c join , \c joinandconfigure , \c configure , \c publish ,
  * \c unpublish , \c start , \c pause , \c switch , \c stop , \c add ,
@@ -715,15 +715,15 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No VideoRoom session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroyed) {
-		JANUS_LOG(LOG_WARN, "Session already marked as destroyed...\n");
+		JANUS_LOG(LOG_WARN, "VideoRoom session already marked as destroyed...\n");
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing Video Room session...\n");
+	JANUS_LOG(LOG_VERB, "Removing VideoRoom session...\n");
 	/* Any related WebRTC PeerConnection is not available anymore either */
 	janus_videoroom_hangup_media(handle);
 	/* Cleaning up and removing the session is done in a lazy way */
@@ -830,11 +830,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
-	janus_videoroom_message *msg = calloc(1, sizeof(janus_videoroom_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-	}
 	
 	/* Pre-parse the message */
 	int error_code = 0;
@@ -1132,7 +1127,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_videoroom_participant *p = value;
 			if(p && p->session) {
 				/* Notify the user we're going to destroy the room... */
-				int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, msg->transaction, destroyed_text, NULL, NULL);
+				int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, destroyed_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				/* ... and then ask the core to remove the handle */
 				gateway->end_session(p->session->handle);
@@ -1294,6 +1289,11 @@ error:
 async:
 		{
 			/* All the other requests to this plugin are handled asynchronously */
+			janus_videoroom_message *msg = calloc(1, sizeof(janus_videoroom_message));
+			if(msg == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
+			}
 			msg->handle = handle;
 			msg->transaction = transaction;
 			msg->message = root;

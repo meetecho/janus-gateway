@@ -470,12 +470,12 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No VoiceMail session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroyed) {
-		JANUS_LOG(LOG_WARN, "Session already destroyed...\n");
+		JANUS_LOG(LOG_WARN, "VoiceMail session already destroyed...\n");
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "Removing VoiceMail session...\n");

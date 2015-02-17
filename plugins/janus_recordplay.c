@@ -638,11 +638,15 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 	}	
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No Record&Play session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing Echo Test session...\n");
+	if(session->destroyed) {
+		JANUS_LOG(LOG_WARN, "Record&Play session already destroyed...\n");
+		return;
+	}
+	JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
@@ -680,11 +684,6 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
-	janus_recordplay_message *msg = calloc(1, sizeof(janus_recordplay_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-	}
 
 	/* Pre-parse the message */
 	int error_code = 0;
@@ -810,6 +809,11 @@ error:
 async:
 		{
 			/* All the other requests to this plugin are handled asynchronously */
+			janus_recordplay_message *msg = calloc(1, sizeof(janus_recordplay_message));
+			if(msg == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
+			}
 			msg->handle = handle;
 			msg->transaction = transaction;
 			msg->message = root;

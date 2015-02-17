@@ -497,6 +497,7 @@ typedef struct janus_audiobridge_participant {
 	guint64 user_id;		/* Unique ID in the room */
 	gchar *display;			/* Display name (just for fun) */
 	gboolean active;		/* Whether this participant can receive media at all */
+	gboolean working;		/* Whether this participant is currently encoding/decoding */
 	gboolean muted;			/* Whether this participant is muted */
 	int opus_complexity;	/* Complexity to use in the encoder (by default, DEFAULT_COMPLEXITY) */
 	/* RTP stuff */
@@ -841,15 +842,15 @@ void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error)
 	}	
 	janus_audiobridge_session *session = (janus_audiobridge_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No AudioBridge session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroyed) {
-		JANUS_LOG(LOG_WARN, "Session already destroyed...\n");
+		JANUS_LOG(LOG_WARN, "AudioBridge session already destroyed...\n");
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing Audio Bridge session...\n");
+	JANUS_LOG(LOG_VERB, "Removing AudioBridge session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
@@ -896,11 +897,6 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
-	janus_audiobridge_message *msg = calloc(1, sizeof(janus_audiobridge_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-	}
 
 	/* Pre-parse the message */
 	int error_code = 0;
@@ -1200,7 +1196,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			janus_audiobridge_participant *p = value;
 			if(p && p->session) {
 				p->room = NULL;
-				int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, msg->transaction, response_text, NULL, NULL);
+				int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, response_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			}
 		}
@@ -1356,6 +1352,11 @@ error:
 async:
 		{
 			/* All the other requests to this plugin are handled asynchronously */
+			janus_audiobridge_message *msg = calloc(1, sizeof(janus_audiobridge_message));
+			if(msg == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
+			}
 			msg->handle = handle;
 			msg->transaction = transaction;
 			msg->message = root;
@@ -1407,8 +1408,10 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		g_free(pkt);
 		return;
 	}
-	if(participant->decoder) {
+	if(participant->active && participant->decoder) {
+		participant->working = TRUE;
 		pkt->length = opus_decode(participant->decoder, (const unsigned char *)buf+12, len-12, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
+		participant->working = FALSE;
 		if(pkt->length < 0) {
 			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));
 			g_free(pkt->data);
@@ -1473,6 +1476,9 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	if(participant->display)
 		g_free(participant->display);
 	participant->display = NULL;
+	/* Make sure we're not using the encoder/decoder right now, we're going to destroy them */
+	while(participant->working)
+		g_usleep(5000);
 	if(participant->encoder)
 		opus_encoder_destroy(participant->encoder);
 	participant->encoder = NULL;
@@ -2237,8 +2243,12 @@ static void *janus_audiobridge_handler(void *data) {
 				janus_mutex_unlock(&audiobridge->mutex);
 			}
 		}
-		g_free(event_text);
-		janus_audiobridge_message_free(msg);
+		if(event_text)
+			g_free(event_text);
+		event_text = NULL;
+		if(msg)
+			janus_audiobridge_message_free(msg);
+		msg = NULL;
 
 		continue;
 		
@@ -2432,8 +2442,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				/* FIXME Smoothen/Normalize instead of truncating? */
 				outBuffer[i] = sumBuffer[i];
 			/* Encode raw frame to Opus */
-			if(p->encoder) {
+			if(p->active && p->encoder) {
+				p->working = TRUE;
 				outpkt->length = opus_encode(p->encoder, outBuffer, samples, payload+12, BUFFER_SAMPLES-12);
+				p->working = FALSE;
 				if(outpkt->length < 0) {
 					JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error encoding the Opus frame: %d (%s)\n", outpkt->length, opus_strerror(outpkt->length));
 				} else {

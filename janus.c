@@ -271,7 +271,8 @@ janus_rabbitmq_client *rmq_client = NULL;
 
 /* Gateway Sessions */
 static janus_mutex sessions_mutex;
-static GHashTable *sessions = NULL;
+static GHashTable *sessions = NULL, *old_sessions = NULL;
+static GMainContext *sessions_watchdog_context = NULL;
 
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
@@ -281,9 +282,6 @@ static gboolean janus_cleanup_session(gpointer user_data) {
 
 	JANUS_LOG(LOG_INFO, "Cleaning up session %"SCNu64"...\n", session->session_id);
 	janus_session_destroy(session->session_id);
-	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
-	janus_mutex_unlock(&sessions_mutex);
 
 	return G_SOURCE_REMOVE;
 }
@@ -319,6 +317,11 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				notification->allocated = 1;
 				g_async_queue_push(session->messages, notification);
 				session->timeout = 1;
+
+				janus_mutex_lock(&sessions_mutex);
+				g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
+				g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
+				janus_mutex_unlock(&sessions_mutex);
 
 				/* Schedule the session for deletion */
 				GSource *timeout_source = g_timeout_source_new_seconds(3);
@@ -384,11 +387,20 @@ janus_session *janus_session_find(guint64 session_id) {
 	return session;
 }
 
+janus_session *janus_session_find_destroyed(guint64 session_id) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_session *session = g_hash_table_lookup(old_sessions, GUINT_TO_POINTER(session_id));
+	janus_mutex_unlock(&sessions_mutex);
+	return session;
+}
+
 /* Destroys a session but does not remove it from the sessions hash table. */
 gint janus_session_destroy(guint64 session_id) {
-	janus_session *session = janus_session_find(session_id);
-	if(session == NULL)
+	janus_session *session = janus_session_find_destroyed(session_id);
+	if(session == NULL) {
+		JANUS_LOG(LOG_ERR, "Couldn't find session to destroy: %"SCNu64"\n", session_id);
 		return -1;
+	}
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
 	if (session->ice_handles != NULL) {
@@ -410,7 +422,7 @@ gint janus_session_destroy(guint64 session_id) {
 	}
 
 	/* TODO Actually destroy session */
-	//~ janus_session_free(session);
+	janus_session_free(session);
 
 	return 0;
 }
@@ -1057,10 +1069,17 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			}
 		}
 #endif
-		janus_session_destroy(session_id);	/* FIXME Should we check if this actually succeeded, or can we ignore it? */
+		//~ janus_session_destroy(session_id);	/* FIXME Should we check if this actually succeeded, or can we ignore it? */
 
+		/* Schedule the session for deletion */
+		session->destroy = 1;
 		janus_mutex_lock(&sessions_mutex);
-		g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
+		g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
+		g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
+		GSource *timeout_source = g_timeout_source_new_seconds(3);
+		g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
+		g_source_attach(timeout_source, sessions_watchdog_context);
+		g_source_unref(timeout_source);
 		janus_mutex_unlock(&sessions_mutex);
 
 		/* Prepare JSON reply */
@@ -4243,6 +4262,7 @@ gint main(int argc, char *argv[])
 
 	/* Start web server, if enabled */
 	sessions = g_hash_table_new(NULL, NULL);
+	old_sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
 	gint64 threads = 0;
 	item = janus_config_get_item_drilldown(config, "webserver", "threads");
@@ -4582,8 +4602,8 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Start the sessions watchdog */
-	GMainContext *watchdog_context = g_main_context_new();
-	GMainLoop *watchdog_loop = g_main_loop_new(watchdog_context, FALSE);
+	sessions_watchdog_context = g_main_context_new();
+	GMainLoop *watchdog_loop = g_main_loop_new(sessions_watchdog_context, FALSE);
 	GError *error = NULL;
 	GThread *watchdog = g_thread_try_new("watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
 	if(error != NULL) {
@@ -4768,7 +4788,7 @@ gint main(int argc, char *argv[])
 	g_thread_join(watchdog);
 	watchdog = NULL;
 	g_main_loop_unref(watchdog_loop);
-	g_main_context_unref(watchdog_context);
+	g_main_context_unref(sessions_watchdog_context);
 
 	if(config)
 		janus_config_destroy(config);
@@ -4805,6 +4825,8 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Destroying sessions...\n");
 	if(sessions != NULL)
 		g_hash_table_destroy(sessions);
+	if(old_sessions != NULL)
+		g_hash_table_destroy(old_sessions);
 #ifdef HAVE_WEBSOCKETS
 	if(wss_sessions != NULL)
 		g_hash_table_destroy(wss_sessions);

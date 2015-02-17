@@ -610,12 +610,12 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	}	
 	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No SIP session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroyed) {
-		JANUS_LOG(LOG_VERB, "Session already destroyed...\n");
+		JANUS_LOG(LOG_VERB, "SIP session already destroyed...\n");
 		return;
 	}
 	janus_mutex_lock(&sessions_mutex);

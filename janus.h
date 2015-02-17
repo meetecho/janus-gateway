@@ -165,6 +165,10 @@ janus_session *janus_session_create(guint64 session_id);
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
 janus_session *janus_session_find(guint64 session_id);
+/*! \brief Method to find an existing Janus Gateway-Client session scheduled to be destroyed from its ID
+ * @param[in] session_id The Janus Gateway-Client session ID
+ * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
+janus_session *janus_session_find_destroyed(guint64 session_id);
 /*! \brief Method to destroy a Janus Gateway-Client session
  * @param[in] session_id The Janus Gateway-Client session ID to destroy
  * @returns 0 in case of success, a negative integer otherwise */

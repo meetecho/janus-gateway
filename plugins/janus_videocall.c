@@ -526,15 +526,15 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No VideoCall session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroyed) {
-		JANUS_LOG(LOG_VERB, "Session already destroyed...\n");
+		JANUS_LOG(LOG_VERB, "VideoCall session already destroyed...\n");
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "Removing user %s session...\n", session->username ? session->username : "'unknown'");
+	JANUS_LOG(LOG_VERB, "Removing VideoCall user %s session...\n", session->username ? session->username : "'unknown'");
 	janus_videocall_hangup_media(handle);
 	if(session->username != NULL) {
 		janus_mutex_lock(&sessions_mutex);
