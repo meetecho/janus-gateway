@@ -988,9 +988,9 @@ static void *janus_recordplay_handler(void *data) {
 				goto error;
 			}
 			if(!json_is_string(name)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name should be an integer)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
 				goto error;
 			}
 			const char *name_text = json_string_value(name);
