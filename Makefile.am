@@ -12,11 +12,12 @@ AM_CFLAGS = \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
 AM_CFLAGS += -Wno-undef  # sophiasip is not -Wundef--safe
 AM_CFLAGS += -Wredundant-decls  # sophiasip also contains redundant declarations
+AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
 
-AM_CFLAGS += -fstack-protector-all -g -ggdb -fPIC -rdynamic
+AM_CFLAGS += -fstack-protector-all -g -ggdb -fPIC -rdynamic -pthread
 
 # FIXME: make docs work with distcheck
 DISTCHECK_CONFIGURE_FLAGS = --disable-docs --enable-post-processing

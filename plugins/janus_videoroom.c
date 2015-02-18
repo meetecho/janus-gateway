@@ -125,8 +125,8 @@ rec_dir = <folder where recordings should be stored, when enabled>
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			5
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.5"
+#define JANUS_VIDEOROOM_VERSION			6
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.6"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing MCU for Janus, something like Licode."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -155,7 +155,7 @@ char *janus_videoroom_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_videoroom_plugin =
-	{
+	JANUS_PLUGIN_INIT (
 		.init = janus_videoroom_init,
 		.destroy = janus_videoroom_destroy,
 
@@ -176,7 +176,7 @@ static janus_plugin janus_videoroom_plugin =
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
 		.query_session = janus_videoroom_query_session,
-	}; 
+	);
 
 /* Plugin creator */
 janus_plugin *create(void) {
@@ -424,7 +424,7 @@ void *janus_videoroom_watchdog(void *data) {
 		now = janus_get_monotonic_time();
 		if(old_sessions != NULL) {
 			GList *sl = old_sessions;
-			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			JANUS_LOG(LOG_HUGE, "Checking %d old VideoRoom sessions...\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_videoroom_session *session = (janus_videoroom_session *)sl->data;
 				/* If we are stopping, their is no point to continue to iterate */
@@ -437,6 +437,7 @@ void *janus_videoroom_watchdog(void *data) {
 				}
 				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					JANUS_LOG(LOG_VERB, "Freeing old VideoRoom session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;

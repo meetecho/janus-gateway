@@ -359,8 +359,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			6
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.6"
+#define JANUS_AUDIOBRIDGE_VERSION			7
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.7"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
@@ -388,7 +388,7 @@ char *janus_audiobridge_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_audiobridge_plugin =
-	{
+	JANUS_PLUGIN_INIT (
 		.init = janus_audiobridge_init,
 		.destroy = janus_audiobridge_destroy,
 
@@ -408,7 +408,7 @@ static janus_plugin janus_audiobridge_plugin =
 		.hangup_media = janus_audiobridge_hangup_media,
 		.destroy_session = janus_audiobridge_destroy_session,
 		.query_session = janus_audiobridge_query_session,
-	}; 
+	);
 
 /* Plugin creator */
 janus_plugin *create(void) {
@@ -582,7 +582,7 @@ void *janus_audiobridge_watchdog(void *data) {
 		now = janus_get_monotonic_time();
 		if(old_sessions != NULL) {
 			GList *sl = old_sessions;
-			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			JANUS_LOG(LOG_HUGE, "Checking %d old AudioBridge sessions...\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_audiobridge_session *session = (janus_audiobridge_session *)sl->data;
 				if(!session) {
@@ -591,6 +591,7 @@ void *janus_audiobridge_watchdog(void *data) {
 				}
 				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					JANUS_LOG(LOG_VERB, "Freeing old AudioBridge session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;

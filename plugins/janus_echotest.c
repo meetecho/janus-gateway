@@ -93,8 +93,8 @@
 
 
 /* Plugin information */
-#define JANUS_ECHOTEST_VERSION			5
-#define JANUS_ECHOTEST_VERSION_STRING	"0.0.5"
+#define JANUS_ECHOTEST_VERSION			6
+#define JANUS_ECHOTEST_VERSION_STRING	"0.0.6"
 #define JANUS_ECHOTEST_DESCRIPTION		"This is a trivial EchoTest plugin for Janus, just used to showcase the plugin interface."
 #define JANUS_ECHOTEST_NAME				"JANUS EchoTest plugin"
 #define JANUS_ECHOTEST_AUTHOR			"Meetecho s.r.l."
@@ -117,13 +117,14 @@ void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_echotest_slow_link(janus_plugin_session *handle, int video);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 char *janus_echotest_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_echotest_plugin =
-	{
+	JANUS_PLUGIN_INIT (
 		.init = janus_echotest_init,
 		.destroy = janus_echotest_destroy,
 
@@ -141,10 +142,11 @@ static janus_plugin janus_echotest_plugin =
 		.incoming_rtp = janus_echotest_incoming_rtp,
 		.incoming_rtcp = janus_echotest_incoming_rtcp,
 		.incoming_data = janus_echotest_incoming_data,
+		.slow_link = janus_echotest_slow_link,
 		.hangup_media = janus_echotest_hangup_media,
 		.destroy_session = janus_echotest_destroy_session,
 		.query_session = janus_echotest_query_session,
-	}; 
+	);
 
 /* Plugin creator */
 janus_plugin *create(void) {
@@ -209,7 +211,7 @@ void janus_echotest_message_free(janus_echotest_message *msg) {
 /* EchoTest watchdog/garbage collector (sort of) */
 void *janus_echotest_watchdog(void *data);
 void *janus_echotest_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "Echotest watchdog started\n");
+	JANUS_LOG(LOG_INFO, "EchoTest watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
@@ -217,7 +219,7 @@ void *janus_echotest_watchdog(void *data) {
 		now = janus_get_monotonic_time();
 		if(old_sessions != NULL) {
 			GList *sl = old_sessions;
-			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			JANUS_LOG(LOG_HUGE, "Checking %d old EchoTest sessions...\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_echotest_session *session = (janus_echotest_session *)sl->data;
 				if(!session) {
@@ -226,6 +228,7 @@ void *janus_echotest_watchdog(void *data) {
 				}
 				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					JANUS_LOG(LOG_VERB, "Freeing old EchoTest session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
@@ -513,6 +516,29 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 	}
 }
 
+void janus_echotest_slow_link(janus_plugin_session *handle, int video) {
+	/* The core is informing us that our peer got too many NACKs, are we pushing media too hard? */
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(session->destroyed)
+		return;
+	if(!video && !session->audio_active) {
+		/* We're not relaying audio and the peer is expecting it, so NACKs are normal */
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow link) for audio, but that's expected, a configure disabled the audio relay\n");
+	} else if(video && !session->video_active) {
+		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow link) for audio, but that's expected, a configure disabled the audio relay\n");
+	} else {
+		/* Maybe we set the bitrate cap too high? */
+		JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow link) for %s, should we do something, e.g., force a lower REMB?\n", video ? "video" : "audio");
+	}
+}
+
 void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -616,6 +642,14 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
 		}
 		if(video) {
+			if(!session->video_active && json_is_true(video)) {
+				/* Send a PLI */
+				JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
+				char buf[12];
+				memset(buf, 0, 12);
+				janus_rtcp_pli((char *)&buf, 12);
+				gateway->relay_rtcp(session->handle, 1, buf, 12);
+			}
 			session->video_active = json_is_true(video);
 			JANUS_LOG(LOG_VERB, "Setting video property: %s\n", session->video_active ? "true" : "false");
 		}

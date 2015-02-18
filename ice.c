@@ -1009,7 +1009,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				guint16 seq = ntohs(header->seq_number);
 				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got sequence number %"SCNu16"\n", handle->handle_id, seq);
 				component->last_seqs = g_list_append(component->last_seqs, GUINT_TO_POINTER(seq));
-				if(g_list_length(component->last_seqs) > 1000)
+				if(g_list_length(component->last_seqs) > 100)
 					component->last_seqs = g_list_delete_link(component->last_seqs, g_list_first(component->last_seqs));
 			}
 			int buflen = len;
@@ -1151,9 +1151,10 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, rtcp_ssrc);
 				}
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
-				if(nacks != NULL) {
+				int nacks_count = g_slist_length(nacks);
+				if(nacks != NULL && nacks_count > 0) {
 					/* Handle NACK */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS we should handle...\n", handle->handle_id);
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GSList *list = nacks;
 					gint64 now = janus_get_monotonic_time();
 					janus_mutex_lock(&component->mutex);
@@ -1191,7 +1192,6 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						list = list->next;
 					}
 					janus_mutex_unlock(&component->mutex);
-					JANUS_LOG(LOG_HUGE, "\n");
 					g_slist_free(nacks);
 					nacks = NULL;
 					/* FIXME Remove the NACK compound packet, we've handled it */
@@ -1201,6 +1201,17 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						component->in_stats.video_nacks++;
 					} else {
 						component->in_stats.audio_nacks++;
+					}
+					/* Inform the plugin in case it's needed */
+					if(nacks_count >= 16) {	/* FIXME Find a good threshold */
+						/* ... but never more than once per second */
+						gint64 now = janus_get_monotonic_time();
+						if(now-component->last_slowlink_time >= G_USEC_PER_SEC) {
+							component->last_slowlink_time = now;
+							janus_plugin *plugin = (janus_plugin *)handle->app;
+							if(plugin && plugin->slow_link)
+								plugin->slow_link(handle->app_handle, video);
+						}
 					}
 				}
 				janus_plugin *plugin = (janus_plugin *)handle->app;
@@ -1791,6 +1802,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->retransmit_buffer = NULL;
 		audio_rtp->last_seqs = NULL;
 		audio_rtp->last_nack_time = 0;
+		audio_rtp->last_slowlink_time = 0;
 		janus_ice_stats_reset(&audio_rtp->in_stats);
 		janus_ice_stats_reset(&audio_rtp->out_stats);
 		janus_mutex_init(&audio_rtp->mutex);
@@ -1823,6 +1835,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->retransmit_buffer = NULL;
 			audio_rtcp->last_seqs = NULL;
 			audio_rtcp->last_nack_time = 0;
+			audio_rtcp->last_slowlink_time = 0;
 			janus_ice_stats_reset(&audio_rtcp->in_stats);
 			janus_ice_stats_reset(&audio_rtcp->out_stats);
 			janus_mutex_init(&audio_rtcp->mutex);
@@ -1883,6 +1896,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->retransmit_buffer = NULL;
 		video_rtp->last_seqs = NULL;
 		video_rtp->last_nack_time = 0;
+		video_rtp->last_slowlink_time = 0;
 		janus_ice_stats_reset(&video_rtp->in_stats);
 		janus_ice_stats_reset(&video_rtp->out_stats);
 		janus_mutex_init(&video_rtp->mutex);
@@ -1915,6 +1929,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->retransmit_buffer = NULL;
 			video_rtcp->last_seqs = NULL;
 			video_rtcp->last_nack_time = 0;
+			video_rtcp->last_slowlink_time = 0;
 			janus_ice_stats_reset(&video_rtcp->in_stats);
 			janus_ice_stats_reset(&video_rtcp->out_stats);
 			janus_mutex_init(&video_rtcp->mutex);
@@ -1975,6 +1990,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->retransmit_buffer = NULL;
 		data_component->last_seqs = NULL;
 		data_component->last_nack_time = 0;
+		data_component->last_slowlink_time = 0;
 		janus_ice_stats_reset(&data_component->in_stats);
 		janus_ice_stats_reset(&data_component->out_stats);
 		janus_mutex_init(&data_component->mutex);

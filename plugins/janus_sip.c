@@ -70,8 +70,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			4
-#define JANUS_SIP_VERSION_STRING	"0.0.4"
+#define JANUS_SIP_VERSION			5
+#define JANUS_SIP_VERSION_STRING	"0.0.5"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -99,7 +99,7 @@ char *janus_sip_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_sip_plugin =
-	{
+	JANUS_PLUGIN_INIT (
 		.init = janus_sip_init,
 		.destroy = janus_sip_destroy,
 
@@ -119,7 +119,7 @@ static janus_plugin janus_sip_plugin =
 		.hangup_media = janus_sip_hangup_media,
 		.destroy_session = janus_sip_destroy_session,
 		.query_session = janus_sip_query_session,
-	}; 
+	);
 
 /* Plugin creator */
 janus_plugin *create(void) {
@@ -334,7 +334,7 @@ void *janus_sip_watchdog(void *data) {
 		now = janus_get_monotonic_time();
 		if(old_sessions != NULL) {
 			GList *sl = old_sessions;
-			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			JANUS_LOG(LOG_HUGE, "Checking %d old SIP sessions...\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_sip_session *session = (janus_sip_session *)sl->data;
 				if(!session) {
@@ -343,6 +343,7 @@ void *janus_sip_watchdog(void *data) {
 				}
 				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					JANUS_LOG(LOG_VERB, "Freeing old SIP session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;

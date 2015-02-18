@@ -33,8 +33,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			7
-#define JANUS_VERSION_STRING	"0.0.7"
+#define JANUS_VERSION			8
+#define JANUS_VERSION_STRING	"0.0.8"
 
 #ifdef __MACH__
 #define SHLIB_EXT "0.dylib"
@@ -4219,7 +4219,7 @@ gint main(int argc, char *argv[])
 				JANUS_LOG(LOG_ERR, "\tCouldn't use function 'create'...\n");
 				continue;
 			}
-			/* Are all methods and callbacks implemented? */
+			/* Are all the mandatory methods and callbacks implemented? */
 			if(!janus_plugin->init || !janus_plugin->destroy ||
 					!janus_plugin->get_api_compatibility ||
 					!janus_plugin->get_version ||
@@ -4227,16 +4227,18 @@ gint main(int argc, char *argv[])
 					!janus_plugin->get_description ||
 					!janus_plugin->get_package ||
 					!janus_plugin->get_name ||
-					!janus_plugin->get_name ||
 					!janus_plugin->create_session ||
 					!janus_plugin->query_session ||
 					!janus_plugin->destroy_session ||
 					!janus_plugin->handle_message ||
 					!janus_plugin->setup_media ||
-					!janus_plugin->incoming_rtp ||	/* FIXME Does this have to be mandatory? (e.g., sendonly plugins) */
-					!janus_plugin->incoming_rtcp ||
 					!janus_plugin->hangup_media) {
-				JANUS_LOG(LOG_ERR, "\tMissing some methods/callbacks, skipping this plugin...\n");
+				JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this plugin...\n");
+				continue;
+			}
+			if(janus_plugin->get_api_compatibility() < JANUS_PLUGIN_API_VERSION) {
+				JANUS_LOG(LOG_ERR, "The '%s' plugin was compiled against an older version of the API (%d < %d), skipping it: update it to enable it again\n",
+					janus_plugin->get_package(), janus_plugin->get_api_compatibility(), JANUS_PLUGIN_API_VERSION);
 				continue;
 			}
 			janus_plugin->init(&janus_handler_plugin, configs_folder);
@@ -4244,9 +4246,13 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_plugin->get_package(), janus_plugin->get_name());
 			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_plugin->get_description());
 			JANUS_LOG(LOG_VERB, "\t   Plugin API version: %d\n", janus_plugin->get_api_compatibility());
-			if(janus_plugin->get_api_compatibility() < JANUS_PLUGIN_API_VERSION) {
-				JANUS_LOG(LOG_WARN, "The '%s' plugin was compiled against an older version of the API (%d < %d), expect problems...\n",
-					janus_plugin->get_package(), janus_plugin->get_api_compatibility(), JANUS_PLUGIN_API_VERSION);
+			if(!janus_plugin->incoming_rtp && !janus_plugin->incoming_rtcp && !janus_plugin->incoming_data) {
+				JANUS_LOG(LOG_WARN, "The '%s' plugin doesn't implement any callback for RTP/RTCP/data... is this on purpose?\n",
+					janus_plugin->get_package());
+			}
+			if(!janus_plugin->incoming_rtp && !janus_plugin->incoming_rtcp && janus_plugin->incoming_data) {
+				JANUS_LOG(LOG_WARN, "The '%s' plugin will only handle data channels (no RTP/RTCP)... is this on purpose?\n",
+					janus_plugin->get_package());
 			}
 			if(plugins == NULL)
 				plugins = g_hash_table_new(g_str_hash, g_str_equal);

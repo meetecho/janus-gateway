@@ -229,8 +229,8 @@
 
 
 /* Plugin information */
-#define JANUS_VIDEOCALL_VERSION			4
-#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.4"
+#define JANUS_VIDEOCALL_VERSION			5
+#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.5"
 #define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
@@ -259,7 +259,7 @@ char *janus_videocall_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_videocall_plugin =
-	{
+	JANUS_PLUGIN_INIT (
 		.init = janus_videocall_init,
 		.destroy = janus_videocall_destroy,
 
@@ -280,7 +280,7 @@ static janus_plugin janus_videocall_plugin =
 		.hangup_media = janus_videocall_hangup_media,
 		.destroy_session = janus_videocall_destroy_session,
 		.query_session = janus_videocall_query_session,
-	}; 
+	);
 
 /* Plugin creator */
 janus_plugin *create(void) {
@@ -366,7 +366,7 @@ void *janus_videocall_watchdog(void *data) {
 		now = janus_get_monotonic_time();
 		if(old_sessions != NULL) {
 			GList *sl = old_sessions;
-			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			JANUS_LOG(LOG_HUGE, "Checking %d old VideoCall sessions...\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_videocall_session *session = (janus_videocall_session *)sl->data;
 				if(!session) {
@@ -375,6 +375,7 @@ void *janus_videocall_watchdog(void *data) {
 				}
 				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					JANUS_LOG(LOG_VERB, "Freeing old VideoCall session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
@@ -983,6 +984,14 @@ static void *janus_videocall_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
 			}
 			if(video) {
+				if(!session->video_active && json_is_true(video)) {
+					/* Send a PLI */
+					JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
+					char buf[12];
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					gateway->relay_rtcp(session->handle, 1, buf, 12);
+				}
 				session->video_active = json_is_true(video);
 				JANUS_LOG(LOG_VERB, "Setting video property: %s\n", session->video_active ? "true" : "false");
 			}

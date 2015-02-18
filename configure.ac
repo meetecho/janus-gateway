@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.0.7],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.0.8],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_MACRO_DIR([m4])
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -267,6 +267,8 @@ AC_CONFIG_FILES([
   html/Makefile
   docs/Makefile
 ])
+
+JANUS_MANUAL_LIBS+=" -pthread"
 
 AC_OUTPUT
 
