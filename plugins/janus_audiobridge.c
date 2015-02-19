@@ -1199,6 +1199,20 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				p->room = NULL;
 				int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, response_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+				/* Get rid of queued packets */
+				janus_mutex_lock(&p->qmutex);
+				p->active = FALSE;
+				while(!g_queue_is_empty(p->inbuf)) {
+					janus_audiobridge_rtp_relay_packet *pkt = g_queue_pop_head(p->inbuf);
+					if(pkt == NULL)
+						continue;
+					if(pkt->data)
+						g_free(pkt->data);
+					pkt->data = NULL;
+					g_free(pkt);
+					pkt = NULL;
+				}
+				janus_mutex_unlock(&p->qmutex);
 			}
 		}
 		janus_mutex_unlock(&rooms_mutex);
@@ -2152,8 +2166,21 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Actually leave the room... */
 			g_hash_table_remove(audiobridge->participants, GUINT_TO_POINTER(participant->user_id));
 			participant->room = NULL;
-			/* Done */
+			/* Get rid of queued packets */
+			janus_mutex_lock(&participant->qmutex);
 			participant->active = FALSE;
+			while(!g_queue_is_empty(participant->inbuf)) {
+				janus_audiobridge_rtp_relay_packet *pkt = g_queue_pop_head(participant->inbuf);
+				if(pkt == NULL)
+					continue;
+				if(pkt->data)
+					g_free(pkt->data);
+				pkt->data = NULL;
+				g_free(pkt);
+				pkt = NULL;
+			}
+			janus_mutex_unlock(&participant->qmutex);
+			/* Done */
 			janus_mutex_unlock(&audiobridge->mutex);
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
