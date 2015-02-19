@@ -318,7 +318,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				g_async_queue_push(session->messages, notification);
 				session->timeout = 1;
 
-				g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
+				g_hash_table_iter_remove(&iter);
 				g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
 
 				/* Schedule the session for deletion */
