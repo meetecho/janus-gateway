@@ -1026,7 +1026,7 @@ static void *janus_recordplay_handler(void *data) {
 			if(strstr(msg->sdp, "m=audio")) {
 				char filename[256];
 				if (filename_text != NULL) {
-					g_stpcpy(g_stpcpy(filename, filename_text), "-audio");
+					g_snprintf(filename, 256, "%s-audio", filename_text);
 				} else {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
 				}
@@ -1036,7 +1036,7 @@ static void *janus_recordplay_handler(void *data) {
 			if(strstr(msg->sdp, "m=video")) {
 				char filename[256];
 				if (filename_text != NULL) {
-					g_stpcpy(g_stpcpy(filename, filename_text), "-video");
+					g_snprintf(filename, 256, "%s-video", filename_text);
 				} else {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
 				}
