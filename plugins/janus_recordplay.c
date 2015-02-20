@@ -973,6 +973,7 @@ static void *janus_recordplay_handler(void *data) {
 		json_t *event = NULL;
 		json_t *result = NULL;
 		char *sdp = NULL;
+		const char *filename_text = NULL;
 		if(!strcasecmp(request_text, "record")) {
 			if(!msg->sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP offer\n");
@@ -988,10 +989,20 @@ static void *janus_recordplay_handler(void *data) {
 				goto error;
 			}
 			if(!json_is_string(name)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name should be an integer)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
 				goto error;
+			}
+			json_t *filename = json_object_get(root, "filename");
+			if (filename) {
+				if(!json_is_string(name)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
+					error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (filename should be a string)");
+					goto error;
+				}
+				filename_text = json_string_value(filename);
 			}
 			const char *name_text = json_string_value(name);
 			guint64 id = 0;
@@ -1014,13 +1025,21 @@ static void *janus_recordplay_handler(void *data) {
 			rec->date = g_strdup(outstr);
 			if(strstr(msg->sdp, "m=audio")) {
 				char filename[256];
-				g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
+				if (filename_text != NULL) {
+					g_snprintf(filename, 256, "%s-audio", filename_text);
+				} else {
+					g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
+				}
 				rec->arc_file = g_strdup(filename);
 				session->arc = janus_recorder_create(recordings_path, 0, rec->arc_file);
 			}
 			if(strstr(msg->sdp, "m=video")) {
 				char filename[256];
-				g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
+				if (filename_text != NULL) {
+					g_snprintf(filename, 256, "%s-video", filename_text);
+				} else {
+					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
+				}
 				rec->vrc_file = g_strdup(filename);
 				session->vrc = janus_recorder_create(recordings_path, 1, rec->vrc_file);
 			}
