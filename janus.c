@@ -3227,8 +3227,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
 		json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
 		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data_bytes));
-		json_object_set_new(out_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
-		json_object_set_new(out_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
+		json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio_nacks));
+		json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video_nacks));
 		/* Compute the last second stuff too */
 		gint64 now = janus_get_monotonic_time();
 		guint64 bytes = 0;
