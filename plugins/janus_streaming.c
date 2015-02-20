@@ -103,6 +103,8 @@ videofmtp = Codec specific parameters, if any
 #include "plugin.h"
 
 #include <jansson.h>
+#include <errno.h>
+#include <sys/poll.h>
 #include <sys/time.h>
 
 #include "../debug.h"
@@ -1893,6 +1895,10 @@ static void *janus_streaming_handler(void *data) {
 					g_strlcat(sdptemp, buffer, 2048);
 				}
 				g_snprintf(buffer, 512,
+					"a=rtcp-fb:%d nack\r\n",
+					mp->codecs.video_pt);
+				g_strlcat(sdptemp, buffer, 2048);
+				g_snprintf(buffer, 512,
 					"a=rtcp-fb:%d goog-remb\r\n",
 					mp->codecs.video_pt);
 				g_strlcat(sdptemp, buffer, 2048);
@@ -2595,7 +2601,6 @@ static void *janus_streaming_relay_thread(void *data) {
 		JANUS_LOG(LOG_VERB, "[%s] Video listener bound to port %d\n", mountpoint->name, video_port);
 	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
-	int maxfd = (audio_fd > video_fd) ? audio_fd : video_fd;
 	/* Needed to fix seq and ts */
 	uint32_t a_last_ssrc = 0, a_last_ts = 0, a_base_ts = 0, a_base_ts_prev = 0,
 			v_last_ssrc = 0, v_last_ts = 0, v_base_ts = 0, v_base_ts_prev = 0;
@@ -2605,27 +2610,39 @@ static void *janus_streaming_relay_thread(void *data) {
 	socklen_t addrlen;
 	struct sockaddr_in remote;
 	int resfd = 0, bytes = 0;
-	struct timeval timeout;
-	fd_set readfds;
-	FD_ZERO(&readfds);
+	struct pollfd fds[2];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
 	janus_streaming_rtp_relay_packet packet;
 	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
 		/* Wait for some data */
-		if(audio_fd > 0)
-			FD_SET(audio_fd, &readfds);
-		if(video_fd > 0)
-			FD_SET(video_fd, &readfds);
-		timeout.tv_sec = 1;
-		timeout.tv_usec = 0;
-		resfd = select(maxfd+1, &readfds, NULL, NULL, &timeout);
-		if(resfd < 0)
+		fds[0].fd = 0;
+		fds[0].events = 0;
+		fds[0].revents = 0;
+		if(audio_fd > 0) {
+			fds[0].fd = audio_fd;
+			fds[0].events = POLLIN;
+		}
+		fds[1].fd = 0;
+		fds[1].events = 0;
+		fds[1].revents = 0;
+		if(video_fd > 0) {
+			fds[1].fd = video_fd;
+			fds[1].events = POLLIN;
+		}
+		resfd = poll(fds, 2, 1000);
+		if(resfd < 0) {
+			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", mountpoint->name, errno, strerror(errno));
 			break;
-		if(audio_fd > 0 && FD_ISSET(audio_fd, &readfds)) {
+		} else if(resfd == 0) {
+			/* No data, keep going */
+			continue;
+		}
+		if(audio_fd && (fds[0].revents & POLLIN)) {
+			/* Got something audio (RTP) */
+			fds[0].revents = 0;
 			if(mountpoint->active == FALSE)
 				mountpoint->active = TRUE;
-			/* Got something audio */
 			addrlen = sizeof(remote);
 			bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			// JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
@@ -2669,10 +2686,11 @@ static void *janus_streaming_relay_thread(void *data) {
 			janus_mutex_unlock(&mountpoint->mutex);
 			continue;
 		}
-		if(video_fd > 0 && FD_ISSET(video_fd, &readfds)) {
+		if(video_fd && (fds[1].revents & POLLIN)) {
+			/* Got something video (RTP) */
+			fds[1].revents = 0;
 			if(mountpoint->active == FALSE)
 				mountpoint->active = TRUE;
-			/* Got something video */
 			addrlen = sizeof(remote);
 			bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
