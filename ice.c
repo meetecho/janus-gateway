@@ -1015,8 +1015,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			int buflen = len;
 			err_status_t res = srtp_unprotect(component->dtls->srtp_in, buf, &buflen);
 			if(res != err_status_ok) {
-				if(res != err_status_replay_fail) {
-					/* Only print the error if it's not a 'replay fail' (which is probably just the result of us NACKing a packet) */
+				if(res != err_status_replay_fail && res != err_status_replay_old) {
+					/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
 					rtp_header *header = (rtp_header *)buf;
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);

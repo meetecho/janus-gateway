@@ -1436,6 +1436,18 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		/* Enqueue the decoded frame */
 		janus_mutex_lock(&participant->qmutex);
 		g_queue_push_tail(participant->inbuf, pkt);
+		/* Keep the queue at max of 150 packets, though */
+		if(g_queue_get_length(participant->inbuf) > 150) {
+			/* Remove the oldest packet */
+			janus_audiobridge_rtp_relay_packet *pkt = g_queue_pop_head(participant->inbuf);
+			if(pkt != NULL) {
+				if(pkt->data)
+					g_free(pkt->data);
+				pkt->data = NULL;
+				g_free(pkt);
+				pkt = NULL;
+			}
+		}
 		janus_mutex_unlock(&participant->qmutex);
 	}
 }
@@ -2189,7 +2201,6 @@ static void *janus_audiobridge_handler(void *data) {
 			goto error;
 		}
 
-		json_decref(root);
 		/* Prepare JSON event */
 		JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
 		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -2282,8 +2293,6 @@ static void *janus_audiobridge_handler(void *data) {
 		
 error:
 		{
-			if(root != NULL)
-				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "audiobridge", json_string("event"));
