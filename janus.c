@@ -4200,6 +4200,12 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access plugins folder...\n");
 		exit(1);
 	}
+	/* Any plugin to ignore? */
+	gchar **disabled_plugins = NULL;
+	item = janus_config_get_item_drilldown(config, "plugins", "disable");
+	if(item && item->value)
+		disabled_plugins = g_strsplit(item->value, ",", -1);
+	/* Open the shared objects */
 	struct dirent *pluginent = NULL;
 	char pluginpath[1024];
 	while((pluginent = readdir(dir))) {
@@ -4209,6 +4215,27 @@ gint main(int argc, char *argv[])
 		}
 		if (strcasecmp(pluginent->d_name+len-strlen(SHLIB_EXT), SHLIB_EXT)) {
 			continue;
+		}
+		/* Check if this plugins has been disabled in the configuration file */
+		if(disabled_plugins != NULL) {
+			gchar *index = disabled_plugins[0];
+			if(index != NULL) {
+				int i=0;
+				gboolean skip = FALSE;
+				while(index != NULL) {
+					while(isspace(*index))
+						index++;
+					if(strlen(index) && !strcmp(index, pluginent->d_name)) {
+						JANUS_LOG(LOG_WARN, "Plugin '%s' has been disabled, skipping...\n", pluginent->d_name);
+						skip = TRUE;
+						break;
+					}
+					i++;
+					index = disabled_plugins[i];
+				}
+				if(skip)
+					continue;
+			}
 		}
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 1024);
@@ -4272,6 +4299,9 @@ gint main(int argc, char *argv[])
 		}
 	}
 	closedir(dir);
+	if(disabled_plugins != NULL)
+		g_strfreev(disabled_plugins);
+	disabled_plugins = NULL;
 
 	/* Start web server, if enabled */
 	sessions = g_hash_table_new(NULL, NULL);
