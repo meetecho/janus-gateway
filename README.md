@@ -241,8 +241,8 @@ or on the command line:
                                   (default=off)
 	-I, --ice-lite                Whether to enable the ICE Lite mode or not  
                                   (default=off)
-	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: 
-                                  currently broken, for debugging only)  
+	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
+                                  works with ICE Lite)
                                   (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for 
                                   retransmissions
