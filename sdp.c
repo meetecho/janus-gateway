@@ -734,6 +734,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	g_snprintf(buffer, 512,
 		"t=%lu %lu\r\n", anon->sdp_time ? anon->sdp_time->t_start : 0, anon->sdp_time ? anon->sdp_time->t_stop : 0);
 	g_strlcat(sdp, buffer, BUFSIZE);
+	/* ICE Full or Lite? */
+	if(janus_ice_is_ice_lite_enabled()) {
+		/* Janus is acting in ICE Lite mode, advertize this */
+		g_strlcat(sdp, "a=ice-lite\r\n", BUFSIZE);
+	}
 	/* bundle: add new global attribute */
 	int audio = (strstr(origsdp, "m=audio") != NULL);
 	int video = (strstr(origsdp, "m=video") != NULL);

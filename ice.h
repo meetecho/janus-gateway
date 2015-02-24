@@ -27,11 +27,12 @@
 
 
 /*! \brief ICE stuff initialization
- * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
- * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used
+ * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
  * @param[in] ice_tcp Whether ICE-TCP support should be enabled or not (only libnice >= 0.1.8, currently broken)
- * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not */
-void janus_ice_init(uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ice_tcp, gboolean ipv6);
+ * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
+ * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
+ * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief Method to force Janus to use a STUN server when gathering candidates
  * @param[in] stun_server STUN server address to use
  * @param[in] stun_port STUN port to use
@@ -67,6 +68,9 @@ void janus_ice_ignore_interface(const char *ip);
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the ignore list, false otherwise */
 gboolean janus_ice_is_ignored(const char *ip);
+/*! \brief Method to check whether ICE Lite mode is enabled or not (still WIP)
+ * @returns true if ICE-TCP support is enabled/supported, false otherwise */
+gboolean janus_ice_is_ice_lite_enabled(void);
 /*! \brief Method to check whether ICE-TCP support is enabled/supported or not (still WIP)
  * @returns true if ICE-TCP support is enabled/supported, false otherwise */
 gboolean janus_ice_is_ice_tcp_enabled(void);

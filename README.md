@@ -239,6 +239,11 @@ or on the command line:
                                   (experimental)  (default=off)
 	-l, --libnice-debug           Whether to enable libnice debugging or not  
                                   (default=off)
+	-I, --ice-lite                Whether to enable the ICE Lite mode or not  
+                                  (default=off)
+	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: 
+                                  currently broken, for debugging only)  
+                                  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for 
                                   retransmissions
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available

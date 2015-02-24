@@ -55,6 +55,12 @@ uint16_t janus_ice_get_turn_port(void) {
 }
 
 
+/* ICE-Lite status */
+static gboolean janus_ice_lite_enabled;
+gboolean janus_ice_is_ice_lite_enabled(void) {
+	return janus_ice_lite_enabled;
+}
+
 /* ICE-TCP support (only libnice >= 0.1.8, currently broken) */
 static gboolean janus_ice_tcp_enabled;
 gboolean janus_ice_is_ice_tcp_enabled(void) {
@@ -237,17 +243,23 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 }
 
 /* libnice initialization */
-void janus_ice_init(uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ice_tcp, gboolean ipv6) {
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port) {
+	janus_ice_lite_enabled = ice_lite;
 	janus_ice_tcp_enabled = ice_tcp;
 	janus_ipv6_enabled = ipv6;
-	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (ICE-TCP candidates %s, IPv6 support %s)\n",
-		janus_ice_tcp_enabled ? "enabled" : "disabled", janus_ipv6_enabled ? "enabled" : "disabled");
+	JANUS_LOG(LOG_INFO, "Initializing ICE stuff (%s mode, ICE-TCP candidates %s, IPv6 support %s)\n",
+		janus_ice_lite_enabled ? "Lite" : "Full",
+		janus_ice_tcp_enabled ? "enabled" : "disabled",
+		janus_ipv6_enabled ? "enabled" : "disabled");
 	if(janus_ice_tcp_enabled) {
 #ifndef HAVE_LIBNICE_TCP
 		JANUS_LOG(LOG_WARN, "libnice version < 0.1.8, disabling ICE-TCP support\n");
 		janus_ice_tcp_enabled = FALSE;
 #else
-		JANUS_LOG(LOG_WARN, "ICE-TCP support is currently broken and will probably not work as expected\n");
+		if(!janus_ice_lite_enabled) {
+			JANUS_LOG(LOG_WARN, "ICE-TCP only works in libnice if you enable ICE Lite too: disabling ICE-TCP support\n");
+			janus_ice_tcp_enabled = FALSE;
+		}
 #endif
 	}
 	/* Automatically enable libnice debugging based on debug_level */
@@ -1682,7 +1694,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		return -1;
  	}
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
+	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
+		janus_ice_lite_enabled ? "Lite" : "Full", offer ? "controlled" : "controlling");
 	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_DRAFT19);
+	if(janus_ice_lite_enabled) {
+		g_object_set(G_OBJECT(handle->agent), "full-mode", FALSE, NULL);
+	}
 	/* Any STUN server to use? */
 	if(janus_stun_server != NULL && janus_stun_port > 0) {
 		g_object_set(G_OBJECT(handle->agent),
@@ -1692,7 +1709,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 	g_object_set(G_OBJECT(handle->agent), "upnp", FALSE, NULL);
 	g_object_set(G_OBJECT(handle->agent), "controlling-mode", !offer, NULL);
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (%s mode)\n", handle->handle_id, offer ? "controlled" : "controlling");
 	g_signal_connect (G_OBJECT (handle->agent), "candidate-gathering-done",
 		G_CALLBACK (janus_ice_cb_candidate_gathering_done), handle);
 	g_signal_connect (G_OBJECT (handle->agent), "component-state-changed",
@@ -2237,7 +2253,7 @@ void *janus_ice_send_thread(void *data) {
 						if(sent < protected) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
 						}
-						/* Update stats (TODO Do the same for the last second window as well) */
+						/* Update stats */
 						if(sent > 0) {
 							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
 								component->out_stats.audio_bytes += sent;

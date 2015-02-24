@@ -107,8 +107,8 @@ cert_key = @certdir@/mycert.key
 
 ; NAT-related stuff: specifically, you can either manually specify the 
 ; public IP of the machine (i.e., what would be used in SDP) or
-; configure the STUN server to use to gather candidates if the gateway
-; is behind a NAT, and srflx candidates are needed. Please beware that
+; configure the STUN/TURN servers to use to gather candidates if the gateway
+; is behind a NAT, and srflx/relay candidates are needed. Please beware that
 ; just blindly setting the public IP may break connectivity, especially
 ; if Janus is installed behind a NAT: when unsure, just enable a STUN
 ; server instead, which will take care of this automatically. In case
@@ -116,18 +116,17 @@ cert_key = @certdir@/mycert.key
 ; TURN server; please notice that this does NOT refer to TURN usage in
 ; browsers, but in the gathering of relay candidates by Janus itself,
 ; e.g., if you want to limit the ports used by a Janus instance on a
-; private machine. You can also enable ICE-TCP support (currently
-; broken and for testing purposes only, so keep it off for now!) and
-; enable or disable the internal libnice debugging, if needed. By
-; default, this section is commented as the gateway is assumed to be
-; deployed on a public network. When configuring the public IP or the
-; STUN/TURN configuration, remember to uncomment the [nat] categoty line
-; as well!
+; private machine. Furthermore, you can choose whether Janus should be
+; configured to work in ICE-Lite mode (by default it doesn't). Finally,
+; you can also enable ICE-TCP support (beware that it currently *only*
+; works if you enable ICE Lite as well) and enable or disable the
+; internal libnice debugging, if needed. 
 [nat]
 ;public_ip = 1.2.3.4
 ;stun_server = stun.voip.eutelia.it
 ;stun_port = 3478
 nice_debug = false
+;ice_lite = true
 ;ice_tcp = true
 ;turn_server = myturnserver.com
 ;turn_port = 3478

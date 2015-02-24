@@ -3899,6 +3899,12 @@ gint main(int argc, char *argv[])
 	if(args_info.libnice_debug_given) {
 		janus_config_add_item(config, "nat", "nice_debug", "true");
 	}
+	if(args_info.ice_lite_given) {
+		janus_config_add_item(config, "nat", "ice_lite", "true");
+	}
+	if(args_info.ice_tcp_given) {
+		janus_config_add_item(config, "nat", "ice_tcp", "true");
+	}
 	if(args_info.ipv6_candidates_given) {
 		janus_config_add_item(config, "media", "ipv6", "true");
 	}
@@ -4058,7 +4064,7 @@ gint main(int argc, char *argv[])
 	uint16_t stun_port = 0, turn_port = 0;
 	char *turn_type = NULL, *turn_user = NULL, *turn_pwd = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ice_tcp = FALSE, ipv6 = FALSE;
+	gboolean ice_lite = FALSE, ice_tcp = FALSE, ipv6 = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
@@ -4082,7 +4088,10 @@ gint main(int argc, char *argv[])
 			rtp_max_port = 65535;
 		JANUS_LOG(LOG_INFO, "RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
 	}
-	/* Check if we need to enable ICE-TCP support (still broken) */
+	/* Check if we need to enable the ICE Lite mode */
+	item = janus_config_get_item_drilldown(config, "nat", "ice_lite");
+	ice_lite = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	/* Check if we need to enable ICE-TCP support (warning: still broken, for debugging only) */
 	item = janus_config_get_item_drilldown(config, "nat", "ice_tcp");
 	ice_tcp = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Any STUN server to use in Janus? */
@@ -4109,7 +4118,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		turn_pwd = (char *)item->value;
 	/* Initialize the ICE stack now */
-	janus_ice_init(rtp_min_port, rtp_max_port, ice_tcp, ipv6);
+	janus_ice_init(ice_lite, ice_tcp, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
