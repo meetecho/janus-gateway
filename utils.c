@@ -36,9 +36,15 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2, const size_
 		return FALSE;
 	const unsigned char *string1 = (const unsigned char *)str1;
 	const unsigned char *string2 = (const unsigned char *)str2;
+	size_t checklen = size;
+	size_t minlen = strlen((char *)string1);
+	if(strlen((char *)string2) < minlen)
+		minlen = strlen((char *)string2);
+	if(checklen > minlen)
+		checklen = minlen;
 	unsigned char result = 0;
 	size_t i = 0;
-	for (i = 0; i < size; i++) {
+	for (i = 0; i < checklen; i++) {
 		result |= string1[i] ^ string2[i];
 	}
 	return result == 0;
