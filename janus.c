@@ -692,7 +692,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		if(ws_api_secret != NULL) {
 			/* There's an API secret, check that the client provided it */
 			const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
-			if(!secret || strcmp(secret, ws_api_secret)) {
+			if(!secret || janus_strcmp_const_time(secret, ws_api_secret, strlen(ws_api_secret))) {
 				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 				if(msg->acrm)
@@ -869,7 +869,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if(ws_api_secret != NULL) {
 			/* There's an API secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "apisecret");
-			if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), ws_api_secret)) {
+			if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), ws_api_secret, strlen(ws_api_secret))) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -957,7 +957,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	if(ws_api_secret != NULL) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "apisecret");
-		if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), ws_api_secret)) {
+		if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), ws_api_secret, strlen(ws_api_secret))) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -2043,7 +2043,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		if(admin_ws_api_secret != NULL) {
 			/* There's an admin/monitor secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "admin_secret");
-			if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), admin_ws_api_secret)) {
+			if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret, strlen(admin_ws_api_secret))) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -2234,7 +2234,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 	if(admin_ws_api_secret != NULL) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "admin_secret");
-		if(!secret || !json_is_string(secret) || strcmp(json_string_value(secret), admin_ws_api_secret)) {
+		if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret, strlen(admin_ws_api_secret))) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -3227,8 +3227,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
 		json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
 		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data_bytes));
-		json_object_set_new(out_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
-		json_object_set_new(out_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
+		json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio_nacks));
+		json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video_nacks));
 		/* Compute the last second stuff too */
 		gint64 now = janus_get_monotonic_time();
 		guint64 bytes = 0;
@@ -3899,6 +3899,12 @@ gint main(int argc, char *argv[])
 	if(args_info.libnice_debug_given) {
 		janus_config_add_item(config, "nat", "nice_debug", "true");
 	}
+	if(args_info.ice_lite_given) {
+		janus_config_add_item(config, "nat", "ice_lite", "true");
+	}
+	if(args_info.ice_tcp_given) {
+		janus_config_add_item(config, "nat", "ice_tcp", "true");
+	}
 	if(args_info.ipv6_candidates_given) {
 		janus_config_add_item(config, "media", "ipv6", "true");
 	}
@@ -4058,7 +4064,7 @@ gint main(int argc, char *argv[])
 	uint16_t stun_port = 0, turn_port = 0;
 	char *turn_type = NULL, *turn_user = NULL, *turn_pwd = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
-	gboolean ice_tcp = FALSE, ipv6 = FALSE;
+	gboolean ice_lite = FALSE, ice_tcp = FALSE, ipv6 = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "ipv6");
 	ipv6 = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "rtp_port_range");
@@ -4082,7 +4088,10 @@ gint main(int argc, char *argv[])
 			rtp_max_port = 65535;
 		JANUS_LOG(LOG_INFO, "RTP port range: %u -- %u\n", rtp_min_port, rtp_max_port);
 	}
-	/* Check if we need to enable ICE-TCP support (still broken) */
+	/* Check if we need to enable the ICE Lite mode */
+	item = janus_config_get_item_drilldown(config, "nat", "ice_lite");
+	ice_lite = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	/* Check if we need to enable ICE-TCP support (warning: still broken, for debugging only) */
 	item = janus_config_get_item_drilldown(config, "nat", "ice_tcp");
 	ice_tcp = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	/* Any STUN server to use in Janus? */
@@ -4109,7 +4118,7 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		turn_pwd = (char *)item->value;
 	/* Initialize the ICE stack now */
-	janus_ice_init(rtp_min_port, rtp_max_port, ice_tcp, ipv6);
+	janus_ice_init(ice_lite, ice_tcp, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
 		exit(1);
@@ -4191,6 +4200,12 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access plugins folder...\n");
 		exit(1);
 	}
+	/* Any plugin to ignore? */
+	gchar **disabled_plugins = NULL;
+	item = janus_config_get_item_drilldown(config, "plugins", "disable");
+	if(item && item->value)
+		disabled_plugins = g_strsplit(item->value, ",", -1);
+	/* Open the shared objects */
 	struct dirent *pluginent = NULL;
 	char pluginpath[1024];
 	while((pluginent = readdir(dir))) {
@@ -4200,6 +4215,27 @@ gint main(int argc, char *argv[])
 		}
 		if (strcasecmp(pluginent->d_name+len-strlen(SHLIB_EXT), SHLIB_EXT)) {
 			continue;
+		}
+		/* Check if this plugins has been disabled in the configuration file */
+		if(disabled_plugins != NULL) {
+			gchar *index = disabled_plugins[0];
+			if(index != NULL) {
+				int i=0;
+				gboolean skip = FALSE;
+				while(index != NULL) {
+					while(isspace(*index))
+						index++;
+					if(strlen(index) && !strcmp(index, pluginent->d_name)) {
+						JANUS_LOG(LOG_WARN, "Plugin '%s' has been disabled, skipping...\n", pluginent->d_name);
+						skip = TRUE;
+						break;
+					}
+					i++;
+					index = disabled_plugins[i];
+				}
+				if(skip)
+					continue;
+			}
 		}
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 1024);
@@ -4263,6 +4299,9 @@ gint main(int argc, char *argv[])
 		}
 	}
 	closedir(dir);
+	if(disabled_plugins != NULL)
+		g_strfreev(disabled_plugins);
+	disabled_plugins = NULL;
 
 	/* Start web server, if enabled */
 	sessions = g_hash_table_new(NULL, NULL);

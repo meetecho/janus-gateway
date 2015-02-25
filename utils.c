@@ -31,6 +31,25 @@ gboolean janus_is_true(const char *value) {
 	return value && (!strcasecmp(value, "yes") || !strcasecmp(value, "true") || !strcasecmp(value, "1"));
 }
 
+gboolean janus_strcmp_const_time(const void *str1, const void *str2, const size_t size) {
+	if(size == 0)
+		return FALSE;
+	const unsigned char *string1 = (const unsigned char *)str1;
+	const unsigned char *string2 = (const unsigned char *)str2;
+	size_t checklen = size;
+	size_t minlen = strlen((char *)string1);
+	if(strlen((char *)string2) < minlen)
+		minlen = strlen((char *)string2);
+	if(checklen > minlen)
+		checklen = minlen;
+	unsigned char result = 0;
+	size_t i = 0;
+	for (i = 0; i < checklen; i++) {
+		result |= string1[i] ^ string2[i];
+	}
+	return result == 0;
+}
+
 void janus_flags_reset(janus_flags *flags) {
 	if(flags != NULL)
 		*flags = 0;
