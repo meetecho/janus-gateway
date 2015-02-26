@@ -31,22 +31,29 @@ gboolean janus_is_true(const char *value) {
 	return value && (!strcasecmp(value, "yes") || !strcasecmp(value, "true") || !strcasecmp(value, "1"));
 }
 
-gboolean janus_strcmp_const_time(const void *str1, const void *str2, const size_t size) {
-	if(size == 0)
+gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
+	if(str1 == NULL || str2 == NULL)
 		return FALSE;
 	const unsigned char *string1 = (const unsigned char *)str1;
 	const unsigned char *string2 = (const unsigned char *)str2;
-	size_t checklen = size;
-	size_t minlen = strlen((char *)string1);
-	if(strlen((char *)string2) < minlen)
-		minlen = strlen((char *)string2);
-	if(checklen > minlen)
-		checklen = minlen;
+	size_t maxlen = strlen((char *)string1);
+	if(strlen((char *)string2) > maxlen)
+		maxlen = strlen((char *)string2);
+	unsigned char *buf1 = calloc(maxlen+1, sizeof(unsigned char));
+	memset(buf1, 0, maxlen);
+	memcpy(buf1, string1, strlen(str1));
+	unsigned char *buf2 = calloc(maxlen+1, sizeof(unsigned char));
+	memset(buf2, 0, maxlen);
+	memcpy(buf2, string2, strlen(str2));
 	unsigned char result = 0;
 	size_t i = 0;
-	for (i = 0; i < checklen; i++) {
-		result |= string1[i] ^ string2[i];
+	for (i = 0; i < maxlen; i++) {
+		result |= buf1[i] ^ buf2[i];
 	}
+	g_free(buf1);
+	buf1 = NULL;
+	g_free(buf2);
+	buf2 = NULL;
 	return result == 0;
 }
 

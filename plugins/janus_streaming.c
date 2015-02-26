@@ -1320,7 +1320,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
-			if(janus_strcmp_const_time(mp->secret, json_string_value(secret), strlen(json_string_value(secret)))) {
+			if(janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
@@ -1407,7 +1407,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
-			if(janus_strcmp_const_time(mp->secret, json_string_value(secret), strlen(json_string_value(secret)))) {
+			if(janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
@@ -1567,7 +1567,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
-			if(janus_strcmp_const_time(mp->secret, json_string_value(secret), strlen(json_string_value(secret)))) {
+			if(janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
