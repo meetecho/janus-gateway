@@ -1244,6 +1244,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			session->status = janus_sip_status_inviting;
 			nua_invite(session->stack->s_nh_i,
+				SIPTAG_FROM_STR(g_strdup(session->account.identity)),
 				SIPTAG_TO_STR(g_strdup(uri_text)),
 				SOATAG_USER_SDP_STR(g_strdup(sdp)),
 				NUTAG_PROXY(g_strdup(session->account.proxy)),
