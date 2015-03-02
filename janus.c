@@ -692,7 +692,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		if(ws_api_secret != NULL) {
 			/* There's an API secret, check that the client provided it */
 			const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
-			if(!secret || janus_strcmp_const_time(secret, ws_api_secret)) {
+			if(!secret || !janus_strcmp_const_time(secret, ws_api_secret)) {
 				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 				if(msg->acrm)
@@ -869,7 +869,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if(ws_api_secret != NULL) {
 			/* There's an API secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "apisecret");
-			if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
+			if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -957,7 +957,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	if(ws_api_secret != NULL) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "apisecret");
-		if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
+		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -2043,7 +2043,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		if(admin_ws_api_secret != NULL) {
 			/* There's an admin/monitor secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "admin_secret");
-			if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret)) {
+			if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret)) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -2234,7 +2234,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 	if(admin_ws_api_secret != NULL) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "admin_secret");
-		if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret)) {
+		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret)) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
