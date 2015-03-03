@@ -2306,7 +2306,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
 				SIPTAG_SUPPORTED_STR("timer"),
 				TAG_NULL());
-	nua_set_params(session->stack->s_nua, TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
 	nua_destroy(session->stack->s_nua);
