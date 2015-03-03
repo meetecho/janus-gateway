@@ -895,7 +895,12 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			const char *proxy_text = json_string_value(proxy);
-			if(strstr(proxy_text, "sip:") != proxy_text) {
+			const char *domain_part;
+			if (strstr(proxy_text, "sip:") == proxy_text) {
+			        domain_part = proxy_text + 4;   /* Skip 'sip:' */
+                        } else if (strstr(proxy_text, "sips:") == proxy_text) {
+			        domain_part = proxy_text + 5;   /* Skip 'sips:' */
+			} else {
 				JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
 				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 				g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
@@ -2297,7 +2302,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				janus_sip_sofia_callback,
 				session,
 				SIPTAG_FROM_STR(tag_url),
-				NUTAG_URL("sip:0.0.0.0:*;transport=udp"),
+				NUTAG_URL("sip:*:*"),
+				NUTAG_SIPS_URL("sips:*:*"),
 				//~ NUTAG_OUTBOUND("outbound natify use-rport"),	/* To use the same port used in Contact */
 				// sofia-sip default supported: timer and 100rel
 				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
