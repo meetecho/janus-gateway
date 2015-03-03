@@ -1322,7 +1322,6 @@ static void *janus_sip_handler(void *data) {
 			}
 			nua_respond(session->stack->s_nh_i,
 				200, sip_status_phrase(200),
-				SIPTAG_TO_STR(session->callee),
 				SOATAG_USER_SDP_STR(sdp),
 				TAG_END());
 			g_free(sdp);
@@ -1379,9 +1378,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			session->status = janus_sip_status_closing;
-			nua_bye(session->stack->s_nh_i,
-				SIPTAG_TO_STR(session->callee),
-				TAG_END());
+			nua_bye(session->stack->s_nh_i, TAG_END());
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
