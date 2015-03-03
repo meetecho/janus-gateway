@@ -895,7 +895,12 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			const char *proxy_text = json_string_value(proxy);
-			if(strstr(proxy_text, "sip:") != proxy_text) {
+			const char *domain_part;
+			if (strstr(proxy_text, "sip:") == proxy_text) {
+			        domain_part = proxy_text + 4;   /* Skip 'sip:' */
+                        } else if (strstr(proxy_text, "sips:") == proxy_text) {
+			        domain_part = proxy_text + 5;   /* Skip 'sips:' */
+			} else {
 				JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
 				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 				g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
@@ -1110,12 +1115,11 @@ static void *janus_sip_handler(void *data) {
 				}
 				JANUS_LOG(LOG_VERB, "%s --> %s\n", username_text, proxy_text);
 				nua_register(session->stack->s_nh_r,
-					NUTAG_M_DISPLAY(g_strdup(session->account.username)),
-					NUTAG_M_USERNAME(g_strdup(session->account.username)),
-					SIPTAG_FROM_STR(g_strdup(username_text)),
-					SIPTAG_TO_STR(g_strdup(username_text)),
-					NUTAG_REGISTRAR(g_strdup(registrar)),
-					NUTAG_PROXY(g_strdup(proxy_text)),
+					NUTAG_M_USERNAME(session->account.username),
+					SIPTAG_FROM_STR(username_text),
+					SIPTAG_TO_STR(username_text),
+					NUTAG_REGISTRAR(registrar),
+					NUTAG_PROXY(proxy_text),
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
@@ -1244,10 +1248,10 @@ static void *janus_sip_handler(void *data) {
 			}
 			session->status = janus_sip_status_inviting;
 			nua_invite(session->stack->s_nh_i,
-				SIPTAG_FROM_STR(g_strdup(session->account.identity)),
-				SIPTAG_TO_STR(g_strdup(uri_text)),
-				SOATAG_USER_SDP_STR(g_strdup(sdp)),
-				NUTAG_PROXY(g_strdup(session->account.proxy)),
+				SIPTAG_FROM_STR(session->account.identity),
+				SIPTAG_TO_STR(uri_text),
+				SOATAG_USER_SDP_STR(sdp),
+				NUTAG_PROXY(session->account.proxy),
 				TAG_END());
 			g_free(sdp);
 			session->callee = g_strdup(uri_text);
@@ -1323,8 +1327,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			nua_respond(session->stack->s_nh_i,
 				200, sip_status_phrase(200),
-				SIPTAG_TO_STR(g_strdup(session->callee)),
-				SOATAG_USER_SDP_STR(g_strdup(sdp)),
+				SOATAG_USER_SDP_STR(sdp),
 				TAG_END());
 			g_free(sdp);
 			/* Send an ack back */
@@ -1380,9 +1383,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			session->status = janus_sip_status_closing;
-			nua_bye(session->stack->s_nh_i,
-				SIPTAG_TO_STR(g_strdup(session->callee)),
-				TAG_END());
+			nua_bye(session->stack->s_nh_i, TAG_END());
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
@@ -2300,14 +2301,14 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
-				SIPTAG_FROM_STR(g_strdup(tag_url)),
-				NUTAG_URL("sip:0.0.0.0:*;transport=udp"),
+				SIPTAG_FROM_STR(tag_url),
+				NUTAG_URL("sip:*:*"),
+				NUTAG_SIPS_URL("sips:*:*"),
 				//~ NUTAG_OUTBOUND("outbound natify use-rport"),	/* To use the same port used in Contact */
 				// sofia-sip default supported: timer and 100rel
 				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
 				SIPTAG_SUPPORTED_STR("timer"),
 				TAG_NULL());
-	nua_set_params(session->stack->s_nua, TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
 	nua_destroy(session->stack->s_nua);

@@ -350,7 +350,7 @@ function registerUsername() {
 	$('#register').attr('disabled', true).unbind('click');
 	$('#guest').attr('disabled', true);
 	var sipserver = $('#server').val();
-	if(sipserver === "" || sipserver.indexOf("sip:") != 0) {
+	if(sipserver === "" || (sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0)) {
 		bootbox.alert("Please insert the SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
