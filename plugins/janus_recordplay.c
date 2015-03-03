@@ -372,6 +372,9 @@ typedef struct janus_recordplay_session {
 	janus_recorder *vrc;	/* Video recorder */
 	janus_recordplay_frame_packet *aframes;	/* Audio frames (for playout) */
 	janus_recordplay_frame_packet *vframes;	/* Video frames (for playout) */
+	guint remb_video_startup;
+	guint64 remb_video_last;
+	guint64 video_bitrate;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
 static GHashTable *sessions;
@@ -624,6 +627,9 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->arc = NULL;
 	session->vrc = NULL;
 	session->destroyed = 0;
+	session->remb_video_startup = 4;
+	session->remb_video_last = janus_get_monotonic_time();
+	session->video_bitrate = 1024 * 1024; // 1 megabit
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -850,6 +856,50 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 	}
 }
 
+void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len) {
+	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+
+	if (video != 1) { return; } // we just do this for video, for now
+
+	// TODO: send PLI if we lost packets (comparing sequence numbers)
+	// memset(rtcpbuf, 0, 12);
+	// janus_rtcp_pli((char *)&rtcpbuf, 12);
+	// gateway->relay_rtcp(handle, video, rtcpbuf, 12);
+
+	// send REMB every second
+	gint64 now = janus_get_monotonic_time();
+	guint64 elapsed = now - session->remb_video_last;
+
+	if (elapsed < G_USEC_PER_SEC) { return; }
+
+	session->remb_video_last = now;
+	uint64_t bitrate = session->video_bitrate;
+
+	// Turns out ramp-up is not doing anything (Chrome)
+	if (session->remb_video_startup > 0) {
+		bitrate = bitrate / session->remb_video_startup;
+		session->remb_video_startup--;
+	}
+
+	char rtcpbuf[200];
+	memset(rtcpbuf, 0, 200);
+	/* FIXME First put a RR (fake)... */
+	int rrlen = 32;
+	rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+	rr->header.version = 2;
+	rr->header.type = RTCP_RR;
+	rr->header.rc = 1;
+	rr->header.length = htons((rrlen/4)-1);
+	/* ... then put a SDES... */
+	int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+
+	if(sdeslen > 0) {
+		/* ... and then finally a REMB */
+		janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
+		gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
+	}
+}
+
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -868,13 +918,14 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			else if(!video && session->arc)
 				janus_recorder_save_frame(session->arc, buf, len);
 		}
+
+		janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
 	}
 }
 
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	/* FIXME We don't care */
 }
 
 void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len) {
