@@ -1119,6 +1119,9 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid NUA Handle");
 					goto error;
 				}
+				char outbound_options[256] = "use-rport no-validate";
+				if (keepalive_interval > 0)
+				        strcat(outbound_options, " options-keepalive");
 				JANUS_LOG(LOG_VERB, "%s --> %s\n", username_text, proxy_text);
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
@@ -1127,9 +1130,7 @@ static void *janus_sip_handler(void *data) {
 					NUTAG_REGISTRAR(registrar),
 					NUTAG_PROXY(proxy_text),
 					NUTAG_KEEPALIVE(keepalive_interval * 1000),    /* Sofia expects it in milliseconds */
-					TAG_IF(keepalive_interval > 0, NUTAG_OUTBOUND("options-keepalive")),
-					NUTAG_OUTBOUND("no-validate"),
-					NUTAG_OUTBOUND("use-rport"),
+					NUTAG_OUTBOUND(outbound_options),
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
