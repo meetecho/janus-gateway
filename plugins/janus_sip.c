@@ -131,7 +131,10 @@ janus_plugin *create(void) {
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
+
 static char *local_ip = NULL;
+static int keepalive_interval = 120;
+static gboolean behind_nat = FALSE;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -386,6 +389,13 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		local_ip = g_strdup(item->value);
 		JANUS_LOG(LOG_VERB, "Going to use %s as a c-line in the SDPs\n", local_ip);
 	}
+	item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
+	if(item && item->value)
+	        keepalive_interval = atoi(item->value);
+	JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+	item = janus_config_get_item_drilldown(config, "general", "behind_nat");
+	if(item && item->value)
+	        behind_nat = janus_is_true(item->value);
 	item = janus_config_get_item_drilldown(config, "general", "autodetect_ignore");
 	if(item && item->value) {
 		gchar **list = g_strsplit(item->value, ",", -1);
@@ -1113,6 +1123,11 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid NUA Handle");
 					goto error;
 				}
+				char outbound_options[256] = "use-rport no-validate";
+				if (keepalive_interval > 0)
+				        strcat(outbound_options, " options-keepalive");
+				if (!behind_nat)
+				        strcat(outbound_options, " no-natify");
 				JANUS_LOG(LOG_VERB, "%s --> %s\n", username_text, proxy_text);
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
@@ -1120,6 +1135,8 @@ static void *janus_sip_handler(void *data) {
 					SIPTAG_TO_STR(username_text),
 					NUTAG_REGISTRAR(registrar),
 					NUTAG_PROXY(proxy_text),
+					NUTAG_KEEPALIVE(keepalive_interval * 1000),    /* Sofia expects it in milliseconds */
+					NUTAG_OUTBOUND(outbound_options),
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
