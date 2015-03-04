@@ -135,6 +135,7 @@ static janus_callbacks *gateway = NULL;
 static char *local_ip = NULL;
 static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
+static char *user_agent;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -396,6 +397,12 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	item = janus_config_get_item_drilldown(config, "general", "behind_nat");
 	if(item && item->value)
 	        behind_nat = janus_is_true(item->value);
+	item = janus_config_get_item_drilldown(config, "general", "user_agent");
+	if(item && item->value)
+	        user_agent = g_strdup(item->value);
+        else
+                user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
+	JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
 	item = janus_config_get_item_drilldown(config, "general", "autodetect_ignore");
 	if(item && item->value) {
 		gchar **list = g_strsplit(item->value, ",", -1);
@@ -2320,6 +2327,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_FROM_STR(tag_url),
 				NUTAG_URL("sip:*:*"),
 				NUTAG_SIPS_URL("sips:*:*"),
+				SIPTAG_USER_AGENT_STR(user_agent),
 				//~ NUTAG_OUTBOUND("outbound natify use-rport"),	/* To use the same port used in Contact */
 				// sofia-sip default supported: timer and 100rel
 				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
