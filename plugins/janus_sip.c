@@ -1129,6 +1129,7 @@ static void *janus_sip_handler(void *data) {
 					NUTAG_KEEPALIVE(keepalive_interval * 1000),    /* Sofia expects it in milliseconds */
 					TAG_IF(keepalive_interval > 0, NUTAG_OUTBOUND("options-keepalive")),
 					NUTAG_OUTBOUND("no-validate"),
+					NUTAG_OUTBOUND("use-rport"),
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
