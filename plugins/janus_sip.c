@@ -1129,11 +1129,6 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid NUA Handle");
 					goto error;
 				}
-				char outbound_options[256] = "use-rport no-validate";
-				if (keepalive_interval > 0)
-				        strcat(outbound_options, " options-keepalive");
-				if (!behind_nat)
-				        strcat(outbound_options, " no-natify");
 				JANUS_LOG(LOG_VERB, "%s --> %s\n", username_text, proxy_text);
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
@@ -1141,8 +1136,6 @@ static void *janus_sip_handler(void *data) {
 					SIPTAG_TO_STR(username_text),
 					NUTAG_REGISTRAR(registrar),
 					NUTAG_PROXY(proxy_text),
-					NUTAG_KEEPALIVE(keepalive_interval * 1000),    /* Sofia expects it in milliseconds */
-					NUTAG_OUTBOUND(outbound_options),
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
@@ -2321,6 +2314,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	memset(tag_url, 0, 100);
 	g_snprintf(tag_url, 100, "sip:%s@0.0.0.0:0", session->account.username);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (%s)\n", tag_url);
+        char outbound_options[256] = "use-rport no-validate";
+        if (keepalive_interval > 0)
+                strcat(outbound_options, " options-keepalive");
+        if (!behind_nat)
+                strcat(outbound_options, " no-natify");
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
@@ -2328,7 +2326,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_URL("sip:*:*"),
 				NUTAG_SIPS_URL("sips:*:*"),
 				SIPTAG_USER_AGENT_STR(user_agent),
-				//~ NUTAG_OUTBOUND("outbound natify use-rport"),	/* To use the same port used in Contact */
+				NUTAG_KEEPALIVE(keepalive_interval * 1000),    /* Sofia expects it in milliseconds */
+				NUTAG_OUTBOUND(outbound_options),
 				// sofia-sip default supported: timer and 100rel
 				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
 				SIPTAG_SUPPORTED_STR("timer"),
