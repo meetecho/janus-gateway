@@ -916,7 +916,6 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
 				goto error;
 			}
-			const char *domain_part = proxy_text+4;	/* Skip sip: part */
 			char proxy_ip[256];
 			uint16_t proxy_port = 0;
 			if(strstr(domain_part, ":") == NULL) {
