@@ -134,6 +134,7 @@ static janus_callbacks *gateway = NULL;
 
 static char *local_ip = NULL;
 static int keepalive_interval = 120;
+static gboolean behind_nat = FALSE;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -392,6 +393,9 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(item && item->value)
 	        keepalive_interval = atoi(item->value);
 	JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+	item = janus_config_get_item_drilldown(config, "general", "behind_nat");
+	if(item && item->value)
+	        behind_nat = janus_is_true(item->value);
 	item = janus_config_get_item_drilldown(config, "general", "autodetect_ignore");
 	if(item && item->value) {
 		gchar **list = g_strsplit(item->value, ",", -1);
@@ -1122,6 +1126,8 @@ static void *janus_sip_handler(void *data) {
 				char outbound_options[256] = "use-rport no-validate";
 				if (keepalive_interval > 0)
 				        strcat(outbound_options, " options-keepalive");
+				if (!behind_nat)
+				        strcat(outbound_options, " no-natify");
 				JANUS_LOG(LOG_VERB, "%s --> %s\n", username_text, proxy_text);
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),

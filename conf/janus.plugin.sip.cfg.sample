@@ -12,4 +12,8 @@ autodetect_ignore = vmnet
 ; sent in the form of OPTIONS requests, at the given interval inseconds.
 ; (0 to disable)
 keepalive_interval = 120
+; Indicate if the server is behind NAT. If so, the server will use STUN
+; to guess its own public IP address and use it in the Contat header of
+; outgoing requests
+behind_nat = no
 
