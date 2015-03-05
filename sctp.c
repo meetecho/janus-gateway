@@ -457,7 +457,7 @@ void janus_sctp_request_more_streams(janus_sctp_association *sctp) {
 
 int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, uint8_t unordered, uint16_t pr_policy, uint32_t pr_value) {
 	/* XXX: This should be encoded in a better way */
-	janus_datachannel_open_request req;
+	janus_datachannel_open_request *req = NULL;
 	struct sctp_sndinfo sndinfo;
 
 	/* FIXME For open requests we send, we always use this label */
@@ -465,39 +465,46 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	guint label_size = (strlen(label)+3) & ~3;
 	JANUS_LOG(LOG_VERB, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
 
-	memset(&req, 0, sizeof(janus_datachannel_open_request) + label_size);
-	req.msg_type = DATA_CHANNEL_OPEN_REQUEST;
+	req = calloc(sizeof(janus_datachannel_open_request) + label_size, sizeof(char));
+	memset(req, 0, sizeof(janus_datachannel_open_request) + label_size);
+	req->msg_type = DATA_CHANNEL_OPEN_REQUEST;
 	switch (pr_policy) {
 		case SCTP_PR_SCTP_NONE:
 			/* XXX: What about DATA_CHANNEL_RELIABLE_STREAM */
-			req.channel_type = DATA_CHANNEL_RELIABLE;
+			req->channel_type = DATA_CHANNEL_RELIABLE;
 			break;
 		case SCTP_PR_SCTP_TTL:
 			/* XXX: What about DATA_CHANNEL_UNRELIABLE */
-			req.channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
+			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
 			break;
 		case SCTP_PR_SCTP_RTX:
-			req.channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
+			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
 			break;
 		default:
 			return 0;
 	}
-	req.priority = htons(0); /* XXX: add support */
-	req.reliability_params = htonl((uint32_t)pr_value);
-	req.label_length = htons(label_size);
-	memcpy(&req.label, label, strlen(label));
+	req->priority = htons(0); /* XXX: add support */
+	req->reliability_params = htonl((uint32_t)pr_value);
+	req->label_length = htons(label_size);
+	memcpy(&req->label, label, strlen(label));
+	
 	memset(&sndinfo, 0, sizeof(struct sctp_sndinfo));
 	sndinfo.snd_sid = stream;
 	sndinfo.snd_flags = SCTP_EOR;
 	sndinfo.snd_ppid = htonl(DATA_CHANNEL_PPID_CONTROL);
+	
 	if(usrsctp_sendv(sock,
-	                  &req, sizeof(janus_datachannel_open_request) + label_size,
+	                  req, sizeof(janus_datachannel_open_request) + label_size,
 	                  NULL, 0,
 	                  &sndinfo, (socklen_t)sizeof(struct sctp_sndinfo),
 	                  SCTP_SENDV_SNDINFO, 0) < 0) {
 		JANUS_LOG(LOG_ERR, "usrsctp_sendv error\n");
+		g_free(req);
+		req = NULL;
 		return 0;
 	} else {
+		g_free(req);
+		req = NULL;
 		return 1;
 	}
 }
