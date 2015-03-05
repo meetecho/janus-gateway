@@ -16,4 +16,5 @@ keepalive_interval = 120
 ; to guess its own public IP address and use it in the Contat header of
 ; outgoing requests
 behind_nat = no
-
+; User-Agent string to be used
+; user_agent = Cool WebRTC Gateway
