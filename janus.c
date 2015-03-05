@@ -2344,9 +2344,9 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_object_set_new(flags, "cleaning", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)));
 		json_object_set_new(info, "flags", flags);
 		json_t *sdps = json_object();
-		if(json_string(handle->local_sdp))
+		if(handle->local_sdp)
 			json_object_set_new(sdps, "local", json_string(handle->local_sdp));
-		if(json_string(handle->remote_sdp))
+		if(handle->remote_sdp)
 			json_object_set_new(sdps, "remote", json_string(handle->remote_sdp));
 		json_object_set_new(info, "sdps", sdps);
 		//~ json_object_set_new(info, "candidates-gathered", json_integer(handle->cdone));
