@@ -372,8 +372,8 @@ typedef struct janus_recordplay_session {
 	janus_recorder *vrc;	/* Video recorder */
 	janus_recordplay_frame_packet *aframes;	/* Audio frames (for playout) */
 	janus_recordplay_frame_packet *vframes;	/* Video frames (for playout) */
-	guint remb_video_startup;
-	guint64 remb_video_last;
+	guint video_remb_startup;
+	guint64 video_remb_last;
 	guint64 video_bitrate;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
@@ -627,8 +627,8 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->arc = NULL;
 	session->vrc = NULL;
 	session->destroyed = 0;
-	session->remb_video_startup = 4;
-	session->remb_video_last = janus_get_monotonic_time();
+	session->video_remb_startup = 4;
+	session->video_remb_last = janus_get_monotonic_time();
 	session->video_bitrate = 1024 * 1024; // 1 megabit
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
@@ -868,17 +868,17 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 
 	// send REMB every second
 	gint64 now = janus_get_monotonic_time();
-	guint64 elapsed = now - session->remb_video_last;
+	guint64 elapsed = now - session->video_remb_last;
 
 	if (elapsed < G_USEC_PER_SEC) { return; }
 
-	session->remb_video_last = now;
+	session->video_remb_last = now;
 	uint64_t bitrate = session->video_bitrate;
 
 	// Turns out ramp-up is not doing anything (Chrome)
-	if (session->remb_video_startup > 0) {
-		bitrate = bitrate / session->remb_video_startup;
-		session->remb_video_startup--;
+	if (session->video_remb_startup > 0) {
+		bitrate = bitrate / session->video_remb_startup;
+		session->video_remb_startup--;
 	}
 
 	char rtcpbuf[200];
