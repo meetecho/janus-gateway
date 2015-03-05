@@ -392,16 +392,16 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
 	if(item && item->value)
-	        keepalive_interval = atoi(item->value);
+		keepalive_interval = atoi(item->value);
 	JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
 	item = janus_config_get_item_drilldown(config, "general", "behind_nat");
 	if(item && item->value)
-	        behind_nat = janus_is_true(item->value);
+		behind_nat = janus_is_true(item->value);
 	item = janus_config_get_item_drilldown(config, "general", "user_agent");
 	if(item && item->value)
-	        user_agent = g_strdup(item->value);
-        else
-                user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
+		user_agent = g_strdup(item->value);
+	else
+		user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
 	JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
 	item = janus_config_get_item_drilldown(config, "general", "autodetect_ignore");
 	if(item && item->value) {
@@ -913,10 +913,10 @@ static void *janus_sip_handler(void *data) {
 			}
 			const char *proxy_text = json_string_value(proxy);
 			const char *domain_part;
-			if (strstr(proxy_text, "sip:") == proxy_text) {
-			        domain_part = proxy_text + 4;   /* Skip 'sip:' */
-                        } else if (strstr(proxy_text, "sips:") == proxy_text) {
-			        domain_part = proxy_text + 5;   /* Skip 'sips:' */
+			if(strstr(proxy_text, "sip:") == proxy_text) {
+				domain_part = proxy_text + 4;	/* Skip 'sip:' */
+			} else if(strstr(proxy_text, "sips:") == proxy_text) {
+				domain_part = proxy_text + 5;	/* Skip 'sips:' */
 			} else {
 				JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
 				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
@@ -1460,7 +1460,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 {
 	janus_sip_session *session = (janus_sip_session *)magic;
 	ssip_t *ssip = session->stack;
-    switch (event) {
+	switch (event) {
 	/* Status or Error Indications */
 		case nua_i_active:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
@@ -1555,7 +1555,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		case nua_i_invite: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
-			if (!sdp_session(parser)) {
+			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 				break;
@@ -1659,7 +1659,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_shutdown:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			if (status < 200 && stopping < 3) {
+			if(status < 200 && stopping < 3) {
 				/* shutdown in progress -> return */
 				break;
 			}
@@ -1767,7 +1767,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			ssip_t *ssip = session->stack;
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
-			if (!sdp_session(parser)) {
+			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 				break;
@@ -2314,11 +2314,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	memset(tag_url, 0, 100);
 	g_snprintf(tag_url, 100, "sip:%s@0.0.0.0:0", session->account.username);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (%s)\n", tag_url);
-        char outbound_options[256] = "use-rport no-validate";
-        if (keepalive_interval > 0)
-                strcat(outbound_options, " options-keepalive");
-        if (!behind_nat)
-                strcat(outbound_options, " no-natify");
+	char outbound_options[256] = "use-rport no-validate";
+	if(keepalive_interval > 0)
+		strcat(outbound_options, " options-keepalive");
+	if(!behind_nat)
+		strcat(outbound_options, " no-natify");
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
@@ -2326,7 +2326,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_URL("sip:*:*"),
 				NUTAG_SIPS_URL("sips:*:*"),
 				SIPTAG_USER_AGENT_STR(user_agent),
-				NUTAG_KEEPALIVE(keepalive_interval * 1000),    /* Sofia expects it in milliseconds */
+				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				// sofia-sip default supported: timer and 100rel
 				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
