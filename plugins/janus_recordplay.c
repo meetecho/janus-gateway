@@ -376,6 +376,7 @@ typedef struct janus_recordplay_session {
 	guint64 video_remb_last;
 	guint64 video_bitrate;
 	guint64 video_rtp_seq_number;
+	gint video_fir_seq;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
 static GHashTable *sessions;
@@ -632,6 +633,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->video_remb_last = janus_get_monotonic_time();
 	session->video_bitrate = 1024 * 1024; // 1 megabit
 	session->video_rtp_seq_number = 0;
+	session->video_fir_seq = 0;
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -859,26 +861,24 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 }
 
 void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len) {
-	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
-
 	if (video != 1) { return; } // we just do this for video, for now
+	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	char rtcpbuf[200];
 
 	rtp_header *rtp = (rtp_header *)buf;
 	guint64 rtp_lost_count = (ntohs(rtp->seq_number) - session->video_rtp_seq_number) - 1;
 	session->video_rtp_seq_number = ntohs(rtp->seq_number);
 
 	if (rtp_lost_count > 0) {
-		JANUS_LOG(LOG_ERR, "We lost %llu video packets\n", rtp_lost_count);
-		char rtcpbuf[20];
+		JANUS_LOG(LOG_ERR, "We lost %"SCNu64" video packets\n", rtp_lost_count);
+		// send fir, pli, and a wtf
+		memset(rtcpbuf, 0, 20);
+		janus_rtcp_fir((char *)&rtcpbuf, 20, &session->video_fir_seq);
+		gateway->relay_rtcp(handle, video, rtcpbuf, 20);
 		memset(rtcpbuf, 0, 12);
 		janus_rtcp_pli((char *)&rtcpbuf, 12);
 		gateway->relay_rtcp(handle, video, rtcpbuf, 12);
 	}
-
-	// TODO: send PLI if we lost packets (comparing sequence numbers)
-	// memset(rtcpbuf, 0, 12);
-	// janus_rtcp_pli((char *)&rtcpbuf, 12);
-	// gateway->relay_rtcp(handle, video, rtcpbuf, 12);
 
 	// send REMB every second
 	gint64 now = janus_get_monotonic_time();
@@ -895,7 +895,6 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		session->video_remb_startup--;
 	}
 
-	char rtcpbuf[200];
 	memset(rtcpbuf, 0, 200);
 	/* FIXME First put a RR (fake)... */
 	int rrlen = 32;
