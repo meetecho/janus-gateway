@@ -347,6 +347,13 @@ function startRecording() {
 		$('#list').unbind('click').attr('disabled', true);
 		$('#recset').attr('disabled', true);
 		$('#recslist').attr('disabled', true);
+
+		// bitrate can be set at any time: before, after, during recording
+		recordplay.send({"message": {
+			request: 'video-bitrate-max',
+			value: 256
+		}});
+		
 		recordplay.createOffer(
 			{
 				// By default, it's sendrecv for audio and video...

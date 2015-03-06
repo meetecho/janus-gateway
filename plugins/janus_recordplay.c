@@ -790,6 +790,30 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
 		g_free(response_text);
 		return result;
+	} else if (!strcasecmp(request_text, "video-bitrate-max")) {
+		json_t *value = json_object_get(root, "value");
+		if(!value) {
+			JANUS_LOG(LOG_ERR, "Missing element (value)\n");
+			error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (request)");
+			goto error;
+		}
+		if(!json_is_integer(value)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (value should be an integer)\n");
+			error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (value should be an integer)");
+			goto error;
+		}
+		guint64 bitrate = json_integer_value(value);
+		session->video_bitrate = bitrate * 1000;
+		json_t *response = json_object();
+		JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu64"\n", session->video_bitrate);
+		json_object_set_new(response, "recordplay", json_string("ok"));
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
