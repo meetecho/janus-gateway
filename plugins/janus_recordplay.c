@@ -880,16 +880,17 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		gateway->relay_rtcp(handle, video, rtcpbuf, 12);
 	}
 
-	// send REMB every second
 	gint64 now = janus_get_monotonic_time();
 	guint64 elapsed = now - session->video_remb_last;
+	guint64 bitrate = session->video_bitrate;
+	gboolean remb_rampup = session->video_remb_startup > 0;
 
-	if (elapsed < G_USEC_PER_SEC) { return; }
-
+	// send RR+REMB every second,
+	// or when we are still ramping up (first 4 rtps)
+	if (!remb_rampup && (elapsed < G_USEC_PER_SEC)) { return; }
 	session->video_remb_last = now;
-	uint64_t bitrate = session->video_bitrate;
 
-	// Turns out ramp-up is not doing anything (Chrome)
+	// TODO: do we need rampup ? Chrome seems is fine without it
 	if (session->video_remb_startup > 0) {
 		bitrate = bitrate / session->video_remb_startup;
 		session->video_remb_startup--;
