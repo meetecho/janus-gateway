@@ -434,20 +434,26 @@ function newRemoteFeed(id, display) {
 			},
 			onremotestream: function(stream) {
 				console.log("Remote feed #" + remoteFeed.rfindex);
-				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
-					remoteFeed.spinner.stop();
-				if($('#remotevideo'+remoteFeed.rfindex).length === 0)
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+				if($('#remotevideo'+remoteFeed.rfindex).length === 0) {
+					// No remote video yet
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+				}
 				$('#videoremote'+remoteFeed.rfindex).append(
 					'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 					'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
-				$("#remotevideo"+remoteFeed.rfindex).bind("loadedmetadata", function () {
-					if(webrtcDetectedBrowser == "chrome") {
-						var width = this.videoWidth;
-						var height = this.videoHeight;
-						$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					} else {
-						// Firefox has a bug: width and height are not immediately available after a loadedmetadata
+				// Show the video, hide the spinner and show the resolution when we get a playing event
+				$("#remotevideo"+remoteFeed.rfindex).bind("playing", function () {
+					if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
+						remoteFeed.spinner.stop();
+					remoteFeed.spinner = null;
+					$('#waitingvideo'+remoteFeed.rfindex).remove();
+					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide');
+					var width = this.videoWidth;
+					var height = this.videoHeight;
+					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+					if(webrtcDetectedBrowser == "firefox") {
+						// Firefox Stable has a bug: width and height are not immediately available after a playing
 						setTimeout(function() {
 							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
 							var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
@@ -477,6 +483,10 @@ function newRemoteFeed(id, display) {
 			},
 			oncleanup: function() {
 				console.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
+				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
+					remoteFeed.spinner.stop();
+				remoteFeed.spinner = null;
+				$('#waitingvideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
 				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 

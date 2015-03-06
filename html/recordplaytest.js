@@ -226,13 +226,34 @@ $(document).ready(function() {
 									$('#videotitle').html(selectedRecordingInfo);
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
-									if($('#thevideo').length === 0)
-										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay/>');
+									if($('#thevideo').length === 0) {
+										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
+										// No remote video yet
+										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										if(spinner == null) {
+											var target = document.getElementById('videobox');
+											spinner = new Spinner({top:100}).spin(target);
+										} else {
+											spinner.spin();
+										}
+									}
+									// Show the video, hide the spinner and show the resolution when we get a playing event
+									$("#thevideo").bind("playing", function () {
+										$('#waitingvideo').remove();
+										$('#thevideo').removeClass('hide');
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+									});
 									attachMediaStream($('#thevideo').get(0), stream);
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
 									// TODO Reset status
+									$('#waitingvideo').remove();
+									if(spinner !== null && spinner !== undefined)
+										spinner.stop();
+									spinner = null;
 									$('#videobox').empty();
 									$('#video').hide();
 									recording = false;

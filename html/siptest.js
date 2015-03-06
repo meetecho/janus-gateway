@@ -273,13 +273,11 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
 									console.log(JSON.stringify(stream));
-									spinner.stop();
-									$('#waitingvideo').remove();
 									if($('#remotevideo').length === 0) {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										$('#videoright').append(
-											'<video class="rounded centered" id="remotevideo" width=320 height=240 autoplay/>');
+											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -293,6 +291,14 @@ $(document).ready(function() {
 											sipcall.dtmf({dtmf: { tones: $(this).text()}});
 										});
 									}
+									// Show the peer and hide the spinner when we get a playing event
+									$("#remotevideo").bind("playing", function () {
+										$('#waitingvideo').remove();
+										$('#remotevideo').removeClass('hide');
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+									});
 									attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {

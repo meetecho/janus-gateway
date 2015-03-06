@@ -140,10 +140,16 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
 									console.log(JSON.stringify(stream));
-									spinner.stop();
-									$('#waitingvideo').remove();
 									if($('#remotevideo').length === 0)
-										$('#stream').append('<video class="rounded centered" id="remotevideo" width=320 height=240 autoplay/>');
+										$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+									// Show the stream and hide the spinner when we get a playing event
+									$("#remotevideo").bind("playing", function () {
+										$('#waitingvideo').remove();
+										$('#remotevideo').removeClass('hide');
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+									});
 									attachMediaStream($('#remotevideo').get(0), stream);
 								},
 								oncleanup: function() {
