@@ -805,7 +805,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 			goto error;
 		}
 		guint64 bitrate = json_integer_value(value);
-		session->video_bitrate = bitrate * 1000;
+		session->video_bitrate = bitrate;
 		json_t *response = json_object();
 		JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu64"\n", session->video_bitrate);
 		json_object_set_new(response, "recordplay", json_string("ok"));

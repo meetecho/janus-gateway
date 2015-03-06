@@ -351,7 +351,7 @@ function startRecording() {
 		// bitrate can be set at any time: before, after, during recording
 		recordplay.send({"message": {
 			request: 'video-bitrate-max',
-			value: 256
+			value: 256000
 		}});
 		
 		recordplay.createOffer(
