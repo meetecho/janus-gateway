@@ -1,3 +1,5 @@
+ACLOCAL_AMFLAGS = -I m4
+
 # FIXME: These flags should be produced in configure.ac using AX_APPEND_COMPILE_FLAGS
 AM_CFLAGS = \
 	-Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
@@ -9,12 +11,13 @@ AM_CFLAGS = \
 	-Wmissing-include-dirs -Waggregate-return -Wunused-but-set-variable \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
 AM_CFLAGS += -Wno-undef  # sophiasip is not -Wundef--safe
-AM_CFLAGS += -Wredundant-decls  # sophiasip also contains redundant declarations
+AM_CFLAGS += -Wno-redundant-decls  # sophiasip also contains redundant declarations
+AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
 
-AM_CFLAGS += -fstack-protector-all -g -ggdb -fPIC -rdynamic
+AM_CFLAGS += -fstack-protector-all -g -ggdb -fPIC -rdynamic -pthread
 
 # FIXME: make docs work with distcheck
 DISTCHECK_CONFIGURE_FLAGS = --disable-docs --enable-post-processing
@@ -23,6 +26,11 @@ EXTRA_DIST = $(NULL)
 CLEANFILES = $(NULL)
 
 bin_PROGRAMS = janus
+
+headerdir = $(includedir)/janus
+header_HEADERS = \
+	plugins/plugin.h apierror.h config.h debug.h dtls.h ice.h mutex.h record.h \
+	rtcp.h rtp.h sctp.h sdp.h utils.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -121,13 +129,6 @@ plugins_cflags = \
 
 plugins_libadd = \
 	$(PLUGINS_LIBS) \
-	$(NULL)
-
-plugins_ldflags = \
-	-export-dynamic \
-	-no-undefined \
-	-avoid-version \
-	-module \
 	$(NULL)
 
 if ENABLE_PLUGIN_AUDIOBRIDGE
@@ -264,5 +265,5 @@ endif
 ##
 
 configs:
-	$(MKDIR_P) $(confdir)
-	$(foreach config,$(conf_DATA),cp "$(CURDIR)/$(config)" "$(confdir)/$(notdir $(basename $(config) .sample))";)
+	$(MKDIR_P) $(DESTDIR)$(confdir)
+	$(foreach config,$(conf_DATA),cp "$(CURDIR)/$(config)" "$(DESTDIR)$(confdir)/$(notdir $(basename $(config) .sample))";)

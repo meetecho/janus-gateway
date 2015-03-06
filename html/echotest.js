@@ -154,7 +154,7 @@ $(document).ready(function() {
 											bootbox.alert("The Echo Test is over");
 											if(spinner !== null && spinner !== undefined)
 												spinner.stop();
-											spinenr = null;
+											spinner = null;
 											$('#myvideo').remove();
 											$('#waitingvideo').remove();
 											$('#peervideo').remove();
@@ -183,23 +183,35 @@ $(document).ready(function() {
 									} else {
 										spinner.spin();
 									}
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No webcam
+										$('#myvideo').hide();
+										$('#videoleft').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No webcam available</span>' +
+											'</div>');
+									}
 								},
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
 									console.log(JSON.stringify(stream));
 									if($('#peervideo').length === 0) {
-										spinner.stop();
-										$('#waitingvideo').remove();
 										$('#videos').removeClass('hide').show();
-										$('#videoright').append('<video class="rounded centered" id="peervideo" width=320 height=240 autoplay/>');
-										// Detect resolution
-										$("#peervideo").bind("loadedmetadata", function () {
-											if(webrtcDetectedBrowser == "chrome") {
-												var width = this.videoWidth;
-												var height = this.videoHeight;
-												$('#curres').removeClass('hide').text(width+'x'+height).show();
-											} else {
-												// Firefox has a bug: width and height are not immediately available after a loadedmetadata
+										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
+										// Show the video, hide the spinner and show the resolution when we get a playing event
+										$("#peervideo").bind("playing", function () {
+											$('#waitingvideo').remove();
+											$('#peervideo').removeClass('hide');
+											if(spinner !== null && spinner !== undefined)
+												spinner.stop();
+											spinner = null;
+											var width = this.videoWidth;
+											var height = this.videoHeight;
+											$('#curres').removeClass('hide').text(width+'x'+height).show();
+											if(webrtcDetectedBrowser == "firefox") {
+												// Firefox Stable has a bug: width and height are not immediately available after a playing
 												setTimeout(function() {
 													var width = $("#peervideo").get(0).videoWidth;
 													var height = $("#peervideo").get(0).videoHeight;
@@ -209,6 +221,16 @@ $(document).ready(function() {
 										});
 									}
 									attachMediaStream($('#peervideo').get(0), stream);
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+										// No remote video
+										$('#peervideo').hide();
+										$('#videoright').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No remote video available</span>' +
+											'</div>');
+									}
 									// Enable audio/video buttons and bitrate limiter
 									audioenabled = true;
 									videoenabled = true;
@@ -256,6 +278,7 @@ $(document).ready(function() {
 								},
 								ondataopen: function(data) {
 									console.log("The DataChannel is available!");
+									$('#videos').removeClass('hide').show();
 									$('#datasend').removeAttr('disabled');
 								},
 								ondata: function(data) {
@@ -266,7 +289,7 @@ $(document).ready(function() {
 									console.log(" ::: Got a cleanup notification :::");
 									if(spinner !== null && spinner !== undefined)
 										spinner.stop();
-									spinenr = null;
+									spinner = null;
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$('#peervideo').remove();

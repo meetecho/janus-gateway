@@ -27,19 +27,37 @@
 
 
 /*! \brief ICE stuff initialization
- * @param[in] stun_server STUN server address to use, if any
- * @param[in] stun_port STUN port to use, if any
- * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
- * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used
+ * @param[in] ice_lite Whether the ICE Lite mode should be enabled or not
+ * @param[in] ice_tcp Whether ICE-TCP support should be enabled or not (only libnice >= 0.1.8, currently broken)
  * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
+ * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
+ * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
+void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
+/*! \brief Method to force Janus to use a STUN server when gathering candidates
+ * @param[in] stun_server STUN server address to use
+ * @param[in] stun_port STUN port to use
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_ice_init(gchar *stun_server, uint16_t stun_port, uint16_t rtp_min_port, uint16_t rtp_max_port, gboolean ipv6);
+int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port);
+/*! \brief Method to force Janus to use a TURN server when gathering candidates
+ * @param[in] turn_server TURN server address to use
+ * @param[in] turn_port TURN port to use
+ * @param[in] turn_type Relay type (udp, tcp or tls)
+ * @param[in] turn_user TURN username, if needed
+ * @param[in] turn_pwd TURN password, if needed
+ * @returns 0 in case of success, a negative integer on errors */
+int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);
 /*! \brief Method to get the STUN server port
  * @returns The currently used STUN server port, if available, or 0 if not */
 uint16_t janus_ice_get_stun_port(void);
+/*! \brief Method to get the TURN server IP address
+ * @returns The currently used TURN server IP address, if available, or NULL if not */
+char *janus_ice_get_turn_server(void);
+/*! \brief Method to get the TURN server port
+ * @returns The currently used TURN server port, if available, or 0 if not */
+uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
@@ -50,6 +68,12 @@ void janus_ice_ignore_interface(const char *ip);
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the ignore list, false otherwise */
 gboolean janus_ice_is_ignored(const char *ip);
+/*! \brief Method to check whether ICE Lite mode is enabled or not (still WIP)
+ * @returns true if ICE-TCP support is enabled/supported, false otherwise */
+gboolean janus_ice_is_ice_lite_enabled(void);
+/*! \brief Method to check whether ICE-TCP support is enabled/supported or not (still WIP)
+ * @returns true if ICE-TCP support is enabled/supported, false otherwise */
+gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
@@ -59,6 +83,13 @@ void janus_set_max_nack_queue(uint mnq);
 /*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @returns The current max NACK value */
 uint janus_get_max_nack_queue(void);
+/*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
+ * @returns True if libnice debugging is enabled, FALSE otherwise */
+gboolean janus_ice_is_ice_debugging_enabled(void);
+/*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
+void janus_ice_debugging_enable(void);
+/*! \brief Method to disable libnice debugging (the default) */
+void janus_ice_debugging_disable(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
@@ -92,6 +123,48 @@ typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 #define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 12)
 
 
+/*! \brief Janus media statistics
+ * \note To improve with more stuff */
+typedef struct janus_ice_stats {
+	/*! \brief Audio bytes sent or received */
+	guint64 audio_bytes;
+	/*! \brief Audio bytes sent or received in the last second */
+	GList *audio_bytes_lastsec;
+	/*! \brief Whether or not we notified about audio lastsec issues already */
+	gboolean audio_notified_lastsec;
+	/*! \brief Number of audio NACKs sent or received */
+	guint32 audio_nacks;
+	/*! \brief Video bytes sent or received */
+	guint64 video_bytes;
+	/*! \brief Video bytes sent or received in the last second */
+	GList *video_bytes_lastsec;
+	/*! \brief Whether or not we notified about video lastsec issues already */
+	gboolean video_notified_lastsec;
+	/*! \brief Number of video NACKs sent or received */
+	guint32 video_nacks;
+	/*! \brief Data bytes sent or received */
+	guint64 data_bytes;
+} janus_ice_stats;
+
+/*! \brief Janus media statistics: received packet info
+ * \note To improve with more stuff */
+typedef struct janus_ice_stats_item {
+	/*! \brief Bytes sent or received */
+	guint64 bytes;
+	/*! \brief Time at which this happened */
+	gint64 when;
+} janus_ice_stats_item;
+
+/*! \brief Quick helper method to reset stats
+ * @param stats The janus_ice_stats instance to reset */
+void janus_ice_stats_reset(janus_ice_stats *stats);
+
+/*! \brief Quick helper method to notify a WebRTC hangup through the Janus API
+ * @param handle The janus_ice_handle instance this event refers to
+ * @param reason A description of why this happened */
+void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason);
+
+
 /*! \brief Janus ICE handle */
 struct janus_ice_handle {
 	/*! \brief Opaque pointer to the gateway/peer session */
@@ -118,7 +191,7 @@ struct janus_ice_handle {
 	guint audio_id;
 	/*! \brief libnice ICE video ID */
 	guint video_id;
-	/*! \brief libnice ICE SCTP ID */
+	/*! \brief libnice ICE DataChannels ID */
 	guint data_id;
 	/*! \brief Number of streams */
 	gint streams_num;
@@ -154,6 +227,8 @@ struct janus_ice_stream {
 	guint stream_id;
 	/*! \brief Whether this stream is ready to be used */
 	gint cdone:1;
+	/*! \brief Whether the medium associated with this stream has been disabled (e.g., m=audio 0) */
+	guint disabled;
 	/*! \brief Audio SSRC of the gateway for this stream (may be bundled) */
 	guint32 audio_ssrc;
 	/*! \brief Video SSRC of the gateway for this stream (may be bundled) */
@@ -198,12 +273,26 @@ struct janus_ice_component {
 	GSList *local_candidates;
 	/*! \brief GLib list of remote candidates for this component (summary) */
 	GSList *remote_candidates;
+	/*! \brief String representation of the selected pair as notified by libnice (foundations) */
+	gchar *selected_pair;
+	/*! \brief Whether the setup of remote candidates for this component has started or not */
+	gboolean process_started;
 	/*! \brief Re-transmission timer for DTLS */
 	GSource *source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GList *retransmit_buffer;
+	/*! \brief List of recently received sequence numbers (as a support to NACK generation) */
+	GList *last_seqs;
+	/*! \brief Time when the last NACK was sent */
+	gint64 last_nack_time;
+	/*! \brief Time when we last notified the plugin about a slow link (too many received NACKs) */
+	gint64 last_slowlink_time;
+	/*! \brief Stats for incoming data (audio/video/data) */
+	janus_ice_stats in_stats;
+	/*! \brief Stats for outgoing data (audio/video/data) */
+	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this component */
@@ -290,10 +379,14 @@ void janus_ice_cb_component_state_changed (NiceAgent *agent, guint stream_id, gu
  * @param[in] agent The libnice agent for which the callback applies
  * @param[in] stream_id The stream ID for which the callback applies
  * @param[in] component_id The component ID for which the callback applies
- * @param[in] lfoundation ICE foundation
- * @param[in] rfoundation ICE foundation
+ * @param[in] local Local candidate (or foundation)
+ * @param[in] remote Remote candidate (or foundation)
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *lfoundation, gchar *rfoundation, gpointer ice);
+#ifndef HAVE_LIBNICE_TCP
+void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice);
+#else
+void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice);
+#endif
 /*! \brief libnice callback to notify when data has been received by an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
  * @param[in] stream_id The stream ID for which the callback applies

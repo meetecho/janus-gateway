@@ -50,6 +50,7 @@
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
+			<li><a href="citeus.html">Cite us!</a></li>
 		</ul>
 		<div class="navbar-header navbar-right">
 			<ul class="nav navbar-nav">
@@ -66,7 +67,7 @@
 		<div class="col-md-12">
 			<div class="page-header">
 				<h1>Plugin Demo: Video Call
-					<button class="btn btn-default" id="start">Start</button>
+					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
 			<div class="container" id="details">
@@ -100,16 +101,16 @@
 						<div class="col-md-6 container hide" id="login">
 							<div class="input-group margin-bottom-sm">
 								<span class="input-group-addon"><i class="fa fa-user fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="Choose a username" id="username" onkeypress="return checkEnter(this, event);"></input>
+								<input class="form-control" type="text" placeholder="Choose a username" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);"></input>
 							</div>
-							<button class="btn btn-success margin-bottom-sm" id="register">Register</button> <span class="hide label label-info" id="youok"></span>
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="register">Register</button> <span class="hide label label-info" id="youok"></span>
 						</div>
 						<div class="col-md-6 container hide" id="phone">
 							<div class="input-group margin-bottom-sm">
 								<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="Who should we call?" id="peer" onkeypress="return checkEnter(this, event);"></input>
+								<input class="form-control" type="text" placeholder="Who should we call?" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);"></input>
 							</div>
-							<button class="btn btn-success margin-bottom-sm" id="call">Call</button>
+							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button>
 						</div>
 					</div>
 				<div/>
@@ -117,12 +118,12 @@
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Local Video
+								<h3 class="panel-title">Local Stream
 									<div class="btn-group btn-group-xs pull-right hide">
-										<button class="btn btn-danger" id="toggleaudio">Disable audio</button>
-										<button class="btn btn-danger" id="togglevideo">Disable video</button>
+										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
+										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
 										<div class="btn-group btn-group-xs">
-											<button id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+											<button autocomplete="off" id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
 												Bandwidth<span class="caret"></span>
 											</button>
 											<ul id="bitrate" class="dropdown-menu" role="menu">
@@ -142,13 +143,13 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
+							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
 						</div>
 					</div>
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video <span class="label label-info hide" id="callee"></span> <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
+								<h3 class="panel-title">Remote Stream <span class="label label-info hide" id="callee"></span> <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
 						</div>

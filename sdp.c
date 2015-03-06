@@ -19,6 +19,7 @@
 #include "dtls.h"
 #include "sdp.h"
 #include "utils.h"
+#include "debug.h"
 
 
 static su_home_t *home = NULL;
@@ -186,7 +187,7 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 			}
 #endif
 		} else {
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 			m = m->m_next;
 			continue;
 		}
@@ -324,6 +325,10 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		return -2;
 	janus_mutex_lock(&handle->mutex);
 	janus_ice_component *component = NULL;
+	if(strstr(candidate, "candidate:") == candidate) {
+		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
+		candidate += strlen("candidate:");
+	}
 	char rfoundation[32], rtransport[4], rip[40], rtype[6], rrelip[40];
 	guint32 rcomponent, rpriority, rport, rrelport;
 	int res = sscanf(candidate, "%31s %30u %3s %30u %39s %30u typ %5s %*s %39s %*s %30u",
@@ -333,6 +338,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		/* Failed to parse this address, can it be IPv6? */
 		if(!janus_ice_is_ipv6_enabled()) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Received IPv6 candidate, but IPv6 support is disabled...\n", handle->handle_id);
+			janus_mutex_unlock(&handle->mutex);
 			return res;
 		}
 	}
@@ -341,46 +347,85 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding remote candidate for component %d to stream %d\n", handle->handle_id, rcomponent, stream->stream_id);
 		component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(rcomponent));
 		if(component == NULL) {
-			if(rcomponent == 2 && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] No such component %d in stream %d?\n", handle->handle_id, rcomponent, stream->stream_id);
+			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
+			} else {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"]   -- No such component %d in stream %d?\n", handle->handle_id, rcomponent, stream->stream_id);
+			}
 		} else {
 			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
 				janus_mutex_unlock(&handle->mutex);
 				return 0;
 			}
-			if(trickle) {
-				if(component->dtls != NULL) {
-					/* This component is already ready, ignore this further candidate */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Ignoring this candidate, the component is already ready\n", handle->handle_id);
-					janus_mutex_unlock(&handle->mutex);
-					return 0;
-				}
-			}
+			//~ if(trickle) {
+				//~ if(component->dtls != NULL) {
+					//~ /* This component is already ready, ignore this further candidate */
+					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Ignoring this candidate, the component is already ready\n", handle->handle_id);
+					//~ janus_mutex_unlock(&handle->mutex);
+					//~ return 0;
+				//~ }
+			//~ }
 			component->component_id = rcomponent;
 			component->stream_id = stream->stream_id;
 			NiceCandidate *c = NULL;
 			if(!strcasecmp(rtype, "host")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding host candidate... %s:%d\n", handle->handle_id, rip, rport);
-				/* We only support UDP... */
+				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(strcasecmp(rtransport, "udp")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+					if(!janus_ice_is_ice_tcp_enabled()) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+					} else {
+#ifdef HAVE_LIBNICE_TCP
+						if(!strcasecmp(rtransport, "tcp")) {
+							c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+						} else {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+						}
+#else
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+#endif
+					}
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
 				}
 			} else if(!strcasecmp(rtype, "srflx")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding srflx candidate... %s:%d --> %s:%d \n", handle->handle_id, rrelip, rrelport, rip, rport);
-				/* We only support UDP... */
+				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(strcasecmp(rtransport, "udp")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+					if(!janus_ice_is_ice_tcp_enabled()) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+					} else {
+#ifdef HAVE_LIBNICE_TCP
+						if(!strcasecmp(rtransport, "tcp")) {
+							c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
+						} else {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+						}
+#else
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+#endif
+					}
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_SERVER_REFLEXIVE);
 				}
 			} else if(!strcasecmp(rtype, "prflx")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding prflx candidate... %s:%d --> %s:%d\n", handle->handle_id, rrelip, rrelport, rip, rport);
-				/* We only support UDP... */
+				/* Unless this is libnice >= 0.1.8, we only support UDP... */
 				if(strcasecmp(rtransport, "udp")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+					if(!janus_ice_is_ice_tcp_enabled()) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+					} else {
+#ifdef HAVE_LIBNICE_TCP
+						if(!strcasecmp(rtransport, "tcp")) {
+							c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
+						} else {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+						}
+#else
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
+#endif
+					}
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
 				}
@@ -388,7 +433,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Adding relay candidate... %s:%d --> %s:%d\n", handle->handle_id, rrelip, rrelport, rip, rport);
 				/* We only support UDP/TCP/TLS... */
 				if(strcasecmp(rtransport, "udp") && strcasecmp(rtransport, "tcp") && strcasecmp(rtransport, "tls")) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]    Unsupported transport %s!\n", handle->handle_id, rtransport);
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Skipping unsupported transport '%s' for media\n", handle->handle_id, rtransport);
 				} else {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_RELAYED);
 				}
@@ -399,7 +444,33 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 			if(c != NULL) {
 				c->component_id = rcomponent;
 				c->stream_id = stream->stream_id;
+#ifndef HAVE_LIBNICE_TCP
 				c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+#else
+				if(!strcasecmp(rtransport, "udp")) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: UDP\n", handle->handle_id);
+					c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+				} else {
+					/* Check the type (https://tools.ietf.org/html/rfc6544#section-4.5) */
+					const char *type = NULL;
+					int ctype = 0;
+					if(strstr(candidate, "tcptype active")) {
+						type = "active";
+						ctype = NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE;
+					} else if(strstr(candidate, "tcptype passive")) {
+						type = "passive";
+						ctype = NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE;
+					} else if(strstr(candidate, "tcptype so")) {
+						type = "so";
+						ctype = NICE_CANDIDATE_TRANSPORT_TCP_SO;
+					} else {
+						/* TODO: We should actually stop here... */
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Missing tcptype info for the TCP candidate!\n", handle->handle_id);
+					}
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Transport: TCP (%s)\n", handle->handle_id, type);
+					c->transport = ctype;
+				}
+#endif
 				strncpy(c->foundation, rfoundation, NICE_CANDIDATE_MAX_FOUNDATION);
 				c->priority = rpriority;
 				nice_address_set_from_string(&c->addr, rip);
@@ -419,35 +490,32 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 					g_slist_length(component->candidates), stream->stream_id, component->component_id);
 				/* Save for the summary, in case we need it */
 				component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(candidate));
-				if(trickle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)) {
-					/* This is a trickle candidate and ICE has started, we should process it right away */
-					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED)) {
-						/* Actually, ICE has JUST started, take care of the candidates we've added so far */
-						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED);
-						JANUS_LOG(LOG_INFO, "ICE started and trickling, sending connectivity checks for candidates retrieved so far...\n");
-						if(handle->audio_id > 0) {
-							janus_ice_setup_remote_candidates(handle, handle->audio_id, 1);
-							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-								janus_ice_setup_remote_candidates(handle, handle->audio_id, 2);
+				if(trickle) {
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)) {
+						/* This is a trickle candidate and ICE has started, we should process it right away */
+						if(!component->process_started) {
+							/* Actually, ICE has JUST started for this compoment, take care of the candidates we've added so far */
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE just started for this component, setting candidates we have up to now\n", handle->handle_id);
+							janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
+						} else {
+							GSList *candidates = NULL;
+							candidates = g_slist_append(candidates, c);
+							if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
+								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
+							} else {
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
+							}
+							g_slist_free(candidates);
 						}
-						if(handle->video_id > 0) {
-							janus_ice_setup_remote_candidates(handle, handle->video_id, 1);
-							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-								janus_ice_setup_remote_candidates(handle, handle->video_id, 2);
-						}
-					}
-					GSList *candidates = NULL;
-					candidates = g_slist_append(candidates, c);
-					if (nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
 					} else {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
+						/* Queueing the trickle candidate for now, we'll process it later */
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Queueing trickle candidate, status is not START yet\n", handle->handle_id);
 					}
-					g_slist_free(candidates);
 				}
 			}
 		}
 	} else {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate (res=%d)...\n", handle->handle_id, res);
 		janus_mutex_unlock(&handle->mutex);
 		return res;
 	}
@@ -508,7 +576,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 			sdp_attribute_remove(&anon->sdp_attributes, "msid-semantic");
 	}
 		/* m= */
-	int a_sendrecv = 0, v_sendrecv = 0;
 	if(anon->sdp_media) {
 		int audio = 0, video = 0;
 #ifdef HAVE_SCTP
@@ -582,13 +649,13 @@ char *janus_sdp_anonymize(const char *sdp) {
 				while(sdp_attribute_find(m->m_attributes, "sctpmap"))
 					sdp_attribute_remove(&m->m_attributes, "sctpmap");
 			}
-			/* FIXME sendrecv hack: sofia-sdp doesn't print sendrecv, but we want it to */
-			if(m->m_mode == sdp_sendrecv) {
-				m->m_mode = sdp_inactive;
-				if(m->m_type == sdp_media_audio)
-					a_sendrecv = 1;
-				else if(m->m_type == sdp_media_video)
-					v_sendrecv = 1;
+			if(m->m_type != sdp_media_application && m->m_mode == sdp_sendrecv) {
+				/* FIXME sendrecv hack: sofia-sdp doesn't print sendrecv, but we want it to */
+				sdp_attribute_t *fakedir = calloc(1, sizeof(sdp_attribute_t));
+				fakedir->a_size = sizeof(sdp_attribute_t);
+				fakedir->a_name = g_strdup("jfmod");
+				fakedir->a_value = g_strdup("sr");
+				sdp_attribute_append(&m->m_attributes, fakedir);
 			}
 			m = m->m_next;
 		}
@@ -598,14 +665,12 @@ char *janus_sdp_anonymize(const char *sdp) {
 	if(sdp_message(printer)) {
 		int retval = sdp_message_size(printer);
 		sdp_printer_free(printer);
-		/* FIXME Take care of the sendrecv hack */
-		if(a_sendrecv || v_sendrecv) {
-			char *replace = strstr(buf, "a=inactive");
-			while(replace != NULL) {
-				memcpy(replace, "a=sendrecv", strlen("a=sendrecv"));
-				replace++;
-				replace = strstr(replace, "a=inactive");
-			}
+		/* FIXME Take care of the sendrecv hack, if needed */
+		char *replace = strstr(buf, "a=jfmod:sr");
+		while(replace != NULL) {
+			memcpy(replace, "a=sendrecv", strlen("a=sendrecv"));
+			replace++;
+			replace = strstr(replace, "a=jfmod:sr");
 		}
 		JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
 		JANUS_LOG(LOG_VERB, "  >> Anonymized (%zu --> %d bytes)\n", strlen(sdp), retval);
@@ -669,6 +734,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	g_snprintf(buffer, 512,
 		"t=%lu %lu\r\n", anon->sdp_time ? anon->sdp_time->t_start : 0, anon->sdp_time ? anon->sdp_time->t_stop : 0);
 	g_strlcat(sdp, buffer, BUFSIZE);
+	/* ICE Full or Lite? */
+	if(janus_ice_is_ice_lite_enabled()) {
+		/* Janus is acting in ICE Lite mode, advertize this */
+		g_strlcat(sdp, "a=ice-lite\r\n", BUFSIZE);
+	}
 	/* bundle: add new global attribute */
 	int audio = (strstr(origsdp, "m=audio") != NULL);
 	int video = (strstr(origsdp, "m=video") != NULL);
@@ -810,7 +880,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					}
 					g_strlcat(sdp, "m=application 1 DTLS/SCTP", BUFSIZE);
 				} else {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported application media line...\n", handle->handle_id);
 					g_snprintf(buffer, 512,
 						"m=%s 0 %s 0\r\n",
 						m->m_type_name, m->m_proto_name);
@@ -820,7 +890,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				}
 #endif
 			} else {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported media line...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 				g_snprintf(buffer, 512,
 					"m=%s 0 %s 0\r\n",
 					m->m_type_name, m->m_proto_name);
@@ -885,32 +955,23 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					break;
 			}
 			g_strlcat(sdp, buffer, BUFSIZE);
-			/* What is the direction? */
-			switch(m->m_mode) {
-				case sdp_sendonly:
-					g_strlcat(sdp, "a=sendonly\r\n", BUFSIZE);
-					break;
-				case sdp_recvonly:
-					g_strlcat(sdp, "a=recvonly\r\n", BUFSIZE);
-					break;
-				case sdp_inactive:
-				/*! \note Due to a sofia-sdp bug, when video is the only available
-				 * medium and audio is not there, the mode for the video medium is
-				 * set to sdp_inactive even when it actually is an 'a=sendrecv'. May
-				 * this be caused by the fact that no audio is there, thus implicitly
-				 * setting the whole session media to inactive? Anyway, until this
-				 * is fixed we assume that an inactive is actually a sendrecv: yeah,
-				 * an ugly and bad hack, but we never add an inactive stream in our
-				 * JavaScript anyway... */
-					JANUS_LOG(LOG_VERB, " *** Turning inactive to sendrecv... ***\n");
-					//~ g_strlcat(sdp, "a=inactive\r\n", BUFSIZE);
-					//~ break;
-				case sdp_sendrecv:
-				default:
-					g_strlcat(sdp, "a=sendrecv\r\n", BUFSIZE);
-					break;
-			}
 			if(m->m_type != sdp_media_application) {
+				/* What is the direction? */
+				switch(m->m_mode) {
+					case sdp_sendonly:
+						g_strlcat(sdp, "a=sendonly\r\n", BUFSIZE);
+						break;
+					case sdp_recvonly:
+						g_strlcat(sdp, "a=recvonly\r\n", BUFSIZE);
+						break;
+					case sdp_inactive:
+						g_strlcat(sdp, "a=inactive\r\n", BUFSIZE);
+						break;
+					case sdp_sendrecv:
+					default:
+						g_strlcat(sdp, "a=sendrecv\r\n", BUFSIZE);
+						break;
+				}
 				/* rtcp-mux */
 				g_snprintf(buffer, 512, "a=rtcp-mux\n");
 				g_strlcat(sdp, buffer, BUFSIZE);
@@ -978,7 +1039,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			/* Add last attributes, rtcp and ssrc (msid) */
 			if(!planb) {
 				/* Single SSRC */
-				if(m->m_type == sdp_media_audio) {
+				if(m->m_type == sdp_media_audio && m->m_mode != sdp_inactive && m->m_mode != sdp_recvonly) {
 					g_snprintf(buffer, 512,
 						"a=ssrc:%"SCNu32" cname:janusaudio\r\n"
 						"a=ssrc:%"SCNu32" msid:janus janusa0\r\n"
@@ -986,7 +1047,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						"a=ssrc:%"SCNu32" label:janusa0\r\n",
 							stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc);
 					g_strlcat(sdp, buffer, BUFSIZE);
-				} else if(m->m_type == sdp_media_video) {
+				} else if(m->m_type == sdp_media_video && m->m_mode != sdp_inactive && m->m_mode != sdp_recvonly) {
 					g_snprintf(buffer, 512,
 						"a=ssrc:%"SCNu32" cname:janusvideo\r\n"
 						"a=ssrc:%"SCNu32" msid:janus janusv0\r\n"

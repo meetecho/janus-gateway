@@ -250,6 +250,7 @@ $(document).ready(function() {
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
 									attachMediaStream($('#myvideo').get(0), stream);
+									$("#myvideo").get(0).muted = "muted";
 									// No remote video yet
 									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 									if(spinner == null) {
@@ -258,16 +259,25 @@ $(document).ready(function() {
 									} else {
 										spinner.spin();
 									}
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No webcam
+										$('#myvideo').hide();
+										$('#videoleft').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No webcam available</span>' +
+											'</div>');
+									}
 								},
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
 									console.log(JSON.stringify(stream));
-									spinner.stop();
-									$('#waitingvideo').remove();
 									if($('#remotevideo').length === 0) {
+										$('#videoright').parent().find('h3').html(
+											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
 										$('#videoright').append(
-											'<div>DTMF: <div id="dtmf" class="btn-group btn-group-xs"></div></div>' +
-											'<video class="rounded centered" id="remotevideo" width=320 height=240 autoplay/>');
+											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 										for(var i=0; i<12; i++) {
 											if(i<10)
 												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
@@ -281,7 +291,25 @@ $(document).ready(function() {
 											sipcall.dtmf({dtmf: { tones: $(this).text()}});
 										});
 									}
+									// Show the peer and hide the spinner when we get a playing event
+									$("#remotevideo").bind("playing", function () {
+										$('#waitingvideo').remove();
+										$('#remotevideo').removeClass('hide');
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+									});
 									attachMediaStream($('#remotevideo').get(0), stream);
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+										// No remote video
+										$('#remotevideo').hide();
+										$('#videoright').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No remote video available</span>' +
+											'</div>');
+									}
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
@@ -289,7 +317,7 @@ $(document).ready(function() {
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
 									$('#videos').hide();
-									$('#dtmf').parent().remove();
+									$('#dtmf').parent().html("Remote UA");
 								}
 							});
 					},
@@ -328,7 +356,7 @@ function registerUsername() {
 	$('#register').attr('disabled', true).unbind('click');
 	$('#guest').attr('disabled', true);
 	var sipserver = $('#server').val();
-	if(sipserver === "" || sipserver.indexOf("sip:") != 0) {
+	if(sipserver === "" || (sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0)) {
 		bootbox.alert("Please insert the SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');

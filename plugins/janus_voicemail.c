@@ -18,6 +18,79 @@
  * this project, meaning that it can work out of the box with the VoiceMail
  * demo we provide in the same folder.
  *
+ * \section vmailapi VoiceMail API
+ * 
+ * The VoiceMail API supports just two requests, \c record and \c stop 
+ * and they're both asynchronous, which means all responses (successes
+ * and errors) will be delivered as events with the same transaction. 
+ * 
+ * \c record will instruct the plugin to start recording, while \c stop
+ * will make the recording stop before the 10 seconds have passed.
+ * Never send a JSEP offer with any of these requests: it's always the
+ * VoiceMail plugin that originates a JSEP offer, in response to a
+ * \c record request, which means your application will only have to
+ * send a JSEP answer when that happens.
+ * 
+ * The \c record request has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "record"
+}
+\endverbatim
+ *
+ * A successful request will result in an \c starting status event:
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"status": "starting"
+}
+\endverbatim
+ * 
+ * which will be followed by a \c started as soon as the associated
+ * PeerConnection has been made available to the plugin: 
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"status": "started"
+}
+\endverbatim
+ * 
+ * An error instead would provide both an error code and a more verbose
+ * description of the cause of the issue:
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"error_code" : <numeric ID, check Macros below>,
+	"error" : "<error description as a string>"
+}
+\endverbatim
+ * 
+ * The \c stop request instead has to be formatted as follows:
+ *
+\verbatim
+{
+	"request" : "stop"
+}
+\endverbatim
+ *
+ * If the plugin detects a loss of the associated PeerConnection, whether
+ * as a result of a \c stop request or because the 10 seconds passed, a
+ * \c done status notification is triggered to inform the application
+ * the recording session is over, together with the path to the
+ * recording file itself:
+ * 
+\verbatim
+{
+	"voicemail" : "event",
+	"status" : "done",
+	"recording : "<path to the .opus file>"
+}
+\endverbatim
+ *
  * \ingroup plugins
  * \ref plugins
  */
@@ -30,6 +103,7 @@
 
 #include <ogg/ogg.h>
 
+#include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"
@@ -38,8 +112,8 @@
 
 
 /* Plugin information */
-#define JANUS_VOICEMAIL_VERSION			4
-#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.4"
+#define JANUS_VOICEMAIL_VERSION			6
+#define JANUS_VOICEMAIL_VERSION_STRING	"0.0.6"
 #define JANUS_VOICEMAIL_DESCRIPTION		"This is a plugin implementing a very simple VoiceMail service for Janus, recording Opus streams."
 #define JANUS_VOICEMAIL_NAME			"JANUS VoiceMail plugin"
 #define JANUS_VOICEMAIL_AUTHOR			"Meetecho s.r.l."
@@ -49,6 +123,7 @@
 janus_plugin *create(void);
 int janus_voicemail_init(janus_callbacks *callback, const char *config_path);
 void janus_voicemail_destroy(void);
+int janus_voicemail_get_api_compatibility(void);
 int janus_voicemail_get_version(void);
 const char *janus_voicemail_get_version_string(void);
 const char *janus_voicemail_get_description(void);
@@ -62,13 +137,15 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_voicemail_hangup_media(janus_plugin_session *handle);
 void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error);
+char *janus_voicemail_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_voicemail_plugin =
-	{
+	JANUS_PLUGIN_INIT (
 		.init = janus_voicemail_init,
 		.destroy = janus_voicemail_destroy,
 
+		.get_api_compatibility = janus_voicemail_get_api_compatibility,
 		.get_version = janus_voicemail_get_version,
 		.get_version_string = janus_voicemail_get_version_string,
 		.get_description = janus_voicemail_get_description,
@@ -83,7 +160,8 @@ static janus_plugin janus_voicemail_plugin =
 		.incoming_rtcp = janus_voicemail_incoming_rtcp,
 		.hangup_media = janus_voicemail_hangup_media,
 		.destroy_session = janus_voicemail_destroy_session,
-	}; 
+		.query_session = janus_voicemail_query_session,
+	);
 
 /* Plugin creator */
 janus_plugin *create(void) {
@@ -93,9 +171,10 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static int initialized = 0, stopping = 0;
+static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
+static GThread *watchdog;
 static void *janus_voicemail_handler(void *data);
 
 typedef struct janus_voicemail_message {
@@ -186,21 +265,22 @@ void *janus_voicemail_watchdog(void *data);
 void *janus_voicemail_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VoiceMail watchdog started\n");
 	gint64 now = 0;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
 		/* Iterate on all the sessions */
 		now = janus_get_monotonic_time();
 		if(old_sessions != NULL) {
 			GList *sl = old_sessions;
-			JANUS_LOG(LOG_VERB, "Checking %d old sessions\n", g_list_length(old_sessions));
+			JANUS_LOG(LOG_HUGE, "Checking %d old VoiceMail sessions...\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_voicemail_session *session = (janus_voicemail_session *)sl->data;
-				if(!session || !initialized || stopping) {
+				if(!session) {
 					sl = sl->next;
 					continue;
 				}
 				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					JANUS_LOG(LOG_VERB, "Freeing old VoiceMail session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
@@ -213,7 +293,7 @@ void *janus_voicemail_watchdog(void *data) {
 			}
 		}
 		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(2000000);
+		g_usleep(500000);
 	}
 	JANUS_LOG(LOG_INFO, "VoiceMail watchdog stopped\n");
 	return NULL;
@@ -222,7 +302,7 @@ void *janus_voicemail_watchdog(void *data) {
 
 /* Plugin implementation */
 int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
-	if(stopping) {
+	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
 	}
@@ -274,20 +354,21 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		}
 	}
 	
-	initialized = 1;
+	g_atomic_int_set(&initialized, 1);
+
+	GError *error = NULL;
 	/* Start the sessions watchdog */
-	GThread *watchdog = g_thread_new("vmail watchdog", &janus_voicemail_watchdog, NULL);
-	if(!watchdog) {
-		JANUS_LOG(LOG_FATAL, "Couldn't start VoiceMail watchdog...\n");
+	watchdog = g_thread_try_new("vmail watchdog", &janus_voicemail_watchdog, NULL, &error);
+	if(error != NULL) {
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VoiceMail watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus voicemail handler", janus_voicemail_handler, NULL, &error);
 	if(error != NULL) {
-		initialized = 0;
-		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch thread...\n", error->code, error->message ? error->message : "??");
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VoiceMail handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_VOICEMAIL_NAME);
@@ -295,13 +376,17 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 }
 
 void janus_voicemail_destroy(void) {
-	if(!initialized)
+	if(!g_atomic_int_get(&initialized))
 		return;
-	stopping = 1;
+	g_atomic_int_set(&stopping, 1);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
+		handler_thread = NULL;
 	}
-	handler_thread = NULL;
+	if(watchdog != NULL) {
+		g_thread_join(watchdog);
+		watchdog = NULL;
+	}
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
@@ -309,8 +394,14 @@ void janus_voicemail_destroy(void) {
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
-	initialized = 0;
+	g_atomic_int_set(&initialized, 0);
+	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_VOICEMAIL_NAME);
+}
+
+int janus_voicemail_get_api_compatibility(void) {
+	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+	return JANUS_PLUGIN_API_VERSION;
 }
 
 int janus_voicemail_get_version(void) {
@@ -338,7 +429,7 @@ const char *janus_voicemail_get_package(void) {
 }
 
 void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
-	if(stopping || !initialized) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
 	}	
@@ -374,18 +465,18 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 }
 
 void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
-	if(stopping || !initialized) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
 	}	
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No VoiceMail session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroyed) {
-		JANUS_LOG(LOG_WARN, "Session already destroyed...\n");
+		JANUS_LOG(LOG_WARN, "VoiceMail session already destroyed...\n");
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "Removing VoiceMail session...\n");
@@ -402,9 +493,32 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
+char *janus_voicemail_query_session(janus_plugin_session *handle) {
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+		return NULL;
+	}	
+	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return NULL;
+	}
+	/* In the echo test, every session is the same: we just provide some configure info */
+	json_t *info = json_object();
+	json_object_set_new(info, "state", json_string(session->stream ? "recording" : "idle"));
+	if(session->stream) {
+		json_object_set_new(info, "id", json_integer(session->recording_id));
+		json_object_set_new(info, "start_time", json_integer(session->start_time));
+		json_object_set_new(info, "filename", session->filename ? json_string(session->filename) : NULL);
+	}
+	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(info);
+	return info_text;
+}
+
 struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
-	if(stopping || !initialized)
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, stopping ? "Shutting down" : "Plugin not initialized");
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_voicemail_message *msg = calloc(1, sizeof(janus_voicemail_message));
 	if(msg == NULL) {
@@ -424,7 +538,7 @@ struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session 
 
 void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
-	if(stopping || !initialized)
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
 	if(!session) {
@@ -449,7 +563,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 }
 
 void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized)
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;	
 	if(!session || session->destroyed || session->stopping || !session->started || session->start_time == 0)
@@ -486,14 +600,14 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 }
 
 void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || stopping || !initialized)
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME Should we care? */
 }
 
 void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
-	if(stopping || !initialized)
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_voicemail_session *session = (janus_voicemail_session *)handle->plugin_handle;
 	if(!session) {
@@ -514,7 +628,7 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 
 /* Thread to handle incoming messages */
 static void *janus_voicemail_handler(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining thread\n");
+	JANUS_LOG(LOG_VERB, "Joining VoiceMail handler thread\n");
 	janus_voicemail_message *msg = NULL;
 	int error_code = 0;
 	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
@@ -523,7 +637,7 @@ static void *janus_voicemail_handler(void *data) {
 		return NULL;
 	}
 	json_t *root = NULL;
-	while(initialized && !stopping) {
+	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
 			usleep(50000);
 			continue;
@@ -719,7 +833,7 @@ error:
 		}
 	}
 	g_free(error_cause);
-	JANUS_LOG(LOG_VERB, "Leaving thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving VoiceMail handler thread\n");
 	return NULL;
 }
 

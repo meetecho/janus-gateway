@@ -52,6 +52,7 @@ janus_plugin *create(void) {
  * the configuration file);
  * - \c destroy(): on the other hand, this is called by the gateway when it
  * is shutting down, and your plugin should too;
+ * - \c get_api_compatibility(): this method MUST return JANUS_PLUGIN_API_VERSION;
  * - \c get_version(): this method should return a numeric version identifier (e.g., 3);
  * - \c get_version_string(): this method should return a verbose version identifier (e.g., "v1.0.1");
  * - \c get_description(): this method should return a verbose description of your plugin (e.g., "This is my awesome plugin that does this and that");
@@ -63,8 +64,23 @@ janus_plugin *create(void) {
  * - \c incoming_rtp(): a callback to notify you a peer has sent you a RTP packet;
  * - \c incoming_rtcp(): a callback to notify you a peer has sent you a RTCP message;
  * - \c incoming_data(): a callback to notify you a peer has sent you a message on a SCTP DataChannel;
+ * - \c slow_link(): a callback to notify you a peer has sent a lot of NACKs recently, and the media path may be slow;
  * - \c hangup_media(): a callback to notify you the peer PeerConnection has been closed (e.g., after a DTLS alert);
+ * - \c query_session(): this method is called by the gateway to get plugin-specific info on a session between you and a peer;
  * - \c destroy_session(): this method is called by the gateway to destroy a session between you and a peer.
+ * 
+ * All the above methods and callbacks, except for \c incoming_rtp ,
+ * \c incoming_rtcp , \c incoming_data and \c slow_link , are mandatory:
+ * the Janus core will reject a plugin that doesn't implement any of the
+ * mandatory callbacks. The previously mentioned ones, instead, are
+ * optional, so you're free to implement only those you care about. If
+ * your plugin will not handle any data channel, for instance, it makes
+ * sense to not implement the \c incoming_data callback at all. At the
+ * same time, if your plugin is ONLY going to use data channels and
+ * can't care less about RTP or RTCP, \c incoming_rtp and \c incoming_rtcp
+ * can be left out. Finally, \c slow_link is just there as a helper, some
+ * additional information you may be interested about, but you're not
+ * forced to receive it if you don't care.
  * 
  * The gateway \c janus_callbacks interface is provided to a plugin, together
  * with the path to the configurations files folder, in the \c init() method.
@@ -138,8 +154,55 @@ janus_plugin *create(void) {
 #include <unistd.h>
 #include <inttypes.h>
 
-#include "../apierror.h"
-#include "../debug.h"
+
+/*! \brief Version of the API, to match the one plugins were compiled against
+ * 
+ * \note This was added in version 0.0.7 of the gateway, to address changes
+ * to the API that might break existing plugin or the core itself. All
+ * plugins MUST implement the get_api_compatibility() method to make
+ * this work. Do NOT try to launch a pre 0.0.7 plugin on a >= 0.0.7
+ * gateway or it will crash.
+ * 
+ */
+#define JANUS_PLUGIN_API_VERSION	3
+
+/*! \brief Initialization of all plugin properties to NULL
+ * 
+ * \note This was added in version 0.0.8 of the gateway, to address changes
+ * to the API that might break existing plugin or the core itself. All
+ * plugins MUST add this as the FIRST line when initializing their
+ * plugin structure, e.g.:
+ * 
+\verbatim
+static janus_plugin janus_echotest_plugin =
+	{
+		JANUS_PLUGIN_INIT,
+		
+		.init = janus_echotest_init,
+		[..]
+\endverbatim
+ * */
+#define JANUS_PLUGIN_INIT(...) {		\
+		.init = NULL,					\
+		.destroy = NULL,				\
+		.get_api_compatibility = NULL,	\
+		.get_version = NULL,			\
+		.get_version_string = NULL,		\
+		.get_description = NULL,		\
+		.get_name = NULL,				\
+		.get_author = NULL,				\
+		.get_package = NULL,			\
+		.create_session = NULL,			\
+		.handle_message = NULL,			\
+		.setup_media = NULL,			\
+		.incoming_rtp = NULL,			\
+		.incoming_rtcp = NULL,			\
+		.incoming_data = NULL,			\
+		.slow_link = NULL,				\
+		.hangup_media = NULL,			\
+		.destroy_session = NULL,		\
+		.query_session = NULL, 			\
+		## __VA_ARGS__ }
 
 
 /*! \brief Callbacks to contact the gateway */
@@ -172,6 +235,13 @@ struct janus_plugin {
 	/*! \brief Plugin deinitialization/destructor */
 	void (* const destroy)(void);
 
+	/*! \brief Informative method to request the API version this plugin was compiled against
+	 *  \note This was added in version 0.0.7 of the gateway, to address changes
+	 * to the API that might break existing plugin or the core itself. All
+	 * plugins MUST implement this method and return JANUS_PLUGIN_API_VERSION
+	 * to make this work, or they will be rejected by the core. Do NOT try
+	 * to launch a <= 0.0.7 plugin on a >= 0.0.7 gateway or it will crash. */
+	int (* const get_api_compatibility)(void);
 	/*! \brief Informative method to request the numeric version of the plugin */
 	int (* const get_version)(void);
 	/*! \brief Informative method to request the string version of the plugin */
@@ -219,6 +289,20 @@ struct janus_plugin {
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
 	void (* const incoming_data)(janus_plugin_session *handle, char *buf, int len);
+	/*! \brief Method to be notified by the core when too many NACKs have been received by
+	 * Janus, and so a slow or potentially unreliable network is to be expected for this peer
+	 * \note Beware that this callback may be called more than once in a row,
+	 * (even though never more than once per second), until things go better for that
+	 * PeerConnection. You may or may not want to handle this callback and
+	 * act on it, considering you can get bandwidth information from REMB
+	 * feedback sent by the peer if the browser supports it. Besides, your
+	 * plugin may not have access to encoder related settings to slow down
+	 * or decreae the bitrate if required after the callback is called.
+	 * Nevertheless, it can be useful for debugging, or for informing your
+	 * users about potential issues that may be happening media-wise.
+	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] video Whether this is related to an audio or a video stream */
+	void (* const slow_link)(janus_plugin_session *handle, int video);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);
@@ -226,6 +310,12 @@ struct janus_plugin {
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[out] error An integer that may contain information about any error */
 	void (* const destroy_session)(janus_plugin_session *handle, int *error);
+	/*! \brief Method to get plugin-specific info of a session/handle
+	 *  \note This was added in version 0.0.7 of the gateway. Janus assumes
+	 * the string is always allocated, so don't return constants here
+	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @returns A JSON-formatted string with the requested info */
+	char *(* const query_session)(janus_plugin_session *handle);
 
 };
 

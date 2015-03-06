@@ -14,6 +14,7 @@
 <script type="text/javascript" src="videomcutest.js"></script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
 <body>
 
 <a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
@@ -49,6 +50,7 @@
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
+			<li><a href="citeus.html">Cite us!</a></li>
 		</ul>
 		<div class="navbar-header navbar-right">
 			<ul class="nav navbar-nav">
@@ -65,7 +67,7 @@
 		<div class="col-md-12">
 			<div class="page-header">
 				<h1>Plugin Demo: Video MCU
-					<button class="btn btn-default" id="start">Start</button>
+					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
 			<div class="container" id="details">
@@ -92,9 +94,9 @@
 					<div class="col-md-12" id="controls">
 						<div class="input-group margin-bottom-md hide" id="registernow">
 							<span class="input-group-addon">@</span>
-							<input class="form-control" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
+							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="Choose a display name" id="username" onkeypress="return checkEnter(this, event);"></input>
 							<span class="input-group-btn">
-								<button class="btn btn-success" id="register">Join the room</button>
+								<button class="btn btn-success" autocomplete="off" id="register">Join the room</button>
 							</span>
 						</div>
 					</div>

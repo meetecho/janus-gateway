@@ -133,6 +133,7 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 		JANUS_LOG(LOG_FATAL, "Certificate check error...\n");
 		return -4;
 	}
+	SSL_CTX_set_read_ahead(ssl_ctx,1);
 	BIO *certbio = BIO_new(BIO_s_file());
 	if(certbio == NULL) {
 		JANUS_LOG(LOG_FATAL, "Certificate BIO error...\n");
@@ -232,6 +233,20 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting accept state (DTLS server)\n", handle->handle_id);
 		SSL_set_accept_state(dtls->ssl);
 	}
+	/* https://code.google.com/p/chromium/issues/detail?id=406458 
+	 * Specify an ECDH group for ECDHE ciphers, otherwise they cannot be
+	 * negotiated when acting as the server. Use NIST's P-256 which is
+	 * commonly supported.
+	 */
+	EC_KEY* ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+	if(ecdh == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group!\n", handle->handle_id);
+		janus_dtls_srtp_destroy(dtls);
+		return NULL;
+	}
+	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
+	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
+	EC_KEY_free(ecdh);
 	dtls->ready = 0;
 #ifdef HAVE_SCTP
 	dtls->sctp = NULL;
@@ -272,7 +287,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		return;
 	}
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-		JANUS_LOG(LOG_ERR, "Alert already received, clearing up...\n");
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Alert already triggered, clearing up...\n", handle->handle_id);
 		return;
 	}
 	if(!dtls->ssl || !dtls->read_bio) {
@@ -281,34 +296,44 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	janus_dtls_fd_bridge(dtls);
 	int written = BIO_write(dtls->read_bio, buf, len);
-	JANUS_LOG(LOG_HUGE, "    Written %d of those bytes on the read BIO...\n", written);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Written %d of those bytes on the read BIO...\n", handle->handle_id, written);
 	janus_dtls_fd_bridge(dtls);
 	/* Try to read data */
 	char data[1500];	/* FIXME */
 	memset(&data, 0, 1500);
 	int read = SSL_read(dtls->ssl, &data, 1500);
-	JANUS_LOG(LOG_HUGE, "    ... and read %d of them from SSL...\n", read);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     ... and read %d of them from SSL...\n", handle->handle_id, read);
+	if(read < 0) {
+		unsigned long err = SSL_get_error(dtls->ssl, read);
+		if(err == SSL_ERROR_SSL) {
+			/* Ops, something went wrong with the DTLS handshake */
+			char error[200];
+			ERR_error_string_n(ERR_get_error(), error, 200);
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Handshake error: %s\n", handle->handle_id, error);
+			return;
+		}
+	}
 	janus_dtls_fd_bridge(dtls);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) || janus_is_stopping()) {
-		/* DTLS alert received, we should end it here */
+		/* DTLS alert triggered, we should end it here */
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forced to stop it here...\n", handle->handle_id);
 		return;
 	}
 	if(!SSL_is_init_finished(dtls->ssl)) {
 		/* Nothing else to do for now */
-		JANUS_LOG(LOG_HUGE, "Initialization not finished yet...\n");
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Initialization not finished yet...\n", handle->handle_id);
 		return;
 	}
 	if(dtls->ready) {
 		/* There's data to be read? */
-		JANUS_LOG(LOG_HUGE, "Any data available?\n");
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Any data available?\n", handle->handle_id);
 #ifdef HAVE_SCTP
 		if(dtls->sctp != NULL && read > 0) {
-			JANUS_LOG(LOG_HUGE, "Sending data (%d bytes) to the SCTP stack...\n", read);
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Sending data (%d bytes) to the SCTP stack...\n", handle->handle_id, read);
 			janus_sctp_data_from_dtls(dtls->sctp, data, read);
 		}
 #else
-		JANUS_LOG(LOG_WARN, "Data available but Data Channels support disabled...\n");
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Data available but Data Channels support disabled...\n", handle->handle_id);
 #endif
 	} else {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS established, yay!\n", handle->handle_id);
@@ -379,8 +404,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
 					memcpy(dtls->remote_policy.key, remote_key, SRTP_MASTER_KEY_LENGTH);
 					memcpy(dtls->remote_policy.key + SRTP_MASTER_KEY_LENGTH, remote_salt, SRTP_MASTER_SALT_LENGTH);
+#if HAS_DTLS_WINDOW_SIZE
 					dtls->remote_policy.window_size = 128;
 					dtls->remote_policy.allow_repeat_tx = 0;
+#endif
 					dtls->remote_policy.next = NULL;
 						/* Local (outbound) */
 					crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
@@ -390,8 +417,10 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					dtls->local_policy.key = (unsigned char *)&local_policy_key;
 					memcpy(dtls->local_policy.key, local_key, SRTP_MASTER_KEY_LENGTH);
 					memcpy(dtls->local_policy.key + SRTP_MASTER_KEY_LENGTH, local_salt, SRTP_MASTER_SALT_LENGTH);
+#if HAS_DTLS_WINDOW_SIZE
 					dtls->local_policy.window_size = 128;
 					dtls->local_policy.allow_repeat_tx = 0;
+#endif
 					dtls->local_policy.next = NULL;
 					/* Create SRTP sessions */
 					err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
@@ -424,7 +453,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 						g_thread_try_new("DTLS-SCTP", janus_dtls_sctp_setup_thread, dtls, &error);
 						if(error != NULL) {
 							/* Something went wrong... */
-							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 						}
 						dtls->srtp_valid = 1;
 					}
@@ -516,10 +545,10 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 	}
 	if(stream->stream_id == handle->data_id) {
 		/* FIXME BADLY We got a DTLS alert on the Data channel, we ignore it for now */
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] DTLS alert received on stream %"SCNu16", but it's the data channel so we don't care...\n", handle->handle_id, stream->stream_id);
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16", but it's the data channel so we don't care...\n", handle->handle_id, stream->stream_id);
 		return;
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert received on stream %"SCNu16", closing...\n", handle->handle_id, stream->stream_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
@@ -530,6 +559,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
 			if(plugin && plugin->hangup_media)
 				plugin->hangup_media(handle->app_handle);
+			janus_ice_notify_hangup(handle, "DTLS alert");
 		}
 	}
 }
@@ -566,10 +596,23 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 	if (pending > 0) {
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> Going to send DTLS data: %d bytes\n", handle->handle_id, pending);
 		char outgoing[pending];
-		size_t out = BIO_read(dtls->write_bio, outgoing, sizeof(outgoing));
-		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> Read %d bytes from the write_BIO...\n", handle->handle_id, pending);
+		int out = BIO_read(dtls->write_bio, outgoing, sizeof(outgoing));
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> Read %d bytes from the write_BIO...\n", handle->handle_id, out);
+		if(out > 1500) {
+			/* FIXME Just a warning for now, this will need to be solved with proper fragmentation */
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] The DTLS stack is trying to send a packet of %d bytes, this may be larger than the MTU and get dropped!\n", handle->handle_id, out);
+		}
 		int bytes = nice_agent_send(handle->agent, component->stream_id, component->component_id, out, outgoing);
-		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
+		if(bytes < out) {
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error sending DTLS message on component %d of stream %d (%d)\n", handle->handle_id, component->component_id, stream->stream_id, bytes);
+		} else {
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> >> ... and sent %d of those bytes on the socket\n", handle->handle_id, bytes);
+		}
+		/* Update stats (TODO Do the same for the last second window as well)
+		 * FIXME: the Data stats includes the bytes used for the handshake */
+		if(bytes > 0) {
+			component->out_stats.data_bytes += bytes;
+		}
 	}
 }
 
@@ -637,7 +680,7 @@ gboolean janus_dtls_retry(gpointer stack) {
 	struct timeval timeout;
 	DTLSv1_get_timeout(dtls->ssl, &timeout);
 	guint64 timeout_value = timeout.tv_sec*1000 + timeout.tv_usec/1000;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
 	if(timeout_value == 0) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS timeout on component %d of stream %d, retransmitting\n", handle->handle_id, component->component_id, stream->stream_id);
 		DTLSv1_handle_timeout(dtls->ssl);
@@ -651,16 +694,21 @@ gboolean janus_dtls_retry(gpointer stack) {
 /* Helper thread to create a SCTP association that will use this DTLS stack */
 void *janus_dtls_sctp_setup_thread(void *data) {
 	if(data == NULL) {
+		JANUS_LOG(LOG_ERR, "No DTLS stack??\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)data;
 	if(dtls->sctp == NULL) {
+		JANUS_LOG(LOG_ERR, "No SCTP stack??\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_sctp_association *sctp = (janus_sctp_association *)dtls->sctp;
 	/* Do the accept/connect stuff now */
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Started thread: setup of the SCTP association\n", sctp->handle_id);
 	janus_sctp_association_setup(sctp);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 #endif

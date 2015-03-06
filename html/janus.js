@@ -955,8 +955,9 @@ function Janus(gatewayCallbacks) {
 				pluginHandle.ondata(event.data);	// FIXME
 			}
 			var onDataChannelStateChange = function() {
-				Janus.log('State change on data channel: ' + config.dataChannel.readyState);
-				if(config.dataChannel.readyState === 'open') {
+				var dcState = config.dataChannel !== null ? config.dataChannel.readyState : "null";
+				Janus.log('State change on data channel: ' + dcState);
+				if(dcState === 'open') {
 					pluginHandle.ondataopen();	// FIXME
 				}
 			}
@@ -1015,24 +1016,66 @@ function Janus(gatewayCallbacks) {
 			pluginHandle.consentDialog(true);
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
-				if(media.video === 'lowres') {
-					// Add a video constraint (320x240)
-					if(!navigator.mozGetUserMedia) {
-						videoSupport = {"mandatory": {"maxHeight": "240", "maxWidth": "320"}, "optional": []};
-						Janus.log("Adding media constraint (low-res video)");
-						Janus.log(videoSupport);
+				if(media.video && media.video != 'screen') {
+					var width = 0;
+					var height = 0, maxHeight = 0;
+					if(media.video === 'lowres') {
+						// Small resolution, 4:3
+						height = 240;
+						maxHeight = 240;
+						width = 320;
+					} else if(media.video === 'lowres-16:9') {
+						// Small resolution, 16:9
+						height = 180;
+						maxHeight = 240;
+						width = 320;
+					} else if(media.video === 'hires' || media.video === 'hires-16:9' ) {
+						// High resolution is only 16:9
+						height = 720;
+						maxHeight = 720;
+						width = 1280;
+						if(navigator.mozGetUserMedia) {
+							// Unless this is Firefox, which doesn't support it
+							Janus.log(media.video + " unsupported, falling back to stdres (Firefox)");
+							height = 480;
+							maxHeight = 480;
+							width  = 640;
+						}
+					} else if(media.video === 'stdres') {
+						// Normal resolution, 4:3
+						height = 480;
+						maxHeight = 480;
+						width  = 640;
+					} else if(media.video === 'stdres-16:9') {
+						// Normal resolution, 16:9
+						height = 360;
+						maxHeight = 480;
+						width = 640;
 					} else {
-						Janus.log("Firefox doesn't support media constraints at the moment, ignoring low-res video");
+						Janus.log("Default video setting (" + media.video + ") is stdres 4:3");
+						height = 480;
+						maxHeight = 480;
+						width = 640;
 					}
-				} else if(media.video === 'hires') {
-					// Add a video constraint (1280x720)
-					if(!navigator.mozGetUserMedia) {
-						videoSupport = {"mandatory": {"minHeight": "720", "minWidth": "1280"}, "optional": []};
-						Janus.log("Adding media constraint (hi-res video)");
-						Janus.log(videoSupport);
+					Janus.log("Adding media constraint " + media.video);
+					if(navigator.mozGetUserMedia) {
+						videoSupport = {
+						    'require': ['height', 'width'],
+						    'height': {'max': maxHeight, 'min': height},
+						    'width':  {'max': width,  'min': width}
+						};
 					} else {
-						Janus.log("Firefox doesn't support media constraints at the moment, ignoring hi-res video");
+						videoSupport = {
+						    'mandatory': {
+						        'maxHeight': maxHeight,
+						        'minHeight': height,
+						        'maxWidth':  width,
+						        'minWidth':  width
+						    },
+						    'optional': []
+						};
 					}
+					Janus.log(videoSupport);
 				} else if(media.video === 'screen') {
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
@@ -1177,10 +1220,29 @@ function Janus(gatewayCallbacks) {
 			}
 			// If we got here, we're not screensharing
 			if(media === null || media === undefined || media.video !== 'screen') {
-				getUserMedia(
-					{audio:isAudioSendEnabled(media), video:videoSupport},
-					function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-					function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+				// Check whether all media sources are actually available or not
+				// as per https://github.com/meetecho/janus-gateway/pull/114
+				MediaStreamTrack.getSources(function(sources) {
+					var audioExist = sources.some(function(source) {
+						return source.kind === 'audio';
+					}),
+					videoExist = sources.some(function(source) {
+						return source.kind === 'video';
+					});
+
+					// FIXME Should we really give up, or just assume recvonly for both?
+					if(!audioExist && !videoExist) {
+						pluginHandle.consentDialog(false);
+						callbacks.error('No capture device found');
+						return false;
+					}
+
+					getUserMedia(
+						{audio: audioExist && isAudioSendEnabled(media), video: videoExist && videoSupport},
+						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
+						function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+				});
+
 			}
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away

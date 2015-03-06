@@ -54,6 +54,8 @@ var started = false;
 
 var myusername = null;
 var myid = null;
+var mystream = null;
+var muted = false;
 
 var feeds = [];
 var bitrateTimer = [];
@@ -211,12 +213,16 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									console.log(" ::: Got a local stream :::");
+									mystream = stream;
 									console.log(JSON.stringify(stream));
 									$('#videolocal').empty();
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0) {
 										$('#videolocal').append('<video class="rounded centered" id="myvideo" width="100%" height="100%" autoplay muted="muted"/>');
+										// Add a 'mute' button
+										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>');
+										$('#mute').click(toggleMute);
 										// Add an 'unpublish' button
 										$('#videolocal').append('<button class="btn btn-warning btn-xs" id="unpublish" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;">Unpublish</button>');
 										$('#unpublish').click(unpublishOwnFeed);
@@ -224,12 +230,24 @@ $(document).ready(function() {
 									$('#publisher').removeClass('hide').html(myusername).show();
 									attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0) {
+										// No webcam
+										$('#myvideo').hide();
+										$('#videolocal').append(
+											'<div class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+												'<span class="no-video-text" style="font-size: 16px;">No webcam available</span>' +
+											'</div>');
+									}
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification: we are unpublished now :::");
+									mystream = null;
+									muted = false;
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
 									$('#publish').click(function() { publishOwnFeed(true); });
 								}
@@ -316,6 +334,25 @@ function publishOwnFeed(useAudio) {
 		});
 }
 
+function toggleMute() {
+	if(mystream === null || mystream === undefined) {
+		console.log("Cannot " + (muted ? "unmute" : "mute") + ", there's no local stream");
+		return;
+	}
+	if(mystream.getAudioTracks() === null || mystream.getAudioTracks() === undefined) {
+		console.log("Cannot " + (muted ? "unmute" : "mute") + ", there's no audio track");
+		return;
+	}
+	if(mystream.getAudioTracks()[0] === null || mystream.getAudioTracks()[0] === undefined) {
+		console.log("Cannot " + (muted ? "unmute" : "mute") + ", there's no audio track");
+		return;
+	}
+	console.log((muted ? "Unmuting" : "Muting") + " local stream...");
+	mystream.getAudioTracks()[0].enabled = muted;
+	muted = !muted;
+	$('#mute').html(muted ? "Unmute" : "Mute");
+}
+
 function unpublishOwnFeed() {
 	// Unpublish our stream
 	$('#unpublish').attr('disabled', true).unbind('click');
@@ -359,7 +396,7 @@ function newRemoteFeed(id, display) {
 						remoteFeed.rfid = msg["id"];
 						remoteFeed.rfdisplay = msg["display"];
 						if(remoteFeed.spinner === undefined || remoteFeed.spinner === null) {
-							var target = document.getElementById('#videoremote'+remoteFeed.rfindex);
+							var target = document.getElementById('videoremote'+remoteFeed.rfindex);
 							remoteFeed.spinner = new Spinner({top:100}).spin(target);
 						} else {
 							remoteFeed.spinner.spin();
@@ -397,20 +434,26 @@ function newRemoteFeed(id, display) {
 			},
 			onremotestream: function(stream) {
 				console.log("Remote feed #" + remoteFeed.rfindex);
-				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
-					remoteFeed.spinner.stop();
-				if($('#remotevideo'+remoteFeed.rfindex).length === 0)
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+				if($('#remotevideo'+remoteFeed.rfindex).length === 0) {
+					// No remote video yet
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
+					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+				}
 				$('#videoremote'+remoteFeed.rfindex).append(
 					'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 					'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
-				$("#remotevideo"+remoteFeed.rfindex).bind("loadedmetadata", function () {
-					if(webrtcDetectedBrowser == "chrome") {
-						var width = this.videoWidth;
-						var height = this.videoHeight;
-						$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					} else {
-						// Firefox has a bug: width and height are not immediately available after a loadedmetadata
+				// Show the video, hide the spinner and show the resolution when we get a playing event
+				$("#remotevideo"+remoteFeed.rfindex).bind("playing", function () {
+					if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
+						remoteFeed.spinner.stop();
+					remoteFeed.spinner = null;
+					$('#waitingvideo'+remoteFeed.rfindex).remove();
+					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide');
+					var width = this.videoWidth;
+					var height = this.videoHeight;
+					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
+					if(webrtcDetectedBrowser == "firefox") {
+						// Firefox Stable has a bug: width and height are not immediately available after a playing
 						setTimeout(function() {
 							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
 							var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
@@ -419,6 +462,16 @@ function newRemoteFeed(id, display) {
 					}
 				});
 				attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
+				var videoTracks = stream.getVideoTracks();
+				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+					// No remote video
+					$('#remotevideo'+remoteFeed.rfindex).hide();
+					$('#videoremote'+remoteFeed.rfindex).append(
+						'<div class="no-video-container">' +
+							'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
+						'</div>');
+				}
 				if(webrtcDetectedBrowser == "chrome") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
@@ -430,6 +483,10 @@ function newRemoteFeed(id, display) {
 			},
 			oncleanup: function() {
 				console.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
+				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
+					remoteFeed.spinner.stop();
+				remoteFeed.spinner = null;
+				$('#waitingvideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
 				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 

@@ -49,14 +49,14 @@ static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore ad
 janus_sctp_channel *janus_sctp_find_channel_by_stream(janus_sctp_association *sctp, uint16_t stream);
 janus_sctp_channel *janus_sctp_find_free_channel(janus_sctp_association *sctp);
 uint16_t janus_sctp_find_free_stream(janus_sctp_association *sctp);
-void request_more_streams(janus_sctp_association *sctp);
+void janus_sctp_request_more_streams(janus_sctp_association *sctp);
 int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, uint8_t unordered, uint16_t pr_policy, uint32_t pr_value);
 int janus_sctp_send_open_response_message(struct socket *sock, uint16_t stream);
 int janus_sctp_send_open_ack_message(struct socket *sock, uint16_t stream);
 void janus_sctp_send_deferred_messages(janus_sctp_association *sctp);
 int janus_sctp_open_channel(janus_sctp_association *sctp, uint8_t unordered, uint16_t pr_policy, uint32_t pr_value);
 int janus_sctp_send_text(janus_sctp_association *sctp, uint16_t id, char *text, size_t length);
-void reset_outgoing_stream(janus_sctp_association *sctp, uint16_t stream);
+void janus_sctp_reset_outgoing_stream(janus_sctp_association *sctp, uint16_t stream);
 void janus_sctp_send_outgoing_stream_reset(janus_sctp_association *sctp);
 int janus_sctp_close_channel(janus_sctp_association *sctp, uint16_t id);
 void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_datachannel_open_request *req, size_t length, uint16_t stream);
@@ -239,7 +239,19 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	sctp->sock = sock;
 	sctp->in_messages = g_queue_new();
 	sctp->out_messages = g_queue_new();
-	g_thread_new("JanusSCTP", &janus_sctp_thread, sctp);
+	GError *error = NULL;
+	sctp->thread = g_thread_try_new("JanusSCTP", &janus_sctp_thread, sctp, &error);
+	if(error != NULL) {
+		/* Something went wrong... */
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
+		g_queue_free(sctp->in_messages);
+		sctp->in_messages = NULL;
+		g_queue_free(sctp->out_messages);
+		sctp->out_messages = NULL;
+		g_free(sctp);
+		sctp = NULL;
+		return NULL;
+	}
 	janus_mutex_unlock(&sctp->mutex);
 	return sctp;
 }
@@ -280,9 +292,8 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 	usrsctp_shutdown(sctp->sock, SHUT_RDWR);
 	usrsctp_close(sctp->sock);
 	janus_mutex_lock(&sctp->mutex);
-	sctp->dtls = NULL;
+	sctp->dtls = NULL;	/* This will get rid of the thread */
 	janus_mutex_unlock(&sctp->mutex);
-	//~ free(sctp);
 }
 
 void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len) {
@@ -411,7 +422,7 @@ uint16_t janus_sctp_find_free_stream(janus_sctp_association *sctp) {
 	}
 }
 
-void request_more_streams(janus_sctp_association *sctp) {
+void janus_sctp_request_more_streams(janus_sctp_association *sctp) {
 	struct sctp_status status;
 	struct sctp_add_streams sas;
 	uint32_t i, streams_needed;
@@ -446,43 +457,54 @@ void request_more_streams(janus_sctp_association *sctp) {
 
 int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, uint8_t unordered, uint16_t pr_policy, uint32_t pr_value) {
 	/* XXX: This should be encoded in a better way */
-	janus_datachannel_open_request req;
+	janus_datachannel_open_request *req = NULL;
 	struct sctp_sndinfo sndinfo;
 
-	memset(&req, 0, sizeof(janus_datachannel_open_request));
-	req.msg_type = DATA_CHANNEL_OPEN_REQUEST;
+	/* FIXME For open requests we send, we always use this label */
+	const char *label = "JanusDataChannel";
+	guint label_size = (strlen(label)+3) & ~3;
+	JANUS_LOG(LOG_VERB, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
+
+	req = calloc(sizeof(janus_datachannel_open_request) + label_size, sizeof(char));
+	memset(req, 0, sizeof(janus_datachannel_open_request) + label_size);
+	req->msg_type = DATA_CHANNEL_OPEN_REQUEST;
 	switch (pr_policy) {
 		case SCTP_PR_SCTP_NONE:
 			/* XXX: What about DATA_CHANNEL_RELIABLE_STREAM */
-			req.channel_type = DATA_CHANNEL_RELIABLE;
+			req->channel_type = DATA_CHANNEL_RELIABLE;
 			break;
 		case SCTP_PR_SCTP_TTL:
 			/* XXX: What about DATA_CHANNEL_UNRELIABLE */
-			req.channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
+			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
 			break;
 		case SCTP_PR_SCTP_RTX:
-			req.channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
+			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
 			break;
 		default:
 			return 0;
 	}
-	req.priority = htons(0); /* XXX: add support */
-	req.reliability_params = htonl((uint32_t)pr_value);
-	req.label_length = htons(16);
-	const char *label = "JanusDataChannel";
-	memcpy(&req.label, label, 16);
+	req->priority = htons(0); /* XXX: add support */
+	req->reliability_params = htonl((uint32_t)pr_value);
+	req->label_length = htons(label_size);
+	memcpy(&req->label, label, strlen(label));
+	
 	memset(&sndinfo, 0, sizeof(struct sctp_sndinfo));
 	sndinfo.snd_sid = stream;
 	sndinfo.snd_flags = SCTP_EOR;
 	sndinfo.snd_ppid = htonl(DATA_CHANNEL_PPID_CONTROL);
+	
 	if(usrsctp_sendv(sock,
-	                  &req, sizeof(janus_datachannel_open_request),
+	                  req, sizeof(janus_datachannel_open_request) + label_size,
 	                  NULL, 0,
 	                  &sndinfo, (socklen_t)sizeof(struct sctp_sndinfo),
 	                  SCTP_SENDV_SNDINFO, 0) < 0) {
 		JANUS_LOG(LOG_ERR, "usrsctp_sendv error\n");
+		g_free(req);
+		req = NULL;
 		return 0;
 	} else {
+		g_free(req);
+		req = NULL;
 		return 1;
 	}
 }
@@ -601,7 +623,7 @@ int janus_sctp_open_channel(janus_sctp_association *sctp, uint8_t unordered, uin
 	channel->stream = stream;
 	channel->flags = 0;
 	if(stream == 0) {
-		request_more_streams(sctp);
+		janus_sctp_request_more_streams(sctp);
 	} else {
 		if(janus_sctp_send_open_request_message(sctp->sock, stream, unordered, pr_policy, pr_value)) {
 			sctp->stream_channel[stream] = channel;
@@ -662,7 +684,7 @@ int janus_sctp_send_text(janus_sctp_association *sctp, uint16_t id, char *text, 
 	return 0;
 }
 
-void reset_outgoing_stream(janus_sctp_association *sctp, uint16_t stream) {
+void janus_sctp_reset_outgoing_stream(janus_sctp_association *sctp, uint16_t stream) {
 	uint32_t i;
 
 	for(i = 0; i < sctp->stream_buffer_counter; i++) {
@@ -715,7 +737,7 @@ int janus_sctp_close_channel(janus_sctp_association *sctp, uint16_t id) {
 	if(channel->state != DATA_CHANNEL_OPEN) {
 		return -1;
 	}
-	reset_outgoing_stream(sctp, channel->stream);
+	janus_sctp_reset_outgoing_stream(sctp, channel->stream);
 	janus_sctp_send_outgoing_stream_reset(sctp);
 	channel->state = DATA_CHANNEL_CLOSING;
 	return 0;
@@ -776,7 +798,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	channel->flags = 0;
 	sctp->stream_channel[stream] = channel;
 	if(stream == 0) {
-		request_more_streams(sctp);
+		janus_sctp_request_more_streams(sctp);
 	} else {
 		if(janus_sctp_send_open_ack_message(sctp->sock, stream)) {
 			sctp->stream_channel[stream] = channel;
@@ -796,20 +818,16 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 			}
 		}
 	}
-	/* Read label */
-	char label[20];
-	int len = ntohs(req->label_length);
-	if(len > 16)
-		len = 16;
-	if(len > 0) {
-		memcpy(&label, req->label, len);
+	/* Read label, if available */
+	char *label = NULL;
+	guint len = ntohs(req->label_length);
+	if(len > 0 && len < length) {
+		label = calloc(len+1, sizeof(char));
+		memcpy(label, req->label, len);
 		label[len] = '\0'; 
-	} else {
-		label[0] = '?';
-		label[1] = '?';
-		label[2] = '\0';
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id, label,
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id,
+		label ? label : "??",
 		channel->stream, channel->unordered, channel->pr_policy, channel->pr_value); 
 }
 
@@ -1117,7 +1135,7 @@ void janus_sctp_handle_stream_reset_event(janus_sctp_association *sctp, struct s
 						channel->state = DATA_CHANNEL_CLOSED;
 					} else {
 						if(channel->state == DATA_CHANNEL_OPEN) {
-							reset_outgoing_stream(sctp, channel->stream);
+							janus_sctp_reset_outgoing_stream(sctp, channel->stream);
 							channel->state = DATA_CHANNEL_CLOSING;
 						} else {
 							/* XXX: What to do? */
@@ -1200,7 +1218,7 @@ void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_not
 			janus_sctp_handle_stream_reset_event(sctp, &(notif->sn_strreset_event));
 			janus_sctp_send_deferred_messages(sctp);
 			janus_sctp_send_outgoing_stream_reset(sctp);
-			request_more_streams(sctp);
+			janus_sctp_request_more_streams(sctp);
 			break;
 		case SCTP_ASSOC_RESET_EVENT:
 			break;
@@ -1216,6 +1234,7 @@ void *janus_sctp_thread(void *data) {
 	janus_sctp_association *sctp = (janus_sctp_association *)data;
 	if(sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid SCTP association, closing thread\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
@@ -1300,8 +1319,10 @@ void *janus_sctp_thread(void *data) {
 	sctp->in_messages = NULL;
 	g_queue_free(sctp->out_messages);
 	sctp->out_messages = NULL;
+	sctp->thread = NULL;
 	g_free(sctp);
 	sctp = NULL;
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 

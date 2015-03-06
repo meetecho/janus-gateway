@@ -8,6 +8,7 @@ docs/html/
 
 Makefile
 Makefile.in
+/build
 /configure
 /autom4te.cache
 /aclocal.m4
@@ -30,6 +31,10 @@ Makefile.in
 /plugins/*.la
 /plugins/.libs
 /postprocessing/*.o
+
+/conf/janus.cfg.sample
+/conf/janus.plugin.recordplay.cfg.sample
+/conf/janus.plugin.streaming.cfg.sample
 
 .deps
 .dirstamp

@@ -50,6 +50,7 @@
 				</ul>
 			</li>
 			<li><a href="docs">Documentation</a></li>
+			<li><a href="citeus.html">Cite us!</a></li>
 		</ul>
 		<div class="navbar-header navbar-right">
 			<ul class="nav navbar-nav">
@@ -66,7 +67,7 @@
 		<div class="col-md-12">
 			<div class="page-header">
 				<h1>Plugin Demo: Screen Sharing
-					<button class="btn btn-default" id="start">Start</button>
+					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
 			<div class="container" id="details">
@@ -114,9 +115,9 @@
 				<div class="row">
 					<div class="input-group margin-bottom-md hide" id="createnow">
 						<span class="input-group-addon"><i class="fa fa-users fa-1"></i></span>
-						<input class="form-control" type="text" placeholder="Insert a title for the session" id="desc" onkeypress="return checkEnterShare(this, event);"></input>
+						<input class="form-control" type="text" placeholder="Insert a title for the session" autocomplete="off" id="desc" onkeypress="return checkEnterShare(this, event);"></input>
 						<span class="input-group-btn">
-							<button class="btn btn-success" id="create">Share your screen</button>
+							<button class="btn btn-success" autocomplete="off" id="create">Share your screen</button>
 						</span>
 					</div>
 				</div>
@@ -126,9 +127,9 @@
 				<div class="row">
 					<div class="input-group margin-bottom-md hide" id="joinnow">
 						<span class="input-group-addon"><i class="fa fa-play-circle-o fa-1"></i></span>
-						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" id="roomid" onkeypress="return checkEnterJoin(this, event);"></input>
+						<input class="form-control" type="text" placeholder="Insert the numeric session identifier" autocomplete="off" id="roomid" onkeypress="return checkEnterJoin(this, event);"></input>
 						<span class="input-group-btn">
-							<button class="btn btn-success" id="join">Join an existing session</button>
+							<button class="btn btn-success" autocomplete="off" id="join">Join an existing session</button>
 						</span>
 					</div>
 				</div>
