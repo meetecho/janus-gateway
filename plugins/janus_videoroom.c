@@ -149,6 +149,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle);
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_videoroom_slow_link(janus_plugin_session *handle, int video);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
 char *janus_videoroom_query_session(janus_plugin_session *handle);
@@ -173,6 +174,7 @@ static janus_plugin janus_videoroom_plugin =
 		.incoming_rtp = janus_videoroom_incoming_rtp,
 		.incoming_rtcp = janus_videoroom_incoming_rtcp,
 		.incoming_data = janus_videoroom_incoming_data,
+		.slow_link = janus_videoroom_slow_link,
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
 		.query_session = janus_videoroom_query_session,
@@ -1464,6 +1466,36 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	packet.data = buf;
 	packet.length = len;
 	g_slist_foreach(participant->listeners, janus_videoroom_relay_data_packet, &packet);
+}
+
+void janus_videoroom_slow_link(janus_plugin_session *handle, int video) {
+	JANUS_LOG(LOG_INFO, "Slow link\n");
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(session->destroyed)
+		return;	
+	if(!video && !session->audio_active) {
+		/* We're not relaying audio and the peer is expecting it, so NACKs are normal */
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow link) for audio, but that's expected, a configure disabled the audio relay\n");
+	} else if(video && !session->video_active) {
+		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow link) for video, but that's expected, a configure disabled the video relay\n");
+	} else if(session->participant_type == janus_videoroom_p_type_publisher) {
+		/* Send a slow link event to the publisher's browser, ie reduce bitrate */
+		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+		json_t *event = json_object();
+		json_object_set_new(event, "videoroom", json_string("event"));
+		json_object_set_new(event, "room", json_integer(participant->room->room_id));
+		json_object_set_new(event, "slow_link", json_integer(participant->user_id));
+		char *slow_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(event);
+		int ret = gateway->push_event(participant->session->handle, &janus_videoroom_plugin, NULL, slow_text, NULL, NULL);
+	}
 }
 
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
