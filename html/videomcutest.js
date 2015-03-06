@@ -396,7 +396,7 @@ function newRemoteFeed(id, display) {
 						remoteFeed.rfid = msg["id"];
 						remoteFeed.rfdisplay = msg["display"];
 						if(remoteFeed.spinner === undefined || remoteFeed.spinner === null) {
-							var target = document.getElementById('#videoremote'+remoteFeed.rfindex);
+							var target = document.getElementById('videoremote'+remoteFeed.rfindex);
 							remoteFeed.spinner = new Spinner({top:100}).spin(target);
 						} else {
 							remoteFeed.spinner.spin();
