@@ -348,10 +348,16 @@ function startRecording() {
 		$('#recset').attr('disabled', true);
 		$('#recslist').attr('disabled', true);
 
-		// bitrate can be set at any time: before, after, during recording
+		// bitrate and keyframe interval can be set at any time: 
+		// before, after, during recording
 		recordplay.send({"message": {
 			request: 'video-bitrate-max',
 			value: 256000
+		}});
+
+		recordplay.send({"message": {
+			request: 'video-keyframe-interval',
+			value: 15000 // 15 seconds
 		}});
 		
 		recordplay.createOffer(

@@ -375,7 +375,8 @@ typedef struct janus_recordplay_session {
 	guint video_remb_startup;
 	guint64 video_remb_last;
 	guint64 video_bitrate;
-	guint64 video_rtp_seq_number;
+	guint video_keyframe_interval; /* keyframe request interval (ms) */
+	guint64 video_keyframe_request_last; /* timestamp of last keyframe request sent */
 	gint video_fir_seq;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
@@ -632,7 +633,8 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->video_remb_startup = 4;
 	session->video_remb_last = janus_get_monotonic_time();
 	session->video_bitrate = 1024 * 1024; // 1 megabit
-	session->video_rtp_seq_number = 0;
+	session->video_keyframe_request_last = 0;
+	session->video_keyframe_interval = 15000; // 15 seconds
 	session->video_fir_seq = 0;
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
@@ -814,6 +816,29 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
 		g_free(response_text);
 		return result;
+	} else if (!strcasecmp(request_text, "video-keyframe-interval")) {
+		json_t *value = json_object_get(root, "value");
+		if(!value) {
+			JANUS_LOG(LOG_ERR, "Missing element (value)\n");
+			error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (request)");
+			goto error;
+		}
+		if(!json_is_integer(value)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (value should be an integer)\n");
+			error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (value should be an integer)");
+			goto error;
+		}
+		session->video_keyframe_interval = json_integer_value(value);
+		json_t *response = json_object();
+		JANUS_LOG(LOG_VERB, "Video keyframe interval has been set to %"SCNu64"\n", session->video_keyframe_interval);
+		json_object_set_new(response, "recordplay", json_string("ok"));
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(response);
+		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		g_free(response_text);
+		return result;
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
@@ -886,55 +911,57 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 
 void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len) {
 	if (video != 1) { return; } // we just do this for video, for now
+
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
 	char rtcpbuf[200];
 
-	rtp_header *rtp = (rtp_header *)buf;
-	guint64 rtp_lost_count = (ntohs(rtp->seq_number) - session->video_rtp_seq_number) - 1;
-	session->video_rtp_seq_number = ntohs(rtp->seq_number);
+	// send RR+REMB every second,
+	// or ASAP while we are still ramping up (first 4 rtps)
+	gint64 now = janus_get_monotonic_time();
+	guint64 elapsed = now - session->video_remb_last;
+	gboolean remb_rampup = session->video_remb_startup > 0;
 
-	if (rtp_lost_count > 0) {
-		JANUS_LOG(LOG_ERR, "We lost %"SCNu64" video packets\n", rtp_lost_count);
-		// send fir, pli, and a wtf
+	if (remb_rampup || (elapsed >= G_USEC_PER_SEC)) {
+		guint64 bitrate = session->video_bitrate;
+		// TODO: do we need rampup ? Chrome seems is fine without it
+
+		if (remb_rampup) {
+			bitrate = bitrate / session->video_remb_startup;
+			session->video_remb_startup--;
+		}
+
+		memset(rtcpbuf, 0, 200);
+		/* FIXME First put a RR (fake)... */
+		int rrlen = 32;
+		rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+		rr->header.version = 2;
+		rr->header.type = RTCP_RR;
+		rr->header.rc = 1;
+		rr->header.length = htons((rrlen/4)-1);
+		/* ... then put a SDES... */
+		int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+		if(sdeslen > 0) {
+			/* ... and then finally a REMB */
+			janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
+			gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
+		}
+		
+		session->video_remb_last = now;
+	}
+
+	// request a keyframe every session->video_keyframe_interval ms
+	elapsed = now - session->video_keyframe_request_last;
+	guint64 interval = (session->video_keyframe_interval / 1000) * G_USEC_PER_SEC;
+
+	if (elapsed >= interval) {
+		// send fir and pli
 		memset(rtcpbuf, 0, 20);
 		janus_rtcp_fir((char *)&rtcpbuf, 20, &session->video_fir_seq);
 		gateway->relay_rtcp(handle, video, rtcpbuf, 20);
 		memset(rtcpbuf, 0, 12);
 		janus_rtcp_pli((char *)&rtcpbuf, 12);
 		gateway->relay_rtcp(handle, video, rtcpbuf, 12);
-	}
-
-	gint64 now = janus_get_monotonic_time();
-	guint64 elapsed = now - session->video_remb_last;
-	guint64 bitrate = session->video_bitrate;
-	gboolean remb_rampup = session->video_remb_startup > 0;
-
-	// send RR+REMB every second,
-	// or when we are still ramping up (first 4 rtps)
-	if (!remb_rampup && (elapsed < G_USEC_PER_SEC)) { return; }
-	session->video_remb_last = now;
-
-	// TODO: do we need rampup ? Chrome seems is fine without it
-	if (session->video_remb_startup > 0) {
-		bitrate = bitrate / session->video_remb_startup;
-		session->video_remb_startup--;
-	}
-
-	memset(rtcpbuf, 0, 200);
-	/* FIXME First put a RR (fake)... */
-	int rrlen = 32;
-	rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-	rr->header.version = 2;
-	rr->header.type = RTCP_RR;
-	rr->header.rc = 1;
-	rr->header.length = htons((rrlen/4)-1);
-	/* ... then put a SDES... */
-	int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-
-	if(sdeslen > 0) {
-		/* ... and then finally a REMB */
-		janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
-		gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
+		session->video_keyframe_request_last = now;
 	}
 }
 
