@@ -1012,8 +1012,15 @@ static void *janus_sip_handler(void *data) {
 				if(!username) {
 					char username[255];
 					g_snprintf(username, 255, "janus-sip-%"SCNu32"", g_random_int());
+					if(session->account.username != NULL)
+						g_free(session->account.username);
 					session->account.username = g_strdup(username);
 				} else {
+					if(session->account.identity != NULL)
+						g_free(session->account.identity);
+					session->account.identity = g_strdup(username_text);
+					if(session->account.username != NULL)
+						g_free(session->account.username);
 					session->account.username = g_strdup(user_id);
 				}
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", session->account.username);
