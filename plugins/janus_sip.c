@@ -1023,6 +1023,9 @@ static void *janus_sip_handler(void *data) {
 						g_free(session->account.username);
 					session->account.username = g_strdup(user_id);
 				}
+				if(session->account.proxy != NULL)
+					g_free(session->account.proxy);
+				session->account.proxy = g_strdup(proxy_text);
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", session->account.username);
 				session->status = janus_sip_status_registering;
 				if(session->stack->s_nua == NULL) {
