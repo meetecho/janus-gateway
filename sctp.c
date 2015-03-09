@@ -346,22 +346,24 @@ void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len) {
 		}
 	}
 	if(!found) {
-		/* FIXME There's no open channel (shouldn't happen, we always create it in janus.js), try opening one now */
-		if(janus_sctp_open_channel(sctp, 0, 0, 0) < 0) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't open channel...\n", sctp->handle_id);
-			return;
-		}
-		for(i = 0; i < NUMBER_OF_CHANNELS; i++) {
-			if(sctp->channels[i].state != DATA_CHANNEL_CLOSED) {
-				found = 1;
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Using open channel %i\n", sctp->handle_id, i);
-				break;
-			}
-		}
-		if(!found) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Channel opened but not found?? giving up...\n", sctp->handle_id);
-			return;
-		}
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Couldn't send data, channel %i is not open yet\n", sctp->handle_id, i);
+		return;
+		//~ /* FIXME There's no open channel (shouldn't happen, we always create it in janus.js), try opening one now */
+		//~ if(janus_sctp_open_channel(sctp, 0, 0, 0) < 0) {
+			//~ JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't open channel...\n", sctp->handle_id);
+			//~ return;
+		//~ }
+		//~ for(i = 0; i < NUMBER_OF_CHANNELS; i++) {
+			//~ if(sctp->channels[i].state != DATA_CHANNEL_CLOSED) {
+				//~ found = 1;
+				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Using open channel %i\n", sctp->handle_id, i);
+				//~ break;
+			//~ }
+		//~ }
+		//~ if(!found) {
+			//~ JANUS_LOG(LOG_ERR, "[%"SCNu64"] Channel opened but not found?? giving up...\n", sctp->handle_id);
+			//~ return;
+		//~ }
 	}
 	/* FIXME We're assuming this is a string (we don't support binary data yet) */
 	janus_sctp_send_text(sctp, i, buf, len);
