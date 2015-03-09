@@ -964,7 +964,7 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				/* Parse address */
-				username_text = username ? json_string_value(username) : NULL;
+				username_text = json_string_value(username);
 				if(strstr(username_text, "sip:") != username_text && !strstr(username_text, "@")) {
 					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
 					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
