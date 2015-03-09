@@ -149,6 +149,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle);
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_videoroom_hangup_media(janus_plugin_session *handle);
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error);
 char *janus_videoroom_query_session(janus_plugin_session *handle);
@@ -173,6 +174,7 @@ static janus_plugin janus_videoroom_plugin =
 		.incoming_rtp = janus_videoroom_incoming_rtp,
 		.incoming_rtcp = janus_videoroom_incoming_rtcp,
 		.incoming_data = janus_videoroom_incoming_data,
+		.slow_link = janus_videoroom_slow_link,
 		.hangup_media = janus_videoroom_hangup_media,
 		.destroy_session = janus_videoroom_destroy_session,
 		.query_session = janus_videoroom_query_session,
@@ -1401,7 +1403,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		/* Did we send a REMB already? */
 		if(video && participant->video_active && participant->remb_latest == 0 && participant->remb_startup > 0) {
 			/* We send a few incremental REMB messages at startup */
-			uint64_t bitrate = (participant->bitrate ? participant->bitrate : 1024*1024);
+			uint64_t bitrate = (participant->bitrate ? participant->bitrate : 256*1024);
 			if(participant->remb_startup > 0) {
 				bitrate = bitrate/participant->remb_startup;
 				participant->remb_startup--;
@@ -1464,6 +1466,53 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	packet.data = buf;
 	packet.length = len;
 	g_slist_foreach(participant->listeners, janus_videoroom_relay_data_packet, &packet);
+}
+
+void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int video) {
+	/* The core is informing us that our peer got too many NACKs, are we pushing media too hard? */
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	if(!session || session->destroyed || !session->participant)
+		return;
+	/* Check if it's an uplink (publisher) or downlink (viewer) issue */
+	if(session->participant_type == janus_videoroom_p_type_publisher) {
+		if(uplink) {
+			janus_videoroom_participant *publisher = (janus_videoroom_participant *)session->participant;
+			if(publisher) {
+				/* Send an event on the handle to notify the application */
+				json_t *event = json_object();
+				json_object_set_new(event, "videoroom", json_string("slow_link"));
+				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(event);
+				event = NULL;
+				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event_text, NULL, NULL);
+				g_free(event_text);
+				event_text = NULL;
+			}
+		} else {
+			JANUS_LOG(LOG_WARN, "Got a slow downlink on a VideoRoom publisher? Weird, because it doesn't receive media...\n");
+		}
+	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
+		if(!uplink) {
+			janus_videoroom_listener *viewer = (janus_videoroom_listener *)session->participant;
+			if(viewer) {
+				/* Send an event on the handle to notify the application */
+				json_t *event = json_object();
+				json_object_set_new(event, "videoroom", json_string("slow_link"));
+				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(event);
+				event = NULL;
+				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event_text, NULL, NULL);
+				g_free(event_text);
+				event_text = NULL;
+			}
+		} else {
+			JANUS_LOG(LOG_WARN, "Got a slow uplink on a VideoRoom viewer? Weird, because it doesn't send media...\n");
+		}
+	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+		/* TBD. */
+	}
 }
 
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
@@ -2100,7 +2149,7 @@ static void *janus_videoroom_handler(void *data) {
 					int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
 					if(sdeslen > 0) {
 						/* ... and then finally a REMB */
-						janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, participant->bitrate ? participant->bitrate : 1024*1024);
+						janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, participant->bitrate ? participant->bitrate : 256*1024);
 						gateway->relay_rtcp(msg->handle, 1, rtcpbuf, rrlen+sdeslen+24);
 					}
 				}

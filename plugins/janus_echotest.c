@@ -117,7 +117,7 @@ void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len);
-void janus_echotest_slow_link(janus_plugin_session *handle, int video);
+void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
 char *janus_echotest_query_session(janus_plugin_session *handle);
@@ -176,6 +176,7 @@ typedef struct janus_echotest_session {
 	gboolean audio_active;
 	gboolean video_active;
 	uint64_t bitrate;
+	guint16 slowlink_count;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_echotest_session;
 static GHashTable *sessions;
@@ -413,6 +414,7 @@ char *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
 	json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(info);
@@ -516,8 +518,8 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 	}
 }
 
-void janus_echotest_slow_link(janus_plugin_session *handle, int video) {
-	/* The core is informing us that our peer got too many NACKs, are we pushing media too hard? */
+void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video) {
+	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
@@ -527,15 +529,42 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int video) {
 	}
 	if(session->destroyed)
 		return;
-	if(!video && !session->audio_active) {
+	session->slowlink_count++;
+	if(uplink && !video && !session->audio_active) {
 		/* We're not relaying audio and the peer is expecting it, so NACKs are normal */
-		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow link) for audio, but that's expected, a configure disabled the audio relay\n");
-	} else if(video && !session->video_active) {
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for audio, but that's expected, a configure disabled the audio forwarding\n");
+	} else if(uplink && video && !session->video_active) {
 		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
-		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow link) for audio, but that's expected, a configure disabled the audio relay\n");
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
 	} else {
-		/* Maybe we set the bitrate cap too high? */
-		JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow link) for %s, should we do something, e.g., force a lower REMB?\n", video ? "video" : "audio");
+		/* Slow uplink or downlink, maybe we set the bitrate cap too high? */
+		if(video) {
+			/* Halve the bitrate, but don't go too low... */
+			session->bitrate = session->bitrate > 0 ? session->bitrate : 512*1024;
+			session->bitrate = session->bitrate/2;
+			if(session->bitrate < 64*1024)
+				session->bitrate = 64*1024;
+			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
+				uplink ? "uplink" : "downlink", video ? "video" : "audio", session->bitrate);
+			/* ... and send a new REMB back */
+			char rtcpbuf[200];
+			memset(rtcpbuf, 0, 200);
+			/* FIXME First put a RR (fake)... */
+			int rrlen = 32;
+			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+			rr->header.version = 2;
+			rr->header.type = RTCP_RR;
+			rr->header.rc = 1;
+			rr->header.length = htons((rrlen/4)-1);
+			/* ... then put a SDES... */
+			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+			if(sdeslen > 0) {
+				/* ... and then finally a REMB */
+				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, session->bitrate);
+				gateway->relay_rtcp(handle, 1, rtcpbuf, rrlen+sdeslen+24);
+			}
+
+		}
 	}
 }
 

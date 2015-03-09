@@ -1131,6 +1131,16 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						} else {
 							component->out_stats.audio_nacks++;
 						}
+						/* Inform the plugin about the slow downlink in case it's needed */
+						if(g_slist_length(nacks) >= 16) {	/* FIXME Find a good threshold */
+							/* ... but never more than once per second */
+							if(now-component->last_slowlink_time >= G_USEC_PER_SEC) {
+								component->last_slowlink_time = now;
+								janus_plugin *plugin = (janus_plugin *)handle->app;
+								if(plugin && plugin->slow_link)
+									plugin->slow_link(handle->app_handle, 0, video);
+							}
+						}
 					}
 					component->last_nack_time = now;
 				}
@@ -1214,7 +1224,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					} else {
 						component->in_stats.audio_nacks++;
 					}
-					/* Inform the plugin in case it's needed */
+					/* Inform the plugin about the slow uplink in case it's needed */
 					if(nacks_count >= 16) {	/* FIXME Find a good threshold */
 						/* ... but never more than once per second */
 						gint64 now = janus_get_monotonic_time();
@@ -1222,7 +1232,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							component->last_slowlink_time = now;
 							janus_plugin *plugin = (janus_plugin *)handle->app;
 							if(plugin && plugin->slow_link)
-								plugin->slow_link(handle->app_handle, video);
+								plugin->slow_link(handle->app_handle, 1, video);
 						}
 					}
 				}

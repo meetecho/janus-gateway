@@ -164,7 +164,7 @@ janus_plugin *create(void) {
  * gateway or it will crash.
  * 
  */
-#define JANUS_PLUGIN_API_VERSION	3
+#define JANUS_PLUGIN_API_VERSION	4
 
 /*! \brief Initialization of all plugin properties to NULL
  * 
@@ -289,8 +289,9 @@ struct janus_plugin {
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */
 	void (* const incoming_data)(janus_plugin_session *handle, char *buf, int len);
-	/*! \brief Method to be notified by the core when too many NACKs have been received by
-	 * Janus, and so a slow or potentially unreliable network is to be expected for this peer
+	/*! \brief Method to be notified by the core when too many NACKs have
+	 * been received or sent by Janus, and so a slow or potentially
+	 * unreliable network is to be expected for this peer
 	 * \note Beware that this callback may be called more than once in a row,
 	 * (even though never more than once per second), until things go better for that
 	 * PeerConnection. You may or may not want to handle this callback and
@@ -301,8 +302,10 @@ struct janus_plugin {
 	 * Nevertheless, it can be useful for debugging, or for informing your
 	 * users about potential issues that may be happening media-wise.
 	 * @param[in] handle The plugin/gateway session used for this peer
+	 * @param[in] uplink Whether this is related to the uplink (Janus to peer)
+	 * or downlink (peer to Janus)
 	 * @param[in] video Whether this is related to an audio or a video stream */
-	void (* const slow_link)(janus_plugin_session *handle, int video);
+	void (* const slow_link)(janus_plugin_session *handle, int uplink, int video);
 	/*! \brief Callback to be notified about DTLS alerts from a peer (i.e., the PeerConnection is not valid any more)
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const hangup_media)(janus_plugin_session *handle);
