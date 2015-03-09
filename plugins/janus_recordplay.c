@@ -285,6 +285,7 @@ void janus_recordplay_setup_media(janus_plugin_session *handle);
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
 void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error);
 char *janus_recordplay_query_session(janus_plugin_session *handle);
@@ -309,6 +310,7 @@ static janus_plugin janus_recordplay_plugin =
 		.incoming_rtp = janus_recordplay_incoming_rtp,
 		.incoming_rtcp = janus_recordplay_incoming_rtcp,
 		.incoming_data = janus_recordplay_incoming_data,
+		.slow_link = janus_recordplay_slow_link,
 		.hangup_media = janus_recordplay_hangup_media,
 		.destroy_session = janus_recordplay_destroy_session,
 		.query_session = janus_recordplay_query_session,
@@ -987,6 +989,29 @@ void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME We don't care */
+}
+
+void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video) {
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+
+	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	if(!session || session->destroyed)
+		return;
+
+	json_t *event = json_object();
+	json_object_set_new(event, "recordplay", json_string("event"));
+	json_t *result = json_object();
+	json_object_set_new(result, "status", json_string("slow_link"));
+	// what is uplink for the server is downlink for the client
+	json_object_set_new(result, "uplink", json_boolean(uplink == 0));
+	json_object_set_new(event, "result", result);
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(event);
+	json_decref(result);
+	event = NULL;
+	gateway->push_event(session->handle, &janus_recordplay_plugin, NULL, event_text, NULL, NULL);
+	g_free(event_text);
 }
 
 void janus_recordplay_hangup_media(janus_plugin_session *handle) {

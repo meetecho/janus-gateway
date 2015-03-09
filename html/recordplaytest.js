@@ -52,6 +52,7 @@ var janus = null;
 var recordplay = null;
 var started = false;
 var spinner = null;
+var bandwidth = 1024 * 1024;
 
 var myname = null;
 var recording = false;
@@ -153,6 +154,18 @@ $(document).ready(function() {
 												if(id !== null && id !== undefined) {
 													console.log("The ID of the current recording is " + id);
 													recordingId = id;
+												}
+											} else if(event === 'slow_link') {
+												var uplink = result["uplink"];
+												if (uplink) {
+													bandwidth = parseInt(bandwidth / 1.5);
+													recordplay.send({
+														'message': {
+															'request': 'configure',
+															'video-bitrate-max': bandwidth, // a quarter megabit
+															'video-keyframe-interval': 15000 // 15 seconds
+														}
+													});
 												}
 											} else if(event === 'playing') {
 												console.log("Playout has started!");
@@ -324,7 +337,6 @@ function updateRecsList() {
 				$('#recset').html($(this).html()).parent().removeClass('open');
 				$('#play').removeAttr('disabled').click(startPlayout);
 				return false;
-
 			});
 		}
 	}});
@@ -353,7 +365,7 @@ function startRecording() {
 		recordplay.send({
 			'message': {
 				'request': 'configure',
-				'video-bitrate-max': 256000, // a quarter megabit
+				'video-bitrate-max': bandwidth, // a quarter megabit
 				'video-keyframe-interval': 15000 // 15 seconds
 			}
 		});
