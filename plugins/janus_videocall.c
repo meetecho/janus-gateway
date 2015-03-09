@@ -705,14 +705,14 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 		/* Slow uplink or downlink, maybe we set the bitrate cap too high? */
 		if(video) {
 			/* Halve the bitrate, but don't go too low... */
-			if(uplink) {
-				/* Uplink issue, halve this user's bitrate cap */
+			if(!uplink) {
+				/* Downlink issue, user has trouble sending, halve this user's bitrate cap */
 				session->bitrate = session->bitrate > 0 ? session->bitrate : 512*1024;
 				session->bitrate = session->bitrate/2;
 				if(session->bitrate < 64*1024)
 					session->bitrate = 64*1024;
 			} else {
-				/* Downlink issue, halve this user's peer's bitrate cap */
+				/* Uplink issue, user has trouble receiving, halve this user's peer's bitrate cap */
 				if(session->peer == NULL || session->peer->handle == NULL)
 					return;	/* Nothing to do */
 				session->peer->bitrate = session->peer->bitrate > 0 ? session->peer->bitrate : 512*1024;
@@ -721,7 +721,7 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 					session->peer->bitrate = 64*1024;
 			}
 			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
-				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->bitrate : session->peer->bitrate);
+				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->peer->bitrate : session->bitrate);
 			/* ... and send a new REMB back */
 			char rtcpbuf[200];
 			memset(rtcpbuf, 0, 200);
@@ -736,8 +736,8 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
 			if(sdeslen > 0) {
 				/* ... and then finally a REMB */
-				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, uplink ? session->bitrate : session->peer->bitrate);
-				gateway->relay_rtcp(uplink ? handle : session->peer->handle, 1, rtcpbuf, rrlen+sdeslen+24);
+				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, uplink ? session->peer->bitrate : session->bitrate);
+				gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, rrlen+sdeslen+24);
 			}
 
 		}

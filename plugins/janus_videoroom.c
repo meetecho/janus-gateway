@@ -1477,10 +1477,11 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 		return;
 	/* Check if it's an uplink (publisher) or downlink (viewer) issue */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
-		if(uplink) {
+		if(!uplink) {
 			janus_videoroom_participant *publisher = (janus_videoroom_participant *)session->participant;
 			if(publisher) {
-				/* Send an event on the handle to notify the application */
+				/* Send an event on the handle to notify the application: it's
+				 * up to the application to then choose a policy and enforce it */
 				json_t *event = json_object();
 				json_object_set_new(event, "videoroom", json_string("slow_link"));
 				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -1491,13 +1492,14 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 				event_text = NULL;
 			}
 		} else {
-			JANUS_LOG(LOG_WARN, "Got a slow downlink on a VideoRoom publisher? Weird, because it doesn't receive media...\n");
+			JANUS_LOG(LOG_WARN, "Got a slow uplink on a VideoRoom publisher? Weird, because it doesn't receive media...\n");
 		}
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
-		if(!uplink) {
+		if(uplink) {
 			janus_videoroom_listener *viewer = (janus_videoroom_listener *)session->participant;
 			if(viewer) {
-				/* Send an event on the handle to notify the application */
+				/* Send an event on the handle to notify the application: it's
+				 * up to the application to then choose a policy and enforce it */
 				json_t *event = json_object();
 				json_object_set_new(event, "videoroom", json_string("slow_link"));
 				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -1508,7 +1510,7 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 				event_text = NULL;
 			}
 		} else {
-			JANUS_LOG(LOG_WARN, "Got a slow uplink on a VideoRoom viewer? Weird, because it doesn't send media...\n");
+			JANUS_LOG(LOG_WARN, "Got a slow downlink on a VideoRoom viewer? Weird, because it doesn't send media...\n");
 		}
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
 		/* TBD. */
