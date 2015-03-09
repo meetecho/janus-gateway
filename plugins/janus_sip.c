@@ -59,6 +59,7 @@
 #include <sofia-sip/nua.h>
 #include <sofia-sip/sdp.h>
 #include <sofia-sip/sip_status.h>
+#include <sofia-sip/url.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -311,6 +312,30 @@ gboolean janus_sip_is_ignored(const char *ip) {
 	return FALSE;
 }
 
+
+/* URI parsing utilies */
+
+#define JANUS_SIP_URI_MAXLEN	1024
+typedef struct {
+	char data[JANUS_SIP_URI_MAXLEN];
+	url_t url[1];
+} janus_sip_uri_t;
+
+/* Parses a SIP URI (SIPS is not supported), returns 0 on success, -1 otherwise */
+static int janus_sip_parse_uri(janus_sip_uri_t *sip_uri, const char *data) {
+	g_strlcpy(sip_uri->data, data, JANUS_SIP_URI_MAXLEN);
+	if (url_d(sip_uri->url, sip_uri->data) < 0 || sip_uri->url->url_type != url_sip)
+		return -1;
+	return 0;
+}
+
+/* Similar to th above function, but it also accepts SIPS URIs */
+static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data) {
+	g_strlcpy(sip_uri->data, data, JANUS_SIP_URI_MAXLEN);
+	if (url_d(sip_uri->url, sip_uri->data) < 0 || (sip_uri->url->url_type != url_sip && sip_uri->url->url_type != url_sips))
+		return -1;
+	return 0;
+}
 
 /* Error codes */
 #define JANUS_SIP_ERROR_UNKNOWN_ERROR		499
@@ -912,36 +937,12 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			const char *proxy_text = json_string_value(proxy);
-			const char *domain_part;
-			if(strstr(proxy_text, "sip:") == proxy_text) {
-				domain_part = proxy_text + 4;	/* Skip 'sip:' */
-			} else if(strstr(proxy_text, "sips:") == proxy_text) {
-				domain_part = proxy_text + 5;	/* Skip 'sips:' */
-			} else {
+			janus_sip_uri_t proxy_uri;
+			if (janus_sip_parse_proxy_uri(&proxy_uri, proxy_text) < 0) {
 				JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
 				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 				g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
 				goto error;
-			}
-			char proxy_ip[256];
-			uint16_t proxy_port = 0;
-			if(strstr(domain_part, ":") == NULL) {
-				strncpy(proxy_ip, domain_part, strlen(domain_part) < 255 ? strlen(domain_part) : 255);
-				proxy_ip[strlen(domain_part) < 255 ? strlen(domain_part) : 255] = '\0';
-				proxy_port = 5060;
-			} else {
-				gchar **domain = g_strsplit(domain_part, ":", -1);
-				if(domain[0] == NULL || domain[1] == NULL) {
-					g_strfreev(domain);
-					JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", domain_part);
-					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-					g_snprintf(error_cause, 512, "Invalid proxy address %s\n", domain_part);
-					goto error;
-				}
-				strncpy(proxy_ip, domain[0], strlen(domain[0]) < 255 ? strlen(domain[0]) : 255);
-				proxy_ip[strlen(domain[0]) < 255 ? strlen(domain[0]) : 255] = '\0';
-				proxy_port = atoi(domain[1]);
-				g_strfreev(domain);
 			}
 			/* Now the user part, if needed */
 			json_t *username = json_object_get(root, "username");
@@ -953,9 +954,8 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			const char *username_text = NULL;
+			janus_sip_uri_t username_uri;
 			char user_id[256];
-			char user_ip[256];
-			uint16_t user_port = 0;
 			if(username) {
 				if(!json_is_string(username)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (username should be a string)\n");
@@ -965,56 +965,21 @@ static void *janus_sip_handler(void *data) {
 				}
 				/* Parse address */
 				username_text = json_string_value(username);
-				if(strstr(username_text, "sip:") != username_text && !strstr(username_text, "@")) {
+				if (janus_sip_parse_uri(&username_uri, username_text) < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
 					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 					g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
 					goto error;
 				}
-				gchar **parts = g_strsplit(username_text+4, "@", -1);
-				if(parts[0] == NULL || parts[1] == NULL) {
-					g_strfreev(parts);
-					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
-					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-					g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
-					goto error;
-				}
-				strncpy(user_id, parts[0], strlen(parts[0]) < 255 ? strlen(parts[0]) : 255);
-				user_id[strlen(parts[0]) < 255 ? strlen(parts[0]) : 255] = '\0';
-				if(strstr(parts[1], ":") == NULL) {
-					strncpy(user_ip, parts[1], strlen(parts[1]) < 255 ? strlen(parts[1]) : 255);
-					user_ip[strlen(parts[1]) < 255 ? strlen(parts[1]) : 255] = '\0';
-					user_port = 5060;
-				} else {
-					gchar **domain = g_strsplit(parts[1], ":", -1);
-					if(domain[0] == NULL || domain[1] == NULL) {
-						g_strfreev(domain);
-						JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
-						error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-						g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
-						goto error;
-					}
-					strncpy(user_ip, domain[0], strlen(domain[0]) < 255 ? strlen(domain[0]) : 255);
-					user_ip[strlen(domain[0]) < 255 ? strlen(domain[0]) : 255] = '\0';
-					user_port = atoi(domain[1]);
-					g_strfreev(domain);
-				}
-				g_strfreev(parts);
-				if(user_port == 0) {
-					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
-					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-					g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
-					goto error;
-				}
+				g_strlcpy(user_id, username_uri.url->url_user, sizeof(user_id));
 			}
 			if(guest) {
 				/* Not needed, we can stop here: just pick a random username if it wasn't provided and say we're registered */
 				if(!username) {
-					char username[255];
-					g_snprintf(username, 255, "janus-sip-%"SCNu32"", g_random_int());
+					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", g_random_int());
 					if(session->account.username != NULL)
 						g_free(session->account.username);
-					session->account.username = g_strdup(username);
+					session->account.username = g_strdup(user_id);
 				} else {
 					if(session->account.identity != NULL)
 						g_free(session->account.identity);
@@ -1075,10 +1040,8 @@ static void *janus_sip_handler(void *data) {
 				}
 				const char *secret_text = json_string_value(secret);
 				/* Got the values, try registering now */
-				char registrar[256];
-				g_snprintf(registrar, 256, "sip:%s:%d", user_ip, user_port); 
-				JANUS_LOG(LOG_VERB, "Registering user sip:%s@%s:%d (secret %s) @ %s through sip:%s:%d\n",
-					user_id, user_ip, user_port, secret_text, registrar, proxy_ip, proxy_port);
+				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
+					username_text, secret_text, username_uri.url->url_host, proxy_text);
 				if(session->account.identity != NULL)
 					g_free(session->account.identity);
 				if(session->account.username != NULL)
@@ -1137,7 +1100,6 @@ static void *janus_sip_handler(void *data) {
 					NUTAG_M_USERNAME(session->account.username),
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
-					NUTAG_REGISTRAR(registrar),
 					NUTAG_PROXY(proxy_text),
 					TAG_END());
 				result = json_object();
@@ -1166,45 +1128,8 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Parse address */
 			const char *uri_text = json_string_value(uri);
-			if(strstr(uri_text, "sip:") != uri_text && !strstr(uri_text, "@")) {
-				JANUS_LOG(LOG_ERR, "Invalid user address %s\n", uri_text);
-				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-				g_snprintf(error_cause, 512, "Invalid user address %s\n", uri_text);
-				goto error;
-			}
-			char user_id[256];
-			char user_ip[256];
-			uint16_t user_port = 0;
-			gchar **parts = g_strsplit(uri_text+4, "@", -1);
-			if(parts[0] == NULL || parts[1] == NULL) {
-				g_strfreev(parts);
-				JANUS_LOG(LOG_ERR, "Invalid user address %s\n", uri_text);
-				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-				g_snprintf(error_cause, 512, "Invalid user address %s\n", uri_text);
-				goto error;
-			}
-			strncpy(user_id, parts[0], strlen(parts[0]) < 255 ? strlen(parts[0]) : 255);
-			user_id[strlen(parts[0]) < 255 ? strlen(parts[0]) : 255] = '\0';
-			if(strstr(parts[1], ":") == NULL) {
-				strncpy(user_ip, parts[1], strlen(parts[1]) < 255 ? strlen(parts[1]) : 255);
-				user_ip[strlen(parts[1]) < 255 ? strlen(parts[1]) : 255] = '\0';
-				user_port = 5060;
-			} else {
-				gchar **domain = g_strsplit(parts[1], ":", -1);
-				if(domain[0] == NULL || domain[1] == NULL) {
-					g_strfreev(domain);
-					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", uri_text);
-					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-					g_snprintf(error_cause, 512, "Invalid user address %s\n", uri_text);
-					goto error;
-				}
-				strncpy(user_ip, domain[0], strlen(domain[0]) < 255 ? strlen(domain[0]) : 255);
-				user_ip[strlen(domain[0]) < 255 ? strlen(domain[0]) : 255] = '\0';
-				user_port = atoi(domain[1]);
-				g_strfreev(domain);
-			}
-			g_strfreev(parts);
-			if(user_port == 0) {
+			janus_sip_uri_t target_uri;
+			if (janus_sip_parse_uri(&target_uri, uri_text) < 0) {
 				JANUS_LOG(LOG_ERR, "Invalid user address %s\n", uri_text);
 				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 				g_snprintf(error_cause, 512, "Invalid user address %s\n", uri_text);
