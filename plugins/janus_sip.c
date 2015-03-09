@@ -935,26 +935,25 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Parse address */
 			json_t *proxy = json_object_get(root, "proxy");
-			if(!proxy) {
-				JANUS_LOG(LOG_ERR, "Missing element (proxy)\n");
-				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (proxy)");
-				goto error;
+			const char *proxy_text = NULL;
+
+			if (proxy && !json_is_null(proxy)) {
+				if(!json_is_string(proxy)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (proxy should be a string)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (proxy should be a string)");
+					goto error;
+				}
+				proxy_text = json_string_value(proxy);
+				janus_sip_uri_t proxy_uri;
+				if (janus_sip_parse_proxy_uri(&proxy_uri, proxy_text) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
+					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
+					g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
+					goto error;
+				}
 			}
-			if(!json_is_string(proxy)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (proxy should be a string)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (proxy should be a string)");
-				goto error;
-			}
-			const char *proxy_text = json_string_value(proxy);
-			janus_sip_uri_t proxy_uri;
-			if (janus_sip_parse_proxy_uri(&proxy_uri, proxy_text) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
-				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-				g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
-				goto error;
-			}
+
 			/* Now the user part, if needed */
 			json_t *username = json_object_get(root, "username");
 			if(!guest && !username) {
@@ -1013,17 +1012,25 @@ static void *janus_sip_handler(void *data) {
 				}
 				/* Got the values, try registering now */
 				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
-					username_text, secret_text, username_uri.url->url_host, proxy_text);
+					username_text, secret_text, username_uri.url->url_host, proxy_text != NULL ? proxy_text : "(null)");
 			}
 
 			session->account.identity = g_strdup(username_text);
 			session->account.username = g_strdup(user_id);
-			session->account.proxy = g_strdup(proxy_text);
-			if(session->account.identity == NULL || session->account.username == NULL || session->account.proxy == NULL) {
+			if(session->account.identity == NULL || session->account.username == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Memory error");
 				goto error;
+			}
+			if (proxy_text) {
+				session->account.proxy = g_strdup(proxy_text);
+				if(session->account.proxy == NULL) {
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Memory error");
+					goto error;
+				}
 			}
 
 			session->status = janus_sip_status_registering;
@@ -1063,7 +1070,6 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid NUA Handle");
 					goto error;
 				}
-				JANUS_LOG(LOG_VERB, "%s --> %s\n", username_text, proxy_text);
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
 					SIPTAG_FROM_STR(username_text),
