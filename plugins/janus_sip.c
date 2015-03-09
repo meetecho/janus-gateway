@@ -964,7 +964,7 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				/* Parse address */
-				username_text = username ? json_string_value(username) : NULL;
+				username_text = json_string_value(username);
 				if(strstr(username_text, "sip:") != username_text && !strstr(username_text, "@")) {
 					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
 					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
@@ -1012,10 +1012,20 @@ static void *janus_sip_handler(void *data) {
 				if(!username) {
 					char username[255];
 					g_snprintf(username, 255, "janus-sip-%"SCNu32"", g_random_int());
+					if(session->account.username != NULL)
+						g_free(session->account.username);
 					session->account.username = g_strdup(username);
 				} else {
+					if(session->account.identity != NULL)
+						g_free(session->account.identity);
+					session->account.identity = g_strdup(username_text);
+					if(session->account.username != NULL)
+						g_free(session->account.username);
 					session->account.username = g_strdup(user_id);
 				}
+				if(session->account.proxy != NULL)
+					g_free(session->account.proxy);
+				session->account.proxy = g_strdup(proxy_text);
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", session->account.username);
 				session->status = janus_sip_status_registering;
 				if(session->stack->s_nua == NULL) {
