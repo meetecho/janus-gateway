@@ -899,6 +899,17 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Already registered (%s)", session->account.username);
 				goto error;
 			}
+
+			/* Cleanup old values */
+			if(session->account.identity != NULL)
+				g_free(session->account.identity);
+			if(session->account.username != NULL)
+				g_free(session->account.username);
+			if(session->account.secret != NULL)
+				g_free(session->account.secret);
+			if(session->account.proxy != NULL)
+				g_free(session->account.proxy);
+
 			gboolean guest = FALSE;
 			json_t *type = json_object_get(root, "type");
 			if(type != NULL) {
@@ -975,55 +986,9 @@ static void *janus_sip_handler(void *data) {
 			}
 			if(guest) {
 				/* Not needed, we can stop here: just pick a random username if it wasn't provided and say we're registered */
-				if(!username) {
+				if(!username)
 					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", g_random_int());
-					if(session->account.username != NULL)
-						g_free(session->account.username);
-					session->account.username = g_strdup(user_id);
-				} else {
-					if(session->account.identity != NULL)
-						g_free(session->account.identity);
-					session->account.identity = g_strdup(username_text);
-					if(session->account.username != NULL)
-						g_free(session->account.username);
-					session->account.username = g_strdup(user_id);
-				}
-				if(session->account.proxy != NULL)
-					g_free(session->account.proxy);
-				session->account.proxy = g_strdup(proxy_text);
-				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", session->account.username);
-				session->status = janus_sip_status_registering;
-				if(session->stack->s_nua == NULL) {
-					/* Start the thread first */
-					GError *error = NULL;
-					g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
-					if(error != NULL) {
-						JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
-						error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-						g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread", error->code, error->message ? error->message : "??");
-						goto error;
-					}
-					long int timeout = 0;
-					while(session->stack->s_nua == NULL) {
-						g_usleep(100000);
-						timeout += 100000;
-						if(timeout >= 2000000) {
-							break;
-						}
-					}
-					if(timeout >= 2000000) {
-						JANUS_LOG(LOG_ERR, "Two seconds passed and still no NUA, problems with the thread?\n");
-						error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-						g_snprintf(error_cause, 512, "Two seconds passed and still no NUA, problems with the thread?");
-						goto error;
-					}
-				}
-				if(session->stack->s_nh_r != NULL)
-					nua_handle_destroy(session->stack->s_nh_r);
-				session->status = janus_sip_status_registered;
-				result = json_object();
-				json_object_set_new(result, "event", json_string("registered"));
-				json_object_set_new(result, "username", json_string(session->account.username));
+				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
 			} else {
 				json_t *secret = json_object_get(root, "secret");
 				if(!secret) {
@@ -1039,55 +1004,58 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				const char *secret_text = json_string_value(secret);
-				/* Got the values, try registering now */
-				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
-					username_text, secret_text, username_uri.url->url_host, proxy_text);
-				if(session->account.identity != NULL)
-					g_free(session->account.identity);
-				if(session->account.username != NULL)
-					g_free(session->account.username);
-				if(session->account.secret != NULL)
-					g_free(session->account.secret);
-				if(session->account.proxy != NULL)
-					g_free(session->account.proxy);
-				session->account.identity = g_strdup(username_text);
-				session->account.username = g_strdup(user_id);
 				session->account.secret = g_strdup(secret_text);
-				session->account.proxy = g_strdup(proxy_text);
-				if(session->account.identity == NULL || session->account.username == NULL || session->account.secret == NULL || session->account.proxy == NULL) {
+				if (session->account.secret == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Memory error");
 					goto error;
 				}
-				session->status = janus_sip_status_registering;
-				if(session->stack->s_nua == NULL) {
-					/* Start the thread first */
-					GError *error = NULL;
-					g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
-					if(error != NULL) {
-						JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
-						error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-						g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread", error->code, error->message ? error->message : "??");
-						goto error;
-					}
-					long int timeout = 0;
-					while(session->stack->s_nua == NULL) {
-						g_usleep(100000);
-						timeout += 100000;
-						if(timeout >= 2000000) {
-							break;
-						}
-					}
+				/* Got the values, try registering now */
+				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
+					username_text, secret_text, username_uri.url->url_host, proxy_text);
+			}
+
+			session->account.identity = g_strdup(username_text);
+			session->account.username = g_strdup(user_id);
+			session->account.proxy = g_strdup(proxy_text);
+			if(session->account.identity == NULL || session->account.username == NULL || session->account.proxy == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Memory error");
+				goto error;
+			}
+
+			session->status = janus_sip_status_registering;
+			if(session->stack->s_nua == NULL) {
+				/* Start the thread first */
+				GError *error = NULL;
+				g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
+				if(error != NULL) {
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
+					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread", error->code, error->message ? error->message : "??");
+					goto error;
+				}
+				long int timeout = 0;
+				while(session->stack->s_nua == NULL) {
+					g_usleep(100000);
+					timeout += 100000;
 					if(timeout >= 2000000) {
-						JANUS_LOG(LOG_ERR, "Two seconds passed and still no NUA, problems with the thread?\n");
-						error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-						g_snprintf(error_cause, 512, "Two seconds passed and still no NUA, problems with the thread?");
-						goto error;
+						break;
 					}
 				}
-				if(session->stack->s_nh_r != NULL)
-					nua_handle_destroy(session->stack->s_nh_r);
+				if(timeout >= 2000000) {
+					JANUS_LOG(LOG_ERR, "Two seconds passed and still no NUA, problems with the thread?\n");
+					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Two seconds passed and still no NUA, problems with the thread?");
+					goto error;
+				}
+			}
+			if(session->stack->s_nh_r != NULL)
+				nua_handle_destroy(session->stack->s_nh_r);
+
+			if (!guest) {
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -1104,6 +1072,11 @@ static void *janus_sip_handler(void *data) {
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
+			} else {
+				session->status = janus_sip_status_registered;
+				result = json_object();
+				json_object_set_new(result, "event", json_string("registered"));
+				json_object_set_new(result, "username", json_string(session->account.username));
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
