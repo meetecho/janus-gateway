@@ -1055,13 +1055,6 @@ static void *janus_sip_handler(void *data) {
 				}
 				if(session->stack->s_nh_r != NULL)
 					nua_handle_destroy(session->stack->s_nh_r);
-				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
-				if(session->stack->s_nh_r == NULL) {
-					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
-					error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
-					g_snprintf(error_cause, 512, "Invalid NUA Handle");
-					goto error;
-				}
 				session->status = janus_sip_status_registered;
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registered"));
