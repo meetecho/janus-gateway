@@ -350,15 +350,13 @@ function startRecording() {
 
 		// bitrate and keyframe interval can be set at any time: 
 		// before, after, during recording
-		recordplay.send({"message": {
-			request: 'video-bitrate-max',
-			value: 256000
-		}});
-
-		recordplay.send({"message": {
-			request: 'video-keyframe-interval',
-			value: 15000 // 15 seconds
-		}});
+		recordplay.send({
+			'message': {
+				'request': 'configure',
+				'video-bitrate-max': 256000, // a quarter megabit
+				'video-keyframe-interval': 15000 // 15 seconds
+			}
+		});
 		
 		recordplay.createOffer(
 			{

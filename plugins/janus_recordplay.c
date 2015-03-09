@@ -792,51 +792,41 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
 		g_free(response_text);
 		return result;
-	} else if (!strcasecmp(request_text, "video-bitrate-max")) {
-		json_t *value = json_object_get(root, "value");
-		if(!value) {
-			JANUS_LOG(LOG_ERR, "Missing element (value)\n");
-			error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
+	} else if (!strcasecmp(request_text, "configure")) {
+		json_t *video_bitrate_max = json_object_get(root, "video-bitrate-max");
+		if(video_bitrate_max) {
+			if(!json_is_integer(video_bitrate_max)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video-bitrate-max should be an integer)\n");
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (video-bitrate-max should be an integer)");
+				goto error;
+			}
+			session->video_bitrate = json_integer_value(video_bitrate_max);
+			JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu64"\n", session->video_bitrate);
 		}
-		if(!json_is_integer(value)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (value should be an integer)\n");
-			error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (value should be an integer)");
-			goto error;
+		json_t *video_keyframe_interval= json_object_get(root, "video-keyframe-interval");
+		if(video_keyframe_interval) {
+			if(!json_is_integer(video_keyframe_interval)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video-keyframe-interval should be an integer)\n");
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (video-keyframe-interval should be an integer)");
+				goto error;
+			}
+			session->video_keyframe_interval = json_integer_value(video_keyframe_interval);
+			JANUS_LOG(LOG_VERB, "Video keyframe interval has been set to %u\n", session->video_keyframe_interval);
 		}
-		guint64 bitrate = json_integer_value(value);
-		session->video_bitrate = bitrate;
-		json_t *response = json_object();
-		JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu64"\n", session->video_bitrate);
-		json_object_set_new(response, "recordplay", json_string("ok"));
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
+		json_t *event = json_object();
+		json_object_set_new(event, "recordplay", json_string("configure"));
+		json_object_set_new(event, "status", json_string("ok"));
+		// also let the client know what changed, allows crosschecks
+		json_t *settings = json_object();
+		json_object_set_new(settings, "video-keyframe-interval", json_integer(session->video_keyframe_interval)); 
+		json_object_set_new(settings, "video-bitrate-max", json_integer(session->video_bitrate)); 
+		json_object_set_new(event, "settings", settings); 
+		char *response_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-		g_free(response_text);
-		return result;
-	} else if (!strcasecmp(request_text, "video-keyframe-interval")) {
-		json_t *value = json_object_get(root, "value");
-		if(!value) {
-			JANUS_LOG(LOG_ERR, "Missing element (value)\n");
-			error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
-		}
-		if(!json_is_integer(value)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (value should be an integer)\n");
-			error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (value should be an integer)");
-			goto error;
-		}
-		session->video_keyframe_interval = json_integer_value(value);
-		json_t *response = json_object();
-		JANUS_LOG(LOG_VERB, "Video keyframe interval has been set to %"SCNu64"\n", session->video_keyframe_interval);
-		json_object_set_new(response, "recordplay", json_string("ok"));
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
-		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+		json_decref(event);
+		json_decref(settings);
 		g_free(response_text);
 		return result;
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
