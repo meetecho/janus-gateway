@@ -2507,7 +2507,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 		}
 		event->code = 200;
 		/*! \todo Improve the Janus protocol keep-alive mechanism in JavaScript */
-		event->payload = g_strdup (max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]");
+		event->payload = (char *)(max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]");
 		event->allocated = 0;
 	}
 	if(list != NULL) {
