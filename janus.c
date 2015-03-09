@@ -161,21 +161,23 @@ char *janus_info(const char *transaction) {
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
 	json_t *data = json_object();
-	GHashTableIter iter;
-	gpointer value;
-	g_hash_table_iter_init(&iter, plugins);
-	while (g_hash_table_iter_next(&iter, NULL, &value)) {
-		janus_plugin *p = value;
-		if(p == NULL) {
-			continue;
+	if(plugins && g_hash_table_size(plugins) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, plugins);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_plugin *p = value;
+			if(p == NULL) {
+				continue;
+			}
+			json_t *plugin = json_object();
+			json_object_set_new(plugin, "name", json_string(p->get_name()));
+			json_object_set_new(plugin, "author", json_string(p->get_author()));
+			json_object_set_new(plugin, "description", json_string(p->get_description()));
+			json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
+			json_object_set_new(plugin, "version", json_integer(p->get_version()));
+			json_object_set_new(data, p->get_package(), plugin);
 		}
-		json_t *plugin = json_object();
-		json_object_set_new(plugin, "name", json_string(p->get_name()));
-		json_object_set_new(plugin, "author", json_string(p->get_author()));
-		json_object_set_new(plugin, "description", json_string(p->get_description()));
-		json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
-		json_object_set_new(plugin, "version", json_integer(p->get_version()));
-		json_object_set_new(data, p->get_package(), plugin);
 	}
 	json_object_set_new(info, "plugins", data);
 	/* Convert to a string */
@@ -289,18 +291,15 @@ static gboolean janus_cleanup_session(gpointer user_data) {
 static gboolean janus_check_sessions(gpointer user_data) {
 	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
-	if (sessions) {
+	if(sessions && g_hash_table_size(sessions) > 0) {
 		GHashTableIter iter;
 		gpointer value;
-
 		g_hash_table_iter_init(&iter, sessions);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-
 			if (!session || session->destroy) {
 				continue;
 			}
-
 			gint64 now = janus_get_monotonic_time();
 			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
@@ -401,19 +400,16 @@ gint janus_session_destroy(guint64 session_id) {
 	}
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
-	if (session->ice_handles != NULL) {
+	if (session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 		GHashTableIter iter;
 		gpointer value;
-
 		/* Remove all handles */
 		g_hash_table_iter_init(&iter, session->ice_handles);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_ice_handle *handle = value;
-
 			if(!handle || g_atomic_int_get(&stop)) {
 				continue;
 			}
-
 			janus_ice_handle_destroy(session, handle->handle_id);
 			g_hash_table_iter_remove(&iter);
 		}
@@ -2185,18 +2181,20 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			/* List sessions */
 			session_id = 0;
 			json_t *list = json_array();
-			janus_mutex_lock(&sessions_mutex);
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, sessions);
-			while (g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_session *session = value;
-				if(session == NULL) {
-					continue;
+			if(sessions != NULL && g_hash_table_size(sessions) > 0) {
+				janus_mutex_lock(&sessions_mutex);
+				GHashTableIter iter;
+				gpointer value;
+				g_hash_table_iter_init(&iter, sessions);
+				while (g_hash_table_iter_next(&iter, NULL, &value)) {
+					janus_session *session = value;
+					if(session == NULL) {
+						continue;
+					}
+					json_array_append_new(list, json_integer(session->session_id));
 				}
-				json_array_append_new(list, json_integer(session->session_id));
+				janus_mutex_unlock(&sessions_mutex);
 			}
-			janus_mutex_unlock(&sessions_mutex);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
@@ -2264,27 +2262,22 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-
 		/* List handles */
-		GHashTableIter iter;
-		gpointer value;
 		json_t *list = json_array();
-
-		janus_mutex_lock(&session->mutex);
-
-		g_hash_table_iter_init(&iter, session->ice_handles);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_ice_handle *handle = value;
-
-			if(handle == NULL) {
-				continue;
+		if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+			GHashTableIter iter;
+			gpointer value;
+			janus_mutex_lock(&session->mutex);
+			g_hash_table_iter_init(&iter, session->ice_handles);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_ice_handle *handle = value;
+				if(handle == NULL) {
+					continue;
+				}
+				json_array_append_new(list, json_integer(handle->handle_id));
 			}
-
-			json_array_append_new(list, json_integer(handle->handle_id));
+			janus_mutex_unlock(&session->mutex);
 		}
-
-		janus_mutex_unlock(&session->mutex);
-
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -2842,7 +2835,7 @@ int janus_wss_onclose(libwebsock_client_state *state) {
 		}
 		client->thread = NULL;
 		client->state = NULL;
-		if(client->sessions != NULL) {
+		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
 			/* Remove all sessions (and handles) created by this client */
 			janus_mutex_lock(&sessions_mutex);
 			GHashTableIter iter;
