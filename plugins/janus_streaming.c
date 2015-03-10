@@ -1506,6 +1506,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Send a success response back */
 			response = json_object();
+			json_object_set_new(response, "streaming", json_string("ok"));
 			goto plugin_response;
 		}
 	} else if(!strcasecmp(request_text, "enable") || !strcasecmp(request_text, "disable")) {
