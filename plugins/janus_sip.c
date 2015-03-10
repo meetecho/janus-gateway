@@ -2217,10 +2217,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack->s_root = su_root_create(session->stack);
-	char tag_url[100];
-	memset(tag_url, 0, 100);
-	g_snprintf(tag_url, 100, "sip:%s@0.0.0.0:0", session->account.username);
-	JANUS_LOG(LOG_VERB, "Setting up sofia stack (%s)\n", tag_url);
+	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@*)\n", session->account.username);
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
 		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
@@ -2229,7 +2226,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
-				SIPTAG_FROM_STR(tag_url),
+				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL("sip:*:*"),
 				NUTAG_SIPS_URL("sips:*:*"),
 				SIPTAG_USER_AGENT_STR(user_agent),
