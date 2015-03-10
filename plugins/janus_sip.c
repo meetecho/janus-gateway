@@ -1449,16 +1449,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			gateway->close_pc(session->handle);
 			break;
 		}
-		case nua_i_chat:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_info:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
 		case nua_i_invite: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
@@ -1504,52 +1494,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			session->stack->s_nh_i = nh;
 			break;
 		}
-		case nua_i_message:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_method:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_notify:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
 		case nua_i_options:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_prack:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_publish:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_refer:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_register:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_subscribe:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_update:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
 			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
@@ -1604,9 +1549,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			gateway->close_pc(session->handle);
 			break;
 		case nua_r_cancel:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_info:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_invite: {
@@ -1711,24 +1653,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			g_free(call_text);
 			break;
 		}
-		case nua_r_message:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_notify:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_options:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_prack:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_publish:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_refer:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
 		case nua_r_register: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			if(status == 200) {
@@ -1779,21 +1703,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			break;
 		}
-		case nua_r_subscribe:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_unpublish:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_unregister:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_unsubscribe:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_update:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
 		default:
 			/* unknown event -> print out error message */
 			JANUS_LOG(LOG_ERR, "Unknown event %d (%s)\n", event, nua_event_name(event));
@@ -2226,6 +2135,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
+				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL("sip:*:*"),
 				NUTAG_SIPS_URL("sips:*:*"),
