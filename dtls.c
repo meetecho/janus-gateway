@@ -527,7 +527,6 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		JANUS_LOG(LOG_ERR, "No DTLS session related to this alert...\n");
 		return;
 	}
-	dtls->srtp_valid = 0;
 	janus_ice_component *component = dtls->component;
 	if(component == NULL) {
 		JANUS_LOG(LOG_ERR, "No ICE component related to this alert...\n");
@@ -675,6 +674,12 @@ gboolean janus_dtls_retry(gpointer stack) {
 		return FALSE;
 	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
+		if(component->source != NULL) {
+			g_source_destroy(component->source);
+			if(G_IS_OBJECT(component->source))
+				g_object_unref(component->source);
+			component->source = NULL;
+		}
 		return FALSE;
 	}
 	struct timeval timeout;

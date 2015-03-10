@@ -415,7 +415,7 @@ gint janus_session_destroy(guint64 session_id) {
 		}
 	}
 
-	/* TODO Actually destroy session */
+	/* FIXME Actually destroy session */
 	janus_session_free(session);
 
 	return 0;
@@ -430,10 +430,11 @@ void janus_session_free(janus_session *session) {
 		session->ice_handles = NULL;
 	}
 	if(session->messages != NULL) {
-		g_async_queue_unref (session->messages);
+		g_async_queue_unref(session->messages);
 		session->messages = NULL;
 	}
 	janus_mutex_unlock(&session->mutex);
+	g_free(session);
 	session = NULL;
 }
 
@@ -924,10 +925,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(session_id));
-		json_object_set(reply, "data", data);
+		json_object_set_new(reply, "data", data);
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(data);
 		json_decref(reply);
 		/* Send the success reply */
 		ret = janus_process_success(source, "application/json", reply_text);
@@ -1038,10 +1038,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
-		json_object_set(reply, "data", data);
+		json_object_set_new(reply, "data", data);
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(data);
 		json_decref(reply);
 		/* Send the success reply */
 		ret = janus_process_success(source, "application/json", reply_text);
@@ -1063,8 +1062,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			}
 		}
 #endif
-		//~ janus_session_destroy(session_id);	/* FIXME Should we check if this actually succeeded, or can we ignore it? */
-
 		/* Schedule the session for deletion */
 		session->destroy = 1;
 		janus_mutex_lock(&sessions_mutex);
@@ -1450,12 +1447,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
-			json_object_set(plugin_data, "data", event);
-			json_object_set(reply, "plugindata", plugin_data);
+			json_object_set_new(plugin_data, "data", event);
+			json_object_set_new(reply, "plugindata", plugin_data);
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(event);
-			json_decref(plugin_data);
 			if(jsep != NULL)
 				json_decref(jsep);
 			json_decref(reply);
@@ -2618,7 +2613,6 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		/* FIXME 512 should be enough, but anyway... */
 		error_string = calloc(512, sizeof(char));
 		if(error_string == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -3329,16 +3323,12 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *plugin_data = json_object();
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
-	json_object_set(plugin_data, "data", event);
-	json_object_set(reply, "plugindata", plugin_data);
+	json_object_set_new(plugin_data, "data", event);
+	json_object_set_new(reply, "plugindata", plugin_data);
 	if(jsep != NULL)
-		json_object_set(reply, "jsep", jsep);
+		json_object_set_new(reply, "jsep", jsep);
 	/* Convert to a string */
 	char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(event);
-	json_decref(plugin_data);
-	if(jsep != NULL)
-		json_decref(jsep);
 	json_decref(reply);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", ice_handle->handle_id);
@@ -3658,7 +3648,7 @@ void janus_close_pc(janus_plugin_session *plugin_session) {
 				break;
 			}
 		}
-		if(ice_handle->iceloop) {
+		if(ice_handle->iceloop && g_main_loop_is_running(ice_handle->iceloop)) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", ice_handle->handle_id, g_main_loop_is_running(ice_handle->iceloop) ? "running" : "NOT running");
 			g_main_loop_quit(ice_handle->iceloop);
 			g_main_context_wakeup(ice_handle->icectx);
@@ -4880,6 +4870,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();
 #endif
+	janus_ice_deinit();
 	
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {

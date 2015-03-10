@@ -168,5 +168,6 @@ int janus_recorder_free(janus_recorder *recorder) {
 		fclose(recorder->file);
 	recorder->file = NULL;
 	janus_mutex_unlock_nodebug(&recorder->mutex);
+	g_free(recorder);
 	return 0;
 }
