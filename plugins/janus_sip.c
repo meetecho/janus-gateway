@@ -837,7 +837,7 @@ static void *janus_sip_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SIP handler thread\n");
 	janus_sip_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
+	char *error_cause = calloc(512, sizeof(char));
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;

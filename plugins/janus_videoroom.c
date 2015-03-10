@@ -1277,7 +1277,7 @@ plugin_response:
 		{
 			if (!response) {
 				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "no response");
+				g_snprintf(error_cause, 512, "Invalid response");
 				goto error;
 			}
 			if(root != NULL)

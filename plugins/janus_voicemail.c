@@ -519,7 +519,6 @@ char *janus_voicemail_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_voicemail_message *msg = calloc(1, sizeof(janus_voicemail_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -631,7 +630,7 @@ static void *janus_voicemail_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VoiceMail handler thread\n");
 	janus_voicemail_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
+	char *error_cause = calloc(512, sizeof(char));
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
