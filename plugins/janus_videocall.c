@@ -1120,11 +1120,9 @@ static void *janus_videocall_handler(void *data) {
 		json_t *event = json_object();
 		json_object_set_new(event, "videocall", json_string("event"));
 		if(result != NULL)
-			json_object_set(event, "result", result);
+			json_object_set_new(event, "result", result);
 		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
-		if(result != NULL)
-			json_decref(result);
 		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 		int ret = gateway->push_event(msg->handle, &janus_videocall_plugin, msg->transaction, event_text, sdp_type, sdp);
 		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));

@@ -1415,7 +1415,7 @@ static void *janus_recordplay_handler(void *data) {
 		event = json_object();
 		json_object_set_new(event, "recordplay", json_string("event"));
 		if(result != NULL)
-			json_object_set(event, "result", result);
+			json_object_set_new(event, "result", result);
 		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
