@@ -636,6 +636,8 @@ void janus_videoroom_destroy(void) {
 		watchdog = NULL;
 	}
 	su_home_deinit(sdphome);
+	su_home_unref(sdphome);
+	sdphome = NULL;
 
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
@@ -1136,6 +1138,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		json_decref(destroyed);
+		g_free(destroyed_text);
 		janus_mutex_unlock(&videoroom->participants_mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		/* Done */
@@ -1595,8 +1598,8 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 				}
 				janus_mutex_unlock(&participant->room->participants_mutex);
 			}
-			g_free(unpub_text);
 		}
+		g_free(unpub_text);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of listener */
 		janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
@@ -2290,7 +2293,6 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						janus_mutex_unlock(&participant->room->participants_mutex);
 					}
-
 				}
 				g_free(leaving_text);
 				/* Done */
@@ -2867,6 +2869,7 @@ static void *janus_videoroom_handler(void *data) {
 						int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, pub_text, NULL, NULL);
 						JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 					}
+					g_free(pub_text);
 					janus_mutex_unlock(&videoroom->participants_mutex);
 					/* Let's wait for the setup_media event */
 				}
