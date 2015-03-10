@@ -60,6 +60,7 @@
 #include <sofia-sip/sdp.h>
 #include <sofia-sip/sip_status.h>
 #include <sofia-sip/url.h>
+#include <sofia-sip/tport_tag.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -2135,6 +2136,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
+				TPTAG_SERVER(0),
 				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL("sip:*:*"),
