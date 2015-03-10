@@ -157,13 +157,14 @@ $(document).ready(function() {
 												}
 											} else if(event === 'slow_link') {
 												var uplink = result["uplink"];
-												if (uplink) {
+												if(uplink === true) {
+													// Janus detected issues when receiving our media, let's slow down
 													bandwidth = parseInt(bandwidth / 1.5);
 													recordplay.send({
 														'message': {
 															'request': 'configure',
-															'video-bitrate-max': bandwidth, // a quarter megabit
-															'video-keyframe-interval': 15000 // 15 seconds
+															'video-bitrate-max': bandwidth, // Reduce the bitrate
+															'video-keyframe-interval': 15000 // Keep the 15 seconds key frame interval
 														}
 													});
 												}
@@ -185,7 +186,7 @@ $(document).ready(function() {
 														return;
 													}
 												}
-												// TODO Reset status
+												// FIXME Reset status
 												$('#videobox').empty();
 												$('#video').hide();
 												recordingId = null;
@@ -204,7 +205,7 @@ $(document).ready(function() {
 										// FIXME Error?
 										var error = msg["error"];
 										bootbox.alert(error);
-										// TODO Reset status
+										// FIXME Reset status
 										$('#videobox').empty();
 										$('#video').hide();
 										recording = false;
@@ -262,7 +263,7 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
-									// TODO Reset status
+									// FIXME Reset status
 									$('#waitingvideo').remove();
 									if(spinner !== null && spinner !== undefined)
 										spinner.stop();
