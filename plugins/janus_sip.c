@@ -138,6 +138,8 @@ static char *local_ip = NULL;
 static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
+#define JANUS_DEFAULT_REGISTER_TTL	3600
+static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -420,6 +422,10 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(item && item->value)
 		keepalive_interval = atoi(item->value);
 	JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+	item = janus_config_get_item_drilldown(config, "general", "register_ttl");
+	if(item && item->value)
+		register_ttl = atoi(item->value);
+	JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
 	item = janus_config_get_item_drilldown(config, "general", "behind_nat");
 	if(item && item->value)
 		behind_nat = janus_is_true(item->value);
@@ -955,6 +961,14 @@ static void *janus_sip_handler(void *data) {
 				}
 			}
 
+			/* Parse register TTL */
+			int ttl = register_ttl;
+			json_t *reg_ttl = json_object_get(root, "register_ttl");
+			if (reg_ttl && json_is_integer(reg_ttl))
+				ttl = json_integer_value(reg_ttl);
+			if (ttl <= 0)
+				ttl = JANUS_DEFAULT_REGISTER_TTL;
+
 			/* Now the user part, if needed */
 			json_t *username = json_object_get(root, "username");
 			if(!guest && !username) {
@@ -1071,10 +1085,13 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Invalid NUA Handle");
 					goto error;
 				}
+				char ttl_text[20];
+				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
+					SIPTAG_EXPIRES_STR(ttl_text),
 					NUTAG_PROXY(proxy_text),
 					TAG_END());
 				result = json_object();
