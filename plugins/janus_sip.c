@@ -60,6 +60,7 @@
 #include <sofia-sip/sdp.h>
 #include <sofia-sip/sip_status.h>
 #include <sofia-sip/url.h>
+#include <sofia-sip/tport_tag.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -1449,16 +1450,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			gateway->close_pc(session->handle);
 			break;
 		}
-		case nua_i_chat:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_info:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
 		case nua_i_invite: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
@@ -1504,52 +1495,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			session->stack->s_nh_i = nh;
 			break;
 		}
-		case nua_i_message:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_method:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_notify:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
 		case nua_i_options:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_prack:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_publish:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_refer:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_register:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_subscribe:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
-			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
-			break;
-		case nua_i_update:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
 			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
@@ -1604,9 +1550,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			gateway->close_pc(session->handle);
 			break;
 		case nua_r_cancel:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_info:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_invite: {
@@ -1711,24 +1654,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			g_free(call_text);
 			break;
 		}
-		case nua_r_message:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_notify:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_options:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_prack:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_publish:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_refer:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
 		case nua_r_register: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
 			if(status == 200) {
@@ -1779,21 +1704,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			break;
 		}
-		case nua_r_subscribe:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_unpublish:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_unregister:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_unsubscribe:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
-		case nua_r_update:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			break;
 		default:
 			/* unknown event -> print out error message */
 			JANUS_LOG(LOG_ERR, "Unknown event %d (%s)\n", event, nua_event_name(event));
@@ -2217,27 +2127,24 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack->s_root = su_root_create(session->stack);
-	char tag_url[100];
-	memset(tag_url, 0, 100);
-	g_snprintf(tag_url, 100, "sip:%s@0.0.0.0:0", session->account.username);
-	JANUS_LOG(LOG_VERB, "Setting up sofia stack (%s)\n", tag_url);
+	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@*)\n", session->account.username);
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
-		strcat(outbound_options, " options-keepalive");
+		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
-		strcat(outbound_options, " no-natify");
+		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
-				SIPTAG_FROM_STR(tag_url),
+				TPTAG_SERVER(0),
+				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
+				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL("sip:*:*"),
 				NUTAG_SIPS_URL("sips:*:*"),
 				SIPTAG_USER_AGENT_STR(user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
-				// sofia-sip default supported: timer and 100rel
-				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
-				SIPTAG_SUPPORTED_STR("timer"),
+				SIPTAG_SUPPORTED(NULL),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
