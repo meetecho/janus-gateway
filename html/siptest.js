@@ -356,8 +356,8 @@ function registerUsername() {
 	$('#register').attr('disabled', true).unbind('click');
 	$('#guest').attr('disabled', true);
 	var sipserver = $('#server').val();
-	if(sipserver === "" || (sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0)) {
-		bootbox.alert("Please insert the SIP server (e.g., sip:192.168.0.1:5060)");
+	if(sipserver !== "" && sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0) {
+		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
@@ -369,28 +369,42 @@ function registerUsername() {
 		// We're registering as guests, no username/secret provided
 		var register = {
 			"request" : "register",
-			"type" : "guest",
-			"proxy" : sipserver
+			"type" : "guest"
 		};
+		if(sipserver !== "")
+			register["proxy"] = sipserver;
 		var username = $('#username').val();
 		if(username !== undefined && username !== null) {
 			if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 				bootbox.alert('Usernames are optional for guests: if you want to specify one anyway, though, please insert a valid SIP address (e.g., sip:goofy@example.com)');
 				$('#server').removeAttr('disabled');
 				$('#username').removeAttr('disabled');
-				$('#password').removeAttr('disabled');
 				$('#register').removeAttr('disabled').click(registerUsername);
 				$('#guest').removeAttr('disabled');
 				return;
 			}
 			register.username = username;
 		}
-		sipcall.send({"message": register});
+		if(sipserver === "") {
+			bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+				function(result) {
+					if(result) {
+						sipcall.send({"message": register});
+					} else {
+						$('#server').removeAttr('disabled');
+						$('#username').removeAttr('disabled');
+						$('#register').removeAttr('disabled').click(registerUsername);
+						$('#guest').removeAttr('disabled');
+					}
+				}); 
+		} else {
+			sipcall.send({"message": register});
+		}
 		return;
 	}
 	var username = $('#username').val();
 	if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
-		bootbox.alert('Please insert a valid SIP address (e.g., sip:goofy@example.com)');
+		bootbox.alert('Please insert a valid SIP identity address (e.g., sip:goofy@example.com)');
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
@@ -411,10 +425,25 @@ function registerUsername() {
 	var register = {
 		"request" : "register",
 		"username" : username,
-		"secret" : password,
-		"proxy" : sipserver
+		"secret" : password
 	};
-	sipcall.send({"message": register});
+	if(sipserver === "") {
+		bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+			function(result) {
+				if(result) {
+					sipcall.send({"message": register});
+				} else {
+					$('#server').removeAttr('disabled');
+					$('#username').removeAttr('disabled');
+					$('#password').removeAttr('disabled');
+					$('#register').removeAttr('disabled').click(registerUsername);
+					$('#guest').removeAttr('disabled');
+				}
+			}); 
+	} else {
+		register["proxy"] = sipserver;
+		sipcall.send({"message": register});
+	}
 }
 
 function doCall() {
