@@ -2142,9 +2142,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				SIPTAG_USER_AGENT_STR(user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
-				// sofia-sip default supported: timer and 100rel
-				// disable 100rel, There are known issues (asserts and segfaults) when 100rel is enabled from freeswitch config comments
-				SIPTAG_SUPPORTED_STR("timer"),
+				SIPTAG_SUPPORTED(NULL),
 				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
