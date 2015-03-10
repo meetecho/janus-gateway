@@ -2223,9 +2223,9 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (%s)\n", tag_url);
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
-		strcat(outbound_options, " options-keepalive");
+		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
-		strcat(outbound_options, " no-natify");
+		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
