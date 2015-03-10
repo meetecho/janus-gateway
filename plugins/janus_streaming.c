@@ -1601,6 +1601,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Memory error");
 			goto error;
 		}
+
+		g_free(message);
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;

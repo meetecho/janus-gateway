@@ -429,7 +429,8 @@ void janus_recordplay_message_free(janus_recordplay_message *msg) {
 
 	g_free(msg->transaction);
 	msg->transaction = NULL;
-	g_free(msg->message);
+	if(msg->message)
+		json_decref(msg->message);
 	msg->message = NULL;
 	g_free(msg->sdp_type);
 	msg->sdp_type = NULL;
@@ -832,6 +833,8 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 			g_snprintf(error_cause, 512, "Memory error");
 			goto error;
 		}
+
+		g_free(message);
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -1342,11 +1345,13 @@ static void *janus_recordplay_handler(void *data) {
 			if(session->arc) {
 				janus_recorder_close(session->arc);
 				JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
+				janus_recorder_free(session->arc);
 			}
 			session->arc = NULL;
 			if(session->vrc) {
 				janus_recorder_close(session->vrc);
 				JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+				janus_recorder_free(session->vrc);
 			}
 			session->vrc = NULL;
 			if(session->recorder) {
@@ -1424,6 +1429,7 @@ static void *janus_recordplay_handler(void *data) {
 			int res = gateway->push_event(msg->handle, &janus_recordplay_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",
 				res, janus_get_monotonic_time()-start);
+			g_free(sdp);
 		}
 		g_free(event_text);
 		janus_recordplay_message_free(msg);
