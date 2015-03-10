@@ -157,7 +157,7 @@ $(document).ready(function() {
 												}
 											} else if(event === 'slow_link') {
 												var uplink = result["uplink"];
-												if(uplink === true) {
+												if(uplink !== 0) {
 													// Janus detected issues when receiving our media, let's slow down
 													bandwidth = parseInt(bandwidth / 1.5);
 													recordplay.send({
