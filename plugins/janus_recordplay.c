@@ -1943,6 +1943,8 @@ static void *janus_recordplay_playout_thread(void *data) {
 			}
 		}
 	}
+	
+	g_free(buffer);
 
 	/* Get rid of the indexes */
 	janus_recordplay_frame_packet *tmp = NULL;
