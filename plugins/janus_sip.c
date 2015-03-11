@@ -284,39 +284,6 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session);
 static void *janus_sip_relay_thread(void *data);
 
 
-/* Interface/IP ignore list */
-GList *janus_sip_ignore_list = NULL;
-janus_mutex ignore_list_mutex;
-void janus_sip_ignore_interface(const char *ip);
-gboolean janus_sip_is_ignored(const char *ip);
-
-void janus_sip_ignore_interface(const char *ip) {
-	if(ip == NULL)
-		return;
-	/* Is this an IP or an interface? */
-	janus_mutex_lock(&ignore_list_mutex);
-	janus_sip_ignore_list = g_list_append(janus_sip_ignore_list, (gpointer)ip);
-	janus_mutex_unlock(&ignore_list_mutex);
-}
-
-gboolean janus_sip_is_ignored(const char *ip) {
-	if(ip == NULL || janus_sip_ignore_list == NULL)
-		return FALSE;
-	janus_mutex_lock(&ignore_list_mutex);
-	GList *temp = janus_sip_ignore_list;
-	while(temp) {
-		const char *ignored = (const char *)temp->data;
-		if(ignored != NULL && strstr(ip, ignored)) {
-			janus_mutex_unlock(&ignore_list_mutex);
-			return TRUE;
-		}
-		temp = temp->next;
-	}
-	janus_mutex_unlock(&ignore_list_mutex);
-	return FALSE;
-}
-
-
 /* URI parsing utilies */
 
 #define JANUS_SIP_URI_MAXLEN	1024
@@ -397,59 +364,31 @@ void *janus_sip_watchdog(void *data) {
 
 
 static void janus_sip_detect_local_ip(void) {
-	/* What is the local IP? */
-	JANUS_LOG(LOG_VERB, "Autodetecting local IP through available interfaces...\n");
-	/* Try to autodetect, but ignore those in the ignore list */
-	struct ifaddrs *ifaddr, *ifa;
-	int family, s;
-	int found = 0;
-	char host[NI_MAXHOST];
+	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
 
-	if(getifaddrs(&ifaddr) == -1) {
-		JANUS_LOG(LOG_ERR, "Error getting list of interfaces...");
-		goto end;
-	}
+	struct sockaddr_in addr;
+	socklen_t len;
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd == -1)
+		goto error;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(1);
+	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
+	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
+		goto error;
+	len = sizeof(addr);
+	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
+		goto error;
+	getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
+			local_ip, sizeof(local_ip),
+			NULL, 0, NI_NUMERICHOST);
+	return;
 
-	for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-		if (ifa->ifa_addr == NULL)
-			continue;
-		/* Skip interfaces which are not up and running */
-		if (!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
-			continue;
-		/* Skip loopback interfaces */
-		if (ifa->ifa_flags & IFF_LOOPBACK)
-			continue;
-		family = ifa->ifa_addr->sa_family;
-		if(family != AF_INET && family != AF_INET6)
-			continue;
-		/* FIXME We skip IPv6 addresses for now */
-		if(family == AF_INET6)
-			continue;
-		/* Check the interface name first: we can ignore that as well */
-		if(ifa->ifa_name != NULL && janus_sip_is_ignored(ifa->ifa_name))
-			continue;
-		s = getnameinfo(ifa->ifa_addr,
-				(family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
-				host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-		if(s != 0) {
-			JANUS_LOG(LOG_ERR, "getnameinfo() failed: %s\n", gai_strerror(s));
-			continue;
-		}
-		/* Check if this IP address is in the ignore list, now */
-		if(janus_sip_is_ignored(host))
-			continue;
-		/* FIXME Ok, add use this interface (we're sticking with the first we get) */
-		found = 1;
-		g_strlcpy(local_ip, host, sizeof(local_ip));
-		break;
-	}
-	freeifaddrs(ifaddr);
-
-end:
-	if (!found) {
-		JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-		g_strlcpy(local_ip, "127.0.0.1", sizeof(local_ip));
-	}
+error:
+	if (fd != -1)
+		close(fd);
+	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+	g_strlcpy(local_ip, "127.0.0.1", sizeof(local_ip));
 }
 
 
@@ -472,38 +411,35 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL)
 		janus_config_print(config);
 
-	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "autodetect_ignore");
-	if(item && item->value) {
-		gchar **list = g_strsplit(item->value, ",", -1);
-		gchar *index = list[0];
-		if(index != NULL) {
-			int i=0;
-			while(index != NULL) {
-				if(strlen(index) > 0) {
-					JANUS_LOG(LOG_VERB, "Adding '%s' to the network interface ignore list...\n", index);
-					janus_sip_ignore_interface(g_strdup(index));
-				}
-				i++;
-				index = list[i];
-			}
-		}
-		g_strfreev(list);
-		list = NULL;
-	}
-
-	item = janus_config_get_item_drilldown(config, "general", "local_ip");
+	gboolean local_ip_set = FALSE;
+	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
 	if(item && item->value) {
 		/* FIXME: IPv6 is not supported yet */
 		struct in_addr addr;
 		if (inet_pton(AF_INET, item->value, &addr) != 1) {
 			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
-			janus_sip_detect_local_ip();
 		} else {
-			g_strlcpy(local_ip, item->value, sizeof(local_ip));
+			/* Verify that we can actually bind to that address */
+			struct sockaddr_in addr;
+			int r;
+			int fd = socket(AF_INET, SOCK_DGRAM, 0);
+			if (fd == -1)
+				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+			addr.sin_family = AF_INET;
+			addr.sin_port = 0;
+			inet_pton(AF_INET, item->value, &addr.sin_addr.s_addr);
+			r = bind(fd, (const struct sockaddr*) &addr, sizeof(addr));
+			close(fd);
+			if (r < 0) {
+				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
+			} else {
+				g_strlcpy(local_ip, item->value, sizeof(local_ip));
+				local_ip_set = TRUE;
+			}
 		}
-	} else {
-		janus_sip_detect_local_ip();
 	}
+	if (!local_ip_set)
+		janus_sip_detect_local_ip();
 	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 	item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
