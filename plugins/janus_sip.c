@@ -50,6 +50,7 @@
 
 #include "plugin.h"
 
+#include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 
@@ -134,7 +135,7 @@ janus_plugin *create(void) {
 static gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 
-static char *local_ip = NULL;
+static char local_ip[INET6_ADDRSTRLEN];
 static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
@@ -283,39 +284,6 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session);
 static void *janus_sip_relay_thread(void *data);
 
 
-/* Interface/IP ignore list */
-GList *janus_sip_ignore_list = NULL;
-janus_mutex ignore_list_mutex;
-void janus_sip_ignore_interface(const char *ip);
-gboolean janus_sip_is_ignored(const char *ip);
-
-void janus_sip_ignore_interface(const char *ip) {
-	if(ip == NULL)
-		return;
-	/* Is this an IP or an interface? */
-	janus_mutex_lock(&ignore_list_mutex);
-	janus_sip_ignore_list = g_list_append(janus_sip_ignore_list, (gpointer)ip);
-	janus_mutex_unlock(&ignore_list_mutex);
-}
-
-gboolean janus_sip_is_ignored(const char *ip) {
-	if(ip == NULL || janus_sip_ignore_list == NULL)
-		return FALSE;
-	janus_mutex_lock(&ignore_list_mutex);
-	GList *temp = janus_sip_ignore_list;
-	while(temp) {
-		const char *ignored = (const char *)temp->data;
-		if(ignored != NULL && strstr(ip, ignored)) {
-			janus_mutex_unlock(&ignore_list_mutex);
-			return TRUE;
-		}
-		temp = temp->next;
-	}
-	janus_mutex_unlock(&ignore_list_mutex);
-	return FALSE;
-}
-
-
 /* URI parsing utilies */
 
 #define JANUS_SIP_URI_MAXLEN	1024
@@ -395,6 +363,35 @@ void *janus_sip_watchdog(void *data) {
 }
 
 
+static void janus_sip_detect_local_ip(void) {
+	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
+
+	struct sockaddr_in addr;
+	socklen_t len;
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd == -1)
+		goto error;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(1);
+	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
+	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
+		goto error;
+	len = sizeof(addr);
+	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
+		goto error;
+	getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
+			local_ip, sizeof(local_ip),
+			NULL, 0, NI_NUMERICHOST);
+	return;
+
+error:
+	if (fd != -1)
+		close(fd);
+	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+	g_strlcpy(local_ip, "127.0.0.1", sizeof(local_ip));
+}
+
+
 /* Plugin implementation */
 int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -413,99 +410,62 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	janus_config *config = janus_config_parse(filename);
 	if(config != NULL)
 		janus_config_print(config);
-	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "c_address");
-	if(item != NULL && item->value != NULL) {
-		local_ip = g_strdup(item->value);
-		JANUS_LOG(LOG_VERB, "Going to use %s as a c-line in the SDPs\n", local_ip);
+
+	gboolean local_ip_set = FALSE;
+	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
+	if(item && item->value) {
+		/* FIXME: IPv6 is not supported yet */
+		struct in_addr addr;
+		if (inet_pton(AF_INET, item->value, &addr) != 1) {
+			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+		} else {
+			/* Verify that we can actually bind to that address */
+			struct sockaddr_in addr;
+			int r;
+			int fd = socket(AF_INET, SOCK_DGRAM, 0);
+			if (fd == -1)
+				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+			addr.sin_family = AF_INET;
+			addr.sin_port = 0;
+			inet_pton(AF_INET, item->value, &addr.sin_addr.s_addr);
+			r = bind(fd, (const struct sockaddr*) &addr, sizeof(addr));
+			close(fd);
+			if (r < 0) {
+				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
+			} else {
+				g_strlcpy(local_ip, item->value, sizeof(local_ip));
+				local_ip_set = TRUE;
+			}
+		}
 	}
+	if (!local_ip_set)
+		janus_sip_detect_local_ip();
+	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
+
 	item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
 	if(item && item->value)
 		keepalive_interval = atoi(item->value);
 	JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+
 	item = janus_config_get_item_drilldown(config, "general", "register_ttl");
 	if(item && item->value)
 		register_ttl = atoi(item->value);
 	JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
+
 	item = janus_config_get_item_drilldown(config, "general", "behind_nat");
 	if(item && item->value)
 		behind_nat = janus_is_true(item->value);
+
 	item = janus_config_get_item_drilldown(config, "general", "user_agent");
 	if(item && item->value)
 		user_agent = g_strdup(item->value);
 	else
 		user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
 	JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
-	item = janus_config_get_item_drilldown(config, "general", "autodetect_ignore");
-	if(item && item->value) {
-		gchar **list = g_strsplit(item->value, ",", -1);
-		gchar *index = list[0];
-		if(index != NULL) {
-			int i=0;
-			while(index != NULL) {
-				if(strlen(index) > 0) {
-					JANUS_LOG(LOG_VERB, "Adding '%s' to the c-line ignore list...\n", index);
-					janus_sip_ignore_interface(g_strdup(index));
-				}
-				i++;
-				index = list[i];
-			}
-		}
-		g_strfreev(list);
-		list = NULL;
-	}
 
 	/* This plugin actually has nothing to configure... */
 	janus_config_destroy(config);
 	config = NULL;
-	
-	if(local_ip == NULL) {
-		/* What is the local public IP? */
-		JANUS_LOG(LOG_VERB, "Autodetecting through available interfaces...\n");
-		/* Try to autodetect, but ignore those in the ignore list */
-		struct ifaddrs *ifaddr, *ifa;
-		int family, s, n;
-		char host[NI_MAXHOST];
-		if(getifaddrs(&ifaddr) == -1) {
-			JANUS_LOG(LOG_ERR, "Error getting list of interfaces...");
-		} else {
-			for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
-				if(ifa->ifa_addr == NULL)
-					continue;
-				family = ifa->ifa_addr->sa_family;
-				if(family != AF_INET && family != AF_INET6)
-					continue;
-				/* FIXME We skip IPv6 addresses for now */
-				if(family == AF_INET6)
-					continue;
-				/* Check the interface name first: we can ignore that as well */
-				if(ifa->ifa_name != NULL && janus_sip_is_ignored(ifa->ifa_name))
-					continue;
-				s = getnameinfo(ifa->ifa_addr,
-						(family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
-						host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-				if(s != 0) {
-					JANUS_LOG(LOG_ERR, "getnameinfo() failed: %s\n", gai_strerror(s));
-					continue;
-				}
-				/* Skip localhost */
-				if(!strcmp(host, "127.0.0.1") || !strcmp(host, "::1") || !strcmp(host, "0.0.0.0"))
-					continue;
-				/* Check if this IP address is in the ignore list, now */
-				if(janus_sip_is_ignored(host))
-					continue;
-				/* FIXME Ok, add use this interface (we're sticking with the first we get) */
-				local_ip = g_strdup(host);
-				break;
-			}
-			freeifaddrs(ifaddr);
-		}
-		if(local_ip == NULL) {
-			JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 for c-lines... (which is NOT going to work out of your machine)\n");
-			local_ip = g_strdup("127.0.0.1");
-		} else {
-			JANUS_LOG(LOG_VERB, "Going to use %s as a c-line in the SDPs\n", local_ip);
-		}
-	}
 
 	/* Setup sofia */
 	su_init();
@@ -1838,7 +1798,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				rtp_port++;	/* Pick an even port for RTP */
 			audio_rtp_address.sin_family = AF_INET;
 			audio_rtp_address.sin_port = htons(rtp_port);
-			audio_rtp_address.sin_addr.s_addr = INADDR_ANY;
+			inet_pton(AF_INET, local_ip, &audio_rtp_address.sin_addr.s_addr);
 			if(bind(session->media.audio_rtp_fd, (struct sockaddr *)(&audio_rtp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTP (port %d), trying a different one...\n", rtp_port);
 				attempts--;
@@ -1848,7 +1808,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 			int rtcp_port = rtp_port+1;
 			audio_rtcp_address.sin_family = AF_INET;
 			audio_rtcp_address.sin_port = htons(rtcp_port);
-			audio_rtcp_address.sin_addr.s_addr = INADDR_ANY;
+			inet_pton(AF_INET, local_ip, &audio_rtcp_address.sin_addr.s_addr);
 			if(bind(session->media.audio_rtcp_fd, (struct sockaddr *)(&audio_rtcp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */
@@ -1884,17 +1844,17 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				rtp_port++;	/* Pick an even port for RTP */
 			video_rtp_address.sin_family = AF_INET;
 			video_rtp_address.sin_port = htons(rtp_port);
-			video_rtp_address.sin_addr.s_addr = INADDR_ANY;
+			inet_pton(AF_INET, local_ip, &video_rtp_address.sin_addr.s_addr);
 			if(bind(session->media.video_rtp_fd, (struct sockaddr *)(&video_rtp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTP (port %d), trying a different one...\n", rtp_port);
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Audio RTP listener bound to port %d\n", rtp_port);
+			JANUS_LOG(LOG_VERB, "Video RTP listener bound to port %d\n", rtp_port);
 			int rtcp_port = rtp_port+1;
 			video_rtcp_address.sin_family = AF_INET;
 			video_rtcp_address.sin_port = htons(rtcp_port);
-			video_rtcp_address.sin_addr.s_addr = INADDR_ANY;
+			inet_pton(AF_INET, local_ip, &video_rtcp_address.sin_addr.s_addr);
 			if(bind(session->media.video_rtcp_fd, (struct sockaddr *)(&video_rtcp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */
@@ -1903,7 +1863,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				attempts--;
 				continue;
 			}
-			JANUS_LOG(LOG_VERB, "Audio RTCP listener bound to port %d\n", rtcp_port);
+			JANUS_LOG(LOG_VERB, "Video RTCP listener bound to port %d\n", rtcp_port);
 			session->media.local_video_rtp_port = rtp_port;
 			session->media.local_video_rtcp_port = rtcp_port;
 		}
@@ -2142,7 +2102,13 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack->s_root = su_root_create(session->stack);
-	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@*)\n", session->account.username);
+	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
+	char sip_url[128];
+	char sips_url[128];
+	char *ipv6;
+	ipv6 = strstr(local_ip, ":");
+	g_snprintf(sip_url, sizeof(sip_url), "sip:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
+	g_snprintf(sips_url, sizeof(sips_url), "sips:%s%s%s:*", ipv6 ? "[" : "", local_ip, ipv6 ? "]" : "");
 	char outbound_options[256] = "use-rport no-validate";
 	if(keepalive_interval > 0)
 		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
@@ -2154,8 +2120,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				TPTAG_SERVER(0),
 				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
 				NUTAG_M_USERNAME(session->account.username),
-				NUTAG_URL("sip:*:*"),
-				NUTAG_SIPS_URL("sips:*:*"),
+				NUTAG_URL(sip_url),
+				NUTAG_SIPS_URL(sips_url),
 				SIPTAG_USER_AGENT_STR(user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
