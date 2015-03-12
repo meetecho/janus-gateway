@@ -379,9 +379,10 @@ static void janus_sip_detect_local_ip(char *buf, size_t buflen) {
 	len = sizeof(addr);
 	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
 		goto error;
-	getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
+	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
 			buf, buflen,
-			NULL, 0, NI_NUMERICHOST);
+			NULL, 0, NI_NUMERICHOST) != 0)
+		goto error;
 	close(fd);
 	return;
 
