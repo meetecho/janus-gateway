@@ -13,6 +13,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -237,4 +241,19 @@ int janus_get_vp8_pt(const char *sdp) {
 		line = next ? (next+1) : NULL;
 	}
 	return -1;
+}
+
+gboolean janus_is_ip_valid(const char *ip, int *family) {
+	struct sockaddr_in addr4;
+	struct sockaddr_in6 addr6;
+
+	if (inet_pton(AF_INET, ip, &addr4) > 0) {
+		*family = AF_INET;
+		return TRUE;
+	} else if (inet_pton(AF_INET6, ip, &addr6) > 0) {
+		*family = AF_INET6;
+		return TRUE;
+	} else {
+		return FALSE;
+	}
 }

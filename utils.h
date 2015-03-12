@@ -83,4 +83,6 @@ int janus_get_opus_pt(const char *sdp);
  * @returns The VP8 payload type, if found, -1 otherwise */
 int janus_get_vp8_pt(const char *sdp);
 
+/*! \brief Check if the given IP address is valid. Family is set to the address family if the IP is valid. */
+gboolean janus_is_ip_valid(const char *ip, int *family);
 #endif
