@@ -15,11 +15,12 @@
  
 #include <dlfcn.h>
 #include <dirent.h>
-#include <ifaddrs.h>
 #include <net/if.h>
+#include <netdb.h>
 #include <signal.h>
 #include <getopt.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 
 #include "janus.h"
 #include "cmdline.h"
@@ -187,7 +188,7 @@ char *janus_info(const char *transaction) {
 	return info_text;
 }
 
-static gchar *local_ip = NULL;
+static gchar local_ip[INET6_ADDRSTRLEN];
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
@@ -3674,6 +3675,35 @@ void janus_end_session(janus_plugin_session *plugin_session) {
 }
 
 
+static void janus_detect_local_ip(gchar *buf, size_t buflen) {
+	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
+	struct sockaddr_in addr;
+	socklen_t len;
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd == -1)
+		goto error;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(1);
+	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
+	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
+		goto error;
+	len = sizeof(addr);
+	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
+		goto error;
+	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
+			buf, buflen,
+			NULL, 0, NI_NUMERICHOST) != 0)
+		goto error;
+	close(fd);
+	return;
+error:
+	if (fd != -1)
+		close(fd);
+	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+	g_strlcpy(buf, "127.0.0.1", buflen);
+}
+
+
 /* Main */
 gint main(int argc, char *argv[])
 {
@@ -3931,60 +3961,40 @@ gint main(int argc, char *argv[])
 		g_strfreev(list);
 		list = NULL;
 	}
-	/* What is the local public IP? */
-	JANUS_LOG(LOG_VERB, "Available interfaces:\n");
+	/* What is the local IP? */
+	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");
+	gboolean local_ip_set = FALSE;
 	item = janus_config_get_item_drilldown(config, "general", "interface");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "  -- Will try to use %s\n", item->value);
-	}
-	struct ifaddrs *myaddrs, *ifa;
-	int status = getifaddrs(&myaddrs);
-	char *tmp = NULL;
-	if (status == 0) {
-		for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next) {
-			if(ifa->ifa_addr == NULL) {
-				continue;
-			}
-			if((ifa->ifa_flags & IFF_UP) == 0) {
-				continue;
-			}
-			/* Check the interface name first: we can ignore that as well */
-			if(ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
-				continue;
-			if(ifa->ifa_addr->sa_family == AF_INET) {
-				struct sockaddr_in *ip = (struct sockaddr_in *)(ifa->ifa_addr);
-				char buf[16];
-				if(inet_ntop(ifa->ifa_addr->sa_family, (void *)&(ip->sin_addr), buf, sizeof(buf)) == NULL) {
-					JANUS_LOG(LOG_ERR, "\t%s:\tinet_ntop failed!\n", ifa->ifa_name);
+		/* FIXME: IPv6 is not supported yet */
+		struct in_addr addr;
+		if (inet_pton(AF_INET, item->value, &addr) != 1) {
+			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+		} else {
+			/* Verify that we can actually bind to that address */
+			struct sockaddr_in addr;
+			int r;
+			int fd = socket(AF_INET, SOCK_DGRAM, 0);
+			if (fd == -1) {
+				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+			} else {
+				addr.sin_family = AF_INET;
+				addr.sin_port = 0;
+				inet_pton(AF_INET, item->value, &addr.sin_addr.s_addr);
+				r = bind(fd, (const struct sockaddr*) &addr, sizeof(addr));
+				close(fd);
+				if (r < 0) {
+					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
 				} else {
-					JANUS_LOG(LOG_VERB, "\t%s:\t%s\n", ifa->ifa_name, buf);
-					/* Check if this IP address is in the ignore list, now */
-					if(janus_ice_is_ignored(buf))
-						continue;
-					if(item && item->value && !strcasecmp(buf, item->value)) {
-						local_ip = strdup(buf);
-						if(local_ip == NULL) {
-							JANUS_LOG(LOG_FATAL, "Memory error!\n");
-							exit(1);
-						}
-					} else if(strcasecmp(buf, "127.0.0.1")) {	/* FIXME Check private IP addresses as well */
-						if(tmp == NULL)	/* FIXME Take note of the first IP we find, we'll use it as a backup */
-							tmp = strdup(buf);
-					}
+					g_strlcpy(local_ip, item->value, sizeof(local_ip));
+					local_ip_set = TRUE;
 				}
 			}
-			/* TODO IPv6! */
-		}
-		freeifaddrs(myaddrs);
-	}
-	if(local_ip == NULL) {
-		if(tmp != NULL) {
-			local_ip = tmp;
-		} else {
-			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as local IP... (which is NOT going to work out of your machine)\n");
-			local_ip = g_strdup("127.0.0.1");
 		}
 	}
+	if (!local_ip_set)
+		janus_detect_local_ip(local_ip, sizeof(local_ip));
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Pre-parse the web server path, if any */

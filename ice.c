@@ -15,6 +15,7 @@
  */
  
 #include <ifaddrs.h>
+#include <net/if.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stun/usages/bind.h>
