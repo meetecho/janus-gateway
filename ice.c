@@ -1864,7 +1864,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				continue;
 			}
 			/* Skip 0.0.0.0, :: and local scoped addresses  */
-			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || strchr(host, '%'))
+			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || !strncmp(host, "fe80:", 5))
 				continue;
 			/* Check if this IP address is in the ignore list, now */
 			if(janus_ice_is_ignored(host))
