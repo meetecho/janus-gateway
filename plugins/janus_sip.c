@@ -51,7 +51,6 @@
 #include "plugin.h"
 
 #include <arpa/inet.h>
-#include <ifaddrs.h>
 #include <net/if.h>
 
 #include <jansson.h>
