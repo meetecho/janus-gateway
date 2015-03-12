@@ -3663,8 +3663,14 @@ void janus_end_session(janus_plugin_session *plugin_session) {
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
 		return;
+	janus_session *session = (janus_session *)ice_handle->session;
+	if(!session)
+		return;
 	/* Destroy the handle */
-	janus_ice_handle_destroy(ice_handle->session, ice_handle->handle_id);
+	janus_ice_handle_destroy(session, ice_handle->handle_id);
+	janus_mutex_lock(&session->mutex);
+	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(ice_handle->handle_id));
+	janus_mutex_unlock(&session->mutex);
 }
 
 
