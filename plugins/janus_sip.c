@@ -363,7 +363,7 @@ void *janus_sip_watchdog(void *data) {
 }
 
 
-static void janus_sip_detect_local_ip(void) {
+static void janus_sip_detect_local_ip(char *buf, size_t buflen) {
 	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
 
 	struct sockaddr_in addr;
@@ -380,7 +380,7 @@ static void janus_sip_detect_local_ip(void) {
 	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
 		goto error;
 	getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
-			local_ip, sizeof(local_ip),
+			buf, buflen,
 			NULL, 0, NI_NUMERICHOST);
 	return;
 
@@ -388,7 +388,7 @@ error:
 	if (fd != -1)
 		close(fd);
 	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-	g_strlcpy(local_ip, "127.0.0.1", sizeof(local_ip));
+	g_strlcpy(buf, "127.0.0.1", buflen);
 }
 
 
@@ -439,7 +439,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		}
 	}
 	if (!local_ip_set)
-		janus_sip_detect_local_ip();
+		janus_sip_detect_local_ip(local_ip, sizeof(local_ip));
 	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 	item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
