@@ -382,6 +382,7 @@ static void janus_sip_detect_local_ip(char *buf, size_t buflen) {
 	getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
 			buf, buflen,
 			NULL, 0, NI_NUMERICHOST);
+	close(fd);
 	return;
 
 error:
