@@ -424,18 +424,20 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 			struct sockaddr_in addr;
 			int r;
 			int fd = socket(AF_INET, SOCK_DGRAM, 0);
-			if (fd == -1)
+			if (fd == -1) {
 				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
-			addr.sin_family = AF_INET;
-			addr.sin_port = 0;
-			inet_pton(AF_INET, item->value, &addr.sin_addr.s_addr);
-			r = bind(fd, (const struct sockaddr*) &addr, sizeof(addr));
-			close(fd);
-			if (r < 0) {
-				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
 			} else {
-				g_strlcpy(local_ip, item->value, sizeof(local_ip));
-				local_ip_set = TRUE;
+				addr.sin_family = AF_INET;
+				addr.sin_port = 0;
+				inet_pton(AF_INET, item->value, &addr.sin_addr.s_addr);
+				r = bind(fd, (const struct sockaddr*) &addr, sizeof(addr));
+				close(fd);
+				if (r < 0) {
+					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
+				} else {
+					g_strlcpy(local_ip, item->value, sizeof(local_ip));
+					local_ip_set = TRUE;
+				}
 			}
 		}
 	}
