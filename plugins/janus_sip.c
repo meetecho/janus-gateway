@@ -415,22 +415,33 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	gboolean local_ip_set = FALSE;
 	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
 	if(item && item->value) {
-		/* FIXME: IPv6 is not supported yet */
-		struct in_addr addr;
-		if (inet_pton(AF_INET, item->value, &addr) != 1) {
+		int family;
+		if (!janus_is_ip_valid(item->value, &family)) {
 			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
 		} else {
 			/* Verify that we can actually bind to that address */
-			struct sockaddr_in addr;
-			int r;
-			int fd = socket(AF_INET, SOCK_DGRAM, 0);
+			int fd = socket(family, SOCK_DGRAM, 0);
 			if (fd == -1) {
 				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
 			} else {
-				addr.sin_family = AF_INET;
-				addr.sin_port = 0;
-				inet_pton(AF_INET, item->value, &addr.sin_addr.s_addr);
-				r = bind(fd, (const struct sockaddr*) &addr, sizeof(addr));
+				int r;
+				struct sockaddr_storage ss;
+				socklen_t addrlen;
+				memset(&ss, 0, sizeof(ss));
+				if (family == AF_INET) {
+					struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
+					addr4->sin_family = AF_INET;
+					addr4->sin_port = 0;
+					inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
+					addrlen = sizeof(struct sockaddr_in);
+				} else {
+					struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
+					addr6->sin6_family = AF_INET6;
+					addr6->sin6_port = 0;
+					inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
+					addrlen = sizeof(struct sockaddr_in6);
+				}
+				r = bind(fd, (const struct sockaddr*)&ss, addrlen);
 				close(fd);
 				if (r < 0) {
 					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
