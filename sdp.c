@@ -784,6 +784,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			a = a->a_next;
 		}
 	}
+	gboolean ipv6 = strstr(janus_get_public_ip(), ":") != NULL;
 	/* Media lines now */
 	if(anon->sdp_media) {
 		int audio = 0, video = 0;
@@ -800,7 +801,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -812,7 +813,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -829,7 +830,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -841,7 +842,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -864,7 +865,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						g_strlcat(sdp, buffer, BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 						g_snprintf(buffer, 512,
-							"c=IN IP4 %s\r\n", janus_get_public_ip());
+							"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 						g_strlcat(sdp, buffer, BUFSIZE);
 						m = m->m_next;
 						continue;
@@ -879,7 +880,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						g_strlcat(sdp, buffer, BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 						g_snprintf(buffer, 512,
-							"c=IN IP4 %s\r\n", janus_get_public_ip());
+							"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 						g_strlcat(sdp, buffer, BUFSIZE);
 						m = m->m_next;
 						continue;
@@ -903,7 +904,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				g_strlcat(sdp, buffer, BUFSIZE);
 				/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 				g_snprintf(buffer, 512,
-					"c=IN IP4 %s\r\n", janus_get_public_ip());
+					"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 				g_strlcat(sdp, buffer, BUFSIZE);
 				m = m->m_next;
 				continue;
@@ -933,7 +934,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			g_strlcat(sdp, "\r\n", BUFSIZE);
 			/* Media connection c= */
 			g_snprintf(buffer, 512,
-				"c=IN IP4 %s\r\n", janus_get_public_ip());
+				"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 			g_strlcat(sdp, buffer, BUFSIZE);
 			/* Any bandwidth? */
 			if(m->m_bandwidths) {

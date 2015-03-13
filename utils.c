@@ -244,14 +244,19 @@ int janus_get_vp8_pt(const char *sdp) {
 }
 
 gboolean janus_is_ip_valid(const char *ip, int *family) {
+	if(ip == NULL)
+		return FALSE;
+
 	struct sockaddr_in addr4;
 	struct sockaddr_in6 addr6;
 
-	if (inet_pton(AF_INET, ip, &addr4) > 0) {
-		*family = AF_INET;
+	if(inet_pton(AF_INET, ip, &addr4) > 0) {
+		if(family != NULL)
+			*family = AF_INET;
 		return TRUE;
-	} else if (inet_pton(AF_INET6, ip, &addr6) > 0) {
-		*family = AF_INET6;
+	} else if(inet_pton(AF_INET6, ip, &addr6) > 0) {
+		if(family != NULL)
+			*family = AF_INET6;
 		return TRUE;
 	} else {
 		return FALSE;
