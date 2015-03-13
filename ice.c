@@ -15,6 +15,7 @@
  */
  
 #include <ifaddrs.h>
+#include <net/if.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stun/usages/bind.h>
@@ -1840,6 +1841,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 			if(ifa->ifa_addr == NULL)
 				continue;
+			/* Skip interfaces which are not up and running */
+			if (!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
+				continue;
+			/* Skip loopback interfaces */
+			if (ifa->ifa_flags & IFF_LOOPBACK)
+				continue;
 			family = ifa->ifa_addr->sa_family;
 			if(family != AF_INET && family != AF_INET6)
 				continue;
@@ -1856,9 +1863,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] getnameinfo() failed: %s\n", handle->handle_id, gai_strerror(s));
 				continue;
 			}
-			/* Skip localhost and 0.0.0.0 */
-			if(!strcmp(host, "127.0.0.1") || !strcmp(host, "0.0.0.0")
-					|| !strcmp(host, "::1") || !strcmp(host, "::") || strchr(host, '%'))
+			/* Skip 0.0.0.0, :: and local scoped addresses  */
+			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || !strncmp(host, "fe80:", 5))
 				continue;
 			/* Check if this IP address is in the ignore list, now */
 			if(janus_ice_is_ignored(host))
