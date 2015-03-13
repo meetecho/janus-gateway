@@ -15,6 +15,7 @@
  */
  
 #include <ifaddrs.h>
+#include <net/if.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <stun/usages/bind.h>
@@ -169,6 +170,70 @@ uint janus_get_max_nack_queue(void) {
 	return max_nack_queue;
 }
 
+
+/* Watchdog for removing old handles */
+static GHashTable *old_handles = NULL;
+static GMainContext *handles_watchdog_context = NULL;
+GMainLoop *handles_watchdog_loop = NULL;
+GThread *handles_watchdog = NULL;
+static janus_mutex old_handles_mutex;
+
+static gboolean janus_ice_handles_cleanup(gpointer user_data);
+static gboolean janus_ice_handles_check(gpointer user_data);
+static gpointer janus_ice_handles_watchdog(gpointer user_data);
+
+static gboolean janus_ice_handles_cleanup(gpointer user_data) {
+	janus_ice_handle *handle = (janus_ice_handle *) user_data;
+
+	JANUS_LOG(LOG_INFO, "Cleaning up handle %"SCNu64"...\n", handle->handle_id);
+	janus_ice_free(handle);
+
+	return G_SOURCE_REMOVE;
+}
+
+static gboolean janus_ice_handles_check(gpointer user_data) {
+	GMainContext *watchdog_context = (GMainContext *) user_data;
+	janus_mutex_lock(&old_handles_mutex);
+	if(old_handles && g_hash_table_size(old_handles) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, old_handles);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_ice_handle *handle = (janus_ice_handle *) value;
+			if (!handle) {
+				continue;
+			}
+			/* Schedule the ICE handle for deletion */
+			g_hash_table_iter_remove(&iter);
+			GSource *timeout_source = g_timeout_source_new_seconds(3);
+			g_source_set_callback(timeout_source, janus_ice_handles_cleanup, handle, NULL);
+			g_source_attach(timeout_source, watchdog_context);
+			g_source_unref(timeout_source);
+		}
+	}
+	janus_mutex_unlock(&old_handles_mutex);
+
+	return G_SOURCE_CONTINUE;
+}
+
+static gpointer janus_ice_handles_watchdog(gpointer user_data) {
+	GMainLoop *loop = (GMainLoop *) user_data;
+	GMainContext *watchdog_context = g_main_loop_get_context(loop);
+	GSource *timeout_source;
+
+	timeout_source = g_timeout_source_new_seconds(1);
+	g_source_set_callback(timeout_source, janus_ice_handles_check, watchdog_context, NULL);
+	g_source_attach(timeout_source, watchdog_context);
+	g_source_unref(timeout_source);
+
+	JANUS_LOG(LOG_INFO, "ICE handles watchdog started\n");
+
+	g_main_loop_run(loop);
+
+	return NULL;
+}
+
+
 static gint janus_nack_sort(gconstpointer n1, gconstpointer n2);
 static gint janus_nack_sort(gconstpointer n1, gconstpointer n2) {
 	guint16 nack1, nack2;
@@ -186,7 +251,7 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying that we %s receiving %s\n",
 		handle->handle_id, up ? "are" : "are NOT", video ? "video" : "audio");
 	janus_session *session = (janus_session *)handle->session;
-	if(session == NULL)
+	if(session == NULL || session->messages == NULL)
 		return;
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("media"));
@@ -283,6 +348,33 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 		JANUS_LOG(LOG_INFO, "ICE port range: %"SCNu16"-%"SCNu16"\n", rtp_range_min, rtp_range_max);
 #endif
 	}
+
+	/* Start the handles watchdog */
+	janus_mutex_init(&old_handles_mutex);
+	old_handles = g_hash_table_new(NULL, NULL);
+	handles_watchdog_context = g_main_context_new();
+	handles_watchdog_loop = g_main_loop_new(handles_watchdog_context, FALSE);
+	GError *error = NULL;
+	handles_watchdog = g_thread_try_new("handles watchdog", &janus_ice_handles_watchdog, handles_watchdog_loop, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start handles watchdog...\n", error->code, error->message ? error->message : "??");
+		exit(1);
+	}
+
+}
+
+void janus_ice_deinit(void) {
+	JANUS_LOG(LOG_INFO, "Ending ICE handles watchdog mainloop...\n");
+	g_main_loop_quit(handles_watchdog_loop);
+	g_thread_join(handles_watchdog);
+	handles_watchdog = NULL;
+	g_main_loop_unref(handles_watchdog_loop);
+	g_main_context_unref(handles_watchdog_context);
+	janus_mutex_lock(&old_handles_mutex);
+	if(old_handles != NULL)
+		g_hash_table_destroy(old_handles);
+	old_handles = NULL;
+	janus_mutex_unlock(&old_handles_mutex);
 }
 
 int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
@@ -590,7 +682,10 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	}
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
-	JANUS_LOG(LOG_INFO, "Handle detached (%d), scheduling destruction\n", error);
+	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
+	janus_mutex_lock(&old_handles_mutex);
+	g_hash_table_insert(old_handles, GUINT_TO_POINTER(handle_id), handle);
+	janus_mutex_unlock(&old_handles_mutex);
 	return error;
 }
 
@@ -812,6 +907,10 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	if(component->selected_pair != NULL)
 		g_free(component->selected_pair);
 	component->selected_pair = NULL;
+	if(component->last_seqs)
+		g_list_free(component->last_seqs);
+	janus_ice_stats_reset(&component->in_stats);
+	janus_ice_stats_reset(&component->out_stats);
 	g_free(component);
 	//~ janus_mutex_unlock(&handle->mutex);
 }
@@ -1131,6 +1230,18 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						} else {
 							component->out_stats.audio_nacks++;
 						}
+						/* Inform the plugin about the slow downlink in case it's needed */
+						if(g_slist_length(nacks) >= 16) {	/* FIXME Find a good threshold */
+							/* ... but never more than once per second */
+							if(now-component->last_slowlink_time >= G_USEC_PER_SEC) {
+								component->last_slowlink_time = now;
+								janus_plugin *plugin = (janus_plugin *)handle->app;
+								if(plugin && plugin->slow_link)
+									plugin->slow_link(handle->app_handle, 0, video);
+							}
+						}
+						g_slist_free(nacks);
+						nacks = NULL;
 					}
 					component->last_nack_time = now;
 				}
@@ -1214,7 +1325,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					} else {
 						component->in_stats.audio_nacks++;
 					}
-					/* Inform the plugin in case it's needed */
+					/* Inform the plugin about the slow uplink in case it's needed */
 					if(nacks_count >= 16) {	/* FIXME Find a good threshold */
 						/* ... but never more than once per second */
 						gint64 now = janus_get_monotonic_time();
@@ -1222,7 +1333,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							component->last_slowlink_time = now;
 							janus_plugin *plugin = (janus_plugin *)handle->app;
 							if(plugin && plugin->slow_link)
-								plugin->slow_link(handle->app_handle, video);
+								plugin->slow_link(handle->app_handle, 1, video);
 						}
 					}
 				}
@@ -1274,7 +1385,7 @@ void *janus_ice_thread(void *data) {
 	/* This handle has been destroyed, wait a bit and then free all the resources */
 	g_usleep (1*G_USEC_PER_SEC);
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
-		janus_ice_free(handle);
+		//~ janus_ice_free(handle);
 	} else {
 		janus_ice_webrtc_free(handle);
 	}
@@ -1730,6 +1841,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 			if(ifa->ifa_addr == NULL)
 				continue;
+			/* Skip interfaces which are not up and running */
+			if (!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
+				continue;
+			/* Skip loopback interfaces */
+			if (ifa->ifa_flags & IFF_LOOPBACK)
+				continue;
 			family = ifa->ifa_addr->sa_family;
 			if(family != AF_INET && family != AF_INET6)
 				continue;
@@ -1746,9 +1863,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] getnameinfo() failed: %s\n", handle->handle_id, gai_strerror(s));
 				continue;
 			}
-			/* Skip localhost and 0.0.0.0 */
-			if(!strcmp(host, "127.0.0.1") || !strcmp(host, "0.0.0.0")
-					|| !strcmp(host, "::1") || !strcmp(host, "::") || strchr(host, '%'))
+			/* Skip 0.0.0.0, :: and local scoped addresses  */
+			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || !strncmp(host, "fe80:", 5))
 				continue;
 			/* Check if this IP address is in the ignore list, now */
 			if(janus_ice_is_ignored(host))

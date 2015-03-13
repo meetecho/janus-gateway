@@ -553,6 +553,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 	sdp_parser_t *parser = sdp_parse(home, sdp, strlen(sdp), 0);
 	if(!(anon = sdp_session(parser))) {
 		JANUS_LOG(LOG_ERR, "Error parsing/merging SDP: %s\n", sdp_parsing_error(parser));
+		sdp_parser_free(parser);
 		return NULL;
 	}
 	/* c= */
@@ -665,6 +666,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 	if(sdp_message(printer)) {
 		int retval = sdp_message_size(printer);
 		sdp_printer_free(printer);
+		sdp_parser_free(parser);
 		/* FIXME Take care of the sendrecv hack, if needed */
 		char *replace = strstr(buf, "a=jfmod:sr");
 		while(replace != NULL) {
@@ -679,6 +681,8 @@ char *janus_sdp_anonymize(const char *sdp) {
 		return g_strdup(buf);
 	} else {
 		JANUS_LOG(LOG_ERR, "Error anonymizing SDP: %s\n", sdp_printing_error(printer));
+		sdp_printer_free(printer);
+		sdp_parser_free(parser);
 		return NULL;
 	}
 }
@@ -690,6 +694,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	sdp_parser_t *parser = sdp_parse(home, origsdp, strlen(origsdp), 0);
 	if(!(anon = sdp_session(parser))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error parsing/merging SDP: %s\n", handle->handle_id, sdp_parsing_error(parser));
+		sdp_parser_free(parser);
 		return NULL;
 	}
 	/* Prepare SDP to merge */
@@ -698,6 +703,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	char *sdp = (char*)calloc(BUFSIZE, sizeof(char));
 	if(sdp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		sdp_parser_free(parser);
 		return NULL;
 	}
 	sdp[0] = '\0';
@@ -778,6 +784,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			a = a->a_next;
 		}
 	}
+	gboolean ipv6 = strstr(janus_get_public_ip(), ":") != NULL;
 	/* Media lines now */
 	if(anon->sdp_media) {
 		int audio = 0, video = 0;
@@ -794,7 +801,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -806,7 +813,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -823,7 +830,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -835,7 +842,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
-						"c=IN IP4 %s\r\n", janus_get_public_ip());
+						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, BUFSIZE);
 					m = m->m_next;
 					continue;
@@ -858,7 +865,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						g_strlcat(sdp, buffer, BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 						g_snprintf(buffer, 512,
-							"c=IN IP4 %s\r\n", janus_get_public_ip());
+							"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 						g_strlcat(sdp, buffer, BUFSIZE);
 						m = m->m_next;
 						continue;
@@ -873,7 +880,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						g_strlcat(sdp, buffer, BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 						g_snprintf(buffer, 512,
-							"c=IN IP4 %s\r\n", janus_get_public_ip());
+							"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 						g_strlcat(sdp, buffer, BUFSIZE);
 						m = m->m_next;
 						continue;
@@ -897,7 +904,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				g_strlcat(sdp, buffer, BUFSIZE);
 				/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 				g_snprintf(buffer, 512,
-					"c=IN IP4 %s\r\n", janus_get_public_ip());
+					"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 				g_strlcat(sdp, buffer, BUFSIZE);
 				m = m->m_next;
 				continue;
@@ -927,7 +934,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			g_strlcat(sdp, "\r\n", BUFSIZE);
 			/* Media connection c= */
 			g_snprintf(buffer, 512,
-				"c=IN IP4 %s\r\n", janus_get_public_ip());
+				"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 			g_strlcat(sdp, buffer, BUFSIZE);
 			/* Any bandwidth? */
 			if(m->m_bandwidths) {
@@ -1117,9 +1124,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 		sdp = janus_string_replace(sdp, "WMS janus", wms);
 	}
 	
+	sdp_parser_free(parser);
+
 	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
 	JANUS_LOG(LOG_VERB, "  >> Merged (%zu --> %zu bytes)\n", strlen(origsdp), strlen(sdp));
 	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
 	JANUS_LOG(LOG_VERB, "%s\n", sdp);
+
 	return sdp;
 }

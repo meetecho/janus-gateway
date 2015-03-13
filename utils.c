@@ -13,6 +13,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -31,22 +35,29 @@ gboolean janus_is_true(const char *value) {
 	return value && (!strcasecmp(value, "yes") || !strcasecmp(value, "true") || !strcasecmp(value, "1"));
 }
 
-gboolean janus_strcmp_const_time(const void *str1, const void *str2, const size_t size) {
-	if(size == 0)
+gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
+	if(str1 == NULL || str2 == NULL)
 		return FALSE;
 	const unsigned char *string1 = (const unsigned char *)str1;
 	const unsigned char *string2 = (const unsigned char *)str2;
-	size_t checklen = size;
-	size_t minlen = strlen((char *)string1);
-	if(strlen((char *)string2) < minlen)
-		minlen = strlen((char *)string2);
-	if(checklen > minlen)
-		checklen = minlen;
+	size_t maxlen = strlen((char *)string1);
+	if(strlen((char *)string2) > maxlen)
+		maxlen = strlen((char *)string2);
+	unsigned char *buf1 = calloc(maxlen+1, sizeof(unsigned char));
+	memset(buf1, 0, maxlen);
+	memcpy(buf1, string1, strlen(str1));
+	unsigned char *buf2 = calloc(maxlen+1, sizeof(unsigned char));
+	memset(buf2, 0, maxlen);
+	memcpy(buf2, string2, strlen(str2));
 	unsigned char result = 0;
 	size_t i = 0;
-	for (i = 0; i < checklen; i++) {
-		result |= string1[i] ^ string2[i];
+	for (i = 0; i < maxlen; i++) {
+		result |= buf1[i] ^ buf2[i];
 	}
+	g_free(buf1);
+	buf1 = NULL;
+	g_free(buf2);
+	buf2 = NULL;
 	return result == 0;
 }
 
@@ -230,4 +241,24 @@ int janus_get_vp8_pt(const char *sdp) {
 		line = next ? (next+1) : NULL;
 	}
 	return -1;
+}
+
+gboolean janus_is_ip_valid(const char *ip, int *family) {
+	if(ip == NULL)
+		return FALSE;
+
+	struct sockaddr_in addr4;
+	struct sockaddr_in6 addr6;
+
+	if(inet_pton(AF_INET, ip, &addr4) > 0) {
+		if(family != NULL)
+			*family = AF_INET;
+		return TRUE;
+	} else if(inet_pton(AF_INET6, ip, &addr6) > 0) {
+		if(family != NULL)
+			*family = AF_INET6;
+		return TRUE;
+	} else {
+		return FALSE;
+	}
 }

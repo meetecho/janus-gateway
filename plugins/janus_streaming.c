@@ -769,12 +769,21 @@ char *janus_streaming_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	JANUS_LOG(LOG_VERB, "%s\n", message);
 
 	/* Pre-parse the message */
 	int error_code = 0;
-	char error_cause[512];	/* FIXME 512 should be enough, but anyway... */
+	char error_cause[512];
 	json_t *root = NULL;
+	json_t *response = NULL;
+
+	if(message == NULL) {
+		JANUS_LOG(LOG_ERR, "No message??\n");
+		error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
+		g_snprintf(error_cause, 512, "%s", "No message??");
+		goto error;
+	}
+	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
+
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -786,14 +795,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
 		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 		g_snprintf(error_cause, 512, "%s", "Session has already been destroyed...");
-		goto error;
-	}
-	error_code = 0;
-	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
-	if(message == NULL) {
-		JANUS_LOG(LOG_ERR, "No message??\n");
-		error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
-		g_snprintf(error_cause, 512, "%s", "No message??");
 		goto error;
 	}
 	json_error_t error;
@@ -849,14 +850,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
-		json_t *response = json_object();
+		response = json_object();
 		json_object_set_new(response, "streaming", json_string("list"));
 		json_object_set_new(response, "list", list);
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
-		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-		g_free(response_text);
-		return result;
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "create")) {
 		/* Create a new stream */
 		json_t *type = json_object_get(root, "type");
@@ -1266,7 +1263,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(secret)
 			mp->secret = g_strdup(json_string_value(secret));
 		/* Send info back */
-		json_t *response = json_object();
+		response = json_object();
 		json_object_set_new(response, "streaming", json_string("created"));
 		json_object_set_new(response, "created", json_string(mp->name));
 		json_t *ml = json_object();
@@ -1275,11 +1272,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
 		json_object_set_new(ml, "is_private", json_string(mp->is_private ? "true" : "false"));
 		json_object_set_new(response, "stream", ml);
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
-		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-		g_free(response_text);
-		return result;
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
 		json_t *id = json_object_get(root, "id");
@@ -1309,18 +1302,21 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			/* This action requires an authorized user */
 			json_t *secret = json_object_get(root, "secret");
 			if(!secret) {
+				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
 				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
 				g_snprintf(error_cause, 512, "Missing element (secret)");
 				goto error;
 			}
 			if(!json_is_string(secret)) {
+				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
-			if(janus_strcmp_const_time(mp->secret, json_string_value(secret), strlen(json_string_value(secret)))) {
+			if(!janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
+				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
@@ -1332,14 +1328,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
-		json_t *response = json_object();
+		response = json_object();
 		json_object_set_new(response, "streaming", json_string("destroyed"));
 		json_object_set_new(response, "destroyed", json_integer(id_value));
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
-		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-		g_free(response_text);
-		return result;
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "recording")) {
 		/* We can start/stop recording a live, RTP-based stream */
 		json_t *action = json_object_get(root, "action");
@@ -1407,7 +1399,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
-			if(janus_strcmp_const_time(mp->secret, json_string_value(secret), strlen(json_string_value(secret)))) {
+			if(!janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
@@ -1467,13 +1459,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Send a success response back */
-			json_t *response = json_object();
+			response = json_object();
 			json_object_set_new(response, "streaming", json_string("ok"));
-			char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(response);
-			janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-			g_free(response_text);
-			return result;
+			goto plugin_response;
 		} else if(!strcasecmp(action_text, "stop")) {
 			/* Stop the recording */
 			json_t *audio = json_object_get(root, "audio");
@@ -1517,13 +1505,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Send a success response back */
-			json_t *response = json_object();
+			response = json_object();
 			json_object_set_new(response, "streaming", json_string("ok"));
-			char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(response);
-			janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-			g_free(response_text);
-			return result;
+			goto plugin_response;
 		}
 	} else if(!strcasecmp(request_text, "enable") || !strcasecmp(request_text, "disable")) {
 		/* A request to enable/disable a mountpoint */
@@ -1567,7 +1551,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
-			if(janus_strcmp_const_time(mp->secret, json_string_value(secret), strlen(json_string_value(secret)))) {
+			if(!janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
@@ -1604,18 +1588,31 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send a success response back */
-		json_t *response = json_object();
+		response = json_object();
 		json_object_set_new(response, "streaming", json_string("ok"));
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
-		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-		g_free(response_text);
-		return result;
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "watch") || !strcasecmp(request_text, "start")
 			|| !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "stop")
 			|| !strcasecmp(request_text, "switch")) {
 		/* These messages are handled asynchronously */
-		goto async;
+		janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
+		if(msg == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "Memory error");
+			goto error;
+		}
+
+		g_free(message);
+		msg->handle = handle;
+		msg->transaction = transaction;
+		msg->message = root;
+		msg->sdp_type = sdp_type;
+		msg->sdp = sdp;
+
+		g_async_queue_push(messages, msg);
+
+		return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
@@ -1623,10 +1620,36 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		goto error;
 	}
 
+plugin_response:
+		{
+			if (!response) {
+				error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Invalid response");
+				goto error;
+			}
+			if(root != NULL)
+				json_decref(root);
+			g_free(transaction);
+			g_free(message);
+			g_free(sdp_type);
+			g_free(sdp);
+
+			char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(response);
+			janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+			g_free(response_text);
+			return result;
+		}
+
 error:
 		{
 			if(root != NULL)
 				json_decref(root);
+			g_free(transaction);
+			g_free(message);
+			g_free(sdp_type);
+			g_free(sdp);
+
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "videoroom", json_string("event"));
@@ -1639,24 +1662,6 @@ error:
 			return result;
 		}
 
-async:
-		{
-			/* All the other requests to this plugin are handled asynchronously */
-			janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
-			if(msg == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-			}
-			msg->handle = handle;
-			msg->transaction = transaction;
-			msg->message = root;
-			msg->sdp_type = sdp_type;
-			msg->sdp = sdp;
-
-			g_async_queue_push(messages, msg);
-
-			return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
-		}
 }
 
 void janus_streaming_setup_media(janus_plugin_session *handle) {
@@ -1692,10 +1697,9 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	json_object_set_new(event, "streaming", json_string("event"));
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("started"));
-	json_object_set(event, "result", result);
+	json_object_set_new(event, "result", result);
 	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(event);
-	json_decref(result);
 	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 	int ret = gateway->push_event(handle, &janus_streaming_plugin, NULL, event_text, NULL, NULL);
 	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
@@ -2039,11 +2043,9 @@ static void *janus_streaming_handler(void *data) {
 		json_t *event = json_object();
 		json_object_set_new(event, "streaming", json_string("event"));
 		if(result != NULL)
-			json_object_set(event, "result", result);
+			json_object_set_new(event, "result", result);
 		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
-		if(result != NULL)
-			json_decref(result);
 		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 		int ret = gateway->push_event(msg->handle, &janus_streaming_plugin, msg->transaction, event_text, sdp_type, sdp);
 		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));

@@ -285,6 +285,7 @@ void janus_recordplay_setup_media(janus_plugin_session *handle);
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_recordplay_hangup_media(janus_plugin_session *handle);
 void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error);
 char *janus_recordplay_query_session(janus_plugin_session *handle);
@@ -309,6 +310,7 @@ static janus_plugin janus_recordplay_plugin =
 		.incoming_rtp = janus_recordplay_incoming_rtp,
 		.incoming_rtcp = janus_recordplay_incoming_rtcp,
 		.incoming_data = janus_recordplay_incoming_data,
+		.slow_link = janus_recordplay_slow_link,
 		.hangup_media = janus_recordplay_hangup_media,
 		.destroy_session = janus_recordplay_destroy_session,
 		.query_session = janus_recordplay_query_session,
@@ -372,6 +374,12 @@ typedef struct janus_recordplay_session {
 	janus_recorder *vrc;	/* Video recorder */
 	janus_recordplay_frame_packet *aframes;	/* Audio frames (for playout) */
 	janus_recordplay_frame_packet *vframes;	/* Video frames (for playout) */
+	guint video_remb_startup;
+	guint64 video_remb_last;
+	guint64 video_bitrate;
+	guint video_keyframe_interval; /* keyframe request interval (ms) */
+	guint64 video_keyframe_request_last; /* timestamp of last keyframe request sent */
+	gint video_fir_seq;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
 static GHashTable *sessions;
@@ -382,6 +390,9 @@ static janus_mutex sessions_mutex;
 static char *recordings_path = NULL;
 void janus_recordplay_update_recordings_list(void);
 static void *janus_recordplay_playout_thread(void *data);
+
+/* Helper to send RTCP feedback back to recorders, if needed */
+void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len);
 
 
 /* SDP offer/answer templates for the playout */
@@ -418,7 +429,8 @@ void janus_recordplay_message_free(janus_recordplay_message *msg) {
 
 	g_free(msg->transaction);
 	msg->transaction = NULL;
-	g_free(msg->message);
+	if(msg->message)
+		json_decref(msg->message);
 	msg->message = NULL;
 	g_free(msg->sdp_type);
 	msg->sdp_type = NULL;
@@ -624,6 +636,12 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->arc = NULL;
 	session->vrc = NULL;
 	session->destroyed = 0;
+	session->video_remb_startup = 4;
+	session->video_remb_last = janus_get_monotonic_time();
+	session->video_bitrate = 1024 * 1024; 		/* This is 1mbps by default */
+	session->video_keyframe_request_last = 0;
+	session->video_keyframe_interval = 15000; 	/* 15 seconds by default */
+	session->video_fir_seq = 0;
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -684,12 +702,21 @@ char *janus_recordplay_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	JANUS_LOG(LOG_VERB, "%s\n", message);
 
 	/* Pre-parse the message */
 	int error_code = 0;
-	char error_cause[512];	/* FIXME 512 should be enough, but anyway... */
+	char error_cause[512];
 	json_t *root = NULL;
+	json_t *response = NULL;
+	
+	if(message == NULL) {
+		JANUS_LOG(LOG_ERR, "No message??\n");
+		error_code = JANUS_RECORDPLAY_ERROR_NO_MESSAGE;
+		g_snprintf(error_cause, 512, "%s", "No message??");
+		goto error;
+	}
+	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
+
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -701,14 +728,6 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
 		error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
 		g_snprintf(error_cause, 512, "%s", "Session has already been destroyed...");
-		goto error;
-	}
-	error_code = 0;
-	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
-	if(message == NULL) {
-		JANUS_LOG(LOG_ERR, "No message??\n");
-		error_code = JANUS_RECORDPLAY_ERROR_NO_MESSAGE;
-		g_snprintf(error_cause, 512, "%s", "No message??");
 		goto error;
 	}
 	json_error_t error;
@@ -745,13 +764,9 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		/* Update list of available recordings, scanning the folder again */
 		janus_recordplay_update_recordings_list();
 		/* Send info back */
-		json_t *response = json_object();
+		response = json_object();
 		json_object_set_new(response, "recordplay", json_string("ok"));
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
-		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-		g_free(response_text);
-		return result;
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "list")) {
 		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list of recordings\n");
@@ -772,18 +787,63 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		}
 		janus_mutex_unlock(&recordings_mutex);
 		/* Send info back */
-		json_t *response = json_object();
+		response = json_object();
 		json_object_set_new(response, "recordplay", json_string("list"));
 		json_object_set_new(response, "list", list);
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(response);
-		janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
-		g_free(response_text);
-		return result;
+		goto plugin_response;
+	} else if(!strcasecmp(request_text, "configure")) {
+		json_t *video_bitrate_max = json_object_get(root, "video-bitrate-max");
+		if(video_bitrate_max) {
+			if(!json_is_integer(video_bitrate_max)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video-bitrate-max should be an integer)\n");
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (video-bitrate-max should be an integer)");
+				goto error;
+			}
+			session->video_bitrate = json_integer_value(video_bitrate_max);
+			JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu64"\n", session->video_bitrate);
+		}
+		json_t *video_keyframe_interval= json_object_get(root, "video-keyframe-interval");
+		if(video_keyframe_interval) {
+			if(!json_is_integer(video_keyframe_interval)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video-keyframe-interval should be an integer)\n");
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (video-keyframe-interval should be an integer)");
+				goto error;
+			}
+			session->video_keyframe_interval = json_integer_value(video_keyframe_interval);
+			JANUS_LOG(LOG_VERB, "Video keyframe interval has been set to %u\n", session->video_keyframe_interval);
+		}
+		response = json_object();
+		json_object_set_new(response, "recordplay", json_string("configure"));
+		json_object_set_new(response, "status", json_string("ok"));
+		/* Return a success, and also let the client be aware of what changed, to allow crosschecks */
+		json_t *settings = json_object();
+		json_object_set_new(settings, "video-keyframe-interval", json_integer(session->video_keyframe_interval)); 
+		json_object_set_new(settings, "video-bitrate-max", json_integer(session->video_bitrate)); 
+		json_object_set_new(response, "settings", settings); 
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
-		goto async;
+		janus_recordplay_message *msg = calloc(1, sizeof(janus_recordplay_message));
+		if(msg == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "Memory error");
+			goto error;
+		}
+
+		g_free(message);
+		msg->handle = handle;
+		msg->transaction = transaction;
+		msg->message = root;
+		msg->sdp_type = sdp_type;
+		msg->sdp = sdp;
+
+		g_async_queue_push(messages, msg);
+
+		return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;
@@ -791,10 +851,36 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		goto error;
 	}
 
+plugin_response:
+		{
+			if (!response) {
+				error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Invalid response");
+				goto error;
+			}
+			if(root != NULL)
+				json_decref(root);
+			g_free(transaction);
+			g_free(message);
+			g_free(sdp_type);
+			g_free(sdp);
+
+			char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(response);
+			janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, response_text);
+			g_free(response_text);
+			return result;
+		}
+
 error:
 		{
 			if(root != NULL)
 				json_decref(root);
+			g_free(transaction);
+			g_free(message);
+			g_free(sdp_type);
+			g_free(sdp);
+
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "recordplay", json_string("event"));
@@ -807,24 +893,6 @@ error:
 			return result;
 		}
 
-async:
-		{
-			/* All the other requests to this plugin are handled asynchronously */
-			janus_recordplay_message *msg = calloc(1, sizeof(janus_recordplay_message));
-			if(msg == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-			}
-			msg->handle = handle;
-			msg->transaction = transaction;
-			msg->message = root;
-			msg->sdp_type = sdp_type;
-			msg->sdp = sdp;
-
-			g_async_queue_push(messages, msg);
-
-			return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
-		}
 }
 
 void janus_recordplay_setup_media(janus_plugin_session *handle) {
@@ -850,6 +918,62 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 	}
 }
 
+void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len) {
+	if(video != 1)
+		return;	/* We just do this for video, for now */
+
+	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	char rtcpbuf[200];
+
+	/* Send a RR+SDES+REMB every second, or ASAP while we are still
+	 * ramping up (first 4 RTP packets) */
+	gint64 now = janus_get_monotonic_time();
+	guint64 elapsed = now - session->video_remb_last;
+	gboolean remb_rampup = session->video_remb_startup > 0;
+
+	if(remb_rampup || (elapsed >= G_USEC_PER_SEC)) {
+		guint64 bitrate = session->video_bitrate;
+
+		if(remb_rampup) {
+			bitrate = bitrate / session->video_remb_startup;
+			session->video_remb_startup--;
+		}
+
+		memset(rtcpbuf, 0, 200);
+		/* FIXME First put a RR (fake)... */
+		int rrlen = 32;
+		rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+		rr->header.version = 2;
+		rr->header.type = RTCP_RR;
+		rr->header.rc = 1;
+		rr->header.length = htons((rrlen/4)-1);
+		/* ... then put a SDES... */
+		int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+		if(sdeslen > 0) {
+			/* ... and then finally a REMB */
+			janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
+			gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
+		}
+		
+		session->video_remb_last = now;
+	}
+
+	/* Request a keyframe on a regular basis (every session->video_keyframe_interval ms) */
+	elapsed = now - session->video_keyframe_request_last;
+	guint64 interval = (session->video_keyframe_interval / 1000) * G_USEC_PER_SEC;
+
+	if(elapsed >= interval) {
+		/* Send both a FIR and a PLI, just to be sure */
+		memset(rtcpbuf, 0, 20);
+		janus_rtcp_fir((char *)&rtcpbuf, 20, &session->video_fir_seq);
+		gateway->relay_rtcp(handle, video, rtcpbuf, 20);
+		memset(rtcpbuf, 0, 12);
+		janus_rtcp_pli((char *)&rtcpbuf, 12);
+		gateway->relay_rtcp(handle, video, rtcpbuf, 12);
+		session->video_keyframe_request_last = now;
+	}
+}
+
 void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
@@ -868,19 +992,43 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			else if(!video && session->arc)
 				janus_recorder_save_frame(session->arc, buf, len);
 		}
+
+		janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
 	}
 }
 
 void janus_recordplay_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	/* FIXME We don't care */
 }
 
 void janus_recordplay_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* FIXME We don't care */
+}
+
+void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int video) {
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized) || !gateway)
+		return;
+
+	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
+	if(!session || session->destroyed)
+		return;
+
+	json_t *event = json_object();
+	json_object_set_new(event, "recordplay", json_string("event"));
+	json_t *result = json_object();
+	json_object_set_new(result, "status", json_string("slow_link"));
+	/* What is uplink for the server is downlink for the client, so turn the tables */
+	json_object_set_new(result, "uplink", json_integer(uplink ? 0 : 1));
+	json_object_set_new(event, "result", result);
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(event);
+	json_decref(result);
+	event = NULL;
+	gateway->push_event(session->handle, &janus_recordplay_plugin, NULL, event_text, NULL, NULL);
+	g_free(event_text);
 }
 
 void janus_recordplay_hangup_media(janus_plugin_session *handle) {
@@ -924,7 +1072,7 @@ static void *janus_recordplay_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining Record&Play handler thread\n");
 	janus_recordplay_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
+	char *error_cause = calloc(512, sizeof(char));
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -995,7 +1143,7 @@ static void *janus_recordplay_handler(void *data) {
 				goto error;
 			}
 			json_t *filename = json_object_get(root, "filename");
-			if (filename) {
+			if(filename) {
 				if(!json_is_string(name)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
 					error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
@@ -1025,7 +1173,7 @@ static void *janus_recordplay_handler(void *data) {
 			rec->date = g_strdup(outstr);
 			if(strstr(msg->sdp, "m=audio")) {
 				char filename[256];
-				if (filename_text != NULL) {
+				if(filename_text != NULL) {
 					g_snprintf(filename, 256, "%s-audio", filename_text);
 				} else {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
@@ -1035,7 +1183,7 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			if(strstr(msg->sdp, "m=video")) {
 				char filename[256];
-				if (filename_text != NULL) {
+				if(filename_text != NULL) {
 					g_snprintf(filename, 256, "%s-video", filename_text);
 				} else {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
@@ -1197,11 +1345,13 @@ static void *janus_recordplay_handler(void *data) {
 			if(session->arc) {
 				janus_recorder_close(session->arc);
 				JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
+				janus_recorder_free(session->arc);
 			}
 			session->arc = NULL;
 			if(session->vrc) {
 				janus_recorder_close(session->vrc);
 				JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+				janus_recorder_free(session->vrc);
 			}
 			session->vrc = NULL;
 			if(session->recorder) {
@@ -1265,7 +1415,7 @@ static void *janus_recordplay_handler(void *data) {
 		event = json_object();
 		json_object_set_new(event, "recordplay", json_string("event"));
 		if(result != NULL)
-			json_object_set(event, "result", result);
+			json_object_set_new(event, "result", result);
 		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
@@ -1279,6 +1429,7 @@ static void *janus_recordplay_handler(void *data) {
 			int res = gateway->push_event(msg->handle, &janus_recordplay_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",
 				res, janus_get_monotonic_time()-start);
+			g_free(sdp);
 		}
 		g_free(event_text);
 		janus_recordplay_message_free(msg);
@@ -1798,6 +1949,8 @@ static void *janus_recordplay_playout_thread(void *data) {
 			}
 		}
 	}
+	
+	g_free(buffer);
 
 	/* Get rid of the indexes */
 	janus_recordplay_frame_packet *tmp = NULL;

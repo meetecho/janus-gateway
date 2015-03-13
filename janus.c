@@ -15,11 +15,12 @@
  
 #include <dlfcn.h>
 #include <dirent.h>
-#include <ifaddrs.h>
 #include <net/if.h>
+#include <netdb.h>
 #include <signal.h>
 #include <getopt.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 
 #include "janus.h"
 #include "cmdline.h"
@@ -161,21 +162,23 @@ char *janus_info(const char *transaction) {
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
 	json_t *data = json_object();
-	GHashTableIter iter;
-	gpointer value;
-	g_hash_table_iter_init(&iter, plugins);
-	while (g_hash_table_iter_next(&iter, NULL, &value)) {
-		janus_plugin *p = value;
-		if(p == NULL) {
-			continue;
+	if(plugins && g_hash_table_size(plugins) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, plugins);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_plugin *p = value;
+			if(p == NULL) {
+				continue;
+			}
+			json_t *plugin = json_object();
+			json_object_set_new(plugin, "name", json_string(p->get_name()));
+			json_object_set_new(plugin, "author", json_string(p->get_author()));
+			json_object_set_new(plugin, "description", json_string(p->get_description()));
+			json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
+			json_object_set_new(plugin, "version", json_integer(p->get_version()));
+			json_object_set_new(data, p->get_package(), plugin);
 		}
-		json_t *plugin = json_object();
-		json_object_set_new(plugin, "name", json_string(p->get_name()));
-		json_object_set_new(plugin, "author", json_string(p->get_author()));
-		json_object_set_new(plugin, "description", json_string(p->get_description()));
-		json_object_set_new(plugin, "version_string", json_string(p->get_version_string()));
-		json_object_set_new(plugin, "version", json_integer(p->get_version()));
-		json_object_set_new(data, p->get_package(), plugin);
 	}
 	json_object_set_new(info, "plugins", data);
 	/* Convert to a string */
@@ -185,7 +188,7 @@ char *janus_info(const char *transaction) {
 	return info_text;
 }
 
-static gchar *local_ip = NULL;
+static gchar local_ip[INET6_ADDRSTRLEN];
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
@@ -289,18 +292,15 @@ static gboolean janus_cleanup_session(gpointer user_data) {
 static gboolean janus_check_sessions(gpointer user_data) {
 	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
-	if (sessions) {
+	if(sessions && g_hash_table_size(sessions) > 0) {
 		GHashTableIter iter;
 		gpointer value;
-
 		g_hash_table_iter_init(&iter, sessions);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-
 			if (!session || session->destroy) {
 				continue;
 			}
-
 			gint64 now = janus_get_monotonic_time();
 			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
@@ -401,25 +401,22 @@ gint janus_session_destroy(guint64 session_id) {
 	}
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
-	if (session->ice_handles != NULL) {
+	if (session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 		GHashTableIter iter;
 		gpointer value;
-
 		/* Remove all handles */
 		g_hash_table_iter_init(&iter, session->ice_handles);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_ice_handle *handle = value;
-
 			if(!handle || g_atomic_int_get(&stop)) {
 				continue;
 			}
-
 			janus_ice_handle_destroy(session, handle->handle_id);
 			g_hash_table_iter_remove(&iter);
 		}
 	}
 
-	/* TODO Actually destroy session */
+	/* FIXME Actually destroy session */
 	janus_session_free(session);
 
 	return 0;
@@ -434,10 +431,11 @@ void janus_session_free(janus_session *session) {
 		session->ice_handles = NULL;
 	}
 	if(session->messages != NULL) {
-		g_async_queue_unref (session->messages);
+		g_async_queue_unref(session->messages);
 		session->messages = NULL;
 	}
 	janus_mutex_unlock(&session->mutex);
+	g_free(session);
 	session = NULL;
 }
 
@@ -692,7 +690,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		if(ws_api_secret != NULL) {
 			/* There's an API secret, check that the client provided it */
 			const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
-			if(!secret || janus_strcmp_const_time(secret, ws_api_secret, strlen(ws_api_secret))) {
+			if(!secret || !janus_strcmp_const_time(secret, ws_api_secret)) {
 				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 				if(msg->acrm)
@@ -869,7 +867,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if(ws_api_secret != NULL) {
 			/* There's an API secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "apisecret");
-			if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), ws_api_secret, strlen(ws_api_secret))) {
+			if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -928,10 +926,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(session_id));
-		json_object_set(reply, "data", data);
+		json_object_set_new(reply, "data", data);
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(data);
 		json_decref(reply);
 		/* Send the success reply */
 		ret = janus_process_success(source, "application/json", reply_text);
@@ -957,7 +954,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	if(ws_api_secret != NULL) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "apisecret");
-		if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), ws_api_secret, strlen(ws_api_secret))) {
+		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -1042,10 +1039,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
-		json_object_set(reply, "data", data);
+		json_object_set_new(reply, "data", data);
 		/* Convert to a string */
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(data);
 		json_decref(reply);
 		/* Send the success reply */
 		ret = janus_process_success(source, "application/json", reply_text);
@@ -1067,8 +1063,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			}
 		}
 #endif
-		//~ janus_session_destroy(session_id);	/* FIXME Should we check if this actually succeeded, or can we ignore it? */
-
 		/* Schedule the session for deletion */
 		session->destroy = 1;
 		janus_mutex_lock(&sessions_mutex);
@@ -1412,8 +1406,11 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			sdp = NULL;
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		}
+
+		/* Send the message to the plugin.
+		 * Plugin must eventually free transaction_text, body_text, jsep_type, sdp.
+		 */
 		char *body_text = json_dumps(body, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		/* Send the message to the plugin */
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle, g_strdup((char *)transaction_text), body_text, jsep_type, jsep_sdp_stripped);
 		if(result == NULL) {
 			/* Something went horribly wrong! */
@@ -1451,12 +1448,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
-			json_object_set(plugin_data, "data", event);
-			json_object_set(reply, "plugindata", plugin_data);
+			json_object_set_new(plugin_data, "data", event);
+			json_object_set_new(reply, "plugindata", plugin_data);
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(event);
-			json_decref(plugin_data);
 			if(jsep != NULL)
 				json_decref(jsep);
 			json_decref(reply);
@@ -2043,7 +2038,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		if(admin_ws_api_secret != NULL) {
 			/* There's an admin/monitor secret, check that the client provided it */
 			json_t *secret = json_object_get(root, "admin_secret");
-			if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret, strlen(admin_ws_api_secret))) {
+			if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret)) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -2185,18 +2180,20 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			/* List sessions */
 			session_id = 0;
 			json_t *list = json_array();
-			janus_mutex_lock(&sessions_mutex);
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, sessions);
-			while (g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_session *session = value;
-				if(session == NULL) {
-					continue;
+			if(sessions != NULL && g_hash_table_size(sessions) > 0) {
+				janus_mutex_lock(&sessions_mutex);
+				GHashTableIter iter;
+				gpointer value;
+				g_hash_table_iter_init(&iter, sessions);
+				while (g_hash_table_iter_next(&iter, NULL, &value)) {
+					janus_session *session = value;
+					if(session == NULL) {
+						continue;
+					}
+					json_array_append_new(list, json_integer(session->session_id));
 				}
-				json_array_append_new(list, json_integer(session->session_id));
+				janus_mutex_unlock(&sessions_mutex);
 			}
-			janus_mutex_unlock(&sessions_mutex);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
@@ -2234,7 +2231,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 	if(admin_ws_api_secret != NULL) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "admin_secret");
-		if(!secret || !json_is_string(secret) || janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret, strlen(admin_ws_api_secret))) {
+		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), admin_ws_api_secret)) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -2264,27 +2261,22 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-
 		/* List handles */
-		GHashTableIter iter;
-		gpointer value;
 		json_t *list = json_array();
-
-		janus_mutex_lock(&session->mutex);
-
-		g_hash_table_iter_init(&iter, session->ice_handles);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			janus_ice_handle *handle = value;
-
-			if(handle == NULL) {
-				continue;
+		if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+			GHashTableIter iter;
+			gpointer value;
+			janus_mutex_lock(&session->mutex);
+			g_hash_table_iter_init(&iter, session->ice_handles);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_ice_handle *handle = value;
+				if(handle == NULL) {
+					continue;
+				}
+				json_array_append_new(list, json_integer(handle->handle_id));
 			}
-
-			json_array_append_new(list, json_integer(handle->handle_id));
+			janus_mutex_unlock(&session->mutex);
 		}
-
-		janus_mutex_unlock(&session->mutex);
-
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -2344,9 +2336,9 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_object_set_new(flags, "cleaning", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)));
 		json_object_set_new(info, "flags", flags);
 		json_t *sdps = json_object();
-		if(json_string(handle->local_sdp))
+		if(handle->local_sdp)
 			json_object_set_new(sdps, "local", json_string(handle->local_sdp));
-		if(json_string(handle->remote_sdp))
+		if(handle->remote_sdp)
 			json_object_set_new(sdps, "remote", json_string(handle->remote_sdp));
 		json_object_set_new(info, "sdps", sdps);
 		//~ json_object_set_new(info, "candidates-gathered", json_integer(handle->cdone));
@@ -2511,7 +2503,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 		}
 		event->code = 200;
 		/*! \todo Improve the Janus protocol keep-alive mechanism in JavaScript */
-		event->payload = g_strdup (max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]");
+		event->payload = (char *)(max_events == 1 ? "{\"janus\" : \"keepalive\"}" : "[{\"janus\" : \"keepalive\"}]");
 		event->allocated = 0;
 	}
 	if(list != NULL) {
@@ -2622,7 +2614,6 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		/* FIXME 512 should be enough, but anyway... */
 		error_string = calloc(512, sizeof(char));
 		if(error_string == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -2842,7 +2833,7 @@ int janus_wss_onclose(libwebsock_client_state *state) {
 		}
 		client->thread = NULL;
 		client->state = NULL;
-		if(client->sessions != NULL) {
+		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
 			/* Remove all sessions (and handles) created by this client */
 			janus_mutex_lock(&sessions_mutex);
 			GHashTableIter iter;
@@ -3333,16 +3324,12 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *plugin_data = json_object();
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
-	json_object_set(plugin_data, "data", event);
-	json_object_set(reply, "plugindata", plugin_data);
+	json_object_set_new(plugin_data, "data", event);
+	json_object_set_new(reply, "plugindata", plugin_data);
 	if(jsep != NULL)
-		json_object_set(reply, "jsep", jsep);
+		json_object_set_new(reply, "jsep", jsep);
 	/* Convert to a string */
 	char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(event);
-	json_decref(plugin_data);
-	if(jsep != NULL)
-		json_decref(jsep);
 	json_decref(reply);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", ice_handle->handle_id);
@@ -3662,7 +3649,7 @@ void janus_close_pc(janus_plugin_session *plugin_session) {
 				break;
 			}
 		}
-		if(ice_handle->iceloop) {
+		if(ice_handle->iceloop && g_main_loop_is_running(ice_handle->iceloop)) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", ice_handle->handle_id, g_main_loop_is_running(ice_handle->iceloop) ? "running" : "NOT running");
 			g_main_loop_quit(ice_handle->iceloop);
 			g_main_context_wakeup(ice_handle->icectx);
@@ -3677,8 +3664,43 @@ void janus_end_session(janus_plugin_session *plugin_session) {
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
 		return;
+	janus_session *session = (janus_session *)ice_handle->session;
+	if(!session)
+		return;
 	/* Destroy the handle */
-	janus_ice_handle_destroy(ice_handle->session, ice_handle->handle_id);
+	janus_ice_handle_destroy(session, ice_handle->handle_id);
+	janus_mutex_lock(&session->mutex);
+	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(ice_handle->handle_id));
+	janus_mutex_unlock(&session->mutex);
+}
+
+
+static void janus_detect_local_ip(gchar *buf, size_t buflen) {
+	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
+	struct sockaddr_in addr;
+	socklen_t len;
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd == -1)
+		goto error;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(1);
+	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
+	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
+		goto error;
+	len = sizeof(addr);
+	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
+		goto error;
+	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
+			buf, buflen,
+			NULL, 0, NI_NUMERICHOST) != 0)
+		goto error;
+	close(fd);
+	return;
+error:
+	if (fd != -1)
+		close(fd);
+	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+	g_strlcpy(buf, "127.0.0.1", buflen);
 }
 
 
@@ -3939,60 +3961,51 @@ gint main(int argc, char *argv[])
 		g_strfreev(list);
 		list = NULL;
 	}
-	/* What is the local public IP? */
-	JANUS_LOG(LOG_VERB, "Available interfaces:\n");
+	/* What is the local IP? */
+	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");
+	gboolean local_ip_set = FALSE;
 	item = janus_config_get_item_drilldown(config, "general", "interface");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "  -- Will try to use %s\n", item->value);
-	}
-	struct ifaddrs *myaddrs, *ifa;
-	int status = getifaddrs(&myaddrs);
-	char *tmp = NULL;
-	if (status == 0) {
-		for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next) {
-			if(ifa->ifa_addr == NULL) {
-				continue;
-			}
-			if((ifa->ifa_flags & IFF_UP) == 0) {
-				continue;
-			}
-			/* Check the interface name first: we can ignore that as well */
-			if(ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
-				continue;
-			if(ifa->ifa_addr->sa_family == AF_INET) {
-				struct sockaddr_in *ip = (struct sockaddr_in *)(ifa->ifa_addr);
-				char buf[16];
-				if(inet_ntop(ifa->ifa_addr->sa_family, (void *)&(ip->sin_addr), buf, sizeof(buf)) == NULL) {
-					JANUS_LOG(LOG_ERR, "\t%s:\tinet_ntop failed!\n", ifa->ifa_name);
+		int family;
+		if (!janus_is_ip_valid(item->value, &family)) {
+			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+		} else {
+			/* Verify that we can actually bind to that address */
+			int fd = socket(family, SOCK_DGRAM, 0);
+			if (fd == -1) {
+				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+			} else {
+				int r;
+				struct sockaddr_storage ss;
+				socklen_t addrlen;
+				memset(&ss, 0, sizeof(ss));
+				if (family == AF_INET) {
+					struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
+					addr4->sin_family = AF_INET;
+					addr4->sin_port = 0;
+					inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
+					addrlen = sizeof(struct sockaddr_in);
 				} else {
-					JANUS_LOG(LOG_VERB, "\t%s:\t%s\n", ifa->ifa_name, buf);
-					/* Check if this IP address is in the ignore list, now */
-					if(janus_ice_is_ignored(buf))
-						continue;
-					if(item && item->value && !strcasecmp(buf, item->value)) {
-						local_ip = strdup(buf);
-						if(local_ip == NULL) {
-							JANUS_LOG(LOG_FATAL, "Memory error!\n");
-							exit(1);
-						}
-					} else if(strcasecmp(buf, "127.0.0.1")) {	/* FIXME Check private IP addresses as well */
-						if(tmp == NULL)	/* FIXME Take note of the first IP we find, we'll use it as a backup */
-							tmp = strdup(buf);
-					}
+					struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
+					addr6->sin6_family = AF_INET6;
+					addr6->sin6_port = 0;
+					inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
+					addrlen = sizeof(struct sockaddr_in6);
+				}
+				r = bind(fd, (const struct sockaddr*)&ss, addrlen);
+				close(fd);
+				if (r < 0) {
+					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
+				} else {
+					g_strlcpy(local_ip, item->value, sizeof(local_ip));
+					local_ip_set = TRUE;
 				}
 			}
-			/* TODO IPv6! */
-		}
-		freeifaddrs(myaddrs);
-	}
-	if(local_ip == NULL) {
-		if(tmp != NULL) {
-			local_ip = tmp;
-		} else {
-			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as local IP... (which is NOT going to work out of your machine)\n");
-			local_ip = g_strdup("127.0.0.1");
 		}
 	}
+	if (!local_ip_set)
+		janus_detect_local_ip(local_ip, sizeof(local_ip));
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Pre-parse the web server path, if any */
@@ -4884,6 +4897,7 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();
 #endif
+	janus_ice_deinit();
 	
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {

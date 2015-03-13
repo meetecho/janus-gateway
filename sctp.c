@@ -346,22 +346,24 @@ void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len) {
 		}
 	}
 	if(!found) {
-		/* FIXME There's no open channel (shouldn't happen, we always create it in janus.js), try opening one now */
-		if(janus_sctp_open_channel(sctp, 0, 0, 0) < 0) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't open channel...\n", sctp->handle_id);
-			return;
-		}
-		for(i = 0; i < NUMBER_OF_CHANNELS; i++) {
-			if(sctp->channels[i].state != DATA_CHANNEL_CLOSED) {
-				found = 1;
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Using open channel %i\n", sctp->handle_id, i);
-				break;
-			}
-		}
-		if(!found) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Channel opened but not found?? giving up...\n", sctp->handle_id);
-			return;
-		}
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Couldn't send data, channel %i is not open yet\n", sctp->handle_id, i);
+		return;
+		//~ /* FIXME There's no open channel (shouldn't happen, we always create it in janus.js), try opening one now */
+		//~ if(janus_sctp_open_channel(sctp, 0, 0, 0) < 0) {
+			//~ JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't open channel...\n", sctp->handle_id);
+			//~ return;
+		//~ }
+		//~ for(i = 0; i < NUMBER_OF_CHANNELS; i++) {
+			//~ if(sctp->channels[i].state != DATA_CHANNEL_CLOSED) {
+				//~ found = 1;
+				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Using open channel %i\n", sctp->handle_id, i);
+				//~ break;
+			//~ }
+		//~ }
+		//~ if(!found) {
+			//~ JANUS_LOG(LOG_ERR, "[%"SCNu64"] Channel opened but not found?? giving up...\n", sctp->handle_id);
+			//~ return;
+		//~ }
 	}
 	/* FIXME We're assuming this is a string (we don't support binary data yet) */
 	janus_sctp_send_text(sctp, i, buf, len);
@@ -457,7 +459,7 @@ void janus_sctp_request_more_streams(janus_sctp_association *sctp) {
 
 int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, uint8_t unordered, uint16_t pr_policy, uint32_t pr_value) {
 	/* XXX: This should be encoded in a better way */
-	janus_datachannel_open_request req;
+	janus_datachannel_open_request *req = NULL;
 	struct sctp_sndinfo sndinfo;
 
 	/* FIXME For open requests we send, we always use this label */
@@ -465,39 +467,46 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	guint label_size = (strlen(label)+3) & ~3;
 	JANUS_LOG(LOG_VERB, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
 
-	memset(&req, 0, sizeof(janus_datachannel_open_request) + label_size);
-	req.msg_type = DATA_CHANNEL_OPEN_REQUEST;
+	req = calloc(sizeof(janus_datachannel_open_request) + label_size, sizeof(char));
+	memset(req, 0, sizeof(janus_datachannel_open_request) + label_size);
+	req->msg_type = DATA_CHANNEL_OPEN_REQUEST;
 	switch (pr_policy) {
 		case SCTP_PR_SCTP_NONE:
 			/* XXX: What about DATA_CHANNEL_RELIABLE_STREAM */
-			req.channel_type = DATA_CHANNEL_RELIABLE;
+			req->channel_type = DATA_CHANNEL_RELIABLE;
 			break;
 		case SCTP_PR_SCTP_TTL:
 			/* XXX: What about DATA_CHANNEL_UNRELIABLE */
-			req.channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
+			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_TIMED;
 			break;
 		case SCTP_PR_SCTP_RTX:
-			req.channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
+			req->channel_type = DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT;
 			break;
 		default:
 			return 0;
 	}
-	req.priority = htons(0); /* XXX: add support */
-	req.reliability_params = htonl((uint32_t)pr_value);
-	req.label_length = htons(label_size);
-	memcpy(&req.label, label, strlen(label));
+	req->priority = htons(0); /* XXX: add support */
+	req->reliability_params = htonl((uint32_t)pr_value);
+	req->label_length = htons(label_size);
+	memcpy(&req->label, label, strlen(label));
+	
 	memset(&sndinfo, 0, sizeof(struct sctp_sndinfo));
 	sndinfo.snd_sid = stream;
 	sndinfo.snd_flags = SCTP_EOR;
 	sndinfo.snd_ppid = htonl(DATA_CHANNEL_PPID_CONTROL);
+	
 	if(usrsctp_sendv(sock,
-	                  &req, sizeof(janus_datachannel_open_request) + label_size,
+	                  req, sizeof(janus_datachannel_open_request) + label_size,
 	                  NULL, 0,
 	                  &sndinfo, (socklen_t)sizeof(struct sctp_sndinfo),
 	                  SCTP_SENDV_SNDINFO, 0) < 0) {
 		JANUS_LOG(LOG_ERR, "usrsctp_sendv error\n");
+		g_free(req);
+		req = NULL;
 		return 0;
 	} else {
+		g_free(req);
+		req = NULL;
 		return 1;
 	}
 }

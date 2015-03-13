@@ -253,6 +253,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle);
 void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int len);
+void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_videocall_hangup_media(janus_plugin_session *handle);
 void janus_videocall_destroy_session(janus_plugin_session *handle, int *error);
 char *janus_videocall_query_session(janus_plugin_session *handle);
@@ -277,6 +278,7 @@ static janus_plugin janus_videocall_plugin =
 		.incoming_rtp = janus_videocall_incoming_rtp,
 		.incoming_rtcp = janus_videocall_incoming_rtcp,
 		.incoming_data = janus_videocall_incoming_data,
+		.slow_link = janus_videocall_slow_link,
 		.hangup_media = janus_videocall_hangup_media,
 		.destroy_session = janus_videocall_destroy_session,
 		.query_session = janus_videocall_query_session,
@@ -330,6 +332,7 @@ typedef struct janus_videocall_session {
 	gboolean audio_active;
 	gboolean video_active;
 	uint64_t bitrate;
+	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
 	guint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videocall_session;
@@ -569,6 +572,7 @@ char *janus_videocall_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
 		json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
 		json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+		json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -579,7 +583,6 @@ char *janus_videocall_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	JANUS_LOG(LOG_VERB, "%s\n", message);
 	janus_videocall_message *msg = calloc(1, sizeof(janus_videocall_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -679,6 +682,79 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 	}
 }
 
+void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int video) {
+	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_videocall_session *session = (janus_videocall_session *)handle->plugin_handle;	
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(session->destroyed)
+		return;
+	session->slowlink_count++;
+	if(uplink && !video && !session->audio_active) {
+		/* We're not relaying audio and the peer is expecting it, so NACKs are normal */
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for audio, but that's expected, a configure disabled the audio forwarding\n");
+	} else if(uplink && video && !session->video_active) {
+		/* We're not relaying video and the peer is expecting it, so NACKs are normal */
+		JANUS_LOG(LOG_VERB, "Getting a lot of NACKs (slow uplink) for video, but that's expected, a configure disabled the video forwarding\n");
+	} else {
+		/* Slow uplink or downlink, maybe we set the bitrate cap too high? */
+		if(video) {
+			/* Halve the bitrate, but don't go too low... */
+			if(!uplink) {
+				/* Downlink issue, user has trouble sending, halve this user's bitrate cap */
+				session->bitrate = session->bitrate > 0 ? session->bitrate : 512*1024;
+				session->bitrate = session->bitrate/2;
+				if(session->bitrate < 64*1024)
+					session->bitrate = 64*1024;
+			} else {
+				/* Uplink issue, user has trouble receiving, halve this user's peer's bitrate cap */
+				if(session->peer == NULL || session->peer->handle == NULL)
+					return;	/* Nothing to do */
+				session->peer->bitrate = session->peer->bitrate > 0 ? session->peer->bitrate : 512*1024;
+				session->peer->bitrate = session->peer->bitrate/2;
+				if(session->peer->bitrate < 64*1024)
+					session->peer->bitrate = 64*1024;
+			}
+			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
+				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->peer->bitrate : session->bitrate);
+			/* ... and send a new REMB back */
+			char rtcpbuf[200];
+			memset(rtcpbuf, 0, 200);
+			/* FIXME First put a RR (fake)... */
+			int rrlen = 32;
+			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+			rr->header.version = 2;
+			rr->header.type = RTCP_RR;
+			rr->header.rc = 1;
+			rr->header.length = htons((rrlen/4)-1);
+			/* ... then put a SDES... */
+			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+			if(sdeslen > 0) {
+				/* ... and then finally a REMB */
+				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, uplink ? session->peer->bitrate : session->bitrate);
+				gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, rrlen+sdeslen+24);
+			}
+			/* As a last thing, notify the affected user about this */
+			json_t *event = json_object();
+			json_object_set_new(event, "videocall", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "status", json_string("slow_link"));
+			json_object_set_new(result, "bitrate", json_integer(uplink ? session->peer->bitrate : session->bitrate));
+			json_object_set_new(event, "result", result);
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(event);
+			json_decref(result);
+			event = NULL;
+			gateway->push_event(uplink ? session->peer->handle : handle, &janus_videocall_plugin, NULL, event_text, NULL, NULL);
+			g_free(event_text);
+		}
+	}
+}
+
 void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -720,7 +796,7 @@ static void *janus_videocall_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VideoCall handler thread\n");
 	janus_videocall_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
+	char *error_cause = calloc(512, sizeof(char));
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -1056,11 +1132,9 @@ static void *janus_videocall_handler(void *data) {
 		json_t *event = json_object();
 		json_object_set_new(event, "videocall", json_string("event"));
 		if(result != NULL)
-			json_object_set(event, "result", result);
+			json_object_set_new(event, "result", result);
 		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
-		if(result != NULL)
-			json_decref(result);
 		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
 		int ret = gateway->push_event(msg->handle, &janus_videocall_plugin, msg->transaction, event_text, sdp_type, sdp);
 		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));

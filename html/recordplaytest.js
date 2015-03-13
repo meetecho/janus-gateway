@@ -52,6 +52,7 @@ var janus = null;
 var recordplay = null;
 var started = false;
 var spinner = null;
+var bandwidth = 1024 * 1024;
 
 var myname = null;
 var recording = false;
@@ -154,6 +155,19 @@ $(document).ready(function() {
 													console.log("The ID of the current recording is " + id);
 													recordingId = id;
 												}
+											} else if(event === 'slow_link') {
+												var uplink = result["uplink"];
+												if(uplink !== 0) {
+													// Janus detected issues when receiving our media, let's slow down
+													bandwidth = parseInt(bandwidth / 1.5);
+													recordplay.send({
+														'message': {
+															'request': 'configure',
+															'video-bitrate-max': bandwidth, // Reduce the bitrate
+															'video-keyframe-interval': 15000 // Keep the 15 seconds key frame interval
+														}
+													});
+												}
 											} else if(event === 'playing') {
 												console.log("Playout has started!");
 											} else if(event === 'stopped') {
@@ -172,7 +186,7 @@ $(document).ready(function() {
 														return;
 													}
 												}
-												// TODO Reset status
+												// FIXME Reset status
 												$('#videobox').empty();
 												$('#video').hide();
 												recordingId = null;
@@ -191,7 +205,7 @@ $(document).ready(function() {
 										// FIXME Error?
 										var error = msg["error"];
 										bootbox.alert(error);
-										// TODO Reset status
+										// FIXME Reset status
 										$('#videobox').empty();
 										$('#video').hide();
 										recording = false;
@@ -226,13 +240,34 @@ $(document).ready(function() {
 									$('#videotitle').html(selectedRecordingInfo);
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
-									if($('#thevideo').length === 0)
-										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay/>');
+									if($('#thevideo').length === 0) {
+										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
+										// No remote video yet
+										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+										if(spinner == null) {
+											var target = document.getElementById('videobox');
+											spinner = new Spinner({top:100}).spin(target);
+										} else {
+											spinner.spin();
+										}
+									}
+									// Show the video, hide the spinner and show the resolution when we get a playing event
+									$("#thevideo").bind("playing", function () {
+										$('#waitingvideo').remove();
+										$('#thevideo').removeClass('hide');
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+									});
 									attachMediaStream($('#thevideo').get(0), stream);
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
-									// TODO Reset status
+									// FIXME Reset status
+									$('#waitingvideo').remove();
+									if(spinner !== null && spinner !== undefined)
+										spinner.stop();
+									spinner = null;
 									$('#videobox').empty();
 									$('#video').hide();
 									recording = false;
@@ -303,7 +338,6 @@ function updateRecsList() {
 				$('#recset').html($(this).html()).parent().removeClass('open');
 				$('#play').removeAttr('disabled').click(startPlayout);
 				return false;
-
 			});
 		}
 	}});
@@ -326,6 +360,17 @@ function startRecording() {
 		$('#list').unbind('click').attr('disabled', true);
 		$('#recset').attr('disabled', true);
 		$('#recslist').attr('disabled', true);
+
+		// bitrate and keyframe interval can be set at any time: 
+		// before, after, during recording
+		recordplay.send({
+			'message': {
+				'request': 'configure',
+				'video-bitrate-max': bandwidth, // a quarter megabit
+				'video-keyframe-interval': 15000 // 15 seconds
+			}
+		});
+		
 		recordplay.createOffer(
 			{
 				// By default, it's sendrecv for audio and video...

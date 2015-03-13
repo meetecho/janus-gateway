@@ -8,10 +8,10 @@ AM_CFLAGS = \
 	-Wnested-externs -Wstrict-prototypes -Wunsafe-loop-optimizations \
 	-Wwrite-strings -Wno-missing-field-initializers -Wno-unused-parameter \
 	-Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
-	-Wmissing-include-dirs -Waggregate-return -Wunused-but-set-variable \
+	-Wmissing-include-dirs -Wno-aggregate-return -Wunused-but-set-variable \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
 AM_CFLAGS += -Wno-undef  # sophiasip is not -Wundef--safe
-AM_CFLAGS += -Wredundant-decls  # sophiasip also contains redundant declarations
+AM_CFLAGS += -Wno-redundant-decls  # sophiasip also contains redundant declarations
 AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.

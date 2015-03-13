@@ -718,11 +718,11 @@ janus.attach(
  * Notice that, by default, the long poll returns a single event: that is,
  * as soon as a message becomes available in the session queue, that event
  * is returned and the long poll closes. If you want to receive more events
- * within the context of the same long poll, you can pass the \c max_events
+ * within the context of the same long poll, you can pass the \c maxev
  * query string parameter to the GET, e.g.:
  *
 \verbatim
-GET http://host:port/janus/<sessionid>?max_events=5
+GET http://host:port/janus/<sessionid>?maxev=5
 \endverbatim
  *
 \verbatim
@@ -748,7 +748,7 @@ GET http://host:port/janus/<sessionid>?max_events=5
  * available in the queue and more events are present as well, Janus will
  * return more than one without needing you to send multiple long polls
  * immediately thereafter to get them. For this reason, don't be surprised
- * if even with a \c max_events parameter set, you'll still get a single
+ * if even with a \c maxev parameter set, you'll still get a single
  * event being notified as the sole object in the returned array.
  *
  * <hr>

@@ -267,19 +267,20 @@ $(document).ready(function() {
 								onremotestream: function(stream) {
 									console.log(" ::: Got a remote stream :::");
 									console.log(JSON.stringify(stream));
-									if(spinner !== null && spinner !== undefined)
-										spinner.stop();
-									$('#waitingvideo').remove();
 									if($('#remotevideo').length === 0)
-										$('#videoright').append('<video class="rounded centered" id="remotevideo" width=320 height=240 autoplay/>');
-									// Detect resolution
-									$("#remotevideo").bind("loadedmetadata", function () {
-										if(webrtcDetectedBrowser == "chrome") {
-											var width = this.videoWidth;
-											var height = this.videoHeight;
-											$('#curres').removeClass('hide').text(width+'x'+height).show();
-										} else {
-											// Firefox has a bug: width and height are not immediately available after a loadedmetadata
+										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+									// Show the video, hide the spinner and show the resolution when we get a playing event
+									$("#remotevideo").bind("playing", function () {
+										$('#waitingvideo').remove();
+										$('#remotevideo').removeClass('hide');
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+										var width = this.videoWidth;
+										var height = this.videoHeight;
+										$('#curres').removeClass('hide').text(width+'x'+height).show();
+										if(webrtcDetectedBrowser == "firefox") {
+											// Firefox Stable has a bug: width and height are not immediately available after a playing
 											setTimeout(function() {
 												var width = $("#remotevideo").get(0).videoWidth;
 												var height = $("#remotevideo").get(0).videoHeight;

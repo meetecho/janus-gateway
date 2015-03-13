@@ -402,15 +402,27 @@ function newRemoteFeed(id, display) {
 				// The subscriber stream is recvonly, we don't expect anything here
 			},
 			onremotestream: function(stream) {
-				if(spinner !== undefined && spinner !== null)
-					spinner.stop();
 				if($('#screenvideo').length === 0) {
-					$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
+					// No remote video yet
+					$('#screencapture').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
+					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 				}
+				// Show the video, hide the spinner and show the resolution when we get a playing event
+				$("#screenvideo").bind("playing", function () {
+					$('#waitingvideo').remove();
+					$('#screenvideo').removeClass('hide');
+					if(spinner !== null && spinner !== undefined)
+						spinner.stop();
+					spinner = null;
+				});
 				attachMediaStream($('#screenvideo').get(0), stream);
 			},
 			oncleanup: function() {
 				console.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
+				$('#waitingvideo').remove();
+				if(spinner !== null && spinner !== undefined)
+					spinner.stop();
+				spinner = null;
 			}
 		});
 }

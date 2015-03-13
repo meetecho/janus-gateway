@@ -1,10 +1,20 @@
-; The only information the SIP Gateway plugin requires is related to the
-; IP address to put in the c-lines of the SIP messages SDPs. You can either
-; specify it (e.g., c_address = 1.2.3.4) or let the plugin autodetect
-; the address to use. If autodetecting, though, you'd better fill in the
-; autodetect_ignore list (e.g., to skip interfaces like VMware ones),
-; which works the same way as the ice_ignore_list setting in the main
-; configuration
+
 [general]
-; c_address = 1.2.3.4
-autodetect_ignore = vmnet
+; Specify which local IP address to use. If not set it will be automatically
+; guessed from the system
+; local_ip = 1.2.3.4
+
+; Enable local keep-alives to keep the registration open. Keep-alives are
+; sent in the form of OPTIONS requests, at the given interval inseconds.
+; (0 to disable)
+keepalive_interval = 120
+
+; Indicate if the server is behind NAT. If so, the server will use STUN
+; to guess its own public IP address and use it in the Contat header of
+; outgoing requests
+behind_nat = no
+
+; User-Agent string to be used
+; user_agent = Cool WebRTC Gateway
+; Expiration time for registrations
+register_ttl = 3600

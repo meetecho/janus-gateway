@@ -36,9 +36,8 @@ gboolean janus_is_true(const char *value);
 /*! \brief Helper to compare strings in constant time
  * @param str1 The first string to compare
  * @param str2 The second string to compare
- * @param size How many characters should be compared
  * @returns true if the strings are the same, false otherwise */
-gboolean janus_strcmp_const_time(const void *str1, const void *str2, const size_t size);
+gboolean janus_strcmp_const_time(const void *str1, const void *str2);
 
 /** @name Flags helper methods
  */
@@ -84,4 +83,9 @@ int janus_get_opus_pt(const char *sdp);
  * @returns The VP8 payload type, if found, -1 otherwise */
 int janus_get_vp8_pt(const char *sdp);
 
+/*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
+ * @param ip The IP address to check
+ * @param[in,out] The address family of the address, set by the method if valid
+ * @returns true if the address is valid, false otherwise */
+gboolean janus_is_ip_valid(const char *ip, int *family);
 #endif
