@@ -706,11 +706,11 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		session->last_activity = janus_get_monotonic_time();
 		/* How many messages can we send back in a single response? (just one by default) */
 		int max_events = 1;
-		const char *maxev = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "maxev");
+		const char *maxev = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "max_events");
 		if(maxev != NULL) {
 			max_events = atoi(maxev);
 			if(max_events < 1) {
-				JANUS_LOG(LOG_WARN, "Invalid maxev parameter passed (%d), defaulting to 1\n", max_events);
+				JANUS_LOG(LOG_WARN, "Invalid max_events parameter passed (%d), defaulting to 1\n", max_events);
 				max_events = 1;
 			}
 		}
