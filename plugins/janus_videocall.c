@@ -738,7 +738,19 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, uplink ? session->peer->bitrate : session->bitrate);
 				gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, rrlen+sdeslen+24);
 			}
-
+			/* As a last thing, notify the affected user about this */
+			json_t *event = json_object();
+			json_object_set_new(event, "videocall", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "status", json_string("slow_link"));
+			json_object_set_new(result, "bitrate", json_integer(uplink ? session->peer->bitrate : session->bitrate));
+			json_object_set_new(event, "result", result);
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(event);
+			json_decref(result);
+			event = NULL;
+			gateway->push_event(uplink ? session->peer->handle : handle, &janus_videocall_plugin, NULL, event_text, NULL, NULL);
+			g_free(event_text);
 		}
 	}
 }

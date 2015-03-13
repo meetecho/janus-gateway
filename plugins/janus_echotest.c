@@ -562,7 +562,19 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, session->bitrate);
 				gateway->relay_rtcp(handle, 1, rtcpbuf, rrlen+sdeslen+24);
 			}
-
+			/* As a last thing, notify the user about this */
+			json_t *event = json_object();
+			json_object_set_new(event, "echotest", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "status", json_string("slow_link"));
+			json_object_set_new(result, "bitrate", json_integer(session->bitrate));
+			json_object_set_new(event, "result", result);
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(event);
+			json_decref(result);
+			event = NULL;
+			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event_text, NULL, NULL);
+			g_free(event_text);
 		}
 	}
 }
