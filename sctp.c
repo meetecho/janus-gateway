@@ -1305,9 +1305,7 @@ void *janus_sctp_thread(void *data) {
 					JANUS_LOG(LOG_WARN, "Couldn't relay outgoing SCTP data to the monitor...\n");
 #endif
 				/* Encapsulate this data in DTLS and send it */
-				janus_mutex_unlock(&sctp->mutex);
 				janus_dtls_send_sctp_data((janus_dtls_srtp *)sctp->dtls, message->buffer, message->length);
-				janus_mutex_lock(&sctp->mutex);
 				janus_sctp_message_destroy(message);
 				message = NULL;
 			}
