@@ -472,6 +472,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream '%s'...\n", cat->name);
+					cat = cat->next;
 					continue;
 				}
 				mp->is_private = is_private;
@@ -525,6 +526,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)file->value,
 						TRUE, doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'live' stream '%s'...\n", cat->name);
+					cat = cat->next;
 					continue;
 				}
 				mp->is_private = is_private;
@@ -578,6 +580,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)file->value,
 						FALSE, doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream '%s'...\n", cat->name);
+					cat = cat->next;
 					continue;
 				}
 				mp->is_private = is_private;
