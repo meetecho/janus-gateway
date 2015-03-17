@@ -1021,6 +1021,7 @@ void janus_recordplay_slow_link(janus_plugin_session *handle, int uplink, int vi
 	json_t *result = json_object();
 	json_object_set_new(result, "status", json_string("slow_link"));
 	/* What is uplink for the server is downlink for the client, so turn the tables */
+	json_object_set_new(result, "current-bitrate", json_integer(session->video_bitrate));
 	json_object_set_new(result, "uplink", json_integer(uplink ? 0 : 1));
 	json_object_set_new(event, "result", result);
 	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);

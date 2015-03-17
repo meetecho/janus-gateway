@@ -1495,6 +1495,9 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 				 * up to the application to then choose a policy and enforce it */
 				json_t *event = json_object();
 				json_object_set_new(event, "videoroom", json_string("slow_link"));
+				/* Also add info on what the current bitrate cap is */
+				uint64_t bitrate = (publisher->bitrate ? publisher->bitrate : 256*1024);
+				json_object_set_new(event, "current-bitrate", json_integer(bitrate));
 				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 				event = NULL;
