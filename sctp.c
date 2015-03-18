@@ -1,4 +1,4 @@
-/*! \file    dtls.h
+/*! \file    sctp.c
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    SCTP processing for data channels
@@ -12,6 +12,20 @@
  * that appears at the beginning of that code is ideally present here as
  * well: http://code.google.com/p/sctp-refimpl/source/browse/trunk/KERN/usrsctp/programs/rtcweb.c 
  * 
+ * \note If you want/need to debug SCTP messages for any reason, you can
+ * do so by uncommenting the definition of \c DEBUG_SCTP in sctp.h. This
+ * will force this code to save all the SCTP messages being exchanged to
+ * a separate file for each session. You can choose what folder to save
+ * these files in by modifying the \c debug_folder variable. Once a file
+ * has been saved, you need to process it using the \c text2pcap tool
+ * that is usually shipped with Wireshark, e.g.:
+ * 
+\verbatim
+cd /tmp/sctp
+/usr/sbin/text2pcap -n -l 248 -D -t '%H:%M:%S.' sctp-debug-XYZ.txt sctp-debug-XYZ.pcapng
+/usr/sbin/wireshark sctp-debug-XYZ.pcapng
+\endverbatim
+ * 
  * \ingroup protocols
  * \ref protocols
  */
@@ -24,10 +38,9 @@
 #include "ice.h"
 #include "debug.h"
 
-
 #ifdef DEBUG_SCTP
-/* FIXME We use these ugly sockets to look at actual SCTP messages */
-static int in_monitor, out_monitor;
+/* If we're debugging the SCTP messaging, save the files here */
+const char *debug_folder = "/tmp/sctp";
 #endif
 
 
@@ -85,30 +98,11 @@ int janus_sctp_init(void) {
 	sctp_running = TRUE;
 
 #ifdef DEBUG_SCTP
-	/* Ugly way to look at unencryted SCTP messages */
-	int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	struct sockaddr_in sin;
-	memset(&sin, 0, sizeof(struct sockaddr_in));
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(0);
-	sin.sin_addr.s_addr = INADDR_ANY;
-	bind(fd, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
-	sin.sin_port = htons(10000);
-	sin.sin_addr.s_addr = inet_addr("127.0.0.1");
-	connect(fd, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
-	in_monitor = fd;
-	fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	memset(&sin, 0, sizeof(struct sockaddr_in));
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(0);
-	sin.sin_addr.s_addr = INADDR_ANY;
-	bind(fd, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
-	sin.sin_port = htons(20000);
-	sin.sin_addr.s_addr = inet_addr("127.0.0.1");
-	connect(fd, (struct sockaddr *)&sin, sizeof(struct sockaddr_in));
-	out_monitor = fd;
+	JANUS_LOG(LOG_WARN, "SCTP debugging to files enabled: going to save them in %s\n", debug_folder);
+	if(janus_mkdir(debug_folder, 0755) < 0) {
+		JANUS_LOG(LOG_ERR, "Error creating folder %s, expect problems...\n", debug_folder);
+	}
 #endif
-
 	return 0;
 }
 
@@ -233,6 +227,12 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 		sctp = NULL;
 		return NULL;
 	}
+
+#ifdef DEBUG_SCTP
+	char debug_file[1024];
+	g_snprintf(debug_file, 1024, "%s/sctp-debug-%"SCNu64".txt", debug_folder, handle_id);
+	sctp->debug_dump = fopen(debug_file, "wt");
+#endif
 
 	/* We're done for now, the setup is done elsewhere */
 	janus_mutex_lock(&sctp->mutex);
@@ -1249,26 +1249,22 @@ void *janus_sctp_thread(void *data) {
 			g_usleep (10000);
 			continue;
 		}
-		janus_mutex_unlock(&sctp->mutex);
 		/* Check incoming messages */
-		janus_mutex_lock(&sctp->mutex);
 		if(!g_queue_is_empty(sctp->in_messages)) {
 			while(!g_queue_is_empty(sctp->in_messages)) {
 				message = g_queue_pop_head(sctp->in_messages);
 				if(message == NULL)
 					continue;
 #ifdef DEBUG_SCTP
-				/* FIXME Monitor */
-				int retries = 5;
-				while(retries > 0) {
-					if(send(in_monitor, message->buffer, message->length, 0) < 0) {
-						retries--;
-					} else {
-						break;
+				if(sctp->debug_dump != NULL) {
+					/* Dump incoming message */
+					char *dump = usrsctp_dumppacket(message->buffer, message->length, SCTP_DUMP_INBOUND);
+					if(dump != NULL) {
+						fwrite(dump, sizeof(char), strlen(dump), sctp->debug_dump);
+						fflush(sctp->debug_dump);
+						usrsctp_freedumpbuffer(dump);
 					}
 				}
-				if(retries == 0)
-					JANUS_LOG(LOG_WARN, "Couldn't relay ingoing SCTP data to the monitor...\n");
 #endif
 				/* Pass this data to the SCTP association */
 				janus_mutex_unlock(&sctp->mutex);
@@ -1278,9 +1274,7 @@ void *janus_sctp_thread(void *data) {
 				message = NULL;
 			}
 		}
-		janus_mutex_unlock(&sctp->mutex);
 		/* Check outgoing messages */
-		janus_mutex_lock(&sctp->mutex);
 		if(sctp->dtls == NULL) {
 			/* No DTLS stack anymore, we're done */
 			janus_mutex_unlock(&sctp->mutex);
@@ -1292,17 +1286,15 @@ void *janus_sctp_thread(void *data) {
 				if(message == NULL)
 					continue;
 #ifdef DEBUG_SCTP
-				/* FIXME Monitor */
-				int retries = 5;
-				while(retries > 0) {
-					if(send(out_monitor, message->buffer, message->length, 0) < 0) {
-						retries--;
-					} else {
-						break;
+				if(sctp->debug_dump != NULL) {
+					/* Dump incoming message */
+					char *dump = usrsctp_dumppacket(message->buffer, message->length, SCTP_DUMP_OUTBOUND);
+					if(dump != NULL) {
+						fwrite(dump, sizeof(char), strlen(dump), sctp->debug_dump);
+						fflush(sctp->debug_dump);
+						usrsctp_freedumpbuffer(dump);
 					}
 				}
-				if(retries == 0)
-					JANUS_LOG(LOG_WARN, "Couldn't relay outgoing SCTP data to the monitor...\n");
 #endif
 				/* Encapsulate this data in DTLS and send it */
 				janus_dtls_send_sctp_data((janus_dtls_srtp *)sctp->dtls, message->buffer, message->length);
@@ -1320,6 +1312,11 @@ void *janus_sctp_thread(void *data) {
 	g_queue_free(sctp->out_messages);
 	sctp->out_messages = NULL;
 	sctp->thread = NULL;
+#ifdef DEBUG_SCTP
+	if(sctp->debug_dump != NULL)
+		fclose(sctp->debug_dump);
+	sctp->debug_dump = NULL;
+#endif
 	g_free(sctp);
 	sctp = NULL;
 	g_thread_unref(g_thread_self());

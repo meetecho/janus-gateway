@@ -1,4 +1,4 @@
-/*! \file    dtls.h
+/*! \file    sctp.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    SCTP processing for data channels (headers)
@@ -23,6 +23,9 @@
 
 #define INET 1
 #define INET6 1
+
+/* Uncomment the line below to enable SCTP debugging to files */
+//~ #define DEBUG_SCTP
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -112,6 +115,9 @@ typedef struct janus_sctp_association {
 	GQueue *out_messages;
 	/*! \brief Thread for handling SCTP messaging */
 	GThread *thread;
+#ifdef DEBUG_SCTP
+	FILE *debug_dump;
+#endif
 	/*! \brief Mutex to lock/unlock this instance */
 	janus_mutex mutex;
 } janus_sctp_association;
