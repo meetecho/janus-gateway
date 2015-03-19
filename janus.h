@@ -27,7 +27,7 @@
 #include <jansson.h>
 #include <microhttpd.h>
 #ifdef HAVE_WEBSOCKETS
-#include <websock/websock.h>
+#include <libwebsockets.h>
 #endif
 #ifdef HAVE_RABBITMQ
 #include <amqp.h>
@@ -83,6 +83,8 @@ typedef struct janus_session {
 	GAsyncQueue *messages;
 	/*! \brief Time of the last activity on the session */
 	gint64 last_activity;
+	/*! \brief Opaque pointer to a janus_request_source instance (where the session came from) */
+	void *source;
 	/*! \brief Flag to trigger a lazy session destruction */
 	gint destroy:1;
 	/*! \brief Flag to notify there's been a session timeout */
@@ -94,14 +96,14 @@ typedef struct janus_session {
 #ifdef HAVE_WEBSOCKETS
 /*! \brief WebSocket client session */
 typedef struct janus_websocket_client {
+	/*! \brief The libwebsock client context */
+	struct libwebsocket_context *context;
 	/*! \brief The libwebsock client instance */
-	libwebsock_client_state *state;
+	struct libwebsocket *wsi;
 	/*! \brief List of gateway sessions this client has created and is managing */
 	GHashTable *sessions;
 	/*! \brief Queue of outgoing responses to push */
 	GAsyncQueue *responses;
-	/*! \brief Thread to handle messaging */
-	GThread *thread;
 	/*! \brief Thread pool to serve requests */
 	GThreadPool *thread_pool;
 	/*! \brief Mutex to lock/unlock this session */
@@ -300,19 +302,6 @@ int janus_ws_notifier(janus_request_source *source, int max_events);
  * will also destroy all the sessions it created.
  */
 ///@{
-/*! \brief Callback (libwebsock) invoked when a new WebSocket client has connected (connection open)
- * @param[in] state The libwebsock libwebsock_client_state connection state of the new client
- * @returns 0 on success, an integer otherwise */
-int janus_wss_onopen(libwebsock_client_state *state);
-/*! \brief Callback (libwebsock) invoked when a new message from a WebSocket client is available
- * @param[in] state The libwebsock libwebsock_client_state connection state of the client
- * @param[in] msg The incoming message as a libwebsock_message instance
- * @returns 0 on success, an integer otherwise */
-int janus_wss_onmessage(libwebsock_client_state *state, libwebsock_message *msg);
-/*! \brief Callback (libwebsock) invoked when a WebSocket client has left (connection closed)
- * @param[in] state The libwebsock libwebsock_client_state connection state of the new client
- * @returns 0 on success, an integer otherwise */
-int janus_wss_onclose(libwebsock_client_state *state);
 /*! \brief Worker to handle push notifications from the core or the plugins
  * \details Unlike the long poll mechanism needed for the plain HTTP approach,
  * with WebSockets we can send notifications on the same channel we receive

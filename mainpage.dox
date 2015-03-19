@@ -80,7 +80,7 @@
  * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
- * - \b libwebsock: https://github.com/payden/libwebsock/ (\c optional, v1.0.4, WebSockets)
+ * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, WebSockets)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
@@ -1142,7 +1142,16 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * servers, as it allows you to avoid all the noise and overhead introduced
  * by several concurrent HTTP transactions and long polls by relying on
  * what may be seen as a single "control channel".
+ *
+ * To interact with Janus using WebSockets you MUST specify a specific
+ * subprotocol, named \c janus-protocol, e.g.,
+ *
+\verbatim
+var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
+\endverbatim
  * 
+ * The \c janus.js library does this automatically.
+ *
  * As anticipated at the beginning of this section, the actual messages
  * being exchanged are exactly the same. This means that all the concepts
  * introduced before still apply: you still create a session, attach to

@@ -27,10 +27,10 @@ To install it, you'll need to satisfy the following dependencies:
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
 * [usrsctp](http://code.google.com/p/sctp-refimpl/) (only needed if you
 are interested in Data Channels)
-* [libwebsock](https://github.com/payden/libwebsock) (only needed if
+* [libwebsockets](https://libwebsockets.org/) (only needed if
 you are interested in WebSockets support)
-* [libevent](http://libevent.org/) (only needed if you are interested in
-WebSockets support, as libwebsock makes use of it)
+* [cmake](http://www.cmake.org/) (only needed if you are interested in
+WebSockets support, as libwebsockets makes use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
 you are interested in RabbitMQ support)
 
@@ -78,30 +78,18 @@ pretty easy and standard process:
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
 
-The same applies for libwebsock, which is needed for the optional
+The same applies for libwebsockets, which is needed for the optional
 WebSockets support. If you're interested in supporting WebSockets to
 control Janus, as an alternative (or replacement) to the default plain
-HTTP REST API, you'll have to install the version ```1.0.4``` manually:
+HTTP REST API, you'll have to install it manually:
 
-	git clone git://github.com/payden/libwebsock.git
-	cd libwebsock
-	git checkout tags/v1.0.4
-	autoreconf -i
-	./autogen.sh
-	./configure --prefix=/usr && make && sudo make install
+	git clone git://git.libwebsockets.org/libwebsockets
+	cd libwebsockets
+	mkdir build
+	cd build
+	cmake ..
+	make && sudo make install
 	
-* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
-script if you're installing on a x86_64 distribution.
-
-* *Note:* as anticipated you'll need to install libevent-dev (or
-libevent-devel) before installing libwebsock
-([see here for more info](https://groups.google.com/forum/#!searchin/meetecho-janus/websockets/meetecho-janus/TqPNJDsUf2s/uBhlT8a4WUMJ)).
-
-Please notice that you have to install version ```1.0.4``` and not any
-later version. In fact, recent versions of libwebsock added support for
-threading in the library, but it is currently experimental and doesn't
-work as expected in Janus.
-
 Finally, the same can be said for rabbitmq-c as well, which is needed
 for the optional RabbitMQ support. In fact, several different versions
 of the library can be found, and the versions usually available in most

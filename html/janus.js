@@ -324,7 +324,7 @@ function Janus(gatewayCallbacks) {
 			Janus.log(server);
 		}
 		if(websockets) {
-			ws = new WebSocket(server); 
+			ws = new WebSocket(server, 'janus-protocol'); 
 			ws.onerror = function() {
 				Janus.log("Error connecting to the Janus WebSockets server...");
 				if($.isArray(servers)) {

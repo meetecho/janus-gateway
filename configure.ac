@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.0.8],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.0.9],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_MACRO_DIR([m4])
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -89,18 +89,18 @@ AC_CHECK_LIB([srtp],
              [JANUS_MANUAL_LIBS+=" -lsrtp"],
              [AC_MSG_ERROR([libsrtp not found.])])
 
-AC_CHECK_LIB([websock],
-             [libwebsock_init],
+AC_CHECK_LIB([websockets],
+             [libwebsocket_get_internal_extensions],
              [
                AS_IF([test "x$enable_websockets" = "xyes"],
                [
                   AC_DEFINE(HAVE_WEBSOCKETS)
-                  JANUS_MANUAL_LIBS+=" -lwebsock"
+                  JANUS_MANUAL_LIBS+=" -lwebsockets"
                ])
              ],
              [
                AS_IF([test "x$enable_websockets" = "xyes"],
-                     [AC_MSG_ERROR([libwebsocket not found. See README.md for installation instructions or use --disable-websockets])])
+                     [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
              ])
 AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
 

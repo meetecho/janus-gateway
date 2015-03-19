@@ -4,8 +4,8 @@
  * \brief  Janus core
  * \details Implementation of the gateway core. This code takes care of
  * the gateway initialization (command line/configuration) and setup,
- * and implements the web server (based on libmicrohttpd) and Janus protocol
- * (a JSON protocol implemented with Jansson) to interact with the web
+ * and implements the transports (HTTP, WebSockets, RabbitMQ) and Janus
+ * protocol (a JSON-based protocol implemented) to interact with the web
  * applications. The core also takes care of bridging peers and plugins
  * accordingly. 
  * 
@@ -34,8 +34,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			8
-#define JANUS_VERSION_STRING	"0.0.8"
+#define JANUS_VERSION			9
+#define JANUS_VERSION_STRING	"0.0.9"
 
 #ifdef __MACH__
 #define SHLIB_EXT "0.dylib"
@@ -51,15 +51,36 @@ static char *configs_folder = NULL;
 static GHashTable *plugins = NULL;
 static GHashTable *plugins_so = NULL;
 
+
 /* MHD Web Server */
 static struct MHD_Daemon *ws = NULL, *sws = NULL;
 static char *ws_path = NULL;
 static char *ws_api_secret = NULL;
 
+
 #ifdef HAVE_WEBSOCKETS
-/* libwebsock WS server */
-static libwebsock_context *wss = NULL, *swss = NULL;
+/* libwebsockets WS context(s) */
+static struct libwebsocket_context *wss = NULL, *swss = NULL;
+/* Callback for HTTP-related events (automatically rejected) */
+static int janus_wss_callback_http(struct libwebsocket_context *this, 
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len);
+/* Callback for WebSockets-related events */
+static int janus_wss_callback(struct libwebsocket_context *this, 
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len);
+/* Protocol mapping */
+static struct libwebsocket_protocols wss_protocols[] = {
+	{ "http-only", janus_wss_callback_http, 0, 0 },
+	{ "janus-protocol", janus_wss_callback, sizeof(janus_websocket_client), 0 },
+	{ NULL, NULL, 0 }
+};
+/* Helper for debugging reasons */
+const char *janus_wss_reason_string(enum libwebsocket_callback_reasons reason);
 #endif
+
 
 #ifdef HAVE_RABBITMQ
 /* RabbitMQ support */
@@ -261,12 +282,6 @@ static janus_callbacks janus_handler_plugin =
 ///@}
 
 
-#ifdef HAVE_WEBSOCKETS
-/* WebSocket sessions */
-static janus_mutex wss_mutex;
-static GHashTable *wss_sessions = NULL;
-#endif
-
 #ifdef HAVE_RABBITMQ
 /* FIXME RabbitMQ session (always 1 at the moment) */
 janus_rabbitmq_client *rmq_client = NULL;
@@ -317,7 +332,19 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				notification->allocated = 1;
 				g_async_queue_push(session->messages, notification);
 				session->timeout = 1;
-
+#ifdef HAVE_WEBSOCKETS
+				janus_request_source *source = (janus_request_source *)session->source;
+				if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
+					/* Send this as soon as the WebSocket becomes writeable */
+					janus_websocket_client *client = (janus_websocket_client *)source->source;
+					if(client) {
+						janus_mutex_lock(&client->mutex);
+						if(client->context != NULL && client->wsi != NULL)
+							libwebsocket_callback_on_writable(client->context, client->wsi);
+						janus_mutex_unlock(&client->mutex);
+					}
+				}
+#endif
 				g_hash_table_iter_remove(&iter);
 				g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
 
@@ -433,6 +460,11 @@ void janus_session_free(janus_session *session) {
 	if(session->messages != NULL) {
 		g_async_queue_unref(session->messages);
 		session->messages = NULL;
+	}
+	janus_request_source *source = (janus_request_source *)session->source;
+	if(source != NULL) {
+		janus_request_source_destroy(source);
+		session->source = NULL;
 	}
 	janus_mutex_unlock(&session->mutex);
 	g_free(session);
@@ -894,6 +926,8 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto jsondone;
 		}
 		session_id = session->session_id;
+		/* Take note of the source that originated this session (HTTP, WebSockets, RabbitMQ?) */
+		session->source = janus_request_source_new(source->type, source->source, NULL);
 #ifdef HAVE_WEBSOCKETS
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Add the new session to the list of sessions created by this WS client */
@@ -2077,6 +2111,9 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 				goto jsondone;
 			}
 			log_level = level_num;
+#ifdef HAVE_WEBSOCKETS
+			lws_set_log_level(log_level >= LOG_VERB ? 7 : 0, NULL);
+#endif
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
@@ -2576,6 +2613,7 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 #ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		g_async_queue_push(client->responses, payload);
+		libwebsocket_callback_on_writable(client->context, client->wsi);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
@@ -2681,6 +2719,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 #ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
 		g_async_queue_push(client->responses, reply_text);
+		libwebsocket_callback_on_writable(client->context, client->wsi);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
@@ -2710,216 +2749,289 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 
 #ifdef HAVE_WEBSOCKETS
 /* WebSockets */
-int janus_wss_onopen(libwebsock_client_state *state) {
-	JANUS_LOG(LOG_INFO, "WebSocket onopen: #%d\n", state->sockfd);
-	janus_mutex_lock(&wss_mutex);
-	if(g_hash_table_lookup(wss_sessions, state) != NULL) {
-		JANUS_LOG(LOG_WARN, "  -- Client already handled\n");
-		janus_mutex_unlock(&wss_mutex);
-		return 0;
+const char *janus_wss_reason_string(enum libwebsocket_callback_reasons reason) {
+	switch(reason) {
+		case LWS_CALLBACK_ESTABLISHED:
+			return "LWS_CALLBACK_ESTABLISHED";
+		case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
+			return "LWS_CALLBACK_CLIENT_CONNECTION_ERROR";
+		case LWS_CALLBACK_CLIENT_FILTER_PRE_ESTABLISH:
+			return "LWS_CALLBACK_CLIENT_FILTER_PRE_ESTABLISH";
+		case LWS_CALLBACK_CLIENT_ESTABLISHED:
+			return "LWS_CALLBACK_CLIENT_ESTABLISHED";
+		case LWS_CALLBACK_CLOSED:
+			return "LWS_CALLBACK_CLOSED";
+		case LWS_CALLBACK_CLOSED_HTTP:
+			return "LWS_CALLBACK_CLOSED_HTTP";
+		case LWS_CALLBACK_RECEIVE:
+			return "LWS_CALLBACK_RECEIVE";
+		case LWS_CALLBACK_CLIENT_RECEIVE:
+			return "LWS_CALLBACK_CLIENT_RECEIVE";
+		case LWS_CALLBACK_CLIENT_RECEIVE_PONG:
+			return "LWS_CALLBACK_CLIENT_RECEIVE_PONG";
+		case LWS_CALLBACK_CLIENT_WRITEABLE:
+			return "LWS_CALLBACK_CLIENT_WRITEABLE";
+		case LWS_CALLBACK_SERVER_WRITEABLE:
+			return "LWS_CALLBACK_SERVER_WRITEABLE";
+		case LWS_CALLBACK_HTTP:
+			return "LWS_CALLBACK_HTTP";
+		case LWS_CALLBACK_HTTP_BODY:
+			return "LWS_CALLBACK_HTTP_BODY";
+		case LWS_CALLBACK_HTTP_BODY_COMPLETION:
+			return "LWS_CALLBACK_HTTP_BODY_COMPLETION";
+		case LWS_CALLBACK_HTTP_FILE_COMPLETION:
+			return "LWS_CALLBACK_HTTP_FILE_COMPLETION";
+		case LWS_CALLBACK_HTTP_WRITEABLE:
+			return "LWS_CALLBACK_HTTP_WRITEABLE";
+		case LWS_CALLBACK_FILTER_NETWORK_CONNECTION:
+			return "LWS_CALLBACK_FILTER_NETWORK_CONNECTION";
+		case LWS_CALLBACK_FILTER_HTTP_CONNECTION:
+			return "LWS_CALLBACK_FILTER_HTTP_CONNECTION";
+		case LWS_CALLBACK_SERVER_NEW_CLIENT_INSTANTIATED:
+			return "LWS_CALLBACK_SERVER_NEW_CLIENT_INSTANTIATED";
+		case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION:
+			return "LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION";
+		case LWS_CALLBACK_OPENSSL_LOAD_EXTRA_CLIENT_VERIFY_CERTS:
+			return "LWS_CALLBACK_OPENSSL_LOAD_EXTRA_CLIENT_VERIFY_CERTS";
+		case LWS_CALLBACK_OPENSSL_LOAD_EXTRA_SERVER_VERIFY_CERTS:
+			return "LWS_CALLBACK_OPENSSL_LOAD_EXTRA_SERVER_VERIFY_CERTS";
+		case LWS_CALLBACK_OPENSSL_PERFORM_CLIENT_CERT_VERIFICATION:
+			return "LWS_CALLBACK_OPENSSL_PERFORM_CLIENT_CERT_VERIFICATION";
+		case LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER:
+			return "LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER";
+		case LWS_CALLBACK_CONFIRM_EXTENSION_OKAY:
+			return "LWS_CALLBACK_CONFIRM_EXTENSION_OKAY";
+		case LWS_CALLBACK_CLIENT_CONFIRM_EXTENSION_SUPPORTED:
+			return "LWS_CALLBACK_CLIENT_CONFIRM_EXTENSION_SUPPORTED";
+		case LWS_CALLBACK_PROTOCOL_INIT:
+			return "LWS_CALLBACK_PROTOCOL_INIT";
+		case LWS_CALLBACK_PROTOCOL_DESTROY:
+			return "LWS_CALLBACK_PROTOCOL_DESTROY";
+		case LWS_CALLBACK_WSI_CREATE:
+			return "LWS_CALLBACK_WSI_CREATE";
+		case LWS_CALLBACK_WSI_DESTROY:
+			return "LWS_CALLBACK_WSI_DESTROY";
+		case LWS_CALLBACK_GET_THREAD_ID:
+			return "LWS_CALLBACK_GET_THREAD_ID";
+		case LWS_CALLBACK_ADD_POLL_FD:
+			return "LWS_CALLBACK_ADD_POLL_FD";
+		case LWS_CALLBACK_DEL_POLL_FD:
+			return "LWS_CALLBACK_DEL_POLL_FD";
+		case LWS_CALLBACK_CHANGE_MODE_POLL_FD:
+			return "LWS_CALLBACK_CHANGE_MODE_POLL_FD";
+		case LWS_CALLBACK_LOCK_POLL:
+			return "LWS_CALLBACK_LOCK_POLL";
+		case LWS_CALLBACK_UNLOCK_POLL:
+			return "LWS_CALLBACK_UNLOCK_POLL";
+		case LWS_CALLBACK_OPENSSL_CONTEXT_REQUIRES_PRIVATE_KEY:
+			return "LWS_CALLBACK_OPENSSL_CONTEXT_REQUIRES_PRIVATE_KEY";
+		case LWS_CALLBACK_USER:
+			return "LWS_CALLBACK_USER = 1000";
+		default:
+			break;
 	}
-	/* Create a new janus_websocket_client instance */
-	janus_websocket_client *ws_client = calloc(1, sizeof(janus_websocket_client));
-	if(ws_client == NULL) {
-		janus_mutex_unlock(&wss_mutex);
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		libwebsock_close(state);
-		return 0;
-	}
-	/* Create a thread pool to handle incoming requests */
-	GError *error = NULL;
-	GThreadPool *thread_pool = g_thread_pool_new(janus_wss_task, ws_client, -1, FALSE, &error);
-	if(error != NULL) {
-		/* Something went wrong... */
-		g_free(ws_client);
-		janus_mutex_unlock(&wss_mutex);
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the pool thread...\n", error->code, error->message ? error->message : "??");
-		libwebsock_close(state);
-		return 0;
-	}
-	ws_client->thread_pool = thread_pool;
-	ws_client->state = state;
-	ws_client->responses = g_async_queue_new();
-	ws_client->sessions = NULL;
-	/* Create a thread for notifications related to this session as well */
-	ws_client->thread = g_thread_try_new("wss_client", &janus_wss_thread, ws_client, &error);
-	if(error != NULL) {
-		/* Something went wrong... */
-		g_free(ws_client);
-		janus_mutex_unlock(&wss_mutex);
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the notifications thread...\n", error->code, error->message ? error->message : "??");
-		libwebsock_close(state);
-		return 0;
- 	}
-	ws_client->destroy = 0;
-	janus_mutex_init(&ws_client->mutex);
-	
-	g_hash_table_insert(wss_sessions, state, ws_client);
-	janus_mutex_unlock(&wss_mutex);
+	return NULL;
+}
 
+static int janus_wss_callback_http(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len)
+{
+	/* This endpoint cannot be used for HTTP */
+	switch(reason) {
+		case LWS_CALLBACK_HTTP:
+			JANUS_LOG(LOG_VERB, "Rejecting incoming HTTP request on WebSockets endpoint\n");
+			libwebsockets_return_http_status(this, wsi, 403, NULL);
+			/* Close and free connection */
+			return 1;
+		default:
+			break;
+	}
 	return 0;
 }
 
-int janus_wss_onmessage(libwebsock_client_state *state, libwebsock_message *msg) {
-	JANUS_LOG(LOG_VERB, "WebSocket onmessage: #%d\n", state->sockfd);
-	JANUS_LOG(LOG_HUGE, "  -- Message opcode: %d\n", msg->opcode);
-	JANUS_LOG(LOG_HUGE, "  -- Payload Length: %llu\n", msg->payload_len);
-	JANUS_LOG(LOG_HUGE, "  -- Payload: %s\n", msg->payload);
-
-	janus_mutex_lock(&wss_mutex);
-	janus_websocket_client *client = g_hash_table_lookup(wss_sessions, state);
-	janus_mutex_unlock(&wss_mutex);
-	if(client == NULL) {
-		/* Sometimes we get onmessage before onclose */
-		JANUS_LOG(LOG_INFO, "Received a WebSocket message, but can't find a client associated to it, creating it now...\n");
-		janus_wss_onopen(state);
-		/* Let's try again */
-		janus_mutex_lock(&wss_mutex);
-		client = g_hash_table_lookup(wss_sessions, state);
-		janus_mutex_unlock(&wss_mutex);
-		if(client == NULL) {
-			JANUS_LOG(LOG_ERR, "Still no client, giving up...\n");
-			libwebsock_close(state);
+static int janus_wss_callback(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len)
+{
+	janus_websocket_client *ws_client = (janus_websocket_client *)user;
+	switch(reason) {
+		case LWS_CALLBACK_ESTABLISHED: {
+			JANUS_LOG(LOG_VERB, "[WSS-%p] WebSocket connection accepted\n", wsi);
+			if(ws_client == NULL) {
+				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
+				return 1;
+			}
+			ws_client->context = this;
+			ws_client->wsi = wsi;
+			/* Create a thread pool to handle incoming requests */
+			GError *error = NULL;
+			GThreadPool *thread_pool = g_thread_pool_new(janus_wss_task, ws_client, -1, FALSE, &error);
+			if(error != NULL) {
+				/* Something went wrong... */
+				JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the pool thread...\n", error->code, error->message ? error->message : "??");
+				/* Close and free connection */
+				return 1;
+			}
+			ws_client->thread_pool = thread_pool;
+			ws_client->responses = g_async_queue_new();
+			ws_client->sessions = NULL;
+			ws_client->destroy = 0;
+			janus_mutex_init(&ws_client->mutex);
+			/* Let us know when the WebSocket channel becomes writeable */
+			libwebsocket_callback_on_writable(this, wsi);
+			JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Ready to be used!\n", wsi);
 			return 0;
 		}
-	}
-	/* Parse it */
-	janus_request_source *source = janus_request_source_new(JANUS_SOURCE_WEBSOCKETS, (void *)client, (void *)msg);
-	/* Parse the JSON payload */
-	json_error_t error;
-	json_t *root = json_loads(msg->payload, 0, &error);
-	if(!root) {
-		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
-		janus_request_source_destroy(source);
-		return 0;
-	}
-	if(!json_is_object(root)) {
-		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
-		janus_request_source_destroy(source);
-		json_decref(root);
-		return 0;
-	}
-	/* Parse the request now */
-	janus_websocket_request *request = (janus_websocket_request *)calloc(1, sizeof(janus_websocket_request));
-	request->source = source;
-	request->request = root;
-	GError *tperror = NULL;
-	g_thread_pool_push(client->thread_pool, request, &tperror);
-	if(tperror != NULL) {
-		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
-		json_t *transaction = json_object_get(root, "transaction");
-		const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
-		janus_process_error(source, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
-		janus_request_source_destroy(source);
-		json_decref(root);
-	}
-	return 0;
-}
-
-int janus_wss_onclose(libwebsock_client_state *state) {
-	JANUS_LOG(LOG_INFO, "WebSocket onclose: #%d\n", state->sockfd);
-
-	janus_mutex_lock(&wss_mutex);
-	janus_websocket_client *client = g_hash_table_lookup(wss_sessions, state);
-	g_hash_table_remove(wss_sessions, state);
-	if(client != NULL) {
-		JANUS_LOG(LOG_INFO, "Destroying WebSocket client #%d\n", state->sockfd);
-		client->destroy = 1;
-		g_thread_pool_free(client->thread_pool, FALSE, FALSE);
-		if(client->thread != NULL) {
-			JANUS_LOG(LOG_INFO, "Joining thread #%d\n", state->sockfd);
-			g_thread_join(client->thread);
-		}
-		client->thread = NULL;
-		client->state = NULL;
-		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
-			/* Remove all sessions (and handles) created by this client */
-			janus_mutex_lock(&sessions_mutex);
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, client->sessions);
-			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_session *session = value;
-				if(!session)
-					continue;
-				session->last_activity = 0;	/* This will trigger a timeout */
+		case LWS_CALLBACK_RECEIVE: {
+			JANUS_LOG(LOG_VERB, "[WSS-%p] Got %zu bytes:\n", wsi, len);
+			if(ws_client == NULL) {
+				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
+				return 1;
 			}
-			janus_mutex_unlock(&sessions_mutex);
-			g_hash_table_destroy(client->sessions);
-		}
-		/* Remove responses queue too, if needed */
-		if(client->responses != NULL) {
-			char *response = NULL;
-			while((response = g_async_queue_try_pop(client->responses)) != NULL) {
-				g_free(response);
+			char *payload = calloc(len+1, sizeof(char));
+			memcpy(payload, in, len);
+			payload[len] = '\0';
+			JANUS_LOG(LOG_HUGE, "%s\n", payload);
+			/* Parse it */
+			janus_request_source *source = janus_request_source_new(JANUS_SOURCE_WEBSOCKETS, (void *)ws_client, (void *)payload);
+			/* Parse the JSON payload */
+			json_error_t error;
+			json_t *root = json_loads(payload, 0, &error);
+			if(!root) {
+				g_free(payload);
+				janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+				janus_request_source_destroy(source);
+				return 0;
 			}
-			g_async_queue_unref(client->responses);
-		}
-		client->sessions = NULL;
-		g_free(client);
-		client = NULL;
-	}
-	janus_mutex_unlock(&wss_mutex);
-	
-	JANUS_LOG(LOG_INFO, "  -- closed\n");
-	return 0;
-}
-
-void *janus_wss_thread(void *data) {
-	janus_websocket_client *client = (janus_websocket_client *)data;
-	if(client == NULL) {
-		JANUS_LOG(LOG_ERR, "No WebSocket client??\n");
-		return NULL;
-	}
-	int fd = client->state->sockfd;
-	JANUS_LOG(LOG_INFO, "Joining WebSocket thread: #%d\n", fd);
-	while(!client->destroy && !g_atomic_int_get(&stop)) {
-		janus_mutex_lock(&client->mutex);
-		/* Responses first */
-		char *response = NULL;
-		while ((response = g_async_queue_try_pop(client->responses)) != NULL) {
-			if(!client->destroy && !g_atomic_int_get(&stop) && response) {
-				/* Gotcha! */
-				JANUS_LOG(LOG_VERB, "#%d: Sending response (%zu bytes)...\n", fd, strlen(response));
-				int res = libwebsock_send_text(client->state, response);
-				JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
+			if(!json_is_object(root)) {
+				g_free(payload);
+				janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+				janus_request_source_destroy(source);
+				json_decref(root);
+				return 0;
 			}
-			g_free(response);
+			/* Parse the request now */
+			janus_websocket_request *request = (janus_websocket_request *)calloc(1, sizeof(janus_websocket_request));
+			request->source = source;
+			request->request = root;
+			GError *tperror = NULL;
+			g_thread_pool_push(ws_client->thread_pool, request, &tperror);
+			if(tperror != NULL) {
+				/* Something went wrong... */
+				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+				json_t *transaction = json_object_get(root, "transaction");
+				const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
+				janus_process_error(source, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
+				janus_request_source_destroy(source);
+				json_decref(root);
+			}
+			return 0;
 		}
-		/* Now iterate on all the sessions handled by this WebSocket client */
-		if(client->sessions != NULL && g_hash_table_size(client->sessions) > 0) {
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, client->sessions);
-			while (g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_session *session = value;
-				if(client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
-					continue;
-				}
-				janus_http_event *event;
-				while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
-					if(!client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
+		case LWS_CALLBACK_SERVER_WRITEABLE: {
+			if(ws_client == NULL) {
+				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
+				return 1;
+			}
+			if(!ws_client->destroy && !g_atomic_int_get(&stop)) {
+				janus_mutex_lock(&ws_client->mutex);
+				/* Responses first */
+				char *response = NULL;
+				while ((response = g_async_queue_try_pop(ws_client->responses)) != NULL) {
+					if(!ws_client->destroy && !g_atomic_int_get(&stop) && response) {
 						/* Gotcha! */
-						JANUS_LOG(LOG_VERB, "#%d: Sending event (%zu bytes)...\n", fd, strlen(event->payload));
-						int res = libwebsock_send_text(client->state, event->payload);
-						JANUS_LOG(LOG_VERB, "#%d  -- Sent (res=%d)\n", fd, res);
+						unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+						memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
+						JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(response));
+						int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
+						JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
+						g_free(buf);
+					}
+					g_free(response);
+				}
+				/* Now iterate on all the sessions handled by this WebSocket ws_client */
+				if(ws_client->sessions != NULL && g_hash_table_size(ws_client->sessions) > 0) {
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, ws_client->sessions);
+					while (g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_session *session = value;
+						if(ws_client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
+							continue;
+						}
+						janus_http_event *event;
+						while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
+							if(!ws_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
+								/* Gotcha! */
+								unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(event->payload) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+								memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, event->payload, strlen(event->payload));
+								JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(event->payload));
+								int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(event->payload), LWS_WRITE_TEXT);
+								JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(event->payload));
+								g_free(buf);
+							}
+						}
+						if(session->timeout) {
+							/* TODO Get rid of resources besides closing the websocket */
+							return 1;
+						}
 					}
 				}
-				if(session->timeout) {
-					/* Close the websocket */
-					libwebsock_close(client->state);
-					//~ janus_wss_onclose(client->state);
-					break;
-				}
+				janus_mutex_unlock(&ws_client->mutex);
+				//~ libwebsocket_callback_on_writable(this, wsi);
 			}
+			return 0;
 		}
-		janus_mutex_unlock(&client->mutex);
-		/* Sleep 100ms */
-		g_usleep(100000);
+		case LWS_CALLBACK_CLOSED: {
+			JANUS_LOG(LOG_VERB, "[WSS-%p] WS connection closed\n", wsi);
+			if(ws_client != NULL) {
+				janus_mutex_lock(&ws_client->mutex);
+				JANUS_LOG(LOG_INFO, "[WSS-%p] Destroying WebSocket client\n", wsi);
+				ws_client->destroy = 1;
+				ws_client->context = NULL;
+				ws_client->wsi = NULL;
+				g_thread_pool_free(ws_client->thread_pool, FALSE, FALSE);
+				ws_client->wsi = NULL;
+				if(ws_client->sessions != NULL && g_hash_table_size(ws_client->sessions) > 0) {
+					/* Remove all sessions (and handles) created by this ws_client */
+					janus_mutex_lock(&sessions_mutex);
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, ws_client->sessions);
+					while(g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_session *session = value;
+						if(!session)
+							continue;
+						session->last_activity = 0;	/* This will trigger a timeout */
+					}
+					janus_mutex_unlock(&sessions_mutex);
+					g_hash_table_destroy(ws_client->sessions);
+				}
+				/* Remove responses queue too, if needed */
+				if(ws_client->responses != NULL) {
+					char *response = NULL;
+					while((response = g_async_queue_try_pop(ws_client->responses)) != NULL) {
+						g_free(response);
+					}
+					g_async_queue_unref(ws_client->responses);
+				}
+				ws_client->sessions = NULL;
+				janus_mutex_unlock(&ws_client->mutex);
+			}
+			JANUS_LOG(LOG_VERB, "[WSS-%p]   -- closed\n", wsi);
+			return 0;
+		}
+		default:
+			if(wsi != NULL) {
+				JANUS_LOG(LOG_VERB, "[WSS-%p] %d (%s)\n", wsi, reason, janus_wss_reason_string(reason));
+			} else {
+				JANUS_LOG(LOG_VERB, "[WSS] %d (%s)\n", reason, janus_wss_reason_string(reason));
+			}
+			break;
 	}
-	JANUS_LOG(LOG_INFO, "Leaving WebSocket thread: #%d\n", fd);
-	return NULL;
+	return 0;
 }
 
 void janus_wss_task(gpointer data, gpointer user_data) {
@@ -3343,6 +3455,19 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	notification->allocated = 1;
 
 	g_async_queue_push(session->messages, notification);
+#ifdef HAVE_WEBSOCKETS
+	janus_request_source *source = (janus_request_source *)session->source;
+	if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
+		/* Send this as soon as the WebSocket becomes writeable */
+		janus_websocket_client *client = (janus_websocket_client *)source->source;
+		if(client) {
+			janus_mutex_lock(&client->mutex);
+			if(client->context != NULL && client->wsi != NULL)
+				libwebsocket_callback_on_writable(client->context, client->wsi);
+			janus_mutex_unlock(&client->mutex);
+		}
+	}
+#endif
 
 	return JANUS_OK;
 }
@@ -4471,6 +4596,7 @@ gint main(int argc, char *argv[])
 #ifndef HAVE_WEBSOCKETS
 	JANUS_LOG(LOG_WARN, "WebSockets support not compiled\n");
 #else
+	lws_set_log_level(log_level >= LOG_VERB ? 7 : 0, NULL);
 	item = janus_config_get_item_drilldown(config, "webserver", "ws");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
@@ -4479,48 +4605,53 @@ gint main(int argc, char *argv[])
 		item = janus_config_get_item_drilldown(config, "webserver", "ws_port");
 		if(item && item->value)
 			wsport = atoi(item->value);
-		wss = libwebsock_init();
+		/* Prepare context */
+		struct lws_context_creation_info info;
+		memset(&info, 0, sizeof info);
+		info.port = wsport;
+		info.iface = NULL;
+		info.protocols = wss_protocols;
+		info.extensions = libwebsocket_get_internal_extensions();
+		info.ssl_cert_filepath = NULL;
+		info.ssl_private_key_filepath = NULL;
+		info.gid = -1;
+		info.uid = -1;
+		info.options = 0;
+		/* Create the WebSocket context */
+		wss = libwebsocket_create_context(&info);
 		if(wss == NULL) {
 			JANUS_LOG(LOG_FATAL, "Error initializing libwebsock...\n");
 			exit(1);	/* FIXME Should we really give up? */
 		}
-		char port[50];
-		g_snprintf(port, 50, "%d", wsport);
-		libwebsock_bind(wss, (char *)"0.0.0.0", port);
 		JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
-		wss->onopen = janus_wss_onopen;
-		wss->onmessage = janus_wss_onmessage;
-		wss->onclose = janus_wss_onclose;
-		wss_sessions = g_hash_table_new(NULL, NULL);
-		janus_mutex_init(&wss_mutex);
 	}
 	item = janus_config_get_item_drilldown(config, "webserver", "ws_ssl");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
 	} else {
-		if(wss != NULL) {
-			/* FIXME Due to the blocking libwebsock_wait, we only support a single WS server instance at a time */
-			JANUS_LOG(LOG_WARN, "Can't start Secure WebSockets server: the plain WebSockets server is already enabled and we only support one for now, disable that one to enable to secure version\n");
-		} else {
-			int wsport = 8989;
-			item = janus_config_get_item_drilldown(config, "webserver", "ws_secure_port");
-			if(item && item->value)
-				wsport = atoi(item->value);
-			swss = libwebsock_init();
-			if(swss == NULL) {
-				JANUS_LOG(LOG_FATAL, "Error initializing libwebsock...\n");
-				exit(1);	/* FIXME Should we really give up? */
-			}
-			char port[50];
-			g_snprintf(port, 50, "%d", wsport);
-			libwebsock_bind_ssl(swss, (char *)"0.0.0.0", port, server_key, server_pem);
-			JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
-			swss->onopen = janus_wss_onopen;
-			swss->onmessage = janus_wss_onmessage;
-			swss->onclose = janus_wss_onclose;
-			wss_sessions = g_hash_table_new(NULL, NULL);
-			janus_mutex_init(&wss_mutex);
+		int wsport = 8989;
+		item = janus_config_get_item_drilldown(config, "webserver", "ws_secure_port");
+		if(item && item->value)
+			wsport = atoi(item->value);
+		/* Prepare secure context */
+		struct lws_context_creation_info info;
+		memset(&info, 0, sizeof info);
+		info.port = wsport;
+		info.iface = NULL;
+		info.protocols = wss_protocols;
+		info.extensions = libwebsocket_get_internal_extensions();
+		info.ssl_cert_filepath = server_pem;
+		info.ssl_private_key_filepath = server_key;
+		info.gid = -1;
+		info.uid = -1;
+		info.options = 0;
+		/* Create the secure WebSocket context */
+		swss = libwebsocket_create_context(&info);
+		if(swss == NULL) {
+			JANUS_LOG(LOG_FATAL, "Error initializing libwebsock...\n");
+			exit(1);	/* FIXME Should we really give up? */
 		}
+		JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 	}
 #endif
 	/* Enable the RabbitMQ integration, if enabled */
@@ -4820,13 +4951,14 @@ gint main(int argc, char *argv[])
 	}
 
 #ifdef HAVE_WEBSOCKETS
-	if(wss || swss) {
-		/* The libwebsock wait is our loop */
-		libwebsock_wait(wss ? wss : swss);
-		if(!g_atomic_int_get(&stop))
-			g_atomic_int_inc(&stop);
-	} else {
-		while(!g_atomic_int_get(&stop)) {
+	while(!g_atomic_int_get(&stop)) {
+		if(wss || swss) {
+			/* libwebsockets needs us to call the service ourselves on a regular basis */
+			if(wss != NULL)
+				libwebsocket_service(wss, 100);
+			if(swss != NULL)
+				libwebsocket_service(swss, 100);
+		} else {
 			/* Loop until we have to stop */
 			g_usleep(250000);
 		}
@@ -4861,6 +4993,14 @@ gint main(int argc, char *argv[])
 	if(admin_sws)
 		MHD_stop_daemon(admin_sws);
 	admin_sws = NULL;
+#ifdef HAVE_WEBSOCKETS
+	if(wss != NULL)
+		libwebsocket_cancel_service(wss);
+	wss = NULL;
+	if(swss != NULL)
+		libwebsocket_cancel_service(swss);
+	swss = NULL;
+#endif
 #ifdef HAVE_RABBITMQ
 	if(rmq_channel) {
 		if(rmq_client) {
@@ -4883,10 +5023,6 @@ gint main(int argc, char *argv[])
 		g_hash_table_destroy(sessions);
 	if(old_sessions != NULL)
 		g_hash_table_destroy(old_sessions);
-#ifdef HAVE_WEBSOCKETS
-	if(wss_sessions != NULL)
-		g_hash_table_destroy(wss_sessions);
-#endif
 	JANUS_LOG(LOG_INFO, "Freeing crypto resources...\n");
 	SSL_CTX_free(janus_dtls_get_ssl_ctx());
 	EVP_cleanup();
