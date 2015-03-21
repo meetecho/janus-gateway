@@ -900,10 +900,17 @@ function Janus(gatewayCallbacks) {
 					sendSDP(handleId, callbacks);
 				}
 			} else {
-				Janus.log("candidates: " + JSON.stringify(event.candidate));
+				// JSON.stringify doesn't work on some WebRTC objects anymore
+				// See https://code.google.com/p/chromium/issues/detail?id=467366
+				var candidate = {
+					"candidate": event.candidate.candidate,
+					"sdpMid": event.candidate.sdpMid,
+					"sdpMLineIndex": event.candidate.sdpMLineIndex
+				};
+				Janus.log("candidates: " + JSON.stringify(candidate));
 				if(config.trickle === true) {
 					// Send candidate
-					sendTrickleCandidate(handleId, event.candidate);
+					sendTrickleCandidate(handleId, candidate);
 				}
 			}
 		};
@@ -1309,7 +1316,13 @@ function Janus(gatewayCallbacks) {
 				Janus.log("Offer ready");
 				Janus.log(callbacks);
 				config.sdpSent = true;
-				callbacks.success(offer);
+				// JSON.stringify doesn't work on some WebRTC objects anymore
+				// See https://code.google.com/p/chromium/issues/detail?id=467366
+				var jsep = {
+					"type": offer.type,
+					"sdp": offer.sdp
+				};
+				callbacks.success(jsep);
 			}, callbacks.error, mediaConstraints);
 	}
 	
@@ -1345,7 +1358,13 @@ function Janus(gatewayCallbacks) {
 					return;
 				}
 				config.sdpSent = true;
-				callbacks.success(answer);
+				// JSON.stringify doesn't work on some WebRTC objects anymore
+				// See https://code.google.com/p/chromium/issues/detail?id=467366
+				var jsep = {
+					"type": answer.type,
+					"sdp": answer.sdp
+				};
+				callbacks.success(jsep);
 			}, callbacks.error, mediaConstraints);
 	}
 
