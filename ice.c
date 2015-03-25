@@ -798,6 +798,18 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		g_async_queue_unref(handle->queued_packets);
 		handle->queued_packets = NULL;
 	}
+	if(handle->audio_mid != NULL) {
+		g_free(handle->audio_mid);
+		handle->audio_mid = NULL;
+	}
+	if(handle->video_mid != NULL) {
+		g_free(handle->video_mid);
+		handle->video_mid = NULL;
+	}
+	if(handle->data_mid != NULL) {
+		g_free(handle->data_mid);
+		handle->data_mid = NULL;
+	}
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_mutex_unlock(&handle->mutex);
@@ -1894,6 +1906,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		handle->audio_mid = NULL;
 		audio_stream->stream_id = handle->audio_id;
 		audio_stream->handle = handle;
 		audio_stream->cdone = 0;
@@ -1992,6 +2005,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		handle->video_mid = NULL;
 		video_stream->handle = handle;
 		video_stream->stream_id = handle->video_id;
 		video_stream->cdone = 0;
@@ -2090,6 +2104,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		handle->data_mid = NULL;
 		if(janus_turn_server != NULL) {
 			/* We need relay candidates as well */
 			nice_agent_set_relay_info(handle->agent, handle->data_id, 1,

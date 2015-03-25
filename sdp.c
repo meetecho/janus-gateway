@@ -191,11 +191,25 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 			m = m->m_next;
 			continue;
 		}
-		/* Look for ICE credentials and fingerprint first: check media attributes */
+		/* Look for mid, ICE credentials and fingerprint first: check media attributes */
 		a = m->m_attributes;
 		while(a) {
 			if(a->a_name) {
-				if(!strcasecmp(a->a_name, "fingerprint")) {
+				if(!strcasecmp(a->a_name, "mid")) {
+					/* Found mid attribute */
+					if(m->m_type == sdp_media_audio && m->m_port > 0) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio mid: %s\n", handle->handle_id, a->a_value);
+						handle->audio_mid = g_strdup(a->a_value);
+					} else if(m->m_type == sdp_media_video && m->m_port > 0) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video mid: %s\n", handle->handle_id, a->a_value);
+						handle->video_mid = g_strdup(a->a_value);
+#ifdef HAVE_SCTP
+					} else if(m->m_type == sdp_media_application) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data Channel mid: %s\n", handle->handle_id, a->a_value);
+						handle->data_mid = g_strdup(a->a_value);
+#endif
+					}
+				} else if(!strcasecmp(a->a_name, "fingerprint")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (local) : %s\n", handle->handle_id, a->a_value);
 					if(strcasestr(a->a_value, "sha-256 ") == a->a_value) {
 						if(rhashing)
@@ -633,6 +647,8 @@ char *janus_sdp_anonymize(const char *sdp) {
 					sdp_attribute_remove(&m->m_attributes, "group");
 				while(sdp_attribute_find(m->m_attributes, "mid"))
 					sdp_attribute_remove(&m->m_attributes, "mid");
+				while(sdp_attribute_find(m->m_attributes, "msid"))
+					sdp_attribute_remove(&m->m_attributes, "msid");
 				while(sdp_attribute_find(m->m_attributes, "msid-semantic"))
 					sdp_attribute_remove(&m->m_attributes, "msid-semantic");
 				while(sdp_attribute_find(m->m_attributes, "rtcp"))
@@ -754,12 +770,21 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	int data = 0;
 #endif
 	g_strlcat(sdp, "a=group:BUNDLE", BUFSIZE);
-	if(audio)
-		g_strlcat(sdp, " audio", BUFSIZE);
-	if(video)
-		g_strlcat(sdp, " video", BUFSIZE);
-	if(data)
-		g_strlcat(sdp, " data", BUFSIZE);
+	if(audio) {
+		g_snprintf(buffer, 512,
+			" %s", handle->audio_mid ? handle->audio_mid : "audio");
+		g_strlcat(sdp, buffer, BUFSIZE);
+	}
+	if(video) {
+		g_snprintf(buffer, 512,
+			" %s", handle->video_mid ? handle->video_mid : "video");
+		g_strlcat(sdp, buffer, BUFSIZE);
+	}
+	if(data) {
+		g_snprintf(buffer, 512,
+			" %s", handle->data_mid ? handle->data_mid : "data");
+		g_strlcat(sdp, buffer, BUFSIZE);
+	}
 	g_strlcat(sdp, "\r\n", BUFSIZE);
 	/* msid-semantic: add new global attribute */
 	g_strlcat(sdp,
@@ -947,15 +972,16 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			/* a=mid:(audio|video|data) */
 			switch(m->m_type) {
 				case sdp_media_audio:
-					g_snprintf(buffer, 512, "a=mid:audio\r\n");
+					g_snprintf(buffer, 512, "a=mid:%s\r\n", handle->audio_mid ? handle->audio_mid : "audio");
 					break;
 				case sdp_media_video:
-					g_snprintf(buffer, 512, "a=mid:video\r\n");
+					g_snprintf(buffer, 512, "a=mid:%s\r\n", handle->video_mid ? handle->video_mid : "audio");
 					break;
 #ifdef HAVE_SCTP
 				case sdp_media_application:
 					/* FIXME sctpmap and webrtc-datachannel should be dynamic */
-					g_snprintf(buffer, 512, "a=mid:data\r\na=sctpmap:5000 webrtc-datachannel 16\r\n");
+					g_snprintf(buffer, 512, "a=mid:%s\r\na=sctpmap:5000 webrtc-datachannel 16\r\n",
+						handle->data_mid ? handle->data_mid : "data");
 					break;
 #endif
 				default:

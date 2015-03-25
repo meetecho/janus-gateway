@@ -195,6 +195,12 @@ struct janus_ice_handle {
 	guint video_id;
 	/*! \brief libnice ICE DataChannels ID */
 	guint data_id;
+	/*! \brief Audio mid (media ID) */
+	gchar *audio_mid;
+	/*! \brief Video mid (media ID) */
+	gchar *video_mid;
+	/*! \brief Data channel mid (media ID) */
+	gchar *data_mid;
 	/*! \brief Number of streams */
 	gint streams_num;
 	/*! \brief GLib hash table of streams (IDs are the keys) */
