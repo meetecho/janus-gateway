@@ -101,7 +101,6 @@ videofmtp = Codec specific parameters, if any
  * \ingroup plugins
  * \ref plugins
  */
-
 #include "plugin.h"
 
 #include <jansson.h>
@@ -793,7 +792,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		g_snprintf(error_cause, 512, "%s", "No message??");
 		goto error;
 	}
-	JANUS_LOG(LOG_ERR, "Handling message: %s\n", message);
+	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
 
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;	
 	if(!session) {
