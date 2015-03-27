@@ -2629,7 +2629,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	if(video_port >= 0) {
 		video_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
-		setsockopt(audio_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+		setsockopt(video_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 		if (IN_MULTICAST(source->video_mcast))
 		{
 			struct ip_mreq mreq;
