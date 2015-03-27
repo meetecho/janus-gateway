@@ -101,7 +101,7 @@ videofmtp = Codec specific parameters, if any
  * \ingroup plugins
  * \ref plugins
  */
- 
+
 #include "plugin.h"
 
 #include <jansson.h>
