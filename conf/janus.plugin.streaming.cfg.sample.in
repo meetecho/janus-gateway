@@ -66,7 +66,7 @@ secret = adminpwd
 [gstreamer-multicast]
 type = rtp
 id = 4
-description = Opus/VP8 live stream coming from gstreamer
+description = Opus/VP8 live multicast stream coming from gstreamer 
 audio = yes
 video = yes
 audioport = 5002
