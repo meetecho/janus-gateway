@@ -17,9 +17,11 @@
 ; video = yes|no (do/don't stream video)
 ;    The following options are only valid for the 'rtp' type:
 ; audioport = local port for receiving audio frames
+; audiomcast = multicast group port for receiving audio frames (only for rtp)
 ; audiocodec = <audio RTP payload type> (e.g., 111)
 ; audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 ; videoport = local port for receiving video frames (only for rtp)
+; videomcast = multicast group port for receiving video frames (only for rtp)
 ; videocodec = <video RTP payload type> (e.g., 100)
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
 ;
@@ -59,6 +61,22 @@ description = mu-law file source (music)
 filename = @streamdir@/music.mulaw	; See install.sh
 audio = yes
 video = no
+secret = adminpwd
+
+[gstreamer-multicast]
+type = rtp
+id = 4
+description = Opus/VP8 live stream coming from gstreamer
+audio = yes
+video = yes
+audioport = 5002
+audiomcast = 232.3.4.5
+audiopt = 111
+audiortpmap = opus/48000/2
+videoport = 5004
+videomcast = 232.3.4.5
+videopt = 100
+videortpmap = VP8/90000
 secret = adminpwd
 
 ;

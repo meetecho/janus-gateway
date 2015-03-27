@@ -56,10 +56,12 @@ audio = yes|no (do/don't stream audio)
 video = yes|no (do/don't stream video)
    The following options are only valid for the 'rtp' type:
 audioport = local port for receiving audio frames
+audiomcast = multicast group port for receiving audio frames
 audiopt = <audio RTP payload type> (e.g., 111)
 audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 audiofmtp = Codec specific parameters, if any
 videoport = local port for receiving video frames (only for rtp)
+videomcast = multicast group port for receiving video frames
 videopt = <video RTP payload type> (e.g., 100)
 videortpmap = RTP map of the video codec (e.g., VP8/90000)
 videofmtp = Codec specific parameters, if any
@@ -200,7 +202,9 @@ typedef enum janus_streaming_source {
 } janus_streaming_source;
 
 typedef struct janus_streaming_rtp_source {
+	in_addr_t audio_mcast;
 	gint audio_port;
+	in_addr_t video_mcast;
 	gint video_port;
 	janus_recorder *arc;	/* The Janus recorder instance for this streams's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
@@ -244,8 +248,8 @@ static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp);
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
-		gboolean doaudio, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
-		gboolean dovideo, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp);
+		gboolean doaudio, char* amcast,uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
+		gboolean dovideo, char* vmcast, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp);
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
 		uint64_t id, char *name, char *desc, char *filename,
@@ -411,10 +415,12 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
+				janus_config_item *amcast = janus_config_get_item(cat, "audiomcast");
 				janus_config_item *aport = janus_config_get_item(cat, "audioport");
 				janus_config_item *acodec = janus_config_get_item(cat, "audiopt");
 				janus_config_item *artpmap = janus_config_get_item(cat, "audiortpmap");
 				janus_config_item *afmtp = janus_config_get_item(cat, "audiofmtp");
+				janus_config_item *vmcast = janus_config_get_item(cat, "videomcast");
 				janus_config_item *vport = janus_config_get_item(cat, "videoport");
 				janus_config_item *vcodec = janus_config_get_item(cat, "videopt");
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
@@ -462,11 +468,13 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						doaudio,
+						amcast ? (char *)amcast->value : NULL,
 						(aport && aport->value) ? atoi(aport->value) : 0,
 						(acodec && acodec->value) ? atoi(acodec->value) : 0,
 						artpmap ? (char *)artpmap->value : NULL,
 						afmtp ? (char *)afmtp->value : NULL,
 						dovideo,
+						vmcast ? (char *)vmcast->value : NULL,
 						(vport && vport->value) ? atoi(vport->value) : 0,
 						(vcodec && vcodec->value) ? atoi(vcodec->value) : 0,
 						vrtpmap ? (char *)vrtpmap->value : NULL,
@@ -785,7 +793,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		g_snprintf(error_cause, 512, "%s", "No message??");
 		goto error;
 	}
-	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
+	JANUS_LOG(LOG_ERR, "Handling message: %s\n", message);
 
 	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;	
 	if(!session) {
@@ -935,8 +943,16 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			uint16_t aport = 0;
 			uint8_t acodec = 0;
-			char *artpmap = NULL, *afmtp = NULL;
+			char *artpmap = NULL, *afmtp = NULL, *amcast = NULL;
 			if(doaudio) {
+				json_t *audiomcast = json_object_get(root, "audiomcast");
+				if(audiomcast && !json_is_string(audiomcast)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audiomcast should be a string)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (audiomcast should be a string)");
+					goto error;
+				}
+				amcast = (char *)json_string_value(audiomcast);				
 				json_t *audioport = json_object_get(root, "audioport");
 				if(!audioport) {
 					JANUS_LOG(LOG_ERR, "Missing element (audioport)\n");
@@ -990,8 +1006,16 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			uint16_t vport = 0;
 			uint8_t vcodec = 0;
-			char *vrtpmap = NULL, *vfmtp = NULL;
+			char *vrtpmap = NULL, *vfmtp = NULL, *vmcast = NULL;
 			if(dovideo) {
+				json_t *videomcast = json_object_get(root, "videomcast");
+				if(videomcast && !json_is_string(videomcast)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (videomcast should be a string)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (videomcast should be a string)");
+					goto error;
+				}
+				vmcast = (char *)json_string_value(videomcast);
 				json_t *videoport = json_object_get(root, "videoport");
 				if(!videoport) {
 					JANUS_LOG(LOG_ERR, "Missing element (videoport)\n");
@@ -1061,8 +1085,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					id ? json_integer_value(id) : 0,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
-					doaudio, aport, acodec, artpmap, afmtp,
-					dovideo, vport, vcodec, vrtpmap, vfmtp);
+					doaudio, amcast, aport, acodec, artpmap, afmtp,
+					dovideo, vmcast, vport, vcodec, vrtpmap, vfmtp);
 			if(mp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -2116,8 +2140,8 @@ static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
 /* Helper to create an RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
-		gboolean doaudio, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
-		gboolean dovideo, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp) {
+		gboolean doaudio, char *amcast, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
+		gboolean dovideo, char *vmcast, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp) {
 	if(name == NULL) {
 		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
 	}
@@ -2171,7 +2195,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		g_free(live_rtp);
 		return NULL;
 	}
+	live_rtp_source->audio_mcast = doaudio ? (amcast ? inet_addr(amcast) : INADDR_ANY) : INADDR_ANY;
 	live_rtp_source->audio_port = doaudio ? aport : -1;
+	live_rtp_source->video_mcast = dovideo ? (vmcast ? inet_addr(vmcast) : INADDR_ANY) : INADDR_ANY;
 	live_rtp_source->video_port = dovideo ? vport : -1;
 	live_rtp_source->arc = NULL;
 	live_rtp_source->vrc = NULL;
@@ -2580,6 +2606,15 @@ static void *janus_streaming_relay_thread(void *data) {
 		audio_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
 		setsockopt(audio_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+		if (IN_MULTICAST(source->audio_mcast))
+		{
+			struct ip_mreq mreq;
+			mreq.imr_multiaddr.s_addr = source->audio_mcast;
+			if (setsockopt(audio_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
+				JANUS_LOG(LOG_ERR, "[%s] Audio listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
+			}
+		}
+
 		audio_address.sin_family = AF_INET;
 		audio_address.sin_port = htons(audio_port);
 		audio_address.sin_addr.s_addr = INADDR_ANY;
@@ -2594,7 +2629,16 @@ static void *janus_streaming_relay_thread(void *data) {
 	if(video_port >= 0) {
 		video_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
-		setsockopt(video_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+		setsockopt(video_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));		
+		if (IN_MULTICAST(source->video_mcast))
+		{
+			struct ip_mreq mreq;
+			mreq.imr_multiaddr.s_addr = source->video_mcast;
+			if (setsockopt(video_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
+				JANUS_LOG(LOG_ERR, "[%s] Video listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
+			}
+		}
+		
 		video_address.sin_family = AF_INET;
 		video_address.sin_port = htons(video_port);
 		video_address.sin_addr.s_addr = INADDR_ANY;
