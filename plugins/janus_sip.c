@@ -1501,7 +1501,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_shutdown:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			if(status < 200 && stopping < 3) {
+			if(status < 200 && !g_atomic_int_get(&stopping)) {
 				/* shutdown in progress -> return */
 				break;
 			}
