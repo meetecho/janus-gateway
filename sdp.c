@@ -978,7 +978,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_snprintf(buffer, 512, "a=mid:%s\r\n", handle->audio_mid ? handle->audio_mid : "audio");
 					break;
 				case sdp_media_video:
-					g_snprintf(buffer, 512, "a=mid:%s\r\n", handle->video_mid ? handle->video_mid : "audio");
+					g_snprintf(buffer, 512, "a=mid:%s\r\n", handle->video_mid ? handle->video_mid : "video");
 					break;
 #ifdef HAVE_SCTP
 				case sdp_media_application:
