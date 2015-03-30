@@ -63,22 +63,6 @@ audio = yes
 video = no
 secret = adminpwd
 
-[gstreamer-multicast]
-type = rtp
-id = 4
-description = Opus/VP8 live multicast stream coming from gstreamer 
-audio = yes
-video = yes
-audioport = 5002
-audiomcast = 232.3.4.5
-audiopt = 111
-audiortpmap = opus/48000/2
-videoport = 5004
-videomcast = 232.3.4.5
-videopt = 100
-videortpmap = VP8/90000
-secret = adminpwd
-
 ;
 ; Firefox Nightly supports H.264 through Cisco's OpenH264 plugin. The only
 ; supported profile is the baseline one. This is an example of how to create
@@ -95,4 +79,22 @@ secret = adminpwd
 ;videopt = 126
 ;videortpmap = H264/90000
 ;videofmtp = profile-level-id=42e01f\;packetization-mode=1
+
+;
+; This is a sample configuration for Opus/VP8 multicast streams
+;
+;[gstreamer-multicast]
+;type = rtp
+;id = 20
+;description = Opus/VP8 live multicast stream coming from gstreamer 
+;audio = yes
+;video = yes
+;audioport = 5002
+;audiomcast = 232.3.4.5
+;audiopt = 111
+;audiortpmap = opus/48000/2
+;videoport = 5004
+;videomcast = 232.3.4.5
+;videopt = 100
+;videortpmap = VP8/90000
 
