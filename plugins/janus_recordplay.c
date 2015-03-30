@@ -1520,17 +1520,21 @@ void janus_recordplay_update_recordings_list(void) {
 		rec->id = id;
 		rec->name = g_strdup(name->value);
 		rec->date = g_strdup(date->value);
-		rec->arc_file = g_strdup(audio->value);
-		if(strstr(rec->arc_file, ".mjr")) {
-			char *ext = strstr(rec->arc_file, ".mjr");
-			*ext = '\0';
+		if(audio && audio->value) {
+			rec->arc_file = g_strdup(audio->value);
+			if(strstr(rec->arc_file, ".mjr")) {
+				char *ext = strstr(rec->arc_file, ".mjr");
+				*ext = '\0';
+			}
 		}
-		rec->vrc_file = g_strdup(video->value);
-		if(strstr(rec->vrc_file, ".mjr")) {
-			char *ext = strstr(rec->vrc_file, ".mjr");
-			*ext = '\0';
+		if(video && video->value) {
+			rec->vrc_file = g_strdup(video->value);
+			if(strstr(rec->vrc_file, ".mjr")) {
+				char *ext = strstr(rec->vrc_file, ".mjr");
+				*ext = '\0';
+			}
 		}
-
+		
 		janus_config_destroy(nfo);
 
 		/* FIXME We should clean previous recordings with the same ID */
@@ -1773,7 +1777,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	if(!session->aframes || !session->vframes) {
+	if(!session->aframes && !session->vframes) {
 		JANUS_LOG(LOG_ERR, "No audio and no video frames, can't start playout thread...\n");
 		g_thread_unref(g_thread_self());
 		return NULL;
