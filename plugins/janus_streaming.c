@@ -2612,6 +2612,8 @@ static void *janus_streaming_relay_thread(void *data) {
 			mreq.imr_multiaddr.s_addr = source->audio_mcast;
 			if (setsockopt(audio_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] Audio listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
+				g_thread_unref(g_thread_self());
+				return NULL;
 			}
 		}
 
@@ -2636,6 +2638,8 @@ static void *janus_streaming_relay_thread(void *data) {
 			mreq.imr_multiaddr.s_addr = source->video_mcast;
 			if (setsockopt(video_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] Video listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
+				g_thread_unref(g_thread_self());
+				return NULL;
 			}
 		}
 		
