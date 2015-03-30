@@ -749,8 +749,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 		g_strlcat(sdp, buffer, BUFSIZE);
 	}
 	/* Session name s= */
-	g_snprintf(buffer, 512,
-		"s=%s\r\n", anon->sdp_subject ? anon->sdp_subject : "Meetecho Janus");
+	if(anon->sdp_subject && strlen(anon->sdp_subject) > 0) {
+		g_snprintf(buffer, 512, "s=%s\r\n", anon->sdp_subject);
+	} else {
+		g_snprintf(buffer, 512, "s=%s\r\n", "Meetecho Janus");
+	}
 	g_strlcat(sdp, buffer, BUFSIZE);
 	/* Timing t= */
 	g_snprintf(buffer, 512,

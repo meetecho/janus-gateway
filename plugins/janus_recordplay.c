@@ -1143,6 +1143,13 @@ static void *janus_recordplay_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
 				goto error;
 			}
+			const char *name_text = json_string_value(name);
+			if(strlen(name_text) == 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (name is an empty string)\n");
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (name is an empty string)");
+				goto error;
+			}
 			json_t *filename = json_object_get(root, "filename");
 			if(filename) {
 				if(!json_is_string(name)) {
@@ -1153,7 +1160,6 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				filename_text = json_string_value(filename);
 			}
-			const char *name_text = json_string_value(name);
 			guint64 id = 0;
 			while(id == 0) {
 				id = g_random_int();
@@ -1500,7 +1506,7 @@ void janus_recordplay_update_recordings_list(void) {
 		janus_config_item *date = janus_config_get_item(cat, "date");
 		janus_config_item *audio = janus_config_get_item(cat, "audio");
 		janus_config_item *video = janus_config_get_item(cat, "video");
-		if(!name || !name->value || !date || !date->value) {
+		if(!name || !name->value || strlen(name->value) == 0 || !date || !date->value || strlen(date->value) == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid info, skipping...\n");
 			janus_config_destroy(nfo);
 			continue;

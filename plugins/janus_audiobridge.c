@@ -672,7 +672,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			audiobridge->room_id = atoi(cat->name);
 			char *description = NULL;
-			if(desc != NULL && desc->value != NULL)
+			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);
 			else
 				description = g_strdup(cat->name);
@@ -1051,7 +1051,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		}
 		audiobridge->room_id = room_id;
 		char *description = NULL;
-		if(desc != NULL) {
+		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
 			description = g_strdup(json_string_value(desc));
 		} else {
 			char roomname[255];
