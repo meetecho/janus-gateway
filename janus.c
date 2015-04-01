@@ -3851,8 +3851,9 @@ gint main(int argc, char *argv[])
 	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", JANUS_VERSION_STRING);
 	JANUS_PRINT("---------------------------------------------------\n\n");
 	
-	/* Handle SIGINT */
+	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
 	signal(SIGINT, janus_handle_signal);
+	signal(SIGTERM, janus_handle_signal);
 
 	/* Setup Glib */
 #if !GLIB_CHECK_VERSION(2, 36, 0)
