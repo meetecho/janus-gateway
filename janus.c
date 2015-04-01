@@ -2938,18 +2938,20 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 			if(!ws_client->destroy && !g_atomic_int_get(&stop)) {
 				janus_mutex_lock(&ws_client->mutex);
 				/* Responses first */
-				char *response = NULL;
-				while ((response = g_async_queue_try_pop(ws_client->responses)) != NULL) {
-					if(!ws_client->destroy && !g_atomic_int_get(&stop) && response) {
-						/* Gotcha! */
-						unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
-						memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
-						JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(response));
-						int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-						JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
-						g_free(buf);
-					}
+				char *response = g_async_queue_try_pop(ws_client->responses);
+				if(!ws_client->destroy && !g_atomic_int_get(&stop) && response) {
+					/* Gotcha! */
+					unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
+					JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(response));
+					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
+					g_free(buf);
 					g_free(response);
+					/* Done for this round, check the next response later */
+					libwebsocket_callback_on_writable(this, wsi);
+					janus_mutex_unlock(&ws_client->mutex);
+					return 0;
 				}
 				/* Now iterate on all the sessions handled by this WebSocket ws_client */
 				if(ws_client->sessions != NULL && g_hash_table_size(ws_client->sessions) > 0) {
@@ -2961,20 +2963,23 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 						if(ws_client->destroy || !session || session->destroy || g_atomic_int_get(&stop)) {
 							continue;
 						}
-						janus_http_event *event;
-						while ((event = g_async_queue_try_pop(session->messages)) != NULL) {
-							if(!ws_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
-								/* Gotcha! */
-								unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(event->payload) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
-								memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, event->payload, strlen(event->payload));
-								JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(event->payload));
-								int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(event->payload), LWS_WRITE_TEXT);
-								JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(event->payload));
-								g_free(buf);
-							}
+						janus_http_event *event = g_async_queue_try_pop(session->messages);
+						if(!ws_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
+							/* Gotcha! */
+							unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(event->payload) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+							memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, event->payload, strlen(event->payload));
+							JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(event->payload));
+							int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(event->payload), LWS_WRITE_TEXT);
+							JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(event->payload));
+							g_free(buf);
+							/* Done for this round, check the next response later */
+							libwebsocket_callback_on_writable(this, wsi);
+							janus_mutex_unlock(&ws_client->mutex);
+							return 0;
 						}
 						if(session->timeout) {
 							/* TODO Get rid of resources besides closing the websocket */
+							janus_mutex_unlock(&ws_client->mutex);
 							return 1;
 						}
 					}
@@ -3555,7 +3560,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Handle detached or PC closed, giving up...!\n", ice_handle ? ice_handle->handle_id : 0);
 				return NULL;
 			}
-			JANUS_LOG(LOG_INFO, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
 			g_usleep(100000);
 			if(ice_handle->cdone < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates!\n", ice_handle->handle_id);

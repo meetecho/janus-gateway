@@ -130,6 +130,7 @@ nice_debug = false
 ;ice_tcp = true
 ;turn_server = myturnserver.com
 ;turn_port = 3478
+;turn_type = udp
 ;turn_user = myuser
 ;turn_pwd = mypassword
 
