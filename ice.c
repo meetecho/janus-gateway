@@ -975,7 +975,7 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			if(plugin != NULL) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
 				if(plugin && plugin->hangup_media)
 					plugin->hangup_media(handle->app_handle);
 			}
@@ -1388,7 +1388,7 @@ void *janus_ice_thread(void *data) {
 		return NULL;
 	}
 	g_usleep (100000);
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	g_main_loop_run (loop);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
@@ -1434,16 +1434,16 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 	} 
 	for (i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Stream #%d, Component #%d\n", handle->handle_id, c->stream_id, c->component_id);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Stream #%d, Component #%d\n", handle->handle_id, c->stream_id, c->component_id);
 		gchar address[NICE_ADDRESS_STRING_LEN], base_address[NICE_ADDRESS_STRING_LEN];
 		gint port = 0, base_port = 0;
 		nice_address_to_string(&(c->addr), (gchar *)&address);
 		port = nice_address_get_port(&(c->addr));
 		nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
 		base_port = nice_address_get_port(&(c->base_addr));
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
 		/* SDP time */
 		gchar buffer[100];
 		if(c->type == NICE_CANDIDATE_TYPE_HOST) {
@@ -1686,7 +1686,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			}
 		}
 		g_strlcat(sdp, buffer, BUFSIZE);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s\n", handle->handle_id, buffer);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s", handle->handle_id, buffer); // buffer already newline terminated
 		if(log_candidates) {
 			/* Save for the summary, in case we need it */
 			component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer+strlen("a=candidate:")));
@@ -1732,7 +1732,6 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 	gchar *rufrag = NULL, *rpwd = NULL;
 	while(gsc) {
 		c = (NiceCandidate *) gsc->data;
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] >> Remote Stream #%d, Component #%d\n", handle->handle_id, c->stream_id, c->component_id);
 		if(c->username && !rufrag)
 			rufrag = c->username;
 		if(c->password && !rpwd)
@@ -1740,15 +1739,16 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		gchar address[NICE_ADDRESS_STRING_LEN];
 		nice_address_to_string(&(c->addr), (gchar *)&address);
 		gint port = nice_address_get_port(&(c->addr));
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Address:    %s:%d\n", handle->handle_id, address, port);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Username:   %s\n", handle->handle_id, c->username);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Password:   %s\n", handle->handle_id, c->password);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] >> Remote Stream #%d, Component #%d: Address %s:%d\n",
+		                        handle->handle_id, c->stream_id, c->component_id, address, port);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   Username:   %s\n", handle->handle_id, c->username);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   Password:   %s\n", handle->handle_id, c->password);
 		gsc = gsc->next;
 	}
 	if(rufrag && rpwd) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Setting remote credendials...\n", handle->handle_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Setting remote credentials...\n", handle->handle_id);
 		if(!nice_agent_set_remote_credentials(handle->agent, stream_id, rufrag, rpwd)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]  failed to set remote credentials!\n", handle->handle_id);
 		}
@@ -2580,7 +2580,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	/* Notify the plugin that the WebRTC PeerConnection is ready to be used */
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin != NULL) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
 		if(plugin && plugin->setup_media)
 			plugin->setup_media(handle->app_handle);
 	}

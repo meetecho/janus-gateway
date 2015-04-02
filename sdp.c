@@ -358,7 +358,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 	}
 	if(res >= 7) {
 		/* Add remote candidate */
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding remote candidate for component %d to stream %d\n", handle->handle_id, rcomponent, stream->stream_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding remote candidate for component %d in stream %d\n", handle->handle_id, rcomponent, stream->stream_id);
 		component = g_hash_table_lookup(stream->components, GUINT_TO_POINTER(rcomponent));
 		if(component == NULL) {
 			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
@@ -500,7 +500,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 					nice_address_set_port(&c->base_addr, rrelport);
 				}
 				component->candidates = g_slist_append(component->candidates, c);
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Candidate added to the list! (%u elements for %d/%d)\n", handle->handle_id,
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"]    Candidate added to the list! (%u elements for %d/%d)\n", handle->handle_id,
 					g_slist_length(component->candidates), stream->stream_id, component->component_id);
 				/* Save for the summary, in case we need it */
 				component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(candidate));
@@ -517,7 +517,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 							if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
 								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
 							} else {
-								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
+								JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
 							}
 							g_slist_free(candidates);
 						}
@@ -690,10 +690,10 @@ char *janus_sdp_anonymize(const char *sdp) {
 			replace++;
 			replace = strstr(replace, "a=jfmod:sr");
 		}
-		JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
-		JANUS_LOG(LOG_VERB, "  >> Anonymized (%zu --> %d bytes)\n", strlen(sdp), retval);
-		JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
-		JANUS_LOG(LOG_VERB, "%s\n", buf);
+		JANUS_LOG(LOG_HUGE, " -------------------------------------------\n");
+		JANUS_LOG(LOG_VERB, "  >> Anonymized sdp (%zu --> %d bytes)\n", strlen(sdp), retval);
+		JANUS_LOG(LOG_HUGE, " -------------------------------------------\n");
+		JANUS_LOG(LOG_HUGE, "%s\n", buf);
 		return g_strdup(buf);
 	} else {
 		JANUS_LOG(LOG_ERR, "Error anonymizing SDP: %s\n", sdp_printing_error(printer));
@@ -1155,10 +1155,10 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	
 	sdp_parser_free(parser);
 
-	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
-	JANUS_LOG(LOG_VERB, "  >> Merged (%zu --> %zu bytes)\n", strlen(origsdp), strlen(sdp));
-	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
-	JANUS_LOG(LOG_VERB, "%s\n", sdp);
+	JANUS_LOG(LOG_HUGE, " -------------------------------------------\n");
+	JANUS_LOG(LOG_VERB, "  >> Merged sdp (%zu --> %zu bytes)\n", strlen(origsdp), strlen(sdp));
+	JANUS_LOG(LOG_HUGE, " -------------------------------------------\n");
+	JANUS_LOG(LOG_HUGE, "%s\n", sdp);
 
 	return sdp;
 }
