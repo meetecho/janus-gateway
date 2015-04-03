@@ -925,13 +925,13 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
 	char rtcpbuf[200];
 
-	/* Send a RR+SDES+REMB every second, or ASAP while we are still
+	/* Send a RR+SDES+REMB every five seconds, or ASAP while we are still
 	 * ramping up (first 4 RTP packets) */
 	gint64 now = janus_get_monotonic_time();
 	guint64 elapsed = now - session->video_remb_last;
 	gboolean remb_rampup = session->video_remb_startup > 0;
 
-	if(remb_rampup || (elapsed >= G_USEC_PER_SEC)) {
+	if(remb_rampup || (elapsed >= 5*G_USEC_PER_SEC)) {
 		guint64 bitrate = session->video_bitrate;
 
 		if(remb_rampup) {

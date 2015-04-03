@@ -1411,50 +1411,62 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		/* Go */
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
 		
-		/* Did we send a REMB already? */
-		if(video && participant->video_active && participant->remb_latest == 0 && participant->remb_startup > 0) {
-			/* We send a few incremental REMB messages at startup */
-			uint64_t bitrate = (participant->bitrate ? participant->bitrate : 256*1024);
-			if(participant->remb_startup > 0) {
-				bitrate = bitrate/participant->remb_startup;
-				participant->remb_startup--;
+		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
+		if(video && participant->video_active) {
+			/* Did we send a REMB already, or is it time to send one? */
+			gboolean send_remb = FALSE;
+			if(participant->remb_latest == 0 && participant->remb_startup > 0) {
+				/* Still in the starting phase, send the ramp-up REMB feedback */
+				send_remb = TRUE;
+			} else if(participant->remb_latest > 0 && janus_get_monotonic_time()-participant->remb_latest >= 5*G_USEC_PER_SEC) {
+				/* 5 seconds have passed since the last REMB, send a new one */
+				send_remb = TRUE;
+			}		
+			if(send_remb) {
+				/* We send a few incremental REMB messages at startup */
+				uint64_t bitrate = (participant->bitrate ? participant->bitrate : 256*1024);
+				if(participant->remb_startup > 0) {
+					bitrate = bitrate/participant->remb_startup;
+					participant->remb_startup--;
+				}
+				char rtcpbuf[200];
+				memset(rtcpbuf, 0, 200);
+				/* FIXME First put a RR (fake)... */
+				int rrlen = 32;
+				rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+				rr->header.version = 2;
+				rr->header.type = RTCP_RR;
+				rr->header.rc = 1;
+				rr->header.length = htons((rrlen/4)-1);
+				/* ... then put a SDES... */
+				int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
+				if(sdeslen > 0) {
+					/* ... and then finally a REMB */
+					janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
+					gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
+				}
+				JANUS_LOG(LOG_INFO, "Sending REMB\n");
 				if(participant->remb_startup == 0)
 					participant->remb_latest = janus_get_monotonic_time();
 			}
-			char rtcpbuf[200];
-			memset(rtcpbuf, 0, 200);
-			/* FIXME First put a RR (fake)... */
-			int rrlen = 32;
-			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-			rr->header.version = 2;
-			rr->header.type = RTCP_RR;
-			rr->header.rc = 1;
-			rr->header.length = htons((rrlen/4)-1);
-			/* ... then put a SDES... */
-			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-			if(sdeslen > 0) {
-				/* ... and then finally a REMB */
-				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
-				gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
-			}
-		}
-		/* Generate FIR/PLI too, if needed */
-		if(video && participant->video_active && (participant->room->fir_freq > 0)) {
-			/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
-			gint64 now = janus_get_monotonic_time();
-			if((now-participant->fir_latest) >= (participant->room->fir_freq*G_USEC_PER_SEC)) {
-				/* FIXME We send a FIR every tot seconds */
-				participant->fir_latest = now;
-				char rtcpbuf[24];
-				memset(rtcpbuf, 0, 24);
-				janus_rtcp_fir((char *)&rtcpbuf, 20, &participant->fir_seq);
-				JANUS_LOG(LOG_VERB, "Sending FIR to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
-				gateway->relay_rtcp(handle, video, rtcpbuf, 20);
-				/* Send a PLI too, just in case... */
-				memset(rtcpbuf, 0, 12);
-				janus_rtcp_pli((char *)&rtcpbuf, 12);
-				JANUS_LOG(LOG_VERB, "Sending PLI to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
-				gateway->relay_rtcp(handle, video, rtcpbuf, 12);
+			/* Generate FIR/PLI too, if needed */
+			if(video && participant->video_active && (participant->room->fir_freq > 0)) {
+				/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
+				gint64 now = janus_get_monotonic_time();
+				if((now-participant->fir_latest) >= (participant->room->fir_freq*G_USEC_PER_SEC)) {
+					/* FIXME We send a FIR every tot seconds */
+					participant->fir_latest = now;
+					char rtcpbuf[24];
+					memset(rtcpbuf, 0, 24);
+					janus_rtcp_fir((char *)&rtcpbuf, 20, &participant->fir_seq);
+					JANUS_LOG(LOG_VERB, "Sending FIR to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
+					gateway->relay_rtcp(handle, video, rtcpbuf, 20);
+					/* Send a PLI too, just in case... */
+					memset(rtcpbuf, 0, 12);
+					janus_rtcp_pli((char *)&rtcpbuf, 12);
+					JANUS_LOG(LOG_VERB, "Sending PLI to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
+					gateway->relay_rtcp(handle, video, rtcpbuf, 12);
+				}
 			}
 		}
 	}
