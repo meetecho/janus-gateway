@@ -87,7 +87,7 @@ HTTP REST API, you'll have to install it manually:
 	cd libwebsockets
 	mkdir build
 	cd build
-	cmake ..
+	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 	make && sudo make install
 	
 Finally, the same can be said for rabbitmq-c as well, which is needed
