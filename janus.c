@@ -4078,13 +4078,29 @@ gint main(int argc, char *argv[])
 
 	/* Logging/debugging */
 	JANUS_PRINT("Debug/log level is %d\n", log_level);
-	janus_config_item *item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
+	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "debug_timestamps");
+	if(item && item->value)
+		log_timestamps = janus_is_true(item->value);
+	JANUS_PRINT("Debug/log timestamps are %s\n", log_timestamps ? "enabled" : "disabled");
 
 	/* Any IP/interface to ignore? */
-	item = janus_config_get_item_drilldown(config, "general", "debug_timestamps");
+	item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
 	if(item && item->value) {
-		log_timestamps = janus_is_true(item->value);
-		JANUS_PRINT("Debug/log timestamps are %s\n", log_timestamps ? "enabled" : "disabled");
+		gchar **list = g_strsplit(item->value, ",", -1);
+		gchar *index = list[0];
+		if(index != NULL) {
+			int i=0;
+			while(index != NULL) {
+				if(strlen(index) > 0) {
+					JANUS_LOG(LOG_INFO, "Adding '%s' to the ICE ignore list...\n", index);
+					janus_ice_ignore_interface(g_strdup(index));
+				}
+				i++;
+				index = list[i];
+			}
+		}
+		g_strfreev(list);
+		list = NULL;
 	}
 	/* What is the local IP? */
 	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");
