@@ -233,6 +233,7 @@ gint janus_is_stopping(void) {
 
 /* Logging */
 int log_level = 0;
+int log_timestamps = 0;
 int lock_debug = 0;
 
 
@@ -3860,8 +3861,9 @@ gint main(int argc, char *argv[])
 	g_type_init();
 #endif
 	
-	/* Logging level: default is info */
+	/* Logging level: default is info and no timestamps */
 	log_level = LOG_INFO;
+	log_timestamps = 0;
 	if(args_info.debug_level_given) {
 		if(args_info.debug_level_arg < LOG_NONE)
 			args_info.debug_level_arg = 0;
@@ -3932,6 +3934,9 @@ gint main(int argc, char *argv[])
 	}
 	/* Any command line argument that should overwrite the configuration? */
 	JANUS_PRINT("Checking command line arguments...\n");
+	if(args_info.debug_timestamps_given) {
+		janus_config_add_item(config, "general", "debug_timestamps", "yes");
+	}
 	if(args_info.interface_given) {
 		janus_config_add_item(config, "general", "interface", args_info.interface_arg);
 	}
@@ -4070,27 +4075,16 @@ gint main(int argc, char *argv[])
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
 	janus_config_print(config);
-	
+
+	/* Logging/debugging */
 	JANUS_PRINT("Debug/log level is %d\n", log_level);
+	janus_config_item *item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
 
 	/* Any IP/interface to ignore? */
-	janus_config_item *item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
+	item = janus_config_get_item_drilldown(config, "general", "debug_timestamps");
 	if(item && item->value) {
-		gchar **list = g_strsplit(item->value, ",", -1);
-		gchar *index = list[0];
-		if(index != NULL) {
-			int i=0;
-			while(index != NULL) {
-				if(strlen(index) > 0) {
-					JANUS_LOG(LOG_INFO, "Adding '%s' to the ICE ignore list...\n", index);
-					janus_ice_ignore_interface(g_strdup(index));
-				}
-				i++;
-				index = list[i];
-			}
-		}
-		g_strfreev(list);
-		list = NULL;
+		log_timestamps = janus_is_true(item->value);
+		JANUS_PRINT("Debug/log timestamps are %s\n", log_timestamps ? "enabled" : "disabled");
 	}
 	/* What is the local IP? */
 	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");

@@ -27,6 +27,7 @@ option "ice-tcp" T "Whether to enable ICE-TCP or not (warning: only works with I
 option "max-nack-queue" q "Maximum size of the NACK queue per user for retransmissions" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
+option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional
 option "enable-rabbitmq" R "Enable RabbitMQ support" flag off
 option "rabbitmq-server" H "Address (host:port) of the RabbitMQ server to use (default=localhost:5672)" string typestr="string" optional

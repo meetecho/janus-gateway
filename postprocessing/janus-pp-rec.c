@@ -46,6 +46,7 @@
 #include "pp-opus.h"
 
 int log_level = 4;
+int log_timestamps = 0;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
 int working = 0;

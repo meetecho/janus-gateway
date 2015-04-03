@@ -16,6 +16,7 @@
 #include <glib/gprintf.h>
  
 extern int log_level;
+extern int log_timestamps;
 
 /** @name Janus log colors
  */
@@ -73,16 +74,38 @@ static const char *log_prefix[] = {
  * or not according to the configuration of the gateway.
  * The format must be a string literal. */
 #define JANUS_LOG(level, format, ...) \
-	if (level > LOG_NONE && level <= LOG_MAX && level <= log_level) { \
-		if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
-			g_print("%s[%s:%s:%d:] " format, log_prefix[level], \
-			        __FILE__, __FUNCTION__, __LINE__, \
-			        ##__VA_ARGS__); \
-		} else { \
-			g_print("%s" format, log_prefix[level], \
-			        ##__VA_ARGS__); \
+{ \
+	if (!log_timestamps) { \
+		if (level > LOG_NONE && level <= LOG_MAX && level <= log_level) { \
+			if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
+				g_print("%s[%s:%s:%d:] " format, log_prefix[level], \
+						__FILE__, __FUNCTION__, __LINE__, \
+						##__VA_ARGS__); \
+			} else { \
+				g_print("%s" format, log_prefix[level], \
+						##__VA_ARGS__); \
+			} \
 		} \
-	}
+	} else { \
+		time_t janusltime; \
+		struct tm janustmresult; \
+		char janusstime[32]; \
+		janusltime = time(NULL); \
+		localtime_r(&janusltime, &janustmresult); \
+		asctime_r(&janustmresult, janusstime); \
+		janusstime[strlen(janusstime)-1] = '\0'; \
+		if (level > LOG_NONE && level <= LOG_MAX && level <= log_level) { \
+			if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
+				g_print("[%s] %s[%s:%s:%d:] " format, janusstime, log_prefix[level], \
+						__FILE__, __FUNCTION__, __LINE__, \
+						##__VA_ARGS__); \
+			} else { \
+				g_print("[%s] %s" format, janusstime, log_prefix[level], \
+						##__VA_ARGS__); \
+			} \
+		} \
+	} \
+}
 ///@}
 
 #endif
