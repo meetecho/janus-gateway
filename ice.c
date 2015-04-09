@@ -24,6 +24,7 @@
 #include "janus.h"
 #include "debug.h"
 #include "ice.h"
+#include "turnrest.h"
 #include "dtls.h"
 #include "rtp.h"
 #include "rtcp.h"
@@ -42,7 +43,7 @@ uint16_t janus_ice_get_stun_port(void) {
 }
 
 
-/* TURN server/portand credentials, if any */
+/* TURN server/port and credentials, if any */
 static char *janus_turn_server = NULL;
 static uint16_t janus_turn_port = 0;
 static char *janus_turn_user = NULL, *janus_turn_pwd = NULL;
@@ -53,6 +54,16 @@ char *janus_ice_get_turn_server(void) {
 }
 uint16_t janus_ice_get_turn_port(void) {
 	return janus_turn_port;
+}
+
+
+/* TURN REST API support, if any */
+char *janus_ice_get_turn_rest_api(void) {
+#ifndef HAVE_LIBCURL
+	return NULL;
+#else
+	return (char *)janus_turnrest_get_backend();
+#endif
 }
 
 
@@ -360,6 +371,11 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start handles watchdog...\n", error->code, error->message ? error->message : "??");
 		exit(1);
 	}
+	
+#ifdef HAVE_LIBCURL
+	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
+	janus_turnrest_init();
+#endif
 
 }
 
@@ -375,6 +391,9 @@ void janus_ice_deinit(void) {
 		g_hash_table_destroy(old_handles);
 	old_handles = NULL;
 	janus_mutex_unlock(&old_handles_mutex);
+#ifdef HAVE_LIBCURL
+	janus_turnrest_deinit();
+#endif
 }
 
 int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
@@ -496,6 +515,8 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 		JANUS_LOG(LOG_ERR, "Unsupported relay type '%s'...\n", turn_type);
 		return -1;
 	}
+	if(janus_turn_server != NULL)
+		g_free(janus_turn_server);
 	janus_turn_server = g_strdup(inet_ntoa(*addr_list[0]));
 	if(janus_turn_server == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -503,12 +524,35 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	}
 	janus_turn_port = turn_port;
 	JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_turn_server, janus_turn_port);
+	if(janus_turn_user != NULL)
+		g_free(janus_turn_user);
+	janus_turn_user = NULL;
 	if(turn_user)
 		janus_turn_user = g_strdup(turn_user);
+	if(janus_turn_pwd != NULL)
+		g_free(janus_turn_pwd);
+	janus_turn_pwd = NULL;
 	if(turn_pwd)
 		janus_turn_pwd = g_strdup(turn_pwd);
 	return 0;
 }
+
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key) {
+#ifndef HAVE_LIBCURL
+	JANUS_LOG(LOG_ERR, "Janus has been nuilt with no libcurl support, TURN REST API unavailable\n");
+	return -1; 
+#else
+	if(api_server != NULL &&
+			(strstr(api_server, "http://") != api_server && strstr(api_server, "https://") != api_server)) {
+		JANUS_LOG(LOG_ERR, "Invalid TURN REST API backend: not an HTTP address\n");
+		return -1;
+	}
+	janus_turnrest_set_backend(api_server, api_key);
+	JANUS_LOG(LOG_INFO, "TURN REST API backend: %s\n", api_server ? api_server : "(disabled)");
+#endif
+	return 0;
+}
+
 
 /* ICE stuff */
 static const gchar *janus_ice_state_name[] = 
@@ -1830,6 +1874,25 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			"stun-server-port", janus_stun_port,
 			NULL);
 	}
+	/* Any dynamic TURN credentials to retrieve via REST API? */
+	gboolean have_turnrest_credentials = FALSE;
+#ifdef HAVE_LIBCURL
+	janus_turnrest_response *turnrest_credentials = janus_turnrest_request();
+	if(turnrest_credentials != NULL) {
+		have_turnrest_credentials = TRUE;
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got credentials from the TURN REST API backend!\n", handle->handle_id);
+		JANUS_LOG(LOG_HUGE, "  -- Username: %s\n", turnrest_credentials->username);
+		JANUS_LOG(LOG_HUGE, "  -- Password: %s\n", turnrest_credentials->password);
+		JANUS_LOG(LOG_HUGE, "  -- TTL:      %"SCNu32"\n", turnrest_credentials->ttl);
+		JANUS_LOG(LOG_HUGE, "  -- Servers:  %d\n", g_list_length(turnrest_credentials->servers));
+		GList *server = turnrest_credentials->servers;
+		while(server != NULL) {
+			janus_turnrest_instance *instance = (janus_turnrest_instance *)server->data;
+			JANUS_LOG(LOG_HUGE, "  -- -- URI: %s:%"SCNu16" (%d)\n", instance->server, instance->port, instance->transport);
+			server = server->next;
+		}
+	}
+#endif
 	g_object_set(G_OBJECT(handle->agent), "upnp", FALSE, NULL);
 	g_object_set(G_OBJECT(handle->agent), "controlling-mode", !offer, NULL);
 	g_signal_connect (G_OBJECT (handle->agent), "candidate-gathering-done",
@@ -1925,10 +1988,34 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->audio_id), audio_stream);
-		if(janus_turn_server != NULL) {
-			/* We need relay candidates as well */
-			nice_agent_set_relay_info(handle->agent, handle->audio_id, 1,
-				janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+		if(!have_turnrest_credentials) {
+			/* No TURN REST API server and credentials, any static ones? */
+			if(janus_turn_server != NULL) {
+				/* We need relay candidates as well */
+				gboolean ok = nice_agent_set_relay_info(handle->agent, handle->audio_id, 1,
+					janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+				if(!ok) {
+					JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+						janus_turn_server, janus_turn_port);
+				}
+			}
+#ifdef HAVE_LIBCURL
+		} else {
+			/* We need relay candidates as well: add all those we got */
+			GList *server = turnrest_credentials->servers;
+			while(server != NULL) {
+				janus_turnrest_instance *instance = (janus_turnrest_instance *)server->data;
+				gboolean ok = nice_agent_set_relay_info(handle->agent, handle->audio_id, 1,
+					instance->server, instance->port,
+					turnrest_credentials->username, turnrest_credentials->password,
+					instance->transport);
+				if(!ok) {
+					JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+						instance->server, instance->port);
+				}
+				server = server->next;
+			}
+#endif
 		}
 		handle->audio_stream = audio_stream;
 		janus_ice_component *audio_rtp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
@@ -1964,10 +2051,34 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
 			}
-			if(janus_turn_server != NULL) {
-				/* We need relay candidates as well */
-				nice_agent_set_relay_info(handle->agent, handle->audio_id, 2,
-					janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+			if(!have_turnrest_credentials) {
+				/* No TURN REST API server and credentials, any static ones? */
+				if(janus_turn_server != NULL) {
+					/* We need relay candidates as well */
+					gboolean ok = nice_agent_set_relay_info(handle->agent, handle->audio_id, 2,
+						janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+					if(!ok) {
+						JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+							janus_turn_server, janus_turn_port);
+					}
+				}
+#ifdef HAVE_LIBCURL
+			} else {
+				/* We need relay candidates as well: add all those we got */
+				GList *server = turnrest_credentials->servers;
+				while(server != NULL) {
+					janus_turnrest_instance *instance = (janus_turnrest_instance *)server->data;
+					gboolean ok = nice_agent_set_relay_info(handle->agent, handle->audio_id, 2,
+						instance->server, instance->port,
+						turnrest_credentials->username, turnrest_credentials->password,
+						instance->transport);
+					if(!ok) {
+						JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+							instance->server, instance->port);
+					}
+					server = server->next;
+				}
+#endif
 			}
 			audio_rtcp->stream = audio_stream;
 			audio_rtcp->candidates = NULL;
@@ -2026,10 +2137,34 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
-		if(janus_turn_server != NULL) {
-			/* We need relay candidates as well */
-			nice_agent_set_relay_info(handle->agent, handle->video_id, 1,
-				janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+		if(!have_turnrest_credentials) {
+			/* No TURN REST API server and credentials, any static ones? */
+			if(janus_turn_server != NULL) {
+				/* We need relay candidates as well */
+				gboolean ok = nice_agent_set_relay_info(handle->agent, handle->video_id, 1,
+					janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+				if(!ok) {
+					JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+						janus_turn_server, janus_turn_port);
+				}
+			}
+#ifdef HAVE_LIBCURL
+		} else {
+			/* We need relay candidates as well: add all those we got */
+			GList *server = turnrest_credentials->servers;
+			while(server != NULL) {
+				janus_turnrest_instance *instance = (janus_turnrest_instance *)server->data;
+				gboolean ok = nice_agent_set_relay_info(handle->agent, handle->video_id, 1,
+					instance->server, instance->port,
+					turnrest_credentials->username, turnrest_credentials->password,
+					instance->transport);
+				if(!ok) {
+					JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+						instance->server, instance->port);
+				}
+				server = server->next;
+			}
+#endif
 		}
 		video_rtp->stream = video_stream;
 		video_rtp->candidates = NULL;
@@ -2059,10 +2194,34 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
 			}
-			if(janus_turn_server != NULL) {
-				/* We need relay candidates as well */
-				nice_agent_set_relay_info(handle->agent, handle->audio_id, 2,
-					janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+			if(!have_turnrest_credentials) {
+				/* No TURN REST API server and credentials, any static ones? */
+				if(janus_turn_server != NULL) {
+					/* We need relay candidates as well */
+					gboolean ok = nice_agent_set_relay_info(handle->agent, handle->video_id, 2,
+						janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+					if(!ok) {
+						JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+							janus_turn_server, janus_turn_port);
+					}
+				}
+#ifdef HAVE_LIBCURL
+			} else {
+				/* We need relay candidates as well: add all those we got */
+				GList *server = turnrest_credentials->servers;
+				while(server != NULL) {
+					janus_turnrest_instance *instance = (janus_turnrest_instance *)server->data;
+					gboolean ok = nice_agent_set_relay_info(handle->agent, handle->video_id, 2,
+						instance->server, instance->port,
+						turnrest_credentials->username, turnrest_credentials->password,
+						instance->transport);
+					if(!ok) {
+						JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+							instance->server, instance->port);
+					}
+					server = server->next;
+				}
+#endif
 			}
 			video_rtcp->stream = video_stream;
 			video_rtcp->candidates = NULL;
@@ -2105,10 +2264,34 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			return -1;
 		}
 		handle->data_mid = NULL;
-		if(janus_turn_server != NULL) {
-			/* We need relay candidates as well */
-			nice_agent_set_relay_info(handle->agent, handle->data_id, 1,
-				janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+		if(!have_turnrest_credentials) {
+			/* No TURN REST API server and credentials, any static ones? */
+			if(janus_turn_server != NULL) {
+				/* We need relay candidates as well */
+				gboolean ok = nice_agent_set_relay_info(handle->agent, handle->data_id, 1,
+					janus_turn_server, janus_turn_port, janus_turn_user, janus_turn_pwd, janus_turn_type);
+				if(!ok) {
+					JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+						janus_turn_server, janus_turn_port);
+				}
+			}
+#ifdef HAVE_LIBCURL
+		} else {
+			/* We need relay candidates as well: add all those we got */
+			GList *server = turnrest_credentials->servers;
+			while(server != NULL) {
+				janus_turnrest_instance *instance = (janus_turnrest_instance *)server->data;
+				gboolean ok = nice_agent_set_relay_info(handle->agent, handle->data_id, 1,
+					instance->server, instance->port,
+					turnrest_credentials->username, turnrest_credentials->password,
+					instance->transport);
+				if(!ok) {
+					JANUS_LOG(LOG_WARN, "Could not set TURN server, is the address correct? (%s:%"SCNu16")\n",
+						instance->server, instance->port);
+				}
+				server = server->next;
+			}
+#endif
 		}
 		data_stream->handle = handle;
 		data_stream->stream_id = handle->data_id;
@@ -2149,6 +2332,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 		nice_agent_gather_candidates (handle->agent, handle->data_id);
 		nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, data_component);
+	}
+#endif
+#ifdef HAVE_LIBCURL
+	if(turnrest_credentials != NULL) {
+		janus_turnrest_response_destroy(turnrest_credentials);
+		turnrest_credentials = NULL;
 	}
 #endif
 	return 0;

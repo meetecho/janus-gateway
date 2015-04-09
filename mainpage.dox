@@ -1957,8 +1957,8 @@ var servers = [ws_server, http_server];
  *    .
  * -# <b>Can I use Janus with node.js or other frameworks?</b>\n
  *    .
- *    Not out of the box, but since interaction with Janus is completely
- *    HTTP based, this can be abstracted in several different way. With
+ *    Not out of the box, but since interaction with Janus can be completely
+ *    HTTP/WebSockets based, this can be abstracted in several different way. With
  *    respect to node.js, <a href="#">NICTA</a> recently released a module
  *    called <a href="https://www.npmjs.org/package/rtc-janus">rtc-janus</a>
  *    that allows you to interact with a Janus instance from a node.js
@@ -1982,9 +1982,9 @@ var servers = [ws_server, http_server];
  *    considering its many-to-many communication pattern. You can find
  *    some details and considerations in a recent
  *    <a href="https://groups.google.com/forum/?pli=1#!topic/meetecho-janus/ydGcbMt7IX0">post</a>
- *    on our Google group. Anyway, we're still doing testing, whose
- *    results will probably be made available in a publication somethere
- *    in the near future.\n\n
+ *    on our Google group.\n\n
+ *    You can find more results in a publication we made at the
+ *    <a href="http://janus.conf.meetecho.com/citeus.html">All-Web real-time Systems (AWeS 2015)</a> workshop.\n\n
  *    .
  * -# <b>I want to write my own plugin, where do I start?</b>\n
  *    .
@@ -2028,6 +2028,27 @@ var servers = [ws_server, http_server];
  *    that takes care of this on its behalf. Refer to the \ref deploy section
  *    for more details about this.\n\n
  *    .
+ * -# <b>I enabled TURN in the Janus configuration, but my clients behind a firewall can't connect</b>\n
+ *    .
+ *    As explained in the \c janus.cfg documentation, the TURN settings you
+ *    configure there refer to Janus \b itself, \b not the clients that make use
+ *    of its services. This means that, whether you configure a static TURN
+ *    server and the related credentials, or the REST API client stack to
+ *    retrieve them dynamically, you're asking Janus to gather relay candidates
+ *    for ITSELF. This is only useful if you know that your Janus instance
+ *    will not be deployed on a public address (as it usually will) but will
+ *    instead potentially sit behind a restrictive component like a firewall,
+ *    or if you simply want to limit the number of open ports and so force
+ *    all media traffic to go through the TURN server port alone.\n\n
+ *    If you want your clients to gather relay candidates, instead, this
+ *    needs to be done on the client side (e.g., in JavaScript, if your
+ *    clients are web applications). If you're using our \ref JS check
+ *    the \c echotest.js code, which has a commented portion that explains
+ *    how to provide one or more TURN servers to make use of. If you're
+ *    handling the WebRTC-related stuff on your own and are contacting
+ *    Janus some other way, please refer to the related way of specifying
+ *    STUN and TURN servers instead.\n\n
+ *    .
  * -# <b>Can you implement a feature I want?</b>\n
  *    .
  *    We're constantly working on new features and on improving what's
@@ -2039,7 +2060,8 @@ var servers = [ws_server, http_server];
  *    already working on it to contribute it back to the project. You
  *    may even want to try and build it yourself and help us make Janus
  *    even better! If you really need something that isn't there, you
- *    may also want to consider a sponsored development.\n\n
+ *    may also want to consider a sponsored development or contact us
+ *    for consulting.\n\n
  *    .
  */
 

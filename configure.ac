@@ -53,6 +53,12 @@ AC_ARG_ENABLE([rabbitmq],
               [],
               [enable_rabbitmq=yes])
 
+AC_ARG_ENABLE([libcurl],
+              [AS_HELP_STRING([--disable-libcurl],
+                              [Disable TURN REST API client (via libcurl)])],
+              [],
+              [enable_libcurl=yes])
+
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= glib_version
@@ -133,6 +139,19 @@ AC_CHECK_LIB([rabbitmq],
                      [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq])])
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
+
+PKG_CHECK_MODULES([LIBCURL],
+                  [libcurl],
+                  [
+                    AC_DEFINE(HAVE_LIBCURL)
+                    JANUS_MANUAL_LIBS+=" -lcurl"
+                    enable_turn_rest_api=yes
+                  ],
+                  [
+                    AC_MSG_NOTICE(libcurl not found. The TURN REST API client will not be built.)
+                    enable_turn_rest_api=no
+                  ])
+AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
 
 AC_CHECK_PROG([DOXYGEN],
               [doxygen],
@@ -289,6 +308,9 @@ AM_COND_IF([ENABLE_SCTP],
 AM_COND_IF([ENABLE_POST_PROCESSING],
 	[echo "Recordings post-processor: yes"],
 	[echo "Recordings post-processor: no"])
+AM_COND_IF([ENABLE_TURN_REST_API],
+	[echo "TURN REST API client:      yes"],
+	[echo "TURN REST API client:      no"])
 AM_COND_IF([ENABLE_DOCS],
 	[echo "Doxygen documentation:     yes"],
 	[echo "Doxygen documentation:     no"])

@@ -48,6 +48,13 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port);
  * @param[in] turn_pwd TURN password, if needed
  * @returns 0 in case of success, a negative integer on errors */
 int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd);
+/*! \brief Method to force Janus to contact a TURN REST API server to get a TURN service to use when gathering candidates.
+ * The TURN REST API takes precedence over any static credential passed via janus_ice_set_turn_server
+ * @note Requires libcurl to be available, and a working TURN REST API backend (see turnrest.h)
+ * @param[in] api_server TURN REST API backend (NULL to disable the API)
+ * @param[in] api_key API key to use, if required
+ * @returns 0 in case of success, a negative integer on errors */
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);
@@ -60,6 +67,9 @@ char *janus_ice_get_turn_server(void);
 /*! \brief Method to get the TURN server port
  * @returns The currently used TURN server port, if available, or 0 if not */
 uint16_t janus_ice_get_turn_port(void);
+/*! \brief Method to get the specified TURN REST API backend, if any
+ * @returns The currently specified  TURN REST API backend, if available, or NULL if not */
+char *janus_ice_get_turn_rest_api(void);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),

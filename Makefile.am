@@ -30,7 +30,7 @@ bin_PROGRAMS = janus
 headerdir = $(includedir)/janus
 header_HEADERS = \
 	plugins/plugin.h apierror.h config.h debug.h dtls.h ice.h mutex.h record.h \
-	rtcp.h rtp.h sctp.h sdp.h utils.h
+	rtcp.h rtp.h sctp.h sdp.h turnrest.h utils.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -91,6 +91,8 @@ janus_SOURCES = \
 	sctp.h \
 	sdp.c \
 	sdp.h \
+	turnrest.c \
+	turnrest.h \
 	utils.c \
 	utils.h \
 	plugins/plugin.c \
