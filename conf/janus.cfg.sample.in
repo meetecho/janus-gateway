@@ -128,11 +128,25 @@ cert_key = @certdir@/mycert.key
 nice_debug = false
 ;ice_lite = true
 ;ice_tcp = true
+
+; You can configure a TURN server in two different ways: specifying a
+; statically configured TURN server, and thus provide the address of the
+; TURN server, the transport (udp/tcp/tls) to use, and a set of valid
+; credentials to authenticate...
 ;turn_server = myturnserver.com
 ;turn_port = 3478
 ;turn_type = udp
 ;turn_user = myuser
 ;turn_pwd = mypassword
+
+; ... or you can make use of the TURN REST API to get info on one or more
+; TURN services dynamically. This makes use of the proposed standard of
+; such an API (https://tools.ietf.org/html/draft-uberti-behave-turn-rest-00)
+; which is currently available in both rfc5766-turn-server and coturn.
+; You enable this by specifying the address of your TURN REST API backend
+; and, if required, the API key Janus must provide.
+;turn_rest_api = http://yourbackend.com/path/to/api
+;turn_rest_api_key = anyapikeyyoumayhaveset
 
 ; You can also choose which interfaces or IP addresses should be excluded
 ; and ignored by the gateway for the purpose of ICE candidates gathering.
