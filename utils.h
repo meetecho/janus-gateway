@@ -85,7 +85,7 @@ int janus_get_vp8_pt(const char *sdp);
 
 /*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
  * @param ip The IP address to check
- * @param[in,out] The address family of the address, set by the method if valid
+ * @param[in,out] family The address family of the address, set by the method if valid
  * @returns true if the address is valid, false otherwise */
 gboolean janus_is_ip_valid(const char *ip, int *family);
 #endif
