@@ -61,6 +61,9 @@ static char *ws_api_secret = NULL;
 #ifdef HAVE_WEBSOCKETS
 /* libwebsockets WS context(s) */
 static struct libwebsocket_context *wss = NULL, *swss = NULL;
+/* libwebsockets sessions that have been closed */
+static GList *old_wss;
+static janus_mutex old_wss_mutex;
 /* Callback for HTTP-related events (automatically rejected) */
 static int janus_wss_callback_http(struct libwebsocket_context *this, 
 		struct libwebsocket *wsi,
@@ -338,12 +341,12 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
 					/* Send this as soon as the WebSocket becomes writeable */
 					janus_websocket_client *client = (janus_websocket_client *)source->source;
-					if(client) {
-						janus_mutex_lock(&client->mutex);
-						if(client->context != NULL && client->wsi != NULL)
-							libwebsocket_callback_on_writable(client->context, client->wsi);
-						janus_mutex_unlock(&client->mutex);
+					/* Make sure this is not related to a closed WebSocket session */
+					janus_mutex_lock(&old_wss_mutex);
+					if(g_list_find(old_wss, client) == NULL) {
+						libwebsocket_callback_on_writable(client->context, client->wsi);
 					}
+					janus_mutex_unlock(&old_wss_mutex);
 				}
 #endif
 				g_hash_table_iter_remove(&iter);
@@ -1090,12 +1093,15 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Remove the session from the list of sessions created by this WS client */
 			janus_websocket_client *client = (janus_websocket_client *)source->source;
-			if(client) {
+			/* Make sure this is not related to a closed WebSocket session */
+			janus_mutex_lock(&old_wss_mutex);
+			if(client != NULL && g_list_find(old_wss, client) == NULL) {
 				janus_mutex_lock(&client->mutex);
 				if(client->sessions)
 					g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
 				janus_mutex_unlock(&client->mutex);
 			}
+			janus_mutex_unlock(&old_wss_mutex);
 		}
 #endif
 		/* Schedule the session for deletion */
@@ -2613,8 +2619,15 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 #ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		g_async_queue_push(client->responses, payload);
-		libwebsocket_callback_on_writable(client->context, client->wsi);
+		/* Make sure this is not related to a closed WebSocket session */
+		janus_mutex_lock(&old_wss_mutex);
+		if(g_list_find(old_wss, client) == NULL) {
+			g_async_queue_push(client->responses, payload);
+			libwebsocket_callback_on_writable(client->context, client->wsi);
+		} else {
+			g_free(payload);
+		}
+		janus_mutex_unlock(&old_wss_mutex);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
@@ -2719,8 +2732,15 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	} else if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 #ifdef HAVE_WEBSOCKETS
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		g_async_queue_push(client->responses, reply_text);
-		libwebsocket_callback_on_writable(client->context, client->wsi);
+		/* Make sure this is not related to a closed WebSocket session */
+		janus_mutex_lock(&old_wss_mutex);
+		if(g_list_find(old_wss, client) == NULL) {
+			g_async_queue_push(client->responses, reply_text);
+			libwebsocket_callback_on_writable(client->context, client->wsi);
+		} else {
+			g_free(reply_text);
+		}
+		janus_mutex_unlock(&old_wss_mutex);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "WebSockets support not compiled\n");
@@ -2865,6 +2885,12 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return 1;
 			}
+			/* Clean the old sessions list, in case this pointer was used before */
+			janus_mutex_lock(&old_wss_mutex);
+			if(g_list_find(old_wss, ws_client) != NULL)
+				old_wss = g_list_remove(old_wss, ws_client);
+			janus_mutex_unlock(&old_wss_mutex);
+			/* Prepare the session */
 			ws_client->context = this;
 			ws_client->wsi = wsi;
 			/* Create a thread pool to handle incoming requests */
@@ -2907,8 +2933,8 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 				janus_request_source_destroy(source);
 				return 0;
 			}
+			g_free(payload);
 			if(!json_is_object(root)) {
-				g_free(payload);
 				janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
 				janus_request_source_destroy(source);
 				json_decref(root);
@@ -2979,27 +3005,30 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 							return 0;
 						}
 						if(session->timeout) {
-							/* TODO Get rid of resources besides closing the websocket */
+							/* Close the WebSocket: the watchdog will get rid of resources */
 							janus_mutex_unlock(&ws_client->mutex);
 							return 1;
 						}
 					}
 				}
 				janus_mutex_unlock(&ws_client->mutex);
-				//~ libwebsocket_callback_on_writable(this, wsi);
 			}
 			return 0;
 		}
 		case LWS_CALLBACK_CLOSED: {
 			JANUS_LOG(LOG_VERB, "[WSS-%p] WS connection closed\n", wsi);
 			if(ws_client != NULL) {
+				/* Mark the session as closed */
+				janus_mutex_lock(&old_wss_mutex);
+				old_wss = g_list_append(old_wss, ws_client);
+				janus_mutex_unlock(&old_wss_mutex);
+				/* Cleanup */
 				janus_mutex_lock(&ws_client->mutex);
 				JANUS_LOG(LOG_INFO, "[WSS-%p] Destroying WebSocket client\n", wsi);
 				ws_client->destroy = 1;
 				ws_client->context = NULL;
 				ws_client->wsi = NULL;
 				g_thread_pool_free(ws_client->thread_pool, FALSE, FALSE);
-				ws_client->wsi = NULL;
 				if(ws_client->sessions != NULL && g_hash_table_size(ws_client->sessions) > 0) {
 					/* Remove all sessions (and handles) created by this ws_client */
 					janus_mutex_lock(&sessions_mutex);
@@ -3050,7 +3079,15 @@ void janus_wss_task(gpointer data, gpointer user_data) {
 	}
 	janus_request_source *source = (janus_request_source *)request->source;
 	json_t *root = (json_t *)request->request;
-	janus_process_incoming_request(source, root);
+	/* Make sure this is not related to a closed WebSocket session */
+	janus_mutex_lock(&old_wss_mutex);
+	if(g_list_find(old_wss, client) == NULL) {
+		janus_mutex_unlock(&old_wss_mutex);
+		janus_process_incoming_request(source, root);
+	} else {
+		janus_mutex_unlock(&old_wss_mutex);
+	}
+	/* Done */
 	janus_request_source_destroy(source);
 	request->source = NULL;
 	request->request = NULL;
@@ -3466,12 +3503,12 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
 		/* Send this as soon as the WebSocket becomes writeable */
 		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		if(client) {
-			janus_mutex_lock(&client->mutex);
-			if(client->context != NULL && client->wsi != NULL)
-				libwebsocket_callback_on_writable(client->context, client->wsi);
-			janus_mutex_unlock(&client->mutex);
+		/* Make sure this is not related to a closed WebSocket session */
+		janus_mutex_lock(&old_wss_mutex);
+		if(g_list_find(old_wss, client) == NULL) {
+			libwebsocket_callback_on_writable(client->context, client->wsi);
 		}
+		janus_mutex_unlock(&old_wss_mutex);
 	}
 #endif
 
@@ -4631,6 +4668,8 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "WebSockets support not compiled\n");
 #else
 	lws_set_log_level(log_level >= LOG_VERB ? 7 : 0, NULL);
+	old_wss = NULL;
+	janus_mutex_init(&old_wss_mutex);
 	item = janus_config_get_item_drilldown(config, "webserver", "ws");
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
@@ -5034,6 +5073,9 @@ gint main(int argc, char *argv[])
 	if(swss != NULL)
 		libwebsocket_cancel_service(swss);
 	swss = NULL;
+	if(old_wss != NULL)
+		g_list_free(old_wss);
+	old_wss = NULL;
 #endif
 #ifdef HAVE_RABBITMQ
 	if(rmq_channel) {
