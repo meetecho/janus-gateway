@@ -334,21 +334,8 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				notification->code = 200;
 				notification->payload = event_text;
 				notification->allocated = 1;
-				g_async_queue_push(session->messages, notification);
+				janus_session_notify_event(session->session_id, notification);
 				session->timeout = 1;
-#ifdef HAVE_WEBSOCKETS
-				janus_request_source *source = (janus_request_source *)session->source;
-				if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
-					/* Send this as soon as the WebSocket becomes writeable */
-					janus_websocket_client *client = (janus_websocket_client *)source->source;
-					/* Make sure this is not related to a closed WebSocket session */
-					janus_mutex_lock(&old_wss_mutex);
-					if(g_list_find(old_wss, client) == NULL) {
-						libwebsocket_callback_on_writable(client->context, client->wsi);
-					}
-					janus_mutex_unlock(&old_wss_mutex);
-				}
-#endif
 				g_hash_table_iter_remove(&iter);
 				g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
 
@@ -422,6 +409,31 @@ janus_session *janus_session_find_destroyed(guint64 session_id) {
 	janus_mutex_unlock(&sessions_mutex);
 	return session;
 }
+
+void janus_session_notify_event(guint64 session_id, janus_http_event *event) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_session *session = g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
+	janus_mutex_unlock(&sessions_mutex);
+	if(session != NULL) {
+		g_async_queue_push(session->messages, event);
+#ifdef HAVE_WEBSOCKETS
+		janus_request_source *source = (janus_request_source *)session->source;
+		if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
+			/* Send this as soon as the WebSocket becomes writeable */
+			janus_websocket_client *client = (janus_websocket_client *)source->source;
+			/* Make sure this is not related to a closed WebSocket session */
+			janus_mutex_lock(&old_wss_mutex);
+			if(g_list_find(old_wss, client) == NULL) {
+				janus_mutex_lock(&client->mutex);
+				libwebsocket_callback_on_writable(client->context, client->wsi);
+				janus_mutex_unlock(&client->mutex);
+			}
+			janus_mutex_unlock(&old_wss_mutex);
+		}
+#endif
+	}
+}
+
 
 /* Destroys a session but does not remove it from the sessions hash table. */
 gint janus_session_destroy(guint64 session_id) {
@@ -2623,7 +2635,9 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		janus_mutex_lock(&old_wss_mutex);
 		if(g_list_find(old_wss, client) == NULL) {
 			g_async_queue_push(client->responses, payload);
+			janus_mutex_lock(&client->mutex);
 			libwebsocket_callback_on_writable(client->context, client->wsi);
+			janus_mutex_unlock(&client->mutex);
 		} else {
 			g_free(payload);
 		}
@@ -2736,7 +2750,9 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		janus_mutex_lock(&old_wss_mutex);
 		if(g_list_find(old_wss, client) == NULL) {
 			g_async_queue_push(client->responses, reply_text);
+			janus_mutex_lock(&client->mutex);
 			libwebsocket_callback_on_writable(client->context, client->wsi);
+			janus_mutex_unlock(&client->mutex);
 		} else {
 			g_free(reply_text);
 		}
@@ -2966,7 +2982,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 				janus_mutex_lock(&ws_client->mutex);
 				/* Responses first */
 				char *response = g_async_queue_try_pop(ws_client->responses);
-				if(!ws_client->destroy && !g_atomic_int_get(&stop) && response) {
+				if(response && !ws_client->destroy && !g_atomic_int_get(&stop)) {
 					/* Gotcha! */
 					unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
 					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
@@ -2975,7 +2991,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
 					g_free(buf);
 					g_free(response);
-					/* Done for this round, check the next response later */
+					/* Done for this round, check the next response/notification later */
 					libwebsocket_callback_on_writable(this, wsi);
 					janus_mutex_unlock(&ws_client->mutex);
 					return 0;
@@ -2991,7 +3007,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 							continue;
 						}
 						janus_http_event *event = g_async_queue_try_pop(session->messages);
-						if(!ws_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop) && event && event->payload) {
+						if(event && event->payload && !ws_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop)) {
 							/* Gotcha! */
 							unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(event->payload) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
 							memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, event->payload, strlen(event->payload));
@@ -3506,7 +3522,9 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 		/* Make sure this is not related to a closed WebSocket session */
 		janus_mutex_lock(&old_wss_mutex);
 		if(g_list_find(old_wss, client) == NULL) {
+			janus_mutex_lock(&client->mutex);
 			libwebsocket_callback_on_writable(client->context, client->wsi);
+			janus_mutex_unlock(&client->mutex);
 		}
 		janus_mutex_unlock(&old_wss_mutex);
 	}

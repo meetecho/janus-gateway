@@ -284,7 +284,7 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	notification->payload = event_text;
 	notification->allocated = 1;
 
-	g_async_queue_push(session->messages, notification);
+	janus_session_notify_event(session->session_id, notification);
 }
 
 void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
@@ -315,7 +315,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	notification->payload = event_text;
 	notification->allocated = 1;
 
-	g_async_queue_push(session->messages, notification);
+	janus_session_notify_event(session->session_id, notification);
 }
 
 /* libnice initialization */
@@ -722,7 +722,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		notification->payload = event_text;
 		notification->allocated = 1;
 
-		g_async_queue_push(session->messages, notification);
+		janus_session_notify_event(session->session_id, notification);
 	}
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
@@ -2795,5 +2795,5 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	notification->payload = event_text;
 	notification->allocated = 1;
 
-	g_async_queue_push(session->messages, notification);
+	janus_session_notify_event(session->session_id, notification);
 }
