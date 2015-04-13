@@ -53,11 +53,11 @@ AC_ARG_ENABLE([rabbitmq],
               [],
               [enable_rabbitmq=yes])
 
-AC_ARG_ENABLE([libcurl],
-              [AS_HELP_STRING([--disable-libcurl],
+AC_ARG_ENABLE([turn-rest-api],
+              [AS_HELP_STRING([--disable-turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
               [],
-              [enable_libcurl=yes])
+              [enable_turn_rest_api=yes])
 
 PKG_CHECK_MODULES([JANUS],
                   [
@@ -143,9 +143,16 @@ AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
-                    AC_DEFINE(HAVE_LIBCURL)
-                    JANUS_MANUAL_LIBS+=" -lcurl"
-                    enable_turn_rest_api=yes
+                    AS_IF(
+                      [test "x$enable_turn_rest_api" = "xyes"],
+                      [
+                        AC_DEFINE(HAVE_LIBCURL)
+                        JANUS_MANUAL_LIBS+=" -lcurl"
+                        enable_turn_rest_api=yes
+                      ],
+                      [
+                        enable_turn_rest_api=no
+                      ])
                   ],
                   [
                     AC_MSG_NOTICE(libcurl not found. The TURN REST API client will not be built.)
