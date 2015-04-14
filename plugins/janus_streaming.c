@@ -39,7 +39,7 @@
  * 
  * \verbatim
 [stream-name]
-type = rtp|live|ondemand
+type = rtp|live|ondemand|rtsp
        rtp = stream originated by an external tool (e.g., gstreamer or
              ffmpeg) and sent to the plugin via RTP
        live = local file streamed live to multiple listeners
@@ -108,6 +108,10 @@ videofmtp = Codec specific parameters, if any
 #include <errno.h>
 #include <sys/poll.h>
 #include <sys/time.h>
+
+#ifdef HAVE_LIBCURL
+#include <curl/curl.h>
+#endif
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -254,6 +258,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 janus_streaming_mountpoint *janus_streaming_create_file_source(
 		uint64_t id, char *name, char *desc, char *filename,
 		gboolean live, gboolean doaudio, gboolean dovideo);
+/* Helper to create a rtsp live source */
+janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
+		uint64_t id, char *name, char *desc, char *filename,
+		gboolean doaudio, gboolean dovideo);
 
 
 typedef struct janus_streaming_message {
@@ -594,6 +602,49 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				mp->is_private = is_private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
+			} else if(!strcasecmp(type->value, "rtsp")) {
+				janus_config_item *id = janus_config_get_item(cat, "id");
+				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *file = janus_config_get_item(cat, "url");
+				janus_config_item *audio = janus_config_get_item(cat, "audio");
+				janus_config_item *video = janus_config_get_item(cat, "video");
+				if(file == NULL || file->value == NULL) {
+					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', missing mandatory information...\n", cat->name);
+					cat = cat->next;
+					continue;
+				}
+				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
+				gboolean dovideo = video && video->value && janus_is_true(video->value);
+				if(id == NULL || id->value == NULL) {
+					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_WARN, "A stream with the provided ID already exists, skipping '%s'\n", cat->name);
+						cat = cat->next;
+						continue;
+					}
+				}
+				janus_streaming_mountpoint *mp = NULL;
+				if((mp = janus_streaming_create_rtsp_source(
+						(id && id->value) ? atoi(id->value) : 0,
+						(char *)cat->name,
+						desc ? (char *)desc->value : NULL,
+						(char *)file->value, doaudio, dovideo)) == NULL) {
+					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream '%s'...\n", cat->name);
+					cat = cat->next;
+					continue;
+				}
+				
+				janus_config_item *priv = janus_config_get_item(cat, "is_private");
+				janus_config_item *secret = janus_config_get_item(cat, "secret");
+				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
+				mp->is_private = is_private;
+				if(secret && secret->value)
+					mp->secret = g_strdup(secret->value);
+
 			} else {
 				JANUS_LOG(LOG_WARN, "Ignoring unknown stream type '%s' (%s)...\n", type->value, cat->name);
 			}
@@ -2324,6 +2375,139 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	return file_source;
 }
 
+
+typedef struct janus_streaming_buffer {
+	char *buffer;
+	size_t size;
+} janus_streaming_buffer;
+
+static size_t janus_streaming_callback(void *payload, size_t size, size_t nmemb, void *data) {
+	size_t realsize = size * nmemb;
+	janus_streaming_buffer *buf = (struct janus_streaming_buffer *)data;
+	/* (Re)allocate if needed */
+	buf->buffer = realloc(buf->buffer, buf->size+realsize+1);
+	if(buf->buffer == NULL) {
+		/* Memory error! */ 
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return 0;
+	}
+	/* Update the buffer */
+	memcpy(&(buf->buffer[buf->size]), payload, realsize);
+	buf->size += realsize;
+	buf->buffer[buf->size] = 0;
+	/* Done! */
+	return realsize;
+}
+
+/* Helper to create a rtsp source */
+janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
+		uint64_t id, char *name, char *desc, char *filename,
+		gboolean doaudio, gboolean dovideo) {
+	if(filename == NULL) {
+		JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, missing url...\n");
+		return NULL;
+	}
+	
+	curl_global_init(CURL_GLOBAL_ALL);
+	CURL* curl = curl_easy_init();
+	if (curl == NULL) {
+		JANUS_LOG(LOG_ERR, "Can't init CURL\n");
+		return NULL;
+	}
+	
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+	curl_easy_setopt(curl, CURLOPT_URL, filename);
+	
+	// DESCRIBE
+	janus_streaming_buffer data;
+	data.buffer = malloc(1);
+	data.size = 0;
+	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, filename);
+	curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_DESCRIBE);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_streaming_callback);		
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
+	int res = curl_easy_perform(curl);
+	if(res != CURLE_OK) {
+		JANUS_LOG(LOG_ERR, "Couldn't send DESCRIBE request: %s\n", curl_easy_strerror(res));
+		return NULL;
+	}		
+	JANUS_LOG(LOG_ERR, "%s\n",data.buffer);
+	
+	// parse sdp
+	char *video=strstr(data.buffer, "m=video");
+	int vcodec = -1;
+	if (video)
+	{
+		sscanf(video, "m=%*s %*d %*s %d", &vcodec);
+	}
+
+	char *r=strstr(video, "a=rtpmap:");
+	char vrtpmap[255];
+	if (r != NULL)
+	{
+		sscanf(r, "a=rtpmap:%*d %s", vrtpmap);
+	}
+
+	char *f=strstr(video, "a=fmtp:");
+	char vfmtp[8192];
+	if (f != NULL)
+	{
+		sscanf(f, "a=fmtp:%*d %s", vfmtp);
+	}
+	
+	char *s=strstr(video, "a=control:");
+	char control[255];
+	if (s != NULL)
+	{
+		sscanf(s, "a=control:%s", control);
+	}
+	
+	// SETUP
+	free(data.buffer);
+	data.buffer = malloc(1);
+	data.size = 0;		
+	char uri[256];
+	sprintf(uri, "%s/%s", filename, control);
+	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
+	curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, "RTP/AVP;unicast;client_port=1234-1235");
+	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, janus_streaming_callback);		
+	curl_easy_setopt(curl, CURLOPT_HEADERDATA, &data);
+	curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
+	res = curl_easy_perform(curl);
+	if(res != CURLE_OK) {
+		JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s\n", curl_easy_strerror(res));
+		return NULL;
+	}		
+	JANUS_LOG(LOG_ERR, "========%s\n",data.buffer);
+
+	char *t=strstr(data.buffer, "server_port=");
+	int vport=0;
+	if (t != NULL)
+	{
+		sscanf(t, "server_port=%d-%*d", &vport);
+	}
+	
+	// PLAY
+	free(data.buffer);
+	data.buffer = malloc(1);
+	data.size = 0;		
+	sprintf(uri, "%s/", filename);
+	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
+	curl_easy_setopt(curl, CURLOPT_RANGE, "0.000-");
+	curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_PLAY);		
+	res = curl_easy_perform(curl);
+	if(res != CURLE_OK) {
+		JANUS_LOG(LOG_ERR, "Couldn't send PLAY request: %s\n", curl_easy_strerror(res));
+		return NULL;
+	}		
+	JANUS_LOG(LOG_ERR, "========%s\n",data.buffer);	
+	curl_easy_cleanup(curl);
+	
+	return janus_streaming_create_rtp_source(id, name, desc, 
+						doaudio, NULL, -1, -1, NULL, NULL,
+						dovideo, NULL, vport, vcodec, vrtpmap, vfmtp);
+}
 
 /* FIXME Thread to send RTP packets from a file (on demand) */
 static void *janus_streaming_ondemand_thread(void *data) {
