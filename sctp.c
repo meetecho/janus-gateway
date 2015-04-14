@@ -1243,6 +1243,7 @@ void *janus_sctp_thread(void *data) {
 	}
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
 	janus_sctp_message *message = NULL;
+	gboolean sent_data = FALSE;
 	while(sctp->dtls != NULL && sctp_running) {
 		/* Anything to do at all? */
 		janus_mutex_lock(&sctp->mutex);
@@ -1252,7 +1253,7 @@ void *janus_sctp_thread(void *data) {
 			continue;
 		}
 		/* Check incoming messages */
-		if(!g_queue_is_empty(sctp->in_messages)) {
+		if(!g_queue_is_empty(sctp->in_messages) && sent_data) {
 			while(!g_queue_is_empty(sctp->in_messages)) {
 				message = g_queue_pop_head(sctp->in_messages);
 				if(message == NULL)
@@ -1302,6 +1303,8 @@ void *janus_sctp_thread(void *data) {
 				janus_dtls_send_sctp_data((janus_dtls_srtp *)sctp->dtls, message->buffer, message->length);
 				janus_sctp_message_destroy(message);
 				message = NULL;
+				if(!sent_data)
+					sent_data = TRUE;
 			}
 		}
 		janus_mutex_unlock(&sctp->mutex);
