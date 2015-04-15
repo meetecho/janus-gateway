@@ -334,7 +334,22 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				notification->code = 200;
 				notification->payload = event_text;
 				notification->allocated = 1;
-				janus_session_notify_event(session->session_id, notification);
+				g_async_queue_push(session->messages, event);
+#ifdef HAVE_WEBSOCKETS
+				janus_request_source *source = (janus_request_source *)session->source;
+				if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
+					/* Send this as soon as the WebSocket becomes writeable */
+					janus_websocket_client *client = (janus_websocket_client *)source->source;
+					/* Make sure this is not related to a closed WebSocket session */
+					janus_mutex_lock(&old_wss_mutex);
+					if(g_list_find(old_wss, client) == NULL) {
+						janus_mutex_lock(&client->mutex);
+						libwebsocket_callback_on_writable(client->context, client->wsi);
+						janus_mutex_unlock(&client->mutex);
+					}
+					janus_mutex_unlock(&old_wss_mutex);
+				}
+#endif
 				session->timeout = 1;
 				g_hash_table_iter_remove(&iter);
 				g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
