@@ -334,7 +334,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				notification->code = 200;
 				notification->payload = event_text;
 				notification->allocated = 1;
-				g_async_queue_push(session->messages, event);
+				g_async_queue_push(session->messages, notification);
 #ifdef HAVE_WEBSOCKETS
 				janus_request_source *source = (janus_request_source *)session->source;
 				if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
