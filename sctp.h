@@ -95,8 +95,6 @@ typedef struct janus_sctp_association {
 	void *dtls;
 	/*! \brief Identifier of the handle owning this SCTP association (for debugging purposes only) */
 	uint64_t handle_id;
-	/*! \brief Whether this SCTP association is ready to be used or not */
-	gboolean ready;
 	/*! \brief Array of SCTP channels */
 	struct janus_sctp_channel channels[NUMBER_OF_CHANNELS];
 	/*! \brief Array of streams (both inbound and outbound) */

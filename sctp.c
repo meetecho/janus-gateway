@@ -126,7 +126,6 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	}
 	sctp->dtls = dtls;
 	sctp->handle_id = handle_id;
-	sctp->ready = FALSE;	/* We wait for the association setup, for this */
 	sctp->local_port = 5000;	/* FIXME We always use this one */
 	sctp->remote_port = udp_port;
 	sctp->sock = NULL;
@@ -273,7 +272,6 @@ int janus_sctp_association_setup(janus_sctp_association *sctp) {
 #ifdef HAVE_SCONN_LEN
 	sconn.sconn_len = sizeof(struct sockaddr_conn);
 #endif
-	sctp->ready = TRUE;
 	if(usrsctp_connect(sock, (struct sockaddr *)&sconn, sizeof(struct sockaddr_conn)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error connecting to SCTP server at port %"SCNu16"\n", sctp->handle_id, sctp->remote_port);
 		return -1;
@@ -1247,7 +1245,7 @@ void *janus_sctp_thread(void *data) {
 	while(sctp->dtls != NULL && sctp_running) {
 		/* Anything to do at all? */
 		janus_mutex_lock(&sctp->mutex);
-		if(!sctp->ready || (g_queue_is_empty(sctp->in_messages) && g_queue_is_empty(sctp->out_messages))) {
+		if(g_queue_is_empty(sctp->in_messages) && g_queue_is_empty(sctp->out_messages)) {
 			janus_mutex_unlock(&sctp->mutex);
 			g_usleep (10000);
 			continue;
