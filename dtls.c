@@ -557,7 +557,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 			g_main_loop_quit(handle->iceloop);
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin != NULL) {
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
 			if(plugin && plugin->hangup_media)
 				plugin->hangup_media(handle->app_handle);
 			janus_ice_notify_hangup(handle, "DTLS alert");
