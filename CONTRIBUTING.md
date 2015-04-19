@@ -24,5 +24,5 @@ modifying the C code, you follow the same coding style we're using and
 that you properly comment the code as we usually do ourselves.
 
 That said, please beware that we do require all contributors to
-<a href="https://www.clahub.com/agreements/meetecho/janus-gateway">sign the Contributor License Agreement</a>
+<a href="https://cla.conf.meetecho.com/janus">sign the Contributor License Agreement</a>
 before we can accept any code.
