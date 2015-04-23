@@ -2088,7 +2088,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
-				TPTAG_SERVER(0),
+				//~ TPTAG_SERVER(0),	/* See issue #213 */
 				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL(sip_url),

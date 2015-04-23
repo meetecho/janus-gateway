@@ -1,4 +1,3 @@
-
 [general]
 ; Specify which local IP address to use. If not set it will be automatically
 ; guessed from the system
@@ -10,7 +9,7 @@
 keepalive_interval = 120
 
 ; Indicate if the server is behind NAT. If so, the server will use STUN
-; to guess its own public IP address and use it in the Contat header of
+; to guess its own public IP address and use it in the Contact header of
 ; outgoing requests
 behind_nat = no
 
