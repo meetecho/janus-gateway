@@ -380,6 +380,9 @@ void *janus_streaming_watchdog(void *data) {
 
 /* Plugin implementation */
 int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
+#ifdef HAVE_LIBCURL	
+	curl_global_init(CURL_GLOBAL_ALL);
+#endif	
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
 		return -1;
@@ -2409,7 +2412,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	}
 
 #ifdef HAVE_LIBCURL	
-	curl_global_init(CURL_GLOBAL_ALL);
 	CURL* curl = curl_easy_init();
 	if (curl == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't init CURL\n");
@@ -2481,16 +2483,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		return NULL;
 	}		
 	JANUS_LOG(LOG_VERB, "SETUP answer:%s\n",data.buffer);
-
-	char *t=strstr(data.buffer, "server_port=");
-	int vport=0;
-	if (t != NULL)
-	{
-		sscanf(t, "server_port=%d-%*d", &vport);
-	}
+	int vport=1234;
+	free(data.buffer);
 	
 	// PLAY
-	free(data.buffer);
 	data.buffer = malloc(1);
 	data.size = 0;		
 	sprintf(uri, "%s/", filename);
@@ -2503,7 +2499,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		return NULL;
 	}		
 	JANUS_LOG(LOG_VERB, "PLAY answer:%s\n",data.buffer);	
-	curl_easy_cleanup(curl);
+	free(data.buffer);
+	
+	// cleanup cURL
+//	curl_easy_cleanup(curl);
 	
 	return janus_streaming_create_rtp_source(id, name, desc, 
 						doaudio, NULL, -1, -1, NULL, NULL,
@@ -2994,8 +2993,12 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
-	if(!session->started || session->paused) {
+	if(!session->started) {
 		JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
+		return;
+	}
+	if(session->paused) {
+		JANUS_LOG(LOG_ERR, "Streaming paused for this session...\n");
 		return;
 	}
 
@@ -3016,10 +3019,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		packet->data->timestamp = htonl(session->context.v_last_ts);
 		packet->data->seq_number = htons(session->context.v_last_seq);
 		if(gateway != NULL)
-		{
-			JANUS_LOG(LOG_ERR, "relay length %d %02X %02X %02X %02X\n", packet->length, packet->data[0],packet->data[1],packet->data[2],packet->data[3]);
 			gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
-		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
 		packet->data->seq_number = htons(packet->seq_number);
