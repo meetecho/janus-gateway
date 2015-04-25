@@ -2407,7 +2407,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, missing url...\n");
 		return NULL;
 	}
-	
+
+#ifdef HAVE_LIBCURL	
 	curl_global_init(CURL_GLOBAL_ALL);
 	CURL* curl = curl_easy_init();
 	if (curl == NULL) {
@@ -2432,7 +2433,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_ERR, "Couldn't send DESCRIBE request: %s\n", curl_easy_strerror(res));
 		return NULL;
 	}		
-	JANUS_LOG(LOG_ERR, "%s\n",data.buffer);
+	JANUS_LOG(LOG_VERB, "DESCRIBE answer:%s\n",data.buffer);
 	
 	// parse sdp
 	char *video=strstr(data.buffer, "m=video");
@@ -2443,21 +2444,21 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	}
 
 	char *r=strstr(video, "a=rtpmap:");
-	char vrtpmap[255];
+	char vrtpmap[data.size];
 	if (r != NULL)
 	{
 		sscanf(r, "a=rtpmap:%*d %s", vrtpmap);
 	}
 
 	char *f=strstr(video, "a=fmtp:");
-	char vfmtp[8192];
+	char vfmtp[data.size];
 	if (f != NULL)
 	{
 		sscanf(f, "a=fmtp:%*d %s", vfmtp);
 	}
 	
 	char *s=strstr(video, "a=control:");
-	char control[255];
+	char control[1024];
 	if (s != NULL)
 	{
 		sscanf(s, "a=control:%s", control);
@@ -2467,7 +2468,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	free(data.buffer);
 	data.buffer = malloc(1);
 	data.size = 0;		
-	char uri[256];
+	char uri[1024];
 	sprintf(uri, "%s/%s", filename, control);
 	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 	curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, "RTP/AVP;unicast;client_port=1234-1235");
@@ -2479,7 +2480,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_ERR, "Couldn't send SETUP request: %s\n", curl_easy_strerror(res));
 		return NULL;
 	}		
-	JANUS_LOG(LOG_ERR, "========%s\n",data.buffer);
+	JANUS_LOG(LOG_VERB, "SETUP answer:%s\n",data.buffer);
 
 	char *t=strstr(data.buffer, "server_port=");
 	int vport=0;
@@ -2501,12 +2502,16 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_ERR, "Couldn't send PLAY request: %s\n", curl_easy_strerror(res));
 		return NULL;
 	}		
-	JANUS_LOG(LOG_ERR, "========%s\n",data.buffer);	
+	JANUS_LOG(LOG_VERB, "PLAY answer:%s\n",data.buffer);	
 	curl_easy_cleanup(curl);
 	
 	return janus_streaming_create_rtp_source(id, name, desc, 
 						doaudio, NULL, -1, -1, NULL, NULL,
 						dovideo, NULL, vport, vcodec, vrtpmap, vfmtp);
+#else
+	JANUS_LOG(LOG_ERR, "RTSP need libcurl\n");
+	return NULL;
+#endif
 }
 
 /* FIXME Thread to send RTP packets from a file (on demand) */
@@ -2986,11 +2991,11 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 	}
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session || !session->handle) {
-		// JANUS_LOG(LOG_ERR, "Invalid session...\n");
+		JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
 	if(!session->started || session->paused) {
-		// JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
+		JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
 
@@ -3011,7 +3016,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		packet->data->timestamp = htonl(session->context.v_last_ts);
 		packet->data->seq_number = htons(session->context.v_last_seq);
 		if(gateway != NULL)
+		{
+			JANUS_LOG(LOG_ERR, "relay length %d %02X %02X %02X %02X\n", packet->length, packet->data[0],packet->data[1],packet->data[2],packet->data[3]);
 			gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+		}
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
 		packet->data->seq_number = htons(packet->seq_number);
