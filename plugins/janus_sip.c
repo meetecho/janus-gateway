@@ -861,12 +861,16 @@ static void *janus_sip_handler(void *data) {
 			/* Cleanup old values */
 			if(session->account.identity != NULL)
 				g_free(session->account.identity);
+			session->account.identity = NULL;
 			if(session->account.username != NULL)
 				g_free(session->account.username);
+			session->account.username = NULL;
 			if(session->account.secret != NULL)
 				g_free(session->account.secret);
+			session->account.secret = NULL;
 			if(session->account.proxy != NULL)
 				g_free(session->account.proxy);
+			session->account.proxy = NULL;
 
 			gboolean guest = FALSE;
 			json_t *type = json_object_get(root, "type");
