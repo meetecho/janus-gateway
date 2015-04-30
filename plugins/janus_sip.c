@@ -1422,7 +1422,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
 			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "offer", sip->sip_payload->pl_data);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "offer", fixed_sdp);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			/* Send a Ringing back */
