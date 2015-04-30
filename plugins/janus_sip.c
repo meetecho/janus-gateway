@@ -569,25 +569,14 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_sip_session *session = (janus_sip_session *)calloc(1, sizeof(janus_sip_session));
-	if(session == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		*error = -2;
-		return;
-	}
+	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
 	session->handle = handle;
 	session->account.identity = NULL;
 	session->account.username = NULL;
 	session->account.secret = NULL;
 	session->account.sip_port = 0;
 	session->account.proxy = NULL;
-	session->stack = calloc(1, sizeof(ssip_t));
-	if(session->stack == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		*error = -2;
-		g_free(session);
-		return;
-	}
+	session->stack = g_malloc0(sizeof(ssip_t));
 	session->stack->session = session;
 	session->stack->s_nua = NULL;
 	session->stack->s_nh_r = NULL;
@@ -683,11 +672,7 @@ struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handl
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
 	JANUS_LOG(LOG_VERB, "%s\n", message);
-	janus_sip_message *msg = calloc(1, sizeof(janus_sip_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-	}
+	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -793,11 +778,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	if(session->status < janus_sip_status_inviting || session->status > janus_sip_status_incall)
 		return;
 	/* FIXME Simulate a "hangup" coming from the browser */
-	janus_sip_message *msg = calloc(1, sizeof(janus_sip_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
-	}
+	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->message = g_strdup("{\"request\":\"hangup\"}");
 	msg->transaction = NULL;
@@ -811,11 +792,7 @@ static void *janus_sip_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SIP handler thread\n");
 	janus_sip_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));
-	if(error_cause == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	char *error_cause = g_malloc0(512);
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
@@ -993,12 +970,6 @@ static void *janus_sip_handler(void *data) {
 				}
 				const char *secret_text = json_string_value(secret);
 				session->account.secret = g_strdup(secret_text);
-				if (session->account.secret == NULL) {
-					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-					g_snprintf(error_cause, 512, "Memory error");
-					goto error;
-				}
 				/* Got the values, try registering now */
 				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
 					username_text, secret_text, username_uri.url->url_host, proxy_text != NULL ? proxy_text : "(null)");
@@ -1006,20 +977,8 @@ static void *janus_sip_handler(void *data) {
 
 			session->account.identity = g_strdup(username_text);
 			session->account.username = g_strdup(user_id);
-			if(session->account.identity == NULL || session->account.username == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "Memory error");
-				goto error;
-			}
 			if (proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
-				if(session->account.proxy == NULL) {
-					JANUS_LOG(LOG_FATAL, "Memory error!\n");
-					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-					g_snprintf(error_cause, 512, "Memory error");
-					goto error;
-				}
 			}
 
 			session->status = janus_sip_status_registering;
@@ -1131,12 +1090,6 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			char *sdp = g_strdup(msg->sdp);
-			if(sdp == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "Memory error");
-				goto error;
-			}
 			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
@@ -1215,12 +1168,6 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			char *sdp = g_strdup(msg->sdp);
-			if(sdp == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "Memory error");
-				goto error;
-			}
 			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
@@ -1458,11 +1405,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			session->status = janus_sip_status_invited;
 			/* Parse SDP */
 			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
-			if(fixed_sdp == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
-				break;
-			}
 			JANUS_LOG(LOG_VERB, "Someone is inviting us in a call:\n%s", sip->sip_payload->pl_data);
 			sdp_session_t *sdp = sdp_session(parser);
 			janus_sip_sdp_process(session, sdp);
@@ -1614,11 +1556,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
 			session->status = janus_sip_status_incall;
 			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
-			if(fixed_sdp == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
-				break;
-			}
 			sdp_session_t *sdp = sdp_session(parser);
 			janus_sip_sdp_process(session, sdp);
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
