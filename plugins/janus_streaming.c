@@ -1352,6 +1352,33 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
 		/* FIXME Should we kick the current viewers as well? */
+		janus_mutex_lock(&mp->mutex);
+		GList *viewer = g_list_first(mp->listeners);
+		/* Prepare JSON event */
+		json_t *event = json_object();
+		json_object_set_new(event, "streaming", json_string("event"));
+		json_t *result = json_object();
+		json_object_set_new(result, "status", json_string("stopped"));
+		json_object_set_new(event, "result", result);
+		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		json_decref(event);
+		while(viewer) {
+			janus_streaming_session *session = (janus_streaming_session *)viewer->data;
+			if(session != NULL) {
+				session->stopping = TRUE;
+				session->started = FALSE;
+				session->paused = FALSE;
+				session->mountpoint = NULL;
+				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+				gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event_text, NULL, NULL);
+				gateway->close_pc(session->handle);
+			}
+			mp->listeners = g_list_remove_all(mp->listeners, session);
+			viewer = g_list_first(mp->listeners);
+		}
+		g_free(event_text);
+		janus_mutex_unlock(&mp->mutex);
+		/* Remove mountpoint from the hashtable: this will get it destroyed */
 		g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
