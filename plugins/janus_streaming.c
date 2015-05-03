@@ -2282,6 +2282,7 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 	free(source);
 }
 
+#ifdef HAVE_LIBCURL
 static void janus_streaming_rtsp_source_free(janus_streaming_rtsp_source *source) {
 	if (source->audio_fd>0) {
 		close(source->audio_fd);
@@ -2294,6 +2295,8 @@ static void janus_streaming_rtsp_source_free(janus_streaming_rtsp_source *source
 	}
 	free(source);
 }
+#endif
+
 static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
 	mp->destroyed = janus_get_monotonic_time();
 	
@@ -3237,6 +3240,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	return NULL;
 }
 
+#ifdef HAVE_LIBCURL
 /* Test thread to relay RTP frames  */
 static void *janus_streaming_relay_rtsp_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Starting streaming relay thread\n");
@@ -3399,6 +3403,7 @@ static void *janus_streaming_relay_rtsp_thread(void *data) {
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
+#endif
 
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) {
 	janus_streaming_rtp_relay_packet *packet = (janus_streaming_rtp_relay_packet *)user_data;
