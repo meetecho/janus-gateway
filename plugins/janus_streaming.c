@@ -215,9 +215,9 @@ typedef struct janus_streaming_rtp_source {
 	gint video_port;
 	janus_recorder *arc;	/* The Janus recorder instance for this streams's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
-#ifdef HAVE_LIBCURL
 	int audio_fd;
 	int video_fd;
+#ifdef HAVE_LIBCURL
 	CURL* curl;
 #endif
 } janus_streaming_rtp_source;
