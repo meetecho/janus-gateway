@@ -46,7 +46,7 @@ type = rtp|live|ondemand|rtsp
               (multiple listeners = same streaming context)
        ondemand = local file streamed on-demand to a single listener
                   (multiple listeners = different streaming contexts)
-       rtsp = stream originated by an external source
+       rtsp = connect to an RTSP server streamed to multiple listeners
 id = <unique numeric ID>
 description = This is my awesome stream
 is_private = yes|no (private streams don't appear when you do a 'list' request)
@@ -67,7 +67,7 @@ videopt = <video RTP payload type> (e.g., 100)
 videortpmap = RTP map of the video codec (e.g., VP8/90000)
 videofmtp = Codec specific parameters, if any
    The following options are only valid for the 'rstp' type:
-url = rtsp url of the source
+url = rtsp url use to negociate RTP streams
 \endverbatim
  *
  * \section streamapi Streaming API
@@ -195,7 +195,7 @@ static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *janus_streaming_relay_thread(void *data);
-static void *janus_rtsp_streaming_relay_thread(void *data);
+static void *janus_streaming_relay_rtsp_thread(void *data);
 
 typedef enum janus_streaming_type {
 	janus_streaming_type_none = 0,
@@ -2460,9 +2460,17 @@ static int janus_parse_sdp(const char* buffer, const char* name, const char* med
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
 	char *m=strstr(buffer, pattern);
-	if (m) {
-		sscanf(m, "m=%*s %d %*s %d", port, pt);
+	if (m == NULL) {
+		JANUS_LOG(LOG_VERB, "[%s] no media %s...\n", name, media);
+		return -1;
 	}
+	sscanf(m, "m=%*s %d %*s %d", port, pt);
+	char *s=strstr(m, "a=control:");
+	if (s == NULL) {
+		JANUS_LOG(LOG_ERR, "[%s] no control for %s...\n", name, media);
+		return -1;
+	}		
+	sscanf(s, "a=control:%s", control);
 	char *r=strstr(m, "a=rtpmap:");
 	if (r != NULL) {
 		sscanf(r, "a=rtpmap:%*d %s", rtpmap);
@@ -2471,10 +2479,6 @@ static int janus_parse_sdp(const char* buffer, const char* name, const char* med
 	if (f != NULL) {
 		sscanf(f, "a=fmtp:%*d %s", fmtp);
 	}	
-	char *s=strstr(m, "a=control:");
-	if (s != NULL) {
-		sscanf(s, "a=control:%s", control);
-	}		
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if(fd < 0) {
 		JANUS_LOG(LOG_ERR, "[%s] cannot create socket for %s...\n", name, media);
@@ -2654,7 +2658,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtsp->id), live_rtsp);
 	janus_mutex_unlock(&mountpoints_mutex);	
 	GError *error = NULL;
-	g_thread_try_new(live_rtsp->name, &janus_rtsp_streaming_relay_thread, live_rtsp, &error);	
+	g_thread_try_new(live_rtsp->name, &janus_streaming_relay_rtsp_thread, live_rtsp, &error);	
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
 		g_free(description);
@@ -2825,7 +2829,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Filesource (live) thread starting...\n");
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
-		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
+		// JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
@@ -3161,8 +3165,8 @@ static void *janus_streaming_relay_thread(void *data) {
 	return NULL;
 }
 
-/* FIXME Test thread to relay RTP frames coming from gstreamer/ffmpeg/others */
-static void *janus_rtsp_streaming_relay_thread(void *data) {
+/* Test thread to relay RTP frames  */
+static void *janus_streaming_relay_rtsp_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Starting streaming relay thread\n");
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
@@ -3335,12 +3339,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 		JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
-	if(!session->started) {
-		JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
-		return;
-	}
-	if(session->paused) {
-		JANUS_LOG(LOG_ERR, "Streaming paused for this session...\n");
+	if(!session->started || session->paused) {		
+		// JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
 
