@@ -2829,7 +2829,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Filesource (live) thread starting...\n");
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
-		// JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
+		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
@@ -3336,10 +3336,10 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 	}
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session || !session->handle) {
-		JANUS_LOG(LOG_ERR, "Invalid session...\n");
+		// JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
-	if(!session->started || session->paused) {		
+	if(!session->started || session->paused) {
 		// JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
