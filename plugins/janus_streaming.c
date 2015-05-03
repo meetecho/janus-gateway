@@ -195,7 +195,17 @@ static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *janus_streaming_relay_thread(void *data);
+#ifdef HAVE_LIBCURL
 static void *janus_streaming_relay_rtsp_thread(void *data);
+
+typedef struct janus_streaming_rtsp_source {
+	int audio_fd;
+	int video_fd;
+	CURL* curl;
+	janus_recorder *arc;	/* The Janus recorder instance for this streams's audio, if enabled */
+	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
+} janus_streaming_rtsp_source;
+#endif
 
 typedef enum janus_streaming_type {
 	janus_streaming_type_none = 0,
@@ -217,16 +227,6 @@ typedef struct janus_streaming_rtp_source {
 	janus_recorder *arc;	/* The Janus recorder instance for this streams's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
 } janus_streaming_rtp_source;
-
-#ifdef HAVE_LIBCURL
-typedef struct janus_streaming_rtsp_source {
-	int audio_fd;
-	int video_fd;
-	CURL* curl;
-	janus_recorder *arc;	/* The Janus recorder instance for this streams's audio, if enabled */
-	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
-} janus_streaming_rtsp_source;
-#endif
 
 typedef struct janus_streaming_file_source {
 	char *filename;
