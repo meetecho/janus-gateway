@@ -2506,7 +2506,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	return file_source;
 }
 
-
+#ifdef HAVE_LIBCURL		
 typedef struct janus_streaming_buffer {
 	char *buffer;
 	size_t size;
@@ -2583,6 +2583,8 @@ static int janus_parse_sdp(const char* buffer, const char* name, const char* med
 	
 	return fd;
 }	
+#endif
+
 /* Helper to create a rtsp source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc, char *url,
