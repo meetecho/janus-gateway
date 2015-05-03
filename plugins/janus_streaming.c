@@ -1348,6 +1348,78 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				goto error;
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
+		} else if(!strcasecmp(type_text, "rtsp")) {
+			/* RTSP source*/
+			json_t *id = json_object_get(root, "id");
+			if(id && !json_is_integer(id)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				goto error;
+			}
+			json_t *name = json_object_get(root, "name");
+			if(name && !json_is_string(name)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
+				goto error;
+			}
+			json_t *desc = json_object_get(root, "description");
+			if(desc && !json_is_string(desc)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
+				goto error;
+			}
+			json_t *is_private = json_object_get(root, "is_private");
+			if(is_private && !json_is_boolean(is_private)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
+				goto error;
+			}
+			json_t *audio = json_object_get(root, "audio");
+			if(audio && !json_is_boolean(audio)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
+				goto error;
+			}
+			json_t *video = json_object_get(root, "video");
+			if(video && !json_is_boolean(video)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
+				goto error;
+			}
+			json_t *url = json_object_get(root, "url");
+			if(url && !json_is_string(url)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (url should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (file should be a string)");
+				goto error;
+			}			
+			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
+			gboolean dovideo = video ? json_is_true(video) : FALSE;
+			if(!doaudio && !dovideo) {
+				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, no audio or video have to be streamed...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				g_snprintf(error_cause, 512, "Can't add 'rtsp' stream, no audio or video have to be streamed...");
+				goto error;
+			}
+			mp = janus_streaming_create_rtsp_source(
+					id ? json_integer_value(id) : 0,
+					name ? (char *)json_string_value(name) : NULL,
+					desc ? (char *)json_string_value(desc) : NULL,
+					(char *)json_string_value(url),
+					doaudio, dovideo);
+			if(mp == NULL) {
+				JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream...\n");
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				g_snprintf(error_cause, 512, "Error creating 'RTSP' stream");
+				goto error;
+			}
+			mp->is_private = is_private ? json_is_true(is_private) : FALSE;			
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown stream type '%s'...\n", type_text);
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
