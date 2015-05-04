@@ -2504,7 +2504,7 @@ typedef struct janus_streaming_buffer {
 	size_t size;
 } janus_streaming_buffer;
 
-static size_t janus_streaming_callback(void *payload, size_t size, size_t nmemb, void *data) {
+static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, size_t nmemb, void *data) {
 	size_t realsize = size * nmemb;
 	janus_streaming_buffer *buf = (struct janus_streaming_buffer *)data;
 	/* (Re)allocate if needed */
@@ -2522,7 +2522,7 @@ static size_t janus_streaming_callback(void *payload, size_t size, size_t nmemb,
 	return realsize;
 }
 
-static int janus_parse_sdp(const char* buffer, const char* name, const char* media, int* pt, int* port, char* rtpmap, char* fmtp, char* control)
+static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, const char* media, int* pt, int* port, char* rtpmap, char* fmtp, char* control)
 {
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
@@ -2599,8 +2599,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	data.size = 0;
 	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, url);
 	curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_DESCRIBE);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_streaming_callback);		
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_streaming_rtsp_curl_callback);		
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
+	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, janus_streaming_rtsp_curl_callback);		
+	curl_easy_setopt(curl, CURLOPT_HEADERDATA, &data);
 	int res = curl_easy_perform(curl);
 	if(res != CURLE_OK) {
 		JANUS_LOG(LOG_ERR, "Couldn't send DESCRIBE request: %s\n", curl_easy_strerror(res));
@@ -2616,7 +2618,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char vcontrol[2048];
 	char uri[1024];
 	char transport[1024];
-	int video_fd = janus_parse_sdp(data.buffer, name, "video", &vpt, &vport, vrtpmap, vfmtp, vcontrol);
+	int video_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "video", &vpt, &vport, vrtpmap, vfmtp, vcontrol);
 	if (video_fd >= 0)
 	{
 		/* send video SETUP */
@@ -2627,8 +2629,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		sprintf(transport, "RTP/AVP;unicast;client_port=%d-%d", vport, vport+1);	
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
-		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, janus_streaming_callback);		
-		curl_easy_setopt(curl, CURLOPT_HEADERDATA, &data);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
@@ -2643,7 +2643,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char artpmap[2048];
 	char afmtp[2048];
 	char acontrol[2048];
-	int audio_fd = janus_parse_sdp(data.buffer, name, "audio", &apt, &aport, artpmap, afmtp, acontrol);
+	int audio_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "audio", &apt, &aport, artpmap, afmtp, acontrol);
 	if (audio_fd >= 0)
 	{
 		/* send audio SETUP */
@@ -2654,8 +2654,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		sprintf(transport, "RTP/AVP;unicast;client_port=%d-%d", aport, aport+1);	
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
-		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, janus_streaming_callback);		
-		curl_easy_setopt(curl, CURLOPT_HEADERDATA, &data);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
