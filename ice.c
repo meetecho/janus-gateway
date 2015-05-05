@@ -1792,7 +1792,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		gsc = gsc->next;
 	}
 	if(rufrag && rpwd) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Setting remote credendials...\n", handle->handle_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Setting remote credentials...\n", handle->handle_id);
 		if(!nice_agent_set_remote_credentials(handle->agent, stream_id, rufrag, rpwd)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]  failed to set remote credentials!\n", handle->handle_id);
 		}
