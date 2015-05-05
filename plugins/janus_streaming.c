@@ -2696,6 +2696,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		return NULL;
 	}	
 	live_rtsp->id = id ? id : g_random_int();
+	live_rtsp->name = sourcename;
 	live_rtsp->description = description;
 	live_rtsp->enabled = TRUE;
 	live_rtsp->active = FALSE;
@@ -2704,7 +2705,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	janus_streaming_rtp_source *live_rtsp_source = calloc(1, sizeof(janus_streaming_rtp_source));
 	live_rtsp_source->arc = NULL;
 	live_rtsp_source->vrc = NULL;
-	live_rtsp_source->curl = curl;	
 	live_rtsp_source->audio_fd = audio_fd;
 	live_rtsp_source->video_fd = video_fd;
 	live_rtsp_source->curl = curl;
