@@ -1704,35 +1704,29 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					}
 					json_t *mid = json_object_get(candidate, "sdpMid");
 					if(!mid) {
-						/* Invalid candidate but we don't return an error, we just ignore it */
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMid)", i);
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMid)\n", i);
 						continue;
 					}
 					if(!json_is_string(mid)) {
-						/* Invalid candidate but we don't return an error, we just ignore it */
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMid should be a string)", i);
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMid should be a string)\n", i);
 						continue;
 					}
 					json_t *mline = json_object_get(candidate, "sdpMLineIndex");
 					if(!mline) {
-						/* Invalid candidate but we don't return an error, we just ignore it */
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMLineIndex)", i);
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMLineIndex)\n", i);
 						continue;
 					}
 					if(!json_is_integer(mline)) {
-						/* Invalid candidate but we don't return an error, we just ignore it */
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex should be an integer)", i);
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex should be an integer)\n", i);
 						continue;
 					}
 					json_t *rc = json_object_get(candidate, "candidate");
 					if(!rc) {
-						/* Invalid candidate but we don't return an error, we just ignore it */
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (candidate)", i);
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (candidate)\n", i);
 						continue;
 					}
 					if(!json_is_string(rc)) {
-						/* Invalid candidate but we don't return an error, we just ignore it */
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (candidate should be a string)", i);
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (candidate should be a string)\n", i);
 						continue;
 					}
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate at index %zu (%s): %s\n", handle->handle_id, i, json_string_value(mid), json_string_value(rc));
@@ -1740,7 +1734,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					int sdpMLineIndex = json_integer_value(mline);
 					if(sdpMLineIndex < 0 || sdpMLineIndex > 2) {
 						/* FIXME We don't support more than 3 m-lines right now */
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex not [0,2])", i);
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex not [0,2])\n", i);
 						continue;
 					}
 					/* Is there any stream ready? this trickle may get here before the SDP it relates to */
@@ -1806,7 +1800,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					} else {
 						janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
 						if(stream == NULL) {
-							JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, no %s stream", i, json_string_value(mid));
+							JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, no %s stream\n", i, json_string_value(mid));
 							continue;
 						}
 						int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
