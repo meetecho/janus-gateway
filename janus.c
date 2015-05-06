@@ -2594,7 +2594,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 	/* Finish the request by sending the response */
 	JANUS_LOG(LOG_VERB, "We have a message to serve...\n\t%s\n", event->payload);
 	/* Send event */
-	char *payload = g_strdup(event ? (event->payload ? event->payload : "") : "");
+	char *payload = g_strdup(event && event->payload ? event->payload : "");
 	if(payload == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
