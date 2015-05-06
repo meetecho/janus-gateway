@@ -507,7 +507,7 @@ void janus_session_free(janus_session *session) {
 int janus_ws_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
 	char *ip = inet_ntoa(sin->sin_addr);
-	JANUS_LOG(LOG_VERB, "New connection on REST API: %s\n", ip);
+	JANUS_LOG(LOG_HUGE, "New connection on REST API: %s\n", ip);
 	/* TODO Implement access limitation based on IP addresses */
 	return MHD_YES;
 }
@@ -515,7 +515,7 @@ int janus_ws_client_connect(void *cls, const struct sockaddr *addr, socklen_t ad
 int janus_admin_ws_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
 	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
 	char *ip = inet_ntoa(sin->sin_addr);
-	JANUS_LOG(LOG_VERB, "New connection on admin/monitor: %s\n", ip);
+	JANUS_LOG(LOG_HUGE, "New connection on admin/monitor: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_admin_is_allowed(ip)) {
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the admin/monitor interface\n", ip);
@@ -534,13 +534,13 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	gchar *session_path = NULL, *handle_path = NULL;
 	gchar **basepath = NULL, **path = NULL;
 
-	JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
 	/* Is this the first round? */
 	int firstround = 0;
 	janus_http_msg *msg = (janus_http_msg *)*ptr;
 	if (msg == NULL) {
 		firstround = 1;
-		JANUS_LOG(LOG_VERB, " ... Just parsing headers for now...\n");
+		JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
+		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = calloc(1, sizeof(janus_http_msg));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -556,6 +556,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		*ptr = msg;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_ws_headers, msg);
 		ret = MHD_YES;
+	} else {
+		JANUS_LOG(LOG_DBG, "Processing HTTP %s request on %s...\n", method, url);
 	}
 	/* Parse request */
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
@@ -620,7 +622,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	if(firstround)
 		return ret;
-	JANUS_LOG(LOG_VERB, " ... parsing request...\n");
+	JANUS_LOG(LOG_DBG, " ... parsing request...\n");
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
 		if(session_path == NULL) {
@@ -629,7 +631,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_LOG(LOG_VERB, "Session: %s\n", session_path);
+		JANUS_LOG(LOG_HUGE, "Session: %s\n", session_path);
 	}
 	if(session_path != NULL && path[2] != NULL && strlen(path[2]) > 0) {
 		handle_path = g_strdup(path[2]);
@@ -639,7 +641,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_LOG(LOG_VERB, "Handle: %s\n", handle_path);
+		JANUS_LOG(LOG_HUGE, "Handle: %s\n", handle_path);
 	}
 	if(session_path != NULL && handle_path != NULL && path[3] != NULL && strlen(path[3]) > 0) {
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
@@ -655,9 +657,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 	}
 	/* Get payload, if any */
 	if(!strcasecmp(method, "POST")) {
-		JANUS_LOG(LOG_VERB, "Processing POST data (%s)...\n", msg->contenttype);
+		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
-			JANUS_LOG(LOG_VERB, "  -- Uploaded data (%zu bytes)\n", *upload_data_size);
 			if(msg->payload == NULL)
 				msg->payload = calloc(1, *upload_data_size+1);
 			else
@@ -669,21 +670,21 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto done;
 			}
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
-			memset(msg->payload+msg->len+*upload_data_size, '\0', 1);
 			msg->len += *upload_data_size;
-			JANUS_LOG(LOG_VERB, "  -- Data we have now (%zu bytes)\n", msg->len);
+			memset(msg->payload + msg->len, '\0', 1);
+			JANUS_LOG(LOG_DBG, "  -- Data we have now (%zu bytes)\n", msg->len);
 			*upload_data_size = 0;	/* Go on */
 			ret = MHD_YES;
 			goto done;
 		}
-		JANUS_LOG(LOG_VERB, "Done getting payload, we can answer\n");
+		JANUS_LOG(LOG_DBG, "Done getting payload, we can answer\n");
 		if(msg->payload == NULL) {
 			JANUS_LOG(LOG_ERR, "No payload :-(\n");
 			ret = MHD_NO;
 			goto done;
 		}
 		payload = msg->payload;
-		JANUS_LOG(LOG_VERB, "%s\n", payload);
+		JANUS_LOG(LOG_HUGE, "%s\n", payload);
 	}
 
 	/* Process the request, specifying this HTTP connection is the source */
@@ -1847,13 +1848,13 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	gchar *session_path = NULL, *handle_path = NULL;
 	gchar **basepath = NULL, **path = NULL;
 
-	JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 	/* Is this the first round? */
 	int firstround = 0;
 	janus_http_msg *msg = (janus_http_msg *)*ptr;
 	if (msg == NULL) {
 		firstround = 1;
-		JANUS_LOG(LOG_VERB, " ... Just parsing headers for now...\n");
+		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
+		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = calloc(1, sizeof(janus_http_msg));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -1933,7 +1934,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	}
 	if(firstround)
 		return ret;
-	JANUS_LOG(LOG_VERB, " ... parsing request...\n");
+	JANUS_LOG(LOG_DBG, " ... parsing request...\n");
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
 		if(session_path == NULL) {
@@ -1942,7 +1943,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_LOG(LOG_VERB, "Session: %s\n", session_path);
+		JANUS_LOG(LOG_HUGE, "Session: %s\n", session_path);
 	}
 	if(session_path != NULL && path[2] != NULL && strlen(path[2]) > 0) {
 		handle_path = g_strdup(path[2]);
@@ -1952,7 +1953,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 			MHD_destroy_response(response);
 			goto done;
 		}
-		JANUS_LOG(LOG_VERB, "Handle: %s\n", handle_path);
+		JANUS_LOG(LOG_HUGE, "Handle: %s\n", handle_path);
 	}
 	if(session_path != NULL && handle_path != NULL && path[3] != NULL && strlen(path[3]) > 0) {
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
@@ -1968,9 +1969,8 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	}
 	/* Get payload, if any */
 	if(!strcasecmp(method, "POST")) {
-		JANUS_LOG(LOG_VERB, "Processing POST data (%s)...\n", msg->contenttype);
+		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
-			JANUS_LOG(LOG_VERB, "  -- Uploaded data (%zu bytes)\n", *upload_data_size);
 			if(msg->payload == NULL)
 				msg->payload = calloc(1, *upload_data_size+1);
 			else
@@ -1982,21 +1982,21 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 				goto done;
 			}
 			memcpy(msg->payload+msg->len, upload_data, *upload_data_size);
-			memset(msg->payload+msg->len+*upload_data_size, '\0', 1);
 			msg->len += *upload_data_size;
-			JANUS_LOG(LOG_VERB, "  -- Data we have now (%zu bytes)\n", msg->len);
+			memset(msg->payload + msg->len, '\0', 1);
+			JANUS_LOG(LOG_DBG, "  -- Data we have now (%zu bytes)\n", msg->len);
 			*upload_data_size = 0;	/* Go on */
 			ret = MHD_YES;
 			goto done;
 		}
-		JANUS_LOG(LOG_VERB, "Done getting payload, we can answer\n");
+		JANUS_LOG(LOG_DBG, "Done getting payload, we can answer\n");
 		if(msg->payload == NULL) {
 			JANUS_LOG(LOG_ERR, "No payload :-(\n");
 			ret = MHD_NO;
 			goto done;
 		}
 		payload = msg->payload;
-		JANUS_LOG(LOG_VERB, "%s\n", payload);
+		JANUS_LOG(LOG_HUGE, "%s\n", payload);
 	}
 
 	/* Process the request, specifying this HTTP connection is the source */
@@ -2448,7 +2448,7 @@ jsondone:
 
 int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
 	janus_http_msg *request = cls;
-	JANUS_LOG(LOG_HUGE, "%s: %s\n", key, value);
+	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
 			request->contenttype = strdup(value);
@@ -2463,7 +2463,7 @@ int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const 
 }
 
 void janus_ws_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
-	JANUS_LOG(LOG_VERB, "Request completed, freeing data\n");
+	JANUS_LOG(LOG_DBG, "Request completed, freeing data\n");
 	janus_http_msg *request = *con_cls;
 	if(!request)
 		return;
@@ -2489,7 +2489,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 		return MHD_NO;
 	if(max_events < 1)
 		max_events = 1;
-	JANUS_LOG(LOG_VERB, "... handling long poll...\n");
+	JANUS_LOG(LOG_DBG, "... handling long poll...\n");
 	janus_http_event *event = NULL;
 	struct MHD_Response *response = NULL;
 	int ret = MHD_NO;
