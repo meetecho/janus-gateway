@@ -302,7 +302,7 @@ static GMainContext *sessions_watchdog_context = NULL;
 static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
 
-	JANUS_LOG(LOG_INFO, "Cleaning up session %"SCNu64"...\n", session->session_id);
+	JANUS_LOG(LOG_DBG, "Cleaning up session %"SCNu64"...\n", session->session_id);
 	janus_session_destroy(session->session_id);
 
 	return G_SOURCE_REMOVE;
@@ -457,7 +457,7 @@ gint janus_session_destroy(guint64 session_id) {
 		JANUS_LOG(LOG_ERR, "Couldn't find session to destroy: %"SCNu64"\n", session_id);
 		return -1;
 	}
-	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
+	JANUS_LOG(LOG_VERB, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
 	if (session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 		GHashTableIter iter;
