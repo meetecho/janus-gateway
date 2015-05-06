@@ -1284,15 +1284,17 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				goto jsondone;
 			}
 			/* FIXME We're only handling single audio/video lines for now... */
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated\n", handle->handle_id, audio ? "has" : "has NOT");
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated, Video %s been negotiated, SCTP/DataChannels %s been negotiated\n",
+			                    handle->handle_id,
+			                    audio ? "has" : "has NOT",
+			                    video ? "has" : "has NOT",
+			                    data ? "have" : "have NOT");
 			if(audio > 1) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one audio line? only going to negotiate one...\n", handle->handle_id);
 			}
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video %s been negotiated\n", handle->handle_id, video ? "has" : "has NOT");
 			if(video > 1) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one video line? only going to negotiate one...\n", handle->handle_id);
 			}
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] SCTP/DataChannels %s been negotiated\n", handle->handle_id, data ? "have" : "have NOT");
 			if(data > 1) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] More than one data line? only going to negotiate one...\n", handle->handle_id);
 			}
@@ -1301,9 +1303,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- DataChannels have been negotiated, but support for them has not been compiled...\n", handle->handle_id);
 			}
 #endif
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] The browser %s BUNDLE\n", handle->handle_id, bundle ? "supports" : "does NOT support");
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] The browser %s rtcp-mux\n", handle->handle_id, rtcpmux ? "supports" : "does NOT support");
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] The browser %s doing Trickle ICE\n", handle->handle_id, trickle ? "is" : "is NOT");
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] The browser: %s BUNDLE, %s rtcp-mux, %s doing Trickle ICE\n", handle->handle_id,
+			                    bundle  ? "supports" : "does NOT support",
+			                    rtcpmux ? "supports" : "does NOT support",
+			                    trickle ? "is"       : "is NOT"                                                              );
 			/* Check if it's a new session, or an update... */
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)
 					|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
@@ -1343,7 +1346,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					}
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", handle->handle_id);
+						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", handle->handle_id);
 						if(audio) {
 							/* Get rid of video and data, if present */
 							if(handle->streams && handle->video_stream) {
@@ -1378,7 +1381,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 						}
 					}
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", handle->handle_id);
+						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", handle->handle_id);
 						if(handle->audio_stream && handle->audio_stream->components != NULL) {
 							nice_agent_attach_recv (handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 							janus_ice_component_free(handle->audio_stream->components, handle->audio_stream->rtcp_component);
@@ -1392,20 +1395,20 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					}
 					/* FIXME Any disabled m-line? */
 					if(strstr(jsep_sdp, "m=audio 0")) {
-						JANUS_LOG(LOG_VERB, "Audio disabled via SDP\n");
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio disabled via SDP\n", handle->handle_id);
 						if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 								|| (!video && !data)) {
-							JANUS_LOG(LOG_VERB, "  -- Marking audio stream as disabled\n");
+							JANUS_LOG(LOG_HUGE, "  -- Marking audio stream as disabled\n");
 							janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
 							if(stream)
 								stream->disabled = TRUE;
 						}
 					}
 					if(strstr(jsep_sdp, "m=video 0")) {
-						JANUS_LOG(LOG_VERB, "Video disabled via SDP\n");
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video disabled via SDP\n", handle->handle_id);
 						if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 								|| (!audio && !data)) {
-							JANUS_LOG(LOG_VERB, "  -- Marking video stream as disabled\n");
+							JANUS_LOG(LOG_HUGE, "  -- Marking video stream as disabled\n");
 							janus_ice_stream *stream = NULL;
 							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
@@ -1418,10 +1421,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 						}
 					}
 					if(strstr(jsep_sdp, "m=application 0 DTLS/SCTP")) {
-						JANUS_LOG(LOG_VERB, "Data Channel disabled via SDP\n");
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data Channel disabled via SDP\n", handle->handle_id);
 						if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 								|| (!audio && !video)) {
-							JANUS_LOG(LOG_VERB, "  -- Marking data channel stream as disabled\n");
+							JANUS_LOG(LOG_HUGE, "  -- Marking data channel stream as disabled\n");
 							janus_ice_stream *stream = NULL;
 							if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 								stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
