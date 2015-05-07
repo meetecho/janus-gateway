@@ -500,7 +500,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 					nice_address_set_port(&c->base_addr, rrelport);
 				}
 				component->candidates = g_slist_append(component->candidates, c);
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"]    Candidate added to the list! (%u elements for %d/%d)\n", handle->handle_id,
+				JANUS_LOG(LOG_HUGE, "[%"SCNu64"]    Candidate added to the list! (%u elements for %d/%d)\n", handle->handle_id,
 					g_slist_length(component->candidates), stream->stream_id, component->component_id);
 				/* Save for the summary, in case we need it */
 				component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(candidate));
@@ -517,7 +517,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 							if(nice_agent_set_remote_candidates(handle->agent, stream->stream_id, component->component_id, candidates) < 1) {
 								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to add trickle candidate :-(\n", handle->handle_id);
 							} else {
-								JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
+								JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Trickle candidate added!\n", handle->handle_id);
 							}
 							g_slist_free(candidates);
 						}
