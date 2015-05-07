@@ -1730,7 +1730,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			}
 		}
 		g_strlcat(sdp, buffer, BUFSIZE);
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s\n", handle->handle_id, buffer);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s", handle->handle_id, buffer); /* buffer already newline terminated */
 		if(log_candidates) {
 			/* Save for the summary, in case we need it */
 			component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer+strlen("a=candidate:")));
@@ -1792,7 +1792,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 		gsc = gsc->next;
 	}
 	if(rufrag && rpwd) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Setting remote credendials...\n", handle->handle_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Setting remote credentials...\n", handle->handle_id);
 		if(!nice_agent_set_remote_credentials(handle->agent, stream_id, rufrag, rpwd)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"]  failed to set remote credentials!\n", handle->handle_id);
 		}
