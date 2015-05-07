@@ -1610,10 +1610,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
 				/* Is there any stream ready? this trickle may get here before the SDP it relates to */
 				if(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
-					/* No stream available, wait a bit */
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
 					gint64 waited = 0;
 					while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
 						g_usleep(100000);
 						waited += 100000;
 						if(waited >= 3*G_USEC_PER_SEC) {
@@ -1624,10 +1623,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				}
 				/* Is the ICE stack ready already? */
 				if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-					/* Still processing the offer, wait a bit */
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
 					gint64 waited = 0;
 					while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
 						g_usleep(100000);
 						waited += 100000;
 						if(waited >= 5*G_USEC_PER_SEC) {
@@ -1740,10 +1738,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					}
 					/* Is there any stream ready? this trickle may get here before the SDP it relates to */
 					if(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
-						/* No stream available, wait a bit */
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
 						gint64 waited = 0;
 						while(handle->audio_stream == NULL && handle->video_stream == NULL && handle->data_stream == NULL) {
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] No stream, wait a bit in case this trickle got here before the SDP...\n", handle->handle_id);
 							g_usleep(100000);
 							waited += 100000;
 							if(waited >= 3*G_USEC_PER_SEC) {
@@ -1754,10 +1751,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					}
 					/* Is the ICE stack ready already? */
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-						/* Still processing the offer, wait a bit */
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
 						gint64 waited = 0;
 						while(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still processing the offer, waiting until we're done there...\n", handle->handle_id);
 							g_usleep(100000);
 							waited += 100000;
 							if(waited >= 5*G_USEC_PER_SEC) {
