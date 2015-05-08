@@ -1396,7 +1396,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 				if (component->retransmit_recent_cnt &&
 				    now - component->retransmit_log_ts > 5 * G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_INFO, "[%10"SCNu64"]  retransmitted %u packets due to NACK\n",
+					JANUS_LOG(LOG_VERB, "[%10"SCNu64"]  retransmitted %u packets due to NACK\n",
 					                      handle->handle_id,    component->retransmit_recent_cnt);
 					component->retransmit_recent_cnt = 0;
 					component->retransmit_log_ts = now;
@@ -1440,7 +1440,7 @@ void *janus_ice_thread(void *data) {
 		return NULL;
 	}
 	g_usleep (100000);
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
+	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	g_main_loop_run (loop);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
