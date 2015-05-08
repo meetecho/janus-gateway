@@ -301,6 +301,10 @@ struct janus_ice_component {
 	janus_dtls_srtp *dtls;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GList *retransmit_buffer;
+	/*! \brief last time a log message about sending retransmits was printed */
+	gint64 retransmit_log_ts;
+	/*! \brief number of retransmitted packets since last log message about retransmits */
+	guint retransmit_recent_cnt;
 	/*! \brief List of recently received sequence numbers (as a support to NACK generation) */
 	GList *last_seqs;
 	/*! \brief Time when the last NACK was sent */
