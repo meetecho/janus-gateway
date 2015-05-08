@@ -1329,17 +1329,17 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					//~ JANUS_LOG(LOG_VERB, "[RTCP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
 						//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, rtcp_ssrc);
 				}
+				gint64 now = janus_get_monotonic_time();
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
 				int nacks_count = g_slist_length(nacks);
 				if(nacks != NULL && nacks_count > 0) {
 					/* Handle NACK */
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GSList *list = nacks;
-					gint64 now = janus_get_monotonic_time();
 					janus_mutex_lock(&component->mutex);
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
-						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
+						JANUS_LOG(LOG_DBG, "[%"SCNu64"]   >> %u\n", handle->handle_id, seqnr);
 						GList *rp = component->retransmit_buffer;
 						while(rp) {
 							janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
@@ -1351,8 +1351,9 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 										JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Packet %u was retransmitted just %"SCNi64"ms ago, skipping\n", handle->handle_id, seqnr, now-p->last_retransmit);
 										break;
 									}
-									JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission!\n", handle->handle_id, seqnr);
+									JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
 									p->last_retransmit = now;
+									component->retransmit_recent_cnt++;
 									/* Enqueue it */
 									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
 									pkt->data = calloc(p->length, sizeof(char));
@@ -1392,6 +1393,13 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 								plugin->slow_link(handle->app_handle, 1, video);
 						}
 					}
+				}
+				if (component->retransmit_recent_cnt &&
+				    now - component->retransmit_log_ts > 5 * G_USEC_PER_SEC) {
+					JANUS_LOG(LOG_INFO, "[%10"SCNu64"]  retransmitted %u packets due to NACK\n",
+					                      handle->handle_id,    component->retransmit_recent_cnt);
+					component->retransmit_recent_cnt = 0;
+					component->retransmit_log_ts = now;
 				}
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtcp)
@@ -2032,6 +2040,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->source = NULL;
 		audio_rtp->dtls = NULL;
 		audio_rtp->retransmit_buffer = NULL;
+		audio_rtp->retransmit_log_ts = 0;
+		audio_rtp->retransmit_recent_cnt = 0;
 		audio_rtp->last_seqs = NULL;
 		audio_rtp->last_nack_time = 0;
 		audio_rtp->last_slowlink_time = 0;
@@ -2089,6 +2099,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->source = NULL;
 			audio_rtcp->dtls = NULL;
 			audio_rtcp->retransmit_buffer = NULL;
+			audio_rtcp->retransmit_log_ts = 0;
+			audio_rtcp->retransmit_recent_cnt = 0;
 			audio_rtcp->last_seqs = NULL;
 			audio_rtcp->last_nack_time = 0;
 			audio_rtcp->last_slowlink_time = 0;
@@ -2175,6 +2187,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->source = NULL;
 		video_rtp->dtls = NULL;
 		video_rtp->retransmit_buffer = NULL;
+		video_rtp->retransmit_log_ts = 0;
+		video_rtp->retransmit_recent_cnt = 0;
 		video_rtp->last_seqs = NULL;
 		video_rtp->last_nack_time = 0;
 		video_rtp->last_slowlink_time = 0;
@@ -2232,6 +2246,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->source = NULL;
 			video_rtcp->dtls = NULL;
 			video_rtcp->retransmit_buffer = NULL;
+			video_rtcp->retransmit_log_ts = 0;
+			video_rtcp->retransmit_recent_cnt = 0;
 			video_rtcp->last_seqs = NULL;
 			video_rtcp->last_nack_time = 0;
 			video_rtcp->last_slowlink_time = 0;
@@ -2318,6 +2334,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->source = NULL;
 		data_component->dtls = NULL;
 		data_component->retransmit_buffer = NULL;
+		data_component->retransmit_log_ts = 0;
+		data_component->retransmit_recent_cnt = 0;
 		data_component->last_seqs = NULL;
 		data_component->last_nack_time = 0;
 		data_component->last_slowlink_time = 0;
