@@ -1440,7 +1440,7 @@ void *janus_ice_thread(void *data) {
 		return NULL;
 	}
 	g_usleep (100000);
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
+	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	g_main_loop_run (loop);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
