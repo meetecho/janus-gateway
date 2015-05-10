@@ -2569,6 +2569,7 @@ void *janus_ice_send_thread(void *data) {
 				} else {
 					/* FIXME Copy in a buffer and fix SSRC */
 					char sbuf[BUFSIZE];
+					JANUS_LOG(LOG_VERB, "ICE: Trying to send a packet %p with data %p of length %d\n", pkt, pkt->data, pkt->length);
 					memcpy(&sbuf, pkt->data, pkt->length);
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
 						/* Overwrite SSRC */

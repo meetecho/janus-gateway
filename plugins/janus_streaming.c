@@ -2821,7 +2821,7 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%s] Opening ardrone3 source...\n", mountpoint->name);
 
 	// XXX: should use actual MTU
-	size_t max_payload_len = 1500 - 20 - 8 - RTP_HEADER_SIZE;
+	size_t max_payload_len = 65535 - 20 - 8 - RTP_HEADER_SIZE;
 	
 	/* Buffer */
 	char *buf = calloc(max_payload_len, sizeof(char));
@@ -2858,6 +2858,9 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		
 		janus_streaming_ardrone3_frame *frame = g_async_queue_timeout_pop(ardrone3_frames, 1000 * 1000);
 		
+		if(!frame)
+			continue;
+			
 		if(!mountpoint->enabled)
 			continue;
 
@@ -2868,12 +2871,13 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		uint8_t * cursor = frame->data;
 		size_t len = frame->length;
 		
-		hexdump(frame->data, frame->length);
+		//hexdump(frame->data, frame->length);
 		
 		// packetize the H.264 by splitting up NALs on start codes
 	 	while (parsing) {
 			uint8_t * next_start_code = (uint8_t *) memmem(cursor, len, start_code, 4);
-			JANUS_LOG(LOG_VERB, "cursor=%d, len=%d, next_start_code=%d", cursor - frame->data, len, next_start_code - frame->data);
+			JANUS_LOG(LOG_VERB, "cursor offset=%d, len=%d, next_start_code offset=%d, cursor=%p, next_start_code=%p\n",
+				cursor - frame->data, len, next_start_code - frame->data, cursor, next_start_code);
 
 			size_t payload_len;
 			if (next_start_code) {
@@ -2886,30 +2890,38 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 				parsing = FALSE;
 			}
 			
-			if (payload_len > max_payload_len) {
-				// XXX: need to fragment; just truncate for now
-				JANUS_LOG(LOG_WARN, "Payload length %d exceeds max payload length %d", payload_len, max_payload_len);
-				payload_len = max_payload_len;
-			}
+			if (payload_len > 0) {
+				uint8_t nal_nri  = cursor[0] & 0x60;
+				uint8_t nal_type = cursor[0] & 0x1f;
+						
+				if (payload_len > max_payload_len) {
+					// XXX: need to fragment; just truncate for now
+					JANUS_LOG(LOG_WARN, "Payload length %d exceeds max payload length %d\n", payload_len, max_payload_len);
+					payload_len = max_payload_len;
+				}
 			
-			/* Relay on all sessions */
-			packet.data = header;
-			memcpy(packet.data + RTP_HEADER_SIZE, cursor, payload_len);
-			packet.length = RTP_HEADER_SIZE + payload_len;
-			packet.is_video = 1;
-			/* Backup the actual timestamp and sequence number */
-			packet.timestamp = ntohl(packet.data->timestamp);
-			packet.seq_number = ntohs(packet.data->seq_number);
-			/* Go! */
-			janus_mutex_lock_nodebug(&mountpoint->mutex);
-			g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
-			janus_mutex_unlock_nodebug(&mountpoint->mutex);
-			/* Update header */
-			seq++;
-			header->seq_number = htons(seq);
+				/* Relay on all sessions */
+				packet.data = header;
+				memcpy(packet.data + RTP_HEADER_SIZE, cursor, payload_len);
+				packet.length = RTP_HEADER_SIZE + payload_len;
+				packet.is_video = 1;
+				/* Backup the actual timestamp and sequence number */
+				packet.timestamp = ntohl(packet.data->timestamp);
+				packet.seq_number = ntohs(packet.data->seq_number);
+				/* Go! */
+				
+				JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d\n", &packet, packet.data, packet.length);
+				
+				janus_mutex_lock_nodebug(&mountpoint->mutex);
+				g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+				janus_mutex_unlock_nodebug(&mountpoint->mutex);
+				/* Update header */
+				seq++;
+				header->seq_number = htons(seq);
+			}
 
 			cursor += payload_len + 4; // +4 to skip over the next SC, if there is one
-			len -= payload_len;
+			len -= payload_len + 4;
 		};
 
 		ts += 3000; // 30fps
