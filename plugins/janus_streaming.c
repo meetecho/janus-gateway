@@ -2834,6 +2834,7 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 	}
 
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
+	uint64_t t0 = 0;
 
 	/* Set up RTP */
 	gint16 seq = 1;
@@ -2853,7 +2854,34 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 	now.tv_usec = before.tv_usec;
 	
 	uint8_t start_code[] = { 0x00, 0x00, 0x00, 0x01 };
+
+#ifdef SNIFF_RTP	
+	// Useful for debugging to check whether we're sending sensible H.264:
+
+	int sniff_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	struct sockaddr_in servaddr;
+	bzero (&servaddr, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	servaddr.sin_port = htons(32000);
 	
+	// To test, copy this SDP into foo.sdp and then play it with
+	// mplayer -fps 30 foo.sdp
+/*
+	v=0
+	o=- 172337319165 172337319165 IN IP4 127.0.0.1
+	s=Streaming Test
+	t=0 0
+	m=video 32000 RTP/AVPF 126
+	c=IN IP4 127.0.0.1
+	a=rtpmap:126 H264/90000
+	a=fmtp:126 profile-level-id=42e028;packetization-mode=1
+	a=rtcp-fb:126 nack
+	a=rtcp-fb:126 goog-remb
+	a=sendonly
+*/	
+#endif
+   
 	/* Loop */
 	janus_streaming_rtp_relay_packet packet;
 	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
@@ -2863,11 +2891,17 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		if(!frame)
 			continue;
 			
+		//if (!t0)
+		//	t0 = frame->ts;
+			
 		if(!mountpoint->enabled)
 			continue;
 
 		if(mountpoint->active == FALSE)
 			mountpoint->active = TRUE;
+
+		//ts = (frame->ts - t0) * 9 / 100; // convert to 90kHz ticks
+		//header->timestamp = htonl(ts);
 
 		gboolean parsing = TRUE;
 		uint8_t * cursor = frame->data;
@@ -2943,11 +2977,16 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 					packet.seq_number = ntohs(packet.data->seq_number);
 
 					/* Go! */
-					JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d, start=%d, end=%d\n",
-							  &packet, packet.data, packet.length, start, end);
+					JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d, start=%d, end=%d, ts=%lld\n",
+							  &packet, packet.data, packet.length, start, end, ts);
 				
 					//JANUS_LOG(LOG_VERB, "RTP frame:\n");
 					//hexdump(packet.data, packet.length);
+
+#ifdef SNIFF_RTP
+					sendto(sniff_fd, packet.data, packet.length, 0,
+						   (struct sockaddr *) & servaddr, sizeof(servaddr));
+#endif
 				
 					janus_mutex_lock_nodebug(&mountpoint->mutex);
 					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
@@ -2962,21 +3001,25 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 					start = FALSE;
 				}
 			}
-
+		
+			// FIXME: We should not be incrementing TS for every new start code
+			// ...but in practice this makes firefox much happier than doing it
+			// for every frame.  Unsure why.
+			
+			ts += 3000; // 30fps at 90Hz clock
+			header->timestamp = htonl(ts);
+			
 			// skip over the next SC, if there is one.
 			cursor += 4; // +4 to skip over the next SC
 			len -= 4;
-		};
-
-		ts += 3000; // 30fps
-		header->timestamp = htonl(ts);
-		
+		}	
+					
 		g_free(frame->data);
 		g_free(frame);
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Leaving ardrone3 thread\n", name);
-	g_free(name);
-	g_free(buf);
+	if (name) g_free(name);
+	if (buf) g_free(buf);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
