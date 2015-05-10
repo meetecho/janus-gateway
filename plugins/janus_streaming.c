@@ -2821,10 +2821,10 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%s] Opening ardrone3 source...\n", mountpoint->name);
 
 	// XXX: should use actual MTU
-	size_t max_payload_len = 65535 - 20 - 8 - RTP_HEADER_SIZE;
+	size_t max_payload_len = 1500 - 20 - 8 - RTP_HEADER_SIZE - 10;
 	
 	/* Buffer */
-	char *buf = calloc(max_payload_len, sizeof(char));
+	char *buf = calloc(1500, sizeof(char));
 	if(buf == NULL) {
 		JANUS_LOG(LOG_FATAL, "[%s] Memory error!\n", mountpoint->name);
 		g_thread_unref(g_thread_self());
@@ -2891,37 +2891,70 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 			}
 			
 			if (payload_len > 0) {
+				uint8_t nal_f    = cursor[0] & 0x80;
 				uint8_t nal_nri  = cursor[0] & 0x60;
 				uint8_t nal_type = cursor[0] & 0x1f;
+				
+				gboolean start = TRUE;
+				gboolean end = FALSE;
+				
+				while (!end) {
+					size_t packet_len;
+					if (payload_len <= max_payload_len - 1) {
+						packet_len = payload_len;
+						end = TRUE;
+					}
+					else {
+						packet_len = max_payload_len - 1; // leave room for the fragmentation header
+					}
+					
+					/* Relay on all sessions */
+					packet.data = header;					
+					if (start && end) {
+						// send a single NAL. the NAL header can be passed straight through.
+						memcpy((uint8_t*)(packet.data) + RTP_HEADER_SIZE, cursor, packet_len);
+						packet.length = RTP_HEADER_SIZE + packet_len;
+					}
+					else {
+						// send a FU-A fragment with custom 2 byte header
+						//JANUS_LOG(LOG_VERB, "copying %d bytes resulting in packet.length=%d and max_payload_len=%d\n",
+						//		  packet_len - 1, RTP_HEADER_SIZE + packet_len + 1, max_payload_len);
+						memcpy((uint8_t*)(packet.data) + RTP_HEADER_SIZE + 2, cursor + 1, packet_len - 1);
+						packet.length = RTP_HEADER_SIZE + packet_len + 1;
 						
-				if (payload_len > max_payload_len) {
-					// XXX: need to fragment; just truncate for now
-					JANUS_LOG(LOG_WARN, "Payload length %d exceeds max payload length %d\n", payload_len, max_payload_len);
-					payload_len = max_payload_len;
+						// Fix up the fragment & NAL header as per RFC6184 §5.8
+						// 28 is the NAL type of a FU-A
+						*(uint8_t *)(packet.data + RTP_HEADER_SIZE) = nal_f | nal_nri | 28;
+						*(uint8_t *)(packet.data + RTP_HEADER_SIZE + 1) =
+							(start ? 0x80 : 0x00) | (end ? 0x40 : 0x00) | nal_type;
+					}
+
+					packet.is_video = 1;
+					/* Backup the actual timestamp and sequence number */
+					packet.timestamp = ntohl(packet.data->timestamp);
+					packet.seq_number = ntohs(packet.data->seq_number);
+
+					/* Go! */
+					JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d, start=%d, end=%d\n",
+							  &packet, packet.data, packet.length, start, end);
+				
+					janus_mutex_lock_nodebug(&mountpoint->mutex);
+					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+					janus_mutex_unlock_nodebug(&mountpoint->mutex);
+					/* Update header */
+					seq++;
+					header->seq_number = htons(seq);
+
+					cursor += packet_len;
+					len -= packet_len;
+					payload_len -= packet_len;
+					start = FALSE;
 				}
-			
-				/* Relay on all sessions */
-				packet.data = header;
-				memcpy(packet.data + RTP_HEADER_SIZE, cursor, payload_len);
-				packet.length = RTP_HEADER_SIZE + payload_len;
-				packet.is_video = 1;
-				/* Backup the actual timestamp and sequence number */
-				packet.timestamp = ntohl(packet.data->timestamp);
-				packet.seq_number = ntohs(packet.data->seq_number);
-				/* Go! */
-				
-				JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d\n", &packet, packet.data, packet.length);
-				
-				janus_mutex_lock_nodebug(&mountpoint->mutex);
-				g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
-				janus_mutex_unlock_nodebug(&mountpoint->mutex);
-				/* Update header */
-				seq++;
-				header->seq_number = htons(seq);
 			}
 
-			cursor += payload_len + 4; // +4 to skip over the next SC, if there is one
-			len -= payload_len + 4;
+			// skip over the next SC, if there is one.
+			cursor += 4; // +4 to skip over the next SC
+			len -= 4;
 		};
 
 		ts += 3000; // 30fps

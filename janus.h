@@ -42,7 +42,7 @@
 #include "plugins/plugin.h"
 
 
-#define BUFSIZE	65536
+#define BUFSIZE	4096
 
 
 /*! \brief Incoming HTTP message */
