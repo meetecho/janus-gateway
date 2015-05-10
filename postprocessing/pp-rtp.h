@@ -13,6 +13,15 @@
 #ifndef _JANUS_PP_RTP
 #define _JANUS_PP_RTP
 
+#ifdef __MACH__
+#include <machine/endian.h>
+#define __LITTLE_ENDIAN   LITTLE_ENDIAN
+#define __BIG_ENDIAN      BIG_ENDIAN
+#define __BYTE_ORDER      BYTE_ORDER
+#else
+#include <endian.h>
+#endif
+
 
 typedef struct janus_pp_rtp_header
 {
