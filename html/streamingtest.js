@@ -141,7 +141,7 @@ $(document).ready(function() {
 									console.log(" ::: Got a remote stream :::");
 									console.log(JSON.stringify(stream));
 									if($('#remotevideo').length === 0)
-										$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+										$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=640 height=368 autoplay/>');
 									// Show the stream and hide the spinner when we get a playing event
 									$("#remotevideo").bind("playing", function () {
 										$('#waitingvideo').remove();
@@ -218,7 +218,7 @@ function startStream() {
 	var body = { "request": "watch", id: parseInt(selectedStream) };
 	streaming.send({"message": body});
 	// No remote video yet
-	$('#stream').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+	$('#stream').append('<video class="rounded centered" id="waitingvideo" width=640 height=368 />');
 	if(spinner == null) {
 		var target = document.getElementById('stream');
 		spinner = new Spinner({top:100}).spin(target);
