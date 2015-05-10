@@ -2477,7 +2477,9 @@ janus_streaming_mountpoint *janus_streaming_create_ardrone3_source(
 	// video params for ffox lifted from janus.plugin.streaming.cfg.sample	
 	ardrone3_source->codecs.video_pt = 126;
 	ardrone3_source->codecs.video_rtpmap = "H264/90000";
-	ardrone3_source->codecs.video_fmtp = "profile-level-id=42e01f;packetization-mode=1";	
+	//ardrone3_source->codecs.video_fmtp = "profile-level-id=42e01f;packetization-mode=1";	
+	// from inspecting the PPS in the drone stream:
+	ardrone3_source->codecs.video_fmtp = "profile-level-id=42e028;packetization-mode=1";
 	ardrone3_source->listeners = NULL;
 	ardrone3_source->destroyed = 0;
 	janus_mutex_init(&ardrone3_source->mutex);
@@ -2871,6 +2873,7 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		uint8_t * cursor = frame->data;
 		size_t len = frame->length;
 		
+		//JANUS_LOG(LOG_VERB, "Frame from drone:\n");
 		//hexdump(frame->data, frame->length);
 		
 		// packetize the H.264 by splitting up NALs on start codes
@@ -2885,7 +2888,6 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 				payload_len = (next_start_code - cursor);
 			}
 			else {
-				header->markerbit = 1;
 				payload_len = len;
 				parsing = FALSE;
 			}
@@ -2900,12 +2902,14 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 				
 				while (!end) {
 					size_t packet_len;
-					if (payload_len <= max_payload_len - 1) {
+					if (payload_len <= max_payload_len - 2) {
 						packet_len = payload_len;
 						end = TRUE;
+						header->markerbit = 1;
 					}
 					else {
-						packet_len = max_payload_len - 1; // leave room for the fragmentation header
+						header->markerbit = 0;
+						packet_len = max_payload_len - 2; // leave room for the fragment headers
 					}
 					
 					/* Relay on all sessions */
@@ -2916,16 +2920,20 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 						packet.length = RTP_HEADER_SIZE + packet_len;
 					}
 					else {
+						if (start) { // skip over the NAL header
+							cursor++;
+							len--;
+							payload_len--;
+						}
+							
 						// send a FU-A fragment with custom 2 byte header
-						//JANUS_LOG(LOG_VERB, "copying %d bytes resulting in packet.length=%d and max_payload_len=%d\n",
-						//		  packet_len - 1, RTP_HEADER_SIZE + packet_len + 1, max_payload_len);
-						memcpy((uint8_t*)(packet.data) + RTP_HEADER_SIZE + 2, cursor + 1, packet_len - 1);
-						packet.length = RTP_HEADER_SIZE + packet_len + 1;
+						memcpy((uint8_t*)(packet.data) + RTP_HEADER_SIZE + 2, cursor, packet_len);
+						packet.length = RTP_HEADER_SIZE + packet_len + 2;
 						
 						// Fix up the fragment & NAL header as per RFC6184 §5.8
 						// 28 is the NAL type of a FU-A
-						*(uint8_t *)(packet.data + RTP_HEADER_SIZE) = nal_f | nal_nri | 28;
-						*(uint8_t *)(packet.data + RTP_HEADER_SIZE + 1) =
+						*((uint8_t *)(packet.data) + RTP_HEADER_SIZE) = nal_f | nal_nri | 28;
+						*((uint8_t *)(packet.data) + RTP_HEADER_SIZE + 1) =
 							(start ? 0x80 : 0x00) | (end ? 0x40 : 0x00) | nal_type;
 					}
 
@@ -2937,6 +2945,9 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 					/* Go! */
 					JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d, start=%d, end=%d\n",
 							  &packet, packet.data, packet.length, start, end);
+				
+					//JANUS_LOG(LOG_VERB, "RTP frame:\n");
+					//hexdump(packet.data, packet.length);
 				
 					janus_mutex_lock_nodebug(&mountpoint->mutex);
 					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
