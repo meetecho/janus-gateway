@@ -45,6 +45,7 @@
 typedef struct janus_streaming_ardrone3_frame {
 	uint8_t *data;
 	gint length;
+	uint64_t ts;
 } janus_streaming_ardrone3_frame;
 
 // XXX: global hack to allow the drone SDK to easily call back to us

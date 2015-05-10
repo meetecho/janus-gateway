@@ -614,6 +614,18 @@ uint8_t *frameCompleteCallback (eARSTREAM_READER_CAUSE cause, uint8_t *frame, ui
 			f = calloc(1, sizeof(janus_streaming_ardrone3_frame));
 			f->data = frame;
 			f->length = frameSize;
+			
+			struct timeval now;
+			time_t d_s, d_us;
+			gettimeofday(&now, NULL);
+			d_s = now.tv_sec;
+			d_us = now.tv_usec;
+			if(d_us < 0) {
+				d_us += 1000000;
+				--d_s;
+			}
+		 	f->ts = (uint64_t)d_s*1000000 + d_us;
+
 			g_async_queue_push(ardrone3_frames, f);
 			
             //ret = deviceManager->videoFrame;
