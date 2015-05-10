@@ -12,7 +12,9 @@ AM_CFLAGS = \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
 AM_CFLAGS += -Wno-undef  # sophiasip is not -Wundef--safe
 AM_CFLAGS += -Wno-redundant-decls  # sophiasip also contains redundant declarations
-AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT
+AM_CFLAGS += -Wno-override-init -Wno-initializer-overrides  # we need this for JANUS_PLUGIN_INIT
+# make clang stop whining:
+AM_CFLAGS += -Wno-format
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
@@ -182,9 +184,13 @@ endif
 
 if ENABLE_PLUGIN_STREAMING
 plugin_LTLIBRARIES += plugins/libjanus_streaming.la
-plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
-plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags)
+ARSDK_DIR=$(HOME)/workspace/ARDrone3SDK/ARSDKBuildUtils
+plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c plugins/BebopDroneReceiveStream.c
+plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags) -I$(ARSDK_DIR)/Targets/Unix/Install/include
+plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags) -L$(ARSDK_DIR)/Targets/Unix/Install/lib -larsal -larcommands -larnetwork -larnetworkal -lardiscovery -larstream
+#plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
+#plugins_libjanus_streaming_la_CFLAGS = $(plugins_cflags)
+#plugins_libjanus_streaming_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_streaming_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.streaming.cfg.sample
 stream_DATA += \

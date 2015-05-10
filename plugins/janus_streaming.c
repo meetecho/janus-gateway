@@ -118,6 +118,7 @@ videofmtp = Codec specific parameters, if any
 #include "../record.h"
 #include "../utils.h"
 
+#include "BebopDroneReceiveStream.h"
 
 /* Plugin information */
 #define JANUS_STREAMING_VERSION			5
@@ -186,6 +187,7 @@ static GThread *watchdog;
 static void *janus_streaming_handler(void *data);
 static void *janus_streaming_ondemand_thread(void *data);
 static void *janus_streaming_filesource_thread(void *data);
+static void *janus_streaming_ardrone3_thread(void *data);
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *janus_streaming_relay_thread(void *data);
 
@@ -199,6 +201,7 @@ typedef enum janus_streaming_source {
 	janus_streaming_source_none = 0,
 	janus_streaming_source_file,
 	janus_streaming_source_rtp,
+	janus_streaming_source_ardrone3,
 } janus_streaming_source;
 
 typedef struct janus_streaming_rtp_source {
@@ -206,13 +209,20 @@ typedef struct janus_streaming_rtp_source {
 	gint audio_port;
 	in_addr_t video_mcast;
 	gint video_port;
-	janus_recorder *arc;	/* The Janus recorder instance for this streams's audio, if enabled */
-	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
+	janus_recorder *arc;	/* The Janus recorder instance for this stream's audio, if enabled */
+	janus_recorder *vrc;	/* The Janus recorder instance for this stream's video, if enabled */
 } janus_streaming_rtp_source;
 
 typedef struct janus_streaming_file_source {
 	char *filename;
 } janus_streaming_file_source;
+
+typedef struct janus_streaming_ardrone3_source {
+	char *ip_address;
+	uint16_t destination_port;
+	uint16_t d2c_port;
+	uint16_t c2d_port;
+} janus_streaming_ardrone3_source;
 
 typedef struct janus_streaming_codecs {
 	gint audio_pt;
@@ -250,10 +260,16 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
 		gboolean doaudio, char* amcast,uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, char* vmcast, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp);
+
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
 		uint64_t id, char *name, char *desc, char *filename,
 		gboolean live, gboolean doaudio, gboolean dovideo);
+
+/* Helper to create an ardrone3 live source */
+janus_streaming_mountpoint *janus_streaming_create_ardrone3_source(
+		uint64_t id, char *name, char *desc,
+		char *ip_address, uint16_t discovery_port, uint16_t d2c_port, uint16_t c2d_port);
 
 
 typedef struct janus_streaming_message {
@@ -316,6 +332,15 @@ typedef struct janus_streaming_rtp_relay_packet {
 	uint16_t seq_number;
 } janus_streaming_rtp_relay_packet;
 
+void janus_streaming_ardrone3_frame_free(janus_streaming_ardrone3_frame *frame);
+void janus_streaming_ardrone3_frame_free(janus_streaming_ardrone3_frame *frame) {
+	if(!frame)
+		return;
+	if (frame->data) {
+		g_free(frame->data);
+	}
+	g_free(frame);
+}
 
 /* Error codes */
 #define JANUS_STREAMING_ERROR_NO_MESSAGE			450
@@ -540,6 +565,49 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				mp->is_private = is_private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
+			} else if(!strcasecmp(type->value, "ardrone3")) {
+				/* AR Drone3 live source */
+				janus_config_item *id = janus_config_get_item(cat, "id");
+				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *priv = janus_config_get_item(cat, "is_private");
+				janus_config_item *secret = janus_config_get_item(cat, "secret");
+				janus_config_item *ip_address = janus_config_get_item(cat, "ip_address");
+				janus_config_item *discovery_port = janus_config_get_item(cat, "discovery_port");
+				janus_config_item *c2d_port = janus_config_get_item(cat, "c2d_port");
+				janus_config_item *d2c_port = janus_config_get_item(cat, "d2c_port");
+
+				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
+
+				if(id == NULL || id->value == NULL) {
+					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
+				} else {
+					janus_mutex_lock(&mountpoints_mutex);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					janus_mutex_unlock(&mountpoints_mutex);
+					if(mp != NULL) {
+						JANUS_LOG(LOG_WARN, "A stream with the provided ID already exists, skipping '%s'\n", cat->name);
+						cat = cat->next;
+						continue;
+					}
+				}
+				janus_streaming_mountpoint *mp = NULL;
+								
+				if((mp = janus_streaming_create_ardrone3_source(
+						(id && id->value) ? atoi(id->value) : 0,
+						(char *)cat->name,
+						desc ? (char *)desc->value : NULL,
+						ip_address ? (char *)ip_address->value : NULL,
+						(discovery_port && discovery_port->value) ? atoi(discovery_port->value) : 0,
+						(c2d_port && c2d_port->value) ? atoi(c2d_port->value) : 0,
+						(d2c_port && d2c_port->value) ? atoi(d2c_port->value) : 0
+						)) == NULL) {
+					JANUS_LOG(LOG_ERR, "Error creating 'ardrone3' stream '%s'...\n", cat->name);
+					cat = cat->next;
+					continue;
+				}
+				mp->is_private = is_private;
+				if(secret && secret->value)
+					mp->secret = g_strdup(secret->value);
 			} else if(!strcasecmp(type->value, "ondemand")) {
 				/* mu-Law file on demand source */
 				janus_config_item *id = janus_config_get_item(cat, "id");
@@ -612,7 +680,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		janus_streaming_mountpoint *mp = value;
 		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %s (%s, %s, %s)\n", mp->id, mp->name, mp->description,
 			mp->streaming_type == janus_streaming_type_live ? "live" : "on demand",
-			mp->streaming_source == janus_streaming_source_rtp ? "RTP source" : "file source",
+			mp->streaming_source == janus_streaming_source_rtp ? "RTP source" : 
+								    janus_streaming_source_ardrone3 ? "ARDrone3 source" : "file source",
 			mp->is_private ? "private" : "public");
 	}
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -2142,6 +2211,10 @@ static void janus_streaming_file_source_free(janus_streaming_file_source *source
 	free(source);
 }
 
+static void janus_streaming_ardrone3_source_free(janus_streaming_ardrone3_source *source) {
+	free(source);
+}
+
 static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
 	mp->destroyed = janus_get_monotonic_time();
 	
@@ -2349,6 +2422,91 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		}
 	}
 	return file_source;
+}
+
+
+/* Helper to create an ardrone3 live source */
+janus_streaming_mountpoint *janus_streaming_create_ardrone3_source(
+		uint64_t id, char *name, char *desc, 
+		char *ip_address, uint16_t discovery_port, uint16_t d2c_port, uint16_t c2d_port) {
+	if(name == NULL) {
+		JANUS_LOG(LOG_VERB, "Missing name, will generate a random one...\n");
+	}
+	if(id == 0) {
+		JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
+	}
+	janus_streaming_mountpoint *ardrone3_source = calloc(1, sizeof(janus_streaming_mountpoint));
+	if(ardrone3_source == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
+	ardrone3_source->id = id ? id : g_random_int();
+	char tempname[255];
+	if(!name) {
+		memset(tempname, 0, 255);
+		g_snprintf(tempname, 255, "%"SCNu64, ardrone3_source->id);
+	}
+	ardrone3_source->name = g_strdup(name ? name : tempname);
+	char *description = NULL;
+	if(desc != NULL)
+		description = g_strdup(desc);
+	else
+		description = g_strdup(name ? name : tempname);
+	ardrone3_source->description = description;
+	ardrone3_source->enabled = TRUE;
+	ardrone3_source->active = FALSE;
+	ardrone3_source->streaming_type = janus_streaming_type_live;
+	ardrone3_source->streaming_source = janus_streaming_source_ardrone3;
+	
+	janus_streaming_ardrone3_source *ardrone3_source_source = calloc(1, sizeof(janus_streaming_ardrone3_source));
+	if(ardrone3_source->name == NULL || description == NULL || ardrone3_source_source == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		if(ardrone3_source->name)
+			g_free(ardrone3_source->name);
+		if(description)
+			g_free(description);
+		if(ardrone3_source_source)
+			g_free(ardrone3_source_source);
+		g_free(ardrone3_source);
+		return NULL;
+	}
+	ardrone3_source->source = ardrone3_source_source;
+	ardrone3_source->source_destroy = (GDestroyNotify) janus_streaming_ardrone3_source_free;
+	ardrone3_source->codecs.audio_pt = -1; // drone has no audio
+	ardrone3_source->codecs.audio_rtpmap = NULL;
+	// video params for ffox lifted from janus.plugin.streaming.cfg.sample	
+	ardrone3_source->codecs.video_pt = 126;
+	ardrone3_source->codecs.video_rtpmap = "H264/90000";
+	ardrone3_source->codecs.video_fmtp = "profile-level-id=42e01f;packetization-mode=1";	
+	ardrone3_source->listeners = NULL;
+	ardrone3_source->destroyed = 0;
+	janus_mutex_init(&ardrone3_source->mutex);
+	janus_mutex_lock(&mountpoints_mutex);
+	g_hash_table_insert(mountpoints, GINT_TO_POINTER(ardrone3_source->id), ardrone3_source);
+	janus_mutex_unlock(&mountpoints_mutex);
+	
+	// the queue of frames from the ardrone3
+	ardrone3_frames = g_async_queue_new_full((GDestroyNotify) janus_streaming_ardrone3_frame_free);
+	
+	// set the drone capture thread going
+	// TODO: pass in our actual config at this point
+	bebop_start();
+
+	GError *error = NULL;
+	g_thread_try_new(ardrone3_source->name, &janus_streaming_ardrone3_thread, ardrone3_source, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the ardrone3 media relay thread...\n", error->code, error->message ? error->message : "??");
+		if(ardrone3_source->name)
+			g_free(ardrone3_source->name);
+		if(description)
+			g_free(description);
+		if(ardrone3_source_source)
+			g_free(ardrone3_source_source);
+		g_free(ardrone3_source);
+		return NULL;
+	}
+
+	return ardrone3_source;
 }
 
 
@@ -2600,6 +2758,169 @@ static void *janus_streaming_filesource_thread(void *data) {
 	g_free(name);
 	g_free(buf);
 	fclose(audio);
+	g_thread_unref(g_thread_self());
+	return NULL;
+}
+
+void hexdump(const uint8_t * buf, int len)
+{
+    int i, j, o;
+    char s[256];
+    for (i=0; i<len;) {
+        o = sprintf(s, "%04x: ", i);
+        for (j=0; j<16; j++, i++) {
+            if (i < len) {
+                o += sprintf(s + o, "%02x", buf[i]);
+                if (j==7)
+                    s[o++] = '-';
+                else
+                    s[o++] = ' ';
+            }
+            else {
+                o += sprintf(s + o, "   ");
+            }
+        }
+        i -= 16;
+        o += sprintf(s + o, " ");
+        for (j=0; j<16; j++, i++) {
+            if (i < len) {
+                s[o++] = buf[i] > 31 && buf[i]<127 ? buf[i] : '.';
+            }
+        }
+        s[o++] = '\0';
+        
+        JANUS_LOG(LOG_VERB, "%s\n", s);
+    }
+}
+
+/* Thread to send RTP packets from an ARDrone3 */
+static void *janus_streaming_ardrone3_thread(void *data) {
+	JANUS_LOG(LOG_VERB, "ARDrone3 thread starting...\n");
+	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
+	if(!mountpoint) {
+		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
+	if(mountpoint->streaming_source != janus_streaming_source_ardrone3) {
+		JANUS_LOG(LOG_ERR, "[%s] Not an ardrone3 source mountpoint!\n", mountpoint->name);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
+	if(mountpoint->streaming_type != janus_streaming_type_live) {
+		JANUS_LOG(LOG_ERR, "[%s] Not a live file source mountpoint!\n", mountpoint->name);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
+	janus_streaming_ardrone3_source *source = mountpoint->source;
+	if(source == NULL) {
+		JANUS_LOG(LOG_ERR, "[%s] Invalid ardrone3 source mountpoint!\n", mountpoint->name);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
+	JANUS_LOG(LOG_VERB, "[%s] Opening ardrone3 source...\n", mountpoint->name);
+
+	// XXX: should use actual MTU
+	size_t max_payload_len = 1500 - 20 - 8 - RTP_HEADER_SIZE;
+	
+	/* Buffer */
+	char *buf = calloc(max_payload_len, sizeof(char));
+	if(buf == NULL) {
+		JANUS_LOG(LOG_FATAL, "[%s] Memory error!\n", mountpoint->name);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
+
+	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
+
+	/* Set up RTP */
+	gint16 seq = 1;
+	gint32 ts = 0;
+	rtp_header *header = (rtp_header *)buf;
+	header->version = 2;
+	header->markerbit = 1;
+	header->type = mountpoint->codecs.video_pt;
+	header->seq_number = htons(seq);
+	header->timestamp = htonl(ts);
+	header->ssrc = htonl(1);	/* The gateway will fix this anyway */
+	
+	/* Timer */
+	struct timeval now, before;
+	gettimeofday(&before, NULL);
+	now.tv_sec = before.tv_sec;
+	now.tv_usec = before.tv_usec;
+	
+	uint8_t start_code[] = { 0x00, 0x00, 0x00, 0x01 };
+	
+	/* Loop */
+	janus_streaming_rtp_relay_packet packet;
+	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
+		
+		janus_streaming_ardrone3_frame *frame = g_async_queue_timeout_pop(ardrone3_frames, 1000 * 1000);
+		
+		if(!mountpoint->enabled)
+			continue;
+
+		if(mountpoint->active == FALSE)
+			mountpoint->active = TRUE;
+
+		gboolean parsing = TRUE;
+		uint8_t * cursor = frame->data;
+		size_t len = frame->length;
+		
+		hexdump(frame->data, frame->length);
+		
+		// packetize the H.264 by splitting up NALs on start codes
+	 	while (parsing) {
+			uint8_t * next_start_code = (uint8_t *) memmem(cursor, len, start_code, 4);
+			JANUS_LOG(LOG_VERB, "cursor=%d, len=%d, next_start_code=%d", cursor - frame->data, len, next_start_code - frame->data);
+
+			size_t payload_len;
+			if (next_start_code) {
+				header->markerbit = 0;
+				payload_len = (next_start_code - cursor);
+			}
+			else {
+				header->markerbit = 1;
+				payload_len = len;
+				parsing = FALSE;
+			}
+			
+			if (payload_len > max_payload_len) {
+				// XXX: need to fragment; just truncate for now
+				JANUS_LOG(LOG_WARN, "Payload length %d exceeds max payload length %d", payload_len, max_payload_len);
+				payload_len = max_payload_len;
+			}
+			
+			/* Relay on all sessions */
+			packet.data = header;
+			memcpy(packet.data + RTP_HEADER_SIZE, cursor, payload_len);
+			packet.length = RTP_HEADER_SIZE + payload_len;
+			packet.is_video = 1;
+			/* Backup the actual timestamp and sequence number */
+			packet.timestamp = ntohl(packet.data->timestamp);
+			packet.seq_number = ntohs(packet.data->seq_number);
+			/* Go! */
+			janus_mutex_lock_nodebug(&mountpoint->mutex);
+			g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+			janus_mutex_unlock_nodebug(&mountpoint->mutex);
+			/* Update header */
+			seq++;
+			header->seq_number = htons(seq);
+
+			cursor += payload_len + 4; // +4 to skip over the next SC, if there is one
+			len -= payload_len;
+		};
+
+		ts += 3000; // 30fps
+		header->timestamp = htonl(ts);
+		
+		g_free(frame->data);
+		g_free(frame);
+	}
+	JANUS_LOG(LOG_VERB, "[%s] Leaving ardrone3 thread\n", name);
+	g_free(name);
+	g_free(buf);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
