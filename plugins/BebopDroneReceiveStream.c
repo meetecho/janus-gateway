@@ -379,6 +379,8 @@ BD_MANAGER_t * bebop_start()
             failed = 1;
         }
     }
+
+	sendHullProtection(1, deviceManager);
     
     return deviceManager;
 }
@@ -387,13 +389,14 @@ void bebop_stop(BD_MANAGER_t *deviceManager) {
     if (deviceManager != NULL)
     {
         deviceManager->run = 0; // break threads loops
-  	  // Stop looper Thread
-  	  if (deviceManager->looperThread != NULL)
-  	  {
-  		  ARSAL_Thread_Join(deviceManager->looperThread, NULL);
-  		  ARSAL_Thread_Destroy(&(deviceManager->looperThread));
-  		  deviceManager->looperThread = NULL;
-  	  }
+
+		// Stop looper Thread
+		if (deviceManager->looperThread != NULL)
+		{
+			ARSAL_Thread_Join(deviceManager->looperThread, NULL);
+			ARSAL_Thread_Destroy(&(deviceManager->looperThread));
+			deviceManager->looperThread = NULL;
+		}
  
         /* stop */
         if (deviceManager->readerThreads != NULL)
@@ -1044,6 +1047,33 @@ int sendHome(BD_MANAGER_t *deviceManager)
     if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
     {
         ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send home command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendHullProtection(int present, BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send hull protection update");
+    
+    // Send flip command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3SpeedSettingsHullProtection (cmdBuffer, sizeof(cmdBuffer), &cmdSize, present);
+
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send hull protection command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
         sentStatus = 0;
     }
     

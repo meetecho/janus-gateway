@@ -137,6 +137,7 @@ int sendTakeoff(BD_MANAGER_t *deviceManager);
 int sendLanding(BD_MANAGER_t *deviceManager);
 int sendFlip(eARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION direction, BD_MANAGER_t *deviceManager);
 int sendHome(BD_MANAGER_t *deviceManager);
+int sendHullProtection(int present, BD_MANAGER_t *deviceManager);
 int sendEmergency(BD_MANAGER_t *deviceManager);
 void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager);
 
