@@ -198,6 +198,7 @@ void janus_session_free(janus_session *session);
 #define JANUS_SOURCE_WEBSOCKETS		2
 /*! \brief RabbitMQ source */
 #define JANUS_SOURCE_RABBITMQ		3
+#define JANUS_SOURCE_MATRIX		    4
 /*! \brief Helper to address request sources (e.g., a specific HTTP connection, websocket or RabbitMQ queue) */
 typedef struct janus_request_source {
 	/*! \brief The source type */
@@ -415,4 +416,29 @@ void janus_set_public_ip(const char *ip);
 gint janus_is_stopping(void);
 
 
+void *janus_matrix_event_stream(void *data);
+size_t curl_data_cb(void *contents, size_t size, size_t nmemb, void *userp);
+
+typedef struct matrix_session {
+    char *hs_url;
+    char *matrix_id;
+    pthread_t event_stream_thread;
+    char *access_token;
+    int run_event_stream;
+} matrix_session;
+struct fetch_buf {
+    char *start;
+    size_t len;
+    size_t datalen;
+};
+typedef struct matrix_event {
+    const char *type;
+    const char *room_id;
+    const char *user_id;
+    const char *state_key;
+    json_t *content;
+} matrix_event;
+void janus_matrix_handle_event(matrix_event *ev);
+int matrix_join_room(matrix_session *sess, const char *room_id);
+int matrix_send_event(matrix_session *sess, const char *room_id, const char *type, json_t *content);
 #endif
