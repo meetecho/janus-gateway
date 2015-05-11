@@ -1231,6 +1231,12 @@ void onMatrixMessage (char *message, BD_MANAGER_t *deviceManager)
 		deviceManager->dataPCMD.flag = 1;
 	    deviceManager->dataPCMD.pitch = -param1;
 	}
+	else if (sscanf(message, "turn left %d", &param1) == 1) {
+        deviceManager->dataPCMD.yaw = -param1;
+	}
+	else if (sscanf(message, "turn right %d", &param1) == 1) {
+        deviceManager->dataPCMD.yaw = param1;
+	}
 	else if (sscanf(message, "look %d,%d", &param1, &param2) == 2) {
 		deviceManager->dataCam.pan = param1;
 		deviceManager->dataCam.tilt = param2;
