@@ -218,10 +218,8 @@ typedef struct janus_streaming_file_source {
 } janus_streaming_file_source;
 
 typedef struct janus_streaming_ardrone3_source {
-	char *ip_address;
-	uint16_t destination_port;
-	uint16_t d2c_port;
-	uint16_t c2d_port;
+	BD_MANAGER_t *deviceManager;
+	GAsyncQueue *frames;
 } janus_streaming_ardrone3_source;
 
 typedef struct janus_streaming_codecs {
@@ -1736,6 +1734,90 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		g_async_queue_push(messages, msg);
 
 		return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
+	} else if(!strcasecmp(request_text, "matrix")) {
+		// the message is a matrix event for the room this stream is currently
+		// being viewed in - e.g. an IM, or someone joining/parting etc.
+		// matrix VoIP events get turned straight into existing janus stream
+		// management fun.
+		
+		// XXX: in future, we should just nego a datachannel over matrix and
+		// and send commands over that instead to reduce latency.
+		
+		// FIXME: do we have to look up the mountpoint based ona stream ID?
+		if (!session->mountpoint) {
+			JANUS_LOG(LOG_ERR, "No mountpoint for session when handling matrix message\n");
+			goto error;
+		}
+		if (session->mountpoint->streaming_source != janus_streaming_source_ardrone3) {
+			JANUS_LOG(LOG_ERR, "Matrix messages only supported for ardrone3 sources for now\n");
+			goto error;
+		}
+		janus_streaming_ardrone3_source * source = session->mountpoint->source;
+		
+		json_t *event = json_object_get(root, "event");
+		if(!event) {
+			JANUS_LOG(LOG_ERR, "Missing element (event)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (event)");
+			goto error;
+		}
+		if(!json_is_object(event)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (event should be an object)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (event should be an object)");
+			goto error;
+		}
+		
+		json_t *type = json_object_get(event, "type");
+		if(!type) {
+			JANUS_LOG(LOG_ERR, "Missing element (event.type)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (event.type)");
+			goto error;
+		}
+		if(!json_is_string(type)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (event.type should be a string)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (event.type should be a string)");
+			goto error;
+		}
+		
+		const char *type_text = json_string_value(type);
+		if (!strcasecmp(type_text, "m.room.message")) {
+			json_t *content = json_object_get(event, "content");
+			if(!content) {
+				JANUS_LOG(LOG_ERR, "Missing element (event.content)\n");
+				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (event.content)");
+				goto error;
+			}
+			if(!json_is_object(content)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (event.content should be an object)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (event.content should be an object)");
+				goto error;
+			}
+			
+			json_t *body = json_object_get(content, "body");
+			if(!body) {
+				JANUS_LOG(LOG_ERR, "Missing element (event.content.body)\n");
+				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (event.content.body)");
+				goto error;
+			}
+			if(!json_is_string(body)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (event.content.body should be a string)\n");
+				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (event.content.body should be a string)");
+				goto error;
+			}
+			
+			const char *body_text = json_string_value(body);
+			onMatrixMessage(body_text, source->deviceManager);
+		}
+		else {
+			JANUS_LOG(LOG_VERB, "Ignoring matrix event %s\n", type_text);
+		}
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_STREAMING_ERROR_INVALID_REQUEST;
@@ -2476,10 +2558,10 @@ janus_streaming_mountpoint *janus_streaming_create_ardrone3_source(
 	ardrone3_source->codecs.audio_rtpmap = NULL;
 	// video params for ffox lifted from janus.plugin.streaming.cfg.sample	
 	ardrone3_source->codecs.video_pt = 126;
-	ardrone3_source->codecs.video_rtpmap = "H264/90000";
+	ardrone3_source->codecs.video_rtpmap = (char *)"H264/90000";
 	//ardrone3_source->codecs.video_fmtp = "profile-level-id=42e01f;packetization-mode=1";	
 	// from inspecting the PPS in the drone stream:
-	ardrone3_source->codecs.video_fmtp = "profile-level-id=42e028;packetization-mode=1";
+	ardrone3_source->codecs.video_fmtp = (char *)"profile-level-id=42e028;packetization-mode=1";
 	ardrone3_source->listeners = NULL;
 	ardrone3_source->destroyed = 0;
 	janus_mutex_init(&ardrone3_source->mutex);
@@ -2488,11 +2570,15 @@ janus_streaming_mountpoint *janus_streaming_create_ardrone3_source(
 	janus_mutex_unlock(&mountpoints_mutex);
 	
 	// the queue of frames from the ardrone3
-	ardrone3_frames = g_async_queue_new_full((GDestroyNotify) janus_streaming_ardrone3_frame_free);
+	ardrone3_source_source->frames = g_async_queue_new_full((GDestroyNotify) janus_streaming_ardrone3_frame_free);
 	
 	// set the drone capture thread going
 	// TODO: pass in our actual config at this point
-	bebop_start();
+	// FIXME: actually pass the deviceManager the specifiedin char *ip_address, uint16_t discovery_port, uint16_t d2c_port, uint16_t c2d_port
+	ardrone3_source_source->deviceManager = bebop_start();
+	
+	// make sure the device manager can call us back and pass frames to us etc
+	ardrone3_source_source->deviceManager->source = ardrone3_source_source;
 
 	GError *error = NULL;
 	g_thread_try_new(ardrone3_source->name, &janus_streaming_ardrone3_thread, ardrone3_source, &error);
@@ -2764,6 +2850,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	return NULL;
 }
 
+void hexdump(const uint8_t * buf, int len);
 void hexdump(const uint8_t * buf, int len)
 {
     int i, j, o;
@@ -2886,7 +2973,7 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 	janus_streaming_rtp_relay_packet packet;
 	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
 		
-		janus_streaming_ardrone3_frame *frame = g_async_queue_timeout_pop(ardrone3_frames, 1000 * 1000);
+		janus_streaming_ardrone3_frame *frame = g_async_queue_timeout_pop(source->frames, 1000 * 1000);
 		
 		if(!frame)
 			continue;
@@ -3018,9 +3105,13 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		g_free(frame);
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Leaving ardrone3 thread\n", name);
+	
+	bebop_stop(source->deviceManager);
+	
 	if (name) g_free(name);
 	if (buf) g_free(buf);
 	g_thread_unref(g_thread_self());
+		
 	return NULL;
 }
 

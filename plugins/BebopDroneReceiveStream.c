@@ -226,11 +226,38 @@ void *readerRun (void* data)
     return NULL;
 }
 
-void bebop_start()
+// looper thread
+void *looperRun (void* data)
+{
+    BD_MANAGER_t *deviceManager = (BD_MANAGER_t *)data;
+    
+    if(deviceManager != NULL)
+    {
+        while (deviceManager->run)
+        {
+            sendPCMD(deviceManager);
+
+			// reset state after each command
+            deviceManager->dataPCMD.flag = 0;
+            deviceManager->dataPCMD.roll = 0;
+            deviceManager->dataPCMD.pitch = 0;
+            deviceManager->dataPCMD.yaw = 0;
+            deviceManager->dataPCMD.gaz = 0;
+            
+            sendCameraOrientation(deviceManager);
+            
+            usleep(50*1000);
+        }
+    }
+    
+    return NULL;
+}
+
+BD_MANAGER_t * bebop_start()
 {
     /* local declarations */
     int failed = 0;
-    BD_MANAGER_t *deviceManager = malloc(sizeof(BD_MANAGER_t));
+    BD_MANAGER_t * deviceManager = malloc(sizeof(BD_MANAGER_t));
 
     ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "-- Bebop Drone Receive Video Stream --");
     
@@ -242,6 +269,7 @@ void bebop_start()
         deviceManager->alManager = NULL;
         deviceManager->netManager = NULL;
         deviceManager->streamReader = NULL;
+        deviceManager->looperThread = NULL;
         deviceManager->rxThread = NULL;
         deviceManager->txThread = NULL;
         deviceManager->videoRxThread = NULL;
@@ -253,6 +281,17 @@ void bebop_start()
         deviceManager->arstreamFragNb   = BD_NET_DC_VIDEO_MAX_NUMBER_OF_FRAG; // Should be read from json
         //deviceManager->video_out = fopen("./video_fifo", "w");
         deviceManager->run = 1;
+        
+        deviceManager->dataPCMD.flag = 0;
+        deviceManager->dataPCMD.roll = 0;
+        deviceManager->dataPCMD.pitch = 0;
+        deviceManager->dataPCMD.yaw = 0;
+        deviceManager->dataPCMD.gaz = 0;
+        
+        deviceManager->dataCam.tilt = 0;
+        deviceManager->dataCam.pan = 0;
+        
+        deviceManager->flyingState = ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_MAX;
     }
     else
     {
@@ -330,48 +369,68 @@ void bebop_start()
             }
         }
     }
+
+    if (!failed)
+    {
+        // Create and start looper thread.
+        if (ARSAL_Thread_Create(&(deviceManager->looperThread), looperRun, deviceManager) != 0)
+        {
+            ARSAL_PRINT(ARSAL_PRINT_ERROR, TAG, "Creation of looper thread failed.");
+            failed = 1;
+        }
+    }
+    
+    return deviceManager;
 }
 
-//void bebop_stop(BD_MANAGER_t *deviceManager) {
-//    if (deviceManager != NULL)
-//    {
-//        deviceManager->run = 0; // break threads loops
-//
-//        /* stop */
-//        if (deviceManager->readerThreads != NULL)
-//        {
-//            // Stop reader Threads
-//            int readerThreadIndex = 0;
-//            for (readerThreadIndex = 0 ; readerThreadIndex < numOfCommandBufferIds ; readerThreadIndex++)
-//            {
-//                if (deviceManager->readerThreads[readerThreadIndex] != NULL)
-//                {
-//                    ARSAL_Thread_Join(deviceManager->readerThreads[readerThreadIndex], NULL);
-//                    ARSAL_Thread_Destroy(&(deviceManager->readerThreads[readerThreadIndex]));
-//                    deviceManager->readerThreads[readerThreadIndex] = NULL;
-//                }
-//            }
-//            
-//            // free reader thread array
-//            free (deviceManager->readerThreads);
-//            deviceManager->readerThreads = NULL;
-//        }
-//        
-//        if (deviceManager->readerThreadsData != NULL)
-//        {
-//            // free reader thread data array
-//            free (deviceManager->readerThreadsData);
-//            deviceManager->readerThreadsData = NULL;
-//        }
-//
-//        stopVideo (deviceManager);
-//        stopNetwork (deviceManager);
-//        //fclose (deviceManager->video_out);
-//        free (deviceManager);
-//    }
-//
-//    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "-- END --");
-//}
+void bebop_stop(BD_MANAGER_t *deviceManager) {
+    if (deviceManager != NULL)
+    {
+        deviceManager->run = 0; // break threads loops
+  	  // Stop looper Thread
+  	  if (deviceManager->looperThread != NULL)
+  	  {
+  		  ARSAL_Thread_Join(deviceManager->looperThread, NULL);
+  		  ARSAL_Thread_Destroy(&(deviceManager->looperThread));
+  		  deviceManager->looperThread = NULL;
+  	  }
+ 
+        /* stop */
+        if (deviceManager->readerThreads != NULL)
+        {
+            // Stop reader Threads
+            int readerThreadIndex = 0;
+            for (readerThreadIndex = 0 ; readerThreadIndex < numOfCommandBufferIds ; readerThreadIndex++)
+            {
+                if (deviceManager->readerThreads[readerThreadIndex] != NULL)
+                {
+                    ARSAL_Thread_Join(deviceManager->readerThreads[readerThreadIndex], NULL);
+                    ARSAL_Thread_Destroy(&(deviceManager->readerThreads[readerThreadIndex]));
+                    deviceManager->readerThreads[readerThreadIndex] = NULL;
+                }
+            }
+            
+            // free reader thread array
+            free (deviceManager->readerThreads);
+            deviceManager->readerThreads = NULL;
+        }
+        
+        if (deviceManager->readerThreadsData != NULL)
+        {
+            // free reader thread data array
+            free (deviceManager->readerThreadsData);
+            deviceManager->readerThreadsData = NULL;
+        }
+ 
+        stopVideo (deviceManager);
+        stopNetwork (deviceManager);
+        //fclose (deviceManager->video_out);
+		//deviceManager->source->deviceManager = NULL;
+        free (deviceManager);
+    }
+ 
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "-- END --");
+}
 
 int ardiscoveryConnect (BD_MANAGER_t *deviceManager)
 {
@@ -471,44 +530,44 @@ int startNetwork (BD_MANAGER_t *deviceManager)
     return failed;
 }
 
-//void stopNetwork (BD_MANAGER_t *deviceManager)
-//{
-//    int failed = 0;
-//    eARNETWORK_ERROR netError = ARNETWORK_OK;
-//    eARNETWORKAL_ERROR netAlError = ARNETWORKAL_OK;
-//    int pingDelay = 0; // 0 means default, -1 means no ping
-//
-//    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Stop ARNetwork");
-//
-//    // ARNetwork cleanup
-//    if (deviceManager->netManager != NULL)
-//    {
-//        ARNETWORK_Manager_Stop(deviceManager->netManager);
-//        if (deviceManager->rxThread != NULL)
-//        {
-//            ARSAL_Thread_Join(deviceManager->rxThread, NULL);
-//            ARSAL_Thread_Destroy(&(deviceManager->rxThread));
-//            deviceManager->rxThread = NULL;
-//        }
-//
-//        if (deviceManager->txThread != NULL)
-//        {
-//            ARSAL_Thread_Join(deviceManager->txThread, NULL);
-//            ARSAL_Thread_Destroy(&(deviceManager->txThread));
-//            deviceManager->txThread = NULL;
-//        }
-//    }
-//
-//    if (deviceManager->alManager != NULL)
-//    {
-//        ARNETWORKAL_Manager_Unlock(deviceManager->alManager);
-//
-//        ARNETWORKAL_Manager_CloseWifiNetwork(deviceManager->alManager);
-//    }
-//
-//    ARNETWORK_Manager_Delete(&(deviceManager->netManager));
-//    ARNETWORKAL_Manager_Delete(&(deviceManager->alManager));
-//}
+void stopNetwork (BD_MANAGER_t *deviceManager)
+{
+    // int failed = 0;
+    // eARNETWORK_ERROR netError = ARNETWORK_OK;
+    // eARNETWORKAL_ERROR netAlError = ARNETWORKAL_OK;
+    // int pingDelay = 0; // 0 means default, -1 means no ping
+ 
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Stop ARNetwork");
+ 
+    // ARNetwork cleanup
+    if (deviceManager->netManager != NULL)
+    {
+        ARNETWORK_Manager_Stop(deviceManager->netManager);
+        if (deviceManager->rxThread != NULL)
+        {
+            ARSAL_Thread_Join(deviceManager->rxThread, NULL);
+            ARSAL_Thread_Destroy(&(deviceManager->rxThread));
+            deviceManager->rxThread = NULL;
+        }
+ 
+        if (deviceManager->txThread != NULL)
+        {
+            ARSAL_Thread_Join(deviceManager->txThread, NULL);
+            ARSAL_Thread_Destroy(&(deviceManager->txThread));
+            deviceManager->txThread = NULL;
+        }
+    }
+ 
+    if (deviceManager->alManager != NULL)
+    {
+        ARNETWORKAL_Manager_Unlock(deviceManager->alManager);
+ 
+        ARNETWORKAL_Manager_CloseWifiNetwork(deviceManager->alManager);
+    }
+ 
+    ARNETWORK_Manager_Delete(&(deviceManager->netManager));
+    ARNETWORKAL_Manager_Delete(&(deviceManager->alManager));
+}
 
 void onDisconnectNetwork (ARNETWORK_Manager_t *manager, ARNETWORKAL_Manager_t *alManager, void *customData)
 {
@@ -737,4 +796,428 @@ eARDISCOVERY_ERROR ARDISCOVERY_Connection_ReceiveJsonCallback (uint8_t *dataRx, 
     }
 
     return err;
+}
+
+/* Drone control stuff inspired by BebopDroneDecodeStream */
+
+// XXX: FIXME: the amount of duplication between all these sendFoo() methods is horrific
+
+int sendPCMD(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    // Send pcmd command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3PilotingPCMD(cmdBuffer, sizeof(cmdBuffer), &cmdSize, (uint8_t)deviceManager->dataPCMD.flag, (uint8_t)deviceManager->dataPCMD.roll, deviceManager->dataPCMD.pitch, (uint8_t)deviceManager->dataPCMD.yaw, (uint8_t)deviceManager->dataPCMD.gaz, 0);
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        // The commands sent in loop should be sent to a buffer not acknowledged ; here BD_NET_CD_NONACK_ID
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_NONACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendCameraOrientation(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    // Send camera orientation command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3CameraOrientation(cmdBuffer, sizeof(cmdBuffer), &cmdSize, (uint8_t)deviceManager->dataCam.tilt, (uint8_t)deviceManager->dataCam.pan);
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        // The commands sent in loop should be sent to a buffer not acknowledged ; here BD_NET_CD_NONACK_ID
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_NONACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendDate(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send date");
+    
+    // Send date command
+    cmdError = ARCOMMANDS_Generator_GenerateCommonCommonCurrentDate(cmdBuffer, sizeof(cmdBuffer), &cmdSize, "2015-04-20");
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send Streaming command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    if (sentStatus)
+    {
+        // Send time command
+        cmdError = ARCOMMANDS_Generator_GenerateCommonCommonCurrentTime(cmdBuffer, sizeof(cmdBuffer), &cmdSize, "'T'101533+0200");
+        if (cmdError == ARCOMMANDS_GENERATOR_OK)
+        {
+            netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+        }
+        
+        if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+        {
+            ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send Streaming command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+            sentStatus = 0;
+        }
+    }
+    
+    return sentStatus;
+}
+
+int sendAllSettings(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send get all settings");
+    
+    // Send get all settings command
+    cmdError = ARCOMMANDS_Generator_GenerateCommonSettingsAllSettings(cmdBuffer, sizeof(cmdBuffer), &cmdSize);
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send get all settings command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;    
+}
+
+int sendAllStates(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send get all states");
+    
+    // Send get all states command
+    cmdError = ARCOMMANDS_Generator_GenerateCommonCommonAllStates(cmdBuffer, sizeof(cmdBuffer), &cmdSize);
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send get all states command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendTakeoff(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send take off");
+    
+    // Send take off command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3PilotingTakeOff(cmdBuffer, sizeof(cmdBuffer), &cmdSize);
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send takeoff command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendLanding(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send landing");
+    
+    // Send landing command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3PilotingLanding(cmdBuffer, sizeof(cmdBuffer), &cmdSize);
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send landing command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendFlip(eARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION direction, BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send flip");
+    
+    // Send flip command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3AnimationsFlip (cmdBuffer, sizeof(cmdBuffer), &cmdSize, direction);
+
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send flip command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendHome(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send home");
+    
+    // Send flip command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3PilotingNavigateHome (cmdBuffer, sizeof(cmdBuffer), &cmdSize, 1);
+
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_ACK_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send home command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+int sendEmergency(BD_MANAGER_t *deviceManager)
+{
+    int sentStatus = 1;
+    u_int8_t cmdBuffer[128];
+    int32_t cmdSize = 0;
+    eARCOMMANDS_GENERATOR_ERROR cmdError;
+    eARNETWORK_ERROR netError = ARNETWORK_ERROR;
+    
+    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "- Send Emergency");
+    
+    // Send emergency command
+    cmdError = ARCOMMANDS_Generator_GenerateARDrone3PilotingEmergency(cmdBuffer, sizeof(cmdBuffer), &cmdSize);
+    if (cmdError == ARCOMMANDS_GENERATOR_OK)
+    {
+        netError = ARNETWORK_Manager_SendData(deviceManager->netManager, BD_NET_CD_EMERGENCY_ID, cmdBuffer, cmdSize, NULL, &(arnetworkCmdCallback), 1);
+    }
+    
+    if ((cmdError != ARCOMMANDS_GENERATOR_OK) || (netError != ARNETWORK_OK))
+    {
+        ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Failed to send emergency command. cmdError:%d netError:%s", cmdError, ARNETWORK_Error_ToString(netError));
+        sentStatus = 0;
+    }
+    
+    return sentStatus;
+}
+
+void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager)
+{
+    ARCOMMANDS_Decoder_SetCommonCommonStateBatteryStateChangedCallback(batteryStateChangedCallback, deviceManager);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateFlyingStateChangedCallback(flyingStateChangedCallback, deviceManager);
+    // ADD HERE THE CALLBACKS YOU ARE INTERESTED IN
+}
+
+void unregisterARCommandsCallbacks ()
+{
+    ARCOMMANDS_Decoder_SetCommonCommonStateBatteryStateChangedCallback (NULL, NULL);
+    ARCOMMANDS_Decoder_SetARDrone3PilotingStateFlyingStateChangedCallback(NULL, NULL);
+}
+
+void batteryStateChangedCallback (uint8_t percent, void *custom)
+{
+	ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Battery at %d%%", percent);
+}
+
+void flyingStateChangedCallback (eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE state, void *custom)
+{
+    BD_MANAGER_t *deviceManager = (BD_MANAGER_t*)custom;
+    if (deviceManager != NULL)
+    {
+        deviceManager->flyingState = state;
+        
+        switch (deviceManager->flyingState) {
+            case ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_LANDED:
+				ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Flying state : landed");
+                break;
+            case ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_TAKINGOFF:
+                ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Flying state : taking off");
+                break;
+            case ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_HOVERING:
+                ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Flying state : hovering");
+                break;
+            case ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_FLYING:
+                ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Flying state : flying");
+                break;
+            case ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_LANDING:
+                ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Flying state : landing");
+                break;
+            case ARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE_EMERGENCY:
+                ARSAL_PRINT(ARSAL_PRINT_WARNING, TAG, "Flying state : emergency");
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void onMatrixMessage (char *message, BD_MANAGER_t *deviceManager)
+{
+	// for now, just operate using text messages for simplicity:
+	// {launch, land, home, die}
+	// {up, down, left, right, forward, back} [<amount>]
+	// flip [{front, back, left, right}]
+	// look <pan>,<tilt>
+	
+	int param1, param2;
+	char arg[16];
+	
+	if (!strcasecmp(message, "launch")) {
+        sendTakeoff(deviceManager);		
+	}
+	else if (!strcasecmp(message, "land")) {
+		sendLanding(deviceManager);
+	}
+	else if (!strcasecmp(message, "home")) {
+		sendHome(deviceManager);
+	}
+	else if (!strcasecmp(message, "die")) {
+		sendEmergency(deviceManager);
+	}
+	else if (!strcasecmp(message, "up")) {
+		deviceManager->dataPCMD.gaz = 50;
+	}
+	else if (!strcasecmp(message, "down")) {
+		deviceManager->dataPCMD.gaz = -50;
+	}
+	else if (!strcasecmp(message, "left")) {
+        deviceManager->dataPCMD.flag = 1;
+        deviceManager->dataPCMD.roll = -50;
+	}
+	else if (!strcasecmp(message, "right")) {
+        deviceManager->dataPCMD.flag = 1;
+        deviceManager->dataPCMD.roll = 50;
+	}
+	else if (!strcasecmp(message, "forward")) {
+		deviceManager->dataPCMD.flag = 1;
+	    deviceManager->dataPCMD.pitch = 50;
+	}
+	else if (!strcasecmp(message, "back") || !strcasecmp(message, "backward")) {
+		deviceManager->dataPCMD.flag = 1;
+	    deviceManager->dataPCMD.pitch = -50;
+	}
+	else if (sscanf(message, "up %d", &param1) == 1) {
+		deviceManager->dataPCMD.gaz = param1;
+	}
+	else if (sscanf(message, "down %d", &param1) == 1) {
+		deviceManager->dataPCMD.gaz = -param1;
+	}
+	else if (sscanf(message, "left %d", &param1) == 1) {
+        deviceManager->dataPCMD.flag = 1;
+        deviceManager->dataPCMD.roll = -param1;
+	}
+	else if (sscanf(message, "right %d", &param1) == 1) {
+        deviceManager->dataPCMD.flag = 1;
+        deviceManager->dataPCMD.roll = param1;
+	}
+	else if (sscanf(message, "forward %d", &param1) == 1) {
+		deviceManager->dataPCMD.flag = 1;
+	    deviceManager->dataPCMD.pitch = param1;
+	}
+	else if (sscanf(message, "back %d", &param1) == 1 ||
+			 sscanf(message, "backward %d", &param1) == 1) {
+		deviceManager->dataPCMD.flag = 1;
+	    deviceManager->dataPCMD.pitch = -param1;
+	}
+	else if (sscanf(message, "look %d,%d", &param1, &param2) == 2) {
+		deviceManager->dataCam.pan = param1;
+		deviceManager->dataCam.tilt = param2;
+	}
+	else if (!strncasecmp(message, "flip", 4)) {
+		if (sscanf(message, "flip %15s", arg) == 1) {
+			if (!strcasecmp(arg, "front")) {
+				sendFlip(ARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION_FRONT, deviceManager);
+			}
+			else if (!strcasecmp(arg, "back")) {
+				sendFlip(ARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION_BACK, deviceManager);
+			}
+			else if (!strcasecmp(arg, "left")) {
+				sendFlip(ARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION_LEFT, deviceManager);
+			}
+			else if (!strcasecmp(arg, "right")) {
+				sendFlip(ARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION_RIGHT, deviceManager);
+			}
+		}
+		else {
+			sendFlip(ARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION_LEFT, deviceManager);
+		}
+	}
+	else {
+		ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "Ignoring matrix message %s", message);
+	}
 }

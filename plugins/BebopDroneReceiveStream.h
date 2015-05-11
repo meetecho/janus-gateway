@@ -42,22 +42,38 @@
 #include <libARDiscovery/ARDiscovery.h>
 #include <libARStream/ARStream.h>
 
+// XXX: these would go in janus_streaming.h if one existed...
 typedef struct janus_streaming_ardrone3_frame {
 	uint8_t *data;
 	gint length;
 	uint64_t ts;
 } janus_streaming_ardrone3_frame;
 
-// XXX: global hack to allow the drone SDK to easily call back to us
-extern GAsyncQueue *ardrone3_frames;
+struct janus_streaming_ardrone3_source;
 
 typedef struct READER_THREAD_DATA_t READER_THREAD_DATA_t;
+
+typedef struct
+{
+    int flag;
+    int roll;
+    int pitch;
+    int yaw;
+    int gaz;
+} BD_PCMD_t;
+
+typedef struct _ARDrone3CameraData_t_
+{
+    int tilt;
+    int pan;
+} BD_Cam_t;
 
 typedef struct
 {
     ARNETWORKAL_Manager_t *alManager;
     ARNETWORK_Manager_t *netManager;
     ARSTREAM_Reader_t *streamReader;
+    ARSAL_Thread_t looperThread;
     ARSAL_Thread_t rxThread;
     ARSAL_Thread_t txThread;
     ARSAL_Thread_t videoTxThread;
@@ -70,6 +86,13 @@ typedef struct
     uint8_t *videoFrame;
     uint32_t videoFrameSize;
     
+	struct janus_streaming_ardrone3_source * source;
+	
+	eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE flyingState;
+    
+    BD_PCMD_t dataPCMD;
+    BD_Cam_t dataCam;
+
     //FILE *video_out;
     
     ARSAL_Thread_t *readerThreads;
@@ -83,11 +106,15 @@ struct READER_THREAD_DATA_t
     int readerBufferId;
 };
 
-void bebop_start(void);
+BD_MANAGER_t * bebop_start(void);
+void bebop_stop(BD_MANAGER_t *);
 
 int ardiscoveryConnect (BD_MANAGER_t *deviceManager);
 eARDISCOVERY_ERROR ARDISCOVERY_Connection_SendJsonCallback (uint8_t *dataTx, uint32_t *dataTxSize, void *customData);
 eARDISCOVERY_ERROR ARDISCOVERY_Connection_ReceiveJsonCallback (uint8_t *dataRx, uint32_t dataRxSize, char *ip, void *customData);
+
+void *readerRun (void* data);
+void *looperRun (void* data);
 
 int startNetwork (BD_MANAGER_t *deviceManager);
 void onDisconnectNetwork (ARNETWORK_Manager_t *manager, ARNETWORKAL_Manager_t *alManager, void *customData);
@@ -100,5 +127,22 @@ void stopVideo (BD_MANAGER_t *deviceManager);
 int sendBeginStream(BD_MANAGER_t *deviceManager);
 
 eARNETWORK_MANAGER_CALLBACK_RETURN arnetworkCmdCallback(int buffer_id, uint8_t *data, void *custom, eARNETWORK_MANAGER_CALLBACK_STATUS cause);
+
+int sendPCMD(BD_MANAGER_t *deviceManager);
+int sendCameraOrientation(BD_MANAGER_t *deviceManager);
+int sendDate(BD_MANAGER_t *deviceManager);
+int sendAllSettings(BD_MANAGER_t *deviceManager);
+int sendAllStates(BD_MANAGER_t *deviceManager);
+int sendTakeoff(BD_MANAGER_t *deviceManager);
+int sendLanding(BD_MANAGER_t *deviceManager);
+int sendFlip(eARCOMMANDS_ARDRONE3_ANIMATIONS_FLIP_DIRECTION direction, BD_MANAGER_t *deviceManager);
+int sendHome(BD_MANAGER_t *deviceManager);
+int sendEmergency(BD_MANAGER_t *deviceManager);
+void registerARCommandsCallbacks (BD_MANAGER_t *deviceManager);
+
+void batteryStateChangedCallback (uint8_t percent, void *custom);
+void flyingStateChangedCallback (eARCOMMANDS_ARDRONE3_PILOTINGSTATE_FLYINGSTATECHANGED_STATE state, void *custom);
+void unregisterARCommandsCallbacks(void);
+void onMatrixMessage(char *message, BD_MANAGER_t *deviceManager);
 
 #endif /* _SDK_EXAMPLE_BD_H_ */
