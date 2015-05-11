@@ -1161,6 +1161,7 @@ void onMatrixMessage (char *message, BD_MANAGER_t *deviceManager)
 	// for now, just operate using text messages for simplicity:
 	// {launch, land, home, die}
 	// {up, down, left, right, forward, back} [<amount>]
+	// turn {left,right}
 	// flip [{front, back, left, right}]
 	// look <pan>,<tilt>
 	
@@ -1200,6 +1201,12 @@ void onMatrixMessage (char *message, BD_MANAGER_t *deviceManager)
 	else if (!strcasecmp(message, "back") || !strcasecmp(message, "backward")) {
 		deviceManager->dataPCMD.flag = 1;
 	    deviceManager->dataPCMD.pitch = -50;
+	}
+	else if (!strcasecmp(message, "turn left")) {
+        deviceManager->dataPCMD.yaw = -50;
+	}
+	else if (!strcasecmp(message, "turn right")) {
+        deviceManager->dataPCMD.yaw = 50;
 	}
 	else if (sscanf(message, "up %d", &param1) == 1) {
 		deviceManager->dataPCMD.gaz = param1;
