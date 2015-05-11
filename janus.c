@@ -305,6 +305,7 @@ static GMainContext *sessions_watchdog_context = NULL;
 static GHashTable *matrix_room_id_to_session;
 static GHashTable *matrix_call_id_to_handle;
 static GHashTable *matrix_handle_to_call_id;
+static GHashTable *matrix_room_id_to_handle;
 
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
@@ -4912,6 +4913,7 @@ gint main(int argc, char *argv[])
 	matrix_room_id_to_session = g_hash_table_new(g_str_hash, g_str_equal);
 	matrix_call_id_to_handle = g_hash_table_new(g_str_hash, g_str_equal);
 	matrix_handle_to_call_id = g_hash_table_new(g_str_hash, g_str_equal);
+    matrix_room_id_to_handle = g_hash_table_new(g_str_hash, g_str_equal);
     mxsess.hs_url = strdup("https://matrix.org");
     mxsess.access_token = strdup("QHBvbGx5Om1hdHJpeC5vcmc..LIbiJzQUCbwKylrasG");
     mxsess.run_event_stream = 1;
@@ -5236,9 +5238,9 @@ size_t curl_data_cb(void *contents, size_t size, size_t nmemb, void *userp) {
     return datalen;
 }
 
-void janus_matrix_handle_event(matrix_event *ev) {
+void janus_matrix_handle_event(matrix_event *ev, json_t *rawevent) {
     if (!ev->room_id) return;
-    if (strcmp(ev->user_id, mxsess.matrix_id) == 0) return;
+    if (!ev->user_id || strcmp(ev->user_id, mxsess.matrix_id) == 0) return;
 
 	janus_request_source source = {
 		.type = JANUS_SOURCE_MATRIX,
@@ -5330,6 +5332,7 @@ void janus_matrix_handle_event(matrix_event *ev) {
         json_object_set_new(root, "apisecret", json_string(ws_api_secret));
 
         janus_process_incoming_request(&source, root);
+        json_decref(root);
     } else if (strcmp(ev->type, "m.call.answer") == 0) {
         json_t *answer = json_object_get(ev->content, "answer");
         if (!answer) return;
@@ -5366,6 +5369,7 @@ void janus_matrix_handle_event(matrix_event *ev) {
         json_object_set_new(root, "apisecret", json_string(ws_api_secret));
 
         janus_process_incoming_request(&source, root);
+        json_decref(root);
     } else if (strcmp(ev->type, "m.call.candidates") == 0) {
         json_t *cands = json_object_get(ev->content, "candidates");
         if (!cands) return;
@@ -5400,7 +5404,48 @@ void janus_matrix_handle_event(matrix_event *ev) {
 
             JANUS_LOG(LOG_INFO, "\tSending on a candidate to handle ID %llu, call ID %s...\n", handle->handle_id, call_id);
             janus_process_incoming_request(&source, root);
+            json_decref(root);
         }
+    } else {
+        // pass other events through unfettered
+        
+        // plugins are only associated at the handle level, so we make another ice handle
+        // just for passing events through.
+        janus_ice_handle *handle = g_hash_table_lookup(matrix_room_id_to_handle, ev->room_id);
+        if (!handle) {
+            handle = janus_ice_handle_create(jan_session);
+            g_hash_table_insert(matrix_room_id_to_handle, g_strdup(ev->room_id), handle);
+
+            janus_plugin *plugin_t = janus_plugin_find("janus.plugin.streaming");
+            if (!plugin_t) {
+                JANUS_LOG(LOG_ERR, "\tError creating streaming plugin!\n");
+                return;
+            }
+            int error = janus_ice_handle_attach_plugin(jan_session, handle->handle_id, plugin_t);
+            if (error != 0) {
+                JANUS_LOG(LOG_ERR, "\tError attaching plugin!\n");
+                return;
+            }
+        }
+        JANUS_LOG(LOG_INFO, "\tspare handle for room id %s is %llu\n", ev->room_id, handle->handle_id);
+        json_t *root = json_object();
+        json_object_set_new(root, "janus", json_string("message"));
+
+        json_object_set_new(root, "session_id", json_integer(jan_session->session_id));
+        json_object_set_new(root, "handle_id", json_integer(handle->handle_id));
+
+        json_t *body = json_object();
+        json_object_set_new(body, "request", json_string("matrix"));
+        json_object_set(body, "event", rawevent);
+        json_object_set_new(root, "body", body);
+
+        char trstr[128];
+        sprintf(trstr, "%lu", g_random_int());
+        json_object_set_new(root, "transaction", json_string(trstr));
+        json_object_set_new(root, "apisecret", json_string(ws_api_secret));
+
+        janus_process_incoming_request(&source, root);
+        json_decref(root);
     }
 }
 
@@ -5485,7 +5530,7 @@ void *janus_matrix_event_stream(void *data) {
 
                     ev.content = json_object_get(event_obj, "content");
 
-                    janus_matrix_handle_event(&ev);
+                    janus_matrix_handle_event(&ev, event_obj);
                 }
 
                 json_t *fromtok_obj = json_object_get(root, "end");

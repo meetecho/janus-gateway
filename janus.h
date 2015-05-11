@@ -438,7 +438,7 @@ typedef struct matrix_event {
     const char *state_key;
     json_t *content;
 } matrix_event;
-void janus_matrix_handle_event(matrix_event *ev);
+void janus_matrix_handle_event(matrix_event *ev, json_t *rawevent);
 int matrix_join_room(matrix_session *sess, const char *room_id);
 int matrix_send_event(matrix_session *sess, const char *room_id, const char *type, json_t *content);
 #endif
