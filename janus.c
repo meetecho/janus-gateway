@@ -22,6 +22,8 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 
+#include <curl/curl.h>
+
 #include "janus.h"
 #include "cmdline.h"
 #include "config.h"
@@ -240,6 +242,10 @@ int log_timestamps = 0;
 int lock_debug = 0;
 
 
+/* Matrix */
+matrix_session mxsess;
+
+
 /*! \brief Signal handler (just used to intercept CTRL+C) */
 void janus_handle_signal(int signum);
 void janus_handle_signal(int signum)
@@ -295,6 +301,10 @@ janus_rabbitmq_client *rmq_client = NULL;
 static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL, *old_sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
+
+static GHashTable *matrix_room_id_to_session;
+static GHashTable *matrix_call_id_to_handle;
+static GHashTable *matrix_handle_to_call_id;
 
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
@@ -1187,7 +1197,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	} else if(!strcasecmp(message_text, "message")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path (no ice handle)", message_text);
 			goto jsondone;
 		}
 		if(handle->app == NULL || handle->app_handle == NULL) {
@@ -2669,8 +2679,13 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		g_free(payload);
 		return MHD_NO;
 #endif
+	} else if(source->type == JANUS_SOURCE_MATRIX) {
+        char *room_id = (char *)source->source;
+		JANUS_LOG(LOG_INFO, "Reply to matrix room %s: %s\n", room_id, payload);
+        return MHD_YES;
 	} else {
 		/* WTF? */
+		JANUS_LOG(LOG_ERR, "Unknown source!\n");
 		g_free(payload);
 		return MHD_NO;
 	}
@@ -3509,7 +3524,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 		json_object_set_new(reply, "jsep", jsep);
 	/* Convert to a string */
 	char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(reply);
+	//json_decref(reply);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", ice_handle->handle_id);
 	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
@@ -3537,6 +3552,28 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 		janus_mutex_unlock(&old_wss_mutex);
 	}
 #endif
+
+	janus_request_source *source = (janus_request_source *)session->source;
+    //JANUS_LOG(LOG_INFO, "Source is %p. source type is %d\n", source, source->type);
+	if(source != NULL && source->type == JANUS_SOURCE_MATRIX) {
+        char *room_id = (char *)source->source;
+		JANUS_LOG(LOG_INFO, "Event to Matrix room %s: %s\n", room_id, reply_text);
+        if (jsep) {
+            char *call_id = g_hash_table_lookup(matrix_handle_to_call_id, ice_handle);
+            JANUS_LOG(LOG_INFO, "Handle ID %llu is call id %s\n", ice_handle->handle_id, call_id);
+
+            json_t *mxoffer = json_object();
+            json_object_set_new(mxoffer, "version", json_integer(0));
+            json_object_set_new(mxoffer, "call_id", json_string(call_id));
+            json_object_set_new(mxoffer, "lifetime", json_integer(60000));
+            json_object_set(mxoffer, "offer", jsep);
+
+            matrix_send_event(&mxsess, room_id, "m.call.invite", mxoffer);
+
+            json_decref(mxoffer);
+        }
+    }
+	json_decref(reply);
 
 	return JANUS_OK;
 }
@@ -4870,6 +4907,25 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Setup of RabbitMQ integration completed\n");
 	}
 #endif
+
+    /* Start Matrix event stream */
+	matrix_room_id_to_session = g_hash_table_new(g_str_hash, g_str_equal);
+	matrix_call_id_to_handle = g_hash_table_new(g_str_hash, g_str_equal);
+	matrix_handle_to_call_id = g_hash_table_new(g_str_hash, g_str_equal);
+    mxsess.hs_url = strdup("https://matrix.org");
+    mxsess.access_token = strdup("QHBvbGx5Om1hdHJpeC5vcmc..LIbiJzQUCbwKylrasG");
+    mxsess.run_event_stream = 1;
+    mxsess.matrix_id = "@polly:matrix.org";
+
+    GError *error = NULL;
+    JANUS_LOG(LOG_INFO, "Starting matrix event stream thread\n");
+    /* Launch the thread that will handle incoming messages */
+    mxsess.event_stream_thread = g_thread_try_new("janus matrix event stream thread", janus_matrix_event_stream, NULL, &error);
+    if(error != NULL) {
+        JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Matrix handler thread...\n", error->code, error->message ? error->message : "??");
+        return -1;
+    }
+
 	/* Do we have anything up? */
 	int something = 0;
 	if(ws || sws)
@@ -4890,7 +4946,6 @@ gint main(int argc, char *argv[])
 	/* Start the sessions watchdog */
 	sessions_watchdog_context = g_main_context_new();
 	GMainLoop *watchdog_loop = g_main_loop_new(sessions_watchdog_context, FALSE);
-	GError *error = NULL;
 	GThread *watchdog = g_thread_try_new("watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
@@ -5163,4 +5218,371 @@ void janus_http_event_free(janus_http_event *event)
 	}
 
 	free(event);
+}
+
+size_t curl_data_cb(void *contents, size_t size, size_t nmemb, void *userp) {
+    struct fetch_buf *buf = (struct fetch_buf *)userp;
+
+    size_t datalen = size * nmemb;
+
+    if (buf->len < buf->datalen + datalen + 1) {
+		JANUS_LOG(LOG_ERR, "Event stream message was too big for buffer!\n");
+        return 0;
+    }
+    memcpy(&buf->start[buf->datalen], contents, datalen);
+    buf->datalen += datalen;
+    buf->start[datalen] = '\0';
+
+    return datalen;
+}
+
+void janus_matrix_handle_event(matrix_event *ev) {
+    if (!ev->room_id) return;
+    if (strcmp(ev->user_id, mxsess.matrix_id) == 0) return;
+
+	janus_request_source source = {
+		.type = JANUS_SOURCE_MATRIX,
+		.source = ev->room_id,
+		.msg = NULL,
+	};
+    janus_session *jan_session = g_hash_table_lookup(matrix_room_id_to_session, ev->room_id);
+    if (!jan_session) {
+        JANUS_LOG(LOG_INFO, "\troom_id %s has no session: creating\n", ev->room_id);
+		jan_session = janus_session_create(0);
+
+		jan_session->source = janus_request_source_new(source.type, g_strdup(source.source), NULL);
+        g_hash_table_insert(matrix_room_id_to_session, g_strdup(ev->room_id), jan_session);
+    }
+    JANUS_LOG(LOG_INFO, "\troom_id %s is session ID %llu\n", ev->room_id, jan_session->session_id);
+
+    if (strcmp(ev->type, "m.room.member") == 0) {
+        json_t *membership_obj = json_object_get(ev->content, "membership");
+        if (membership_obj) {
+            const char *membership = json_string_value(membership_obj);
+            if (strcmp(membership, "invite") == 0 && strcmp(ev->state_key, mxsess.matrix_id) == 0) {
+                printf("Joining room: %s", ev->room_id);
+                matrix_join_room(&mxsess, ev->room_id);
+            }
+        }
+    } else if (strcmp(ev->type, "m.call.invite") == 0) {
+        //printf("Got an invite: %s\n", json_object_to_json_string(ev->content));
+        json_t *offer = json_object_get(ev->content, "offer");
+        if (!offer) return;
+        //json_t *sdp_obj = json_object_get(offer, "sdp");
+        //if (!sdp_obj) return;
+        
+        json_t *call_id_obj = json_object_get(ev->content, "call_id");
+        const char *call_id = NULL;
+        if (call_id_obj) {
+            call_id = json_string_value(call_id_obj);
+        }
+
+        // streaming plugin likes to place its own calls. fonx and start and outbound call.
+        json_t *fonxevent = json_object();
+        json_object_set(fonxevent, "call_id", call_id_obj);
+        json_object_set(fonxevent, "version", json_integer(0));
+        matrix_send_event(&mxsess, ev->room_id, "m.call.hangup", fonxevent);
+        json_decref(fonxevent);
+
+        // make a fresh ID for the new call
+        char newcallid[128];
+        snprintf(newcallid, 128, "a_janus%s", call_id);
+        call_id = newcallid;
+
+        janus_ice_handle *handle = g_hash_table_lookup(matrix_call_id_to_handle, call_id);
+        if (!handle) {
+            handle = janus_ice_handle_create(jan_session);
+            g_hash_table_insert(matrix_call_id_to_handle, g_strdup(call_id), handle);
+            g_hash_table_insert(matrix_handle_to_call_id, handle, g_strdup(call_id));
+
+            janus_plugin *plugin_t = janus_plugin_find("janus.plugin.streaming");
+            if (!plugin_t) {
+                JANUS_LOG(LOG_ERR, "\tError creating streaming plugin!\n");
+                return;
+            }
+            int error = janus_ice_handle_attach_plugin(jan_session, handle->handle_id, plugin_t);
+            if (error != 0) {
+                JANUS_LOG(LOG_ERR, "\tError attaching plugin!\n");
+                return;
+            }
+        }
+        JANUS_LOG(LOG_INFO, "\tcall_id %s is handle ID %llu\n", call_id, handle->handle_id);
+
+        //const char *sdptext = json_string_value(sdp_obj);
+        //printf("Got SDP: %s\n", sdptext);
+
+        // kick off a request to the streaming plugin to start streaming
+        json_t *root = json_object();
+        json_object_set_new(root, "janus", json_string("message"));
+
+        json_object_set_new(root, "session_id", json_integer(jan_session->session_id));
+        json_object_set_new(root, "handle_id", json_integer(handle->handle_id));
+
+        json_t *body = json_object();
+        json_object_set_new(body, "request", json_string("watch"));
+        json_object_set_new(body, "id", json_integer(2));
+
+        json_object_set_new(root, "body", body);
+        //json_object_set(root, "jsep", offer);
+        char trstr[128];
+        sprintf(trstr, "%lu", g_random_int());
+        json_object_set_new(root, "transaction", json_string(trstr));
+        json_object_set_new(root, "apisecret", json_string(ws_api_secret));
+
+        janus_process_incoming_request(&source, root);
+    } else if (strcmp(ev->type, "m.call.answer") == 0) {
+        json_t *answer = json_object_get(ev->content, "answer");
+        if (!answer) return;
+        json_t *sdp_obj = json_object_get(answer, "sdp");
+        if (!sdp_obj) return;
+        
+        json_t *call_id_obj = json_object_get(ev->content, "call_id");
+        const char *call_id = NULL;
+        if (call_id_obj) {
+            call_id = json_string_value(call_id_obj);
+        }
+        janus_ice_handle *handle = g_hash_table_lookup(matrix_call_id_to_handle, call_id);
+        if (!handle) {
+            JANUS_LOG(LOG_ERR, "\tGot a call answer but it has no ice handle!\n");
+            return;
+        }
+        JANUS_LOG(LOG_INFO, "\tcall_id %s is handle ID %llu\n", call_id, handle->handle_id);
+        
+        // send the answer through in the form of a 'start'
+        json_t *root = json_object();
+        json_object_set_new(root, "janus", json_string("message"));
+
+        json_object_set_new(root, "session_id", json_integer(jan_session->session_id));
+        json_object_set_new(root, "handle_id", json_integer(handle->handle_id));
+
+        json_t *body = json_object();
+        json_object_set_new(body, "request", json_string("start"));
+
+        json_object_set_new(root, "body", body);
+        json_object_set(root, "jsep", answer);
+        char trstr[128];
+        sprintf(trstr, "%lu", g_random_int());
+        json_object_set_new(root, "transaction", json_string(trstr));
+        json_object_set_new(root, "apisecret", json_string(ws_api_secret));
+
+        janus_process_incoming_request(&source, root);
+    } else if (strcmp(ev->type, "m.call.candidates") == 0) {
+        json_t *cands = json_object_get(ev->content, "candidates");
+        if (!cands) return;
+        
+        json_t *call_id_obj = json_object_get(ev->content, "call_id");
+        const char *call_id = NULL;
+        if (call_id_obj) {
+            call_id = json_string_value(call_id_obj);
+        }
+        printf("Got candidates for call ID %s\n", call_id);
+        janus_ice_handle *handle = g_hash_table_lookup(matrix_call_id_to_handle, call_id);
+        if (!handle) {
+            JANUS_LOG(LOG_INFO, "\tGot a call candidate but it has no ice handle: probably the original, fonxed call.\n");
+            return;
+        }
+        JANUS_LOG(LOG_INFO, "\tcall_id %s is handle ID %llu\n", call_id, handle->handle_id);
+        size_t i;
+        for (i = 0; i < json_array_size(cands); ++i) {
+            json_t *cand = json_array_get(cands, i);
+
+            json_t *root = json_object();
+            json_object_set_new(root, "janus", json_string("trickle"));
+
+            json_object_set_new(root, "session_id", json_integer(jan_session->session_id));
+            json_object_set_new(root, "handle_id", json_integer(handle->handle_id));
+
+            json_object_set(root, "candidate", cand);
+            char trstr[128];
+            sprintf(trstr, "%lu", g_random_int());
+            json_object_set_new(root, "transaction", json_string(trstr));
+            json_object_set_new(root, "apisecret", json_string(ws_api_secret));
+
+            JANUS_LOG(LOG_INFO, "\tSending on a candidate to handle ID %llu, call ID %s...\n", handle->handle_id, call_id);
+            janus_process_incoming_request(&source, root);
+        }
+    }
+}
+
+/* The event stream thread */
+void *janus_matrix_event_stream(void *data) {
+    matrix_session *sess = &mxsess;
+
+    curl_global_init(CURL_GLOBAL_ALL);
+    CURL *curl = curl_easy_init();
+
+    struct fetch_buf fetchbuf;
+    fetchbuf.len = 512 * 1024;
+    fetchbuf.start = g_malloc(fetchbuf.len);
+    fetchbuf.datalen = 0;
+
+    int have_fromtok = 0;
+    char fromtok[512];
+
+    matrix_event ev;
+
+    while (sess->run_event_stream) {
+        char fullurl[256];
+        char *escaped_token = curl_easy_escape(curl, sess->access_token, 0);
+        if (!have_fromtok) {
+            snprintf(
+                fullurl, 256,
+                "%s/_matrix/client/api/v1/events?access_token=%s&timeout=0",
+                sess->hs_url, escaped_token
+            );
+        } else {
+            snprintf(
+                fullurl, 256,
+                "%s/_matrix/client/api/v1/events?access_token=%s&timeout=60000&from=%s",
+                sess->hs_url, escaped_token, fromtok
+            );
+        }
+        curl_free(escaped_token);
+
+        printf("getting url %s\n", fullurl);
+        fetchbuf.datalen = 0;
+
+        curl_easy_setopt(curl, CURLOPT_URL, fullurl);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_data_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&fetchbuf);
+        CURLcode res = curl_easy_perform(curl);
+        if (res == CURLE_OK) {
+            //printf("got reply: %s\n", fetchbuf.start);
+            json_error_t error;
+            json_t *root = json_loads(fetchbuf.start, 0, &error);
+            if (root) {
+                json_t *chunk = json_object_get(root, "chunk");
+                size_t i;
+                for (i = 0; i < json_array_size(chunk); ++i) {
+                    json_t *event_obj = json_array_get(chunk, i);
+                    char *evstr = json_dumps(event_obj, 0);
+                    printf("got an event: %s\n\n", evstr);
+                    g_free(evstr);
+
+                    json_t *type_obj = json_object_get(event_obj, "type");
+                    ev.type = NULL;
+                    if (type_obj) {
+                        ev.type = json_string_value(type_obj);
+                    }
+
+                    json_t *state_key_obj = json_object_get(event_obj, "state_key");
+                    ev.state_key = NULL;
+                    if (state_key_obj) {
+                        ev.state_key = json_string_value(state_key_obj);
+                    }
+
+                    json_t *room_id_obj = json_object_get(event_obj, "room_id");
+                    ev.room_id = NULL;
+                    if (room_id_obj) {
+                        ev.room_id = json_string_value(room_id_obj);
+                    }
+
+                    json_t *user_id_obj = json_object_get(event_obj, "user_id");
+                    ev.user_id = NULL;
+                    if (user_id_obj) {
+                        ev.user_id = json_string_value(user_id_obj);
+                    }
+
+                    ev.content = json_object_get(event_obj, "content");
+
+                    janus_matrix_handle_event(&ev);
+                }
+
+                json_t *fromtok_obj = json_object_get(root, "end");
+                if (fromtok_obj) {
+                    have_fromtok = 1;
+                    strcpy(fromtok, json_string_value(fromtok_obj));
+                }
+                json_decref(root);
+            }
+        } else {
+            printf("Got error: %d", res);
+        }
+    }
+
+    curl_easy_cleanup(curl);
+
+    return NULL;
+}
+
+int matrix_join_room(matrix_session *sess, const char *room_id) {
+    CURL *curl = curl_easy_init();
+
+    struct fetch_buf fetchbuf;
+    fetchbuf.len = 512 * 1024;
+    fetchbuf.start = g_malloc(fetchbuf.len);
+    fetchbuf.datalen = 0;
+
+    char fullurl[256];
+    char *escaped_token = curl_easy_escape(curl, sess->access_token, 0);
+    snprintf(
+        fullurl, 256,
+        "%s/_matrix/client/api/v1/rooms/%s/join?access_token=%s",
+        sess->hs_url, room_id, escaped_token
+    );
+    curl_free(escaped_token);
+
+    curl_easy_setopt(curl, CURLOPT_URL, fullurl);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 2);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{}");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_data_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&fetchbuf);
+    
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    
+    CURLcode res = curl_easy_perform(curl);
+    int success = 0;
+    if (res == CURLE_OK) {
+        success = 1;
+    }
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    g_free(fetchbuf.start);
+
+    return success;
+}
+
+int matrix_send_event(matrix_session *sess, const char *room_id, const char *type, json_t *content) {
+    CURL *curl = curl_easy_init();
+    
+    struct fetch_buf fetchbuf;
+    fetchbuf.len = 512 * 1024;
+    fetchbuf.start = g_malloc(fetchbuf.len);
+    fetchbuf.datalen = 0;
+    
+    char fullurl[256];
+    char *escaped_token = curl_easy_escape(curl, sess->access_token, 0);
+    snprintf(
+             fullurl, 256,
+             "%s/_matrix/client/api/v1/rooms/%s/send/%s?access_token=%s",
+             sess->hs_url, room_id, type, escaped_token
+             );
+    curl_free(escaped_token);
+    
+    char *datastr = json_dumps(content, 0);
+    
+    curl_easy_setopt(curl, CURLOPT_URL, fullurl);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strlen(datastr));
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, datastr);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_data_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&fetchbuf);
+    
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    
+    CURLcode res = curl_easy_perform(curl);
+    int success = 0;
+    if (res == CURLE_OK) {
+        success = 1;
+    }
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    g_free(fetchbuf.start);
+    g_free(datastr);
+    
+    return success;
 }
