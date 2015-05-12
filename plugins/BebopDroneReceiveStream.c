@@ -41,6 +41,7 @@
 #include <signal.h>
 
 #include "BebopDroneReceiveStream.h"
+#include "janus_streaming.h"
 
 #define TAG "BebopDroneReceiveStream"
 #define BD_IP_ADDRESS "192.168.42.1"
@@ -58,8 +59,6 @@
 
 #define BD_NET_DC_VIDEO_FRAG_SIZE 1000
 #define BD_NET_DC_VIDEO_MAX_NUMBER_OF_FRAG 128
-
-GAsyncQueue *ardrone3_frames = NULL;
 
 static ARNETWORK_IOBufferParam_t c2dParams[] = {
     /* Non-acknowledged commands. */
@@ -686,9 +685,9 @@ uint8_t *frameCompleteCallback (eARSTREAM_READER_CAUSE cause, uint8_t *frame, ui
                 d_us += 1000000;
                 --d_s;
             }
-             f->ts = (uint64_t)d_s*1000000 + d_us;
+            f->ts = (uint64_t)d_s*1000000 + d_us;
 
-            g_async_queue_push(ardrone3_frames, f);
+            g_async_queue_push(deviceManager->source->frames, f);
             
             //ret = deviceManager->videoFrame;
             ret = malloc (deviceManager->videoFrameSize);

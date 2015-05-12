@@ -119,6 +119,7 @@ videofmtp = Codec specific parameters, if any
 #include "../utils.h"
 
 #include "BebopDroneReceiveStream.h"
+#include "janus_streaming.h"
 
 /* Plugin information */
 #define JANUS_STREAMING_VERSION			5
@@ -216,11 +217,6 @@ typedef struct janus_streaming_rtp_source {
 typedef struct janus_streaming_file_source {
 	char *filename;
 } janus_streaming_file_source;
-
-typedef struct janus_streaming_ardrone3_source {
-	BD_MANAGER_t *deviceManager;
-	GAsyncQueue *frames;
-} janus_streaming_ardrone3_source;
 
 typedef struct janus_streaming_codecs {
 	gint audio_pt;
@@ -1743,16 +1739,19 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		// XXX: in future, we should just nego a datachannel over matrix and
 		// and send commands over that instead to reduce latency.
 		
-		// FIXME: do we have to look up the mountpoint based ona stream ID?
-		if (!session->mountpoint) {
+		// FIXME: handle locking properly and don't hardcode the ID
+		//janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(1));
+
+		if (!mp) {
 			JANUS_LOG(LOG_ERR, "No mountpoint for session when handling matrix message\n");
 			goto error;
 		}
-		if (session->mountpoint->streaming_source != janus_streaming_source_ardrone3) {
+		if (mp->streaming_source != janus_streaming_source_ardrone3) {
 			JANUS_LOG(LOG_ERR, "Matrix messages only supported for ardrone3 sources for now\n");
 			goto error;
 		}
-		janus_streaming_ardrone3_source * source = session->mountpoint->source;
+		janus_streaming_ardrone3_source * source = mp->source;
 		
 		json_t *event = json_object_get(root, "event");
 		if(!event) {
@@ -3000,8 +2999,8 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		// packetize the H.264 by splitting up NALs on start codes
 	 	while (parsing) {
 			uint8_t * next_start_code = (uint8_t *) memmem(cursor, len, start_code, 4);
-			JANUS_LOG(LOG_VERB, "cursor offset=%d, len=%d, next_start_code offset=%d, cursor=%p, next_start_code=%p\n",
-				cursor - frame->data, len, next_start_code - frame->data, cursor, next_start_code);
+			//JANUS_LOG(LOG_VERB, "cursor offset=%d, len=%d, next_start_code offset=%d, cursor=%p, next_start_code=%p\n",
+			//	cursor - frame->data, len, next_start_code - frame->data, cursor, next_start_code);
 
 			size_t payload_len;
 			if (next_start_code) {
@@ -3064,8 +3063,8 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 					packet.seq_number = ntohs(packet.data->seq_number);
 
 					/* Go! */
-					JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d, start=%d, end=%d, ts=%lld\n",
-							  &packet, packet.data, packet.length, start, end, ts);
+					//JANUS_LOG(LOG_VERB, "Drone: Trying to send a packet %p with data %p of length %d, start=%d, end=%d, ts=%lld\n",
+					//		  &packet, packet.data, packet.length, start, end, ts);
 				
 					//JANUS_LOG(LOG_VERB, "RTP frame:\n");
 					//hexdump(packet.data, packet.length);

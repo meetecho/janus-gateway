@@ -42,15 +42,6 @@
 #include <libARDiscovery/ARDiscovery.h>
 #include <libARStream/ARStream.h>
 
-// XXX: these would go in janus_streaming.h if one existed...
-typedef struct janus_streaming_ardrone3_frame {
-	uint8_t *data;
-	gint length;
-	uint64_t ts;
-} janus_streaming_ardrone3_frame;
-
-struct janus_streaming_ardrone3_source;
-
 typedef struct READER_THREAD_DATA_t READER_THREAD_DATA_t;
 
 typedef struct
