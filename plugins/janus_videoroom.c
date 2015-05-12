@@ -1445,7 +1445,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
 					gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
 				}
-				JANUS_LOG(LOG_INFO, "Sending REMB\n");
+				JANUS_LOG(LOG_VERB, "Sending REMB\n");
 				if(participant->remb_startup == 0)
 					participant->remb_latest = janus_get_monotonic_time();
 			}
