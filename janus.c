@@ -5257,6 +5257,15 @@ void janus_matrix_handle_event(matrix_event *ev, json_t *rawevent) {
     }
     JANUS_LOG(LOG_INFO, "\troom_id %s is session ID %llu\n", ev->room_id, jan_session->session_id);
 
+    const char *command_string = "";
+
+    if (strcmp(ev->type, "m.room.message") == 0) {
+        json_t *body = json_object_get(ev->content, "body");
+        if (body) {
+            command_string = json_string_value(body);
+        }
+    }
+
     if (strcmp(ev->type, "m.room.member") == 0) {
         json_t *membership_obj = json_object_get(ev->content, "membership");
         if (membership_obj) {
@@ -5266,10 +5275,10 @@ void janus_matrix_handle_event(matrix_event *ev, json_t *rawevent) {
                 matrix_join_room(&mxsess, ev->room_id);
             }
         }
-    } else if (strcmp(ev->type, "m.call.invite") == 0) {
+    } else if (strcmp(ev->type, "m.call.invite") == 0 || strncasecmp(command_string, "!startvideo", strlen("!startvideo")) == 0) {
         //printf("Got an invite: %s\n", json_object_to_json_string(ev->content));
-        json_t *offer = json_object_get(ev->content, "offer");
-        if (!offer) return;
+        //json_t *offer = json_object_get(ev->content, "offer");
+        //if (!offer) return;
         //json_t *sdp_obj = json_object_get(offer, "sdp");
         //if (!sdp_obj) return;
         
@@ -5280,11 +5289,17 @@ void janus_matrix_handle_event(matrix_event *ev, json_t *rawevent) {
         }
 
         // streaming plugin likes to place its own calls. fonx and start and outbound call.
-        json_t *fonxevent = json_object();
-        json_object_set(fonxevent, "call_id", call_id_obj);
-        json_object_set(fonxevent, "version", json_integer(0));
-        matrix_send_event(&mxsess, ev->room_id, "m.call.hangup", fonxevent);
-        json_decref(fonxevent);
+        char fakecallid[128];
+        if (call_id) {
+            json_t *fonxevent = json_object();
+            json_object_set(fonxevent, "call_id", call_id_obj);
+            json_object_set(fonxevent, "version", json_integer(0));
+            matrix_send_event(&mxsess, ev->room_id, "m.call.hangup", fonxevent);
+            json_decref(fonxevent);
+        } else {
+            sprintf(fakecallid, "c%lu", time(NULL));
+            call_id = fakecallid;
+        }
 
         // make a fresh ID for the new call
         char newcallid[128];
