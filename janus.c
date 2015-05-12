@@ -5401,26 +5401,22 @@ void janus_matrix_handle_event(matrix_event *ev, json_t *rawevent) {
             return;
         }
         JANUS_LOG(LOG_INFO, "\tcall_id %s is handle ID %llu\n", call_id, handle->handle_id);
-        size_t i;
-        for (i = 0; i < json_array_size(cands); ++i) {
-            json_t *cand = json_array_get(cands, i);
 
-            json_t *root = json_object();
-            json_object_set_new(root, "janus", json_string("trickle"));
+        json_t *root = json_object();
+        json_object_set_new(root, "janus", json_string("trickle"));
 
-            json_object_set_new(root, "session_id", json_integer(jan_session->session_id));
-            json_object_set_new(root, "handle_id", json_integer(handle->handle_id));
+        json_object_set_new(root, "session_id", json_integer(jan_session->session_id));
+        json_object_set_new(root, "handle_id", json_integer(handle->handle_id));
 
-            json_object_set(root, "candidate", cand);
-            char trstr[128];
-            sprintf(trstr, "%lu", g_random_int());
-            json_object_set_new(root, "transaction", json_string(trstr));
-            json_object_set_new(root, "apisecret", json_string(ws_api_secret));
+        json_object_set(root, "candidates", cands);
+        char trstr[128];
+        sprintf(trstr, "%lu", g_random_int());
+        json_object_set_new(root, "transaction", json_string(trstr));
+        json_object_set_new(root, "apisecret", json_string(ws_api_secret));
 
-            JANUS_LOG(LOG_INFO, "\tSending on a candidate to handle ID %llu, call ID %s...\n", handle->handle_id, call_id);
-            janus_process_incoming_request(&source, root);
-            json_decref(root);
-        }
+        JANUS_LOG(LOG_INFO, "\tSending on candidates to handle ID %llu, call ID %s...\n", handle->handle_id, call_id);
+        janus_process_incoming_request(&source, root);
+        json_decref(root);
     } else {
         // pass other events through unfettered
         
