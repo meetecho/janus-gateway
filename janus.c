@@ -4914,10 +4914,10 @@ gint main(int argc, char *argv[])
 	matrix_call_id_to_handle = g_hash_table_new(g_str_hash, g_str_equal);
 	matrix_handle_to_call_id = g_hash_table_new(g_str_hash, g_str_equal);
     matrix_room_id_to_handle = g_hash_table_new(g_str_hash, g_str_equal);
-    mxsess.hs_url = strdup("https://matrix.org");
-    mxsess.access_token = strdup("QHBvbGx5Om1hdHJpeC5vcmc..LIbiJzQUCbwKylrasG");
+    mxsess.hs_url = strdup("http://localhost:8008");
+    mxsess.access_token = strdup("QHBvbGx5OmVjaG8tbWF0cml4.eozjERVjtQrdeVxCbC");
     mxsess.run_event_stream = 1;
-    mxsess.matrix_id = "@polly:matrix.org";
+    mxsess.matrix_id = "@polly:echo-matrix";
 
     GError *error = NULL;
     JANUS_LOG(LOG_INFO, "Starting matrix event stream thread\n");
