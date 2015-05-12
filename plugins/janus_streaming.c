@@ -1813,6 +1813,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			
 			const char *body_text = json_string_value(body);
 			onMatrixMessage(body_text, source->deviceManager);
+			
+			response = json_object();
+			json_object_set_new(response, "matrix", json_string("ok"));
+			goto plugin_response;
 		}
 		else {
 			JANUS_LOG(LOG_VERB, "Ignoring matrix event %s\n", type_text);

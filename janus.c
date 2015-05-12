@@ -5322,7 +5322,7 @@ void janus_matrix_handle_event(matrix_event *ev, json_t *rawevent) {
 
         json_t *body = json_object();
         json_object_set_new(body, "request", json_string("watch"));
-        json_object_set_new(body, "id", json_integer(2));
+        json_object_set_new(body, "id", json_integer(1));
 
         json_object_set_new(root, "body", body);
         //json_object_set(root, "jsep", offer);
