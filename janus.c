@@ -1224,11 +1224,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				goto jsondone;
 			}
 			jsep_type = g_strdup(json_string_value(type));
-			if(jsep_type == NULL) {
-				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
-				goto jsondone;
-			}
 			type = NULL;
 			/* Are we still cleaning up from a previous media session? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
