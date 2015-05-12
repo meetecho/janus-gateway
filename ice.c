@@ -1293,7 +1293,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							seqs = seqs->next;
 						}
 					}
-					if(nacks != NULL) {
+					guint nacks_count = g_slist_length(nacks);
+					if(nacks_count) {
 						/* FIXME Generate a NACK and send it */
 						if(now-component->last_nack_time > 2*G_USEC_PER_SEC) {
 							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Missed some packets, NACKing them now...\n", handle->handle_id);
@@ -1304,12 +1305,12 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							janus_ice_relay_rtcp(handle, video, nackbuf, res);
 						/* Update stats */
 						if(video) {
-							component->out_stats.video_nacks++;
+							component->out_stats.video_nacks += nacks_count;
 						} else {
-							component->out_stats.audio_nacks++;
+							component->out_stats.audio_nacks += nacks_count;
 						}
 						/* Inform the plugin about the slow downlink in case it's needed */
-						janus_slow_link_update(component, handle, g_slist_length(nacks), video, 0, now);
+						janus_slow_link_update(component, handle, nacks_count, video, 0, now);
 						g_slist_free(nacks);
 						nacks = NULL;
 					}
@@ -1345,8 +1346,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 				gint64 now = janus_get_monotonic_time();
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
-				int nacks_count = g_slist_length(nacks);
-				if(nacks != NULL && nacks_count > 0) {
+				guint nacks_count = g_slist_length(nacks);
+				if(nacks_count) {
 					/* Handle NACK */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GSList *list = nacks;
@@ -1391,9 +1392,9 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					buflen = janus_rtcp_remove_nacks(buf, buflen);
 					/* Update stats */
 					if(video) {
-						component->in_stats.video_nacks++;
+						component->in_stats.video_nacks += nacks_count;
 					} else {
-						component->in_stats.audio_nacks++;
+						component->in_stats.audio_nacks += nacks_count;
 					}
 					/* Inform the plugin about the slow uplink in case it's needed */
 					janus_slow_link_update(component, handle, retransmits_cnt, video, 1, now);
