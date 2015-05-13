@@ -2973,6 +2973,7 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 #endif
 
 	FILE * video_out = fopen("video.h264", "w");
+	int frame_count = 0;
    
 	/* Loop */
 	janus_streaming_rtp_relay_packet packet;
@@ -3003,6 +3004,13 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		//hexdump(frame->data, frame->length);
         fwrite(frame->data, frame->length, 1, video_out);
         fflush(video_out);
+
+		// char vf_name[32];
+		// sprintf(vf_name, "vf%d.h264", frame_count);
+		// FILE * vf_out = fopen(vf_name, "w");
+		//         fwrite(frame->data, frame->length, 1, vf_out);
+		//         fflush(vf_out);
+		// fclose(vf_out);
 		
 		// packetize the H.264 by splitting up NALs on start codes
 	 	while (parsing) {
@@ -3110,6 +3118,7 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 					
 		g_free(frame->data);
 		g_free(frame);
+		frame_count++;
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Leaving ardrone3 thread\n", name);
 	
