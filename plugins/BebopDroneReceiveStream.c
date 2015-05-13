@@ -246,6 +246,15 @@ void *looperRun (void* data)
             sendCameraOrientation(deviceManager);
             
             usleep(50*1000);
+/*
+		    ARSAL_PRINT(ARSAL_PRINT_INFO, TAG, "%d,%d,%d,%d,%d\n",
+		        deviceManager->dataPCMD.flag,
+	            deviceManager->dataPCMD.roll,
+	            deviceManager->dataPCMD.pitch,
+	            deviceManager->dataPCMD.yaw,
+	            deviceManager->dataPCMD.gaz
+	    	);
+*/
         }
     }
     

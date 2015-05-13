@@ -2971,6 +2971,8 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 	a=sendonly
 */	
 #endif
+
+	FILE * video_out = fopen("video.h264", "w");
    
 	/* Loop */
 	janus_streaming_rtp_relay_packet packet;
@@ -2999,6 +3001,8 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		
 		//JANUS_LOG(LOG_VERB, "Frame from drone:\n");
 		//hexdump(frame->data, frame->length);
+        fwrite(frame->data, frame->length, 1, video_out);
+        fflush(video_out);
 		
 		// packetize the H.264 by splitting up NALs on start codes
 	 	while (parsing) {
@@ -3108,6 +3112,8 @@ static void *janus_streaming_ardrone3_thread(void *data) {
 		g_free(frame);
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Leaving ardrone3 thread\n", name);
+	
+	fclose(video_out);
 	
 	bebop_stop(source->deviceManager);
 	
