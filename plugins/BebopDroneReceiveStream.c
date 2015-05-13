@@ -237,11 +237,16 @@ void *looperRun (void* data)
             sendPCMD(deviceManager);
 
 			// reset state after each command
-            deviceManager->dataPCMD.flag = 0;
-            deviceManager->dataPCMD.roll = 0;
-            deviceManager->dataPCMD.pitch = 0;
-            deviceManager->dataPCMD.yaw = 0;
-            deviceManager->dataPCMD.gaz = 0;
+			if (deviceManager->dataPCMD.lifetime == 0) {
+	            deviceManager->dataPCMD.flag = 0;
+	            deviceManager->dataPCMD.roll = 0;
+	            deviceManager->dataPCMD.pitch = 0;
+	            deviceManager->dataPCMD.yaw = 0;
+				deviceManager->dataPCMD.gaz = 0;
+			}
+			else {
+				deviceManager->dataPCMD.lifetime--;
+			}
             
             sendCameraOrientation(deviceManager);
             
@@ -295,6 +300,7 @@ BD_MANAGER_t * bebop_start()
         deviceManager->dataPCMD.pitch = 0;
         deviceManager->dataPCMD.yaw = 0;
         deviceManager->dataPCMD.gaz = 0;
+        deviceManager->dataPCMD.lifetime = 0;
         
         deviceManager->dataCam.tilt = 0;
         deviceManager->dataCam.pan = 0;
@@ -1176,6 +1182,9 @@ void onMatrixMessage (char *message, BD_MANAGER_t *deviceManager)
 	int param1, param2;
 	char arg[16];
 	
+	int amount = 50;
+	int lifetime = 10;
+	
 	if (!strcasecmp(message, "launch")) {
         sendTakeoff(deviceManager);		
 	}
@@ -1189,61 +1198,77 @@ void onMatrixMessage (char *message, BD_MANAGER_t *deviceManager)
 		sendEmergency(deviceManager);
 	}
 	else if (!strcasecmp(message, "up")) {
-		deviceManager->dataPCMD.gaz = 50;
+		deviceManager->dataPCMD.gaz = amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (!strcasecmp(message, "down")) {
-		deviceManager->dataPCMD.gaz = -50;
+		deviceManager->dataPCMD.gaz = -amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (!strcasecmp(message, "left")) {
         deviceManager->dataPCMD.flag = 1;
-        deviceManager->dataPCMD.roll = -50;
+        deviceManager->dataPCMD.roll = -amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (!strcasecmp(message, "right")) {
         deviceManager->dataPCMD.flag = 1;
-        deviceManager->dataPCMD.roll = 50;
+        deviceManager->dataPCMD.roll = amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (!strcasecmp(message, "forward")) {
 		deviceManager->dataPCMD.flag = 1;
-	    deviceManager->dataPCMD.pitch = 50;
+	    deviceManager->dataPCMD.pitch = amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (!strcasecmp(message, "back") || !strcasecmp(message, "backward")) {
 		deviceManager->dataPCMD.flag = 1;
-	    deviceManager->dataPCMD.pitch = -50;
+	    deviceManager->dataPCMD.pitch = -amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (!strcasecmp(message, "turn left")) {
-        deviceManager->dataPCMD.yaw = -50;
+        deviceManager->dataPCMD.yaw = -amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (!strcasecmp(message, "turn right")) {
-        deviceManager->dataPCMD.yaw = 50;
+        deviceManager->dataPCMD.yaw = amount;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "up %d", &param1) == 1) {
 		deviceManager->dataPCMD.gaz = param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "down %d", &param1) == 1) {
 		deviceManager->dataPCMD.gaz = -param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "left %d", &param1) == 1) {
         deviceManager->dataPCMD.flag = 1;
         deviceManager->dataPCMD.roll = -param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "right %d", &param1) == 1) {
         deviceManager->dataPCMD.flag = 1;
         deviceManager->dataPCMD.roll = param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "forward %d", &param1) == 1) {
 		deviceManager->dataPCMD.flag = 1;
 	    deviceManager->dataPCMD.pitch = param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "back %d", &param1) == 1 ||
 			 sscanf(message, "backward %d", &param1) == 1) {
 		deviceManager->dataPCMD.flag = 1;
 	    deviceManager->dataPCMD.pitch = -param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "turn left %d", &param1) == 1) {
         deviceManager->dataPCMD.yaw = -param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "turn right %d", &param1) == 1) {
         deviceManager->dataPCMD.yaw = param1;
+		deviceManager->dataPCMD.lifetime = lifetime;
 	}
 	else if (sscanf(message, "look %d,%d", &param1, &param2) == 2) {
 		deviceManager->dataCam.pan = param1;

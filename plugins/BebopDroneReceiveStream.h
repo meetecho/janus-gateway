@@ -51,6 +51,7 @@ typedef struct
     int pitch;
     int yaw;
     int gaz;
+	int lifetime;
 } BD_PCMD_t;
 
 typedef struct _ARDrone3CameraData_t_
