@@ -1,11 +1,13 @@
 ; [stream-name]
-; type = rtp|live|ondemand
+; type = rtp|live|ondemand|rtsp
 ;        rtp = stream originated by an external tool (e.g., gstreamer or
 ;              ffmpeg) and sent to the plugin via RTP
 ;        live = local file streamed live to multiple listeners
 ;               (multiple listeners = same streaming context)
 ;        ondemand = local file streamed on-demand to a single listener
 ;                   (multiple listeners = different streaming contexts)
+;        rtsp = stream originated by an external RTSP feed (only
+;               available if libcurl support was compiled)
 ; id = <unique numeric ID> (if missing, a random one will be generated)
 ; description = This is my awesome stream
 ; is_private = yes|no (private streams don't appear when you do a 'list'
@@ -24,6 +26,7 @@
 ; videomcast = multicast group port for receiving video frames (only for rtp)
 ; videocodec = <video RTP payload type> (e.g., 100)
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
+; url = RTSP stream URL (only if type=rtsp)
 ;
 ; To test the [gstreamer-sample] example, check the test_gstreamer.sh
 ; script in the plugins/streams folder. To test the live and on-demand
@@ -98,3 +101,15 @@ secret = adminpwd
 ;videopt = 100
 ;videortpmap = VP8/90000
 
+;
+; This is a sample configuration for an RTSP stream
+; NOTE WELL: the plugin does NOT transcode, so the RTSP stream MUST be
+; in a format the browser can digest (e.g., VP8 or H.264 for video)
+;
+;[rtsp-test]
+;type = rtsp
+;id = 99
+;description = RTSP Test
+;audio = no
+;video = yes
+;url=rtsp://127.0.0.1:8554/unicast

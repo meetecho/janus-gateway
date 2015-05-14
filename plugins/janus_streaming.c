@@ -46,7 +46,8 @@ type = rtp|live|ondemand|rtsp
               (multiple listeners = same streaming context)
        ondemand = local file streamed on-demand to a single listener
                   (multiple listeners = different streaming contexts)
-       rtsp = request to an RTSP server RTP streams streamed to multiple listeners
+       rtsp = stream originated by an external RTSP feed (only
+              available if libcurl support was compiled)
 id = <unique numeric ID>
 description = This is my awesome stream
 is_private = yes|no (private streams don't appear when you do a 'list' request)
@@ -67,7 +68,7 @@ videopt = <video RTP payload type> (e.g., 100)
 videortpmap = RTP map of the video codec (e.g., VP8/90000)
 videofmtp = Codec specific parameters, if any
    The following options are only valid for the 'rstp' type:
-url = rtsp url use to negociate RTP streams
+url = RTSP stream URL (only if type=rtsp)
 \endverbatim
  *
  * \section streamapi Streaming API
@@ -614,6 +615,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
 			} else if(!strcasecmp(type->value, "rtsp")) {
+#ifndef HAVE_LIBCURL
+				JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', libcurl support not compiled...\n", cat->name);
+				cat = cat->next;
+				continue;
+#else
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
 				janus_config_item *file = janus_config_get_item(cat, "url");
@@ -655,7 +661,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				mp->is_private = is_private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
-
+#endif
 			} else {
 				JANUS_LOG(LOG_WARN, "Ignoring unknown stream type '%s' (%s)...\n", type->value, cat->name);
 			}
@@ -1343,6 +1349,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
 		} else if(!strcasecmp(type_text, "rtsp")) {
+#ifndef HAVE_LIBCURL
+			JANUS_LOG(LOG_ERR, "Can't create 'rtsp' mountpoint, libcurl support not compiled...\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Can't create 'rtsp' mountpoint, libcurl support not compiled...\n");
+			goto error;
+#else
 			/* RTSP source*/
 			json_t *id = json_object_get(root, "id");
 			if(id && !json_is_integer(id)) {
@@ -1414,6 +1426,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				goto error;
 			}
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;			
+#endif
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown stream type '%s'...\n", type_text);
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
@@ -1810,7 +1823,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 
 plugin_response:
 		{
-			if (!response) {
+			if(!response) {
 				error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Invalid response");
 				goto error;
@@ -2266,16 +2279,15 @@ error:
 
 
 /* Helpers to destroy a streaming mountpoint. */
-static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source)
-{
-	if (source->audio_fd>0) {
+static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) {
+	if(source->audio_fd > 0) {
 		close(source->audio_fd);
 	}
-	if (source->video_fd>0) {
+	if(source->video_fd > 0) {
 		close(source->video_fd);
 	}
 #ifdef HAVE_LIBCURL
-	if (source->curl) {
+	if(source->curl) {
 		curl_easy_cleanup(source->curl);
 	}
 #endif
@@ -2296,7 +2308,7 @@ static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
 	g_list_free(mp->listeners);
 	janus_mutex_unlock(&mp->mutex);
 
-	if (mp->source != NULL && mp->source_destroy != NULL) {
+	if(mp->source != NULL && mp->source_destroy != NULL) {
 		mp->source_destroy(mp->source);
 	}
 
@@ -2522,28 +2534,27 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 	return realsize;
 }
 
-static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, const char* media, int* pt, int* port, char* rtpmap, char* fmtp, char* control)
-{
+static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, const char* media, int* pt, int* port, char* rtpmap, char* fmtp, char* control) {
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
 	char *m=strstr(buffer, pattern);
-	if (m == NULL) {
+	if(m == NULL) {
 		JANUS_LOG(LOG_VERB, "[%s] no media %s...\n", name, media);
 		return -1;
 	}
 	sscanf(m, "m=%*s %d %*s %d", port, pt);
 	char *s=strstr(m, "a=control:");
-	if (s == NULL) {
+	if(s == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] no control for %s...\n", name, media);
 		return -1;
 	}		
 	sscanf(s, "a=control:%s", control);
 	char *r=strstr(m, "a=rtpmap:");
-	if (r != NULL) {
+	if(r != NULL) {
 		sscanf(r, "a=rtpmap:%*d %s", rtpmap);
 	}
 	char *f=strstr(m, "a=fmtp:");
-	if (f != NULL) {
+	if(f != NULL) {
 		sscanf(f, "a=fmtp:%*d %s", fmtp);
 	}	
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -2554,7 +2565,7 @@ static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, 
 	struct sockaddr_in address;
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons(port);
+	address.sin_port = htons(*port);
 	if(*port > 0) {
 		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
 		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
@@ -2565,7 +2576,7 @@ static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, 
 		return -1;
 	}
 	socklen_t len = sizeof(address);
-	if (getsockname(fd, (struct sockaddr *)&address, &len) < 0)
+	if(getsockname(fd, (struct sockaddr *)&address, &len) < 0)
 	{
 		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (%d)...\n", name, media, *port);
 		close(fd);
@@ -2576,7 +2587,7 @@ static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, 
 	return fd;
 }	
 
-/* Helper to create a rtsp source */
+/* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc, char *url,
 		gboolean doaudio, gboolean dovideo) {
@@ -2586,14 +2597,14 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	}	
 	JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");	
 	CURL* curl = curl_easy_init();
-	if (curl == NULL) {
+	if(curl == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't init CURL\n");
 		return NULL;
 	}
 	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(curl, CURLOPT_URL, url);	
-	/* send DESCRIBE */
+	/* Send an RTSP DESCRIBE */
 	janus_streaming_buffer data;
 	data.buffer = malloc(1);
 	data.size = 0;
@@ -2610,7 +2621,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		return NULL;
 	}		
 	JANUS_LOG(LOG_VERB, "DESCRIBE answer:%s\n",data.buffer);	
-	/* parse sdp */
+	/* Parse the SDP we just got to figure out the negotiated media */
 	int vpt = -1;
 	int vport = -1;
 	char vrtpmap[2048];
@@ -2619,9 +2630,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char uri[1024];
 	char transport[1024];
 	int video_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "video", &vpt, &vport, vrtpmap, vfmtp, vcontrol);
-	if (video_fd >= 0)
-	{
-		/* send video SETUP */
+	if(video_fd >= 0) {
+		/* Send an RTSP SETUP for video */
 		free(data.buffer);
 		data.buffer = malloc(1);
 		data.size = 0;		
@@ -2644,9 +2654,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char afmtp[2048];
 	char acontrol[2048];
 	int audio_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "audio", &apt, &aport, artpmap, afmtp, acontrol);
-	if (audio_fd >= 0)
-	{
-		/* send audio SETUP */
+	if(audio_fd >= 0) {
+		/* Send an RTSP SETUP for audio */
 		free(data.buffer);
 		data.buffer = malloc(1);
 		data.size = 0;		
@@ -2663,7 +2672,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		}		
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n",data.buffer);
 	}	
-	/* create source */
+	/* Create an RTP source for the media we'll get */
 	char tempname[255];
 	if(!name) {
 		memset(tempname, 0, 255);
@@ -2733,7 +2742,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		curl_easy_cleanup(curl);
 		return NULL;	
 	}				
-	/* send PLAY */
+	/* Send an RTSP PLAY */
 	free(data.buffer);	
 	data.buffer = malloc(1);
 	data.size = 0;		
@@ -2757,7 +2766,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	return live_rtsp;
 }
 #else
-/* Helper to create a rtsp source */
+/* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		uint64_t id, char *name, char *desc, char *url,
 		gboolean doaudio, gboolean dovideo) {
@@ -3043,15 +3052,15 @@ static void *janus_streaming_relay_thread(void *data) {
 	/* Socket stuff */
 	struct sockaddr_in audio_address, video_address;
 	int audio_fd = source->audio_fd;
-	if( (audio_fd < 0) && (audio_port >= 0) ) {
+	if((audio_fd < 0) && (audio_port >= 0)) {
 		audio_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
 		setsockopt(audio_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-		if (IN_MULTICAST(source->audio_mcast))
+		if(IN_MULTICAST(source->audio_mcast))
 		{
 			struct ip_mreq mreq;
 			mreq.imr_multiaddr.s_addr = source->audio_mcast;
-			if (setsockopt(audio_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
+			if(setsockopt(audio_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] Audio listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
 				g_thread_unref(g_thread_self());
 				return NULL;
@@ -3069,15 +3078,15 @@ static void *janus_streaming_relay_thread(void *data) {
 		JANUS_LOG(LOG_VERB, "[%s] Audio listener bound to port %d\n", mountpoint->name, audio_port);
 	}
 	int video_fd = source->video_fd;
-	if( (video_fd <0) && (video_port >= 0) ) {
+	if((video_fd < 0) && (video_port >= 0)) {
 		video_fd = socket(AF_INET, SOCK_DGRAM, 0);
 		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
 		setsockopt(video_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-		if (IN_MULTICAST(source->video_mcast))
+		if(IN_MULTICAST(source->video_mcast))
 		{
 			struct ip_mreq mreq;
 			mreq.imr_multiaddr.s_addr = source->video_mcast;
-			if (setsockopt(video_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
+			if(setsockopt(video_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] Video listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
 				g_thread_unref(g_thread_self());
 				return NULL;
