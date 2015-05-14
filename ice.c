@@ -971,7 +971,7 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	//~ janus_mutex_unlock(&handle->mutex);
 }
 
-/* call plugin slow_link callback if enough NACKs within a second */
+/* Call plugin slow_link callback if enough NACKs within a second */
 #define SLOW_LINK_NACKS_PER_SEC 8
 static void
 janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
