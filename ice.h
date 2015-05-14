@@ -309,8 +309,12 @@ struct janus_ice_component {
 	GList *last_seqs;
 	/*! \brief Time when the last NACK was sent */
 	gint64 last_nack_time;
-	/*! \brief Time when we last notified the plugin about a slow link (too many received NACKs) */
+	/*! \brief last time the slow_link callback (of the plugin) was called */
 	gint64 last_slowlink_time;
+	/*! \brief start time of recent NACKs (for slow_link) */
+	gint64 sl_nack_period_ts;
+	/*! \brief count of recent NACKs (for slow_link) */
+	guint sl_nack_recent_cnt;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */
