@@ -1350,6 +1350,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					/* Handle NACK */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GSList *list = nacks;
+					int retransmits_cnt = 0;
 					janus_mutex_lock(&component->mutex);
 					while(list) {
 						unsigned int seqnr = GPOINTER_TO_UINT(list->data);
@@ -1367,7 +1368,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 									}
 									JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   >> >> Scheduling %u for retransmission due to NACK\n", handle->handle_id, seqnr);
 									p->last_retransmit = now;
-									component->retransmit_recent_cnt++;
+									retransmits_cnt++;
 									/* Enqueue it */
 									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
 									pkt->data = calloc(p->length, sizeof(char));
@@ -1385,9 +1386,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						}
 						list = list->next;
 					}
-					janus_mutex_unlock(&component->mutex);
-					g_slist_free(nacks);
-					nacks = NULL;
+					component->retransmit_recent_cnt += retransmits_cnt;
 					/* FIXME Remove the NACK compound packet, we've handled it */
 					buflen = janus_rtcp_remove_nacks(buf, buflen);
 					/* Update stats */
@@ -1397,7 +1396,10 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						component->in_stats.audio_nacks++;
 					}
 					/* Inform the plugin about the slow uplink in case it's needed */
-					janus_slow_link_update(component, handle, nacks_count, video, 1, now);
+					janus_slow_link_update(component, handle, retransmits_cnt, video, 1, now);
+					janus_mutex_unlock(&component->mutex);
+					g_slist_free(nacks);
+					nacks = NULL;
 				}
 				if (component->retransmit_recent_cnt &&
 				    now - component->retransmit_log_ts > 5 * G_USEC_PER_SEC) {
