@@ -415,7 +415,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 				if(!strcasecmp(rtransport, "udp")) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
 #ifdef HAVE_LIBNICE_TCP
-				else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
+				} else if(!strcasecmp(rtransport, "tcp") && janus_ice_is_ice_tcp_enabled()) {
 					c = nice_candidate_new(NICE_CANDIDATE_TYPE_PEER_REFLEXIVE);
 #endif
 				} else {
