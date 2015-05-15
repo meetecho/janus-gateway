@@ -5043,27 +5043,31 @@ gint main(int argc, char *argv[])
 		}
 	}
 
-#ifdef HAVE_WEBSOCKETS
 	while(!g_atomic_int_get(&stop)) {
+		/* Loop until we have to stop */
+#ifdef HAVE_WEBSOCKETS
 		if(wss || swss) {
 			/* libwebsockets needs us to call the service ourselves on a regular basis */
 			if(wss != NULL)
 				libwebsocket_service(wss, 100);
 			if(swss != NULL)
 				libwebsocket_service(swss, 100);
-		} else {
-			/* Loop until we have to stop */
-			g_usleep(250000);
+		} else
+#endif
+		{
+			usleep(250000); /* a signal will cancel usleep() but not g_usleep() */
 		}
 	}
-#else
-	while(!g_atomic_int_get(&stop)) {
-		/* Loop until we have to stop */
-		g_usleep(250000);
-	}
-#endif
 
 	/* Done */
+
+	JANUS_LOG(LOG_INFO, "Closing webserver(s)...\n");
+	if(ws)        MHD_quiesce_daemon(ws);
+	if(sws)       MHD_quiesce_daemon(sws);
+	if(admin_ws)  MHD_quiesce_daemon(admin_ws);
+	if(admin_sws) MHD_quiesce_daemon(admin_sws);
+	g_usleep(155000); /* long-poll loop sleeps for 100ms between status checks */
+
 	JANUS_LOG(LOG_INFO, "Ending watchdog mainloop...\n");
 	g_main_loop_quit(watchdog_loop);
 	g_thread_join(watchdog);
@@ -5073,7 +5077,8 @@ gint main(int argc, char *argv[])
 
 	if(config)
 		janus_config_destroy(config);
-	JANUS_LOG(LOG_INFO, "Closing webserver(s)...\n");
+
+	JANUS_LOG(LOG_INFO, "Stopping webserver(s)...\n");
 	if(ws)
 		MHD_stop_daemon(ws);
 	ws = NULL;
