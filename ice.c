@@ -1178,7 +1178,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		/* FIXME If rtcp-mux is not used, a first component is always RTP; otherwise, we need to check */
 		//~ JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTP packet (%s stream)!\n", handle->handle_id,
 			//~ janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? "bundled" : (stream->stream_id == handle->audio_id ? "audio" : "video"));
-		if(!component->dtls || !component->dtls->srtp_valid) {
+		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			rtp_header *header = (rtp_header *)buf;
@@ -1323,7 +1323,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		/* FIXME A second component is always RTCP; in case of rtcp-mux, we need to check */
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]  Got an RTCP packet (%s stream)!\n", handle->handle_id,
 			janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? "bundled" : (stream->stream_id == handle->audio_id ? "audio" : "video"));
-		if(!component->dtls || !component->dtls->srtp_valid) {
+		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			int buflen = len;
@@ -2465,7 +2465,7 @@ void *janus_ice_send_thread(void *data) {
 				continue;
 			}
 			stream->noerrorlog = 0;
-			if(!component->dtls || !component->dtls->srtp_valid) {
+			if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out) {
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"]     %s stream (#%u) component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio", stream->stream_id);
 					component->noerrorlog = 1;	/* Don't flood with the same error all over again */
@@ -2563,7 +2563,7 @@ void *janus_ice_send_thread(void *data) {
 					continue;
 				}
 				stream->noerrorlog = 0;
-				if(!component->dtls || !component->dtls->srtp_valid) {
+				if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out) {
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"]     %s stream component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio");
 						component->noerrorlog = 1;	/* Don't flood with the same error all over again */
