@@ -5055,18 +5055,18 @@ gint main(int argc, char *argv[])
 		} else
 #endif
 		{
-			usleep(250000); /* a signal will cancel usleep() but not g_usleep() */
+			usleep(250000); /* A signal will cancel usleep() but not g_usleep() */
 		}
 	}
 
 	/* Done */
 
-	JANUS_LOG(LOG_INFO, "Closing webserver(s)...\n");
-	if(ws)        MHD_quiesce_daemon(ws);
-	if(sws)       MHD_quiesce_daemon(sws);
-	if(admin_ws)  MHD_quiesce_daemon(admin_ws);
-	if(admin_sws) MHD_quiesce_daemon(admin_sws);
-	g_usleep(155000); /* long-poll loop sleeps for 100ms between status checks */
+	//~ JANUS_LOG(LOG_INFO, "Closing webserver(s)...\n");
+	//~ if(ws)        MHD_quiesce_daemon(ws);
+	//~ if(sws)       MHD_quiesce_daemon(sws);
+	//~ if(admin_ws)  MHD_quiesce_daemon(admin_ws);
+	//~ if(admin_sws) MHD_quiesce_daemon(admin_sws);
+	//~ g_usleep(155000); /* Long-poll loop sleeps for 100ms between status checks */
 
 	JANUS_LOG(LOG_INFO, "Ending watchdog mainloop...\n");
 	g_main_loop_quit(watchdog_loop);
