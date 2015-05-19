@@ -187,7 +187,7 @@ uint janus_get_max_nack_queue(void) {
 /* seq_info_t list functions */
 static void janus_seq_append(seq_info_t **head, seq_info_t *new_seq) {
 	if(*head == NULL) {
-		/* assume ref_seq also NULL */
+		/* Assume ref_seq also NULL */
 		new_seq->prev = new_seq;
 		new_seq->next = new_seq;
 		*head = new_seq;
@@ -223,8 +223,8 @@ static void janus_seq_list_free(seq_info_t **head) {
 	} while(cur != *head);
 	*head = NULL;
 }
-static int seq_in_range(guint16 seqn, guint16 start, guint16 len) {
-	/* supports wrapping sequence - easier with int range */
+static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
+	/* Supports wrapping sequence (easier with int range) */
 	int n = seqn;
 	int nh = (1<<16) + n;
 	int s = start;
@@ -1306,7 +1306,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 
 				/* Keep track of rtp sequence numbers, in case we need to NACK them */
-				/* unsigned int overflow/underflow wraps (defined behavior) */
+				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
 				guint16 new_seqn = ntohs(header->seq_number);
 				guint16 cur_seqn;
 				int last_seqs_len = 0;
@@ -1318,12 +1318,12 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					cur_seq = cur_seq->prev;
 					cur_seqn = cur_seq->seq;
 				} else {
-					/* first seq, set up to add one seq */
-					cur_seqn = new_seqn - (guint16)1; /* can wrap */
+					/* First seq, set up to add one seq */
+					cur_seqn = new_seqn - (guint16)1; /* Can wrap */
 				}
-				if(!seq_in_range(new_seqn, cur_seqn, LAST_SEQS_MAX_LEN) &&
-				   !seq_in_range(cur_seqn, new_seqn, 1000)                 ) {
-					/* jump too big, start fresh */
+				if(!janus_seq_in_range(new_seqn, cur_seqn, LAST_SEQS_MAX_LEN) &&
+				   !janus_seq_in_range(cur_seqn, new_seqn, 1000)                 ) {
+					/* Jump too big, start fresh */
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] big sequence number jump %hu -> %hu\n",
 					                                   handle->handle_id, cur_seqn, new_seqn);
 					janus_seq_list_free(last_seqs);
@@ -1334,8 +1334,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				GSList *nacks = NULL;
 				gint64 now = janus_get_monotonic_time();
 
-				if(seq_in_range(new_seqn, cur_seqn, LAST_SEQS_MAX_LEN)) {
-					/* add new seq objs forward */
+				if(janus_seq_in_range(new_seqn, cur_seqn, LAST_SEQS_MAX_LEN)) {
+					/* Add new seq objs forward */
 					while(cur_seqn != new_seqn) {
 						cur_seqn += (guint16)1; /* can wrap */
 						seq_info_t *seq_obj = g_malloc0(sizeof(seq_info_t));
@@ -1347,7 +1347,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					}
 				}
 				if(cur_seq) {
-					/* scan old seq objs backwards */
+					/* Scan old seq objs backwards */
 					for (;;) {
 						last_seqs_len++;
 						if(cur_seq->seq == new_seqn) {
@@ -1363,7 +1363,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							cur_seq->state = SEQ_GIVEUP;
 						}
 						if(cur_seq == *last_seqs) {
-							/* just processed head */
+							/* Just processed head */
 							break;
 						}
 						cur_seq = cur_seq->prev;

@@ -326,8 +326,9 @@ struct janus_ice_component {
 	gint64 nack_sent_log_ts;
 	/*! \brief Number of NACKs sent since last log message */
 	guint nack_sent_recent_cnt;
-	/*! \brief List of recently received sequence numbers (as a support to NACK generation) */
+	/*! \brief List of recently received audio sequence numbers (as a support to NACK generation) */
 	seq_info_t *last_seqs_audio;
+	/*! \brief List of recently received video sequence numbers (as a support to NACK generation) */
 	seq_info_t *last_seqs_video;
 	/*! \brief Last time the slow_link callback (of the plugin) was called */
 	gint64 last_slowlink_time;
