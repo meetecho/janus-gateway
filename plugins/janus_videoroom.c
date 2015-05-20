@@ -1473,7 +1473,50 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 }
 
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	/* FIXME We ignore incoming RTCP, should we care? */
+	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+		return;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
+	if(!session) {
+		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+		return;
+	}
+	if(session->destroyed)
+		return;
+	if(session->participant_type == janus_videoroom_p_type_subscriber) {
+		/* A listener sent some RTCP, check what it is and if we need to forward it to the publisher */
+		if(janus_rtcp_has_fir(buf, len)) {
+			/* We got a FIR, forward it to the publisher */
+			janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
+			if(l && l->feed) {
+				janus_videoroom_participant *p = l->feed;
+				if(p && p->session) {
+					char rtcpbuf[20];
+					memset(rtcpbuf, 0, 20);
+					janus_rtcp_fir((char *)&rtcpbuf, 20, &p->fir_seq);
+					JANUS_LOG(LOG_VERB, "Got a FIR from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 20);
+				}
+			}
+		}
+		if(janus_rtcp_has_pli(buf, len)) {
+			/* We got a PLI, forward it to the publisher */
+			janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
+			if(l && l->feed) {
+				janus_videoroom_participant *p = l->feed;
+				if(p && p->session) {
+					char rtcpbuf[12];
+					memset(rtcpbuf, 0, 12);
+					janus_rtcp_pli((char *)&rtcpbuf, 12);
+					JANUS_LOG(LOG_VERB, "Got a PLI from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 12);
+				}
+			}
+		}
+		uint64_t bitrate = janus_rtcp_get_remb(buf, len);
+		if(bitrate > 0) {
+			/* FIXME We got a REMB from this listener, should we do something about it? */
+		}
+	}
 }
 
 void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int len) {

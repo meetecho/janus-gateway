@@ -187,7 +187,6 @@ uint janus_get_max_nack_queue(void) {
 /* seq_info_t list functions */
 static void janus_seq_append(seq_info_t **head, seq_info_t *new_seq) {
 	if(*head == NULL) {
-		/* Assume ref_seq also NULL */
 		new_seq->prev = new_seq;
 		new_seq->next = new_seq;
 		*head = new_seq;

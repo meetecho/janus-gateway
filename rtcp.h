@@ -204,6 +204,18 @@ int janus_rtcp_parse(char *packet, int len);
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
 
+/*! \brief Method to check whether an RTCP message contains a FIR request
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE in case of success, FALSE otherwise */
+gboolean janus_rtcp_has_fir(char *packet, int len);
+
+/*! \brief Method to check whether an RTCP message contains a PLI request
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns TRUE in case of success, FALSE otherwise */
+gboolean janus_rtcp_has_pli(char *packet, int len);
+
 /*! \brief Method to parse an RTCP NACK message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes

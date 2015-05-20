@@ -284,6 +284,65 @@ int janus_rtcp_fix_ssrc(char *packet, int len, int fixssrc, uint32_t newssrcl, u
 	return 0;
 }
 
+int janus_rtcp_has_fir(char *packet, int len) {
+	gboolean got_fir = FALSE;
+	/* Parse RTCP compound packet */
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return FALSE;
+	int pno = 0, total = len;
+	while(rtcp) {
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_FIR:
+				got_fir = TRUE;
+				break;
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return got_fir ? TRUE : FALSE;
+}
+
+int janus_rtcp_has_pli(char *packet, int len) {
+	gboolean got_pli = FALSE;
+	/* Parse RTCP compound packet */
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return FALSE;
+	int pno = 0, total = len;
+	while(rtcp) {
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_PSFB: {
+				gint fmt = rtcp->rc;
+				if(fmt == 1)
+					got_pli = TRUE;
+				break;
+			}
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return got_pli ? TRUE : FALSE;
+}
+
 GSList *janus_rtcp_get_nacks(char *packet, int len) {
 	if(packet == NULL || len == 0)
 		return NULL;
