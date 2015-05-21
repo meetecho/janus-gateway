@@ -213,7 +213,12 @@ function Janus(gatewayCallbacks) {
 			if(transaction !== null && transaction !== undefined) {
 				var reportSuccess = transactions[transaction];
 				if(reportSuccess !== null && reportSuccess !== undefined) {
-					reportSuccess(json);
+					if (json.plugindata && json.plugindata.data) {
+						// Callback of pluginHandle.send
+						reportSuccess(json.plugindata.data);
+					} else {
+						reportSuccess(json);
+					}
 				}
 				transactions[transaction] = null;
 			}
@@ -658,6 +663,7 @@ function Janus(gatewayCallbacks) {
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
+			transactions[request.transaction] = callbacks.success;
 			ws.send(JSON.stringify(request));
 			return;
 		}
