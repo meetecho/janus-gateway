@@ -205,7 +205,15 @@ function Janus(gatewayCallbacks) {
 			// Nothing happened
 			return;
 		} else if(json["janus"] === "ack") {
-			// Just an ack, ignore
+			// Just an ack, we can probably ignore
+			var transaction = json["transaction"];
+			if(transaction !== null && transaction !== undefined) {
+				var reportSuccess = transactions[transaction];
+				if(reportSuccess !== null && reportSuccess !== undefined) {
+					reportSuccess(json);
+				}
+				delete transactions[transaction];
+			}
 			return;
 		} else if(json["janus"] === "success") {
 			// Success!
@@ -215,7 +223,7 @@ function Janus(gatewayCallbacks) {
 				if(reportSuccess !== null && reportSuccess !== undefined) {
 					reportSuccess(json);
 				}
-				transactions[transaction] = null;
+				delete transactions[transaction];
 			}
 			return;
 		} else if(json["janus"] === "webrtcup") {
@@ -257,7 +265,7 @@ function Janus(gatewayCallbacks) {
 				if(reportSuccess !== null && reportSuccess !== undefined) {
 					reportSuccess(json);
 				}
-				transactions[transaction] = null;
+				delete transactions[transaction];
 			}
 			return;
 		} else if(json["janus"] === "event") {
@@ -650,7 +658,8 @@ function Janus(gatewayCallbacks) {
 		}
 		var message = callbacks.message;
 		var jsep = callbacks.jsep;
-		var request = { "janus": "message", "body": message, "transaction": randomString(12) };
+		var transaction = randomString(12);
+		var request = { "janus": "message", "body": message, "transaction": transaction };
 		if(jsep !== null && jsep !== undefined)
 			request.jsep = jsep;
 		Janus.log("Sending message to plugin (handle=" + handleId + "):");
@@ -658,6 +667,36 @@ function Janus(gatewayCallbacks) {
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
+			transactions[transaction] = function(json) {
+				Janus.log(json);
+				Janus.log("Message sent!");
+				if(json["janus"] === "success") {
+					// We got a success, must have been a synchronous transaction
+					var plugindata = json["plugindata"];
+					if(plugindata === undefined || plugindata === null) {
+						Janus.log("Request succeeded, but missing plugindata...");
+						callbacks.success();
+						return;
+					}
+					Janus.log("Synchronous transaction successful (" + plugindata["plugin"] + ")");
+					var data = plugindata["data"];
+					Janus.log(data);
+					callbacks.success(data);
+					return;
+				} else if(json["janus"] !== "ack") {
+					// Not a success and not an ack, must be an error
+					if(json["error"] !== undefined && json["error"] !== null) {
+						Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+						callbacks.error(json["error"].code + " " + json["error"].reason);
+					} else {
+						Janus.log("Unknown error");	// FIXME
+						callbacks.error("Unknown error");
+					}
+					return;
+				}
+				// If we got here, the plugin decided to handle the request asynchronously
+				callbacks.success();
+			};
 			ws.send(JSON.stringify(request));
 			return;
 		}
