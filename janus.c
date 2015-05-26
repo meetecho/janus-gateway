@@ -5447,7 +5447,7 @@ void janus_http_event_free(janus_http_event *event)
 void janus_async_send_message(janus_session *session, gpointer data) {
 	janus_request_source *source = (janus_request_source *)session->source;
 	if (source == NULL) {
-		JANUS_LOG(LOG_ERR, "session %"SCNu64" error: have no source\n");
+		JANUS_LOG(LOG_ERR, "session %"SCNu64" error: have no source\n", session->session_id);
 		return;
 	}
 	if (source->type == JANUS_SOURCE_MQTT) {
