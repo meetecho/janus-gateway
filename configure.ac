@@ -151,6 +151,21 @@ AC_CHECK_LIB([rabbitmq],
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 
+AC_CHECK_LIB([mqtt],
+             [MQTTAsync_create],
+             [
+               AS_IF([test "x$enable_mqtt" = "xyes"],
+               [
+                  AC_DEFINE(HAVE_MQTT)
+                  JANUS_MANUAL_LIBS+=" -lpaho-mqtt3a"
+               ])
+             ],
+             [
+               AS_IF([test "x$enable_mqtt" = "xyes"],
+                     [AC_MSG_ERROR([mqtt-c not found. See README.md for installation instructions or use --disable-mqtt])])
+             ])
+AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
+
 PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [

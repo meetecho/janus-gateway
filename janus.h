@@ -34,6 +34,11 @@
 #include <amqp_framing.h>
 #include <amqp_tcp_socket.h>
 #endif
+#ifdef HAVE_MQTT
+#include <MQTTAsync.h>
+#define MQTT_PROTOCOL_PORT 1883
+#define MQTT_CLIENT_ID "janus"
+#endif
 
 #include "mutex.h"
 #include "dtls.h"
@@ -155,14 +160,35 @@ typedef struct janus_rabbitmq_response {
 } janus_rabbitmq_response;
 #endif
 
+#ifdef HAVE_MQTT
+/*! \brief MQTT client session */
+typedef struct janus_mqtt_client {
+	/*! \brief List of gateway sessions this client has created and is managing */
+	GHashTable *sessions;
+	/*! \brief Mutex to lock/unlock this session */
+	janus_mutex mutex;
+	/*! \brief Flag to trigger a lazy session destruction */
+	gint destroy:1;
+} janus_mqtt_client;
+
+/*! \brief MQTT request */
+typedef struct janus_mqtt_request {
+	/*! \brief Opaque pointer to a janus_request_source instance (where the request came from) */
+	void *source;
+	/*! \brief Opaque pointer to the payload of the request (json_t *) */
+	void *request;
+} janus_mqtt_request;
+#endif
+
 
 /** @name Janus Gateway-Client session methods
  */
 ///@{
 /*! \brief Method to create a new Janus Gateway-Client session
  * @param[in] session_id The desired Janus Gateway-Client session ID, or 0 if it needs to be generated randomly
+ * @param[in] source Opaque pointer to a janus_request_source instance (where the session came from)
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_create(guint64 session_id);
+janus_session *janus_session_create(guint64 session_id, janus_request_source *source);
 /*! \brief Method to find an existing Janus Gateway-Client session from its ID
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
@@ -198,6 +224,8 @@ void janus_session_free(janus_session *session);
 #define JANUS_SOURCE_WEBSOCKETS		2
 /*! \brief RabbitMQ source */
 #define JANUS_SOURCE_RABBITMQ		3
+/*! \brief MQTT source */
+#define JANUS_SOURCE_MQTT			4
 /*! \brief Helper to address request sources (e.g., a specific HTTP connection, websocket or RabbitMQ queue) */
 typedef struct janus_request_source {
 	/*! \brief The source type */
@@ -370,6 +398,39 @@ void *janus_rmq_out_thread(void *data);
  * @param[in] user_data Opaque pointer to a janus_rabbitmq_client instance
  * @returns Nothing important */
 void janus_rmq_task(gpointer data, gpointer user_data);
+///@}
+#endif
+
+
+#ifdef HAVE_MQTT
+/** @name Janus MQTT support
+ * \details Recent versions of Janus now also support MQTT based messaging as
+ * an alternative "transport" for API requests, responses and notifications.
+ * This is only useful when you're wrapping Janus requests in your server
+ * application, and handling the communication with clients your own way.
+ * MQTT topic can be created on the fly easily, just publish or subscribe it,
+ * then it will be created on MQTT server. So Janus can implement multiple
+ * topics to handle multiple concurrent "application servers" taking advantage
+ * of its features. Right now, you can configure the address of the MQTT server
+ * to use, and the topics to make use of to receive (to-janus) messages
+ * from an external application. As with WebSockets, considering that
+ * requests wouldn't include a path to address some mandatory information,
+ * these requests addressed to Janus should include as part of their payload,
+ * when needed, additional pieces of information like \c session_id and
+ * \c handle_id. That is, where you'd send a Janus request related to a
+ * specific session to the \c /janus/<session> path, with MQTT
+ * you'd have to send the same request with an additional \c session_id
+ * field in the JSON payload.
+ * \note When you create a session using MQTT, a subscription to the
+ * events related to it is done automatically through the outgoing topic,
+ * so no need for an explicit request as the GET in the plain HTTP API.
+ */
+///@{
+/*! \brief Worker to have a new request server by the thread pool
+ * @param[in] data Opaque pointer to a janus_mqtt_request instance
+ * @param[in] user_data Opaque pointer to a janus_mqtt_client instance
+ * @returns Nothing important */
+void janus_mqtt_task(gpointer data, gpointer user_data);
 ///@}
 #endif
 
