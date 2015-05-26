@@ -2277,6 +2277,41 @@ error:
 	return NULL;
 }
 
+/* Helpers to create a listener filedescriptor */
+static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* listenername, const char* medianame, const char* mountpointname)
+{
+	struct sockaddr_in address;
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(fd < 0) {
+		JANUS_LOG(LOG_ERR, "[%s] cannot create socket for %s...\n", mountpointname, medianame);
+		return -1;
+	}	
+	if(port > 0) {
+		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
+		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+		
+		if(IN_MULTICAST(mcast)) {
+			struct ip_mreq mreq;
+			mreq.imr_multiaddr.s_addr = mcast;
+			if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
+				JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, listenername);
+				close(fd);
+				return -1;
+			}
+			JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP ok\n", mountpointname, listenername);
+		}
+	}
+
+	address.sin_family = AF_INET;
+	address.sin_port = htons(port);
+	address.sin_addr.s_addr = INADDR_ANY;
+	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
+		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d)...\n", mountpointname, medianame, port);
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
 
 /* Helpers to destroy a streaming mountpoint. */
 static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) {
@@ -2557,27 +2592,21 @@ static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, 
 	if(f != NULL) {
 		sscanf(f, "a=fmtp:%*d %s", fmtp);
 	}	
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	char *c=strstr(m, "c=IN IP4");
+	char ip[255];
+	in_addr_t mcast = INADDR_ANY;
+	if(c != NULL) {
+		if (sscanf(c, "c=IN IP4 %[^/]", ip) != 0) {
+			mcast = inet_addr(ip);
+		}
+	}	
+	int fd = janus_streaming_create_fd(*port, mcast, media, media, name);
 	if(fd < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] cannot create socket for %s...\n", name, media);
 		return -1;
 	}
-	struct sockaddr_in address;
-	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons(*port);
-	if(*port > 0) {
-		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
-		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-	}		
-	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] Bind failed for video (%d)...\n", name, *port);
-		close(fd);
-		return -1;
-	}
+	struct sockaddr_in address;	
 	socklen_t len = sizeof(address);
-	if(getsockname(fd, (struct sockaddr *)&address, &len) < 0)
-	{
+	if(getsockname(fd, (struct sockaddr *)&address, &len) < 0) {
 		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (%d)...\n", name, media, *port);
 		close(fd);
 		return -1;
@@ -3026,7 +3055,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
-
+		
 /* FIXME Test thread to relay RTP frames coming from gstreamer/ffmpeg/others */
 static void *janus_streaming_relay_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Starting streaming relay thread\n");
@@ -3050,28 +3079,11 @@ static void *janus_streaming_relay_thread(void *data) {
 	gint audio_port = source->audio_port;
 	gint video_port = source->video_port;
 	/* Socket stuff */
-	struct sockaddr_in audio_address, video_address;
 	int audio_fd = source->audio_fd;
 	if((audio_fd < 0) && (audio_port >= 0)) {
-		audio_fd = socket(AF_INET, SOCK_DGRAM, 0);
-		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
-		setsockopt(audio_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-		if(IN_MULTICAST(source->audio_mcast))
+		audio_fd = janus_streaming_create_fd(audio_port, source->audio_mcast, "Audio", "audio", mountpoint->name);
+		if (audio_fd < 0)
 		{
-			struct ip_mreq mreq;
-			mreq.imr_multiaddr.s_addr = source->audio_mcast;
-			if(setsockopt(audio_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
-				JANUS_LOG(LOG_ERR, "[%s] Audio listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
-				g_thread_unref(g_thread_self());
-				return NULL;
-			}
-		}
-
-		audio_address.sin_family = AF_INET;
-		audio_address.sin_port = htons(audio_port);
-		audio_address.sin_addr.s_addr = INADDR_ANY;
-		if(bind(audio_fd, (struct sockaddr *)(&audio_address), sizeof(struct sockaddr)) < 0) {
-			JANUS_LOG(LOG_ERR, "[%s] Bind failed for audio (port %d)...\n", mountpoint->name, audio_port);
 			g_thread_unref(g_thread_self());
 			return NULL;
 		}
@@ -3079,25 +3091,9 @@ static void *janus_streaming_relay_thread(void *data) {
 	}
 	int video_fd = source->video_fd;
 	if((video_fd < 0) && (video_port >= 0)) {
-		video_fd = socket(AF_INET, SOCK_DGRAM, 0);
-		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
-		setsockopt(video_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-		if(IN_MULTICAST(source->video_mcast))
+		video_fd = janus_streaming_create_fd(audio_port, source->audio_mcast, "Video", "video", mountpoint->name);
+		if (video_fd < 0)
 		{
-			struct ip_mreq mreq;
-			mreq.imr_multiaddr.s_addr = source->video_mcast;
-			if(setsockopt(video_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
-				JANUS_LOG(LOG_ERR, "[%s] Video listener IP_ADD_MEMBERSHIP fail\n", mountpoint->name);
-				g_thread_unref(g_thread_self());
-				return NULL;
-			}
-		}
-		
-		video_address.sin_family = AF_INET;
-		video_address.sin_port = htons(video_port);
-		video_address.sin_addr.s_addr = INADDR_ANY;
-		if(bind(video_fd, (struct sockaddr *)(&video_address), sizeof(struct sockaddr)) < 0) {
-			JANUS_LOG(LOG_ERR, "[%s] Bind failed for video (%d)...\n", mountpoint->name, video_port);
 			g_thread_unref(g_thread_self());
 			return NULL;
 		}
