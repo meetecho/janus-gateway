@@ -329,6 +329,9 @@ AC_OUTPUT
 ##
 echo
 
+AM_COND_IF([ENABLE_MQTT],
+	[echo "MQTT support:          yes"],
+	[echo "MQTT support:          no"])
 AM_COND_IF([ENABLE_RABBITMQ],
 	[echo "RabbitMQ support:          yes"],
 	[echo "RabbitMQ support:          no"])
