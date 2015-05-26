@@ -3460,7 +3460,7 @@ void mqtt_publish_message(void *payload, char *topic) {
 	message.payload = payload;
 	message.payloadlen = strlen(payload);
 	MQTTAsync_sendMessage(mqtt_async_client, topic, &message, NULL);
-	JANUS_LOG(LOG_VERB, "Sending response(%zu bytes) to MQTT: %s\n", strlen(payload), payload);
+	JANUS_LOG(LOG_VERB, "Sending response(%zu bytes) to MQTT: %s\n", strlen(payload), (char *)payload);
 
 exit:
 	g_free(payload);
