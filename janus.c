@@ -2815,8 +2815,13 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 #endif
 	} else if(source->type == JANUS_SOURCE_MQTT) {
 #ifdef HAVE_MQTT
-		mqtt_publish_message(reply_text, (char *)source->msg);
-		return MHD_YES;
+		if(source->msg != NULL) {
+			mqtt_publish_message(reply_text, (char *)source->msg);
+			return MHD_YES;
+		} else {
+			g_free(reply_text);
+			return MHD_NO;
+		}
 #else
 		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
 		g_free(reply_text);
@@ -3405,7 +3410,8 @@ int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_messag
 		correlation = (char *)calloc(p->correlation_id.len+1, sizeof(char));
 		sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
 		JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
-	}
+	}*/
+	janus_request_source *source = janus_request_source_new(JANUS_SOURCE_MQTT, (void *)mqtt_client, NULL);
 	/* Parse the JSON payload */
 	json_error_t error;
 	json_t *root = json_loads(payload, 0, &error);
@@ -3427,8 +3433,7 @@ int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_messag
 		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (clientId should be a string)");
 		goto exit;
 	}
-	const gchar *client_id_text = json_string_value(client_id);
-	janus_request_source *source = janus_request_source_new(JANUS_SOURCE_MQTT, (void *)mqtt_client, (void *)client_id_text);
+	source->msg = (void *)json_string_value(client_id);
 	/* Parse the request now */
 	janus_mqtt_request *request = (janus_mqtt_request *)calloc(1, sizeof(janus_mqtt_request));
 	request->source = source;
