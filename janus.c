@@ -146,7 +146,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream);
 json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
-void janus_async_send_message();
+void janus_async_send_message(janus_session *session, gpointer data);
 
 
 /* Certificates */
