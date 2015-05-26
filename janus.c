@@ -3392,7 +3392,7 @@ void mqtt_subscribe_fail(void *context, MQTTAsync_failureData *response) {
 	g_main_loop_quit(mqtt_wait_loop);
 }
 
-int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync*_message message) {
+int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_message *message) {
 	if(mqtt_client == NULL || mqtt_client->destroy || g_atomic_int_get(&stop)) {
 		JANUS_LOG(LOG_ERR, "Got mqtt message, but no MQTT connection or Janus stopped??\n");
 		goto exit;
