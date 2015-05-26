@@ -2290,7 +2290,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
 		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 		
-		if(IN_MULTICAST(mcast)) {
+		if(IN_MULTICAST(ntohl(mcast))) {
 			struct ip_mreq mreq;
 			mreq.imr_multiaddr.s_addr = mcast;
 			if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
