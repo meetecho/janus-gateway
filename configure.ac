@@ -53,6 +53,12 @@ AC_ARG_ENABLE([rabbitmq],
               [],
               [enable_rabbitmq=yes])
 
+AC_ARG_ENABLE([mqtt],
+              [AS_HELP_STRING([--disable-mqtt],
+                              [Disable MQTT integration])],
+              [],
+              [enable_mqtt=yes])
+
 AC_ARG_ENABLE([turn-rest-api],
               [AS_HELP_STRING([--disable-turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
@@ -330,8 +336,8 @@ AC_OUTPUT
 echo
 
 AM_COND_IF([ENABLE_MQTT],
-	[echo "MQTT support:          yes"],
-	[echo "MQTT support:          no"])
+	[echo "MQTT support:              yes"],
+	[echo "MQTT support:              no"])
 AM_COND_IF([ENABLE_RABBITMQ],
 	[echo "RabbitMQ support:          yes"],
 	[echo "RabbitMQ support:          no"])
