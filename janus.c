@@ -3090,7 +3090,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 void janus_wss_task(gpointer data, gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Thread pool, serving request\n");
 	janus_websocket_request *request = (janus_websocket_request *)data;
-	janus_websocket_client *client = (janus_websocket_client *)data;
+	janus_websocket_client *client = (janus_websocket_client *)user_data;
 	if(request == NULL || client == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing request or client\n");
 		return;
@@ -3294,7 +3294,7 @@ void *janus_rmq_out_thread(void *data) {
 void janus_rmq_task(gpointer data, gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Thread pool, serving request\n");
 	janus_rabbitmq_request *request = (janus_rabbitmq_request *)data;
-	janus_rabbitmq_client *client = (janus_rabbitmq_client *)data;
+	janus_rabbitmq_client *client = (janus_rabbitmq_client *)user_data;
 	if(request == NULL || client == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing request or client\n");
 		return;
