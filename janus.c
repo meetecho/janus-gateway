@@ -5118,7 +5118,8 @@ gint main(int argc, char *argv[])
 		}
 		mqtt_client->sessions = NULL;
 		mqtt_client->destroy = 0;
-		/* mqtt-c receiver is single threaded, we need a thread pool to serve requests */
+		/* org.eclipse.paho.mqtt.c receiver is single threaded, we need a thread pool to serve requests */
+		GError *error = NULL;
 		mqtt_client->thread_pool = g_thread_pool_new(janus_mqtt_task, mqtt_client, -1, FALSE, &error);
 		if(error != NULL) {
 			/* Something went wrong... */
