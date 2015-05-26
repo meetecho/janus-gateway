@@ -181,36 +181,6 @@ typedef struct janus_mqtt_request {
 #endif
 
 
-/** @name Janus Gateway-Client session methods
- */
-///@{
-/*! \brief Method to create a new Janus Gateway-Client session
- * @param[in] session_id The desired Janus Gateway-Client session ID, or 0 if it needs to be generated randomly
- * @param[in] source Opaque pointer to a janus_request_source instance (where the session came from)
- * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_create(guint64 session_id, janus_request_source *source);
-/*! \brief Method to find an existing Janus Gateway-Client session from its ID
- * @param[in] session_id The Janus Gateway-Client session ID
- * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_find(guint64 session_id);
-/*! \brief Method to add an event to notify to the queue of notifications for this session
- * @param[in] session_id The Janus Gateway-Client session ID
- * @param[in] event The janus_http_event instance to add to the queue */
-void janus_session_notify_event(guint64 session_id, janus_http_event *event);
-/*! \brief Method to find an existing Janus Gateway-Client session scheduled to be destroyed from its ID
- * @param[in] session_id The Janus Gateway-Client session ID
- * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_find_destroyed(guint64 session_id);
-/*! \brief Method to destroy a Janus Gateway-Client session
- * @param[in] session_id The Janus Gateway-Client session ID to destroy
- * @returns 0 in case of success, a negative integer otherwise */
-gint janus_session_destroy(guint64 session_id);
-/*! \brief Method to actually free the resources allocated by a Janus Gateway-Client session
- * @param[in] session The Janus Gateway-Client session instance to free */
-void janus_session_free(janus_session *session);
-///@}
-
-
 /** @name Janus request processing
  * \details Since messages may come from different sources (plain HTTP or
  * WebSockets, and potentially even more in the future), we have a shared
@@ -273,6 +243,36 @@ int janus_process_success(janus_request_source *source, const char *transaction,
  * associated with the error code is used
  * @returns MHD_YES on success, MHD_NO otherwise */
 int janus_process_error(janus_request_source *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
+///@}
+
+
+/** @name Janus Gateway-Client session methods
+ */
+///@{
+/*! \brief Method to create a new Janus Gateway-Client session
+ * @param[in] session_id The desired Janus Gateway-Client session ID, or 0 if it needs to be generated randomly
+ * @param[in] source Opaque pointer to a janus_request_source instance (where the session came from)
+ * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
+janus_session *janus_session_create(guint64 session_id, janus_request_source *source);
+/*! \brief Method to find an existing Janus Gateway-Client session from its ID
+ * @param[in] session_id The Janus Gateway-Client session ID
+ * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
+janus_session *janus_session_find(guint64 session_id);
+/*! \brief Method to add an event to notify to the queue of notifications for this session
+ * @param[in] session_id The Janus Gateway-Client session ID
+ * @param[in] event The janus_http_event instance to add to the queue */
+void janus_session_notify_event(guint64 session_id, janus_http_event *event);
+/*! \brief Method to find an existing Janus Gateway-Client session scheduled to be destroyed from its ID
+ * @param[in] session_id The Janus Gateway-Client session ID
+ * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
+janus_session *janus_session_find_destroyed(guint64 session_id);
+/*! \brief Method to destroy a Janus Gateway-Client session
+ * @param[in] session_id The Janus Gateway-Client session ID to destroy
+ * @returns 0 in case of success, a negative integer otherwise */
+gint janus_session_destroy(guint64 session_id);
+/*! \brief Method to actually free the resources allocated by a Janus Gateway-Client session
+ * @param[in] session The Janus Gateway-Client session instance to free */
+void janus_session_free(janus_session *session);
 ///@}
 
 
