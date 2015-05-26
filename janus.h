@@ -165,6 +165,8 @@ typedef struct janus_rabbitmq_response {
 typedef struct janus_mqtt_client {
 	/*! \brief List of gateway sessions this client has created and is managing */
 	GHashTable *sessions;
+	/*! \brief Thread pool to serve requests */
+	GThreadPool *thread_pool;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 	/*! \brief Flag to trigger a lazy session destruction */
