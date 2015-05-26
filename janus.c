@@ -5073,7 +5073,7 @@ gint main(int argc, char *argv[])
 		/* Connect */
 		JANUS_LOG(LOG_VERB, "Creating MQTT socket...\n");
 		char server_uri[76];//domain name max length=63 bytes, and "tcp://" or "ssl://" length=6, and ":65535" length=6, and '\0'=1
-		g_snprintf(server_uri, 76, "tcp://%s:%"SCNu16"\0", mqtthost, (uint16_t)mqttport);
+		g_snprintf(server_uri, 76, "tcp://%s:%"SCNu16"", mqtthost, (uint16_t)mqttport);
 		g_free(mqtthost);
 		MQTTAsync_create(&mqtt_async_client, server_uri, MQTT_CLIENT_ID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
 		MQTTAsync_setCallbacks(mqtt_async_client, NULL, mqtt_conn_lost, mqtt_message_got, NULL);
