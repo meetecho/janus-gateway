@@ -3373,16 +3373,20 @@ void mqtt_conn_fail(void *context, MQTTAsync_failureData *response) {
 void mqtt_conn_lost(void *context, char *cause) {
 	mqtt_conn_success = FALSE;
 	JANUS_LOG(LOG_WARN, "MQTT Connection lost: %s, reconnecting\n", cause);
-	if(MQTTAsync_connect(mqtt_async_client, &mqtt_connopts) != MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_ERR, "MQTT send reconnect msg failed\n");
-	}
-	if(mqtt_wait_loop == NULL){
-		mqtt_wait_loop = g_main_loop_new(NULL, FALSE);
-		g_main_loop_run(mqtt_wait_loop);
-		g_main_loop_unref(mqtt_wait_loop);
-		mqtt_wait_loop = NULL;
-		if(!mqtt_conn_success){
-			JANUS_LOG(LOG_ERR, "MQTT reconnect failed\n");
+	if(context != NULL){
+		if(MQTTAsync_connect((MQTTAsync)context, &mqtt_connopts) != MQTTASYNC_SUCCESS) {
+			JANUS_LOG(LOG_ERR, "MQTT send reconnect msg failed\n");
+		}
+		if(mqtt_wait_loop == NULL){
+			mqtt_wait_loop = g_main_loop_new(NULL, FALSE);
+			g_main_loop_run(mqtt_wait_loop);
+			g_main_loop_unref(mqtt_wait_loop);
+			mqtt_wait_loop = NULL;
+			if(!mqtt_conn_success){
+				JANUS_LOG(LOG_ERR, "MQTT reconnect failed\n");
+			} else {
+				JANUS_LOG(LOG_INFO, "MQTT reconnect success\n");
+			}
 		}
 	}
 }
