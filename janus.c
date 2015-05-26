@@ -3373,7 +3373,7 @@ void mqtt_conn_fail(void *context, MQTTAsync_failureData *response) {
 void mqtt_conn_lost(void *context, char *cause) {
 	mqtt_conn_success = FALSE;
 	JANUS_LOG(LOG_WARN, "MQTT Connection lost: %s, reconnecting\n", cause);
-	if(MQTTAsync_connect((MQTTAsync)context, &mqtt_connopts) != MQTTASYNC_SUCCESS) {
+	if(MQTTAsync_connect(mqtt_async_client, &mqtt_connopts) != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_ERR, "MQTT send reconnect msg failed\n");
 	}
 	if(mqtt_wait_loop == NULL){
