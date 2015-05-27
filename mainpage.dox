@@ -898,7 +898,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
 {
 	"janus" : "trickle",
 	"transaction" : "hehe83hd8dw12e",
-	"candidate" : [ 
+	"candidates" : [ 
 		{
 			"sdpMid" : "video",
 			"sdpMLineIndex" : 1,
