@@ -3366,7 +3366,9 @@ void mqtt_conn_onSuccess(void *context, MQTTAsync_successData *response) {
 }
 
 void mqtt_conn_fail(void *context, MQTTAsync_failureData *response) {
-	JANUS_LOG(LOG_ERR, "MQTT connect failed: %s\n", response->message);
+	if(response) {
+		JANUS_LOG(LOG_ERR, "MQTT connect failed: %s\n", response->message);
+	}
 	g_main_loop_quit(mqtt_wait_loop);
 }
 
