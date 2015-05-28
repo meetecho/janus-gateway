@@ -146,7 +146,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream);
 json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
-void janus_async_send_message(janus_session *session, gpointer data);
+void janus_async_send_message(janus_session *session, janus_http_event *event);
 
 
 /* Certificates */
@@ -5449,7 +5449,7 @@ void janus_http_event_free(janus_http_event *event)
 }
 
 
-void janus_async_send_message(janus_session *session, gpointer data) {
+void janus_async_send_message(janus_session *session, janus_http_event *event) {
 	if(session == NULL || data == NULL){
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return;
@@ -5461,11 +5461,12 @@ void janus_async_send_message(janus_session *session, gpointer data) {
 	}
 	if (source->type == JANUS_SOURCE_MQTT) {
 #ifdef HAVE_MQTT
-		mqtt_publish_message((janus_http_event *)data->payload, (char *)source->msg);
+		mqtt_publish_message(event->payload, (char *)source->msg);
+		event->payload = NULL;
 #else
 		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
-		g_free(data);
 #endif
+		janus_http_event_free(event);
 	} else {
 		g_async_queue_push(session->messages, data);
 #ifdef HAVE_WEBSOCKETS
