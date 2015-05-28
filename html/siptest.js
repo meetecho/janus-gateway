@@ -96,7 +96,7 @@ $(document).ready(function() {
 											janus.destroy();
 										});
 									$('#guest').change(function() {
-										if($('#guest').length && $('#guest:checked').val() !== undefined) {
+										if($('#guest').is(':checked')) {
 											//~ $('#username').empty().attr('disabled', true);
 											$('#password').empty().attr('disabled', true);
 										} else {
@@ -366,7 +366,7 @@ function registerUsername() {
 		$('#guest').removeAttr('disabled').attr('checked', false);
 		return;
 	}
-	if($('#guest').length && $('#guest:checked').val()) {
+	if($('#guest').is(':checked')) {
 		// We're registering as guests, no username/secret provided
 		var register = {
 			"request" : "register",
