@@ -5450,6 +5450,10 @@ void janus_http_event_free(janus_http_event *event)
 
 
 void janus_async_send_message(janus_session *session, gpointer data) {
+	if(session == NULL || data == NULL){
+		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
+		return;
+	}
 	janus_request_source *source = (janus_request_source *)session->source;
 	if (source == NULL) {
 		JANUS_LOG(LOG_ERR, "session %"SCNu64" error: have no source\n", session->session_id);
@@ -5457,7 +5461,7 @@ void janus_async_send_message(janus_session *session, gpointer data) {
 	}
 	if (source->type == JANUS_SOURCE_MQTT) {
 #ifdef HAVE_MQTT
-		mqtt_publish_message(data, (char *)source->msg);
+		mqtt_publish_message((janus_http_event *)data->payload, (char *)source->msg);
 #else
 		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
 		g_free(data);
