@@ -96,7 +96,7 @@ $(document).ready(function() {
 											janus.destroy();
 										});
 									$('#guest').change(function() {
-										if($('#guest').length && $('#guest:checked').val() !== undefined) {
+										if($('#guest').is(':checked')) {
 											//~ $('#username').empty().attr('disabled', true);
 											$('#password').empty().attr('disabled', true);
 										} else {
@@ -236,6 +236,7 @@ $(document).ready(function() {
 											bootbox.alert(result["reason"]);
 											// Reset status
 											sipcall.hangup();
+											$('#dovideo').removeAttr('disabled').val('');
 											$('#peer').removeAttr('disabled').val('');
 											$('#call').removeAttr('disabled').html('Call')
 												.removeClass("btn-danger").addClass("btn-success")
@@ -365,7 +366,7 @@ function registerUsername() {
 		$('#guest').removeAttr('disabled').attr('checked', false);
 		return;
 	}
-	if($('#guest').length && $('#guest:checked').val()) {
+	if($('#guest').is(':checked')) {
 		// We're registering as guests, no username/secret provided
 		var register = {
 			"request" : "register",
@@ -467,7 +468,7 @@ function doCall() {
 		return;
 	}
 	// Call this URI
-	doVideo = ($('#dovideo:checked').val() === true);
+	doVideo = $('#dovideo').is(':checked');
 	console.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")"); 
 	sipcall.createOffer(
 		{
