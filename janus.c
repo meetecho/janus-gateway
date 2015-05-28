@@ -3408,6 +3408,7 @@ int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_messag
 		goto exit;
 	}
 	char *payload = (char *)message->payload;
+	payload[message->payloadlen - 1] = '\0';
 	JANUS_LOG(LOG_VERB, "Got %d bytes, QoS %d mqtt message: %s\n", message->payloadlen, message->qos, payload);
 	/* TODO: add correlation field to request will use RPC pattern, do it later
 	char *correlation = NULL;
