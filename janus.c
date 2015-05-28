@@ -5450,7 +5450,7 @@ void janus_http_event_free(janus_http_event *event)
 
 
 void janus_async_send_message(janus_session *session, janus_http_event *event) {
-	if(session == NULL || data == NULL){
+	if(session == NULL || event == NULL){
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return;
 	}
