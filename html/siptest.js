@@ -236,6 +236,7 @@ $(document).ready(function() {
 											bootbox.alert(result["reason"]);
 											// Reset status
 											sipcall.hangup();
+											$('#dovideo').removeAttr('disabled').val('');
 											$('#peer').removeAttr('disabled').val('');
 											$('#call').removeAttr('disabled').html('Call')
 												.removeClass("btn-danger").addClass("btn-success")
@@ -467,7 +468,7 @@ function doCall() {
 		return;
 	}
 	// Call this URI
-	doVideo = ($('#dovideo:checked').val() === true);
+	doVideo = $('#dovideo').is(':checked');
 	console.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")"); 
 	sipcall.createOffer(
 		{
