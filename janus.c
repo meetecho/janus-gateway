@@ -3472,9 +3472,9 @@ exit:
 }
 
 void janus_mqtt_task(gpointer data, gpointer user_data) {
-	JANUS_LOG(LOG_VERB, "MQTT task thread pool, serving request\n");
+	JANUS_LOG(LOG_HUGE, "MQTT task thread pool, serving request\n");
 	janus_mqtt_request *request = (janus_mqtt_request *)data;
-	janus_mqtt_client *client = (janus_mqtt_client *)data;
+	janus_mqtt_client *client = (janus_mqtt_client *)user_data;
 	if(request == NULL || client == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing request or client\n");
 		return;
