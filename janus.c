@@ -5468,7 +5468,7 @@ void janus_async_send_message(janus_session *session, janus_http_event *event) {
 #endif
 		janus_http_event_free(event);
 	} else {
-		g_async_queue_push(session->messages, data);
+		g_async_queue_push(session->messages, event);
 #ifdef HAVE_WEBSOCKETS
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Send this as soon as the WebSocket becomes writeable */
