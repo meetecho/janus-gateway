@@ -3408,8 +3408,7 @@ int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_messag
 		goto exit;
 	}
 	char *payload = (char *)message->payload;
-	payload[message->payloadlen - 1] = '\0';
-	JANUS_LOG(LOG_VERB, "Got %d bytes, QoS %d mqtt message: %s\n", message->payloadlen, message->qos, payload);
+	JANUS_LOG(LOG_VERB, "Got %d bytes, QoS %d mqtt message: %.*s\n", message->payloadlen, message->qos, message->payloadlen, payload);
 	/* TODO: add correlation field to request will use RPC pattern, do it later
 	char *correlation = NULL;
 	if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
@@ -3420,7 +3419,7 @@ int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_messag
 	janus_request_source *source = janus_request_source_new(JANUS_SOURCE_MQTT, (void *)mqtt_client, NULL);
 	/* Parse the JSON payload */
 	json_error_t error;
-	json_t *root = json_loads(payload, 0, &error);
+	json_t *root = json_loadb(payload, message->payloadlen, 0, &error);
 	if(!root) {
 		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
 		goto exit;
