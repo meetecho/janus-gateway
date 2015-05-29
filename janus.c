@@ -146,6 +146,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream);
 json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
+/* Async send sessage for all interfaces*/
 void janus_async_send_message(janus_session *session, janus_http_event *event);
 
 
@@ -479,6 +480,48 @@ gint janus_session_destroy(guint64 session_id) {
 			g_hash_table_iter_remove(&iter);
 		}
 	}
+	janus_request_source *source = (janus_request_source *)session->source;
+#ifdef HAVE_WEBSOCKETS
+	if(source->type == JANUS_SOURCE_WEBSOCKETS) {
+		/* Remove the session from the list of sessions created by this WS client */
+		janus_websocket_client *client = (janus_websocket_client *)source->source;
+		/* Make sure this is not related to a closed WebSocket session */
+		janus_mutex_lock(&old_wss_mutex);
+		if(client != NULL && g_list_find(old_wss, client) == NULL) {
+			janus_mutex_lock(&client->mutex);
+			if(client->sessions)
+				g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
+			janus_mutex_unlock(&client->mutex);
+		}
+		janus_mutex_unlock(&old_wss_mutex);
+	}
+#endif
+#ifdef HAVE_RABBITMQ
+	if(source->type == JANUS_SOURCE_RABBITMQ) {
+		/* Remove the session from the list of sessions created by this RabbitMQ client */
+		janus_rabbitmq_client *client = (janus_rabbitmq_client *)source->source;
+		if(client) {
+			janus_mutex_lock(&client->mutex);
+			if(client->sessions)
+				g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
+			janus_mutex_unlock(&client->mutex);
+			JANUS_LOG(LOG_VERB, "Remove session %"SCNu64" from RabbitMQ client sessions\n", session_id);
+		}
+	}
+#endif
+#ifdef HAVE_MQTT
+	if(source->type == JANUS_SOURCE_MQTT) {
+		/* Remove the session from the list of sessions created by this MQTT client */
+		janus_mqtt_client *client = (janus_mqtt_client *)source->source;
+		if(client) {
+			janus_mutex_lock(&client->mutex);
+			if(client->sessions)
+				g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
+			janus_mutex_unlock(&client->mutex);
+			JANUS_LOG(LOG_VERB, "Remove session %"SCNu64" from MQTT client sessions\n", session_id);
+		}
+	}
+#endif
 
 	/* FIXME Actually destroy session */
 	janus_session_free(session);
@@ -1143,21 +1186,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-#ifdef HAVE_WEBSOCKETS
-		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-			/* Remove the session from the list of sessions created by this WS client */
-			janus_websocket_client *client = (janus_websocket_client *)source->source;
-			/* Make sure this is not related to a closed WebSocket session */
-			janus_mutex_lock(&old_wss_mutex);
-			if(client != NULL && g_list_find(old_wss, client) == NULL) {
-				janus_mutex_lock(&client->mutex);
-				if(client->sessions)
-					g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
-				janus_mutex_unlock(&client->mutex);
-			}
-			janus_mutex_unlock(&old_wss_mutex);
-		}
-#endif
 		/* Schedule the session for deletion */
 		session->destroy = 1;
 		janus_mutex_lock(&sessions_mutex);
@@ -3277,7 +3305,7 @@ void *janus_rmq_out_thread(void *data) {
 				amqp_basic_properties_t props;
 				props._flags = 0;
 				props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
-				props.reply_to = amqp_cstring_bytes("Janus");
+				props.reply_to = from_janus_queue;
 				if(response->correlation_id) {
 					props._flags |= AMQP_BASIC_CORRELATION_ID_FLAG;
 					props.correlation_id = amqp_cstring_bytes(response->correlation_id);
@@ -3316,7 +3344,7 @@ void *janus_rmq_out_thread(void *data) {
 						amqp_basic_properties_t props;
 						props._flags = 0;
 						props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
-						props.reply_to = amqp_cstring_bytes("Janus");
+						props.reply_to = from_janus_queue;
 						props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
 						props.content_type = amqp_cstring_bytes("application/json");
 						amqp_bytes_t message = amqp_cstring_bytes(event->payload);
