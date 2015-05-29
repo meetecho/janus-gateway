@@ -64,6 +64,28 @@ to_janus = to-janus			; Name of the queue for incoming messages
 from_janus = from-janus		; Name of the queue for outgoing messages
 
 
+; Recent versions of Janus now also support MQTT based messaging as
+; an alternative "transport" for API requests, responses and notifications.
+; This is only useful when you're wrapping Janus requests in your server
+; application, and handling the communication with clients your own way.
+; MQTT topic can be created on the fly easily, just publish or subscribe it,
+; then it will be created on MQTT server. So Janus can implement multiple
+; topics to handle multiple concurrent "application servers" taking advantage
+; of its features. Right now, you can configure the address of the MQTT server
+; to use, and the topics to make use of to receive (to-janus) messages
+; from an external application. If you're using the same MQTT
+; server instance for multiple Janus instances, make sure you configure
+; different queues for each of them (e.g., to-janus-1 and to-janus-2),
+; or otherwise both the instances will make use of the same queues 
+; and messages will get lost. The integration is disabled by default,
+; so set enable=yes if you want to use it.
+[mqtt]
+enable = no					; Whether the support must be enabled
+to_janus = to-janus			; Name of the topic for incoming messages
+;host = localhost			; The address of the MQTT server
+;port = 1883				; The port of the MQTT server (1883 by default)
+
+
 ; Janus can also expose an admin/monitor endpoint, to allow you to check
 ; which sessions are up, which handles they're managing, their current
 ; status and so on. This provides a useful aid when debugging potential
@@ -163,7 +185,7 @@ ice_ignore_list = vmnet
 
 ; Finally, you can choose which of the available plugins should be
 ; enabled or not. Use the 'disable' directive to prevent Janus from
-: loading one or more plugins: use a comma separated list of plugin file
+; loading one or more plugins: use a comma separated list of plugin file
 ; names to identify the plugins to disable. By default all available
 ; plugins are enabled and loaded at startup. 
 [plugins]

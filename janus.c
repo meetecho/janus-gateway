@@ -93,6 +93,17 @@ amqp_bytes_t to_janus_queue, from_janus_queue;
 #endif
 
 
+#ifdef HAVE_MQTT
+/* MQTT support */
+MQTTAsync mqtt_async_client = NULL;
+MQTTAsync_connectOptions mqtt_connopts = MQTTAsync_connectOptions_initializer;
+MQTTAsync_responseOptions mqtt_subscribe_opts = MQTTAsync_responseOptions_initializer;
+GMainLoop *mqtt_wait_loop = NULL;
+gboolean mqtt_conn_success = FALSE;
+gboolean mqtt_subscribe_success = FALSE;
+#endif
+
+
 /* Admin/Monitor MHD Web Server */
 static struct MHD_Daemon *admin_ws = NULL, *admin_sws = NULL;
 static char *admin_ws_path = NULL;
@@ -135,6 +146,10 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream);
 json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
+/* Async send sessage for all interfaces*/
+void janus_async_send_message(janus_session *session, janus_http_event *event);
+
+
 /* Certificates */
 static char *server_pem = NULL;
 gchar *janus_get_server_pem(void) {
@@ -172,6 +187,11 @@ char *janus_info(const char *transaction) {
 	json_object_set_new(info, "rabbitmq", json_string("true"));
 #else
 	json_object_set_new(info, "rabbitmq", json_string("false"));
+#endif
+#ifdef HAVE_MQTT
+	json_object_set_new(info, "mqtt", json_string("true"));
+#else
+	json_object_set_new(info, "mqtt", json_string("false"));
 #endif
 	json_object_set_new(info, "ipv6", json_string(janus_ice_is_ipv6_enabled() ? "true" : "false"));
 	json_object_set_new(info, "ice-tcp", json_string(janus_ice_is_ice_tcp_enabled() ? "true" : "false"));
@@ -291,6 +311,11 @@ static janus_callbacks janus_handler_plugin =
 janus_rabbitmq_client *rmq_client = NULL;
 #endif
 
+#ifdef HAVE_MQTT
+/* FIXME MQTT session (always 1 at the moment) */
+janus_mqtt_client *mqtt_client = NULL;
+#endif
+
 /* Gateway Sessions */
 static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL, *old_sessions = NULL;
@@ -334,22 +359,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				notification->code = 200;
 				notification->payload = event_text;
 				notification->allocated = 1;
-				g_async_queue_push(session->messages, notification);
-#ifdef HAVE_WEBSOCKETS
-				janus_request_source *source = (janus_request_source *)session->source;
-				if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
-					/* Send this as soon as the WebSocket becomes writeable */
-					janus_websocket_client *client = (janus_websocket_client *)source->source;
-					/* Make sure this is not related to a closed WebSocket session */
-					janus_mutex_lock(&old_wss_mutex);
-					if(g_list_find(old_wss, client) == NULL) {
-						janus_mutex_lock(&client->mutex);
-						libwebsocket_callback_on_writable(client->context, client->wsi);
-						janus_mutex_unlock(&client->mutex);
-					}
-					janus_mutex_unlock(&old_wss_mutex);
-				}
-#endif
+				janus_async_send_message(session, notification);
 				session->timeout = 1;
 				g_hash_table_iter_remove(&iter);
 				g_hash_table_insert(old_sessions, GUINT_TO_POINTER(session->session_id), session);
@@ -384,7 +394,7 @@ static gpointer janus_sessions_watchdog(gpointer user_data) {
 	return NULL;
 }
 
-janus_session *janus_session_create(guint64 session_id) {
+janus_session *janus_session_create(guint64 session_id, janus_request_source *source) {
 	if(session_id == 0) {
 		while(session_id == 0) {
 			session_id = g_random_int();
@@ -401,7 +411,19 @@ janus_session *janus_session_create(guint64 session_id) {
 		return NULL;
 	}
 	session->session_id = session_id;
-	session->messages = g_async_queue_new_full((GDestroyNotify) janus_http_event_free);
+	if(source->type != JANUS_SOURCE_MQTT) {
+		/* Take note of the source that originated this session (HTTP, WebSockets, RabbitMQ?) */
+		session->source = janus_request_source_new(source->type, source->source, NULL);
+		session->messages = g_async_queue_new_full((GDestroyNotify) janus_http_event_free);
+	} else {
+#ifdef HAVE_MQTT
+		session->source = janus_request_source_new(source->type, source->source, g_strdup((char *)source->msg));
+#else
+		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
+		g_free(session);
+		return NULL;
+#endif
+	}
 	session->destroy = 0;
 	session->last_activity = janus_get_monotonic_time();
 	janus_mutex_init(&session->mutex);
@@ -430,22 +452,7 @@ void janus_session_notify_event(guint64 session_id, janus_http_event *event) {
 	janus_session *session = g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
 	janus_mutex_unlock(&sessions_mutex);
 	if(session != NULL) {
-		g_async_queue_push(session->messages, event);
-#ifdef HAVE_WEBSOCKETS
-		janus_request_source *source = (janus_request_source *)session->source;
-		if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
-			/* Send this as soon as the WebSocket becomes writeable */
-			janus_websocket_client *client = (janus_websocket_client *)source->source;
-			/* Make sure this is not related to a closed WebSocket session */
-			janus_mutex_lock(&old_wss_mutex);
-			if(g_list_find(old_wss, client) == NULL) {
-				janus_mutex_lock(&client->mutex);
-				libwebsocket_callback_on_writable(client->context, client->wsi);
-				janus_mutex_unlock(&client->mutex);
-			}
-			janus_mutex_unlock(&old_wss_mutex);
-		}
-#endif
+		janus_async_send_message(session, event);
 	}
 }
 
@@ -473,6 +480,48 @@ gint janus_session_destroy(guint64 session_id) {
 			g_hash_table_iter_remove(&iter);
 		}
 	}
+	janus_request_source *source = (janus_request_source *)session->source;
+#ifdef HAVE_WEBSOCKETS
+	if(source->type == JANUS_SOURCE_WEBSOCKETS) {
+		/* Remove the session from the list of sessions created by this WS client */
+		janus_websocket_client *client = (janus_websocket_client *)source->source;
+		/* Make sure this is not related to a closed WebSocket session */
+		janus_mutex_lock(&old_wss_mutex);
+		if(client != NULL && g_list_find(old_wss, client) == NULL) {
+			janus_mutex_lock(&client->mutex);
+			if(client->sessions)
+				g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
+			janus_mutex_unlock(&client->mutex);
+		}
+		janus_mutex_unlock(&old_wss_mutex);
+	}
+#endif
+#ifdef HAVE_RABBITMQ
+	if(source->type == JANUS_SOURCE_RABBITMQ) {
+		/* Remove the session from the list of sessions created by this RabbitMQ client */
+		janus_rabbitmq_client *client = (janus_rabbitmq_client *)source->source;
+		if(client) {
+			janus_mutex_lock(&client->mutex);
+			if(client->sessions)
+				g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
+			janus_mutex_unlock(&client->mutex);
+			JANUS_LOG(LOG_VERB, "Remove session %"SCNu64" from RabbitMQ client sessions\n", session_id);
+		}
+	}
+#endif
+#ifdef HAVE_MQTT
+	if(source->type == JANUS_SOURCE_MQTT) {
+		/* Remove the session from the list of sessions created by this MQTT client */
+		janus_mqtt_client *client = (janus_mqtt_client *)source->source;
+		if(client) {
+			janus_mutex_lock(&client->mutex);
+			if(client->sessions)
+				g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
+			janus_mutex_unlock(&client->mutex);
+			JANUS_LOG(LOG_VERB, "Remove session %"SCNu64" from MQTT client sessions\n", session_id);
+		}
+	}
+#endif
 
 	/* FIXME Actually destroy session */
 	janus_session_free(session);
@@ -494,6 +543,15 @@ void janus_session_free(janus_session *session) {
 	}
 	janus_request_source *source = (janus_request_source *)session->source;
 	if(source != NULL) {
+		if(source->type == JANUS_SOURCE_MQTT){
+#ifdef HAVE_MQTT
+			if(source->msg != NULL){
+				g_free(source->msg);
+			}
+#else
+			JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
+#endif
+		}
 		janus_request_source_destroy(source);
 		session->source = NULL;
 	}
@@ -952,14 +1010,12 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			}
 		}
 		/* Handle it */
-		janus_session *session = janus_session_create(session_id);
+		janus_session *session = janus_session_create(session_id, source);
 		if(session == NULL) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
 		}
 		session_id = session->session_id;
-		/* Take note of the source that originated this session (HTTP, WebSockets, RabbitMQ?) */
-		session->source = janus_request_source_new(source->type, source->source, NULL);
 #ifdef HAVE_WEBSOCKETS
 		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
 			/* Add the new session to the list of sessions created by this WS client */
@@ -975,8 +1031,21 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 #endif
 #ifdef HAVE_RABBITMQ
 		if(source->type == JANUS_SOURCE_RABBITMQ) {
-			/* Add the new session to the list of sessions created by this WS client */
+			/* Add the new session to the list of sessions created by this RabbitMQ client */
 			janus_rabbitmq_client *client = (janus_rabbitmq_client *)source->source;
+			if(client) {
+				janus_mutex_lock(&client->mutex);
+				if(client->sessions == NULL)
+					client->sessions = g_hash_table_new(NULL, NULL);
+				g_hash_table_insert(client->sessions, GUINT_TO_POINTER(session_id), session);
+				janus_mutex_unlock(&client->mutex);
+			}
+		}
+#endif
+#ifdef HAVE_MQTT
+		if(source->type == JANUS_SOURCE_MQTT) {
+			/* Add the new session to the list of sessions created by this MQTT client */
+			janus_mqtt_client *client = (janus_mqtt_client *)source->source;
 			if(client) {
 				janus_mutex_lock(&client->mutex);
 				if(client->sessions == NULL)
@@ -1117,21 +1186,6 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-#ifdef HAVE_WEBSOCKETS
-		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
-			/* Remove the session from the list of sessions created by this WS client */
-			janus_websocket_client *client = (janus_websocket_client *)source->source;
-			/* Make sure this is not related to a closed WebSocket session */
-			janus_mutex_lock(&old_wss_mutex);
-			if(client != NULL && g_list_find(old_wss, client) == NULL) {
-				janus_mutex_lock(&client->mutex);
-				if(client->sessions)
-					g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
-				janus_mutex_unlock(&client->mutex);
-			}
-			janus_mutex_unlock(&old_wss_mutex);
-		}
-#endif
 		/* Schedule the session for deletion */
 		session->destroy = 1;
 		janus_mutex_lock(&sessions_mutex);
@@ -2663,6 +2717,15 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 		g_free(payload);
 		return MHD_NO;
 #endif
+	} else if(source->type == JANUS_SOURCE_MQTT) {
+#ifdef HAVE_MQTT
+		janus_mqtt_publish_message(payload, (char *)source->msg);
+		return MHD_YES;
+#else
+		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
+		g_free(payload);
+		return MHD_NO;
+#endif
 	} else {
 		/* WTF? */
 		g_free(payload);
@@ -2775,6 +2838,20 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "RabbitMQ support not compiled\n");
+		g_free(reply_text);
+		return MHD_NO;
+#endif
+	} else if(source->type == JANUS_SOURCE_MQTT) {
+#ifdef HAVE_MQTT
+		if(source->msg != NULL) {
+			janus_mqtt_publish_message(reply_text, (char *)source->msg);
+			return MHD_YES;
+		} else {
+			g_free(reply_text);
+			return MHD_NO;
+		}
+#else
+		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
 		g_free(reply_text);
 		return MHD_NO;
 #endif
@@ -3228,7 +3305,7 @@ void *janus_rmq_out_thread(void *data) {
 				amqp_basic_properties_t props;
 				props._flags = 0;
 				props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
-				props.reply_to = amqp_cstring_bytes("Janus");
+				props.reply_to = from_janus_queue;
 				if(response->correlation_id) {
 					props._flags |= AMQP_BASIC_CORRELATION_ID_FLAG;
 					props.correlation_id = amqp_cstring_bytes(response->correlation_id);
@@ -3267,7 +3344,7 @@ void *janus_rmq_out_thread(void *data) {
 						amqp_basic_properties_t props;
 						props._flags = 0;
 						props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
-						props.reply_to = amqp_cstring_bytes("Janus");
+						props.reply_to = from_janus_queue;
 						props._flags |= AMQP_BASIC_CONTENT_TYPE_FLAG;
 						props.content_type = amqp_cstring_bytes("application/json");
 						amqp_bytes_t message = amqp_cstring_bytes(event->payload);
@@ -3295,6 +3372,137 @@ void janus_rmq_task(gpointer data, gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Thread pool, serving request\n");
 	janus_rabbitmq_request *request = (janus_rabbitmq_request *)data;
 	janus_rabbitmq_client *client = (janus_rabbitmq_client *)user_data;
+	if(request == NULL || client == NULL) {
+		JANUS_LOG(LOG_ERR, "Missing request or client\n");
+		return;
+	}
+	janus_request_source *source = (janus_request_source *)request->source;
+	json_t *root = (json_t *)request->request;
+	janus_process_incoming_request(source, root);
+	janus_request_source_destroy(source);
+	request->source = NULL;
+	request->request = NULL;
+	g_free(request);
+}
+#endif
+
+
+#ifdef HAVE_MQTT
+void janus_mqtt_conn_success(void *context, MQTTAsync_successData *response) {
+	mqtt_conn_success = TRUE;
+	g_main_loop_quit(mqtt_wait_loop);
+}
+
+void janus_mqtt_conn_fail(void *context, MQTTAsync_failureData *response) {
+	if(response) {
+		JANUS_LOG(LOG_ERR, "MQTT connect failed: %s\n", response->message);
+	}
+	g_main_loop_quit(mqtt_wait_loop);
+}
+
+void janus_mqtt_conn_lost(void *context, char *cause) {
+	mqtt_conn_success = FALSE;
+	JANUS_LOG(LOG_WARN, "MQTT Connection lost: %s\n", cause);
+	/* TODO: here should take care of reconnect, but context can be NULL, so need more try
+	if(MQTTAsync_connect((MQTTAsync)context, &mqtt_connopts) != MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_ERR, "MQTT send reconnect msg failed\n");
+	}
+	if(mqtt_wait_loop == NULL){
+		mqtt_wait_loop = g_main_loop_new(NULL, FALSE);
+		g_main_loop_run(mqtt_wait_loop);
+		g_main_loop_unref(mqtt_wait_loop);
+		mqtt_wait_loop = NULL;
+		if(!mqtt_conn_success){
+			JANUS_LOG(LOG_ERR, "MQTT reconnect failed\n");
+		} else {
+			JANUS_LOG(LOG_INFO, "MQTT reconnect success\n");
+		}
+	}*/
+}
+
+void janus_mqtt_subscribe_success(void *context, MQTTAsync_successData *response) {
+	mqtt_subscribe_success = TRUE;
+	g_main_loop_quit(mqtt_wait_loop);
+}
+
+void janus_mqtt_subscribe_fail(void *context, MQTTAsync_failureData *response) {
+	JANUS_LOG(LOG_ERR, "MQTT subscribe failed: %s\n", response->message);
+	g_main_loop_quit(mqtt_wait_loop);
+}
+
+int janus_mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_message *message) {
+	if(mqtt_client == NULL || mqtt_client->destroy || g_atomic_int_get(&stop)) {
+		JANUS_LOG(LOG_ERR, "Got mqtt message, but no MQTT connection or Janus stopped??\n");
+		goto exit;
+	}
+	char *payload = (char *)message->payload;
+	JANUS_LOG(LOG_VERB, "Got %d bytes, QoS %d mqtt message: %.*s\n", message->payloadlen, message->qos, message->payloadlen, payload);
+	/* TODO: add correlation field to request will use RPC pattern, do it later
+	char *correlation = NULL;
+	if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
+		correlation = (char *)calloc(p->correlation_id.len+1, sizeof(char));
+		sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
+		JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
+	}*/
+	janus_request_source *source = janus_request_source_new(JANUS_SOURCE_MQTT, (void *)mqtt_client, NULL);
+	/* Parse the JSON payload */
+	json_error_t error;
+	json_t *root = json_loadb(payload, message->payloadlen, 0, &error);
+	if(!root) {
+		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+		goto exit;
+	}
+	if(!json_is_object(root)) {
+		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+		json_decref(root);
+		goto exit;
+	}
+	json_t *client_id = json_object_get(root, "clientId");
+	if(!client_id) {
+		janus_process_error(source, 0, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (clientId)");
+		goto exit;
+	}
+	if(!json_is_string(client_id)) {
+		janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (clientId should be a string)");
+		goto exit;
+	}
+	source->msg = (void *)json_string_value(client_id);
+	/* Parse the request now */
+	janus_mqtt_request *request = (janus_mqtt_request *)calloc(1, sizeof(janus_mqtt_request));
+	request->source = source;
+	request->request = root;
+	GError *tperror = NULL;
+	g_thread_pool_push(mqtt_client->thread_pool, request, &tperror);
+	if(tperror != NULL) {
+		/* Something went wrong... */
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+	}
+
+exit:
+	MQTTAsync_freeMessage(&message);
+	MQTTAsync_free(topic);
+	return TRUE;
+}
+
+void janus_mqtt_publish_message(void *payload, char *topic) {
+	if(mqtt_client == NULL || mqtt_client->destroy || g_atomic_int_get(&stop)) {
+		JANUS_LOG(LOG_ERR, "Publish mqtt message, but no MQTT connection or Janus stopped??\n");
+		goto exit;
+	}
+	MQTTAsync_message message = MQTTAsync_message_initializer;
+	message.payload = payload;
+	message.payloadlen = strlen(payload);
+	MQTTAsync_sendMessage(mqtt_async_client, topic, &message, NULL);
+	JANUS_LOG(LOG_VERB, "Sending response(%zu bytes) to MQTT: %s\n", strlen(payload), (char *)payload);
+
+exit:
+	g_free(payload);
+}
+
+void janus_mqtt_task(gpointer data, gpointer user_data) {
+	JANUS_LOG(LOG_HUGE, "MQTT task thread pool, serving request\n");
+	janus_mqtt_request *request = (janus_mqtt_request *)data;
+	janus_mqtt_client *client = (janus_mqtt_client *)user_data;
 	if(request == NULL || client == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing request or client\n");
 		return;
@@ -3515,22 +3723,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	notification->payload = reply_text;
 	notification->allocated = 1;
 
-	g_async_queue_push(session->messages, notification);
-#ifdef HAVE_WEBSOCKETS
-	janus_request_source *source = (janus_request_source *)session->source;
-	if(source != NULL && source->type == JANUS_SOURCE_WEBSOCKETS) {
-		/* Send this as soon as the WebSocket becomes writeable */
-		janus_websocket_client *client = (janus_websocket_client *)source->source;
-		/* Make sure this is not related to a closed WebSocket session */
-		janus_mutex_lock(&old_wss_mutex);
-		if(g_list_find(old_wss, client) == NULL) {
-			janus_mutex_lock(&client->mutex);
-			libwebsocket_callback_on_writable(client->context, client->wsi);
-			janus_mutex_unlock(&client->mutex);
-		}
-		janus_mutex_unlock(&old_wss_mutex);
-	}
-#endif
+	janus_async_send_message(session, notification);
 
 	return JANUS_OK;
 }
@@ -4043,7 +4236,7 @@ gint main(int argc, char *argv[])
 #ifdef HAVE_RABBITMQ
 	if(args_info.rabbitmq_server_given) {
 		/* Split in server and port (if port missing, use AMQP_PROTOCOL_PORT as default) */
-		char *rmqport = strrchr(args_info.stun_server_arg, ':');
+		char *rmqport = strrchr(args_info.rabbitmq_server_arg, ':');
 		if(rmqport != NULL) {
 			*rmqport = '\0';
 			rmqport++;
@@ -4061,6 +4254,29 @@ gint main(int argc, char *argv[])
 	}
 	if(args_info.rabbitmq_out_queue_given) {
 		janus_config_add_item(config, "rabbitmq", "from_janus", args_info.rabbitmq_out_queue_arg);
+	}
+#endif
+	if(args_info.enable_mqtt_given) {
+		janus_config_add_item(config, "mqtt", "enable", "yes");
+	}
+#ifdef HAVE_MQTT
+	if(args_info.mqtt_server_given) {
+		/* Split in server and port (if port missing, use MQTT_PROTOCOL_PORT as default) */
+		char *mqttport = strrchr(args_info.mqtt_server_arg, ':');
+		if(mqttport != NULL) {
+			*mqttport = '\0';
+			mqttport++;
+			janus_config_add_item(config, "mqtt", "host", args_info.mqtt_server_arg);
+			janus_config_add_item(config, "mqtt", "port", mqttport);
+		} else {
+			janus_config_add_item(config, "mqtt", "host", args_info.mqtt_server_arg);
+			char port[10];
+			g_snprintf(port, 10, "%d", MQTT_PROTOCOL_PORT);
+			janus_config_add_item(config, "mqtt", "port", port);
+		}
+	}
+	if(args_info.mqtt_in_topic_given) {
+		janus_config_add_item(config, "mqtt", "to_janus", args_info.mqtt_in_topic_arg);
 	}
 #endif
 	if(args_info.admin_secret_given) {
@@ -4864,6 +5080,93 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Setup of RabbitMQ integration completed\n");
 	}
 #endif
+	/* Enable the MQTT integration, if enabled */
+#ifndef HAVE_MQTT
+	JANUS_LOG(LOG_WARN, "MQTT support not compiled\n");
+#else
+	item = janus_config_get_item_drilldown(config, "mqtt", "enable");
+	if(!item || !item->value || !janus_is_true(item->value)) {
+		JANUS_LOG(LOG_WARN, "MQTT support disabled\n");
+	} else {
+		/* Parse configuration */
+		char *mqtthost = NULL;
+		item = janus_config_get_item_drilldown(config, "mqtt", "host");
+		if(item && item->value)
+			mqtthost = g_strdup(item->value);
+		else
+			mqtthost = g_strdup("localhost");
+		int mqttport = MQTT_PROTOCOL_PORT;
+		item = janus_config_get_item_drilldown(config, "mqtt", "port");
+		if(item && item->value)
+			mqttport = atoi(item->value);
+		item = janus_config_get_item_drilldown(config, "mqtt", "to_janus");
+		if(!item || !item->value) {
+			JANUS_LOG(LOG_FATAL, "Missing name of incoming topic for MQTT integration...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		const char *to_janus = g_strdup(item->value);
+		JANUS_LOG(LOG_INFO, "MQTT support enabled, %s:%d (%s)\n", mqtthost, mqttport, to_janus);
+		/* Connect */
+		JANUS_LOG(LOG_VERB, "Creating MQTT socket...\n");
+		char server_uri[76];//domain name max length=63 bytes, and "tcp://" or "ssl://" length=6, and ":65535" length=6, and '\0'=1
+		g_snprintf(server_uri, 76, "tcp://%s:%"SCNu16"", mqtthost, (uint16_t)mqttport);
+		g_free(mqtthost);
+		MQTTAsync_create(&mqtt_async_client, server_uri, MQTT_CLIENT_ID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
+		MQTTAsync_setCallbacks(mqtt_async_client, NULL, janus_mqtt_conn_lost, janus_mqtt_message_got, NULL);
+		JANUS_LOG(LOG_VERB, "Connect and login to MQTT server...\n");
+		mqtt_connopts.cleansession = 0;
+		mqtt_connopts.onSuccess = janus_mqtt_conn_success;
+		mqtt_connopts.onFailure = janus_mqtt_conn_fail;
+		mqtt_connopts.context = mqtt_async_client;
+		if(MQTTAsync_connect(mqtt_async_client, &mqtt_connopts) != MQTTASYNC_SUCCESS) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to MQTT server: error send connect msg...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		mqtt_wait_loop = g_main_loop_new(NULL, FALSE);
+		g_main_loop_run(mqtt_wait_loop);
+		g_main_loop_unref(mqtt_wait_loop);
+		mqtt_wait_loop = NULL;
+		if(!mqtt_conn_success){
+			JANUS_LOG(LOG_FATAL, "Can't connect to MQTT server: connect failed...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		JANUS_LOG(LOG_VERB, "Subscribing incoming topic... (%s)\n", to_janus);
+		mqtt_subscribe_opts.onSuccess = janus_mqtt_subscribe_success;
+		mqtt_subscribe_opts.onFailure = janus_mqtt_subscribe_fail;
+		mqtt_subscribe_opts.context = mqtt_async_client;
+		if(MQTTAsync_subscribe(mqtt_async_client, to_janus, 0, &mqtt_subscribe_opts) != MQTTASYNC_SUCCESS) {
+			JANUS_LOG(LOG_FATAL, "Can't connect to MQTT server: error send subscribe incoming topic msg\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		mqtt_wait_loop = g_main_loop_new(NULL, FALSE);
+		g_main_loop_run(mqtt_wait_loop);
+		g_main_loop_unref(mqtt_wait_loop);
+		mqtt_wait_loop = NULL;
+		if(!mqtt_subscribe_success){
+			JANUS_LOG(LOG_FATAL, "Can't connect to MQTT server: subscribe failed...\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		/* FIXME We currently support a single application, create a new janus_mqtt_client instance */
+		mqtt_client = calloc(1, sizeof(janus_mqtt_client));
+		if(mqtt_client == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		mqtt_client->sessions = NULL;
+		mqtt_client->destroy = 0;
+		/* org.eclipse.paho.mqtt.c receiver is single threaded, we need a thread pool to serve requests */
+		GError *error = NULL;
+		mqtt_client->thread_pool = g_thread_pool_new(janus_mqtt_task, mqtt_client, -1, FALSE, &error);
+		if(error != NULL) {
+			/* Something went wrong... */
+			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the pool thread...\n", error->code, error->message ? error->message : "??");
+			exit(1);	/* FIXME Should we really give up? */
+		}
+		janus_mutex_init(&mqtt_client->mutex);
+		/* Done */
+		JANUS_LOG(LOG_INFO, "Setup of MQTT integration completed\n");
+	}
+#endif
 	/* Do we have anything up? */
 	int something = 0;
 	if(ws || sws)
@@ -4874,6 +5177,10 @@ gint main(int argc, char *argv[])
 #endif
 #ifdef HAVE_RABBITMQ
 	if(rmq_channel)	/* FIXME */
+		something++;
+#endif
+#ifdef HAVE_MQTT
+	if(mqtt_async_client) /* FIXME */
 		something++;
 #endif
 	if(something == 0) {
@@ -5113,6 +5420,14 @@ gint main(int argc, char *argv[])
 		amqp_destroy_connection(rmq_conn);
 	}
 #endif
+#ifdef HAVE_MQTT
+	if(mqtt_async_client) {
+		MQTTAsync_disconnectOptions disc = MQTTAsync_disconnectOptions_initializer;
+		MQTTAsync_disconnect(mqtt_async_client, &disc);
+		MQTTAsync_destroy(&mqtt_async_client);
+		g_free(mqtt_client);
+	}
+#endif
 	if(cert_pem_bytes != NULL)
 		g_free((gpointer)cert_pem_bytes);
 	cert_pem_bytes = NULL;
@@ -5162,4 +5477,42 @@ void janus_http_event_free(janus_http_event *event)
 	}
 
 	free(event);
+}
+
+
+void janus_async_send_message(janus_session *session, janus_http_event *event) {
+	if(session == NULL || event == NULL){
+		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
+		return;
+	}
+	janus_request_source *source = (janus_request_source *)session->source;
+	if (source == NULL) {
+		JANUS_LOG(LOG_ERR, "session %"SCNu64" error: have no source\n", session->session_id);
+		return;
+	}
+	if (source->type == JANUS_SOURCE_MQTT) {
+#ifdef HAVE_MQTT
+		janus_mqtt_publish_message(event->payload, (char *)source->msg);
+		event->payload = NULL;
+#else
+		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
+#endif
+		janus_http_event_free(event);
+	} else {
+		g_async_queue_push(session->messages, event);
+#ifdef HAVE_WEBSOCKETS
+		if(source->type == JANUS_SOURCE_WEBSOCKETS) {
+			/* Send this as soon as the WebSocket becomes writeable */
+			janus_websocket_client *client = (janus_websocket_client *)source->source;
+			/* Make sure this is not related to a closed WebSocket session */
+			janus_mutex_lock(&old_wss_mutex);
+			if(g_list_find(old_wss, client) == NULL) {
+				janus_mutex_lock(&client->mutex);
+				libwebsocket_callback_on_writable(client->context, client->wsi);
+				janus_mutex_unlock(&client->mutex);
+			}
+			janus_mutex_unlock(&old_wss_mutex);
+		}
+#endif
+	}
 }

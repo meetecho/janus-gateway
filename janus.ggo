@@ -33,3 +33,6 @@ option "enable-rabbitmq" R "Enable RabbitMQ support" flag off
 option "rabbitmq-server" H "Address (host:port) of the RabbitMQ server to use (default=localhost:5672)" string typestr="string" optional
 option "rabbitmq-in-queue" t "Name of the RabbitMQ queue for incoming messages (no default)" string typestr="string" optional
 option "rabbitmq-out-queue" f "Name of the RabbitMQ queue for outgoing messages (no default)" string typestr="string" optional
+option "enable-mqtt" E "Enable MQTT support" flag off
+option "mqtt-server" J "Address (host:port) of the MQTT server to use (default=localhost:1883)" string typestr="string" optional
+option "mqtt-in-topic" o "Name of the MQTT topic for incoming messages (no default)" string typestr="string" optional
