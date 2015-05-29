@@ -428,13 +428,13 @@ void janus_rmq_task(gpointer data, gpointer user_data);
  * so no need for an explicit request as the GET in the plain HTTP API.
  */
 ///@{
-void mqtt_conn_onSuccess(void *context, MQTTAsync_successData *response);
-void mqtt_conn_fail(void *context, MQTTAsync_failureData *response);
-void mqtt_conn_lost(void *context, char *cause);
-void mqtt_subscribe_onSuccess(void *context, MQTTAsync_successData *response);
-void mqtt_subscribe_fail(void *context, MQTTAsync_failureData *response);
-int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_message *message);
-void mqtt_publish_message(void *payload, char *topic);
+void janus_mqtt_conn_success(void *context, MQTTAsync_successData *response);
+void janus_mqtt_conn_fail(void *context, MQTTAsync_failureData *response);
+void janus_mqtt_conn_lost(void *context, char *cause);
+void janus_mqtt_subscribe_success(void *context, MQTTAsync_successData *response);
+void janus_mqtt_subscribe_fail(void *context, MQTTAsync_failureData *response);
+int janus_mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_message *message);
+void janus_mqtt_publish_message(void *payload, char *topic);
 /*! \brief Worker to have a new request server by the thread pool
  * @param[in] data Opaque pointer to a janus_mqtt_request instance
  * @param[in] user_data Opaque pointer to a janus_mqtt_client instance

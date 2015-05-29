@@ -2719,7 +2719,7 @@ int janus_process_success(janus_request_source *source, const char *transaction,
 #endif
 	} else if(source->type == JANUS_SOURCE_MQTT) {
 #ifdef HAVE_MQTT
-		mqtt_publish_message(payload, (char *)source->msg);
+		janus_mqtt_publish_message(payload, (char *)source->msg);
 		return MHD_YES;
 #else
 		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
@@ -2844,7 +2844,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	} else if(source->type == JANUS_SOURCE_MQTT) {
 #ifdef HAVE_MQTT
 		if(source->msg != NULL) {
-			mqtt_publish_message(reply_text, (char *)source->msg);
+			janus_mqtt_publish_message(reply_text, (char *)source->msg);
 			return MHD_YES;
 		} else {
 			g_free(reply_text);
@@ -3388,19 +3388,19 @@ void janus_rmq_task(gpointer data, gpointer user_data) {
 
 
 #ifdef HAVE_MQTT
-void mqtt_conn_onSuccess(void *context, MQTTAsync_successData *response) {
+void janus_mqtt_conn_success(void *context, MQTTAsync_successData *response) {
 	mqtt_conn_success = TRUE;
 	g_main_loop_quit(mqtt_wait_loop);
 }
 
-void mqtt_conn_fail(void *context, MQTTAsync_failureData *response) {
+void janus_mqtt_conn_fail(void *context, MQTTAsync_failureData *response) {
 	if(response) {
 		JANUS_LOG(LOG_ERR, "MQTT connect failed: %s\n", response->message);
 	}
 	g_main_loop_quit(mqtt_wait_loop);
 }
 
-void mqtt_conn_lost(void *context, char *cause) {
+void janus_mqtt_conn_lost(void *context, char *cause) {
 	mqtt_conn_success = FALSE;
 	JANUS_LOG(LOG_WARN, "MQTT Connection lost: %s\n", cause);
 	/* TODO: here should take care of reconnect, but context can be NULL, so need more try
@@ -3420,17 +3420,17 @@ void mqtt_conn_lost(void *context, char *cause) {
 	}*/
 }
 
-void mqtt_subscribe_onSuccess(void *context, MQTTAsync_successData *response) {
+void janus_mqtt_subscribe_success(void *context, MQTTAsync_successData *response) {
 	mqtt_subscribe_success = TRUE;
 	g_main_loop_quit(mqtt_wait_loop);
 }
 
-void mqtt_subscribe_fail(void *context, MQTTAsync_failureData *response) {
+void janus_mqtt_subscribe_fail(void *context, MQTTAsync_failureData *response) {
 	JANUS_LOG(LOG_ERR, "MQTT subscribe failed: %s\n", response->message);
 	g_main_loop_quit(mqtt_wait_loop);
 }
 
-int mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_message *message) {
+int janus_mqtt_message_got(void *context, char *topic, int topic_len, MQTTAsync_message *message) {
 	if(mqtt_client == NULL || mqtt_client->destroy || g_atomic_int_get(&stop)) {
 		JANUS_LOG(LOG_ERR, "Got mqtt message, but no MQTT connection or Janus stopped??\n");
 		goto exit;
@@ -3484,7 +3484,7 @@ exit:
 	return TRUE;
 }
 
-void mqtt_publish_message(void *payload, char *topic) {
+void janus_mqtt_publish_message(void *payload, char *topic) {
 	if(mqtt_client == NULL || mqtt_client->destroy || g_atomic_int_get(&stop)) {
 		JANUS_LOG(LOG_ERR, "Publish mqtt message, but no MQTT connection or Janus stopped??\n");
 		goto exit;
@@ -4256,6 +4256,9 @@ gint main(int argc, char *argv[])
 		janus_config_add_item(config, "rabbitmq", "from_janus", args_info.rabbitmq_out_queue_arg);
 	}
 #endif
+	if(args_info.enable_mqtt_given) {
+		janus_config_add_item(config, "mqtt", "enable", "yes");
+	}
 #ifdef HAVE_MQTT
 	if(args_info.mqtt_server_given) {
 		/* Split in server and port (if port missing, use MQTT_PROTOCOL_PORT as default) */
@@ -5109,11 +5112,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(server_uri, 76, "tcp://%s:%"SCNu16"", mqtthost, (uint16_t)mqttport);
 		g_free(mqtthost);
 		MQTTAsync_create(&mqtt_async_client, server_uri, MQTT_CLIENT_ID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
-		MQTTAsync_setCallbacks(mqtt_async_client, NULL, mqtt_conn_lost, mqtt_message_got, NULL);
+		MQTTAsync_setCallbacks(mqtt_async_client, NULL, janus_mqtt_conn_lost, janus_mqtt_message_got, NULL);
 		JANUS_LOG(LOG_VERB, "Connect and login to MQTT server...\n");
 		mqtt_connopts.cleansession = 0;
-		mqtt_connopts.onSuccess = mqtt_conn_onSuccess;
-		mqtt_connopts.onFailure = mqtt_conn_fail;
+		mqtt_connopts.onSuccess = janus_mqtt_conn_success;
+		mqtt_connopts.onFailure = janus_mqtt_conn_fail;
 		mqtt_connopts.context = mqtt_async_client;
 		if(MQTTAsync_connect(mqtt_async_client, &mqtt_connopts) != MQTTASYNC_SUCCESS) {
 			JANUS_LOG(LOG_FATAL, "Can't connect to MQTT server: error send connect msg...\n");
@@ -5128,8 +5131,8 @@ gint main(int argc, char *argv[])
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		JANUS_LOG(LOG_VERB, "Subscribing incoming topic... (%s)\n", to_janus);
-		mqtt_subscribe_opts.onSuccess = mqtt_subscribe_onSuccess;
-		mqtt_subscribe_opts.onFailure = mqtt_subscribe_fail;
+		mqtt_subscribe_opts.onSuccess = janus_mqtt_subscribe_success;
+		mqtt_subscribe_opts.onFailure = janus_mqtt_subscribe_fail;
 		mqtt_subscribe_opts.context = mqtt_async_client;
 		if(MQTTAsync_subscribe(mqtt_async_client, to_janus, 0, &mqtt_subscribe_opts) != MQTTASYNC_SUCCESS) {
 			JANUS_LOG(LOG_FATAL, "Can't connect to MQTT server: error send subscribe incoming topic msg\n");
@@ -5489,7 +5492,7 @@ void janus_async_send_message(janus_session *session, janus_http_event *event) {
 	}
 	if (source->type == JANUS_SOURCE_MQTT) {
 #ifdef HAVE_MQTT
-		mqtt_publish_message(event->payload, (char *)source->msg);
+		janus_mqtt_publish_message(event->payload, (char *)source->msg);
 		event->payload = NULL;
 #else
 		JANUS_LOG(LOG_ERR, "MQTT support not compiled\n");
