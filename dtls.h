@@ -17,11 +17,10 @@
 
 #include <inttypes.h>
 #include <glib.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
 #include <srtp/srtp.h>
 
 #include "sctp.h"
+#include "dtls-bio.h"
 
 /*! \brief DTLS stuff initialization
  * @param[in] server_pem Path to the certificate to use
@@ -63,6 +62,8 @@ typedef struct janus_dtls_srtp {
 	BIO *read_bio;
 	/*! \brief Write BIO (outgoing DTLS data) */
 	BIO *write_bio;
+	/*! \brief Filter BIO (fix MTU fragmentation on outgoing DTLS data, if required) */
+	BIO *filter_bio;
 	/*! \brief Whether SRTP has been correctly set up for this component or not */
 	gint srtp_valid;
 	/*! \brief libsrtp context for incoming SRTP packets */

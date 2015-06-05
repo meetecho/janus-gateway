@@ -77,6 +77,8 @@ janus_SOURCES = \
 	debug.h \
 	dtls.c \
 	dtls.h \
+	dtls-bio.c \
+	dtls-bio.h \
 	ice.c \
 	ice.h \
 	janus.c \
