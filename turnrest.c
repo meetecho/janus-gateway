@@ -193,8 +193,8 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		return NULL;
 	}
 	json_t *ttl = json_object_get(root, "ttl");
-	if(ttl && !json_is_integer(ttl)) {
-		JANUS_LOG(LOG_ERR, "Invalid response: ttl should be an integer\n");
+	if(ttl && (!json_is_integer(ttl) || json_integer_value(ttl) < 0)) {
+		JANUS_LOG(LOG_ERR, "Invalid response: ttl should be a positive integer\n");
 		return NULL;
 	}
 	json_t *uris = json_object_get(root, "uris");

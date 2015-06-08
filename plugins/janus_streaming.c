@@ -960,10 +960,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(!strcasecmp(type_text, "rtp")) {
 			/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 			json_t *id = json_object_get(root, "id");
-			if(id && !json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 				goto error;
 			}
 			json_t *name = json_object_get(root, "name");
@@ -1028,10 +1028,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					g_snprintf(error_cause, 512, "Missing element (audioport)");
 					goto error;
 				}
-				if(!json_is_integer(audioport)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audioport should be an integer)\n");
+				if(!json_is_integer(audioport) || json_integer_value(audioport) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audioport should be a positive integer)\n");
 					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (audioport should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (audioport should be a positive integer)");
 					goto error;
 				}
 				aport = json_integer_value(audioport);
@@ -1042,10 +1042,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					g_snprintf(error_cause, 512, "Missing element (audiopt)");
 					goto error;
 				}
-				if(!json_is_integer(audiopt)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audiopt should be an integer)\n");
+				if(!json_is_integer(audiopt) || json_integer_value(audiopt) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audiopt should be a positive integer)\n");
 					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (audiopt should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (audiopt should be a positive integer)");
 					goto error;
 				}
 				acodec = json_integer_value(audiopt);
@@ -1091,10 +1091,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					g_snprintf(error_cause, 512, "Missing element (videoport)");
 					goto error;
 				}
-				if(!json_is_integer(videoport)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videoport should be an integer)\n");
+				if(!json_is_integer(videoport) || json_integer_value(videoport) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (videoport should be a positive integer)\n");
 					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (videoport should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (videoport should be a positive integer)");
 					goto error;
 				}
 				vport = json_integer_value(videoport);
@@ -1105,10 +1105,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					g_snprintf(error_cause, 512, "Missing element (videopt)");
 					goto error;
 				}
-				if(!json_is_integer(videopt)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videopt should be an integer)\n");
+				if(!json_is_integer(videopt) || json_integer_value(videopt) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (videopt should be a positive integer)\n");
 					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (videopt should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (videopt should be a positive integer)");
 					goto error;
 				}
 				vcodec = json_integer_value(videopt);
@@ -1165,10 +1165,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		} else if(!strcasecmp(type_text, "live")) {
 			/* File live source */
 			json_t *id = json_object_get(root, "id");
-			if(id && !json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 				goto error;
 			}
 			json_t *name = json_object_get(root, "name");
@@ -1258,10 +1258,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		} else if(!strcasecmp(type_text, "ondemand")) {
 			/* mu-Law file on demand source */
 			json_t *id = json_object_get(root, "id");
-			if(id && !json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 				goto error;
 			}
 			json_t *name = json_object_get(root, "name");
@@ -1357,10 +1357,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 #else
 			/* RTSP source*/
 			json_t *id = json_object_get(root, "id");
-			if(id && !json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 				goto error;
 			}
 			json_t *name = json_object_get(root, "name");
@@ -1456,10 +1456,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Missing element (id)");
 			goto error;
 		}
-		if(!json_is_integer(id)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+		if(!json_is_integer(id) || json_integer_value(id) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 			goto error;
 		}
 		gint64 id_value = json_integer_value(id);
@@ -1562,10 +1562,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Missing element (id)");
 			goto error;
 		}
-		if(!json_is_integer(id)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+		if(!json_is_integer(id) || json_integer_value(id) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 			goto error;
 		}
 		gint64 id_value = json_integer_value(id);
@@ -1719,10 +1719,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Missing element (id)");
 			goto error;
 		}
-		if(!json_is_integer(id)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+		if(!json_is_integer(id) || json_integer_value(id) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 			goto error;
 		}
 		gint64 id_value = json_integer_value(id);
@@ -2013,10 +2013,10 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (id)");
 				goto error;
 			}
-			if(!json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			if(!json_is_integer(id) || json_integer_value(id) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 				goto error;
 			}
 			gint64 id_value = json_integer_value(id);
@@ -2162,10 +2162,10 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (id)");
 				goto error;
 			}
-			if(!json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			if(!json_is_integer(id) || json_integer_value(id) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 				goto error;
 			}
 			gint64 id_value = json_integer_value(id);

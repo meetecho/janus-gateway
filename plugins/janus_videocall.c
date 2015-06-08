@@ -1049,10 +1049,10 @@ static void *janus_videocall_handler(void *data) {
 				goto error;
 			}
 			json_t *bitrate = json_object_get(root, "bitrate");
-			if(bitrate && !json_is_integer(bitrate)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+			if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
 				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (bitrate should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
 				goto error;
 			}
 			if(audio) {

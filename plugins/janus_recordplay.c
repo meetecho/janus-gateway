@@ -794,10 +794,10 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	} else if(!strcasecmp(request_text, "configure")) {
 		json_t *video_bitrate_max = json_object_get(root, "video-bitrate-max");
 		if(video_bitrate_max) {
-			if(!json_is_integer(video_bitrate_max)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video-bitrate-max should be an integer)\n");
+			if(!json_is_integer(video_bitrate_max) || json_integer_value(video_bitrate_max) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video-bitrate-max should be a positive integer)\n");
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (video-bitrate-max should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (video-bitrate-max should be a positive integer)");
 				goto error;
 			}
 			session->video_bitrate = json_integer_value(video_bitrate_max);
@@ -805,10 +805,10 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		}
 		json_t *video_keyframe_interval= json_object_get(root, "video-keyframe-interval");
 		if(video_keyframe_interval) {
-			if(!json_is_integer(video_keyframe_interval)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video-keyframe-interval should be an integer)\n");
+			if(!json_is_integer(video_keyframe_interval) || json_integer_value(video_keyframe_interval) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video-keyframe-interval should be a positive integer)\n");
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (video-keyframe-interval should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (video-keyframe-interval should be a positive integer)");
 				goto error;
 			}
 			session->video_keyframe_interval = json_integer_value(video_keyframe_interval);
@@ -1257,10 +1257,10 @@ static void *janus_recordplay_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (id)");
 				goto error;
 			}
-			if(!json_is_integer(id)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+			if(!json_is_integer(id) || json_integer_value(id) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 				goto error;
 			}
 			guint64 id_value = json_integer_value(id);

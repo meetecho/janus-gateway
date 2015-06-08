@@ -985,10 +985,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			goto error;
 		}
 		json_t *sampling = json_object_get(root, "sampling");
-		if(sampling && !json_is_integer(sampling)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (sampling should be an integer)\n");
+		if(sampling && (!json_is_integer(sampling) || json_integer_value(sampling) < 0)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (sampling should be a positive integer)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (sampling should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (sampling should be a positive integer)");
 			goto error;
 		}
 		json_t *record = json_object_get(root, "record");
@@ -1007,10 +1007,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		}
 		guint64 room_id = 0;
 		json_t *room = json_object_get(root, "room");
-		if(room && !json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+		if(room && (!json_is_integer(room) || json_integer_value(room) < 0)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 			goto error;
 		} else {
 			room_id = json_integer_value(room);
@@ -1141,10 +1141,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
 		}
-		if(!json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+		if(!json_is_integer(room) || json_integer_value(room) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 			goto error;
 		}
 		guint64 room_id = json_integer_value(room);
@@ -1264,10 +1264,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
 		}
-		if(!json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+		if(!json_is_integer(room) || json_integer_value(room) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 			goto error;
 		}
 		guint64 room_id = json_integer_value(room);
@@ -1282,8 +1282,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room */	
 		json_t *room = json_object_get(root, "room");
-		if(!room || !json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be an integer\n");
+		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT;
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
@@ -1613,10 +1613,10 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (room)");
 				goto error;
 			}
-			if(!json_is_integer(room)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+			if(!json_is_integer(room) || json_integer_value(room) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 				goto error;
 			}
 			guint64 room_id = json_integer_value(room);
@@ -1646,26 +1646,26 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			}
 			json_t *quality = json_object_get(root, "quality");
-			if(quality && !json_is_integer(quality)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (quality should be an integer)\n");
+			if(quality && (!json_is_integer(quality) || json_integer_value(quality) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (quality should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer)");
 				goto error;
 			}
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
-				JANUS_LOG(LOG_ERR, "Invalid element (quality should be an integer between 1 and 10)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer between 1 and 10)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (quality should be an integer between 1 and 10)");
+				g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer between 1 and 10)");
 				goto error;
 			}
 			guint64 user_id = 0;
 			json_t *id = json_object_get(root, "id");
 			if(id) {
-				if(!json_is_integer(id)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				if(!json_is_integer(id) || json_integer_value(id) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 					goto error;
 				}
 				user_id = json_integer_value(id);
@@ -1861,18 +1861,18 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			}
 			json_t *quality = json_object_get(root, "quality");
-			if(quality && !json_is_integer(quality)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (quality should be an integer)\n");
+			if(quality && (!json_is_integer(quality) || json_integer_value(quality) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (quality should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer)");
 				goto error;
 			}
 			if(quality) {
 				int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 				if(complexity < 1 || complexity > 10) {
-					JANUS_LOG(LOG_ERR, "Invalid element (quality should be an integer between 1 and 10)\n");
+					JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer between 1 and 10)\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (quality should be an integer between 1 and 10)");
+					g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer between 1 and 10)");
 					goto error;
 				}
 				participant->opus_complexity = complexity;
@@ -1949,10 +1949,10 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (room)");
 				goto error;
 			}
-			if(!json_is_integer(room)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+			if(!json_is_integer(room) || json_integer_value(room) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 				goto error;
 			}
 			guint64 room_id = json_integer_value(room);
@@ -1982,26 +1982,26 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			}
 			json_t *quality = json_object_get(root, "quality");
-			if(quality && !json_is_integer(quality)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (quality should be an integer)\n");
+			if(quality && (!json_is_integer(quality) || json_integer_value(quality) < 0)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (quality should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer)");
 				goto error;
 			}
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
-				JANUS_LOG(LOG_ERR, "Invalid element (quality should be an integer between 1 and 10)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer between 1 and 10)\n");
 				error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (quality should be an integer between 1 and 10)");
+				g_snprintf(error_cause, 512, "Invalid element (quality should be a positive integer between 1 and 10)");
 				goto error;
 			}
 			guint64 user_id = 0;
 			json_t *id = json_object_get(root, "id");
 			if(id) {
-				if(!json_is_integer(id)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+				if(!json_is_integer(id) || json_integer_value(id) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 					goto error;
 				}
 				user_id = json_integer_value(id);

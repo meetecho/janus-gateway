@@ -940,8 +940,8 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		json_t *id = json_object_get(root, "id");
 		if(id != NULL) {
 			/* The application provided the session ID to use */
-			if(!json_is_integer(id)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (id should be an integer)");
+			if(!json_is_integer(id) || json_integer_value(id) < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (id should be a positive integer)");
 				goto jsondone;
 			}
 			session_id = json_integer_value(id);
@@ -1591,8 +1591,8 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Trickle error: missing mandatory element (sdpMLineIndex)");
 					goto jsondone;
 				}
-				if(!json_is_integer(mline)) {
-					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex should be an integer)");
+				if(!json_is_integer(mline) || json_integer_value(mline) < 0) {
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Trickle error: invalid element type (sdpMLineIndex should be a positive integer)");
 					goto jsondone;
 				}
 				json_t *rc = json_object_get(candidate, "candidate");
@@ -1712,8 +1712,8 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, missing mandatory element (sdpMLineIndex)\n", i);
 						continue;
 					}
-					if(!json_is_integer(mline)) {
-						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex should be an integer)\n", i);
+					if(!json_is_integer(mline) || json_integer_value(mline) < 0) {
+						JANUS_LOG(LOG_WARN, "Trickle error: ignoring candidate at index %zu, invalid element type (sdpMLineIndex should be a positive integer)\n", i);
 						continue;
 					}
 					json_t *rc = json_object_get(candidate, "candidate");
@@ -2122,8 +2122,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (level)");
 				goto jsondone;
 			}
-			if(!json_is_integer(level)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be an integer)");
+			if(!json_is_integer(level) || json_integer_value(level) < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be a positive integer)");
 				goto jsondone;
 			}
 			int level_num = json_integer_value(level);
@@ -2153,8 +2153,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (debug)");
 				goto jsondone;
 			}
-			if(!json_is_integer(debug)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be an integer)");
+			if(!json_is_integer(debug) || json_integer_value(debug) < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be a positive integer)");
 				goto jsondone;
 			}
 			int debug_num = json_integer_value(debug);
@@ -2181,8 +2181,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (debug)");
 				goto jsondone;
 			}
-			if(!json_is_integer(debug)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be an integer)");
+			if(!json_is_integer(debug) || json_integer_value(debug) < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be a positive integer)");
 				goto jsondone;
 			}
 			int debug_num = json_integer_value(debug);
@@ -2213,8 +2213,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (max_nack_queue)");
 				goto jsondone;
 			}
-			if(!json_is_integer(mnq)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be an integer)");
+			if(!json_is_integer(mnq) || json_integer_value(mnq) < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be a positive integer)");
 				goto jsondone;
 			}
 			int mnq_num = json_integer_value(mnq);

@@ -917,24 +917,24 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto error;
 		}
 		json_t *bitrate = json_object_get(root, "bitrate");
-		if(bitrate && !json_is_integer(bitrate)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+		if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (bitrate should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (bitrate should be a positive integer)");
 			goto error;
 		}
 		json_t *fir_freq = json_object_get(root, "fir_freq");
-		if(fir_freq && !json_is_integer(fir_freq)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (fir_freq should be an integer)\n");
+		if(fir_freq && (!json_is_integer(fir_freq) || json_integer_value(fir_freq) < 0)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (fir_freq should be a positive integer)\n");
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (fir_freq should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (fir_freq should be a positive integer)");
 			goto error;
 		}
 		json_t *publishers = json_object_get(root, "publishers");
-		if(publishers && !json_is_integer(publishers)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (publishers should be an integer)\n");
+		if(publishers && (!json_is_integer(publishers) || json_integer_value(publishers) < 0)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (publishers should be a positive integer)\n");
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (publishers should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (publishers should be a positive integer)");
 			goto error;
 		}
 		json_t *record = json_object_get(root, "record");
@@ -953,10 +953,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		guint64 room_id = 0;
 		json_t *room = json_object_get(root, "room");
-		if(room && !json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+		if(room && (!json_is_integer(room) || json_integer_value(room) < 0)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 			goto error;
 		} else {
 			room_id = json_integer_value(room);
@@ -1065,10 +1065,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
 		}
-		if(!json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+		if(!json_is_integer(room) || json_integer_value(room) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 			goto error;
 		}
 		guint64 room_id = json_integer_value(room);
@@ -1185,8 +1185,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "exists")) {
 		/* Check whether a given room exists or not, returns true/false */	
 		json_t *room = json_object_get(root, "room");
-		if(!room || !json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be an integer\n");
+		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
 			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
@@ -1203,8 +1203,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */	
 		json_t *room = json_object_get(root, "room");
-		if(!room || !json_is_integer(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be an integer\n");
+		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
 			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
@@ -1764,10 +1764,10 @@ static void *janus_videoroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (room)");
 				goto error;
 			}
-			if(!json_is_integer(room)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be an integer)\n");
+			if(!json_is_integer(room) || json_integer_value(room) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be an integer)");
+				g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
 				goto error;
 			}
 			guint64 room_id = json_integer_value(room);
@@ -1813,10 +1813,10 @@ static void *janus_videoroom_handler(void *data) {
 				guint64 user_id = 0;
 				json_t *id = json_object_get(root, "id");
 				if(id) {
-					if(!json_is_integer(id)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (id should be an integer)\n");
+					if(!json_is_integer(id) || json_integer_value(id) < 0) {
+						JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (id should be an integer)");
+						g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
 						goto error;
 					}
 					user_id = json_integer_value(id);
@@ -1862,10 +1862,10 @@ static void *janus_videoroom_handler(void *data) {
 						goto error;
 					}
 					bitrate = json_object_get(root, "bitrate");
-					if(bitrate && !json_is_integer(bitrate)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+					if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
 						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value (bitrate should be an integer)");
+						g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
 						goto error;
 					}
 					record = json_object_get(root, "record");
@@ -1970,10 +1970,10 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Missing element (feed)");
 					goto error;
 				}
-				if(!json_is_integer(feed)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (feed should be an integer)\n");
+				if(!json_is_integer(feed) || json_integer_value(feed) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feed should be a positive integer)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (feed should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (feed should be a positive integer)");
 					goto error;
 				}
 				guint64 feed_id = json_integer_value(feed);
@@ -2174,10 +2174,10 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				json_t *bitrate = json_object_get(root, "bitrate");
-				if(bitrate && !json_is_integer(bitrate)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be an integer)\n");
+				if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (bitrate should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
 					goto error;
 				}
 				json_t *record = json_object_get(root, "record");
@@ -2415,10 +2415,10 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Missing element (feed)");
 					goto error;
 				}
-				if(!json_is_integer(feed)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (feed should be an integer)\n");
+				if(!json_is_integer(feed) || json_integer_value(feed) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid element (feed should be a positive integer)\n");
 					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (feed should be an integer)");
+					g_snprintf(error_cause, 512, "Invalid element (feed should be a positive integer)");
 					goto error;
 				}
 				guint64 feed_id = json_integer_value(feed);
