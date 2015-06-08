@@ -4403,6 +4403,10 @@ gint main(int argc, char *argv[])
 	if(janus_dtls_srtp_init(server_pem, server_key) < 0) {
 		exit(1);
 	}
+	/* Check if there's any custom value for the starting MTU to use in the BIO filter */
+	item = janus_config_get_item_drilldown(config, "media", "dtls_mtu");
+	if(item && item->value)
+		janus_dtls_bio_filter_set_mtu(atoi(item->value));
 
 #ifdef HAVE_SCTP
 	/* Initialize SCTP for DataChannels */

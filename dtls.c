@@ -224,7 +224,17 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		return NULL;
 	}
 	BIO_set_mem_eof_return(dtls->write_bio, -1);
-	SSL_set_bio(dtls->ssl, dtls->read_bio, dtls->write_bio);
+	/* The write BIO needs our custom filter, or fragmentation won't work */
+	dtls->filter_bio = BIO_new(BIO_janus_dtls_filter());
+	if(!dtls->filter_bio) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating filter BIO!\n", handle->handle_id);
+		janus_dtls_srtp_destroy(dtls);
+		return NULL;
+	}
+	/* Chain filter and write BIOs */
+	BIO_push(dtls->filter_bio, dtls->write_bio);
+	/* Set the filter as the BIO to use for outgoing data */
+	SSL_set_bio(dtls->ssl, dtls->read_bio, dtls->filter_bio);
 	dtls->dtls_role = role;
 	if(dtls->dtls_role == JANUS_DTLS_ROLE_CLIENT) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting connect state (DTLS client)\n", handle->handle_id);
@@ -503,6 +513,7 @@ void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	/* BIOs are destroyed by SSL_free */
 	dtls->read_bio = NULL;
 	dtls->write_bio = NULL;
+	dtls->filter_bio = NULL;
 	if(dtls->srtp_valid) {
 		if(dtls->srtp_in) {
 			srtp_dealloc(dtls->srtp_in);
@@ -592,9 +603,8 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 		JANUS_LOG(LOG_ERR, "No handle/agent/bio, no DTLS bridge...\n");
 		return;
 	}
-	int pending = BIO_ctrl_pending(dtls->write_bio);
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] DTLS check pending: %d\n", handle->handle_id, pending);
-	if (pending > 0) {
+	int pending = BIO_ctrl_pending(dtls->filter_bio);
+	while(pending > 0) {
 		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] >> Going to send DTLS data: %d bytes\n", handle->handle_id, pending);
 		char outgoing[pending];
 		int out = BIO_read(dtls->write_bio, outgoing, sizeof(outgoing));
@@ -614,6 +624,8 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 		if(bytes > 0) {
 			component->out_stats.data_bytes += bytes;
 		}
+		/* Check if there's anything left to send (e.g., fragmented packets) */
+		pending = BIO_ctrl_pending(dtls->filter_bio);
 	}
 }
 
