@@ -17,12 +17,17 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
-int janus_dtls_bio_filter_write(BIO *h, const char *buf,int num);
-long janus_dtls_bio_filter_ctrl(BIO *h, int cmd, long arg1, void *arg2);
-int janus_dtls_bio_filter_new(BIO *h);
-int janus_dtls_bio_filter_free(BIO *data);
-
 /*! \brief OpenSSL BIO filter for fragmentation constructor */
 BIO_METHOD *BIO_janus_dtls_filter(void);
+
+/*! \brief Set the MTU for the BIO filter
+ * \note The default starting MTU is 1472, in case fragmentation is needed
+ * the OpenSSL DTLS stack automatically decreases it. That said, if
+ * you know for sure the MTU in the network Janus is deployed in is
+ * smaller than that, it makes sense to configure an according value to
+ * start from
+ * @param start_mtu The MTU to start from (1472 by default)
+ */
+void janus_dtls_bio_filter_set_mtu(int start_mtu);
 
 #endif

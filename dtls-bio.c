@@ -1,7 +1,7 @@
 /*! \file    dtls-bio.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
- * \brief    OpenSSL BIO filter for fragmentation (headers)
+ * \brief    OpenSSL BIO filter for fragmentation
  * \details  Implementation of an OpenSSL BIO filter to fix the broken
  * behaviour of fragmented packets when using mem BIOs (as we do in
  * Janus). See https://mta.openssl.org/pipermail/openssl-users/2015-June/001503.html
@@ -18,12 +18,23 @@
 #include "mutex.h"
 
 
-/* We keep the MTU lower thatn 1472 just to stay on the safe side 
- * NOTE: should we make this configurable in janus.cfg? */
-static int mtu = 1200;
-
+/* Starting MTU value for the DTLS BIO filter */
+static int mtu = 1472;
+void janus_dtls_bio_filter_set_mtu(int start_mtu) {
+	if(start_mtu < 0) {
+		JANUS_LOG(LOG_ERR, "Invalid MTU...\n");
+		return;
+	}
+	mtu = start_mtu;
+	JANUS_LOG(LOG_VERB, "Setting starting MTU in the DTLS BIO filter: %d\n", mtu);
+}
 
 /* Filter implementation */
+int janus_dtls_bio_filter_write(BIO *h, const char *buf,int num);
+long janus_dtls_bio_filter_ctrl(BIO *h, int cmd, long arg1, void *arg2);
+int janus_dtls_bio_filter_new(BIO *h);
+int janus_dtls_bio_filter_free(BIO *data);
+
 static BIO_METHOD janus_dtls_bio_filter_methods = {
 	BIO_TYPE_FILTER,
 	"janus filter",
@@ -102,7 +113,7 @@ long janus_dtls_bio_filter_ctrl(BIO *bio, int cmd, long num, void *ptr) {
 			/* The OpenSSL library needs this */
 			return 1;
 		case BIO_CTRL_DGRAM_QUERY_MTU:
-			/* Let's force a 1200 MTU */
+			/* Let's force the MTU that was configured */
 			JANUS_LOG(LOG_HUGE, "Advertizing MTU: %d\n", mtu);
 			return mtu;
 		case BIO_CTRL_WPENDING:

@@ -95,14 +95,16 @@ cert_key = @certdir@/mycert.key
 
 ; Media-related stuff: right now, you can only configure whether you want
 ; to enable IPv6 support (still WIP, so handle with care), the maximum size
-; of the NACK queue for retransmissions per handle and the range of
-; ports to use for RTP and RTCP (by default, no range is envisaged).
+; of the NACK queue for retransmissions per handle the range of ports to
+; use for RTP and RTCP (by default, no range is envisaged) and the
+; starting MTU for DTLS (1472 by default, it adapts automatically).
 ; If you change any setting in the lines below, remember to uncomment the
 ; [media] category as well, which is commented by default!
 ;[media]
 ;ipv6 = true
 ;max_nack_queue = 300
 ;rtp_port_range = 20000-40000
+;dtls_mtu = 1200
 
 
 ; NAT-related stuff: specifically, you can either manually specify the 
