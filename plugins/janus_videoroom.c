@@ -341,7 +341,7 @@ typedef struct janus_videoroom_data_relay_packet {
 } janus_videoroom_data_relay_packet;
 
 /* SDP offer/answer templates */
-#define OPUS_PT		8
+#define OPUS_PT		111
 #define VP8_PT		100
 #define sdp_template \
 		"v=0\r\n" \
@@ -353,7 +353,7 @@ typedef struct janus_videoroom_data_relay_packet {
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d pcma/8000\r\n"		/* Opus payload type */
+		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
 #define sdp_v_template \
 		"m=video 1 RTP/SAVPF %d\r\n"		/* VP8 payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
