@@ -1424,11 +1424,41 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					/* Easy enough */
 					video = (stream->stream_id == handle->video_id ? 1 : 0);
 				} else {
-					/* TODO Bundled streams, check SSRC */
-					guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, len);
-					video = (stream->video_ssrc_peer == rtcp_ssrc ? 1 : 0);
-					//~ JANUS_LOG(LOG_VERB, "[RTCP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
-						//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, rtcp_ssrc);
+					/* Bundled streams, should we check the SSRCs? */
+					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+						/* No audio has been negotiated, definitely video */
+						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is video (no audio has been negotiated)\n", handle->handle_id);
+						video = 1;
+					} else if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+						/* No video has been negotiated, definitely audio */
+						JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is audio (no video has been negotiated)\n", handle->handle_id);
+						video = 0;
+					} else {
+						if(stream->audio_ssrc_peer == 0 || stream->video_ssrc_peer == 0) {
+							/* We don't know the remote SSRC: this can happen for recvonly clients
+							 * (see https://groups.google.com/forum/#!topic/discuss-webrtc/5yuZjV7lkNc)
+							 * Check the local SSRC, compare it to what we have */
+							guint32 rtcp_ssrc = janus_rtcp_get_receiver_ssrc(buf, len);
+							if(rtcp_ssrc == stream->audio_ssrc) {
+								video = 0;
+							} else if(rtcp_ssrc == stream->video_ssrc) {
+								video = 1;
+							} else {
+								/* Mh, no SR or RR? Try checking if there's any FIR, PLI or REMB */
+								if(janus_rtcp_has_fir(buf, len) || janus_rtcp_has_pli(buf, len) || janus_rtcp_get_remb(buf, len)) {
+									video = 1;
+								}
+							}
+							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (local SSRC: video=%"SCNu32", audio=%"SCNu32", got %"SCNu32")\n",
+								handle->handle_id, video ? "video" : "audio", stream->video_ssrc, stream->audio_ssrc, rtcp_ssrc);
+						} else {
+							/* Check the remote SSRC, compare it to what we have */
+							guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, len);
+							video = (stream->video_ssrc_peer == rtcp_ssrc ? 1 : 0);
+							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32", audio=%"SCNu32", got %"SCNu32")\n",
+								handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, rtcp_ssrc);
+						}
+					}
 				}
 				gint64 now = janus_get_monotonic_time();
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
@@ -1918,8 +1948,20 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 
-	/* Note: in case this is not an OFFER, we don't know whether DataChannels are supported on the other side or not yet */
+	/* Note: in case this is not an OFFER, we don't know whether any medium are supported on the other side or not yet */
+	if(audio) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+	} else {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+	}
+	if(video) {
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+	} else {
+		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+	}
 	if(data) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS);
 	} else {

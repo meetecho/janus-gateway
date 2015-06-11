@@ -133,6 +133,8 @@ typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 #define JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS		(1 << 10)
 #define JANUS_ICE_HANDLE_WEBRTC_PLAN_B				(1 << 11)
 #define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 12)
+#define JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO			(1 << 13)
+#define JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO			(1 << 14)
 
 
 /*! \brief Janus media statistics

@@ -142,48 +142,66 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 	sdp_media_t *m = remote_sdp->sdp_media;
 	while(m) {
 		/* What media type is this? */
-		if(m->m_type == sdp_media_audio && m->m_port > 0) {
-			audio++;
-			if(audio > 1) {
-				m = m->m_next;
-				continue;
-			}
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing audio candidates (stream=%d)...\n", handle->handle_id, handle->audio_id);
-			stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
-		} else if(m->m_type == sdp_media_video && m->m_port > 0) {
-			video++;
-			if(video > 1) {
-				m = m->m_next;
-				continue;
-			}
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing video candidates (stream=%d)...\n", handle->handle_id, handle->video_id);
-			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
+		if(m->m_type == sdp_media_audio) {
+			if(m->m_port > 0) {
+				audio++;
+				if(audio > 1) {
+					m = m->m_next;
+					continue;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing audio candidates (stream=%d)...\n", handle->handle_id, handle->audio_id);
+				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
 			} else {
-				gint id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
-				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+				/* Audio rejected? */
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio rejected by peer...\n", handle->handle_id);
+			}
+		} else if(m->m_type == sdp_media_video) {
+			if(m->m_port > 0) {
+				video++;
+				if(video > 1) {
+					m = m->m_next;
+					continue;
+				}
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing video candidates (stream=%d)...\n", handle->handle_id, handle->video_id);
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
+				} else {
+					gint id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
+					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+				}
+			} else {
+				/* Video rejected? */
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video rejected by peer...\n", handle->handle_id);
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
 			}
 #ifdef HAVE_SCTP
 		} else if(m->m_type == sdp_media_application) {
 			/* Is this SCTP for DataChannels? */
-			if(m->m_proto_name != NULL && !strcasecmp(m->m_proto_name, "DTLS/SCTP") && m->m_port > 0) {
-				/* Yep */
-				data++;
-				if(data > 1) {
-					m = m->m_next;
-					continue;
+			if(m->m_proto_name != NULL && !strcasecmp(m->m_proto_name, "DTLS/SCTP")) {
+				if(m->m_port > 0) {
+					/* Yep */
+					data++;
+					if(data > 1) {
+						m = m->m_next;
+						continue;
+					}
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, handle->video_id);
+					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
+						stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
+					} else {
+						gint id = handle->audio_id > 0 ? handle->audio_id : (handle->video_id > 0 ? handle->video_id : handle->data_id);
+						stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+					}
+					if(stream == NULL) {
+						JANUS_LOG(LOG_WARN, "No valid stream for data??\n");
+						continue;
+					}
 				}
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsing SCTP candidates (stream=%d)...\n", handle->handle_id, handle->video_id);
-				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
-					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
-				} else {
-					gint id = handle->audio_id > 0 ? handle->audio_id : (handle->video_id > 0 ? handle->video_id : handle->data_id);
-					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
-				}
-				if(stream == NULL) {
-					JANUS_LOG(LOG_WARN, "No valid stream for data??\n");
-					continue;
-				}
+			} else {
+				/* Data channels rejected? */
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data channels rejected by peer...\n", handle->handle_id);
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS);
 			}
 #endif
 		} else {

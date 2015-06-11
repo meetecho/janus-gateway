@@ -188,6 +188,11 @@ typedef struct rtcp_fb
  * @param[in] len The message data length in bytes
  * @returns The sender SSRC, or 0 in case of error */
 guint32 janus_rtcp_get_sender_ssrc(char *packet, int len);
+/*! \brief Method to quickly retrieve the received SSRC (needed for demuxing RTCP in BUNDLE)
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @returns The receiver SSRC, or 0 in case of error */
+guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len);
 
 /*! \brief Method to parse/validate an RTCP message
  * @param[in] packet The message data
