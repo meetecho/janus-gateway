@@ -2291,6 +2291,16 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 		
 		if(IN_MULTICAST(ntohl(mcast))) {
+#ifdef IP_MULTICAST_ALL			
+			int mc_all = 0;
+			if ((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
+				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed\n", mountpointname, listenername);
+				close(fd);
+				return -1;
+			}			
+#else			
+#warning IP_MULTICAST_ALL not defined
+#endif			
 			struct ip_mreq mreq;
 			mreq.imr_multiaddr.s_addr = mcast;
 			if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
@@ -2633,6 +2643,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(curl, CURLOPT_URL, url);	
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); 
+	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0L); 	 
 	/* Send an RTSP DESCRIBE */
 	janus_streaming_buffer data;
 	data.buffer = malloc(1);
@@ -2768,7 +2780,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		g_free(sourcename);
 		janus_streaming_rtp_source_free(live_rtsp_source);
 		g_free(live_rtsp);
-		curl_easy_cleanup(curl);
 		return NULL;	
 	}				
 	/* Send an RTSP PLAY */
@@ -2786,7 +2797,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		g_free(sourcename);
 		janus_streaming_rtp_source_free(live_rtsp_source);
 		g_free(live_rtsp);
-		curl_easy_cleanup(curl);
 		return NULL;
 	}		
 	JANUS_LOG(LOG_VERB, "PLAY answer:%s\n",data.buffer);	
