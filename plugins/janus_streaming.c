@@ -2302,6 +2302,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 #warning IP_MULTICAST_ALL not defined
 #endif			
 			struct ip_mreq mreq;
+			memset(&mreq, 0, sizeof(mreq));
 			mreq.imr_multiaddr.s_addr = mcast;
 			if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, listenername);
