@@ -2298,8 +2298,6 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 				close(fd);
 				return -1;
 			}			
-#else			
-#warning IP_MULTICAST_ALL not defined
 #endif			
 			struct ip_mreq mreq;
 			memset(&mreq, 0, sizeof(mreq));
@@ -2334,6 +2332,12 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	}
 #ifdef HAVE_LIBCURL
 	if(source->curl) {
+		// Send RTSP TEARDOWN
+		curl_easy_setopt(source->curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_TEARDOWN);		
+		int res = curl_easy_perform(source->curl);
+		if(res != CURLE_OK) {
+			JANUS_LOG(LOG_ERR, "Couldn't send TEARDOWN request: %s\n", curl_easy_strerror(res));
+		}			
 		curl_easy_cleanup(source->curl);
 	}
 #endif
@@ -2580,7 +2584,8 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 	return realsize;
 }
 
-static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, const char* media, int* pt, int* port, char* rtpmap, char* fmtp, char* control) {
+static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, const char* media, int* pt, char* transport, char* rtpmap, char* fmtp, char* control) {
+	int port=-1;
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
 	char *m=strstr(buffer, pattern);
@@ -2588,7 +2593,7 @@ static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, 
 		JANUS_LOG(LOG_VERB, "[%s] no media %s...\n", name, media);
 		return -1;
 	}
-	sscanf(m, "m=%*s %d %*s %d", port, pt);
+	sscanf(m, "m=%*s %d %*s %d", &port, pt);
 	char *s=strstr(m, "a=control:");
 	if(s == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] no control for %s...\n", name, media);
@@ -2604,26 +2609,31 @@ static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, 
 		sscanf(f, "a=fmtp:%*d %s", fmtp);
 	}	
 	char *c=strstr(m, "c=IN IP4");
-	char ip[255];
+	char ip[256];
 	in_addr_t mcast = INADDR_ANY;
 	if(c != NULL) {
 		if (sscanf(c, "c=IN IP4 %[^/]", ip) != 0) {
 			mcast = inet_addr(ip);
 		}
 	}	
-	int fd = janus_streaming_create_fd(*port, mcast, media, media, name);
+	int fd = janus_streaming_create_fd(port, mcast, media, media, name);
 	if(fd < 0) {
 		return -1;
 	}
 	struct sockaddr_in address;	
 	socklen_t len = sizeof(address);
 	if(getsockname(fd, (struct sockaddr *)&address, &len) < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (%d)...\n", name, media, *port);
+		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (%d)...\n", name, media, port);
 		close(fd);
 		return -1;
 	}
-	*port=ntohs(address.sin_port);
-	
+	port=ntohs(address.sin_port);
+	if(IN_MULTICAST(ntohl(mcast))) {
+		sprintf(transport, "RTP/AVP;multicast;client_port=%d-%d", port, port+1);	
+	} else {
+		sprintf(transport, "RTP/AVP;unicast;client_port=%d-%d", port, port+1);	
+	}
+
 	return fd;
 }	
 
@@ -2665,13 +2675,12 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	JANUS_LOG(LOG_VERB, "DESCRIBE answer:%s\n",data.buffer);	
 	/* Parse the SDP we just got to figure out the negotiated media */
 	int vpt = -1;
-	int vport = -1;
 	char vrtpmap[2048];
 	char vfmtp[2048];
 	char vcontrol[2048];
 	char uri[1024];
 	char transport[1024];
-	int video_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "video", &vpt, &vport, vrtpmap, vfmtp, vcontrol);
+	int video_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "video", &vpt, transport, vrtpmap, vfmtp, vcontrol);
 	if(video_fd >= 0) {
 		/* Send an RTSP SETUP for video */
 		free(data.buffer);
@@ -2679,7 +2688,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		data.size = 0;		
 		sprintf(uri, "%s/%s", url, vcontrol);
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
-		sprintf(transport, "RTP/AVP;unicast;client_port=%d-%d", vport, vport+1);	
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
@@ -2691,11 +2699,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_VERB, "SETUP answer:%s\n",data.buffer);
 	}
 	int apt = -1;
-	int aport = -1;
 	char artpmap[2048];
 	char afmtp[2048];
 	char acontrol[2048];
-	int audio_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "audio", &apt, &aport, artpmap, afmtp, acontrol);
+	int audio_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "audio", &apt, transport, artpmap, afmtp, acontrol);
 	if(audio_fd >= 0) {
 		/* Send an RTSP SETUP for audio */
 		free(data.buffer);
@@ -2703,7 +2710,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		data.size = 0;		
 		sprintf(uri, "%s/%s", url, acontrol);
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
-		sprintf(transport, "RTP/AVP;unicast;client_port=%d-%d", aport, aport+1);	
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
@@ -2777,10 +2783,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	g_thread_try_new(live_rtsp->name, &janus_streaming_relay_thread, live_rtsp, &error);	
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
-		g_free(description);
-		g_free(sourcename);
-		janus_streaming_rtp_source_free(live_rtsp_source);
-		g_free(live_rtsp);
+		janus_streaming_mountpoint_free(live_rtsp);
 		return NULL;	
 	}				
 	/* Send an RTSP PLAY */
@@ -2794,10 +2797,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	res = curl_easy_perform(curl);
 	if(res != CURLE_OK) {
 		JANUS_LOG(LOG_ERR, "Couldn't send PLAY request: %s\n", curl_easy_strerror(res));
-		g_free(description);
-		g_free(sourcename);
-		janus_streaming_rtp_source_free(live_rtsp_source);
-		g_free(live_rtsp);
+		janus_streaming_mountpoint_free(live_rtsp);
 		return NULL;
 	}		
 	JANUS_LOG(LOG_VERB, "PLAY answer:%s\n",data.buffer);	
