@@ -2651,7 +2651,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_ERR, "Can't init CURL\n");
 		return NULL;
 	}
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	if (log_level > LOG_INFO)
+	{
+		curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	}
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(curl, CURLOPT_URL, url);	
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); 
@@ -2672,6 +2675,17 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		curl_easy_cleanup(curl);
 		return NULL;
 	}		
+	long code = 0;
+	res = curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &code);
+	if(res != CURLE_OK) {
+		JANUS_LOG(LOG_ERR, "Couldn't get DESCRIBE answer: %s\n", curl_easy_strerror(res));
+		curl_easy_cleanup(curl);
+		return NULL;
+	} else if(code != 200) {
+		JANUS_LOG(LOG_ERR, "Couldn't get DESCRIBE code: %ld\n", code);
+		curl_easy_cleanup(curl);
+		return NULL;
+	} 			
 	JANUS_LOG(LOG_VERB, "DESCRIBE answer:%s\n",data.buffer);	
 	/* Parse the SDP we just got to figure out the negotiated media */
 	int vpt = -1;
