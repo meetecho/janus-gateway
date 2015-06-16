@@ -2374,7 +2374,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				1,
 				1,
 				audiobridge->sampling_rate,
-				audiobridge->sampling_rate,
+				audiobridge->sampling_rate * 2,
 				2,
 				16,
 				{'d', 'a', 't', 'a'},
