@@ -2886,6 +2886,12 @@ static int janus_wss_callback_http(struct libwebsocket_context *this,
 			libwebsockets_return_http_status(this, wsi, 403, NULL);
 			/* Close and free connection */
 			return 1;
+		case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION:
+			if (!in) {
+				JANUS_LOG(LOG_VERB, "Rejecting incoming HTTP request on WebSockets endpoint: no sub-protocol specified\n");
+				return 1;
+			}
+			break;
 		default:
 			break;
 	}
