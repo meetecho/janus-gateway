@@ -711,6 +711,13 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
 		}
 
+		if(!audio && !video && !bitrate && !msg->sdp) {
+			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, jsep) found\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, jsep) found");
+			goto error;
+		}
+
 		json_decref(root);
 		/* Prepare JSON event */
 		json_t *event = json_object();

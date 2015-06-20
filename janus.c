@@ -1132,6 +1132,16 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			janus_mutex_unlock(&old_wss_mutex);
 		}
 #endif
+#ifdef HAVE_RABBITMQ
+		if(source->type == JANUS_SOURCE_RABBITMQ) {
+			/* Remove the session from the list of sessions created by this RabbitMQ client */
+			janus_rabbitmq_client *client = (janus_rabbitmq_client *)source->source;
+			janus_mutex_lock(&client->mutex);
+			if(client->sessions)
+				g_hash_table_remove(client->sessions, GUINT_TO_POINTER(session_id));
+			janus_mutex_unlock(&client->mutex);
+		}
+#endif
 		/* Schedule the session for deletion */
 		session->destroy = 1;
 		janus_mutex_lock(&sessions_mutex);
@@ -2886,6 +2896,12 @@ static int janus_wss_callback_http(struct libwebsocket_context *this,
 			libwebsockets_return_http_status(this, wsi, 403, NULL);
 			/* Close and free connection */
 			return 1;
+		case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION:
+			if (!in) {
+				JANUS_LOG(LOG_VERB, "Rejecting incoming HTTP request on WebSockets endpoint: no sub-protocol specified\n");
+				return 1;
+			}
+			break;
 		default:
 			break;
 	}
@@ -3280,7 +3296,8 @@ void *janus_rmq_out_thread(void *data) {
 					}
 				}
 				if(session->timeout) {
-					/* A session timed out, anything we should do? */
+					/* A session timed out, remove it from the list of sessions we manage */
+					g_hash_table_remove(rmq_client->sessions, GUINT_TO_POINTER(session->session_id));
 					continue;
 				}
 			}
