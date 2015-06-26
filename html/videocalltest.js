@@ -337,8 +337,7 @@ $(document).ready(function() {
 										videocall.send({"message": { "request": "set", "bitrate": bitrate }});
 										return false;
 									});
-									if(!navigator.mozGetUserMedia) {
-										// Only Chrome supports the way we interrogate getStats for the bitrate right now
+									if(webrtcDetectedBrowser == "chrome" || webrtcDetectedBrowser == "firefox") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported

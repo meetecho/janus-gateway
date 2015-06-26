@@ -936,7 +936,7 @@ function Janus(gatewayCallbacks) {
 		Janus.log(pc_constraints);
 		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
 		Janus.log(config.pc);
-		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
+		if(config.pc.getStats) {	// FIXME
 			config.volume.value = 0;
 			config.bitrate.value = "0 kbits/sec";
 		}
@@ -1449,13 +1449,15 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
 		// Start getting the bitrate, if getStats is supported
-		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
+		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {
+			// Do it the Chrome way
 			if(config.remoteStream === null || config.remoteStream === undefined) {
 				Janus.log("Remote stream unavailable");
 				return "Remote stream unavailable";
 			}
 			// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
 			if(config.bitrate.timer === null || config.bitrate.timer === undefined) {
+				Janus.log("Starting bitrate timer (Chrome)");
 				config.bitrate.timer = setInterval(function() {
 					config.pc.getStats(function(stats) {
 						var results = stats.result();
@@ -1479,6 +1481,51 @@ function Janus(gatewayCallbacks) {
 							}
 						}
 					});
+				}, 1000);
+				return "0 kbits/sec";	// We don't have a bitrate value yet
+			}
+			return config.bitrate.value;
+		} else if(config.pc.getStats && webrtcDetectedBrowser == "firefox") {
+			// Do it the Firefox way
+			if(config.remoteStream === null || config.remoteStream === undefined
+					|| config.remoteStream.stream === null || config.remoteStream.stream === undefined) {
+				Janus.log("Remote stream unavailable");
+				return "Remote stream unavailable";
+			}
+			var videoTracks = config.remoteStream.stream.getVideoTracks();
+			if(videoTracks === null || videoTracks === undefined || videoTracks.length < 1) {
+				Janus.log("No video track");
+				return "No video track";
+			}
+			// https://github.com/muaz-khan/getStats/blob/master/getStats.js
+			if(config.bitrate.timer === null || config.bitrate.timer === undefined) {
+				Janus.log("Starting bitrate timer (Firefox)");
+				config.bitrate.timer = setInterval(function() {
+					// We need a helper callback
+					var cb = function(res) {
+						if(res === null || res === undefined ||
+								res.inbound_rtp_video_1 == null || res.inbound_rtp_video_1 == null) {
+							config.bitrate.value = "Missing inbound_rtp_video_1";
+							return;
+						}
+						config.bitrate.bsnow = res.inbound_rtp_video_1.bytesReceived;
+						config.bitrate.tsnow = res.inbound_rtp_video_1.timestamp;
+						if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
+							// Skip this round
+							config.bitrate.bsbefore = config.bitrate.bsnow;
+							config.bitrate.tsbefore = config.bitrate.tsnow;
+						} else {
+							// Calculate bitrate
+							var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / (config.bitrate.tsnow - config.bitrate.tsbefore));
+							config.bitrate.value = bitRate + ' kbits/sec';
+							config.bitrate.bsbefore = config.bitrate.bsnow;
+							config.bitrate.tsbefore = config.bitrate.tsnow;
+						}
+					};
+					// Actually get the stats
+					config.pc.getStats(videoTracks[0], function(stats) {
+						cb(stats);
+					}, cb);
 				}, 1000);
 				return "0 kbits/sec";	// We don't have a bitrate value yet
 			}
