@@ -533,6 +533,7 @@ function Janus(gatewayCallbacks) {
 						webrtcStuff : {
 							started : false,
 							myStream : null,
+							remoteStream : null,
 							mySdp : null,
 							pc : null,
 							dataChannel : null,
@@ -540,6 +541,10 @@ function Janus(gatewayCallbacks) {
 							trickle : true,
 							iceDone : false,
 							sdpSent : false,
+							volume : {
+								value : null,
+								timer : null
+							},
 							bitrate : {
 								value : null,
 								bsnow : null,
@@ -551,6 +556,7 @@ function Janus(gatewayCallbacks) {
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
+						getVolume : function() { return getVolume(handleId); },
 						getBitrate : function() { return getBitrate(handleId); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
@@ -600,6 +606,7 @@ function Janus(gatewayCallbacks) {
 						webrtcStuff : {
 							started : false,
 							myStream : null,
+							remoteStream : null,
 							mySdp : null,
 							pc : null,
 							dataChannel : null,
@@ -607,6 +614,10 @@ function Janus(gatewayCallbacks) {
 							trickle : true,
 							iceDone : false,
 							sdpSent : false,
+							volume : {
+								value : null,
+								timer : null
+							},
 							bitrate : {
 								value : null,
 								bsnow : null,
@@ -618,6 +629,7 @@ function Janus(gatewayCallbacks) {
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
+						getVolume : function() { return getVolume(handleId); },
 						getBitrate : function() { return getBitrate(handleId); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
@@ -924,8 +936,10 @@ function Janus(gatewayCallbacks) {
 		Janus.log(pc_constraints);
 		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
 		Janus.log(config.pc);
-		if(config.pc.getStats && webrtcDetectedBrowser == "chrome")	// FIXME
-			config.bitrate.value = "0 kbps";
+		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
+			config.volume.value = 0;
+			config.bitrate.value = "0 kbits/sec";
+		}
 		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")"); 
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null) {
@@ -961,36 +975,7 @@ function Janus(gatewayCallbacks) {
 		config.pc.onaddstream = function(remoteStream) {
 			Janus.log("Handling Remote Stream:");
 			Janus.log(remoteStream);
-			// Start getting the bitrate, if getStats is supported
-			if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
-				// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
-				Janus.log("Starting bitrate monitor");
-				config.bitrate.timer = setInterval(function() {
-					//~ config.pc.getStats(config.pc.getRemoteStreams()[0].getVideoTracks()[0], function(stats) {
-					config.pc.getStats(function(stats) {
-						var results = stats.result();
-						for(var i=0; i<results.length; i++) {
-							var res = results[i];
-							if(res.type == 'ssrc' && res.stat('googFrameHeightReceived')) {
-								config.bitrate.bsnow = res.stat('bytesReceived');
-								config.bitrate.tsnow = res.timestamp;
-								if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
-									// Skip this round
-									config.bitrate.bsbefore = config.bitrate.bsnow;
-									config.bitrate.tsbefore = config.bitrate.tsnow;
-								} else {
-									// Calculate bitrate
-									var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / (config.bitrate.tsnow - config.bitrate.tsbefore));
-									config.bitrate.value = bitRate + ' kbits/sec';
-									//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
-									config.bitrate.bsbefore = config.bitrate.bsnow;
-									config.bitrate.tsbefore = config.bitrate.tsnow;
-								}
-							}
-						}
-					});
-				}, 1000);
-			}
+			config.remoteStream = remoteStream;
 			pluginHandle.onremotestream(remoteStream.stream);
 		};
 		// Any data channel to create?
@@ -1428,15 +1413,80 @@ function Janus(gatewayCallbacks) {
 		callbacks.success(config.mySdp);
 	}
 
+	function getVolume(handleId) {
+		var pluginHandle = pluginHandles[handleId];
+		var config = pluginHandle.webrtcStuff;
+		// Start getting the volume, if getStats is supported
+		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
+			if(config.remoteStream === null || config.remoteStream === undefined) {
+				Janus.log("Remote stream unavailable");
+				return 0;
+			}
+			// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
+			if(config.volume.timer === null || config.volume.timer === undefined) {
+				Janus.log("Starting volume monitor");
+				config.volume.timer = setInterval(function() {
+					config.pc.getStats(function(stats) {
+						var results = stats.result();
+						for(var i=0; i<results.length; i++) {
+							var res = results[i];
+							if(res.type == 'ssrc' && res.stat('audioOutputLevel')) {
+								config.volume.value = res.stat('audioOutputLevel');
+							}
+						}
+					});
+				}, 200);
+				return 0;	// We don't have a volume to return yet
+			}
+			return config.volume.value;
+		} else {
+			Janus.log("Getting the remote volume unsupported by browser");
+			return 0;
+		}
+	}
+	
 	function getBitrate(handleId) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
-		//~ Janus.log(pluginHandle);
-		//~ Janus.log(config);
-		//~ Janus.log(config.bitrate);
-		if(config.bitrate.value === undefined || config.bitrate.value === null)
+		// Start getting the bitrate, if getStats is supported
+		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
+			if(config.remoteStream === null || config.remoteStream === undefined) {
+				Janus.log("Remote stream unavailable");
+				return "Remote stream unavailable";
+			}
+			// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
+			if(config.bitrate.timer === null || config.bitrate.timer === undefined) {
+				config.bitrate.timer = setInterval(function() {
+					config.pc.getStats(function(stats) {
+						var results = stats.result();
+						for(var i=0; i<results.length; i++) {
+							var res = results[i];
+							if(res.type == 'ssrc' && res.stat('googFrameHeightReceived')) {
+								config.bitrate.bsnow = res.stat('bytesReceived');
+								config.bitrate.tsnow = res.timestamp;
+								if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
+									// Skip this round
+									config.bitrate.bsbefore = config.bitrate.bsnow;
+									config.bitrate.tsbefore = config.bitrate.tsnow;
+								} else {
+									// Calculate bitrate
+									var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / (config.bitrate.tsnow - config.bitrate.tsbefore));
+									config.bitrate.value = bitRate + ' kbits/sec';
+									//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
+									config.bitrate.bsbefore = config.bitrate.bsnow;
+									config.bitrate.tsbefore = config.bitrate.tsnow;
+								}
+							}
+						}
+					});
+				}, 1000);
+				return "0 kbits/sec";	// We don't have a bitrate value yet
+			}
+			return config.bitrate.value;
+		} else {
+			Janus.log("Getting the video bitrate unsupported by browser");
 			return "Feature unsupported by browser";
-		return config.bitrate.value;
+		}
 	}
 	
 	function webrtcError(error) {
@@ -1449,6 +1499,10 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
 		// Cleanup
+		config.remoteStream = null;
+		if(config.volume.timer)
+			clearInterval(config.volume.timer);
+		config.volume.value = null;
 		if(config.bitrate.timer)
 			clearInterval(config.bitrate.timer);
 		config.bitrate.timer = null;
