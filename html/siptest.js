@@ -160,6 +160,9 @@ $(document).ready(function() {
 										} else if(event === 'calling') {
 											console.log("Waiting for the peer to answer...");
 											// TODO Any ringtone?
+											$('#call').removeAttr('disabled').html('Hangup')
+												  .removeClass("btn-success").addClass("btn-danger")
+												  .unbind('click').click(doHangup);
 										} else if(event === 'incomingcall') {
 											console.log("Incoming call from " + result["username"] + "!");
 											var doAudio = true, doVideo = true;
@@ -224,9 +227,6 @@ $(document).ready(function() {
 											if(jsep !== null && jsep !== undefined) {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
-											$('#call').removeAttr('disabled').html('Hangup')
-												.removeClass("btn-success").addClass("btn-danger")
-												.unbind('click').click(doHangup);
 										} else if(event === 'hangup') {
 											if(incoming != null) {
 												incoming.modal('hide');
