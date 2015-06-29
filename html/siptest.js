@@ -232,8 +232,8 @@ $(document).ready(function() {
 												incoming.modal('hide');
 												incoming = null;
 											}
-											console.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
-											bootbox.alert(result["reason"]);
+											console.log("Call hung up (" + result["code"] + " " + result["reason"] + ")!");
+											bootbox.alert(result["code"] + " " + result["reason"]);
 											// Reset status
 											sipcall.hangup();
 											$('#dovideo').removeAttr('disabled').val('');
