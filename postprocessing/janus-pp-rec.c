@@ -62,6 +62,15 @@ void janus_pp_handle_signal(int signum) {
 /* Main Code */
 int main(int argc, char *argv[])
 {
+	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
+	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_DEBUG"));
+		if(val > 0 && val < LOG_MAX)
+			log_level = val;
+		JANUS_LOG(LOG_INFO, "Logging level: %d\n", log_level);
+	}
+	
+	/* Evaluate arguments */
 	if(argc != 3) {
 		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|webm]\n", argv[0]);
 		return -1;
@@ -119,6 +128,7 @@ int main(int argc, char *argv[])
 			continue;
 		} else if(len < 12) {
 			/* Not RTP, skip */
+			JANUS_LOG(LOG_VERB, "Skipping packet (not RTP?)\n");
 			offset += len;
 			continue;
 		}
@@ -278,7 +288,7 @@ int main(int argc, char *argv[])
 	count = 0;
 	while(tmp) {
 		count++;
-		JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64"\n", tmp->offset, tmp->len, tmp->seq, tmp->ts);
+		JANUS_LOG(LOG_VERB, "[%10lu][%4d] seq=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->seq, tmp->ts, (tmp->ts-list->ts)/90000);
 		tmp = tmp->next;
 	}
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" frame packets\n", count);
