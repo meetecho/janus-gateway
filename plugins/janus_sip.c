@@ -1226,12 +1226,21 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
 			}
-			nua_respond(session->stack->s_nh_i, 603, sip_status_phrase(603), TAG_END());
+			int response_code = 486;
+			json_t *code_json = json_object_get(root, "code");
+			if (code_json && json_is_integer(code_json))
+				response_code = json_integer_value(code_json);
+			if (response_code <= 399) {
+				JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline call\n");
+				response_code = 486;
+			}
+			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code), TAG_END());
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
 			result = json_object();
-			json_object_set_new(result, "event", json_string("ack"));
+			json_object_set_new(result, "event", json_string("declining"));
+			json_object_set_new(result, "code", json_integer(response_code));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
 			if(session->status < janus_sip_status_inviting || session->status > janus_sip_status_incall) {
