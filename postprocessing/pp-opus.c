@@ -72,7 +72,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint8_t *buffer = calloc(1500, sizeof(uint8_t));
 	while(*working && tmp != NULL) {
 		if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {
-			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time~%"SCNu64"s)\n",
+			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000); 
 		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);

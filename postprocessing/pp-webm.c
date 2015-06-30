@@ -121,7 +121,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					max_ts_diff = diff;
 			}
 			if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {
-				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time~%"SCNu64"s)\n",
+				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
 			}
 			/* http://tools.ietf.org/html/draft-ietf-payload-vp8-04 */

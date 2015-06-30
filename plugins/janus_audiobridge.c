@@ -2449,7 +2449,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	opus_int16 outBuffer[960], *curBuffer = NULL;
 	memset(buffer, 0, 960*4);
 	memset(sumBuffer, 0, 960*4);
-	memset(outBuffer, 0, 640);
+	memset(outBuffer, 0, 960*2);
 
 	/* Timer */
 	struct timeval now, before;
