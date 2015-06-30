@@ -1226,12 +1226,21 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
 			}
-			nua_respond(session->stack->s_nh_i, 603, sip_status_phrase(603), TAG_END());
+			int response_code = 486;
+			json_t *code_json = json_object_get(root, "code");
+			if (code_json && json_is_integer(code_json))
+				response_code = json_integer_value(code_json);
+			if (response_code <= 399) {
+				JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline call\n");
+				response_code = 486;
+			}
+			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code), TAG_END());
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
 			result = json_object();
-			json_object_set_new(result, "event", json_string("ack"));
+			json_object_set_new(result, "event", json_string("declining"));
+			json_object_set_new(result, "code", json_integer(response_code));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
 			if(session->status < janus_sip_status_inviting || session->status > janus_sip_status_incall) {
@@ -1327,6 +1336,33 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_i_state:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			tagi_t const *ti = tl_find(tags, nutag_callstate);
+			enum nua_callstate callstate = ti ? ti->t_value : -1;
+			/* There are several call states, but we only care about the terminated state
+			 * in order to send the 'hangup' event.
+			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
+			 */
+			if (callstate == nua_callstate_terminated) {
+				session->status = janus_sip_status_registered;	/* FIXME What about a 'closing' state? */
+				json_t *call = json_object();
+				json_object_set_new(call, "sip", json_string("event"));
+				json_t *calling = json_object();
+				json_object_set_new(calling, "event", json_string("hangup"));
+				json_object_set_new(calling, "code", json_integer(status));
+				json_object_set_new(calling, "reason", json_string(phrase ? phrase : "???"));
+				json_object_set_new(call, "result", calling);
+				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(call);
+				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+				g_free(call_text);
+				/* Get rid of any PeerConnection that may have been set up */
+				if(session->transaction)
+					g_free(session->transaction);
+				session->transaction = NULL;
+				gateway->close_pc(session->handle);
+			}
 			break;
 		case nua_i_terminated:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
@@ -1340,54 +1376,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_i_bye: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* Call ended, notify the browser */
-			session->status = janus_sip_status_registered;	/* FIXME What about a 'closing' state? */
-			char reason[100];
-			memset(reason, 0, 100);
-			g_snprintf(reason, 100, "%d %s", status, phrase);
-			json_t *call = json_object();
-			json_object_set_new(call, "sip", json_string("event"));
-			json_t *calling = json_object();
-			json_object_set_new(calling, "event", json_string("hangup"));
-			json_object_set_new(calling, "username", json_string(session->callee));
-			json_object_set_new(calling, "reason", json_string(reason));
-			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(call);
-			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(call_text);
-			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
-			if(session->transaction)
-				g_free(session->transaction);
-			session->transaction = NULL;
-			gateway->close_pc(session->handle);
 			break;
 		}
 		case nua_i_cancel: {
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* FIXME Check state? */
-			session->status = janus_sip_status_registered;	/* FIXME What about a 'closing' state? */
-			/* Notify the browser */
-			json_t *call = json_object();
-			json_object_set_new(call, "sip", json_string("event"));
-			json_t *calling = json_object();
-			json_object_set_new(calling, "event", json_string("hangup"));
-			json_object_set_new(calling, "username", json_string(session->callee));
-			json_object_set_new(calling, "reason", json_string("Remote cancel"));
-			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(call);
-			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(call_text);
-			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
-			if(session->transaction)
-				g_free(session->transaction);
-			session->transaction = NULL;
-			gateway->close_pc(session->handle);
 			break;
 		}
 		case nua_i_invite: {
@@ -1460,29 +1452,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 	/* SIP responses */
 		case nua_r_bye:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
-			/* Call ended, notify the browser */
-			session->status = janus_sip_status_registered;
-			char reason[100];
-			memset(reason, 0, 100);
-			g_snprintf(reason, 100, "%d %s", status, phrase);
-			json_t *call = json_object();
-			json_object_set_new(call, "sip", json_string("event"));
-			json_t *calling = json_object();
-			json_object_set_new(calling, "event", json_string("hangup"));
-			json_object_set_new(calling, "username", json_string(session->callee));
-			json_object_set_new(calling, "reason", json_string("Bye"));
-			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(call);
-			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(call_text);
-			/* Get rid of any PeerConnection that may have been set up in the meanwhile */
-			if(session->transaction)
-				g_free(session->transaction);
-			session->transaction = NULL;
-			gateway->close_pc(session->handle);
 			break;
 		case nua_r_cancel:
 			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
@@ -1525,29 +1494,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					TAG_END());
 				break;
 			} else if(status >= 400) {
-				/* Something went wrong, notify the browser */
-				session->status = janus_sip_status_registered;
-				char reason[100];
-				memset(reason, 0, 100);
-				g_snprintf(reason, 100, "%d %s", status, phrase);
-				json_t *call = json_object();
-				json_object_set_new(call, "sip", json_string("event"));
-				json_t *calling = json_object();
-				json_object_set_new(calling, "event", json_string("hangup"));
-				json_object_set_new(calling, "username", json_string(session->callee));
-				json_object_set_new(calling, "reason", json_string(reason));
-				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-				json_decref(call);
-				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(call_text);
-				/* Get rid of any PeerConnection that may have been set up in the meanwhile */
-				if(session->transaction)
-					g_free(session->transaction);
-				session->transaction = NULL;
-				gateway->close_pc(session->handle);
 				break;
 			}
 			ssip_t *ssip = session->stack;
