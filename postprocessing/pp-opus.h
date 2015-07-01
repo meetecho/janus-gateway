@@ -2,8 +2,9 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    Post-processing to generate .opus files (headers)
- * \details  Implementation of the post-processing code (based on libogg)
- * needed to generate .opus files out of Opus RTP frames.
+ * \details  Implementation of the post-processing code (based on libogg
+ * or, optionally, FFmpeg/libav) needed to generate .opus files out of
+ * Opus RTP frames.
  * 
  * \ingroup postprocessing
  * \ref postprocessing
