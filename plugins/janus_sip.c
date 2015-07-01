@@ -1461,30 +1461,23 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(status < 200) {
 				/* Not ready yet (FIXME May this be pranswer?? we don't handle it yet...) */
 				break;
-			} else if(status == 401) {
- 				/* Get scheme/realm from 401 error */
-				sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
-				char const* scheme = www_auth->au_scheme;
-				const char* realm = msg_params_find(www_auth->au_params, "realm=");
+			} else if(status == 401 || status == 407) {
 				char auth[100];
-				memset(auth, 0, 100);
-				g_snprintf(auth, 100, "%s:%s:%s:%s", scheme, realm,
-					session->account.username ? session->account.username : "null",
-					session->account.secret ? session->account.secret : "null");
-				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
-				/* Authenticate */
-				nua_authenticate(nh,
-					NUTAG_AUTH(auth),
-					TAG_END());
-				break;
-			} else if(status == 407) {
- 				/* Get scheme/realm from 407 error, proxy-auth */
-				sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
-				char const* scheme = proxy_auth->au_scheme;
-				const char* realm = msg_params_find(proxy_auth->au_params, "realm=");
-				char auth[100];
-				memset(auth, 0, 100);
-				g_snprintf(auth, 100, "%s:%s:%s:%s", scheme, realm,
+				const char* scheme;
+				const char* realm;
+				if(status == 401) {
+ 					/* Get scheme/realm from 401 error */
+					sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
+					scheme = www_auth->au_scheme;
+					realm = msg_params_find(www_auth->au_params, "realm=");
+				} else {
+ 					/* Get scheme/realm from 407 error, proxy-auth */
+					sip_proxy_authenticate_t const* proxy_auth = sip->sip_proxy_authenticate;
+					scheme = proxy_auth->au_scheme;
+					realm = msg_params_find(proxy_auth->au_params, "realm=");
+				}
+				memset(auth, 0, sizeof(auth));
+				g_snprintf(auth, sizeof(auth), "%s:%s:%s:%s", scheme, realm,
 					session->account.username ? session->account.username : "null",
 					session->account.secret ? session->account.secret : "null");
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
@@ -1555,8 +1548,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				char const* scheme = www_auth->au_scheme;
 				const char* realm = msg_params_find(www_auth->au_params, "realm=");
 				char auth[100];
-				memset(auth, 0, 100);
-				g_snprintf(auth, 100, "%s:%s:%s:%s", scheme, realm, session->account.username, session->account.secret);
+				memset(auth, 0, sizeof(auth));
+				g_snprintf(auth, sizeof(auth), "%s:%s:%s:%s", scheme, realm, session->account.username, session->account.secret);
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
 				/* Authenticate */
 				nua_authenticate(nh,
