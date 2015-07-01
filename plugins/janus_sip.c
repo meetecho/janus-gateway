@@ -217,10 +217,17 @@ const char *janus_sip_status_string(janus_sip_status status) {
 typedef struct ssip_s ssip_t;
 typedef struct ssip_oper_s ssip_oper_t;
 
+typedef enum {
+	janus_sip_secret_type_plaintext = 1,
+	janus_sip_secret_type_hashed = 2,
+	janus_sip_secret_type_unknown
+} janus_sip_secret_type;
+
 typedef struct janus_sip_account {
 	char *identity;
 	char *username;
 	char *secret;
+	janus_sip_secret_type secret_type;
 	int sip_port;
 	char *proxy;
 } janus_sip_account;
@@ -574,6 +581,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.identity = NULL;
 	session->account.username = NULL;
 	session->account.secret = NULL;
+	session->account.secret_type = janus_sip_secret_type_unknown;
 	session->account.sip_port = 0;
 	session->account.proxy = NULL;
 	session->stack = g_malloc0(sizeof(ssip_t));
@@ -868,6 +876,7 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.secret != NULL)
 				g_free(session->account.secret);
 			session->account.secret = NULL;
+			session->account.secret_type = janus_sip_secret_type_unknown;
 			if(session->account.proxy != NULL)
 				g_free(session->account.proxy);
 			session->account.proxy = NULL;
@@ -960,20 +969,41 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
 			} else {
 				json_t *secret = json_object_get(root, "secret");
-				if(!secret) {
-					JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
+				json_t *ha1_secret = json_object_get(root, "ha1_secret");
+				if(!secret && !ha1_secret) {
+					JANUS_LOG(LOG_ERR, "Missing element (secret or ha1_secret)\n");
 					error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (secret)");
+					g_snprintf(error_cause, 512, "Missing element (secret or ha1_secret)");
 					goto error;
 				}
-				if(!json_is_string(secret)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
+				if(secret && ha1_secret) {
+					JANUS_LOG(LOG_ERR, "Conflicting elements specified (secret and ha1_secret)\n");
 					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
+					g_snprintf(error_cause, 512, "Conflicting elements specified (secret and ha1_secret)");
 					goto error;
 				}
-				const char *secret_text = json_string_value(secret);
-				session->account.secret = g_strdup(secret_text);
+				const char *secret_text;
+				if(secret) {
+					if(!json_is_string(secret)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
+						goto error;
+					}
+					secret_text = json_string_value(secret);
+					session->account.secret = g_strdup(secret_text);
+					session->account.secret_type = janus_sip_secret_type_plaintext;
+				} else {
+					if(!json_is_string(ha1_secret)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (ha1_secret should be a string)\n");
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid element (ha1_secret should be a string)");
+						goto error;
+					}
+					secret_text = json_string_value(ha1_secret);
+					session->account.secret = g_strdup(secret_text);
+					session->account.secret_type = janus_sip_secret_type_hashed;
+				}
 				/* Got the values, try registering now */
 				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
 					username_text, secret_text, username_uri.url->url_host, proxy_text != NULL ? proxy_text : "(null)");
@@ -1462,7 +1492,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Not ready yet (FIXME May this be pranswer?? we don't handle it yet...) */
 				break;
 			} else if(status == 401 || status == 407) {
-				char auth[100];
+				char auth[256];
 				const char* scheme;
 				const char* realm;
 				if(status == 401) {
@@ -1477,8 +1507,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
 				}
 				memset(auth, 0, sizeof(auth));
-				g_snprintf(auth, sizeof(auth), "%s:%s:%s:%s", scheme, realm,
+				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					scheme,
+					realm,
 					session->account.username ? session->account.username : "null",
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					session->account.secret ? session->account.secret : "null");
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
 				/* Authenticate */
@@ -1547,9 +1581,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
 				char const* scheme = www_auth->au_scheme;
 				const char* realm = msg_params_find(www_auth->au_params, "realm=");
-				char auth[100];
+				char auth[256];
 				memset(auth, 0, sizeof(auth));
-				g_snprintf(auth, sizeof(auth), "%s:%s:%s:%s", scheme, realm, session->account.username, session->account.secret);
+				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					scheme,
+					realm,
+					session->account.username,
+					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
+					session->account.secret);
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
 				/* Authenticate */
 				nua_authenticate(nh,
