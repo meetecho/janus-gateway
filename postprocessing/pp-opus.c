@@ -119,9 +119,13 @@ int janus_pp_opus_create(char *destination) {
 		audio_stream->codec->codec_type = AVMEDIA_TYPE_AUDIO;
 		audio_stream->codec->sample_fmt = AV_SAMPLE_FMT_S16;
 		audio_stream->codec->sample_rate = 48000;
+		audio_stream->codec->channels = 1;
+		audio_stream->codec->delay = 0;
 		audio_stream->time_base = (AVRational){ 1, audio_stream->codec->sample_rate };
-		if (fctx->flags & AVFMT_GLOBALHEADER)
-			audio_stream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+		audio_stream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+		uint8_t extradata[19];
+		audio_stream->codec->extradata = (uint8_t *)&extradata;
+		audio_stream->codec->extradata_size = 19;
 		if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
 			JANUS_LOG(LOG_ERR, "Error opening file for output\n");
 			return -1;
