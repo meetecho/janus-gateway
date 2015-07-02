@@ -904,12 +904,6 @@ static void *janus_sip_handler(void *data) {
 			gboolean guest = FALSE;
 			json_t *type = json_object_get(root, "type");
 			if(type != NULL) {
-				if(!type) {
-					JANUS_LOG(LOG_ERR, "Missing element (type)\n");
-					error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (type)");
-					goto error;
-				}
 				if(!json_is_string(type)) {
 					JANUS_LOG(LOG_ERR, "Invalid element (type should be a string)\n");
 					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
