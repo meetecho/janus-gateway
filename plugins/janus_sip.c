@@ -175,6 +175,7 @@ void janus_sip_message_free(janus_sip_message *msg) {
 
 
 typedef enum {
+	janus_sip_registration_status_disabled = -2,
 	janus_sip_registration_status_failed = -1,
 	janus_sip_registration_status_unregistered = 0,
 	janus_sip_registration_status_registering,
@@ -184,6 +185,8 @@ typedef enum {
 
 static const char *janus_sip_registration_status_string(janus_sip_registration_status status) {
 	switch(status) {
+		case janus_sip_registration_status_disabled:
+			return "disabled";
 		case janus_sip_registration_status_failed:
 			return "failed";
 		case janus_sip_registration_status_unregistered:
@@ -918,6 +921,25 @@ static void *janus_sip_handler(void *data) {
 					JANUS_LOG(LOG_WARN, "Unknown type '%s', ignoring...\n", type_text);
 				}
 			}
+
+			gboolean send_register = TRUE;
+			json_t *do_register = json_object_get(root, "send_register");
+			if(do_register != NULL) {
+				if(!json_is_boolean(do_register)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (type should be boolean)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (type should be boolean)");
+					goto error;
+				}
+				if(guest) {
+					JANUS_LOG(LOG_ERR, "Conflicting elements: send_register cannot be true if guest is true\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Conflicting elements: send_register cannot be true if guest is true");
+					goto error;
+				}
+				send_register = json_is_true(do_register);
+			}
+
 			/* Parse address */
 			json_t *proxy = json_object_get(root, "proxy");
 			const char *proxy_text = NULL;
@@ -981,6 +1003,7 @@ static void *janus_sip_handler(void *data) {
 				if(!username)
 					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", g_random_int());
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
+				send_register = FALSE;
 			} else {
 				json_t *secret = json_object_get(root, "secret");
 				json_t *ha1_secret = json_object_get(root, "ha1_secret");
@@ -1055,10 +1078,12 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 			}
-			if(session->stack->s_nh_r != NULL)
+			if(session->stack->s_nh_r != NULL) {
 				nua_handle_destroy(session->stack->s_nh_r);
+				session->stack->s_nh_r = NULL;
+			}
 
-			if (!guest) {
+			if (send_register) {
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -1078,10 +1103,12 @@ static void *janus_sip_handler(void *data) {
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
 			} else {
-				session->account.registration_status = janus_sip_registration_status_registered;
+				JANUS_LOG(LOG_VERB, "Not sending a SIP REGISTER: either send_register was set to false or guest mode was enabled\n");
+				session->account.registration_status = janus_sip_registration_status_disabled;
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registered"));
 				json_object_set_new(result, "username", json_string(session->account.username));
+				json_object_set_new(result, "register_sent", json_string("false"));
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
@@ -1582,6 +1609,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *calling = json_object();
 				json_object_set_new(calling, "event", json_string("registered"));
 				json_object_set_new(calling, "username", json_string(session->account.username));
+				json_object_set_new(calling, "register_sent", json_string("true"));
 				json_object_set_new(call, "result", calling);
 				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
