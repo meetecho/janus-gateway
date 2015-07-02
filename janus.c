@@ -550,6 +550,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		msg->acrh = NULL;
 		msg->acrm = NULL;
+		/* FIXME add in case of memory leak by vivi */
+		msg->contenttype = NULL;
 		msg->payload = NULL;
 		msg->len = 0;
 		msg->session_id = 0;
@@ -602,6 +604,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
+			/* FIXME add by vivi */
+			goto done;
 		}
 		if(firstround) {
 			g_strfreev(basepath);
@@ -618,6 +622,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
+			/* FIXME add by vivi */
+			goto done;
 		}
 	}
 	if(firstround)
@@ -921,7 +927,8 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
-			ret = janus_process_success(source, "application/json", g_strdup(reply_text));
+			/* FIXME modify in case of memory leak by vivi */
+			ret = janus_process_success(source, "application/json", reply_text);
 			goto jsondone;
 		}
 		if(strcasecmp(message_text, "create")) {
@@ -1320,6 +1327,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					if(janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle) < 0) {
 						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
 						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error setting ICE locally");
+						/* FIXME add by vivi */
+						g_free(jsep_type);
+						janus_sdp_free(parsed_sdp);
 						goto jsondone;
 					}
 				} else {
@@ -1327,6 +1337,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					if(!handle->agent) {
 						JANUS_LOG(LOG_ERR, "Unexpected ANSWER (did we offer?)\n");
 						ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Unexpected ANSWER (did we offer?)");
+						/* FIXME add by vivi */
+						g_free(jsep_type);
+						janus_sdp_free(parsed_sdp);
 						goto jsondone;
 					}
 				}
@@ -1498,6 +1511,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			if(result->content == NULL) {
 				/* Missing content... */
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't provide any content for this synchronous response");
+				/* FIXME add by vivi */
+				g_free(jsep_type);
+				g_free(jsep_sdp_stripped);
 				janus_plugin_result_destroy(result);
 				goto jsondone;
 			}
@@ -1506,6 +1522,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			if(!event) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: on line %d: %s)\n", handle->handle_id, error.line, error.text);
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
+				/* FIXME add by vivi */
+				g_free(jsep_type);
+				g_free(jsep_sdp_stripped);
 				janus_plugin_result_destroy(result);
 				goto jsondone;
 			}
@@ -1513,6 +1532,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: not an object)\n", handle->handle_id);
 				json_decref(event);
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
+				/* FIXME add by vivi */
+				g_free(jsep_type);
+				g_free(jsep_sdp_stripped);
 				janus_plugin_result_destroy(result);
 				goto jsondone;
 			}
@@ -1548,10 +1570,13 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_success(source, "application/json", reply_text);
 		} else {
 			/* Something went horribly wrong! */
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", result->content ? g_strdup(result->content) : "Plugin returned a severe (unknown) error");
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", result->content ? result->content : "Plugin returned a severe (unknown) error"); /* FIXME modify by vivi */
+			/* FIXME add by vivi */
+			g_free(jsep_type);
+			g_free(jsep_sdp_stripped);
 			janus_plugin_result_destroy(result);
 			goto jsondone;
-		}			
+		}
 		janus_plugin_result_destroy(result);
 	} else if(!strcasecmp(message_text, "trickle")) {
 		if(handle == NULL) {
@@ -3035,6 +3060,12 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 							int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(event->payload), LWS_WRITE_TEXT);
 							JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(event->payload));
 							g_free(buf);
+							/* FIXME add by vivi */
+							g_free(event->payload);
+							event->payload = NULL;
+							g_free(event);
+							event = NULL;
+							
 							/* Done for this round, check the next response later */
 							libwebsocket_callback_on_writable(this, wsi);
 							janus_mutex_unlock(&ws_client->mutex);
@@ -3203,11 +3234,15 @@ void *janus_rmq_in_thread(void *data) {
 		json_t *root = json_loads(payload, 0, &error);
 		if(!root) {
 			janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON, "JSON error: on line %d: %s", error.line, error.text);
+			/* FIXME add by vivi */
+			janus_request_source_destroy(source);
 			g_free(payload);
 			continue;
 		}
 		if(!json_is_object(root)) {
 			janus_process_error(source, 0, NULL, JANUS_ERROR_INVALID_JSON_OBJECT, "JSON error: not an object");
+			/* FIXME add by vivi */
+			janus_request_source_destroy(source);
 			g_free(payload);
 			json_decref(root);
 			continue;
@@ -3222,6 +3257,12 @@ void *janus_rmq_in_thread(void *data) {
 		if(tperror != NULL) {
 			/* Something went wrong... */
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to push task in thread pool...\n", tperror->code, tperror->message ? tperror->message : "??");
+			/* FIXME need to add by vivi??? */
+			json_t *transaction = json_object_get(root, "transaction");
+			const char *transaction_text = json_is_string(transaction) ? json_string_value(transaction) : NULL;
+			janus_process_error(source, 0, transaction_text, JANUS_ERROR_UNKNOWN, "Thread pool error");
+			janus_request_source_destroy(source);
+			json_decref(root);
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ in thread\n");
@@ -3293,6 +3334,11 @@ void *janus_rmq_out_thread(void *data) {
 						if(status != AMQP_STATUS_OK) {
 							JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 						}
+						/* FIXME add by vivi */
+						g_free(event->payload);
+						event->payload = NULL;
+						g_free(event);
+						event = NULL;
 					}
 				}
 				if(session->timeout) {
@@ -3490,6 +3536,8 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	}
 	if(!json_is_object(event)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: not an object)\n", ice_handle->handle_id);
+		/* FIXME add by vivi */
+		json_decref(event);
 		return JANUS_ERROR_INVALID_JSON_OBJECT;
 	}
 	/* Attach JSEP if possible? */
@@ -3500,9 +3548,13 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (handle not available anymore or negotiation stopped)\n", ice_handle->handle_id);
+				/* FIXME add by vivi */
+				json_decref(event);
 				return JANUS_ERROR_HANDLE_NOT_FOUND;
 			} else {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: problem with the SDP)\n", ice_handle->handle_id);
+				/* FIXME add by vivi */
+				json_decref(event);
 				return JANUS_ERROR_JSEP_INVALID_SDP;
 			}
 		}

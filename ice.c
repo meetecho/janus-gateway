@@ -393,6 +393,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 	rtp_range_max = rtp_max_port;
 	if(rtp_range_max < rtp_range_min) {
 		JANUS_LOG(LOG_WARN, "Invalid ICE port range: %"SCNu16" > %"SCNu16"\n", rtp_range_min, rtp_range_max);
+		/* FIXME need to add default value or return by vivi? */
 	} else if(rtp_range_min > 0 || rtp_range_max > 0) {
 #ifndef HAVE_PORTRANGE
 		JANUS_LOG(LOG_WARN, "nice_agent_set_port_range unavailable, port range disabled\n");
@@ -454,6 +455,9 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		return -1;
 	}
+	/* FIXME add by vivi */
+	if(janus_stun_server != NULL)
+		g_free(janus_stun_server);
 	janus_stun_server = g_strdup(inet_ntoa(*addr_list[0]));
 	if(janus_stun_server == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -710,6 +714,8 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	plugin->create_session(session_handle, &error);
 	if(error) {
 		/* TODO Make error struct to pass verbose information */
+		/* FIXME add by vivi */
+		free(session_handle);
 		janus_mutex_unlock(&session->mutex);
 		return error;
 	}
