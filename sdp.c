@@ -91,6 +91,8 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int 
 	janus_sdp *sdp = (janus_sdp *)calloc(1, sizeof(janus_sdp));
 	if(sdp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		/* FIXME add by vivi */
+		sdp_parser_free(parser);
 		return NULL;
 	}
 
@@ -317,14 +319,14 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 						}
 					}
 				}
-				if(!strcasecmp(a->a_name, "ssrc")) {
+				else if(!strcasecmp(a->a_name, "ssrc")) { // vivi modify
 					int res = janus_sdp_parse_ssrc(stream, (const char *)a->a_value, m->m_type == sdp_media_video);
 					if(res != 0) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse SSRC attribute... (%d)\n", handle->handle_id, res);
 					}
 				}
 #ifdef HAVE_SCTP
-				if(!strcasecmp(a->a_name, "sctpmap")) {
+				else if(!strcasecmp(a->a_name, "sctpmap")) { // vivi modify
 					/* TODO Parse sctpmap line to get the UDP-port value and the number of channels */
 					JANUS_LOG(LOG_VERB, "Got a sctpmap attribute: %s\n", a->a_value);
 				}
@@ -791,21 +793,24 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	g_strlcat(sdp,
 		"a=msid-semantic: WMS janus\r\n",
 		BUFSIZE);
-	char wms[BUFSIZE];
+	gchar wms[BUFSIZE];
 	memset(wms, 0, BUFSIZE);
 	g_strlcat(wms, "WMS", BUFSIZE);
 	/* Copy other global attributes, if any */
 	if(anon->sdp_attributes) {
 		sdp_attribute_t *a = anon->sdp_attributes;
 		while(a) {
-			if(a->a_value == NULL) {
-				g_snprintf(buffer, 512,
-					"a=%s\r\n", a->a_name);
-				g_strlcat(sdp, buffer, BUFSIZE);
-			} else {
-				g_snprintf(buffer, 512,
-					"a=%s:%s\r\n", a->a_name, a->a_value);
-				g_strlcat(sdp, buffer, BUFSIZE);
+			/* FIXME add by vivi */
+			if(a->a_name != NULL) {
+				if(a->a_value == NULL) {
+					g_snprintf(buffer, 512,
+						"a=%s\r\n", a->a_name);
+					g_strlcat(sdp, buffer, BUFSIZE);
+				} else {
+					g_snprintf(buffer, 512,
+						"a=%s:%s\r\n", a->a_name, a->a_value);
+					g_strlcat(sdp, buffer, BUFSIZE);
+				}
 			}
 			a = a->a_next;
 		}
@@ -1007,8 +1012,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						break;
 				}
 				/* rtcp-mux */
-				g_snprintf(buffer, 512, "a=rtcp-mux\n");
-				g_strlcat(sdp, buffer, BUFSIZE);
+				g_strlcat(sdp, "a=rtcp-mux\r\n", BUFSIZE);/* FIXME modify by vivi */
 				/* RTP maps */
 				if(m->m_rtpmaps) {
 					sdp_rtpmap_t *rm = NULL;
@@ -1058,14 +1062,17 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						a = a->a_next;
 						continue;
 					}
-					if(a->a_value == NULL) {
-						g_snprintf(buffer, 512,
-							"a=%s\r\n", a->a_name);
-						g_strlcat(sdp, buffer, BUFSIZE);
-					} else {
-						g_snprintf(buffer, 512,
-							"a=%s:%s\r\n", a->a_name, a->a_value);
-						g_strlcat(sdp, buffer, BUFSIZE);
+					/* FIXME add by vivi */
+					if(a->a_name != NULL) {
+						if(a->a_value == NULL) {
+							g_snprintf(buffer, 512,
+								"a=%s\r\n", a->a_name);
+							g_strlcat(sdp, buffer, BUFSIZE);
+						} else {
+							g_snprintf(buffer, 512,
+								"a=%s:%s\r\n", a->a_name, a->a_value);
+							g_strlcat(sdp, buffer, BUFSIZE);
+						}
 					}
 					a = a->a_next;
 				}

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>虎扑体育-视频会议系统</title>
+<script type="text/javascript" src="jquery.min.js" ></script>
+<script type="text/javascript" src="jquery.blockUI.js" ></script>
+<script type="text/javascript" src="js/bootstrap.js"></script>
+<script type="text/javascript" src="js/bootbox.min.js"></script>
+<script type="text/javascript" src="js/spin.min.js"></script>
+<script type="text/javascript" src="janus.js" ></script>
+<script type="text/javascript" src="videomcu.js"></script>
+<link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="css/demo.css" type="text/css"/>
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
+</head>
+<body>
+
+<nav class="navbar navbar-default navbar-static-top">
+<div class="container">
+	<div class="navbar-collapse collapse">
+		<ul class="nav navbar-nav">
+			<li class="dropdown active"><a href="#" class="dropdown-toggle" data-toggle="dropdown">虎扑体育 <b class="caret"></b></a>
+				<ul class="dropdown-menu">
+					<li><a href="admin.html">Admin/Monitor</a></li>
+				</ul>
+			</li>
+		</ul>
+	</div>
+</div>
+</nav>
+
+<div class="container">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="page-header center-block">
+				<h1>视频会议系统(MCU)
+					<button class="btn btn-default" autocomplete="off" id="start">开始</button>
+				</h1>
+			</div>
+			<div class="container" id="details">
+				<div class="row">
+					<div class="col-md-12">
+						<h3>说明</h3>
+						<p>为了使用本视频会议系统, 首先，需要创建房间号(如果房间号存在，将会自动
+						加入，否则创建)，然后需要输入用户名去加入这个房间号. 如果上面两个条件都符合，
+						你将会加入参与者中进行视频会议，并且你可以自动发送你的音视频数据，也可以接
+						受房间内其他参与者的数据。其他的参与者将会出现在对应的框格内，标题是刚才输入的用户名。</p>
+						<p>按 <code>开始</code> 键进入视频会议系统。</p>
+					</div>
+				</div>
+			</div>
+			<div class="container hide" id="videojoin">
+				<div class="row">
+					<span class="label label-info" id="you"></span>
+					<div class="col-md-12" id="controls">
+						<div class="input-group margin-bottom-md hide" id="registernowroom">
+							<span class="input-group-addon">@</span>
+							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="选择一个房间号" id="room" onkeypress="return checkEnter(this, event);"></input>
+						</div>
+						<div class="input-group margin-bottom-md hide" id="registernowpwd">
+							<span class="input-group-addon">@</span>
+							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="选择一个房间密码" id="roompwd" onkeypress="return checkEnter(this, event);"></input>
+						</div>
+						<div class="input-group margin-bottom-md hide" id="registernow">
+							<span class="input-group-addon">@</span>
+							<input autocomplete="off" class="form-control" autocomplete="off" type="text" placeholder="选择一个显示名称" id="username" onkeypress="return checkEnter(this, event);"></input>
+							<span class="input-group-btn">
+								<button class="btn btn-success" autocomplete="off" id="register">加入房间</button>
+							</span>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="container hide" id="videos">
+				<div class="row">
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">本地视频 <span class="label label-primary hide" id="publisher"></span></h3>
+							</div>
+							<div class="panel-body" id="videolocal"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">远程视频 #1 <span class="label label-info hide" id="remote1"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote1"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">远程视频 #2 <span class="label label-info hide" id="remote2"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote2"></div>
+						</div>
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">远程视频 #3 <span class="label label-info hide" id="remote3"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote3"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">远程视频 #4 <span class="label label-info hide" id="remote4"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote4"></div>
+						</div>
+					</div>
+					<div class="col-md-4">
+						<div class="panel panel-default">
+							<div class="panel-heading">
+								<h3 class="panel-title">远程视频 #5 <span class="label label-info hide" id="remote5"></span></h3>
+							</div>
+							<div class="panel-body relative" id="videoremote5"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="container" id="">
+		<span class="label" id="sessionid"></span>
+	</div>
+</div>
+
+</body>
+</html>
