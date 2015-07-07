@@ -53,6 +53,7 @@ var sipcall = null;
 var started = false;
 var spinner = null;
 
+var selectedApproach = null;
 var registered = false;
 
 var incoming = null;
@@ -88,6 +89,26 @@ $(document).ready(function() {
 									// Prepare the username registration
 									$('#sipcall').removeClass('hide').show();
 									$('#login').removeClass('hide').show();
+									$('#registerlist a').unbind('click').click(function() {
+										selectedApproach = $(this).attr("id");
+										$('#registerset').html($(this).html()).parent().removeClass('open');
+										if(selectedApproach === "guest") {
+											$('#password').empty().attr('disabled', true);
+										} else {
+											$('#password').removeAttr('disabled');
+										}
+										switch(selectedApproach) {
+											case "secret":
+												bootbox.alert("Using this approach you'll provide a plain secret to REGISTER");
+												break;
+											case "guest":
+												bootbox.alert("Using this approach you'll try to REGISTER as a guest, that is without providing any secret");
+												break;
+											default:
+												break;
+										}
+										return false;
+									});
 									$('#register').click(registerUsername);
 									$('#server').focus();
 									$('#start').removeAttr('disabled').html("Stop")
@@ -95,15 +116,6 @@ $(document).ready(function() {
 											$(this).attr('disabled', true);
 											janus.destroy();
 										});
-									$('#guest').change(function() {
-										if($('#guest').is(':checked')) {
-											//~ $('#username').empty().attr('disabled', true);
-											$('#password').empty().attr('disabled', true);
-										} else {
-											//~ $('#username').removeAttr('disabled');
-											$('#password').removeAttr('disabled');
-										}
-									});
 								},
 								error: function(error) {
 									console.log("  -- Error attaching plugin... " + error);
@@ -139,7 +151,7 @@ $(document).ready(function() {
 											$('#username').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
-											$('#guest').removeAttr('disabled').attr('checked', false);
+											$('#registerset').removeAttr('disabled');
 										}
 										bootbox.alert(error);
 										return;
@@ -350,12 +362,16 @@ function checkEnter(field, event) {
 }
 
 function registerUsername() {
+	if(selectedApproach === null || selectedApproach === undefined) {
+		bootbox.alert("Please select a registration approach from the dropdown menu");
+		return;
+	}
 	// Try a registration
 	$('#server').attr('disabled', true);
 	$('#username').attr('disabled', true);
 	$('#password').attr('disabled', true);
 	$('#register').attr('disabled', true).unbind('click');
-	$('#guest').attr('disabled', true);
+	$('#registerset').attr('disabled', true);
 	var sipserver = $('#server').val();
 	if(sipserver !== "" && sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0) {
 		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
@@ -363,10 +379,10 @@ function registerUsername() {
 		$('#username').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
-		$('#guest').removeAttr('disabled').attr('checked', false);
+		$('#registerset').removeAttr('disabled');
 		return;
 	}
-	if($('#guest').is(':checked')) {
+	if(selectedApproach === "guest") {
 		// We're registering as guests, no username/secret provided
 		var register = {
 			"request" : "register",
@@ -381,7 +397,7 @@ function registerUsername() {
 				$('#server').removeAttr('disabled');
 				$('#username').removeAttr('disabled');
 				$('#register').removeAttr('disabled').click(registerUsername);
-				$('#guest').removeAttr('disabled');
+				$('#registerset').removeAttr('disabled');
 				return;
 			}
 			register.username = username;
@@ -395,7 +411,7 @@ function registerUsername() {
 						$('#server').removeAttr('disabled');
 						$('#username').removeAttr('disabled');
 						$('#register').removeAttr('disabled').click(registerUsername);
-						$('#guest').removeAttr('disabled');
+						$('#registerset').removeAttr('disabled');
 					}
 				}); 
 		} else {
@@ -410,7 +426,7 @@ function registerUsername() {
 		$('#username').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
-		$('#guest').removeAttr('disabled');
+		$('#registerset').removeAttr('disabled');
 		return;
 	}
 	var password = $('#password').val();
@@ -420,14 +436,17 @@ function registerUsername() {
 		$('#username').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
-		$('#guest').removeAttr('disabled');
+		$('#registerset').removeAttr('disabled');
 		return;
 	}
 	var register = {
 		"request" : "register",
-		"username" : username,
-		"secret" : password
+		"username" : username
 	};
+	if(selectedApproach === "secret") {
+		// Use the plain secret
+		register["secret"] = password;
+	}
 	if(sipserver === "") {
 		bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
 			function(result) {
@@ -438,7 +457,7 @@ function registerUsername() {
 					$('#username').removeAttr('disabled');
 					$('#password').removeAttr('disabled');
 					$('#register').removeAttr('disabled').click(registerUsername);
-					$('#guest').removeAttr('disabled');
+					$('#registerset').removeAttr('disabled');
 				}
 			}); 
 	} else {
