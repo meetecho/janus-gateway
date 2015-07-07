@@ -813,12 +813,12 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 		janus_mutex_unlock(&session->mountpoint->mutex);
 	}
 	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, handle);
-	janus_mutex_unlock(&sessions_mutex);
-	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroyed = janus_get_monotonic_time();
-	janus_mutex_lock(&sessions_mutex);
-	old_sessions = g_list_append(old_sessions, session);
+	if(!session->destroyed) {
+		session->destroyed = janus_get_monotonic_time();
+		g_hash_table_remove(sessions, handle);
+		/* Cleaning up and removing the session is done in a lazy way */
+		old_sessions = g_list_append(old_sessions, session);
+	}
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }

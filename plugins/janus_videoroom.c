@@ -774,57 +774,59 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "Removing VideoRoom session...\n");
-	/* Any related WebRTC PeerConnection is not available anymore either */
-	janus_videoroom_hangup_media(handle);
 	/* Cleaning up and removing the session is done in a lazy way */
 	janus_mutex_lock(&sessions_mutex);
-	session->destroyed = janus_get_monotonic_time();
-	old_sessions = g_list_append(old_sessions, session);
-	janus_mutex_unlock(&sessions_mutex);
-	if(session->participant_type == janus_videoroom_p_type_publisher) {
-		/* Get rid of publisher */
-		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-		participant->audio = FALSE;
-		participant->video = FALSE;
-		participant->data = FALSE;
-		participant->audio_active = FALSE;
-		participant->video_active = FALSE;
-		participant->recording_active = FALSE;
-		if(participant->recording_base)
-			g_free(participant->recording_base);
-		participant->recording_base = NULL;
-		json_t *event = json_object();
-		json_object_set_new(event, "videoroom", json_string("event"));
-		json_object_set_new(event, "room", json_integer(participant->room->room_id));
-		json_object_set_new(event, "leaving", json_integer(participant->user_id));
-		char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(event);
-		GHashTableIter iter;
-		gpointer value;
-		/* we need to check if the room still exists, may have been destroyed already */
-		if(participant->room) {
-			if(!participant->room->destroyed) {
-				janus_mutex_lock(&participant->room->participants_mutex);
-				g_hash_table_iter_init(&iter, participant->room->participants);
-				while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
-					janus_videoroom_participant *p = value;
-					if(p == participant) {
-						continue;	/* Skip the leaving publisher itself */
+	if(!session->destroyed) {
+		session->destroyed = janus_get_monotonic_time();
+		/* Any related WebRTC PeerConnection is not available anymore either */
+		janus_videoroom_hangup_media(handle);
+		old_sessions = g_list_append(old_sessions, session);
+		if(session->participant_type == janus_videoroom_p_type_publisher) {
+			/* Get rid of publisher */
+			janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+			participant->audio = FALSE;
+			participant->video = FALSE;
+			participant->data = FALSE;
+			participant->audio_active = FALSE;
+			participant->video_active = FALSE;
+			participant->recording_active = FALSE;
+			if(participant->recording_base)
+				g_free(participant->recording_base);
+			participant->recording_base = NULL;
+			json_t *event = json_object();
+			json_object_set_new(event, "videoroom", json_string("event"));
+			json_object_set_new(event, "room", json_integer(participant->room->room_id));
+			json_object_set_new(event, "leaving", json_integer(participant->user_id));
+			char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(event);
+			GHashTableIter iter;
+			gpointer value;
+			/* we need to check if the room still exists, may have been destroyed already */
+			if(participant->room) {
+				if(!participant->room->destroyed) {
+					janus_mutex_lock(&participant->room->participants_mutex);
+					g_hash_table_iter_init(&iter, participant->room->participants);
+					while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_videoroom_participant *p = value;
+						if(p == participant) {
+							continue;	/* Skip the leaving publisher itself */
+						}
+						JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+						int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, leaving_text, NULL, NULL);
+						JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 					}
-					JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-					int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, leaving_text, NULL, NULL);
-					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+					g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
+					janus_mutex_unlock(&participant->room->participants_mutex);
 				}
-				g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
-				janus_mutex_unlock(&participant->room->participants_mutex);
 			}
+			g_free(leaving_text);
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
+			/* Detaching this listener from its publisher is already done by hangup_media */
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
+			/* Detaching this listener from its publishers is already done by hangup_media */
 		}
-		g_free(leaving_text);
-	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
-		/* Detaching this listener from its publisher is already done by hangup_media */
-	} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
-		/* Detaching this listener from its publishers is already done by hangup_media */
 	}
+	janus_mutex_unlock(&sessions_mutex);
 
 	return;
 }

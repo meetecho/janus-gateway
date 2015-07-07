@@ -534,22 +534,18 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	if(session->destroyed) {
-		JANUS_LOG(LOG_VERB, "VideoCall session already destroyed...\n");
-		return;
-	}
-	JANUS_LOG(LOG_VERB, "Removing VideoCall user %s session...\n", session->username ? session->username : "'unknown'");
-	janus_videocall_hangup_media(handle);
-	if(session->username != NULL) {
-		janus_mutex_lock(&sessions_mutex);
-		int res = g_hash_table_remove(sessions, (gpointer)session->username);
-		JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);
-		janus_mutex_unlock(&sessions_mutex);
-	}
-	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroyed = janus_get_monotonic_time();
 	janus_mutex_lock(&sessions_mutex);
-	old_sessions = g_list_append(old_sessions, session);
+	if(!session->destroyed) {
+		session->destroyed = janus_get_monotonic_time();
+		JANUS_LOG(LOG_VERB, "Removing VideoCall user %s session...\n", session->username ? session->username : "'unknown'");
+		janus_videocall_hangup_media(handle);
+		if(session->username != NULL) {
+			int res = g_hash_table_remove(sessions, (gpointer)session->username);
+			JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);
+		}
+		/* Cleaning up and removing the session is done in a lazy way */
+		old_sessions = g_list_append(old_sessions, session);
+	}
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }

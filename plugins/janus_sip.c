@@ -654,21 +654,17 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	if(session->destroyed) {
-		JANUS_LOG(LOG_VERB, "SIP session already destroyed...\n");
-		return;
+	janus_mutex_lock(&sessions_mutex);
+	if(!session->destroyed) {
+		session->destroyed = janus_get_monotonic_time();
+		g_hash_table_remove(sessions, handle);
+		janus_sip_hangup_media(handle);
+		JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
+		/* Shutdown the NUA */
+		nua_shutdown(session->stack->s_nua);
+		/* Cleaning up and removing the session is done in a lazy way */
+		old_sessions = g_list_append(old_sessions, session);
 	}
-	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, handle);
-	janus_mutex_unlock(&sessions_mutex);
-	janus_sip_hangup_media(handle);
-	JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
-	/* Shutdown the NUA */
-	nua_shutdown(session->stack->s_nua);
-	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroyed = janus_get_monotonic_time();
-	janus_mutex_lock(&sessions_mutex);
-	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }

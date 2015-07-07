@@ -661,18 +661,14 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 		*error = -2;
 		return;
 	}
-	if(session->destroyed) {
-		JANUS_LOG(LOG_WARN, "Record&Play session already destroyed...\n");
-		return;
+	janus_mutex_lock(&sessions_mutex);
+	if(!session->destroyed) {
+		session->destroyed = janus_get_monotonic_time();
+		JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
+		g_hash_table_remove(sessions, handle);
+		/* Cleaning up and removing the session is done in a lazy way */
+		old_sessions = g_list_append(old_sessions, session);
 	}
-	JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
-	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, handle);
-	janus_mutex_unlock(&sessions_mutex);
-	/* Cleaning up and removing the session is done in a lazy way */
-	session->destroyed = janus_get_monotonic_time();
-	janus_mutex_lock(&sessions_mutex);
-	old_sessions = g_list_append(old_sessions, session);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
