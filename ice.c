@@ -2830,8 +2830,10 @@ void *janus_ice_send_thread(void *data) {
 }
 
 void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len) {
-	/* TODO Should we fix something in RTP header stuff too? */
 	if(!handle || buf == NULL || len < 1)
+		return;
+	if((!video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO))
+			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));

@@ -265,8 +265,7 @@ $(document).ready(function() {
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
-									if(webrtcDetectedBrowser == "chrome") {
-										// Only Chrome supports the way we interrogate getStats for the bitrate right now
+									if(webrtcDetectedBrowser == "chrome" || webrtcDetectedBrowser == "firefox") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported

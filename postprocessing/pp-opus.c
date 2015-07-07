@@ -71,6 +71,11 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint64_t pos = 0;
 	uint8_t *buffer = calloc(1500, sizeof(uint8_t));
 	while(*working && tmp != NULL) {
+		if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {
+			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
+				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000); 
+		}
+		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;
 		/* RTP payload */
 		offset = tmp->offset+12+tmp->skip;
@@ -86,8 +91,8 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			last_seq = tmp->seq;
 			steps++;
 		}
-		pos = tmp->seq-list->seq+1+steps*65535;
-		JANUS_LOG(LOG_VERB, "pos: %04"SCNu64", writing %d bytes out of %d\n", pos, bytes, tmp->len);
+		pos = tmp->seq-list->seq+diff+steps*65535;
+		JANUS_LOG(LOG_VERB, "pos: %04"SCNu64", writing %d bytes out of %d (step=%"SCNu16")\n", pos, bytes, tmp->len, diff);
 		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 		ogg_stream_packetin(stream, op);
 		free(op);
