@@ -1065,13 +1065,6 @@ function Janus(gatewayCallbacks) {
 						height = 720;
 						maxHeight = 720;
 						width = 1280;
-						if(navigator.mozGetUserMedia) {
-							// Unless this is Firefox, which doesn't support it
-							Janus.log(media.video + " unsupported, falling back to stdres (Firefox)");
-							height = 480;
-							maxHeight = 480;
-							width  = 640;
-						}
 					} else if(media.video === 'stdres') {
 						// Normal resolution, 4:3
 						height = 480;
@@ -1090,10 +1083,10 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.log("Adding media constraint " + media.video);
 					if(navigator.mozGetUserMedia) {
+						// http://stackoverflow.com/questions/28282385/webrtc-firefox-constraints/28911694#28911694
 						videoSupport = {
-						    'require': ['height', 'width'],
-						    'height': {'max': maxHeight, 'min': height},
-						    'width':  {'max': width,  'min': width}
+						    'height': {'ideal': height},
+						    'width':  {'ideal': width}
 						};
 					} else {
 						videoSupport = {
