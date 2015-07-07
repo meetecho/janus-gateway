@@ -798,17 +798,13 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			callbacks.error("Invalid handle");
+			return;
+		}
 		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
-			return;
-		}
-		if(config.dataChannel === null || config.dataChannel === undefined) {
-			Janus.log("Invalid data channel");
-			callbacks.error("Invalid data channel");
-			return;
-		}
 		var text = callbacks.text;
 		if(text === null || text === undefined) {
 			Janus.log("Invalid text");
@@ -826,12 +822,13 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			callbacks.error("Invalid handle");
 			return;
 		}
+		var config = pluginHandle.webrtcStuff;
 		if(config.dtmfSender === null || config.dtmfSender === undefined) {
 			// Create the DTMF sender, if possible
 			if(config.myStream !== undefined && config.myStream !== null) {
@@ -889,7 +886,6 @@ function Janus(gatewayCallbacks) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
 			ws.send(JSON.stringify(request));
-			var pluginHandle = pluginHandles[handleId];
 			delete pluginHandles[handleId];
 			callbacks.success();
 			return;
@@ -907,14 +903,12 @@ function Janus(gatewayCallbacks) {
 				if(json["janus"] !== "success") {
 					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 				}
-				var pluginHandle = pluginHandles[handleId];
 				delete pluginHandles[handleId];
 				callbacks.success();
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
 				Janus.log(textStatus + ": " + errorThrown);	// FIXME
 				// We cleanup anyway
-				var pluginHandle = pluginHandles[handleId];
 				delete pluginHandles[handleId];
 				callbacks.success();
 			},
@@ -925,12 +919,13 @@ function Janus(gatewayCallbacks) {
 	// WebRTC stuff
 	function streamsDone(handleId, jsep, media, callbacks, stream) {
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			callbacks.error("Invalid handle");
 			return;
 		}
+		var config = pluginHandle.webrtcStuff;
 		if(stream !== null && stream !== undefined)
 			Janus.log(stream);
 		config.myStream = stream;
@@ -1039,12 +1034,13 @@ function Janus(gatewayCallbacks) {
 		var jsep = callbacks.jsep;
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			callbacks.error("Invalid handle");
 			return;
 		}
+		var config = pluginHandle.webrtcStuff;
 		// Are we updating a session?
 		if(config.pc !== undefined && config.pc !== null) {
 			Janus.log("Updating existing media session");
@@ -1320,12 +1316,13 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : webrtcError;
 		var jsep = callbacks.jsep;
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			callbacks.error("Invalid handle");
 			return;
 		}
+		var config = pluginHandle.webrtcStuff;
 		if(jsep !== undefined && jsep !== null) {
 			if(config.pc === null) {
 				Janus.log("Wait, no PeerConnection?? if this is an answer, use createAnswer and not handleRemoteJsep");
@@ -1348,12 +1345,13 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			callbacks.error("Invalid handle");
 			return;
 		}
+		var config = pluginHandle.webrtcStuff;
 		Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = null;
@@ -1406,12 +1404,13 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			callbacks.error("Invalid handle");
 			return;
 		}
+		var config = pluginHandle.webrtcStuff;
 		Janus.log("Creating answer (iceDone=" + config.iceDone + ")");
 		var mediaConstraints = null;
 		if(webrtcDetectedBrowser == "firefox") {
@@ -1461,12 +1460,12 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			callbacks.error("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle, not sending anything");
 			return;
 		}
+		var config = pluginHandle.webrtcStuff;
 		Janus.log("Sending offer/answer SDP...");
 		if(config.mySdp === null || config.mySdp === undefined) {
 			Janus.log("Local SDP instance is invalid, not sending anything...");
@@ -1484,11 +1483,12 @@ function Janus(gatewayCallbacks) {
 
 	function getVolume(handleId) {
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
 			return 0;
 		}
+		var config = pluginHandle.webrtcStuff;
 		// Start getting the volume, if getStats is supported
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
 			if(config.remoteStream === null || config.remoteStream === undefined) {
@@ -1520,11 +1520,12 @@ function Janus(gatewayCallbacks) {
 	
 	function getBitrate(handleId) {
 		var pluginHandle = pluginHandles[handleId];
-		var config = pluginHandle.webrtcStuff;
-		if(config === null || config === undefined) {
-			Janus.log("Invalid PeerConnection");
-			return "Invalid PeerConnection";
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.log("Invalid handle");
+			return "Invalid handle";
 		}
+		var config = pluginHandle.webrtcStuff;
 		// Start getting the bitrate, if getStats is supported
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {
 			// Do it the Chrome way
@@ -1621,6 +1622,10 @@ function Janus(gatewayCallbacks) {
 	function cleanupWebrtc(handleId) {
 		Janus.log("Cleaning WebRTC stuff");
 		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined) {
+			// Nothing to clean
+			return;
+		}
 		var config = pluginHandle.webrtcStuff;
 		if(config !== null && config !== undefined) {
 			// Cleanup
