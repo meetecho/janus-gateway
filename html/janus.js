@@ -799,6 +799,11 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		if(config.dataChannel === null || config.dataChannel === undefined) {
 			Janus.log("Invalid data channel");
 			callbacks.error("Invalid data channel");
@@ -822,6 +827,11 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		if(config.dtmfSender === null || config.dtmfSender === undefined) {
 			// Create the DTMF sender, if possible
 			if(config.myStream !== undefined && config.myStream !== null) {
@@ -916,6 +926,11 @@ function Janus(gatewayCallbacks) {
 	function streamsDone(handleId, jsep, media, callbacks, stream) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		if(stream !== null && stream !== undefined)
 			Janus.log(stream);
 		config.myStream = stream;
@@ -1025,6 +1040,11 @@ function Janus(gatewayCallbacks) {
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		// Are we updating a session?
 		if(config.pc !== undefined && config.pc !== null) {
 			Janus.log("Updating existing media session");
@@ -1301,6 +1321,11 @@ function Janus(gatewayCallbacks) {
 		var jsep = callbacks.jsep;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		if(jsep !== undefined && jsep !== null) {
 			if(config.pc === null) {
 				Janus.log("Wait, no PeerConnection?? if this is an answer, use createAnswer and not handleRemoteJsep");
@@ -1324,6 +1349,11 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = null;
@@ -1377,6 +1407,11 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		Janus.log("Creating answer (iceDone=" + config.iceDone + ")");
 		var mediaConstraints = null;
 		if(webrtcDetectedBrowser == "firefox") {
@@ -1427,6 +1462,11 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			callbacks.error("Invalid PeerConnection");
+			return;
+		}
 		Janus.log("Sending offer/answer SDP...");
 		if(config.mySdp === null || config.mySdp === undefined) {
 			Janus.log("Local SDP instance is invalid, not sending anything...");
@@ -1445,6 +1485,10 @@ function Janus(gatewayCallbacks) {
 	function getVolume(handleId) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			return 0;
+		}
 		// Start getting the volume, if getStats is supported
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
 			if(config.remoteStream === null || config.remoteStream === undefined) {
@@ -1477,6 +1521,10 @@ function Janus(gatewayCallbacks) {
 	function getBitrate(handleId) {
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
+		if(config === null || config === undefined) {
+			Janus.log("Invalid PeerConnection");
+			return "Invalid PeerConnection";
+		}
 		// Start getting the bitrate, if getStats is supported
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {
 			// Do it the Chrome way
@@ -1574,36 +1622,38 @@ function Janus(gatewayCallbacks) {
 		Janus.log("Cleaning WebRTC stuff");
 		var pluginHandle = pluginHandles[handleId];
 		var config = pluginHandle.webrtcStuff;
-		// Cleanup
-		config.remoteStream = null;
-		if(config.volume.timer)
-			clearInterval(config.volume.timer);
-		config.volume.value = null;
-		if(config.bitrate.timer)
-			clearInterval(config.bitrate.timer);
-		config.bitrate.timer = null;
-		config.bitrate.bsnow = null;
-		config.bitrate.bsbefore = null;
-		config.bitrate.tsnow = null;
-		config.bitrate.tsbefore = null;
-		config.bitrate.value = null;
-		if(config.myStream !== null && config.myStream !== undefined) {
-			Janus.log("Stopping local stream");
-			config.myStream.stop();
+		if(config !== null && config !== undefined) {
+			// Cleanup
+			config.remoteStream = null;
+			if(config.volume.timer)
+				clearInterval(config.volume.timer);
+			config.volume.value = null;
+			if(config.bitrate.timer)
+				clearInterval(config.bitrate.timer);
+			config.bitrate.timer = null;
+			config.bitrate.bsnow = null;
+			config.bitrate.bsbefore = null;
+			config.bitrate.tsnow = null;
+			config.bitrate.tsbefore = null;
+			config.bitrate.value = null;
+			if(config.myStream !== null && config.myStream !== undefined) {
+				Janus.log("Stopping local stream");
+				config.myStream.stop();
+			}
+			config.myStream = null;
+			// Close PeerConnection
+			try {
+				config.pc.close();
+			} catch(e) {
+				// Do nothing
+			}
+			config.pc = null;
+			config.mySdp = null;
+			config.iceDone = false;
+			config.sdpSent = false;
+			config.dataChannel = null;
+			config.dtmfSender = null;
 		}
-		config.myStream = null;
-		// Close PeerConnection
-		try {
-			config.pc.close();
-		} catch(e) {
-			// Do nothing
-		}
-		config.pc = null;
-		config.mySdp = null;
-		config.iceDone = false;
-		config.sdpSent = false;
-		config.dataChannel = null;
-		config.dtmfSender = null;
 		pluginHandle.oncleanup();
 	}
 
