@@ -3116,7 +3116,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	}
 	int video_fd = source->video_fd;
 	if((video_fd < 0) && (video_port >= 0)) {
-		video_fd = janus_streaming_create_fd(audio_port, source->audio_mcast, "Video", "video", mountpoint->name);
+		video_fd = janus_streaming_create_fd(video_port, source->video_mcast, "Video", "video", mountpoint->name);
 		if (video_fd < 0)
 		{
 			g_thread_unref(g_thread_self());
