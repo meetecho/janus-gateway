@@ -3773,10 +3773,9 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 			if(ice_handle->data_id > 0) {
 				janus_ice_setup_remote_candidates(ice_handle, ice_handle->data_id, 1);
 			}
-			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) &&
-					!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) {
+			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE)) {
 				/* Still trickling, but take note of the fact ICE has started now */
-				JANUS_LOG(LOG_VERB, "Still trickling, but we can start send connectivity checks already, now\n");
+				JANUS_LOG(LOG_VERB, "Still trickling, but we can start sending connectivity checks already, now\n");
 				janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START);
 			}
 			janus_mutex_unlock(&ice_handle->mutex);

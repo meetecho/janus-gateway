@@ -1058,7 +1058,7 @@ function Janus(gatewayCallbacks) {
 					} else if(media.video === 'lowres-16:9') {
 						// Small resolution, 16:9
 						height = 180;
-						maxHeight = 240;
+						maxHeight = 180;
 						width = 320;
 					} else if(media.video === 'hires' || media.video === 'hires-16:9' ) {
 						// High resolution is only 16:9
@@ -1066,11 +1066,14 @@ function Janus(gatewayCallbacks) {
 						maxHeight = 720;
 						width = 1280;
 						if(navigator.mozGetUserMedia) {
-							// Unless this is Firefox, which doesn't support it
-							Janus.log(media.video + " unsupported, falling back to stdres (Firefox)");
-							height = 480;
-							maxHeight = 480;
-							width  = 640;
+							var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+							if(firefoxVer < 38) {
+								// Unless this is and old Firefox, which doesn't support it
+								Janus.log(media.video + " unsupported, falling back to stdres (old Firefox)");
+								height = 480;
+								maxHeight = 480;
+								width  = 640;
+							}
 						}
 					} else if(media.video === 'stdres') {
 						// Normal resolution, 4:3
@@ -1080,7 +1083,7 @@ function Janus(gatewayCallbacks) {
 					} else if(media.video === 'stdres-16:9') {
 						// Normal resolution, 16:9
 						height = 360;
-						maxHeight = 480;
+						maxHeight = 360;
 						width = 640;
 					} else {
 						Janus.log("Default video setting (" + media.video + ") is stdres 4:3");
@@ -1090,11 +1093,21 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.log("Adding media constraint " + media.video);
 					if(navigator.mozGetUserMedia) {
-						videoSupport = {
-						    'require': ['height', 'width'],
-						    'height': {'max': maxHeight, 'min': height},
-						    'width':  {'max': width,  'min': width}
-						};
+						var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+						if(firefoxVer < 38) {
+							videoSupport = {
+								'require': ['height', 'width'],
+								'height': {'max': maxHeight, 'min': height},
+								'width':  {'max': width,  'min': width}
+							};
+						} else {
+							// http://stackoverflow.com/questions/28282385/webrtc-firefox-constraints/28911694#28911694
+							// https://github.com/meetecho/janus-gateway/pull/246
+							videoSupport = {
+								'height': {'ideal': height},
+								'width':  {'ideal': width}
+							};
+						}
 					} else {
 						videoSupport = {
 						    'mandatory': {
@@ -1269,7 +1282,7 @@ function Janus(gatewayCallbacks) {
 					}
 
 					getUserMedia(
-						{audio: audioExist && isAudioSendEnabled(media), video: videoExist && videoSupport},
+						{audio: audioExist && isAudioSendEnabled(media), video: videoExist ? videoSupport : false},
 						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
 						function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
 				});
