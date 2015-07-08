@@ -924,6 +924,29 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_success(source, "application/json", g_strdup(reply_text));
 			goto jsondone;
 		}
+#ifdef HAVE_RABBITMQ
+		if(!strcasecmp(message_text, "rmqtest")) {
+			/* This is a request which is specifically conceived to send a notification
+			 * on the RabbitMQ outgoing queue, and as such can help debugging potential
+			 * issues there (e.g., whether Janus can still send messages on RabbitMQ) */
+			json_t *event = json_object();
+			json_object_set_new(event, "janus", json_string("rmqtest"));
+			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(event);
+			janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+			response->payload = event_text;
+			response->correlation_id = NULL;
+			g_async_queue_push(rmq_client->responses, response);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			ret = janus_process_success(source, "application/json", g_strdup(reply_text));
+			goto jsondone;
+		}
+#endif
 		if(strcasecmp(message_text, "create")) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
