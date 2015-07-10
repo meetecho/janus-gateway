@@ -2,7 +2,8 @@
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus VideoRoom plugin
- * \details  This is a plugin implementing a videoconferencing MCU for Janus.
+ * \details  This is a plugin implementing a videoconferencing SFU
+ * (Selective Forwarding Unit) for Janus, that is an audio/video router.
  * This means that the plugin implements a virtual conferencing room peers
  * can join and leave at any time. This room is based on a Publish/Subscribe
  * pattern. Each peer can publish his/her own live audio/video feeds: this
@@ -64,7 +65,7 @@ record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
 \endverbatim
  *
- * \section mcuapi Video Room API
+ * \section sfuapi Video Room API
  * 
  * The Video Room API supports several requests, some of which are
  * synchronous and some asynchronous. There are some situations, though,
@@ -129,7 +130,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
 /* Plugin information */
 #define JANUS_VIDEOROOM_VERSION			6
 #define JANUS_VIDEOROOM_VERSION_STRING	"0.0.6"
-#define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing MCU for Janus, something like Licode."
+#define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VIDEOROOM_PACKAGE			"janus.plugin.videoroom"
@@ -579,7 +580,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
 			janus_config_item *record = janus_config_get_item(cat, "record");
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
-			/* Create the video mcu room */
+			/* Create the video room */
 			janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
 			if(videoroom == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -3540,8 +3541,8 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 		VP8_PT, 						/* VP8 payload type */
 		VP8_PT); 						/* VP8 payload type */
 	/* FIXME Add a fake user/SSRC just to avoid the "Failed to set max send bandwidth for video content" bug */
-	g_strlcat(audio_muxed, "a=planb:mcu0 1\r\n", 1024);
-	g_strlcat(video_muxed, "a=planb:mcu0 2\r\n", 1024);
+	g_strlcat(audio_muxed, "a=planb:sfu0 1\r\n", 1024);
+	g_strlcat(video_muxed, "a=planb:sfu0 2\r\n", 1024);
 	/* Go through all the available publishers */
 	GSList *ps = muxed_listener->listeners;
 	while(ps) {
@@ -3549,12 +3550,12 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 		if(l && l->feed) { //~ && l->feed->sdp) {
 			if(strstr(l->feed->sdp, "m=audio")) {
 				audio++;
-				g_snprintf(temp, 255, "a=planb:mcu%"SCNu64" %"SCNu32"\r\n", l->feed->user_id, l->feed->audio_ssrc);
+				g_snprintf(temp, 255, "a=planb:sfu%"SCNu64" %"SCNu32"\r\n", l->feed->user_id, l->feed->audio_ssrc);
 				g_strlcat(audio_muxed, temp, 1024);
 			}
 			if(strstr(l->feed->sdp, "m=video")) {
 				video++;
-				g_snprintf(temp, 255, "a=planb:mcu%"SCNu64" %"SCNu32"\r\n", l->feed->user_id, l->feed->video_ssrc);
+				g_snprintf(temp, 255, "a=planb:sfu%"SCNu64" %"SCNu32"\r\n", l->feed->user_id, l->feed->video_ssrc);
 				g_strlcat(video_muxed, temp, 1024);
 			}
 		}
