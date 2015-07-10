@@ -702,7 +702,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			goto done;
 		}
 		/* Send the success reply */
-		ret = janus_process_success(&source, "application/json", janus_info(NULL));
+		ret = janus_process_success(&source, janus_info(NULL));
 		goto done;
 	}
 	
@@ -784,7 +784,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		if(event != NULL) {
 			if(max_events == 1) {
 				/* Return just this message and leave */
-				ret = janus_process_success(&source, "application/json", event->payload);
+				ret = janus_process_success(&source, event->payload);
 			} else {
 				/* The application is willing to receive more events at the same time, anything to report? */
 				json_t *list = json_array();
@@ -817,7 +817,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				/* Return the array of messages and leave */
 				char *event_text = json_dumps(list, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(list);
-				ret = janus_process_success(&source, "application/json", event_text);
+				ret = janus_process_success(&source, event_text);
 			}
 		} else {
 			/* Still no message, wait */
@@ -911,7 +911,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	if(session_id == 0 && handle_id == 0) {
 		/* Can only be a 'Create new session', a 'Get info' or a 'Ping/Pong' request */
 		if(!strcasecmp(message_text, "info")) {
-			ret = janus_process_success(source, "application/json", janus_info(transaction_text));
+			ret = janus_process_success(source, janus_info(transaction_text));
 			goto jsondone;
 		}
 		if(!strcasecmp(message_text, "ping")) {
@@ -921,7 +921,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
-			ret = janus_process_success(source, "application/json", g_strdup(reply_text));
+			ret = janus_process_success(source, g_strdup(reply_text));
 			goto jsondone;
 		}
 #ifdef HAVE_RABBITMQ
@@ -943,7 +943,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
-			ret = janus_process_success(source, "application/json", g_strdup(reply_text));
+			ret = janus_process_success(source, g_strdup(reply_text));
 			goto jsondone;
 		}
 #endif
@@ -1020,7 +1020,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 		goto jsondone;
 	}
 	if(session_id < 1) {
@@ -1080,7 +1080,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 	} else if(!strcasecmp(message_text, "attach")) {
 		if(handle != NULL) {
 			/* Attach is a session-level command */
@@ -1133,7 +1133,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 	} else if(!strcasecmp(message_text, "destroy")) {
 		if(handle != NULL) {
 			/* Query is a session-level command */
@@ -1185,7 +1185,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 	} else if(!strcasecmp(message_text, "detach")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
@@ -1216,7 +1216,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 	} else if(!strcasecmp(message_text, "message")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
@@ -1555,7 +1555,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				json_decref(jsep);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 		} else if(result->type == JANUS_PLUGIN_OK_WAIT) {
 			/* The plugin received the request but didn't process it yet, send an ack (asynchronous notifications may follow) */
 			json_t *reply = json_object();
@@ -1568,7 +1568,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 		} else {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", result->content ? g_strdup(result->content) : "Plugin returned a severe (unknown) error");
@@ -1853,7 +1853,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 	} else {
 		ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN_REQUEST, "Unknown request '%s'", message_text);
 	}
@@ -2040,7 +2040,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 			goto done;
 		}
 		/* Send the success reply */
-		ret = janus_process_success(&source, "application/json", janus_info(NULL));
+		ret = janus_process_success(&source, janus_info(NULL));
 		goto done;
 	}
 	
@@ -2120,7 +2120,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		/* Can only be a 'Get all sessions' or some general setting manipulation request */
 		if(!strcasecmp(message_text, "info")) {
 			/* The generic info request */
-			ret = janus_process_success(source, "application/json", janus_info(transaction_text));
+			ret = janus_process_success(source, janus_info(transaction_text));
 			goto jsondone;
 		}
 		if(admin_ws_api_secret != NULL) {
@@ -2146,7 +2146,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_level")) {
 			/* Change the debug logging level */
@@ -2177,7 +2177,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_locking_debug")) {
 			/* Enable/disable the locking debug (would show a message on the console for every lock attempt) */
@@ -2205,7 +2205,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
 			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
@@ -2237,7 +2237,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_max_nack_queue")) {
 			/* Change the current value for the max NACK queue */
@@ -2265,7 +2265,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "list_sessions")) {
 			/* List sessions */
@@ -2294,7 +2294,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
 			/* Send the success reply */
-			ret = janus_process_success(source, "application/json", reply_text);
+			ret = janus_process_success(source, reply_text);
 			goto jsondone;
 		} else {
 			/* No message we know of */
@@ -2378,7 +2378,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 		goto jsondone;
 	} else {
 		/* Handle-related */
@@ -2464,7 +2464,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(reply);
 		/* Send the success reply */
-		ret = janus_process_success(source, "application/json", reply_text);
+		ret = janus_process_success(source, reply_text);
 		goto jsondone;
 	}
 
@@ -2628,7 +2628,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 		g_free(event);
 		return ret;
 	}
-	ret = janus_process_success(source, NULL, payload);
+	ret = janus_process_success(source, payload);
 	if(event != NULL) {
 		if(event->payload && event->allocated) {
 			g_free(event->payload);
@@ -2639,7 +2639,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 	return ret;
 }
 
-int janus_process_success(janus_request_source *source, const char *transaction, char *payload)
+int janus_process_success(janus_request_source *source, char *payload)
 {
 	if(!source || !payload)
 		return MHD_NO;

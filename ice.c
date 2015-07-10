@@ -1232,7 +1232,13 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				video = (stream->stream_id == handle->video_id ? 1 : 0);
 			} else {
 				/* Bundled streams, check SSRC */
-				video = (stream->video_ssrc_peer == ntohl(header->ssrc) ? 1 : 0);
+				guint32 packet_ssrc = ntohl(header->ssrc);
+				video = (stream->video_ssrc_peer == packet_ssrc ? 1 : 0);
+				if(!video && stream->audio_ssrc_peer != packet_ssrc) {
+					/* FIXME In case it happens, we should check what it is: maybe retransmissions with a different SSRC? */
+					JANUS_LOG(LOG_WARN, "Not video and not audio? dropping (SSRC %"SCNu32")...\n", packet_ssrc);
+					return;
+				}
 				//~ JANUS_LOG(LOG_VERB, "[RTP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
 					//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, ntohl(header->ssrc));
 			}
@@ -1304,14 +1310,13 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					janus_mutex_unlock(&component->mutex);
 				}
 
-				/* Keep track of rtp sequence numbers, in case we need to NACK them */
+				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
 				guint16 new_seqn = ntohs(header->seq_number);
 				guint16 cur_seqn;
 				int last_seqs_len = 0;
 				janus_mutex_lock(&component->mutex);
-				seq_info_t **last_seqs = video ? &component->last_seqs_video
-				                               : &component->last_seqs_audio;
+				seq_info_t **last_seqs = video ? &component->last_seqs_video : &component->last_seqs_audio;
 				seq_info_t *cur_seq = *last_seqs;
 				if(cur_seq) {
 					cur_seq = cur_seq->prev;
@@ -1321,10 +1326,10 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					cur_seqn = new_seqn - (guint16)1; /* Can wrap */
 				}
 				if(!janus_seq_in_range(new_seqn, cur_seqn, LAST_SEQS_MAX_LEN) &&
-				   !janus_seq_in_range(cur_seqn, new_seqn, 1000)                 ) {
+						!janus_seq_in_range(cur_seqn, new_seqn, 1000)) {
 					/* Jump too big, start fresh */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] big sequence number jump %hu -> %hu\n",
-					                                   handle->handle_id, cur_seqn, new_seqn);
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Big sequence number jump %hu -> %hu (%s stream)\n",
+						handle->handle_id, cur_seqn, new_seqn, video ? "video" : "audio");
 					janus_seq_list_free(last_seqs);
 					cur_seq = NULL;
 					cur_seqn = new_seqn - (guint16)1;

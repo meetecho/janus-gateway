@@ -231,10 +231,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *request
 int janus_process_incoming_admin_request(janus_request_source *source, json_t *request);
 /*! \brief Method to return a successful Janus response message (JSON) to the browser
  * @param[in] source The source that originated the request
- * @param[in] transaction The Janus transaction identifier
  * @param[in] payload The stringified version of the Janus response (JSON) 
  * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_process_success(janus_request_source *source, const char *transaction, char *payload);
+int janus_process_success(janus_request_source *source, char *payload);
 /*! \brief Method to return an error Janus response message (JSON) to the browser
  * @param[in] source The source that originated the request
  * @param[in] session_id Janus session identifier this error refers to
