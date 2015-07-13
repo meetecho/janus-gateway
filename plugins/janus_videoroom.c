@@ -1817,9 +1817,11 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 		return;
 	if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* A listener sent some RTCP, check what it is and if we need to forward it to the publisher */
+		janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
+		if(!l->video)
+			return;	/* The only feedback we handle is video related anyway... */
 		if(janus_rtcp_has_fir(buf, len)) {
 			/* We got a FIR, forward it to the publisher */
-			janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
 			if(l && l->feed) {
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
@@ -1833,7 +1835,6 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 		}
 		if(janus_rtcp_has_pli(buf, len)) {
 			/* We got a PLI, forward it to the publisher */
-			janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
 			if(l && l->feed) {
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
@@ -2768,6 +2769,42 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Resuming publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 					gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
 				}
+			} else if(!strcasecmp(request_text, "configure")) {
+				json_t *audio = json_object_get(root, "audio");
+				if(audio && !json_is_boolean(audio)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
+					goto error;
+				}
+				json_t *video = json_object_get(root, "video");
+				if(video && !json_is_boolean(video)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
+					goto error;
+				}
+				json_t *data = json_object_get(root, "data");
+				if(data && !json_is_boolean(data)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (data should be a boolean)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid value (data should be a boolean)");
+					goto error;
+				}
+				/* Update the audio/video/data flags, if set */
+				janus_videoroom_participant *publisher = listener->feed;
+				if(publisher) {
+					if(audio && publisher->audio)
+						listener->audio = json_is_true(audio);
+					if(video && publisher->video)
+						listener->video = json_is_true(video);
+					if(data && publisher->data)
+						listener->data = json_is_true(data);
+				}
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", json_integer(listener->room->room_id));
+				json_object_set_new(event, "configured", json_string("ok"));
 			} else if(!strcasecmp(request_text, "pause")) {
 				/* Stop receiving the publisher streams for a while */
 				listener->paused = TRUE;
