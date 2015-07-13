@@ -8,10 +8,8 @@ const char *janus_get_api_error(int error) {
 			return "Unauthorized request (wrong or missing secret)";
 		case JANUS_ERROR_UNKNOWN:
 			return "Unknown error";
-		case JANUS_ERROR_USE_GET:
-			return "Use GET";
-		case JANUS_ERROR_USE_POST:
-			return "Use POST";
+		case JANUS_ERROR_TRANSPORT_SPECIFIC:
+			return "Transport specific error";
 		case JANUS_ERROR_MISSING_REQUEST:
 			return "Missing request";
 		case JANUS_ERROR_UNKNOWN_REQUEST:

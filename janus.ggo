@@ -1,22 +1,9 @@
 option "interface" i "Interface to use (will be the public IP)" string typestr="ipaddress" optional
-option "port" p "Web server HTTP port (default=8088)" int typestr="portnumber" optional
-option "secure-port" s "Web server HTTPS port (default=no HTTPS)" int typestr="portnumber" optional
-option "no-http" n "Disable insecure HTTP web server" flag off
-option "base-path" b "Base path to bind to in the HTTP/HTTPS web server (default=/janus) "string typestr="basepath" optional
-option "ws-port" w "WebSockets server port (default=no WebSockets)" int typestr="portnumber" optional
-option "ws-secure-port" W "Secure WebSockets server port (default=no secure WebSockets)" int typestr="portnumber" optional
-option "no-websockets" N "Disable insecure WebSockets server" flag off
-option "admin-port" m "Admin/monitor web server HTTP port (default=7088)" int typestr="portnumber" optional
-option "admin-secure-port" M "Admin/monitor web server HTTPS port (default=no HTTPS)" int typestr="portnumber" optional
-option "no-admin" O "Disable insecure HTTP admin/monitor web server" flag off
-option "admin-base-path" B "Base path to bind to in the HTTP/HTTPS admin/monitor web server (default=/admin) "string typestr="basepath" optional
-option "admin-secret" Q "Admin/monitor secret all requests need to pass in order to be accepted by Janus (useful a crude form of authentication, none by default)" string typestr="randomstring" optional
-option "admin-acl" L "Comma-separated list of IP addresses allowed to use the Admin/monitor; partial strings are supported (e.g., 192.168.0.1,10.0.0.1 or 192.168., default=no restriction)" string typestr="list" optional
 option "plugins-folder" P "Plugins folder (default=./plugins)" string typestr="path" optional
 option "config" C "Configuration file to use" string typestr="filename" optional
 option "configs-folder" F "Configuration files folder (default=./conf)" string typestr="path" optional
-option "cert-pem" c "HTTPS/DTLS certificate" string typestr="filename" optional
-option "cert-key" k "HTTPS/DTLS certificate key" string typestr="filename" optional
+option "cert-pem" c "DTLS certificate" string typestr="filename" optional
+option "cert-key" k "DTLS certificate key" string typestr="filename" optional
 option "stun-server" S "STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)" string typestr="ip:port" optional
 option "ice-ignore-list" X "Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet)" string typestr="list" optional
 option "public-ip" e "Public address of the machine, to use in SDP" string typestr="ipaddress" optional
@@ -29,7 +16,3 @@ option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-m
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional
-option "enable-rabbitmq" R "Enable RabbitMQ support" flag off
-option "rabbitmq-server" H "Address (host:port) of the RabbitMQ server to use (default=localhost:5672)" string typestr="string" optional
-option "rabbitmq-in-queue" t "Name of the RabbitMQ queue for incoming messages (no default)" string typestr="string" optional
-option "rabbitmq-out-queue" f "Name of the RabbitMQ queue for outgoing messages (no default)" string typestr="string" optional

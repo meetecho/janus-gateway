@@ -1,0 +1,13 @@
+; WebSockets stuff: whether they should be enabled, which ports they
+; should use, and so on.
+[general]
+ws = yes					; Whether to enable the WebSockets interface
+ws_port = 8188				; WebSockets server port
+ws_ssl = no					; Whether to enable secure WebSockets
+;ws_secure_port = 8989;		; WebSockets server secure port, if enabled
+;ws_logging = 7				; libwebsockets debugging level (0 by default)
+
+; Certificate and key to use for secure WebSockets, if needed.
+[certificates]
+cert_pem = @certdir@/mycert.pem
+cert_key = @certdir@/mycert.key
