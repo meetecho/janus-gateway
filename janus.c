@@ -1716,7 +1716,7 @@ int janus_process_success(janus_request *request, json_t *payload)
 		return -1;
 	/* Pass to the right transport plugin */
 	JANUS_LOG(LOG_HUGE, "Sending response to %s (%p)\n", request->transport->get_package(), request->instance);
-	return request->transport->send_message(request->instance, request->request_id, FALSE, payload);
+	return request->transport->send_message(request->instance, request->request_id, request->admin, payload);
 }
 
 int janus_process_error(janus_request *request, uint64_t session_id, const char *transaction, gint error, const char *format, ...)
@@ -1749,7 +1749,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 	json_object_set_new(error_data, "reason", json_string(error_string ? error_string : "no text"));
 	json_object_set_new(reply, "error", error_data);
 	/* Pass to the right transport plugin */
-	return request->transport->send_message(request->instance, request->request_id, FALSE, reply);
+	return request->transport->send_message(request->instance, request->request_id, request->admin, reply);
 }
 
 
