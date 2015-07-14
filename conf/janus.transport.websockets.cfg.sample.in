@@ -7,7 +7,17 @@ ws_ssl = no					; Whether to enable secure WebSockets
 ;ws_secure_port = 8989;		; WebSockets server secure port, if enabled
 ;ws_logging = 7				; libwebsockets debugging level (0 by default)
 
-; Certificate and key to use for secure WebSockets, if needed.
+; If you want to expose the Admin API via WebSockets as well, you need to
+; specify a different server instance, as you cannot mix Janus API and
+; Admin API messaging. Notice that by default the Admin API support via
+; WebSockets is disabled.
+[admin]
+admin_ws = no					; Whether to enable the Admin API WebSockets interface
+admin_ws_port = 7188			; Admin API WebSockets server port, if enabled
+admin_ws_ssl = no				; Whether to enable the Admin API secure WebSockets
+admin_ws_secure_port = 7989;	; Admin API WebSockets server secure port, if enabled
+
+; Certificate and key to use for any secure WebSocket server, if needed.
 [certificates]
 cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key

@@ -109,29 +109,39 @@ typedef struct janus_websockets_client {
 
 
 /* libwebsockets WS context(s) */
-static struct libwebsocket_context *wss = NULL, *swss = NULL;
+static struct libwebsocket_context *wss = NULL, *swss = NULL,
+	*admin_wss = NULL, *admin_swss = NULL;
 /* libwebsockets sessions that have been closed */
 static GList *old_wss;
 static janus_mutex old_wss_mutex;
 /* Callback for HTTP-related events (automatically rejected) */
-static int janus_wss_callback_http(struct libwebsocket_context *this, 
+static int janus_websockets_callback_http(struct libwebsocket_context *this, 
 		struct libwebsocket *wsi,
 		enum libwebsocket_callback_reasons reason,
 		void *user, void *in, size_t len);
-/* Callback for WebSockets-related events */
-static int janus_wss_callback(struct libwebsocket_context *this, 
+/* Callbacks for WebSockets-related events */
+static int janus_websockets_callback(struct libwebsocket_context *this, 
 		struct libwebsocket *wsi,
 		enum libwebsocket_callback_reasons reason,
 		void *user, void *in, size_t len);
-/* Protocol mapping */
+static int janus_websockets_admin_callback(struct libwebsocket_context *this, 
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len);
+/* Protocol mappings */
 static struct libwebsocket_protocols wss_protocols[] = {
-	{ "http-only", janus_wss_callback_http, 0, 0 },
-	{ "janus-protocol", janus_wss_callback, sizeof(janus_websockets_client), 0 },
+	{ "http-only", janus_websockets_callback_http, 0, 0 },
+	{ "janus-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0 },
+	{ NULL, NULL, 0 }
+};
+static struct libwebsocket_protocols admin_wss_protocols[] = {
+	{ "http-only", janus_websockets_callback_http, 0, 0 },
+	{ "janus-admin-protocol", janus_websockets_admin_callback, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
 /* Helper for debugging reasons */
-const char *janus_wss_reason_string(enum libwebsocket_callback_reasons reason);
-const char *janus_wss_reason_string(enum libwebsocket_callback_reasons reason) {
+const char *janus_websockets_reason_string(enum libwebsocket_callback_reasons reason);
+const char *janus_websockets_reason_string(enum libwebsocket_callback_reasons reason) {
 	switch(reason) {
 		case LWS_CALLBACK_ESTABLISHED:
 			return "LWS_CALLBACK_ESTABLISHED";
@@ -249,6 +259,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		lws_set_log_level(ws_log_level, NULL);
 		old_wss = NULL;
 		janus_mutex_init(&old_wss_mutex);
+		/* Setup the Janus API WebSockets server(s) */
 		item = janus_config_get_item_drilldown(config, "general", "ws");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "WebSockets server disabled\n");
@@ -316,10 +327,78 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				}
 			}
 		}
+		/* Do the same for the Admin API, if enabled */
+		item = janus_config_get_item_drilldown(config, "admin", "admin_ws");
+		if(!item || !item->value || !janus_is_true(item->value)) {
+			JANUS_LOG(LOG_WARN, "Admin WebSockets server disabled\n");
+		} else {
+			int wsport = 7188;
+			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_port");
+			if(item && item->value)
+				wsport = atoi(item->value);
+			/* Prepare context */
+			struct lws_context_creation_info info;
+			memset(&info, 0, sizeof info);
+			info.port = wsport;
+			info.iface = NULL;
+			info.protocols = admin_wss_protocols;
+			info.extensions = libwebsocket_get_internal_extensions();
+			info.ssl_cert_filepath = NULL;
+			info.ssl_private_key_filepath = NULL;
+			info.gid = -1;
+			info.uid = -1;
+			info.options = 0;
+			/* Create the WebSocket context */
+			admin_wss = libwebsocket_create_context(&info);
+			if(admin_wss == NULL) {
+				JANUS_LOG(LOG_FATAL, "Error initializing libwebsock...\n");
+			} else {
+				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (port %d)...\n", wsport);
+			}
+		}
+		item = janus_config_get_item_drilldown(config, "admin", "admin_ws_ssl");
+		if(!item || !item->value || !janus_is_true(item->value)) {
+			JANUS_LOG(LOG_WARN, "Secure Admin WebSockets server disabled\n");
+		} else {
+			int wsport = 7989;
+			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_secure_port");
+			if(item && item->value)
+				wsport = atoi(item->value);
+			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
+			if(!item || !item->value) {
+				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
+			} else {
+				char *server_pem = (char *)item->value;
+				char *server_key = (char *)item->value;
+				item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
+				if(item && item->value)
+					server_key = (char *)item->value;
+				JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+				/* Prepare secure context */
+				struct lws_context_creation_info info;
+				memset(&info, 0, sizeof info);
+				info.port = wsport;
+				info.iface = NULL;
+				info.protocols = admin_wss_protocols;
+				info.extensions = libwebsocket_get_internal_extensions();
+				info.ssl_cert_filepath = server_pem;
+				info.ssl_private_key_filepath = server_key;
+				info.gid = -1;
+				info.uid = -1;
+				info.options = 0;
+				/* Create the secure WebSocket context */
+				admin_swss = libwebsocket_create_context(&info);
+				if(admin_swss == NULL) {
+					JANUS_LOG(LOG_FATAL, "Error initializing libwebsock...\n");
+				} else {
+					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
+				}
+			}
+		}
 	}
 	janus_config_destroy(config);
 	config = NULL;
-	if(!wss && !swss) {
+	if(!wss && !swss && !admin_wss && !admin_swss) {
 		JANUS_LOG(LOG_FATAL, "No WebSockets server started, giving up...\n"); 
 		return -1;	/* No point in keeping the plugin loaded */
 	}
@@ -436,14 +515,32 @@ void *janus_websockets_thread(void *data) {
 			libwebsocket_service(wss, 100);
 		if(swss != NULL)
 			libwebsocket_service(swss, 100);
+		if(admin_wss != NULL)
+			libwebsocket_service(admin_wss, 100);
+		if(admin_swss != NULL)
+			libwebsocket_service(admin_swss, 100);
 	}
+	/* Get rid of the WebSockets servers */
+	if(wss != NULL)
+		libwebsocket_cancel_service(wss);
+	wss = NULL;
+	if(swss != NULL)
+		libwebsocket_cancel_service(swss);
+	swss = NULL;
+	if(admin_wss != NULL)
+		libwebsocket_cancel_service(admin_wss);
+	admin_wss = NULL;
+	if(admin_swss != NULL)
+		libwebsocket_cancel_service(admin_swss);
+	admin_swss = NULL;
+	/* Done */
 	JANUS_LOG(LOG_INFO, "WebSocket thread ended\n");
 	return NULL;
 }
 
 
 /* WebSockets */
-static int janus_wss_callback_http(struct libwebsocket_context *this,
+static int janus_websockets_callback_http(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
 		enum libwebsocket_callback_reasons reason,
 		void *user, void *in, size_t len)
@@ -467,7 +564,8 @@ static int janus_wss_callback_http(struct libwebsocket_context *this,
 	return 0;
 }
 
-static int janus_wss_callback(struct libwebsocket_context *this,
+/* This callback handles Janus API requests */
+static int janus_websockets_callback(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
 		enum libwebsocket_callback_reasons reason,
 		void *user, void *in, size_t len)
@@ -572,9 +670,124 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 		}
 		default:
 			if(wsi != NULL) {
-				JANUS_LOG(LOG_VERB, "[WSS-%p] %d (%s)\n", wsi, reason, janus_wss_reason_string(reason));
+				JANUS_LOG(LOG_VERB, "[WSS-%p] %d (%s)\n", wsi, reason, janus_websockets_reason_string(reason));
 			} else {
-				JANUS_LOG(LOG_VERB, "[WSS] %d (%s)\n", reason, janus_wss_reason_string(reason));
+				JANUS_LOG(LOG_VERB, "[WSS] %d (%s)\n", reason, janus_websockets_reason_string(reason));
+			}
+			break;
+	}
+	return 0;
+}
+
+/* This callback handles Admin API requests */
+static int janus_websockets_admin_callback(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len)
+{
+	janus_websockets_client *ws_client = (janus_websockets_client *)user;
+	switch(reason) {
+		case LWS_CALLBACK_ESTABLISHED: {
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WebSocket connection accepted\n", wsi);
+			if(ws_client == NULL) {
+				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
+				return 1;
+			}
+			/* Clean the old sessions list, in case this pointer was used before */
+			janus_mutex_lock(&old_wss_mutex);
+			if(g_list_find(old_wss, ws_client) != NULL)
+				old_wss = g_list_remove(old_wss, ws_client);
+			janus_mutex_unlock(&old_wss_mutex);
+			/* Prepare the session */
+			ws_client->context = this;
+			ws_client->wsi = wsi;
+			ws_client->messages = g_async_queue_new();
+			ws_client->session_timeout = 0;
+			ws_client->destroy = 0;
+			janus_mutex_init(&ws_client->mutex);
+			/* Let us know when the WebSocket channel becomes writeable */
+			libwebsocket_callback_on_writable(this, wsi);
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Ready to be used!\n", wsi);
+			return 0;
+		}
+		case LWS_CALLBACK_RECEIVE: {
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Got %zu bytes:\n", wsi, len);
+			if(ws_client == NULL) {
+				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
+				return 1;
+			}
+			char *payload = calloc(len+1, sizeof(char));
+			memcpy(payload, in, len);
+			payload[len] = '\0';
+			JANUS_LOG(LOG_HUGE, "%s\n", payload);
+			/* Parse the JSON payload */
+			json_error_t error;
+			json_t *root = json_loads(payload, 0, &error);
+			g_free(payload);
+			/* Notify the core, passing both the object and, since it may be needed, the error */
+			gateway->incoming_request(&janus_websockets_transport, ws_client, NULL, TRUE, root, &error);
+			return 0;
+		}
+		case LWS_CALLBACK_SERVER_WRITEABLE: {
+			if(ws_client == NULL) {
+				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
+				return 1;
+			}
+			if(!ws_client->destroy && !g_atomic_int_get(&stopping)) {
+				janus_mutex_lock(&ws_client->mutex);
+				/* Shoot all the pending messages first */
+				char *response = g_async_queue_try_pop(ws_client->messages);
+				if(response && !ws_client->destroy && !g_atomic_int_get(&stopping)) {
+					/* Gotcha! */
+					unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
+					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(response));
+					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
+					g_free(buf);
+					g_free(response);
+					/* Done for this round, check the next response/notification later */
+					libwebsocket_callback_on_writable(this, wsi);
+					janus_mutex_unlock(&ws_client->mutex);
+					return 0;
+				}
+				janus_mutex_unlock(&ws_client->mutex);
+			}
+			return 0;
+		}
+		case LWS_CALLBACK_CLOSED: {
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WS connection closed\n", wsi);
+			if(ws_client != NULL) {
+				/* Notify core */
+				gateway->transport_gone(&janus_websockets_transport, ws_client);
+				/* Mark the session as closed */
+				janus_mutex_lock(&old_wss_mutex);
+				old_wss = g_list_append(old_wss, ws_client);
+				janus_mutex_unlock(&old_wss_mutex);
+				/* Cleanup */
+				janus_mutex_lock(&ws_client->mutex);
+				JANUS_LOG(LOG_INFO, "[AdminWSS-%p] Destroying WebSocket client\n", wsi);
+				ws_client->destroy = 1;
+				ws_client->context = NULL;
+				ws_client->wsi = NULL;
+				/* Remove messages queue too, if needed */
+				if(ws_client->messages != NULL) {
+					char *response = NULL;
+					while((response = g_async_queue_try_pop(ws_client->messages)) != NULL) {
+						g_free(response);
+					}
+					g_async_queue_unref(ws_client->messages);
+				}
+				janus_mutex_unlock(&ws_client->mutex);
+			}
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- closed\n", wsi);
+			return 0;
+		}
+		default:
+			if(wsi != NULL) {
+				JANUS_LOG(LOG_VERB, "[AdminWSS-%p] %d (%s)\n", wsi, reason, janus_websockets_reason_string(reason));
+			} else {
+				JANUS_LOG(LOG_VERB, "[AdminWSS] %d (%s)\n", reason, janus_websockets_reason_string(reason));
 			}
 			break;
 	}

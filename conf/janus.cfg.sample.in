@@ -1,18 +1,21 @@
 ; General configuration: folders where the configuration and the plugins
 ; can be found, default interface to use, debug/logging level and, if
-; needed, shared apisecret between application(s) and Janus.
+; needed, shared apisecret between application(s) and Janus. By default,
+; no secret is required for the Janus API, but it is for the Admin API.
 [general]
 configs_folder = @confdir@		; Configuration files folder
-plugins_folder = @plugindir@		; Plugins folder
-;interface = 1.2.3.4		; Interface to use (will be used in SDP)
-debug_level = 4				; Debug/logging level, valid values are 0-7
-;apisecret = janusrocks		; String that all Janus requests must contain
-;							to be accepted/authorized by the Janus core.
-;							Useful if you're wrapping all Janus API requests
-;							in your servers (that is, not in the browser,
-;							where you do the things your way) and you
-;							don't want other application to mess with
-;							this Janus instance.
+plugins_folder = @plugindir@	; Plugins folder
+;interface = 1.2.3.4			; Interface to use (will be used in SDP)
+debug_level = 4					; Debug/logging level, valid values are 0-7
+;api_secret = janusrocks		; String that all Janus requests must contain
+;								  to be accepted/authorized by the Janus core.
+;								  Useful if you're wrapping all Janus API requests
+;								  in your servers (that is, not in the browser,
+;								  where you do the things your way) and you
+;								  don't want other application to mess with
+;								  this Janus instance.
+admin_secret = janusoverlord	; String that all Janus requests must contain
+;								  to be accepted/authorized by the admin/monitor.
 
 
 ; Certificate and key to use for DTLS.
@@ -91,10 +94,12 @@ nice_debug = false
 ; By default, we ignore all interfaces whose name starts with 'vmnet':
 ice_ignore_list = vmnet
 
-; Finally, you can choose which of the available plugins should be
-; enabled or not. Use the 'disable' directive to prevent Janus from
-: loading one or more plugins: use a comma separated list of plugin file
-; names to identify the plugins to disable. By default all available
-; plugins are enabled and loaded at startup. 
+; Finally, you can choose which of the available transports or plugins
+; should be enabled or not. Use the 'disable' directive to prevent Janus
+; from loading one or more transports or plugins: use a comma separated
+; list of plugin file names to identify the plugins to disable. By default
+; all available transports and plugins are enabled and loaded at startup. 
+[transports]
+; disable = libjanus_rabbitmq.so,libjanus_websockets.so
 [plugins]
 ; disable = libjanus_voicemail.so,libjanus_recordplay.so

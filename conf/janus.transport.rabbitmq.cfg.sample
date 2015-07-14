@@ -20,3 +20,12 @@ host = localhost			; The address of the RabbitMQ server
 ;port = 5672				; The port of the RabbitMQ server (5672 by default)
 to_janus = to-janus			; Name of the queue for incoming messages
 from_janus = from-janus		; Name of the queue for outgoing messages
+
+; If you want to expose the Admin API via RabbitMQ as well, you need to
+; specify a different set of queues, as you cannot mix Janus API and
+; Admin API messaging. The same RabbitMQ server is supposed to be used.
+; Notice that by default the Admin API support via RabbitMQ is disabled.
+[admin]
+;admin_enable = no						; Whether the support must be enabled
+;to_janus_admin = to-janus-admin		; Name of the queue for incoming messages
+;from_janus_admin = from-janus-admin	; Name of the queue for outgoing messages

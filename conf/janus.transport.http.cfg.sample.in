@@ -14,6 +14,7 @@ http = yes					; Whether to enable the plain HTTP interface
 port = 8088					; Web server HTTP port
 https = no					; Whether to enable HTTPS (default=no)
 ;secure_port = 8889			; Web server HTTPS port, if enabled
+;acl = 127.,192.168.0.		; Only allow requests coming from this comma separated list of addresses
 
 ; Janus can also expose an admin/monitor endpoint, to allow you to check
 ; which sessions are up, which handles they're managing, their current
@@ -33,8 +34,6 @@ admin_http = no					; Whether to enable the plain HTTP interface
 admin_port = 7088				; Admin/monitor web server HTTP port
 admin_https = no				; Whether to enable HTTPS (default=no)
 ;admin_secure_port = 7889		; Admin/monitor web server HTTPS port, if enabled
-admin_secret = janusoverlord	; String that all Janus requests must contain
-;								  to be accepted/authorized by the admin/monitor.
 ;admin_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
 
 
