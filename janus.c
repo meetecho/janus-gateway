@@ -1889,7 +1889,7 @@ void janus_transportso_close(gpointer key, gpointer value, gpointer user_data) {
 
 /* Transport callback interface */
 void janus_transport_incoming_request(janus_transport *plugin, void *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error) {
-	JANUS_LOG(LOG_HUGE, "Got %s request from %s (%p)\n", admin ? "admin" : "Janus", plugin->get_package(), transport);
+	JANUS_LOG(LOG_VERB, "Got %s API request from %s (%p)\n", admin ? "an admin" : "a Janus", plugin->get_package(), transport);
 	/* Create a janus_request instance to handle the request */
 	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message);
 	GError *tperror = NULL;
@@ -1905,8 +1905,24 @@ void janus_transport_incoming_request(janus_transport *plugin, void *transport, 
 }
 
 void janus_transport_gone(janus_transport *plugin, void *transport) {
-	/* TODO Get rid of sessions this transport was handling */
-	
+	/* Get rid of sessions this transport was handling */
+	JANUS_LOG(LOG_VERB, "A %s transport instance has gone away (%p)\n", plugin->get_package(), transport);
+	janus_mutex_lock(&sessions_mutex);
+	if(sessions && g_hash_table_size(sessions) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, sessions);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_session *session = (janus_session *) value;
+			if(!session || session->destroy || session->timeout || session->last_activity == 0)
+				continue;
+			if(session->source && session->source->instance == transport) {
+				JANUS_LOG(LOG_VERB, "  -- Marking Session %"SCNu64" as over\n", session->session_id);
+				session->last_activity = 0;	/* This will trigger a timeout */
+			}
+		}
+	}
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {

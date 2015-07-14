@@ -415,8 +415,15 @@ void janus_websockets_session_over(void *transport, guint64 session_id, gboolean
 		return;
 	/* We only care if it's a timeout: if so, close the connection */
 	janus_websockets_client *client = (janus_websockets_client *)transport;
-	client->session_timeout = 1;
-	libwebsocket_callback_on_writable(client->context, client->wsi);
+	/* Make sure this is not related to a closed WebSocket session */
+	janus_mutex_lock(&old_wss_mutex);
+	if(g_list_find(old_wss, client) == NULL) {
+		janus_mutex_lock(&client->mutex);
+		client->session_timeout = 1;
+		libwebsocket_callback_on_writable(client->context, client->wsi);
+		janus_mutex_unlock(&client->mutex);
+	}
+	janus_mutex_unlock(&old_wss_mutex);
 }
 
 
