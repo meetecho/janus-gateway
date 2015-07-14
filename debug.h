@@ -15,8 +15,8 @@
 #include <glib.h>
 #include <glib/gprintf.h>
  
-extern int log_level;
-extern int log_timestamps;
+extern int janus_log_level;
+extern int janus_log_timestamps;
 
 /** @name Janus log colors
  */
@@ -53,7 +53,7 @@ extern int log_timestamps;
 #define LOG_MAX LOG_DBG
 
 /*! \brief Coloured prefixes for errors and warnings logging. */
-static const char *log_prefix[] = {
+static const char *janus_log_prefix[] = {
 	"",
 	ANSI_COLOR_MAGENTA"[FATAL]"ANSI_COLOR_RESET" ",
 	ANSI_COLOR_RED"[ERR]"ANSI_COLOR_RESET" ",
@@ -75,10 +75,10 @@ static const char *log_prefix[] = {
  * The format must be a string literal. */
 #define JANUS_LOG(level, format, ...) \
 do { \
-	if (level > LOG_NONE && level <= LOG_MAX && level <= log_level) { \
+	if (level > LOG_NONE && level <= LOG_MAX && level <= janus_log_level) { \
 		char janus_log_ts[32] = ""; \
 		char janus_log_src[64] = ""; \
-		if (log_timestamps) { \
+		if (janus_log_timestamps) { \
 			struct tm janustmresult; \
 			time_t janusltime = time(NULL); \
 			localtime_r(&janusltime, &janustmresult); \
@@ -90,7 +90,7 @@ do { \
 			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
 		g_print("%s%s%s" format, \
-		        janus_log_ts, log_prefix[level], janus_log_src, \
+		        janus_log_ts, janus_log_prefix[level], janus_log_src, \
 		        ##__VA_ARGS__); \
 	} \
 } while (0)

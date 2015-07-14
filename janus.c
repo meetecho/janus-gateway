@@ -175,8 +175,8 @@ gint janus_is_stopping(void) {
 
 
 /* Logging */
-int log_level = 0;
-int log_timestamps = 0;
+int janus_log_level = 0;
+int janus_log_timestamps = 0;
 int lock_debug = 0;
 
 
@@ -1403,7 +1403,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
-			json_object_set_new(status, "log_level", json_integer(log_level));
+			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "locking_debug", json_integer(lock_debug));
 			json_object_set_new(status, "libnice_debug", json_integer(janus_ice_is_ice_debugging_enabled()));
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
@@ -1427,12 +1427,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be between %d and %d)", LOG_NONE, LOG_MAX);
 				goto jsondone;
 			}
-			log_level = level_num;
+			janus_log_level = level_num;
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "level", json_integer(log_level));
+			json_object_set_new(reply, "level", json_integer(janus_log_level));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2404,14 +2404,14 @@ gint main(int argc, char *argv[])
 #endif
 	
 	/* Logging level: default is info and no timestamps */
-	log_level = LOG_INFO;
-	log_timestamps = 0;
+	janus_log_level = LOG_INFO;
+	janus_log_timestamps = 0;
 	if(args_info.debug_level_given) {
 		if(args_info.debug_level_arg < LOG_NONE)
 			args_info.debug_level_arg = 0;
 		else if(args_info.debug_level_arg > LOG_MAX)
 			args_info.debug_level_arg = LOG_MAX;
-		log_level = args_info.debug_level_arg;
+		janus_log_level = args_info.debug_level_arg;
 	}
 
 	/* Any configuration to open? */
@@ -2466,11 +2466,11 @@ gint main(int argc, char *argv[])
 			if(temp_level == 0 && strcmp(item->value, "0")) {
 				JANUS_PRINT("Invalid debug level %s (configuration), using default (info=4)\n", item->value);
 			} else {
-				log_level = temp_level;
-				if(log_level < LOG_NONE)
-					log_level = 0;
-				else if(log_level > LOG_MAX)
-					log_level = LOG_MAX;
+				janus_log_level = temp_level;
+				if(janus_log_level < LOG_NONE)
+					janus_log_level = 0;
+				else if(janus_log_level > LOG_MAX)
+					janus_log_level = LOG_MAX;
 			}
 		}
 	}
@@ -2539,11 +2539,11 @@ gint main(int argc, char *argv[])
 	janus_config_print(config);
 
 	/* Logging/debugging */
-	JANUS_PRINT("Debug/log level is %d\n", log_level);
+	JANUS_PRINT("Debug/log level is %d\n", janus_log_level);
 	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "debug_timestamps");
 	if(item && item->value)
-		log_timestamps = janus_is_true(item->value);
-	JANUS_PRINT("Debug/log timestamps are %s\n", log_timestamps ? "enabled" : "disabled");
+		janus_log_timestamps = janus_is_true(item->value);
+	JANUS_PRINT("Debug/log timestamps are %s\n", janus_log_timestamps ? "enabled" : "disabled");
 
 	/* Any IP/interface to ignore? */
 	item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");

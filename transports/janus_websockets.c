@@ -90,6 +90,8 @@ janus_transport *create(void) {
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
+
+/* Logging */
 static int ws_log_level = 0;
 
 /* WebSockets single thread */
