@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief  Janus RESTs transport plugin
  * \details  This is an implementation of a RESTs transport for the
- * Janus API, using the libmicrohttpd library (http://librest.org).
+ * Janus API, using the libmicrohttpd library (http://www.gnu.org/software/libmicrohttpd/).
  * This module allows browsers to make use of HTTP to talk to the gateway.
  * Since the gateway may be deployed on a different domain than the web
  * server hosting the web applications using it, the gateway automatically
@@ -41,7 +41,7 @@
 /* Transport plugin information */
 #define JANUS_REST_VERSION			1
 #define JANUS_REST_VERSION_STRING	"0.0.1"
-#define JANUS_REST_DESCRIPTION		"This transport plugin adds REST (HTTP/HTTPS) support to the Janus API via librest."
+#define JANUS_REST_DESCRIPTION		"This transport plugin adds REST (HTTP/HTTPS) support to the Janus API via libmicrohttpd."
 #define JANUS_REST_NAME				"JANUS REST (HTTP/HTTPS) transport plugin"
 #define JANUS_REST_AUTHOR			"Meetecho s.r.l."
 #define JANUS_REST_PACKAGE			"janus.transport.http"

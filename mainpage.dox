@@ -72,7 +72,6 @@
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
- * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (Web server)
  * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
@@ -80,6 +79,7 @@
  * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
@@ -88,12 +88,15 @@
  */
 
 /*! \page JS JavaScript API
- * The gateway exposes both a pseudo-RESTful interface, and optionally a
- * WebSocket interface as well, both of which based on JSON messages. These
- * interfaces are described in more detail in the \ref plainhttp and
- * \ref WS documentation respectively, and both allow web applications to
+ * The gateway exposes, assuming the HTTP transport has been compiled, a
+ * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ interfaces
+ * as well, all of which based on JSON messages. These
+ * interfaces are described in more detail in the \ref plainhttp \ref WS
+ * and \ref rabbit documentation respectively, and all allow clients to
  * take advantage of the features provided by Janus and the functionality
- * made available by its plugins. To make things easier for web
+ * made available by its plugins. Considering most clients will be web browsers,
+ * a common choice will be to rely on either the REST or the WebSockets
+ * interface for the purpose. To make things easier for web
  * developers, a JavaScript library (\c janus.js) is available that can
  * make use of both interfaces using exactly the same API. This library
  * eases the task of creating sessions with the gateway, attaching WebRTC
@@ -510,11 +513,20 @@ janus.attach(
  * the interfaces use the same messages (in terms of requests, responses
  * and notifications), so almost all the concepts described in the
  * \ref plainhttp section apply to the WebSocket/RabbitMQ interfaces as well.
+ * Besides, since version \c 0.1.0 the transport mechanism for the Janus API
+ * has been made modular, which means other protocols for transporting
+ * Janus API messages might become available in the future: considering the
+ * Janus protocol is supposed to be mostly agnostic to the protocol it is
+ * transported on, the concepts explained in the following sections should
+ * apply to those as well.
+ *
  * As it will be explained later in the \ref WS and \ref rabbit sections
  * below, the only differences come when addressing specific sessions/handles
- * and in part in how you handle notifications using WebSockets: in fact,
- * since with WebSockets and RabbitMQ there's no REST-based path involved,
- * you'll need a couple of additional identifiers to bridge the gap.
+ * and in part in how you handle notifications using something different than
+ * the REST interface: in fact, since with WebSockets and RabbitMQ (and, as
+ * anticipated, with other protocols that may be added in the future too)
+ * there's no REST-based path involved, you'll need a couple of additional
+ * identifiers to bridge the gap.
  * 
  * \section plainhttp Plain HTTP REST Interface
  * As anticipated in the \ref JS documentation, the gateway deploys a
@@ -577,8 +589,8 @@ janus.attach(
  * The API exposes an \c info endpoint you can query to get information
  * about the Janus instance you're talking to. Specifically, it returns
  * information about the version of the Janus server, whether some of the
- * optional features (Data Channels and WebSockets) are supported or not, 
- * and which plugins are available.
+ * optional features (e.g., Data Channels or IPv6) are supported or not, 
+ * and which transports and plugins are available.
  *
  * To get this information, just send an HTTP \b GET message to the \c info
  * endpoint (e.g., http://yourserver:8088/janus/info), which will return
@@ -586,13 +598,25 @@ janus.attach(
  *
 \verbatim
 {
-	"version_string": "0.0.6",
-	"author": "Meetecho s.r.l.",
+	"janus": "server_info",
+	"transaction": "i1bzIL341Kl2",
 	"name": "Janus WebRTC Gateway",
-	"version": 4,
-	"websockets": 1,		// WebSockets are supported
-	"data_channels": 1,		// Data Channels are supported
-	"rabbitmq": 1,			// RabbitMQ is supported
+	"version": 10,
+	"version_string": "0.1.0",
+	"author": "Meetecho s.r.l.",
+	"data_channels": "true",	// Data channels are supported
+	"ipv6": "false",			// IPv6 is not configured
+	"ice-tcp": "false",			// ICE-TCP support is disabled
+	"transports": {
+		"janus.transport.http": {
+			"name": "JANUS REST (HTTP/HTTPS) transport plugin",
+			"author": "Meetecho s.r.l.",
+			"description": "This transport plugin adds REST (HTTP/HTTPS) support to the Janus API via libmicrohttpd.",
+			"version_string": "0.0.1",
+			"version": 1
+		},
+		[..]	// Other transport plugins
+	},
 	"plugins": {
 		"janus.plugin.sip": {		// The SIP plugin is available
 			"version_string": "0.0.2",
@@ -1320,12 +1344,16 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * but not act on part of it: for more interaction (e.g., to force a
  * session removal), you can rely on the existing \ref rest for the purpose.
  *
- * The API, for security reasons, is not enabled by default. You can enable
- * it by editing the \c [admin] section in the \c janus.cfg configuration
- * file accordingly. The configuration is pretty much the same as the one
- * for the \ref plainhttp so you can refer to that one. In addition, you
+ * The API, for security reasons, should not be enabled by default in any of the
+ * transport plugins: that's definitely the case for the stock transport
+ * plugins, for instance, while additional, third party plugins may choose
+ * to expose the functionality without requiring any tweaking. As to the
+ * existing transport, you can enable the admin API by editing the \c [admin]
+ * section in the related transport configuration file (e.g., \c janus.transport.http.cfg
+ * for the REST interface, to use the admin API over HTTP). The configuration
+ * is pretty much the same as the one for the Janus API. In addition, you
  * can configure restrictions in the form of a password/secret that clients
- * need to provide and access lists based on full/partial addresses.
+ * need to provide or other transport-specific ones.
  *
  * For what concerns the syntax, it's very similar to the \ref rest and
  * so this page will briefly discuss the differences. At the moment, a few
@@ -1421,7 +1449,14 @@ POST /admin/12345678/98765432
 	"session_id" : 12345678,
 	"handle_id" : 98765432,
 	"info" : {
+		"session_id" : 12345678,
+		"session_last_activity": 7927759122,
+		"session_transport": "janus.transport.websockets",
+		"handle_id" : 98765432,
 		"plugin": "janus.plugin.echotest",
+		"plugin_specific": {
+			// plugin specific (e.g., EchoTest internals)
+		},
 		"flags": {
 			// flags
 		},
@@ -1438,11 +1473,16 @@ POST /admin/12345678/98765432
  *
  * The actual content of the last response is omitted for brevity, but
  * you're welcome to experiment with it in order to check whether more
- * information (of a different nature, maybe) may be useful to have.
- *
- * \note At the moment, no plugin-related information is available through
- * this API. The only plugin-related information you can find is which
- * plugin a specific handle is attached to.
+ * information (of a different nature, maybe) may be useful to have. In
+ * particular, you may want to play with the plugin-specific details, as
+ * different plugins will return different information according to what
+ * they provide: for instance, the videoroom plugin might clarify whether
+ * a handle is being used for publishing media or for receiving it, and
+ * what are the involved IDs, the current status of the delivery, and so on.
+ * At the same time, the \c streams object will contain invaluable details
+ * related to the WebRTC PeerConnection associated with the handle, as
+ * in input/output statistics statistics (bytes, bytes per seconds, NACKs,
+ * etc.) or the SDP/ICE/DTLS states.
  *
  * Finally, the syntax for the \c set_log_level and \c set_locking_debug
  * commands is quite straightforward:
@@ -1469,6 +1509,12 @@ POST /admin
  *
  * Both commands will return the updated level/debug setting if successful,
  * and an error otherwise.
+ *
+ * To conclude, all of the above mentioned examples have assumed an usage
+ * of HTTP to interact with the Admin API. The same considerations already
+ * made for the Janus API as to the usage of different transports (WebSockets,
+ * RabbitMQ or others) apply here as well, particularly with respect to
+ * the explicit \c session_id and \c handle_id in the JSON payload.  
  *
  */
 
@@ -1700,7 +1746,6 @@ var servers = [ws_server, http_server];
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b gengetopt: http://www.gnu.org/software/gengetopt/ (command line)
- * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (Web server)
  * - \b libini-config: https://fedorahosted.org/sssd/ (INI configurations)
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
@@ -1708,6 +1753,9 @@ var servers = [ws_server, http_server];
  * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (Data Channels)
+ * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (Web server)
+ * - \b libwebsockets: https://libwebsockets.org/ (WebSockets)
+ * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (RabbitMQ)
  * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (only needed for the voicemail plugin)
  *
@@ -1954,6 +2002,15 @@ var servers = [ws_server, http_server];
  *    is exactly the same as the one for HTTP and WebSockets, as documented
  *    in \ref rabbit. \n \note Please beware that support for RabbitMQ is
  *    still \b highly \b experimental, so handle that with care!\n\n
+ *    .
+ * -# <b>What about <my favourite control protocol> instead?</b>\n
+ *    .
+ *    Since version \c 0.1.0, the transports for the Janus API have been made
+ *    modular. This means that, assuming a transport plugin implementing
+ *    support for your favourite protocol has been made available, you
+ *    can just add it to the Janus transport modules folder and it should
+ *    work. If no plugin has been implemented, you may even want to do so
+ *    yourself, or ask for ours or others help.\r\n
  *    .
  * -# <b>Can I use Janus with node.js or other frameworks?</b>\n
  *    .
