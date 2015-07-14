@@ -1715,7 +1715,7 @@ int janus_process_success(janus_request *request, json_t *payload)
 	if(!request || !payload)
 		return -1;
 	/* Pass to the right transport plugin */
-	JANUS_LOG(LOG_HUGE, "Sending response to %s (%p)\n", request->transport->get_package(), request->instance);
+	JANUS_LOG(LOG_HUGE, "Sending %s API response to %s (%p)\n", request->admin ? "admin" : "Janus", request->transport->get_package(), request->instance);
 	return request->transport->send_message(request->instance, request->request_id, request->admin, payload);
 }
 
@@ -1736,7 +1736,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 		va_end(ap);
 	}
 	/* Done preparing error */
-	JANUS_LOG(LOG_VERB, "[%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
+	JANUS_LOG(LOG_VERB, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string ? error_string : "no text");
 	/* Prepare JSON error */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("error"));

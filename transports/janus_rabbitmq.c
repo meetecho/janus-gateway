@@ -403,7 +403,7 @@ int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admi
 		json_decref(message);
 		return -1;
 	}
-	JANUS_LOG(LOG_INFO, "Sending %s API %s\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
+	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
 	janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
 	response->admin = admin;
@@ -503,7 +503,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		JANUS_LOG(LOG_VERB, "Got %"SCNu64"/%"SCNu64" bytes from the %s queue (%"SCNu64")\n",
 			received, total, admin ? "admin API" : "Janus API", frame.payload.body_fragment.len);
-		JANUS_LOG(LOG_INFO, "%s\n", payload);
+		JANUS_LOG(LOG_VERB, "%s\n", payload);
 		/* Parse the JSON payload */
 		json_error_t error;
 		json_t *root = json_loads(payload, 0, &error);
@@ -532,8 +532,8 @@ void *janus_rmq_out_thread(void *data) {
 				char *payload_text = json_dumps(response->payload, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(response->payload);
 				response->payload = NULL;
-				JANUS_LOG(LOG_INFO, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
-				JANUS_LOG(LOG_INFO, "%s\n", payload_text);
+				JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
+				JANUS_LOG(LOG_VERB, "%s\n", payload_text);
 				amqp_basic_properties_t props;
 				props._flags = 0;
 				props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
