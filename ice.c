@@ -232,6 +232,20 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 }
 
 
+/* Map of old plugin sessions that have been closed */
+static GHashTable *old_plugin_sessions;
+static janus_mutex old_plugin_sessions_mutex;
+gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
+	/* Make sure this plugin session is still alive */
+	janus_mutex_lock(&old_plugin_sessions_mutex);
+	janus_plugin_session *result = g_hash_table_lookup(old_plugin_sessions, plugin_session);
+	janus_mutex_unlock(&old_plugin_sessions_mutex);
+	if(result != NULL) {
+		JANUS_LOG(LOG_ERR, "Invalid plugin session (%p)\n", plugin_session);
+	}
+	return (result == NULL);
+}
+
 /* Watchdog for removing old handles */
 static GHashTable *old_handles = NULL;
 static GMainContext *handles_watchdog_context = NULL;
@@ -400,6 +414,10 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 		JANUS_LOG(LOG_INFO, "ICE port range: %"SCNu16"-%"SCNu16"\n", rtp_range_min, rtp_range_max);
 #endif
 	}
+
+	/* We keep track of old plugin sessions to avoid problems */
+	old_plugin_sessions = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&old_plugin_sessions_mutex);
 
 	/* Start the handles watchdog */
 	janus_mutex_init(&old_handles_mutex);
@@ -715,6 +733,10 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	}
 	handle->app = plugin;
 	handle->app_handle = session_handle;
+	/* Make sure this plugin session is not in the old sessions list */
+	janus_mutex_lock(&old_plugin_sessions_mutex);
+	g_hash_table_remove(old_plugin_sessions, session_handle);
+	janus_mutex_unlock(&old_plugin_sessions_mutex);
 	janus_mutex_unlock(&session->mutex);
 	return 0;
 }
@@ -740,7 +762,13 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
 	/* TODO Actually detach handle... */
 	int error = 0;
-	handle->app_handle->stopped = 1;	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
+	janus_mutex_lock(&old_plugin_sessions_mutex);
+	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
+	handle->app_handle->stopped = 1;
+	/* And this is to put the plugin session in the old sessions list, to avoid it being used */
+	g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
+	janus_mutex_unlock(&old_plugin_sessions_mutex);
+	/* Notify the plugin that the session's over */
 	plugin_t->destroy_session(handle->app_handle, &error);
 	/* Get rid of the handle now */
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
@@ -781,11 +809,14 @@ void janus_ice_free(janus_ice_handle *handle) {
 	handle->session = NULL;
 	handle->app = NULL;
 	if(handle->app_handle != NULL) {
+		janus_mutex_lock(&old_plugin_sessions_mutex);
 		handle->app_handle->stopped = 1;
+		g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
 		handle->app_handle->gateway_handle = NULL;
 		handle->app_handle->plugin_handle = NULL;
 		g_free(handle->app_handle);
 		handle->app_handle = NULL;
+		janus_mutex_unlock(&old_plugin_sessions_mutex);
 	}
 	janus_mutex_unlock(&handle->mutex);
 	janus_ice_webrtc_free(handle);
@@ -1028,7 +1059,7 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 	if(component->sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC
 	   && now - component->last_slowlink_time > 1 * G_USEC_PER_SEC) {
 		janus_plugin *plugin = (janus_plugin *)handle->app;
-		if(plugin && plugin->slow_link)
+		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->slow_link(handle->app_handle, uplink, video);
 		component->last_slowlink_time = now;
 		component->sl_nack_period_ts = now;
@@ -2939,7 +2970,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	janus_plugin *plugin = (janus_plugin *)handle->app;
 	if(plugin != NULL) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-		if(plugin && plugin->setup_media)
+		if(plugin && plugin->setup_media && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->setup_media(handle->app_handle);
 	}
 	/* Also prepare JSON event to notify user/application */
