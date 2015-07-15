@@ -394,7 +394,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 #endif
 	}
 	/* Automatically enable libnice debugging based on debug_level */
-	if(log_level >= LOG_DBG) {
+	if(janus_log_level >= LOG_DBG) {
 		janus_ice_debugging_enable();
 	} else {
 		nice_debug_disable(TRUE);
