@@ -101,6 +101,9 @@ $(document).ready(function() {
 											case "secret":
 												bootbox.alert("Using this approach you'll provide a plain secret to REGISTER");
 												break;
+											case "ha1secret":
+												bootbox.alert("Using this approach might not work with Asterisk because the generated HA1 secret could have the wrong realm");
+												break;
 											case "guest":
 												bootbox.alert("Using this approach you'll try to REGISTER as a guest, that is without providing any secret");
 												break;
@@ -446,6 +449,10 @@ function registerUsername() {
 	if(selectedApproach === "secret") {
 		// Use the plain secret
 		register["secret"] = password;
+	} else if(selectedApproach === "ha1secret") {
+		var sip_user = username.substring(4, username.indexOf('@'));    /* skip sip: */
+		var sip_domain = username.substring(username.indexOf('@')+1);
+		register["ha1_secret"] = md5(sip_user+':'+sip_domain+':'+password);
 	}
 	if(sipserver === "") {
 		bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
