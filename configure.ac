@@ -181,6 +181,7 @@ AC_CHECK_LIB([websockets_shared],
                AS_IF([test "x$enable_websockets" = "xyes"],
                [
                   AC_DEFINE(HAVE_WEBSOCKETS)
+                  WS_MANUAL_LIBS="-lwebsockets_shared"
                ])
              ],
              [
@@ -190,6 +191,7 @@ AC_CHECK_LIB([websockets_shared],
 							   AS_IF([test "x$enable_websockets" = "xyes"],
 							   [
 								  AC_DEFINE(HAVE_WEBSOCKETS)
+								  WS_MANUAL_LIBS="-lwebsockets"
 							   ])
 							 ],
 							 [
@@ -198,6 +200,7 @@ AC_CHECK_LIB([websockets_shared],
 							 ])
              ])
 AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
+AC_SUBST(WS_MANUAL_LIBS)
 
 AC_CHECK_LIB([rabbitmq],
              [amqp_error_string2],
