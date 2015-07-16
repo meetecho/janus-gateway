@@ -37,7 +37,7 @@ admin_https = no				; Whether to enable HTTPS (default=no)
 ;admin_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
 
 
-; Certificate and key to use for HTTPS/WSS.
+; Certificate and key to use for HTTPS.
 [certificates]
 cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key

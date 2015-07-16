@@ -290,12 +290,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
 			}
 		}
-		item = janus_config_get_item_drilldown(config, "general", "ws_ssl");
+		item = janus_config_get_item_drilldown(config, "general", "wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Secure WebSockets server disabled\n");
 		} else {
 			int wsport = 8989;
-			item = janus_config_get_item_drilldown(config, "general", "ws_secure_port");
+			item = janus_config_get_item_drilldown(config, "general", "wss_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
@@ -358,12 +358,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (port %d)...\n", wsport);
 			}
 		}
-		item = janus_config_get_item_drilldown(config, "admin", "admin_ws_ssl");
+		item = janus_config_get_item_drilldown(config, "admin", "admin_wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Secure Admin WebSockets server disabled\n");
 		} else {
 			int wsport = 7989;
-			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_secure_port");
+			item = janus_config_get_item_drilldown(config, "admin", "admin_wss_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
 			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
