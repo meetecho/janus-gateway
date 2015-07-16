@@ -227,6 +227,50 @@ const char *janus_websockets_reason_string(enum libwebsocket_callback_reasons re
 	return NULL;
 }
 
+/* WebSockets ACL list for both Janus and Admin API */
+GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
+janus_mutex access_list_mutex;
+void janus_websockets_allow_address(const char *ip, gboolean admin);
+void janus_websockets_allow_address(const char *ip, gboolean admin) {
+	if(ip == NULL)
+		return;
+	/* Is this an IP or an interface? */
+	janus_mutex_lock(&access_list_mutex);
+	if(!admin)
+		janus_websockets_access_list = g_list_append(janus_websockets_access_list, (gpointer)ip);
+	else
+		janus_websockets_admin_access_list = g_list_append(janus_websockets_admin_access_list, (gpointer)ip);
+	janus_mutex_unlock(&access_list_mutex);
+}
+gboolean janus_websockets_is_allowed(const char *ip, gboolean admin);
+gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
+	JANUS_LOG(LOG_INFO, "Checking if %s is allowed to contact %s interface\n", ip, admin ? "admin" : "janus");
+	if(ip == NULL)
+		return FALSE;
+	if(!admin && janus_websockets_access_list == NULL) {
+		JANUS_LOG(LOG_INFO, "Yep\n");
+		return TRUE;
+	}
+	if(admin && janus_websockets_admin_access_list == NULL) {
+		JANUS_LOG(LOG_INFO, "Yeah\n");
+		return TRUE;
+	}
+	janus_mutex_lock(&access_list_mutex);
+	GList *temp = admin ? janus_websockets_admin_access_list : janus_websockets_access_list;
+	while(temp) {
+		const char *allowed = (const char *)temp->data;
+		JANUS_LOG(LOG_INFO, "Comparing: %s == %s?\n", ip, allowed);
+		if(allowed != NULL && strstr(ip, allowed)) {
+			janus_mutex_unlock(&access_list_mutex);
+			JANUS_LOG(LOG_INFO, "There it is!\n");
+			return TRUE;
+		}
+		temp = temp->next;
+	}
+	janus_mutex_unlock(&access_list_mutex);
+	JANUS_LOG(LOG_INFO, "Nope...\n");
+	return FALSE;
+}
 
 /* Transport implementation */
 int janus_websockets_init(janus_transport_callbacks *callback, const char *config_path) {
@@ -261,6 +305,45 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		lws_set_log_level(ws_log_level, NULL);
 		old_wss = NULL;
 		janus_mutex_init(&old_wss_mutex);
+
+		/* Any ACL for either the Janus or Admin API? */
+		item = janus_config_get_item_drilldown(config, "general", "ws_acl");
+		if(item && item->value) {
+			gchar **list = g_strsplit(item->value, ",", -1);
+			gchar *index = list[0];
+			if(index != NULL) {
+				int i=0;
+				while(index != NULL) {
+					if(strlen(index) > 0) {
+						JANUS_LOG(LOG_INFO, "Adding '%s' to the Janus API allowed list...\n", index);
+						janus_websockets_allow_address(g_strdup(index), FALSE);
+					}
+					i++;
+					index = list[i];
+				}
+			}
+			g_strfreev(list);
+			list = NULL;
+		}
+		item = janus_config_get_item_drilldown(config, "admin", "admin_ws_acl");
+		if(item && item->value) {
+			gchar **list = g_strsplit(item->value, ",", -1);
+			gchar *index = list[0];
+			if(index != NULL) {
+				int i=0;
+				while(index != NULL) {
+					if(strlen(index) > 0) {
+						JANUS_LOG(LOG_INFO, "Adding '%s' to the Admin/monitor allowed list...\n", index);
+						janus_websockets_allow_address(g_strdup(index), TRUE);
+					}
+					i++;
+					index = list[i];
+				}
+			}
+			g_strfreev(list);
+			list = NULL;
+		}
+
 		/* Setup the Janus API WebSockets server(s) */
 		item = janus_config_get_item_drilldown(config, "general", "ws");
 		if(!item || !item->value || !janus_is_true(item->value)) {
@@ -472,6 +555,10 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 		return -1;
 	}
 	janus_websockets_client *client = (janus_websockets_client *)transport;
+	if(!client->context || !client->wsi) {
+		g_free(message);
+		return -1;
+	}
 	/* Make sure this is not related to a closed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
 	if(g_list_find(old_wss, client) == NULL) {
@@ -496,6 +583,8 @@ void janus_websockets_session_over(void *transport, guint64 session_id, gboolean
 		return;
 	/* We only care if it's a timeout: if so, close the connection */
 	janus_websockets_client *client = (janus_websockets_client *)transport;
+	if(!client->context || !client->wsi)
+		return;
 	/* Make sure this is not related to a closed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
 	if(g_list_find(old_wss, client) == NULL) {
@@ -553,11 +642,11 @@ static int janus_websockets_callback_http(struct libwebsocket_context *this,
 			JANUS_LOG(LOG_VERB, "Rejecting incoming HTTP request on WebSockets endpoint\n");
 			libwebsockets_return_http_status(this, wsi, 403, NULL);
 			/* Close and free connection */
-			return 1;
+			return -1;
 		case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION:
 			if (!in) {
 				JANUS_LOG(LOG_VERB, "Rejecting incoming HTTP request on WebSockets endpoint: no sub-protocol specified\n");
-				return 1;
+				return -1;
 			}
 			break;
 		default:
@@ -575,10 +664,20 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 	janus_websockets_client *ws_client = (janus_websockets_client *)user;
 	switch(reason) {
 		case LWS_CALLBACK_ESTABLISHED: {
+			/* Is there any filtering we should apply? */ 
+			char name[256], ip[256];
+			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
+			JANUS_LOG(LOG_VERB, "[WSS-%p] WebSocket connection opened from %s by %s\n", wsi, ip, name);
+			if(!janus_websockets_is_allowed(ip, FALSE)) {
+				JANUS_LOG(LOG_ERR, "[WSS-%p] IP %s is unauthorized to connect to the WebSockets Janus API interface\n", wsi, ip);
+				/* Close the connection */
+				libwebsocket_callback_on_writable(this, wsi);
+				return -1;
+			}
 			JANUS_LOG(LOG_VERB, "[WSS-%p] WebSocket connection accepted\n", wsi);
 			if(ws_client == NULL) {
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
-				return 1;
+				return -1;
 			}
 			/* Clean the old sessions list, in case this pointer was used before */
 			janus_mutex_lock(&old_wss_mutex);
@@ -599,9 +698,9 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 		}
 		case LWS_CALLBACK_RECEIVE: {
 			JANUS_LOG(LOG_VERB, "[WSS-%p] Got %zu bytes:\n", wsi, len);
-			if(ws_client == NULL) {
+			if(ws_client == NULL || ws_client->context == NULL || ws_client->wsi == NULL) {
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
-				return 1;
+				return -1;
 			}
 			char *payload = calloc(len+1, sizeof(char));
 			memcpy(payload, in, len);
@@ -616,9 +715,9 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 			return 0;
 		}
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
-			if(ws_client == NULL) {
+			if(ws_client == NULL || ws_client->context == NULL || ws_client->wsi == NULL) {
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
-				return 1;
+				return -1;
 			}
 			if(!ws_client->destroy && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->mutex);
@@ -690,10 +789,20 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 	janus_websockets_client *ws_client = (janus_websockets_client *)user;
 	switch(reason) {
 		case LWS_CALLBACK_ESTABLISHED: {
+			/* Is there any filtering we should apply? */ 
+			char name[256], ip[256];
+			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WebSocket connection opened from %s by %s\n", wsi, ip, name);
+			if(!janus_websockets_is_allowed(ip, TRUE)) {
+				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] IP %s is unauthorized to connect to the WebSockets Admin API interface\n", wsi, ip);
+				/* Close the connection */
+				libwebsocket_callback_on_writable(this, wsi);
+				return -1;
+			}
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WebSocket connection accepted\n", wsi);
 			if(ws_client == NULL) {
 				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
-				return 1;
+				return -1;
 			}
 			/* Clean the old sessions list, in case this pointer was used before */
 			janus_mutex_lock(&old_wss_mutex);
@@ -714,9 +823,9 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 		}
 		case LWS_CALLBACK_RECEIVE: {
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Got %zu bytes:\n", wsi, len);
-			if(ws_client == NULL) {
+			if(ws_client == NULL || ws_client->context == NULL || ws_client->wsi == NULL) {
 				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
-				return 1;
+				return -1;
 			}
 			char *payload = calloc(len+1, sizeof(char));
 			memcpy(payload, in, len);
@@ -731,9 +840,9 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 			return 0;
 		}
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
-			if(ws_client == NULL) {
+			if(ws_client == NULL || ws_client->context == NULL || ws_client->wsi == NULL) {
 				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
-				return 1;
+				return -1;
 			}
 			if(!ws_client->destroy && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->mutex);

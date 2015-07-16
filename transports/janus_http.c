@@ -159,7 +159,7 @@ void janus_http_allow_address(const char *ip, gboolean admin) {
 		return;
 	/* Is this an IP or an interface? */
 	janus_mutex_lock(&access_list_mutex);
-	if(admin)
+	if(!admin)
 		janus_http_access_list = g_list_append(janus_http_access_list, (gpointer)ip);
 	else
 		janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, (gpointer)ip);
@@ -329,7 +329,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				while(index != NULL) {
 					if(strlen(index) > 0) {
 						JANUS_LOG(LOG_INFO, "Adding '%s' to the Admin/monitor allowed list...\n", index);
-						janus_http_allow_address(g_strdup(index), FALSE);
+						janus_http_allow_address(g_strdup(index), TRUE);
 					}
 					i++;
 					index = list[i];
