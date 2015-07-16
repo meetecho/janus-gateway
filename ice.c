@@ -2008,8 +2008,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		return -1;
  	}
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
+	gboolean controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
-		janus_ice_lite_enabled ? "Lite" : "Full", offer ? "controlled" : "controlling");
+		janus_ice_lite_enabled ? "Lite" : "Full", controlling ? "controlling" : "controlled");
 	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_DRAFT19);
 	if(janus_ice_lite_enabled) {
 		g_object_set(G_OBJECT(handle->agent), "full-mode", FALSE, NULL);
@@ -2041,7 +2042,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 #endif
 	g_object_set(G_OBJECT(handle->agent), "upnp", FALSE, NULL);
-	g_object_set(G_OBJECT(handle->agent), "controlling-mode", !offer, NULL);
+	g_object_set(G_OBJECT(handle->agent), "controlling-mode", controlling, NULL);
 	g_signal_connect (G_OBJECT (handle->agent), "candidate-gathering-done",
 		G_CALLBACK (janus_ice_cb_candidate_gathering_done), handle);
 	g_signal_connect (G_OBJECT (handle->agent), "component-state-changed",
