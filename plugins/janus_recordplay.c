@@ -2044,23 +2044,25 @@ static void *janus_recordplay_playout_thread(void *data) {
 		fclose(vfile);
 	vfile = NULL;
 
-	/* Remove from the list of viewers */
-	janus_mutex_lock(&session->recording->mutex);
-	session->recording->viewers = g_list_remove(session->recording->viewers, session);
-	if(session->recording->viewers == NULL) {
-		/* This was the last viewer, destroying the recording */
-		JANUS_LOG(LOG_VERB, "Last viewer stopped playout of recording %"SCNu64", destroying it now\n", session->recording->id);
-		janus_mutex_unlock(&session->recording->mutex);
-		g_free(session->recording->name);
-		g_free(session->recording->date);
-		g_free(session->recording->arc_file);
-		g_free(session->recording->vrc_file);
-		g_free(session->recording);
-		session->recording = NULL;
-	} else {
-		/* Other viewers still on, don't do anything */
-		JANUS_LOG(LOG_VERB, "Recording %"SCNu64" still has viewers, delaying its destruction until later\n", session->recording->id);
-		janus_mutex_unlock(&session->recording->mutex);
+	if(session->recording->destroyed) {
+		/* Remove from the list of viewers */
+		janus_mutex_lock(&session->recording->mutex);
+		session->recording->viewers = g_list_remove(session->recording->viewers, session);
+		if(session->recording->viewers == NULL) {
+			/* This was the last viewer, destroying the recording */
+			JANUS_LOG(LOG_VERB, "Last viewer stopped playout of recording %"SCNu64", destroying it now\n", session->recording->id);
+			janus_mutex_unlock(&session->recording->mutex);
+			g_free(session->recording->name);
+			g_free(session->recording->date);
+			g_free(session->recording->arc_file);
+			g_free(session->recording->vrc_file);
+			g_free(session->recording);
+			session->recording = NULL;
+		} else {
+			/* Other viewers still on, don't do anything */
+			JANUS_LOG(LOG_VERB, "Recording %"SCNu64" still has viewers, delaying its destruction until later\n", session->recording->id);
+			janus_mutex_unlock(&session->recording->mutex);
+		}
 	}
 
 	/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
