@@ -45,8 +45,8 @@
 #include "pp-webm.h"
 #include "pp-opus.h"
 
-int log_level = 4;
-int log_timestamps = 0;
+int janus_log_level = 4;
+int janus_log_timestamps = 0;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
 int working = 0;
@@ -66,8 +66,8 @@ int main(int argc, char *argv[])
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
 		int val = atoi(g_getenv("JANUS_PPREC_DEBUG"));
 		if(val > 0 && val < LOG_MAX)
-			log_level = val;
-		JANUS_LOG(LOG_INFO, "Logging level: %d\n", log_level);
+			janus_log_level = val;
+		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 	}
 	
 	/* Evaluate arguments */

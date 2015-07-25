@@ -231,10 +231,9 @@ int janus_process_incoming_request(janus_request_source *source, json_t *request
 int janus_process_incoming_admin_request(janus_request_source *source, json_t *request);
 /*! \brief Method to return a successful Janus response message (JSON) to the browser
  * @param[in] source The source that originated the request
- * @param[in] transaction The Janus transaction identifier
  * @param[in] payload The stringified version of the Janus response (JSON) 
  * @returns MHD_YES on success, MHD_NO otherwise */
-int janus_process_success(janus_request_source *source, const char *transaction, char *payload);
+int janus_process_success(janus_request_source *source, char *payload);
 /*! \brief Method to return an error Janus response message (JSON) to the browser
  * @param[in] source The source that originated the request
  * @param[in] session_id Janus session identifier this error refers to
@@ -287,7 +286,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events);
 
 #ifdef HAVE_WEBSOCKETS
 /** @name Janus WebSockets server
- * \details Browsers can also make use WebSockets to make requests to the
+ * \details Browsers can also make use of WebSockets to make requests to the
  * gateway (as long as, of course, support for them has been built, since
  * they're optional in Janus). In that case, the same WebSocket can be used
  * for both sending requests and receiving notifications, without the need
@@ -297,8 +296,8 @@ int janus_ws_notifier(janus_request_source *source, int max_events);
  * \c handle_id. That is, where you'd send a Janus request related to a
  * specific session to the \c /janus/<session> path, with WebSockets
  * you'd have to send the same request with an additional \c session_id
- * field in the JSON payload. The same applies for the handle. Another
- * JavaScript library (janus-ws.js) implements all of this on the client
+ * field in the JSON payload. The same applies for the handle. Our
+ * JavaScript library (janus.js) implements all of this on the client
  * side automatically.
  * \note When you create a session using WebSockets, a subscription to
  * the events related to it is done automatically, so no need for an

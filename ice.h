@@ -179,7 +179,13 @@ void janus_ice_stats_reset(janus_ice_stats *stats);
 void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason);
 
 
-/* for component last_seqs lists (for determining when to send NACKs) */
+/*! \brief Quick helper method to check if a plugin session associated with a Janus handle is still valid
+ * @param plugin_session The janus_plugin_session instance to validate
+ * @returns true if the plugin session is valid, false otherwise */
+gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session);
+
+
+/*! \brief A helper struct for determining when to send NACKs */
 typedef struct janus_seq_info {
 	gint64 ts;
 	guint16 seq;
