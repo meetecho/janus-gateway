@@ -2651,7 +2651,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		JANUS_LOG(LOG_ERR, "Can't init CURL\n");
 		return NULL;
 	}
-	if (log_level > LOG_INFO)
+	if (janus_log_level > LOG_INFO)
 	{
 		curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	}
