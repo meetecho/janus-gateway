@@ -22,6 +22,29 @@ Janus.isExtensionEnabled = function() {
 
 Janus.noop = function() {};
 
+Janus.logger = function(level) {
+	this.level = level || 0;
+
+	methods = ["trace", "debug", "info", "warn", "error"];
+	levels = {};
+
+	this.log = function(msg) {
+		(console.log === undefined) ? Janus.noop : console.log(msg);
+	};
+
+	methods.forEach(function(level, index) {
+		levels[level] = index;
+
+		this[level] = function(msg) {
+			if(this.level > levels[level]) {
+				return; // No need to log at all!
+			}
+
+			(console[level] === undefined) ? this.log(msg) : console[level](msg);
+		};
+	}.bind(this));
+}
+
 // Initialization
 Janus.init = function(options) {
 	options = options || {};
