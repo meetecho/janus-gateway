@@ -22,7 +22,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [Jansson](http://www.digip.org/jansson/)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
-* [libsrtp](http://srtp.sourceforge.net/srtp.html)
+* [libsrtp](http://srtp.sourceforge.net/srtp.html) (at least v1.5 suggested)
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
 * [usrsctp](http://code.google.com/p/sctp-refimpl/) (only needed if you
 are interested in Data Channels)
@@ -65,6 +65,20 @@ On Ubuntu or Debian, it would require something like this:
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
+
+If your distro ships a pre-1.5 version of libsrtp, it may be better to
+uninstall that version and [install 1.5 manually](https://github.com/cisco/libsrtp/releases).
+In fact, 1.4.x is known to cause several issues with WebRTC. Installation
+is quite straightforward:
+
+	wget https://github.com/cisco/libsrtp/archive/v1.5.0.tar.gz
+	tar xfv v1.5.0.tar.gz
+	cd libsrtp-1.5.0
+	./configure --prefix=/usr --enable-openssl
+	make libsrtp.so && sudo make install
+
+* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+script if you're installing on a x86_64 distribution.
 
 For what concerns usrsctp, which is needed for Data Channels support, it
 is usually not available in repositories, so if you're interested in
