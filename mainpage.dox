@@ -1582,10 +1582,13 @@ ProxyPassReverse /janus http://127.0.0.1:8088/janus
  * default settings.
  *
  * \section webserver A quick and easy web server
- * As you probably know, you cannot open WebRTC-powered web applications
- * by just opening the application HTML files from file system, as it won't
- * work. This means that to test and use Janus you'll need to host your
- * applications on a webserver.
+ * While opening WebRTC-powered web applications by just opening the
+ * application HTML files from file system works with some browsers, it
+ * doesn't in others. Specifically, this works in Firefox but not in Chrome
+ * (see <a href="https://github.com/meetecho/janus-gateway/issues/291">issue #291</a>).
+ * Anyway, considering that you will eventually want other people besides
+ * you to use your Janus services, this means that to test and use Janus
+ * you'll want/need to host your applications on a webserver.
  * 
  * If you're not interested in configuring a full-fledged webserver, but
  * are only interested in a quick and easy way to test the demos, you can
