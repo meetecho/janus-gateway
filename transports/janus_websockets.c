@@ -244,31 +244,29 @@ void janus_websockets_allow_address(const char *ip, gboolean admin) {
 }
 gboolean janus_websockets_is_allowed(const char *ip, gboolean admin);
 gboolean janus_websockets_is_allowed(const char *ip, gboolean admin) {
-	JANUS_LOG(LOG_INFO, "Checking if %s is allowed to contact %s interface\n", ip, admin ? "admin" : "janus");
+	JANUS_LOG(LOG_VERB, "Checking if %s is allowed to contact %s interface\n", ip, admin ? "admin" : "janus");
 	if(ip == NULL)
 		return FALSE;
 	if(!admin && janus_websockets_access_list == NULL) {
-		JANUS_LOG(LOG_INFO, "Yep\n");
+		JANUS_LOG(LOG_VERB, "Yep\n");
 		return TRUE;
 	}
 	if(admin && janus_websockets_admin_access_list == NULL) {
-		JANUS_LOG(LOG_INFO, "Yeah\n");
+		JANUS_LOG(LOG_VERB, "Yeah\n");
 		return TRUE;
 	}
 	janus_mutex_lock(&access_list_mutex);
 	GList *temp = admin ? janus_websockets_admin_access_list : janus_websockets_access_list;
 	while(temp) {
 		const char *allowed = (const char *)temp->data;
-		JANUS_LOG(LOG_INFO, "Comparing: %s == %s?\n", ip, allowed);
 		if(allowed != NULL && strstr(ip, allowed)) {
 			janus_mutex_unlock(&access_list_mutex);
-			JANUS_LOG(LOG_INFO, "There it is!\n");
 			return TRUE;
 		}
 		temp = temp->next;
 	}
 	janus_mutex_unlock(&access_list_mutex);
-	JANUS_LOG(LOG_INFO, "Nope...\n");
+	JANUS_LOG(LOG_VERB, "Nope...\n");
 	return FALSE;
 }
 
