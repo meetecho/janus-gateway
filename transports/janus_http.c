@@ -153,8 +153,7 @@ static char *admin_ws_path = NULL;
 /* REST and Admin/Monitor ACL list */
 GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
 janus_mutex access_list_mutex;
-void janus_http_allow_address(const char *ip, gboolean admin);
-void janus_http_allow_address(const char *ip, gboolean admin) {
+static void janus_http_allow_address(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return;
 	/* Is this an IP or an interface? */
@@ -165,8 +164,7 @@ void janus_http_allow_address(const char *ip, gboolean admin) {
 		janus_http_admin_access_list = g_list_append(janus_http_admin_access_list, (gpointer)ip);
 	janus_mutex_unlock(&access_list_mutex);
 }
-gboolean janus_http_is_allowed(const char *ip, gboolean admin);
-gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
+static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 	if(ip == NULL)
 		return FALSE;
 	if(!admin && janus_http_access_list == NULL)
@@ -189,8 +187,7 @@ gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 
 /* Random string helper (for transactions) */
 static char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-void janus_http_random_string(int length, char *buffer);
-void janus_http_random_string(int length, char *buffer) {
+static void janus_http_random_string(int length, char *buffer) {
 	if(length > 0 && buffer) {
 		int l = (int)(sizeof(charset)-1);
 		int i=0;
@@ -204,8 +201,7 @@ void janus_http_random_string(int length, char *buffer) {
 
 
 /* HTTP/Janus sessions watchdog/garbage collector (sort of) */
-void *janus_http_sessions_watchdog(void *data);
-void *janus_http_sessions_watchdog(void *data) {
+static void *janus_http_sessions_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "HTTP/Janus sessions watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
