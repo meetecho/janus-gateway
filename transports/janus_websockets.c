@@ -94,8 +94,9 @@ static janus_transport_callbacks *gateway = NULL;
 /* Logging */
 static int ws_log_level = 0;
 
-/* WebSockets single thread */
-static GThread *thread = NULL;
+/* WebSockets per-service thread */
+static GThread *wss_thread = NULL, *swss_thread = NULL,
+		*admin_wss_thread = NULL, *admin_swss_thread = NULL;
 void *janus_websockets_thread(void *data);
 
 
@@ -474,7 +475,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				if(admin_swss == NULL) {
 					JANUS_LOG(LOG_FATAL, "Error initializing libwebsock...\n");
 				} else {
-					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
+					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
 				}
 			}
 		}
@@ -487,12 +488,38 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	}
 
 	GError *error = NULL;
-	/* Start the WebSockets thread */
-	thread = g_thread_try_new("websockets thread", &janus_websockets_thread, NULL, &error);
-	if(!thread) {
-		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
+	/* Start the WebSocket service threads */
+	if(wss != NULL) {
+		wss_thread = g_thread_try_new("websockets thread", &janus_websockets_thread, wss, &error);
+		if(!wss_thread) {
+			g_atomic_int_set(&initialized, 0);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n", error->code, error->message ? error->message : "??");
+			return -1;
+		}
+	}
+	if(swss != NULL) {
+		swss_thread = g_thread_try_new("secure websockets thread", &janus_websockets_thread, swss, &error);
+		if(!swss_thread) {
+			g_atomic_int_set(&initialized, 0);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Secure WebSockets thread...\n", error->code, error->message ? error->message : "??");
+			return -1;
+		}
+	}
+	if(admin_wss != NULL) {
+		admin_wss_thread = g_thread_try_new("admin websockets thread", &janus_websockets_thread, admin_wss, &error);
+		if(!admin_wss_thread) {
+			g_atomic_int_set(&initialized, 0);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Admin WebSockets thread...\n", error->code, error->message ? error->message : "??");
+			return -1;
+		}
+	}
+	if(admin_swss != NULL) {
+		admin_swss_thread = g_thread_try_new("secure admin websockets thread", &janus_websockets_thread, admin_swss, &error);
+		if(!admin_swss_thread) {
+			g_atomic_int_set(&initialized, 0);
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Secure Admin WebSockets thread...\n", error->code, error->message ? error->message : "??");
+			return -1;
+		}
 	}
 
 	/* Done */
@@ -506,9 +533,22 @@ void janus_websockets_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
-	if(thread != NULL) {
-		g_thread_join(thread);
-		thread = NULL;
+	/* Stop the service threads */
+	if(wss_thread != NULL) {
+		g_thread_join(wss_thread);
+		wss_thread = NULL;
+	}
+	if(swss_thread != NULL) {
+		g_thread_join(swss_thread);
+		swss_thread = NULL;
+	}
+	if(admin_wss_thread != NULL) {
+		g_thread_join(admin_wss_thread);
+		admin_wss_thread = NULL;
+	}
+	if(admin_swss_thread != NULL) {
+		g_thread_join(admin_swss_thread);
+		admin_swss_thread = NULL;
 	}
 
 	g_atomic_int_set(&initialized, 0);
@@ -597,33 +637,33 @@ void janus_websockets_session_over(void *transport, guint64 session_id, gboolean
 
 /* Thread */
 void *janus_websockets_thread(void *data) {
-	JANUS_LOG(LOG_INFO, "WebSocket thread started\n");
+	struct libwebsocket_context *service = (struct libwebsocket_context *)data;
+	if(service == NULL) {
+		JANUS_LOG(LOG_ERR, "Invalid service\n");
+		return NULL;
+	}
+	
+	const char *type = NULL;
+	if(service == wss)
+		type = "WebSocket (Janus API)";
+	else if(service == swss)
+		type = "Secure WebSocket (Janus API)";
+	else if(service == admin_wss)
+		type = "WebSocket (Admin API)";
+	else if(service == admin_swss)
+		type = "Secure WebSocket (Admin API)";
+
+	JANUS_LOG(LOG_INFO, "%s thread started\n", type);
+
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* libwebsockets is single thread, we cycle through events here */
-		if(wss != NULL)
-			libwebsocket_service(wss, 100);
-		if(swss != NULL)
-			libwebsocket_service(swss, 100);
-		if(admin_wss != NULL)
-			libwebsocket_service(admin_wss, 100);
-		if(admin_swss != NULL)
-			libwebsocket_service(admin_swss, 100);
+		libwebsocket_service(service, 50);
 	}
-	/* Get rid of the WebSockets servers */
-	if(wss != NULL)
-		libwebsocket_cancel_service(wss);
-	wss = NULL;
-	if(swss != NULL)
-		libwebsocket_cancel_service(swss);
-	swss = NULL;
-	if(admin_wss != NULL)
-		libwebsocket_cancel_service(admin_wss);
-	admin_wss = NULL;
-	if(admin_swss != NULL)
-		libwebsocket_cancel_service(admin_swss);
-	admin_swss = NULL;
+
+	/* Get rid of the WebSockets server */
+	libwebsocket_cancel_service(service);
 	/* Done */
-	JANUS_LOG(LOG_INFO, "WebSocket thread ended\n");
+	JANUS_LOG(LOG_INFO, "%s thread ended\n", type);
 	return NULL;
 }
 
