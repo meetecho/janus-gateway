@@ -1,4 +1,5 @@
 AC_INIT([Janus Gateway],[0.0.9],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
