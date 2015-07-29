@@ -1638,9 +1638,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Tell the browser... */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
-				char error_cause[256];
-				g_snprintf(error_cause, 512, "Registration failed: %d %s", status, phrase ? phrase : "??");
-				json_object_set_new(event, "error", json_string(error_cause));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("registration_failed"));
+			        json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+			        json_object_set_new(event, "result", result);
 				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
