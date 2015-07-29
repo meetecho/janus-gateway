@@ -1463,7 +1463,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
 				break;
 			}
-			const char *caller = sip->sip_from->a_url->url_user;
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
 			session->status = janus_sip_call_status_invited;
 			/* Parse SDP */
@@ -1476,7 +1475,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string("incomingcall"));
-			json_object_set_new(calling, "username", json_string(caller));
+			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(call, "result", calling);
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
