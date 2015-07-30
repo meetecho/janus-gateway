@@ -103,7 +103,12 @@ HTTP REST API, you'll have to install it manually:
 	cd build
 	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 	make && sudo make install
-	
+
+* *Note:* if libwebsockets.org is unreachable for any reason, replace
+the first line with this:
+
+	git clone https://github.com/warmcat/libwebsockets.git
+
 Finally, the same can be said for rabbitmq-c as well, which is needed
 for the optional RabbitMQ support. In fact, several different versions
 of the library can be found, and the versions usually available in most
