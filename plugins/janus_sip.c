@@ -272,7 +272,8 @@ typedef struct janus_sip_session {
 	janus_sip_media media;
 	char *transaction;
 	char *callee;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	gboolean hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 	janus_mutex mutex;
 } janus_sip_session;
 static GHashTable *sessions;
@@ -656,9 +657,9 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		g_hash_table_remove(sessions, handle);
 		janus_sip_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
 		/* Shutdown the NUA */
 		nua_shutdown(session->stack->s_nua);
@@ -797,8 +798,9 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed || session->hangingup)
 		return;
+	session->hangingup = TRUE;
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall))
@@ -811,6 +813,8 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
+	/* Done */
+	session->hangingup = FALSE;
 }
 
 /* Thread to handle incoming messages */
@@ -1463,7 +1467,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
 				break;
 			}
-			const char *caller = sip->sip_from->a_url->url_user;
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
 			session->status = janus_sip_call_status_invited;
 			/* Parse SDP */
@@ -1476,7 +1479,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string("incomingcall"));
-			json_object_set_new(calling, "username", json_string(caller));
+			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(call, "result", calling);
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
@@ -1638,9 +1641,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Tell the browser... */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
-				char error_cause[256];
-				g_snprintf(error_cause, 512, "Registration failed: %d %s", status, phrase ? phrase : "??");
-				json_object_set_new(event, "error", json_string(error_cause));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("registration_failed"));
+			        json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
+			        json_object_set_new(event, "result", result);
 				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);

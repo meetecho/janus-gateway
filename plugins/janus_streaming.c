@@ -318,7 +318,8 @@ typedef struct janus_streaming_session {
 	gboolean paused;
 	janus_streaming_context context;
 	gboolean stopping;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	gboolean hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_streaming_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -1934,20 +1935,19 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed || session->hangingup)
 		return;
+	session->hangingup = TRUE;
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
-	}
 	msg->handle = handle;
 	msg->message = json_loads("{\"request\":\"stop\"}", 0, NULL);
 	msg->transaction = NULL;
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
+	/* Done */
+	session->hangingup = FALSE;
 }
 
 /* Thread to handle incoming messages */

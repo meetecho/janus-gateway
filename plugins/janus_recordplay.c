@@ -383,7 +383,8 @@ typedef struct janus_recordplay_session {
 	guint video_keyframe_interval; /* keyframe request interval (ms) */
 	guint64 video_keyframe_request_last; /* timestamp of last keyframe request sent */
 	gint video_fir_seq;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	gboolean hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -1040,11 +1041,10 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
-		return;
 	session->active = FALSE;
-	if(!session->recorder)
+	if(session->destroyed || !session->recorder || session->hangingup)
 		return;
+	session->hangingup = TRUE;
 
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -1065,6 +1065,8 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
+	/* Done */
+	session->hangingup = FALSE;
 }
 
 /* Thread to handle incoming messages */
@@ -1622,6 +1624,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 
 	/* Pre-parse */
 	JANUS_LOG(LOG_VERB, "Pre-parsing file %s to generate ordered index...\n", source);
+	gboolean parsed_header = FALSE;
 	int bytes = 0;
 	long offset = 0;
 	uint16_t len = 0, count = 0;
@@ -1638,29 +1641,116 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			fclose(file);
 			return NULL;
 		}
-		offset += 8;
-		bytes = fread(&len, sizeof(uint16_t), 1, file);
-		len = ntohs(len);
-		offset += 2;
-		if(len == 5) {
-			/* This is the main header */
-			bytes = fread(prebuffer, sizeof(char), 5, file);
-			if(prebuffer[0] == 'v') {
-				JANUS_LOG(LOG_VERB, "This is a video recording, assuming VP8\n");
-			} else if(prebuffer[0] == 'a') {
-				JANUS_LOG(LOG_VERB, "This is an audio recording, assuming Opus\n");
-			} else {
-				JANUS_LOG(LOG_ERR, "Unsupported recording media type...\n");
-				fclose(file);
-				return NULL;
+		if(prebuffer[1] == 'E') {
+			/* Either the old .mjr format header ('MEETECHO' header followed by 'audio' or 'video'), or a frame */
+			offset += 8;
+			bytes = fread(&len, sizeof(uint16_t), 1, file);
+			len = ntohs(len);
+			offset += 2;
+			if(len == 5 && !parsed_header) {
+				/* This is the main header */
+				parsed_header = TRUE;
+				JANUS_LOG(LOG_VERB, "Old .mjr header format\n");
+				bytes = fread(prebuffer, sizeof(char), 5, file);
+				if(prebuffer[0] == 'v') {
+					JANUS_LOG(LOG_INFO, "This is a video recording, assuming VP8\n");
+				} else if(prebuffer[0] == 'a') {
+					JANUS_LOG(LOG_INFO, "This is an audio recording, assuming Opus\n");
+				} else {
+					JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
+					fclose(file);
+					return NULL;
+				}
+				offset += len;
+				continue;
+			} else if(len < 12) {
+				/* Not RTP, skip */
+				JANUS_LOG(LOG_VERB, "Skipping packet (not RTP?)\n");
+				offset += len;
+				continue;
 			}
-			offset += len;
-			continue;
-		} else if(len < 12) {
-			/* Not RTP, skip */
-			JANUS_LOG(LOG_VERB, "Skipping packet (not RTP?)\n");
-			offset += len;
-			continue;
+		} else if(prebuffer[1] == 'J') {
+			/* New .mjr format, the header may contain useful info */
+			offset += 8;
+			bytes = fread(&len, sizeof(uint16_t), 1, file);
+			len = ntohs(len);
+			offset += 2;
+			if(len > 0 && !parsed_header) {
+				/* This is the info header */
+				JANUS_LOG(LOG_VERB, "New .mjr header format\n");
+				bytes = fread(prebuffer, sizeof(char), len, file);
+				parsed_header = TRUE;
+				prebuffer[len] = '\0';
+				json_error_t error;
+				json_t *info = json_loads(prebuffer, 0, &error);
+				if(!info) {
+					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
+					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
+					fclose(file);
+					return NULL;
+				}
+				/* Is it audio or video? */
+				json_t *type = json_object_get(info, "t");
+				if(!type || !json_is_string(type)) {
+					JANUS_LOG(LOG_WARN, "Missing/invalid recording type in info header...\n");
+					fclose(file);
+					return NULL;
+				}
+				const char *t = json_string_value(type);
+				int video = 0;
+				gint64 c_time = 0, w_time = 0;
+				if(!strcasecmp(t, "v")) {
+					video = 1;
+				} else if(!strcasecmp(t, "a")) {
+					video = 0;
+				} else {
+					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
+					fclose(file);
+					return NULL;
+				}
+				/* What codec was used? */
+				json_t *codec = json_object_get(info, "c");
+				if(!codec || !json_is_string(codec)) {
+					JANUS_LOG(LOG_WARN, "Missing recording codec in info header...\n");
+					fclose(file);
+					return NULL;
+				}
+				const char *c = json_string_value(codec);
+				if(video && strcasecmp(c, "vp8")) {
+					JANUS_LOG(LOG_WARN, "The post-processor only suupports VP8 video for now (was '%s')...\n", c);
+					fclose(file);
+					return NULL;
+				} else if(!video && strcasecmp(c, "opus")) {
+					JANUS_LOG(LOG_WARN, "The post-processor only suupports Opus audio for now (was '%s')...\n", c);
+					fclose(file);
+					return NULL;
+				}
+				/* When was the file created? */
+				json_t *created = json_object_get(info, "s");
+				if(!created || !json_is_integer(created)) {
+					JANUS_LOG(LOG_WARN, "Missing recording created time in info header...\n");
+					fclose(file);
+					return NULL;
+				}
+				c_time = json_integer_value(created);
+				/* When was the first frame written? */
+				json_t *written = json_object_get(info, "u");
+				if(!written || !json_is_integer(written)) {
+					JANUS_LOG(LOG_WARN, "Missing recording written time in info header...\n");
+					fclose(file);
+					return NULL;
+				}
+				w_time = json_integer_value(created);
+				/* Summary */
+				JANUS_LOG(LOG_VERB, "This is %s recording:\n", video ? "a video" : "an audio");
+				JANUS_LOG(LOG_VERB, "  -- Codec:   %s\n", c);
+				JANUS_LOG(LOG_VERB, "  -- Created: %"SCNi64"\n", c_time);
+				JANUS_LOG(LOG_VERB, "  -- Written: %"SCNi64"\n", w_time);
+			}
+		} else {
+			JANUS_LOG(LOG_ERR, "Invalid header...\n");
+			fclose(file);
+			return NULL;
 		}
 		/* Only read RTP header */
 		bytes = fread(prebuffer, sizeof(char), 16, file);
@@ -1699,7 +1789,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		len = ntohs(len);
 		JANUS_LOG(LOG_HUGE, "  -- Length: %"SCNu16"\n", len);
 		offset += 2;
-		if(len < 12) {
+		if(prebuffer[1] == 'J' || len < 12) {
 			/* Not RTP, skip */
 			JANUS_LOG(LOG_HUGE, "  -- Not RTP, skipping\n");
 			offset += len;

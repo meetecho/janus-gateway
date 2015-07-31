@@ -177,7 +177,8 @@ typedef struct janus_echotest_session {
 	gboolean video_active;
 	uint64_t bitrate;
 	guint16 slowlink_count;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	gboolean hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_echotest_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -588,8 +589,9 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed || session->hangingup)
 		return;
+	session->hangingup = TRUE;
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
 	json_object_set_new(event, "echotest", json_string("event"));
@@ -604,6 +606,8 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;
+	/* Done */
+	session->hangingup = FALSE;
 }
 
 /* Thread to handle incoming messages */

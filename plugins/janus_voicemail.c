@@ -216,7 +216,8 @@ typedef struct janus_voicemail_session {
 	int seq;
 	gboolean started;
 	gboolean stopping;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	gboolean hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_voicemail_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -477,10 +478,10 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Removing VoiceMail session...\n");
 		g_hash_table_remove(sessions, handle);
 		janus_voicemail_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -609,9 +610,10 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
-		return;
 	session->started = FALSE;
+	if(session->destroyed || session->hangingup)
+		return;
+	session->hangingup = TRUE;
 	/* Close and reset stuff */
 	if(session->file)
 		fclose(session->file);
@@ -619,6 +621,8 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 	if(session->stream)
 		ogg_stream_destroy(session->stream);
 	session->stream = NULL;
+	/* Done */
+	session->hangingup = FALSE;
 }
 
 /* Thread to handle incoming messages */
