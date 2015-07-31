@@ -246,7 +246,7 @@ typedef struct janus_videoroom {
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
-	guint64 destroyed;			/* Value to flag the room for destruction, done lazily */
+	gint64 destroyed;			/* Value to flag the room for destruction, done lazily */
 	GHashTable *participants;	/* Map of potential publishers (we get listeners from them) */
 	janus_mutex participants_mutex;/* Mutex to protect room properties */
 } janus_videoroom;
@@ -261,7 +261,8 @@ typedef struct janus_videoroom_session {
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	gboolean hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videoroom_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -778,9 +779,9 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	/* Cleaning up and removing the session is done in a lazy way */
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		/* Any related WebRTC PeerConnection is not available anymore either */
 		janus_videoroom_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		old_sessions = g_list_append(old_sessions, session);
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Get rid of publisher */
@@ -1929,9 +1930,10 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
-		return;
 	session->started = FALSE;
+	if(session->destroyed || session->hangingup)
+		return;
+	session->hangingup = TRUE;
 	/* Send an event to the browser and tell the PeerConnection is over */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
@@ -2027,6 +2029,8 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		}
 		/* TODO Should we close the handle as well? */
 	}
+	/* Done */
+	session->hangingup = FALSE;
 }
 
 /* Thread to handle incoming messages */

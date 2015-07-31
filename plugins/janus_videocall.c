@@ -334,7 +334,8 @@ typedef struct janus_videocall_session {
 	uint64_t bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	gboolean hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videocall_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -536,9 +537,9 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Removing VideoCall user %s session...\n", session->username ? session->username : "'unknown'");
 		janus_videocall_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		if(session->username != NULL) {
 			int res = g_hash_table_remove(sessions, (gpointer)session->username);
 			JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);
@@ -760,9 +761,9 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed || session->hangingup)
 		return;
-	janus_mutex_lock(&sessions_mutex);
+	session->hangingup = TRUE;
 	if(session->peer) {
 		/* Send event to our peer too */
 		json_t *call = json_object();
@@ -784,7 +785,8 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;
-	janus_mutex_unlock(&sessions_mutex);
+	/* Done */
+	session->hangingup = FALSE;
 }
 
 /* Thread to handle incoming messages */
