@@ -171,7 +171,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -216,7 +216,7 @@ typedef struct janus_voicemail_session {
 	int seq;
 	gboolean started;
 	gboolean stopping;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_voicemail_session;
 static GHashTable *sessions;
@@ -611,9 +611,9 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed || session->hangingup)
+	if(session->destroyed || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 	/* Close and reset stuff */
 	if(session->file)
 		fclose(session->file);
@@ -622,7 +622,7 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 		ogg_stream_destroy(session->stream);
 	session->stream = NULL;
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

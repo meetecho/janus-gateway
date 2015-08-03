@@ -438,7 +438,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -500,7 +500,7 @@ typedef struct janus_audiobridge_session {
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_audiobridge_session;
 static GHashTable *sessions;
@@ -1534,9 +1534,9 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed || !session->participant || session->hangingup)
+	if(session->destroyed || !session->participant || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	janus_audiobridge_room *audiobridge = participant->room;
@@ -1596,7 +1596,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 		janus_mutex_unlock(&audiobridge->mutex);
 	}
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

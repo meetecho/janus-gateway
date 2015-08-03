@@ -292,7 +292,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -334,7 +334,7 @@ typedef struct janus_videocall_session {
 	uint64_t bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videocall_session;
 static GHashTable *sessions;
@@ -761,9 +761,9 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed || session->hangingup)
+	if(session->destroyed || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 	if(session->peer) {
 		/* Send event to our peer too */
 		json_t *call = json_object();
@@ -786,7 +786,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->video_active = TRUE;
 	session->bitrate = 0;
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
