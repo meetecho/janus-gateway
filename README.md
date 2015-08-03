@@ -251,6 +251,11 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
+	-U, --bundle                  Whether to force BUNDLE or not (whether audio, 
+                                  video and data will always be bundled)  
+                                  (default=off)
+	-u, --rtcp-mux                Whether to force rtcp-mux or not (whether RTP 
+                                  and RTCP will always be muxed)  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for 
                                   retransmissions
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available

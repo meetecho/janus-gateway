@@ -89,6 +89,18 @@ gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
 gboolean janus_ice_is_ipv6_enabled(void);
+/*! \brief Method to check whether BUNDLE support is forced or not
+ * @returns true if BUNDLE is mandatory, false otherwise */
+gboolean janus_ice_is_bundle_forced(void);
+/*! \brief Method to set the BUNDLE support mode (true means mandatory, false means optional)
+ * @param forced whether BUNDLE support must be forced or not (default is false) */
+void janus_ice_force_bundle(gboolean forced);
+/*! \brief Method to check whether rtcp-mux support is forced or not
+ * @returns true if rtcp-mux is mandatory, false otherwise */
+gboolean janus_ice_is_rtcpmux_forced(void);
+/*! \brief Method to set the rtcp-mux support mode (true means mandatory, false means optional)
+ * @param forced whether rtcp-mux support must be forced or not (default is false) */
+void janus_ice_force_rtcpmux(gboolean forced);
 /*! \brief Method to modify the max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @param[in] mnq The new max NACK value */
 void janus_set_max_nack_queue(uint mnq);
