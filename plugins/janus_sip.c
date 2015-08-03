@@ -131,7 +131,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 
 static char local_ip[INET6_ADDRSTRLEN];
@@ -272,7 +272,7 @@ typedef struct janus_sip_session {
 	janus_sip_media media;
 	char *transaction;
 	char *callee;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 	janus_mutex mutex;
 } janus_sip_session;
@@ -798,9 +798,9 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed || session->hangingup)
+	if(session->destroyed || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall))
@@ -814,7 +814,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

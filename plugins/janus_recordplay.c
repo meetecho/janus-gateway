@@ -324,7 +324,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -383,7 +383,7 @@ typedef struct janus_recordplay_session {
 	guint video_keyframe_interval; /* keyframe request interval (ms) */
 	guint64 video_keyframe_request_last; /* timestamp of last keyframe request sent */
 	gint video_fir_seq;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
 static GHashTable *sessions;
@@ -1042,9 +1042,9 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->active = FALSE;
-	if(session->destroyed || !session->recorder || session->hangingup)
+	if(session->destroyed || !session->recorder || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -1066,7 +1066,7 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

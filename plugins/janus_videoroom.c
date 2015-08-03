@@ -191,7 +191,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -261,7 +261,7 @@ typedef struct janus_videoroom_session {
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videoroom_session;
 static GHashTable *sessions;
@@ -1931,9 +1931,9 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed || session->hangingup)
+	if(session->destroyed || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 	/* Send an event to the browser and tell the PeerConnection is over */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
@@ -2030,7 +2030,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		/* TODO Should we close the handle as well? */
 	}
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

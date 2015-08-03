@@ -187,7 +187,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -318,7 +318,7 @@ typedef struct janus_streaming_session {
 	gboolean paused;
 	janus_streaming_context context;
 	gboolean stopping;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_streaming_session;
 static GHashTable *sessions;
@@ -1935,9 +1935,9 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed || session->hangingup)
+	if(session->destroyed || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
 	msg->handle = handle;
@@ -1947,7 +1947,7 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

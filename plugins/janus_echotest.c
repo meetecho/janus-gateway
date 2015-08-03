@@ -156,7 +156,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -177,7 +177,7 @@ typedef struct janus_echotest_session {
 	gboolean video_active;
 	uint64_t bitrate;
 	guint16 slowlink_count;
-	gboolean hangingup;
+	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_echotest_session;
 static GHashTable *sessions;
@@ -589,9 +589,9 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed || session->hangingup)
+	if(session->destroyed || g_atomic_int_get(&session->hangingup))
 		return;
-	session->hangingup = TRUE;
+	g_atomic_int_set(&session->hangingup, 1);
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
 	json_object_set_new(event, "echotest", json_string("event"));
@@ -607,7 +607,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	session->video_active = TRUE;
 	session->bitrate = 0;
 	/* Done */
-	session->hangingup = FALSE;
+	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
