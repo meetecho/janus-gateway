@@ -85,6 +85,26 @@ gboolean janus_ice_is_ipv6_enabled(void) {
 	return janus_ipv6_enabled;
 }
 
+/* Whether BUNDLE support is mandatory or not (false by default) */
+static gboolean janus_force_bundle;
+void janus_ice_force_bundle(gboolean forced) {
+	janus_force_bundle = forced;
+	JANUS_LOG(LOG_INFO, "BUNDLE %s going to be forced\n", janus_force_bundle ? "is" : "is NOT");
+}
+gboolean janus_ice_is_bundle_forced(void) {
+	return janus_force_bundle;
+}
+
+/* Whether rtcp-mux support is mandatory or not (false by default) */
+static gboolean janus_force_rtcpmux;
+void janus_ice_force_rtcpmux(gboolean forced) {
+	janus_force_rtcpmux = forced;
+	JANUS_LOG(LOG_INFO, "rtcp-mux %s going to be forced\n", janus_force_rtcpmux ? "is" : "is NOT");
+}
+gboolean janus_ice_is_rtcpmux_forced(void) {
+	return janus_force_rtcpmux;
+}
+
 
 /* libnice debugging */
 static gboolean janus_ice_debugging_enabled;
@@ -252,10 +272,6 @@ static GMainContext *handles_watchdog_context = NULL;
 GMainLoop *handles_watchdog_loop = NULL;
 GThread *handles_watchdog = NULL;
 static janus_mutex old_handles_mutex;
-
-static gboolean janus_ice_handles_cleanup(gpointer user_data);
-static gboolean janus_ice_handles_check(gpointer user_data);
-static gpointer janus_ice_handles_watchdog(gpointer user_data);
 
 static gboolean janus_ice_handles_cleanup(gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *) user_data;
@@ -1970,14 +1986,16 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	} else {
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS);
 	}
-	/* Note: in case this is not an OFFER, we don't know whether BUNDLE is supported on the other side or not yet */
-	if(offer && bundle) {
+	/* Note: in case this is not an OFFER, we don't know whether BUNDLE is supported on the other side or not yet,
+	 * unless Janus was configured to force BUNDLE in which case we enable it on our side anyway */
+	if((offer && bundle) || janus_force_bundle) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE);
 	} else {
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE);
 	}
-	/* Note: in case this is not an OFFER, we don't know whether rtcp-mux is supported on the other side or not yet */
-	if(offer && rtcpmux) {
+	/* Note: in case this is not an OFFER, we don't know whether rtcp-mux is supported on the other side or not yet,
+	 * unless Janus was configured to force rtcp-mux in which case we enable it on our side anyway */
+	if((offer && rtcpmux) || janus_force_rtcpmux) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX);
 	} else {
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX);

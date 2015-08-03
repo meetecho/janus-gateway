@@ -2541,6 +2541,12 @@ gint main(int argc, char *argv[])
 	if(args_info.ipv6_candidates_given) {
 		janus_config_add_item(config, "media", "ipv6", "true");
 	}
+	if(args_info.force_bundle_given) {
+		janus_config_add_item(config, "media", "force-bundle", "true");
+	}
+	if(args_info.force_rtcp_mux_given) {
+		janus_config_add_item(config, "media", "force-rtcp-mux", "true");
+	}
 	if(args_info.max_nack_queue_given) {
 		char mnq[20];
 		g_snprintf(mnq, 20, "%d", args_info.max_nack_queue_arg);
@@ -2728,6 +2734,15 @@ gint main(int argc, char *argv[])
 		/* Enable libnice debugging */
 		janus_ice_debugging_enable();
 	}
+	/* Are we going to force BUNDLE and/or rtcp-mux? */
+	gboolean force_bundle = FALSE, force_rtcpmux = FALSE;
+	item = janus_config_get_item_drilldown(config, "media", "force-bundle");
+	force_bundle = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	janus_ice_force_bundle(force_bundle);
+	item = janus_config_get_item_drilldown(config, "media", "force-rtcp-mux");
+	force_rtcpmux = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	janus_ice_force_rtcpmux(force_rtcpmux);
+	/* NACK related stuff */
 	item = janus_config_get_item_drilldown(config, "media", "max_nack_queue");
 	if(item && item->value) {
 		int mnq = atoi(item->value);
