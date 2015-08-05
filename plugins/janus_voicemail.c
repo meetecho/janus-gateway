@@ -457,6 +457,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	session->started = FALSE;
 	session->stopping = FALSE;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -543,6 +544,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* Only start recording this peer when we get this event */
 	session->start_time = janus_get_monotonic_time();
 	session->started = TRUE;
@@ -611,9 +613,10 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed || g_atomic_int_get(&session->hangingup))
+	if(session->destroyed)
 		return;
-	g_atomic_int_set(&session->hangingup, 1);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	/* Close and reset stuff */
 	if(session->file)
 		fclose(session->file);
@@ -621,8 +624,6 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 	if(session->stream)
 		ogg_stream_destroy(session->stream);
 	session->stream = NULL;
-	/* Done */
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

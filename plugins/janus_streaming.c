@@ -788,6 +788,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	session->started = FALSE;	/* This will happen later */
 	session->paused = FALSE;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1877,6 +1878,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* TODO Only start streaming when we get this event */
 	session->context.a_last_ssrc = 0;
 	session->context.a_last_ssrc = 0;
@@ -1935,9 +1937,10 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed || g_atomic_int_get(&session->hangingup))
+	if(session->destroyed)
 		return;
-	g_atomic_int_set(&session->hangingup, 1);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
 	msg->handle = handle;
@@ -1946,8 +1949,6 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
-	/* Done */
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

@@ -633,6 +633,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	su_home_init(session->stack->s_home);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
@@ -720,6 +721,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
@@ -798,9 +800,10 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed || g_atomic_int_get(&session->hangingup))
+	if(session->destroyed)
 		return;
-	g_atomic_int_set(&session->hangingup, 1);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall))
@@ -813,8 +816,6 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
-	/* Done */
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

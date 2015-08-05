@@ -519,6 +519,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->peer = NULL;
 	session->username = NULL;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 
 	return;
@@ -607,6 +608,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* We really don't care, as we only relay RTP/RTCP we get in the first place anyway */
 }
 
@@ -761,9 +763,10 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed || g_atomic_int_get(&session->hangingup))
+	if(session->destroyed)
 		return;
-	g_atomic_int_set(&session->hangingup, 1);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	if(session->peer) {
 		/* Send event to our peer too */
 		json_t *call = json_object();
@@ -785,8 +788,6 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;
-	/* Done */
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

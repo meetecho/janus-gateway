@@ -752,6 +752,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	session->participant_type = janus_videoroom_p_type_none;
 	session->participant = NULL;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1650,6 +1651,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* Media relaying can start now */
 	session->started = TRUE;
 	/* If this is a listener, ask the publisher a FIR */
@@ -1931,9 +1933,10 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed || g_atomic_int_get(&session->hangingup))
+	if(session->destroyed)
 		return;
-	g_atomic_int_set(&session->hangingup, 1);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	/* Send an event to the browser and tell the PeerConnection is over */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
@@ -2029,8 +2032,6 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		}
 		/* TODO Should we close the handle as well? */
 	}
-	/* Done */
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
