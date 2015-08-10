@@ -2,6 +2,9 @@ AC_INIT([Janus Gateway],[0.0.9],[https://github.com/meetecho/janus-gateway],[jan
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
+AC_ENABLE_SHARED(yes)
+AC_ENABLE_STATIC(no)
+
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AM_SILENT_RULES([yes])
 
