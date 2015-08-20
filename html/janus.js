@@ -53,6 +53,13 @@ Janus.init = function(options) {
 					return;
 				}
 			}
+			if(src === 'adapter.js') {
+				if(window.RTCPeerConnection) {
+					// Already loaded
+					options.callback();
+					return;
+				}
+			}
 			var oHead = document.getElementsByTagName('head').item(0);
 			var oScript = document.createElement("script");
 			oScript.type = "text/javascript";
