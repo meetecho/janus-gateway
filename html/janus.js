@@ -56,7 +56,6 @@ Janus.init = function(options) {
 			if(src === 'adapter.js') {
 				if(window.RTCPeerConnection) {
 					// Already loaded
-					options.callback();
 					return;
 				}
 			}
