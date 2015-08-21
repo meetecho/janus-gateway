@@ -191,7 +191,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -246,7 +246,7 @@ typedef struct janus_videoroom {
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
-	guint64 destroyed;			/* Value to flag the room for destruction, done lazily */
+	gint64 destroyed;			/* Value to flag the room for destruction, done lazily */
 	GHashTable *participants;	/* Map of potential publishers (we get listeners from them) */
 	janus_mutex participants_mutex;/* Mutex to protect room properties */
 } janus_videoroom;
@@ -261,7 +261,8 @@ typedef struct janus_videoroom_session {
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videoroom_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -751,6 +752,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	session->participant_type = janus_videoroom_p_type_none;
 	session->participant = NULL;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -778,9 +780,9 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	/* Cleaning up and removing the session is done in a lazy way */
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		/* Any related WebRTC PeerConnection is not available anymore either */
 		janus_videoroom_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		old_sessions = g_list_append(old_sessions, session);
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Get rid of publisher */
@@ -1649,6 +1651,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* Media relaying can start now */
 	session->started = TRUE;
 	/* If this is a listener, ask the publisher a FIR */
@@ -1929,9 +1932,11 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
+	session->started = FALSE;
 	if(session->destroyed)
 		return;
-	session->started = FALSE;
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	/* Send an event to the browser and tell the PeerConnection is over */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */

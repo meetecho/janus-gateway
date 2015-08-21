@@ -438,7 +438,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -500,7 +500,8 @@ typedef struct janus_audiobridge_session {
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_audiobridge_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -854,6 +855,7 @@ void janus_audiobridge_create_session(janus_plugin_session *handle, int *error) 
 	session->started = FALSE;
 	session->stopping = FALSE;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -876,9 +878,9 @@ void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error)
 	JANUS_LOG(LOG_VERB, "Removing AudioBridge session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		g_hash_table_remove(sessions, handle);
 		janus_audiobridge_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -1445,6 +1447,7 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	if(!participant)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* FIXME Only send this peer the audio mix when we get this event */
 	session->started = TRUE;
 }
@@ -1532,7 +1535,10 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
+	session->started = FALSE;
 	if(session->destroyed || !session->participant)
+		return;
+	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
@@ -1562,7 +1568,6 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	}
 	/* Free the participant resources */
 	janus_mutex_lock(&participant->qmutex);
-	session->started = FALSE;
 	participant->active = FALSE;
 	participant->muted = TRUE;
 	if(participant->display)

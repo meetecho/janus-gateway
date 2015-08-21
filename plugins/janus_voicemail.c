@@ -171,7 +171,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -216,7 +216,8 @@ typedef struct janus_voicemail_session {
 	int seq;
 	gboolean started;
 	gboolean stopping;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_voicemail_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -456,6 +457,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	session->started = FALSE;
 	session->stopping = FALSE;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -477,10 +479,10 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Removing VoiceMail session...\n");
 		g_hash_table_remove(sessions, handle);
 		janus_voicemail_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -542,6 +544,7 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* Only start recording this peer when we get this event */
 	session->start_time = janus_get_monotonic_time();
 	session->started = TRUE;
@@ -609,9 +612,11 @@ void janus_voicemail_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
+	session->started = FALSE;
 	if(session->destroyed)
 		return;
-	session->started = FALSE;
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	/* Close and reset stuff */
 	if(session->file)
 		fclose(session->file);

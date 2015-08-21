@@ -23,9 +23,9 @@ To install it, you'll need to satisfy the following dependencies:
 * [Jansson](http://www.digip.org/jansson/)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
-* [libsrtp](http://srtp.sourceforge.net/srtp.html)
+* [libsrtp](http://srtp.sourceforge.net/srtp.html) (at least v1.5 suggested)
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
-* [usrsctp](http://code.google.com/p/sctp-refimpl/) (only needed if you
+* [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
 are interested in Data Channels)
 * [libwebsockets](https://libwebsockets.org/) (only needed if
 you are interested in WebSockets support)
@@ -65,16 +65,30 @@ On Ubuntu or Debian, it would require something like this:
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
+If your distro ships a pre-1.5 version of libsrtp, it may be better to
+uninstall that version and [install 1.5 manually](https://github.com/cisco/libsrtp/releases).
+In fact, 1.4.x is known to cause several issues with WebRTC. Installation
+is quite straightforward:
+
+	wget https://github.com/cisco/libsrtp/archive/v1.5.0.tar.gz
+	tar xfv v1.5.0.tar.gz
+	cd libsrtp-1.5.0
+	./configure --prefix=/usr --enable-openssl
+	make libsrtp.so && sudo make install
+
+* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+script if you're installing on a x86_64 distribution.
+
 For what concerns usrsctp, which is needed for Data Channels support, it
 is usually not available in repositories, so if you're interested in
 them (support is optional) you'll have to install it manually. It is a
 pretty easy and standard process:
 
-	svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp
+	git clone https://github.com/sctplab/usrsctp
 	cd usrsctp
 	./bootstrap
 	./configure --prefix=/usr && make && sudo make install
-	
+
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
 
@@ -89,7 +103,12 @@ HTTP REST API, you'll have to install it manually:
 	cd build
 	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 	make && sudo make install
-	
+
+* *Note:* if libwebsockets.org is unreachable for any reason, replace
+the first line with this:
+
+	git clone https://github.com/warmcat/libwebsockets.git
+
 Finally, the same can be said for rabbitmq-c as well, which is needed
 for the optional RabbitMQ support. In fact, several different versions
 of the library can be found, and the versions usually available in most
@@ -232,6 +251,11 @@ or on the command line:
 	-T, --ice-tcp                 Whether to enable ICE-TCP or not (warning: only
                                   works with ICE Lite)
                                   (default=off)
+	-U, --bundle                  Whether to force BUNDLE or not (whether audio, 
+                                  video and data will always be bundled)  
+                                  (default=off)
+	-u, --rtcp-mux                Whether to force rtcp-mux or not (whether RTP 
+                                  and RTCP will always be muxed)  (default=off)
 	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for 
                                   retransmissions
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available

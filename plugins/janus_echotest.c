@@ -156,7 +156,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -177,7 +177,8 @@ typedef struct janus_echotest_session {
 	gboolean video_active;
 	uint64_t bitrate;
 	guint16 slowlink_count;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_echotest_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -369,6 +370,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -451,6 +453,7 @@ void janus_echotest_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* We really don't care, as we only send RTP/RTCP we get in the first place back anyway */
 }
 
@@ -589,6 +592,8 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	if(session->destroyed)
+		return;
+	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();

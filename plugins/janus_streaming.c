@@ -187,7 +187,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -318,7 +318,8 @@ typedef struct janus_streaming_session {
 	gboolean paused;
 	janus_streaming_context context;
 	gboolean stopping;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_streaming_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -787,6 +788,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	session->started = FALSE;	/* This will happen later */
 	session->paused = FALSE;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1876,6 +1878,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* TODO Only start streaming when we get this event */
 	session->context.a_last_ssrc = 0;
 	session->context.a_last_ssrc = 0;
@@ -1936,12 +1939,10 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_streaming_message *msg = calloc(1, sizeof(janus_streaming_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
-	}
 	msg->handle = handle;
 	msg->message = json_loads("{\"request\":\"stop\"}", 0, NULL);
 	msg->transaction = NULL;

@@ -292,7 +292,7 @@ janus_plugin *create(void) {
 
 
 /* Useful stuff */
-static gint initialized = 0, stopping = 0;
+static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -334,7 +334,8 @@ typedef struct janus_videocall_session {
 	uint64_t bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
-	guint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint hangingup;
+	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videocall_session;
 static GHashTable *sessions;
 static GList *old_sessions;
@@ -518,6 +519,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->peer = NULL;
 	session->username = NULL;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 
 	return;
@@ -536,9 +538,9 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Removing VideoCall user %s session...\n", session->username ? session->username : "'unknown'");
 		janus_videocall_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		if(session->username != NULL) {
 			int res = g_hash_table_remove(sessions, (gpointer)session->username);
 			JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);
@@ -606,6 +608,7 @@ void janus_videocall_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* We really don't care, as we only relay RTP/RTCP we get in the first place anyway */
 }
 
@@ -762,7 +765,8 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
-	janus_mutex_lock(&sessions_mutex);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	if(session->peer) {
 		/* Send event to our peer too */
 		json_t *call = json_object();
@@ -784,7 +788,6 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;
-	janus_mutex_unlock(&sessions_mutex);
 }
 
 /* Thread to handle incoming messages */

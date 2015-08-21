@@ -77,7 +77,7 @@
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
- * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
+ * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP, at least v1.5 suggested)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (\c optional, Data Channels)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
@@ -1582,10 +1582,13 @@ ProxyPassReverse /janus http://127.0.0.1:8088/janus
  * default settings.
  *
  * \section webserver A quick and easy web server
- * As you probably know, you cannot open WebRTC-powered web applications
- * by just opening the application HTML files from file system, as it won't
- * work. This means that to test and use Janus you'll need to host your
- * applications on a webserver.
+ * While opening WebRTC-powered web applications by just opening the
+ * application HTML files from file system works with some browsers, it
+ * doesn't in others. Specifically, this works in Firefox but not in Chrome
+ * (see <a href="https://github.com/meetecho/janus-gateway/issues/291">issue #291</a>).
+ * Anyway, considering that you will eventually want other people besides
+ * you to use your Janus services, this means that to test and use Janus
+ * you'll want/need to host your applications on a webserver.
  * 
  * If you're not interested in configuring a full-fledged webserver, but
  * are only interested in a quick and easy way to test the demos, you can
@@ -1705,7 +1708,7 @@ var servers = [ws_server, http_server];
  * - \b Jansson: http://www.digip.org/jansson/ (JSON)
  * - \b libnice: http://nice.freedesktop.org/wiki/ (ICE/STUN/TURN)
  * - \b OpenSSL: http://www.openssl.org/ (DTLS, at least v1.0.1e)
- * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP)
+ * - \b libsrtp: http://srtp.sourceforge.net/srtp.html (SRTP, at least v1.5 suggested)
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (SDP parsing, SIP handling in the SIP plugin)
  * - \b usrsctp: http://code.google.com/p/sctp-refimpl/ (Data Channels)
  * - \b libopus: http://opus-codec.org/ (only needed for the bridge plugin)

@@ -271,3 +271,10 @@ endif
 configs:
 	$(MKDIR_P) $(DESTDIR)$(confdir)
 	$(foreach config,$(conf_DATA),cp "$(CURDIR)/$(config)" "$(DESTDIR)$(confdir)/$(notdir $(basename $(config) .sample))";)
+
+##
+# Extra cleanup
+##
+
+clean-local:
+	-rm -f docs/doxygen_sqlite3.db

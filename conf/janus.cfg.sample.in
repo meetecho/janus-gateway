@@ -165,7 +165,7 @@ ice_ignore_list = vmnet
 
 ; Finally, you can choose which of the available plugins should be
 ; enabled or not. Use the 'disable' directive to prevent Janus from
-: loading one or more plugins: use a comma separated list of plugin file
+; loading one or more plugins: use a comma separated list of plugin file
 ; names to identify the plugins to disable. By default all available
 ; plugins are enabled and loaded at startup. 
 [plugins]
