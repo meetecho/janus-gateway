@@ -121,9 +121,13 @@ long janus_dtls_bio_filter_ctrl(BIO *bio, int cmd, long num, void *ptr) {
 		case BIO_CTRL_PENDING: {
 			/* We only advertize one packet at a time, as they may be fragmented */
 			janus_dtls_bio_filter *filter = (janus_dtls_bio_filter *)bio->ptr;
-			if(filter == NULL || g_list_length(filter->packets) == 0)
+			if(filter == NULL)
 				return 0;
 			janus_mutex_lock(&filter->mutex);
+			if(g_list_length(filter->packets) == 0) {
+				janus_mutex_unlock(&filter->mutex);
+				return 0;
+			}
 			/* Get the first packet that hasn't been read yet */
 			GList *first = g_list_first(filter->packets);
 			filter->packets = g_list_remove_link(filter->packets, first);
