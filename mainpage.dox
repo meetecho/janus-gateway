@@ -41,8 +41,12 @@
  * gateway and the plugins it makes available in your web application
  * can be found in the \ref JS and \ref rest pages. If you're interested
  * in monitoring Janus resources, you can refer to the \ref admin page.
- * Some information on how to deploy Janus and your web applications that
- * want to make use of it are provided in the \ref deploy page.
+ *
+ * Finally, some information on how to deploy Janus and your web
+ * applications that want to make use of it are provided in the \ref deploy
+ * page. If you're interested in starting Janus as a service/daemon rather
+ * than launching it normally, check the information provided in the
+ * \ref service page.
  *
  * This is only the first version of the gateway, and as such it is a bit
  * rough at the edges: there is definitely room for improvement, there are
@@ -1494,7 +1498,7 @@ POST /admin
  * address for the gateway. In the demos provided with these packages, this
  * is done by means of the \c server variable:
  *
- * \verbatim
+ \verbatim
 var server = "http://" + window.location.hostname + ":8088/janus";
  \endverbatim
  *
@@ -1504,7 +1508,7 @@ var server = "http://" + window.location.hostname + ":8088/janus";
  * for HTTP and /my/custom/path as the API endpoint, the \c server variable
  * could be built this way:
  *
- * \verbatim
+ \verbatim
 var server = "http://" + window.location.hostname + ":7000/my/custom/path";
  \endverbatim
  *
@@ -1512,7 +1516,7 @@ var server = "http://" + window.location.hostname + ":7000/my/custom/path";
  * replace the \c window.location.hostname part with the right address of
  * the gateway, e.g.:
  *
- * \verbatim
+ \verbatim
 var server = "http://www.example.com:8088/janus";
  \endverbatim
  *
@@ -1525,7 +1529,7 @@ var server = "http://www.example.com:8088/janus";
  * webserver in Janus as well, and configure the JavaScript code to refer to
  * that itself, e.g.:
  *
- * \verbatim
+ \verbatim
 var server = "https://" + window.location.hostname + ":8089/janus";
  \endverbatim
  *
@@ -1533,7 +1537,7 @@ var server = "https://" + window.location.hostname + ":8089/janus";
  * To make this more "dynamic", e.g., allow both HTTP and HTTPS instead of
  * just sticking to one, you might make use of something like this:
  *
- * \verbatim
+ \verbatim
 var server = null;
 if(window.location.protocol === 'http:')
 	server = "http://" + window.location.hostname + ":8088/janus";
@@ -1558,7 +1562,7 @@ else
  * as all you'd need to do would be to provide a relative path for the API,
  * e.g.:
  *
- * \verbatim
+ \verbatim
 var server = "/janus";
  \endverbatim
  *
@@ -1568,7 +1572,7 @@ var server = "/janus";
  *
  * An easy way to do so in Apache HTTPD is by means of the following directives:
  *
- * \verbatim
+ \verbatim
 ProxyRequests Off
 ProxyVia Off
 ProxyPass /janus http://127.0.0.1:8088/janus
@@ -1637,20 +1641,20 @@ python -m SimpleHTTPServer 9000
  * to just use \c window.location.hostname if the webserver and Janus are
  * colocated:
  *
- * \verbatim
+ \verbatim
 var server = "ws://" + window.location.hostname + ":8188/";
  \endverbatim
  *
  * to specify the port if you change it:
  *
- * \verbatim
+ \verbatim
 var server = "ws://" + window.location.hostname + ":7000/";
  \endverbatim
  *
  * and/or the right address of the gateway in case the webserver and Janus
  * are <b>NOT</b> colocated:
  *
- * \verbatim
+ \verbatim
 var server = "ws://www.example.com:8188/";
  \endverbatim
  *
@@ -1684,6 +1688,97 @@ var servers = [ws_server, http_server];
  * Such an approach can also be used when you've deployed several different
  * instances of Janus, and you want the library to try some and fallback
  * to others if any of them is not reachable for any reason.
+ *
+ */
+
+/*! \page service Janus as a daemon
+ *
+ * By default, Janus cannot be started as a daemon. In fact, it is
+ * currently conceived as a server application that you start normally.
+ * That said, there are several reasons why you may not want to keep
+ * Janus in the foreground, while still being interested in checking
+ * the console to see what's happening.
+ *
+ * There are different ways to "daemonize" it and have it run as a service,
+ * though. This page tries to summarize a few ways to do so, starting
+ * from "dumb" approaches like sending to background and/or using screen/tmux,
+ * to more sophisticated approaches involving \c systemd, \c upstart
+ * and others.
+ *
+ * \section bg Running in background
+ * The simplest way to run Janus in the background is to just append the
+ * \c & character to the command line. Anyway, this will still "flood" the console
+ * with output from Janus. While there are ways to handle it (e.g., as
+ * explained <a href="http://www.thegeekstuff.com/2010/05/unix-background-job/">here</a>),
+ * a nice and easy way to handle this is redirecting the output to a 
+ * separate file, e.g., a dedicated log:
+ *
+ \verbatim
+/opt/janus/bin/janus -d 5 -6 >/path/to/mylogfile 2>&1 &
+ \endverbatim
+ *
+ * This is especially useful in case you want to keep a log of what
+ * happened when Janus was running, and can also be used as a simple and
+ * effective way to watch the console "live" using \c tail:
+ \verbatim
+tail -f /path/to/mylogfile
+ \endverbatim
+ *
+ * \section screen Terminal multiplexers
+ * Another easy way to run Janus in the background is using terminal
+ * multiplexers like \c screen or \c tmux. If you're not familiar with
+ * such applications, you can find a quick overview
+ * <a href="https://en.wikipedia.org/wiki/Terminal_multiplexer">here</a>.
+ *
+ * The following is a simple example with \c screen:
+ *
+ \verbatim
+screen -S janus -d -m
+screen -r janus -X stuff $'/opt/janus/bin/janus -d 5 -6\n'
+ \endverbatim
+ *
+ * This will create a session called "janus" and launch Janus in it with
+ * a few command line options (in this case, just the option to enable
+ * IPv6 support and set the debug to verbose). Janus will then be running
+ * in the background: accessing the console is just a matter of attaching
+ * to the "janus" screen: 
+ *
+ \verbatim
+screen -r janus
+[CTRL+A+D to detach again]
+ \endverbatim
+ *
+ * Terminal multiplexers usually allow for logging the output to file
+ * as well, if you want to keep an history of what happened during the
+ * Janus lifetime.
+ *
+ * \section systemd systemd
+ * This section shows how you can add Janus as a daemon to
+ * <a href="https://en.wikipedia.org/wiki/Systemd">systemd</a>.
+ *
+ \verbatim
+[Unit]
+Description=Janus WebRTC gateway
+After=syslog.target
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/janus/bin/janus
+Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target
+ \endverbatim
+ *
+ * \note systemd example provided by
+ * <a href="https://github.com/meetecho/janus-gateway/pull/306">\@saghul</a> 
+ *
+ * \section upstart upstart
+ * TODO.
+ *
+ * \section Others
+ * TODO.
  *
  */
  
