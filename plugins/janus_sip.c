@@ -1166,6 +1166,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			char *sdp = g_strdup(msg->sdp);
+			sdp = janus_string_replace(sdp, " UDP/TLS/", " ");
 			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
@@ -1244,6 +1245,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			char *sdp = g_strdup(msg->sdp);
+			sdp = janus_string_replace(sdp, " UDP/TLS/", " ");
 			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
