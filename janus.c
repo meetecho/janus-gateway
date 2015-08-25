@@ -1892,7 +1892,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	janus_http_msg *msg = (janus_http_msg *)*ptr;
 	if (msg == NULL) {
 		firstround = 1;
-		JANUS_LOG(LOG_WARN, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
+		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = calloc(1, sizeof(janus_http_msg));
 		if(msg == NULL) {
