@@ -1413,15 +1413,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			tagi_t const *ti = tl_find(tags, nutag_callstate);
 			enum nua_callstate callstate = ti ? ti->t_value : -1;
 			/* There are several call states, but we only care about the terminated state
-			 * in order to send the 'hangup' event.
+			 * in order to send the 'hangup' event (assuming this is the right session, of course).
 			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
 			 */
-			if(status == 486 && session->status != janus_sip_call_status_inviting) {
-				/* FIXME If it's a "busy" state, don't forward it if we're already in a call
-				 * 	https://github.com/meetecho/janus-gateway/issues/312 */
-				 break;
-			}
-			if(callstate == nua_callstate_terminated) {
+			if(callstate == nua_callstate_terminated &&
+					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->status = janus_sip_call_status_idle;
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
@@ -1473,6 +1469,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Busy */
 				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+				/* Notify the web app about the missed missed */
+				json_t *missed = json_object();
+				json_object_set_new(missed, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("missed_call"));
+				json_object_set_new(result, "caller", json_string(url_as_string(session->stack->s_home, sip->sip_from->a_url)));
+				json_object_set_new(missed, "result", result);
+				char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(missed);
+				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				break;
 			}
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));

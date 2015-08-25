@@ -162,6 +162,16 @@ $(document).ready(function() {
 									var result = msg["result"];
 									if(result !== null && result !== undefined && result["event"] !== undefined && result["event"] !== null) {
 										var event = result["event"];
+										if(event === 'registration_failed') {
+											console.log("Registration failed: " + result["code"] + " " + result["reason"]);
+											$('#server').removeAttr('disabled');
+											$('#username').removeAttr('disabled');
+											$('#password').removeAttr('disabled');
+											$('#register').removeAttr('disabled').click(registerUsername);
+											$('#registerset').removeAttr('disabled');
+											bootbox.alert(result["code"] + " " + result["reason"]);
+											return;
+										}
 										if(event === 'registered') {
 											console.log("Successfully registered as " + result["username"] + "!");
 											$('#you').removeClass('hide').show().text("Registered as '" + result["username"] + "'");
