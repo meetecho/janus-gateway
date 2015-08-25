@@ -592,8 +592,8 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
-		if(basepath[1] == NULL || basepath[1][0] != '/') {
-			JANUS_LOG(LOG_ERR, "Invalid url %s (%s)\n", url, basepath[1]);
+		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
+			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
@@ -1892,7 +1892,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 	janus_http_msg *msg = (janus_http_msg *)*ptr;
 	if (msg == NULL) {
 		firstround = 1;
-		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
+		JANUS_LOG(LOG_WARN, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = calloc(1, sizeof(janus_http_msg));
 		if(msg == NULL) {
@@ -1943,8 +1943,8 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
-		if(basepath[1] == NULL || basepath[1][0] != '/') {
-			JANUS_LOG(LOG_ERR, "Invalid url %s (%s)\n", url, basepath[1]);
+		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
+			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
