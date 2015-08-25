@@ -46,7 +46,8 @@
 #include "pp-opus.h"
 
 int janus_log_level = 4;
-int janus_log_timestamps = 0;
+gboolean janus_log_timestamps = FALSE;
+gboolean janus_log_colors = TRUE;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
 int working = 0;

@@ -236,7 +236,8 @@ gint janus_is_stopping(void) {
 
 /* Logging */
 int janus_log_level = 0;
-int janus_log_timestamps = 0;
+gboolean janus_log_timestamps = FALSE;
+gboolean janus_log_colors = FALSE;
 int lock_debug = 0;
 
 
@@ -2151,6 +2152,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
+			json_object_set_new(status, "log_timestamps", json_integer(janus_log_timestamps));
+			json_object_set_new(status, "log_colors", json_integer(janus_log_colors));
 			json_object_set_new(status, "locking_debug", json_integer(lock_debug));
 			json_object_set_new(status, "libnice_debug", json_integer(janus_ice_is_ice_debugging_enabled()));
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
@@ -3974,7 +3977,8 @@ gint main(int argc, char *argv[])
 	
 	/* Logging level: default is info and no timestamps */
 	janus_log_level = LOG_INFO;
-	janus_log_timestamps = 0;
+	janus_log_timestamps = FALSE;
+	janus_log_colors = TRUE;
 	if(args_info.debug_level_given) {
 		if(args_info.debug_level_arg < LOG_NONE)
 			args_info.debug_level_arg = 0;
@@ -4047,6 +4051,9 @@ gint main(int argc, char *argv[])
 	JANUS_PRINT("Checking command line arguments...\n");
 	if(args_info.debug_timestamps_given) {
 		janus_config_add_item(config, "general", "debug_timestamps", "yes");
+	}
+	if(args_info.disable_colors_given) {
+		janus_config_add_item(config, "general", "debug_colors", "no");
 	}
 	if(args_info.interface_given) {
 		janus_config_add_item(config, "general", "interface", args_info.interface_arg);
@@ -4199,6 +4206,10 @@ gint main(int argc, char *argv[])
 	if(item && item->value)
 		janus_log_timestamps = janus_is_true(item->value);
 	JANUS_PRINT("Debug/log timestamps are %s\n", janus_log_timestamps ? "enabled" : "disabled");
+	item = janus_config_get_item_drilldown(config, "general", "debug_colors");
+	if(item && item->value)
+		janus_log_colors = janus_is_true(item->value);
+	JANUS_PRINT("Debug/log colors are %s\n", janus_log_colors ? "enabled" : "disabled");
 
 	/* Any IP/interface to ignore? */
 	item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
