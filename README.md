@@ -24,7 +24,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](http://srtp.sourceforge.net/srtp.html) (at least v1.5 suggested)
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
-* [usrsctp](http://code.google.com/p/sctp-refimpl/) (only needed if you
+* [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
 are interested in Data Channels)
 * [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (only
 needed if you are interested in REST support for the Janus API)
@@ -85,11 +85,11 @@ is usually not available in repositories, so if you're interested in
 them (support is optional) you'll have to install it manually. It is a
 pretty easy and standard process:
 
-	svn co http://sctp-refimpl.googlecode.com/svn/trunk/KERN/usrsctp usrsctp
+	git clone https://github.com/sctplab/usrsctp
 	cd usrsctp
 	./bootstrap
 	./configure --prefix=/usr && make && sudo make install
-	
+
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
 

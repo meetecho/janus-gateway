@@ -855,6 +855,7 @@ void janus_audiobridge_create_session(janus_plugin_session *handle, int *error) 
 	session->started = FALSE;
 	session->stopping = FALSE;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1446,6 +1447,7 @@ void janus_audiobridge_setup_media(janus_plugin_session *handle) {
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	if(!participant)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* FIXME Only send this peer the audio mix when we get this event */
 	session->started = TRUE;
 }
@@ -1534,9 +1536,10 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed || !session->participant || g_atomic_int_get(&session->hangingup))
+	if(session->destroyed || !session->participant)
 		return;
-	g_atomic_int_set(&session->hangingup, 1);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 	janus_audiobridge_room *audiobridge = participant->room;
@@ -1595,8 +1598,6 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	if(audiobridge != NULL) {
 		janus_mutex_unlock(&audiobridge->mutex);
 	}
-	/* Done */
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */

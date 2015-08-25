@@ -640,6 +640,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->arc = NULL;
 	session->vrc = NULL;
 	session->destroyed = 0;
+	g_atomic_int_set(&session->hangingup, 1);
 	session->video_remb_startup = 4;
 	session->video_remb_last = janus_get_monotonic_time();
 	session->video_bitrate = 1024 * 1024; 		/* This is 1mbps by default */
@@ -906,6 +907,7 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 	}
 	if(session->destroyed)
 		return;
+	g_atomic_int_set(&session->hangingup, 0);
 	/* Take note of the fact that the session is now active */
 	session->active = TRUE;
 	if(!session->recorder) {
@@ -1042,9 +1044,10 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 		return;
 	}
 	session->active = FALSE;
-	if(session->destroyed || !session->recorder || g_atomic_int_get(&session->hangingup))
+	if(session->destroyed || !session->recorder)
 		return;
-	g_atomic_int_set(&session->hangingup, 1);
+	if(g_atomic_int_add(&session->hangingup, 1))
+		return;
 
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -1065,8 +1068,6 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 	msg->sdp_type = NULL;
 	msg->sdp = NULL;
 	g_async_queue_push(messages, msg);
-	/* Done */
-	g_atomic_int_set(&session->hangingup, 0);
 }
 
 /* Thread to handle incoming messages */
