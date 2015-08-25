@@ -884,8 +884,8 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
-		if(basepath[1] == NULL || basepath[1][0] != '/') {
-			JANUS_LOG(LOG_ERR, "Invalid url %s (%s)\n", url, basepath[1]);
+		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
+			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
@@ -1225,8 +1225,8 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
-		if(basepath[1] == NULL || basepath[1][0] != '/') {
-			JANUS_LOG(LOG_ERR, "Invalid url %s (%s)\n", url, basepath[1]);
+		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
+			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
