@@ -568,6 +568,12 @@ int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int vi
 		if(stream->video_ssrc_peer == 0) {
 			stream->video_ssrc_peer = ssrc;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %u\n", handle->handle_id, stream->video_ssrc_peer);
+		} else if(stream->video_ssrc_peer != ssrc) {
+			/* FIXME We assume the second SSRC we get is the one Chrome associates with retransmissions, e.g.
+			 * 	a=ssrc-group:FID 586466331 2053167359 (SSRC SSRC-rtx)
+			 * SSRC group FID: https://tools.ietf.org/html/rfc3388#section-7 */
+			stream->video_ssrc_peer_rtx = ssrc;
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (rtx): %u\n", handle->handle_id, stream->video_ssrc_peer_rtx);
 		}
 	} else {
 		if(stream->audio_ssrc_peer == 0) {

@@ -17,4 +17,5 @@ option "max-nack-queue" q "Maximum size of the NACK queue per user for retransmi
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
+option "disable-colors" o "Disable color in the logging" flag off
 option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional

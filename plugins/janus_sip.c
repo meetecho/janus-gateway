@@ -1166,6 +1166,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			char *sdp = g_strdup(msg->sdp);
+			sdp = janus_string_replace(sdp, " UDP/TLS/", " ");
 			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
@@ -1244,6 +1245,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			char *sdp = g_strdup(msg->sdp);
+			sdp = janus_string_replace(sdp, " UDP/TLS/", " ");
 			sdp = janus_string_replace(sdp, "RTP/SAVPF", "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
@@ -1392,29 +1394,30 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 	switch (event) {
 	/* Status or Error Indications */
 		case nua_i_active:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_i_error:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_i_fork:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_i_media_error:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_i_subscription:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_i_state:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			tagi_t const *ti = tl_find(tags, nutag_callstate);
 			enum nua_callstate callstate = ti ? ti->t_value : -1;
 			/* There are several call states, but we only care about the terminated state
-			 * in order to send the 'hangup' event.
+			 * in order to send the 'hangup' event (assuming this is the right session, of course).
 			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
 			 */
-			if (callstate == nua_callstate_terminated) {
+			if(callstate == nua_callstate_terminated &&
+					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->status = janus_sip_call_status_idle;
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
@@ -1437,25 +1440,25 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			break;
 		case nua_i_terminated:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 	/* SIP requests */
 		case nua_i_ack:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_i_outbound:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_i_bye: {
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		}
 		case nua_i_cancel: {
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		}
 		case nua_i_invite: {
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
 			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
@@ -1466,6 +1469,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Busy */
 				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+				/* Notify the web app about the missed missed */
+				json_t *missed = json_object();
+				json_object_set_new(missed, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("missed_call"));
+				json_object_set_new(result, "caller", json_string(url_as_string(session->stack->s_home, sip->sip_from->a_url)));
+				json_object_set_new(missed, "result", result);
+				char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(missed);
+				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				break;
 			}
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
@@ -1494,22 +1509,22 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		}
 		case nua_i_options:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
 			nua_respond(nh, 405, sip_status_phrase(405), TAG_END());
 			break;
 	/* Responses */
 		case nua_r_get_params:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_set_params:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_notifier:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_shutdown:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			if(status < 200 && !g_atomic_int_get(&stopping)) {
 				/* shutdown in progress -> return */
 				break;
@@ -1518,17 +1533,17 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			su_root_break(ssip->s_root);
 			break;
 		case nua_r_terminate:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 	/* SIP responses */
 		case nua_r_bye:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_cancel:
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_invite: {
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			if(status < 200) {
 				/* Not ready yet (FIXME May this be pranswer?? we don't handle it yet...) */
 				break;
@@ -1598,7 +1613,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		}
 		case nua_r_register: {
-			JANUS_LOG(LOG_VERB, "[%s]: %d %s\n", nua_event_name(event), status, phrase ? phrase : "??");
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			if(status == 200) {
 				if(session->account.registration_status < janus_sip_registration_status_registered)
 					session->account.registration_status = janus_sip_registration_status_registered;

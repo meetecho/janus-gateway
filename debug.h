@@ -16,7 +16,8 @@
 #include <glib/gprintf.h>
  
 extern int janus_log_level;
-extern int janus_log_timestamps;
+extern gboolean janus_log_timestamps;
+extern gboolean janus_log_colors;
 
 /** @name Janus log colors
  */
@@ -63,6 +64,18 @@ static const char *janus_log_prefix[] = {
 	"",
 	""
 };
+
+/*! \brief Prefixes (no colors) for errors and warnings logging. */
+static const char *janus_log_nocolors_prefix[] = {
+	"",
+	"[FATAL] ",
+	"[ERR] ",
+	"[WARN] ",
+	"",
+	"",
+	"",
+	""
+};
 ///@}
 
 /** @name Janus log wrappers
@@ -90,7 +103,7 @@ do { \
 			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
 		g_print("%s%s%s" format, \
-		        janus_log_ts, janus_log_prefix[level], janus_log_src, \
+		        janus_log_ts, janus_log_colors ? janus_log_prefix[level] : janus_log_nocolors_prefix[level], janus_log_src, \
 		        ##__VA_ARGS__); \
 	} \
 } while (0)
