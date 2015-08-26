@@ -1280,11 +1280,16 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			} else {
 				/* Bundled streams, check SSRC */
 				guint32 packet_ssrc = ntohl(header->ssrc);
-				video = (stream->video_ssrc_peer == packet_ssrc ? 1 : 0);
+				video = ((stream->video_ssrc_peer == packet_ssrc || stream->video_ssrc_peer_rtx == packet_ssrc) ? 1 : 0);
 				if(!video && stream->audio_ssrc_peer != packet_ssrc) {
-					/* FIXME In case it happens, we should check what it is: maybe retransmissions with a different SSRC? */
+					/* FIXME In case it happens, we should check what it is */
 					JANUS_LOG(LOG_WARN, "Not video and not audio? dropping (SSRC %"SCNu32")...\n", packet_ssrc);
 					return;
+				}
+				if(stream->video_ssrc_peer_rtx == packet_ssrc) {
+					/* FIXME This is a video retransmission: set the regular peer SSRC so
+					 * that we avoid outgoing SRTP errors in case we got the packet already */
+					header->ssrc = htonl(stream->video_ssrc_peer);
 				}
 				//~ JANUS_LOG(LOG_VERB, "[RTP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
 					//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, ntohl(header->ssrc));
@@ -2184,6 +2189,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_stream->video_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
 		}
 		audio_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
+		audio_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->audio_id), audio_stream);
@@ -2333,6 +2339,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 		video_stream->video_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
 		video_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
+		video_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
 		video_stream->audio_ssrc = 0;
 		video_stream->audio_ssrc_peer = 0;
 		video_stream->components = g_hash_table_new(NULL, NULL);

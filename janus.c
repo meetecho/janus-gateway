@@ -1384,6 +1384,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 							if(handle->streams && handle->video_stream) {
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
+								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
 								janus_ice_stream_free(handle->streams, handle->video_stream);
 							}
 							handle->video_stream = NULL;
@@ -3385,6 +3386,8 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(ss, "audio-peer", json_integer(stream->audio_ssrc_peer));
 	if(stream->video_ssrc_peer)
 		json_object_set_new(ss, "video-peer", json_integer(stream->video_ssrc_peer));
+	if(stream->video_ssrc_peer_rtx)
+		json_object_set_new(ss, "video-peer-rtx", json_integer(stream->video_ssrc_peer_rtx));
 	json_object_set_new(s, "ssrc", ss);
 	json_t *components = json_array();
 	if(stream->rtp_component) {
@@ -3756,6 +3759,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 					if(ice_handle->streams && ice_handle->video_stream) {
 						ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
 						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
+						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
 						janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
 					}
 					ice_handle->video_stream = NULL;
