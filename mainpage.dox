@@ -52,7 +52,9 @@
  * rough at the edges: there is definitely room for improvement, there are
  * bugs, limitations, and things that need to be done. For a quick glance
  * on the most relevant pending stuff check our \ref todo (and, if you're
- * willing to help on any of those, get in touch with us!)
+ * willing to help on any of those, get in touch with us!). Make also
+ * sure you read the \ref debug page for info on how you can help us
+ * fixing issues you might encounter along the road.
  *
  * \section copyright Copyright and author
  *
@@ -1801,6 +1803,102 @@ exec /opt/janus/bin/janus
  *
  */
  
+/*! \page debug Debugging Janus
+ *
+ * In the magical world of fairies and unicorns, the sun always shines
+ * and everything always works smoothly and without issues. Unfortunately,
+ * this is not the world we live in, and so you might still encounter
+ * issues using Janus, e.g., unexpected crashes and the like. We always
+ * try and tackle bugs as soon as we spot them, but some issues may be
+ * always lingering in the background.
+ *
+ * Should you encounter a bug or a crash, open a new
+ * <a href="https://github.com/meetecho/janus-gateway/issues/new">issue</a>
+ * on GitHub. Make sure you carefully read the
+ * <a href="https://github.com/meetecho/janus-gateway/blob/master/CONTRIBUTING.md">guidelines</a>
+ * for contributing, or otherwise we may decide to close the issue and
+ * not even look at it.
+ *
+ * What's important for us to look into issues and bugs definitely is
+ * having enough information to do so. As such, whenever possible try to
+ * provide as many details and data as possible. Quite useful to us are
+ * GDB stacktraces and/or AddressSanitizer output. The following sections
+ * give a quick overview on how you can collect this information after
+ * a crash, but for a more detailed description of the tools you should
+ * refer to the related documentation pages and tutorials.
+ *
+ * \section gdb GDB
+ * GDB is the <a href="http://www.gnu.org/software/gdb/">GNU Project Debugger</a>
+ * and is an effective tool for looking at what has happened (or is
+ * happening) inside an application. As such, it's quite useful to spot
+ * bugs and the like, as it can provide information about the values of
+ * variables when they were used and the application crashed.
+ * 
+ * When Janus crashes, you should get a core dump file somewhere. This is
+ * a recorded state of the application memory at the time of crashing, and
+ * so a backtrace of what lead to an issue can help. You can open such
+ * a core dump file via gdb this way:
+ * 
+ \verbatim
+gdb /path/to/bin/janus /path/to/coredump
+gdb bt
+ \endverbatim
+ * 
+ * The \c bt command retrieves the backtrace, and is what you should provide
+ * as part of your new issue.
+ * 
+ * \note Please \c DON'T paste this backtrace in the issue text. Use a
+ * service like <a href="https://gist.github.com/">Gist</a> or
+ * <a href="http://pastebin.com/">Pastebin</a> and pass the generated
+ * link instead.
+ * 
+ * \section sanitizer Address Sanitizer
+ * An even better tool for spotting issues is
+ * <a href="https://code.google.com/p/address-sanitizer/">Address Sanitizer</a>,
+ * a fast memory error detector. Since it can spot memory errors, it's
+ * very useful to find out about hidden race conditions and the like.
+ * 
+ * Unlike GDB which can be used as is, though, to use Address Sanitizer
+ * you'll first need to recompile Janus with some new settings, as it
+ * requires a specific dependency on a library, libasan, which you'll need
+ * to install through your repository manager if needed. Besides, you'll
+ * need at least gcc 4.8 for this to work: older versions of gcc won't
+ * work.
+ * 
+ * Once you've installed libasan, reconfigure Janus like this:
+ * 
+ \verbatim
+CFLAGS="-fsanitize=address -fno-omit-frame-pointer" LDFLAGS="-lasan" ./configure --prefix=/opt/janus
+ \endverbatim
+ * 
+ * Of course you're free to add whatever additional configuration parameter
+ * you were using before: the important parts are the environment variables
+ * before that. Once done configuring, do a \c make \c clean (to make sure
+ * everything is recompiled from scratch) and then a \c make and \c make \c install
+ * as usual.
+ * 
+ * At this point, your Janus version should be Address Sanitizer compliant.
+ * To make sure, try using \c ldd to check whether libasan is indeed a
+ * dependency or not:
+ * 
+ \verbatim
+ldd janus | grep asan
+ \endverbatim
+ * 
+ * If it is, you're done: whenever Janus crashes for any reason, you'll
+ * get additional output from Address Sanitizer automatically with details
+ * on what went wrong, and that's what you should provide as part of the
+ * issue content. Just as a side note, please beware that using Address
+ * Sanitizer Janus will run just a bit slower, even though not to the
+ * point of being unusable (as when using, e.g., valgrind).
+ * 
+ * \note Please \c DON'T paste Address Sanitizer output in the issue text.
+ * Use a service like <a href="https://gist.github.com/">Gist</a> or
+ * <a href="http://pastebin.com/">Pastebin</a> and pass the generated
+ * link instead.
+ * 
+ */
+
 /*! \page README README
  *  \verbinclude README.md
  */
