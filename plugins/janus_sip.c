@@ -2081,6 +2081,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	su_root_destroy(session->stack->s_root);
 	session->stack->s_root = NULL;
 	su_home_deinit(session->stack->s_home);
+	su_home_unref(session->stack->s_home);
 	su_deinit();
 	//~ stop = 1;
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");

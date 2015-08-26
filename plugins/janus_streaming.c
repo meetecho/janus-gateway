@@ -254,6 +254,7 @@ typedef struct janus_streaming_mountpoint {
 	janus_mutex mutex;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints;
+static GList *old_mountpoints;
 janus_mutex mountpoints_mutex;
 
 static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp);
@@ -381,6 +382,31 @@ void *janus_streaming_watchdog(void *data) {
 			}
 		}
 		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_lock(&mountpoints_mutex);
+		/* Iterate on all the mountpoints */
+		if(old_mountpoints != NULL) {
+			GList *sl = old_mountpoints;
+			JANUS_LOG(LOG_HUGE, "Checking %d old Streaming mountpoints...\n", g_list_length(old_mountpoints));
+			while(sl) {
+				janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)sl->data;
+				if(!mountpoint) {
+					sl = sl->next;
+					continue;
+				}
+				if(now-mountpoint->destroyed >= 5*G_USEC_PER_SEC) {
+					/* We're lazy and actually get rid of the stuff only after a few seconds */
+					JANUS_LOG(LOG_VERB, "Freeing old Streaming mountpoint\n");
+					GList *rm = sl->next;
+					old_mountpoints = g_list_delete_link(old_mountpoints, sl);
+					sl = rm;
+					janus_streaming_mountpoint_free(mountpoint);
+					mountpoint = NULL;
+					continue;
+				}
+				sl = sl->next;
+			}
+		}
+		janus_mutex_unlock(&mountpoints_mutex);
 		g_usleep(500000);
 	}
 	JANUS_LOG(LOG_INFO, "Streaming watchdog stopped\n");
@@ -410,8 +436,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL)
 		janus_config_print(config);
 	
-	mountpoints = g_hash_table_new_full(NULL, NULL, NULL,
-	                                    (GDestroyNotify) janus_streaming_mountpoint_free);
+	mountpoints = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&mountpoints_mutex);
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
@@ -721,6 +746,20 @@ void janus_streaming_destroy(void) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
 	}
+
+	/* Remove all mountpoints */
+	janus_mutex_unlock(&mountpoints_mutex);
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, mountpoints);
+	while (g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_streaming_mountpoint *mp = value;
+		if(!mp->destroyed) {
+			mp->destroyed = janus_get_monotonic_time();
+			old_mountpoints = g_list_append(old_mountpoints, mp);
+		}
+	}
+	janus_mutex_unlock(&mountpoints_mutex);
 	if(watchdog != NULL) {
 		g_thread_join(watchdog);
 		watchdog = NULL;
@@ -1528,7 +1567,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		g_free(event_text);
 		janus_mutex_unlock(&mp->mutex);
 		/* Remove mountpoint from the hashtable: this will get it destroyed */
-		g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
+		if(!mp->destroyed) {
+			mp->destroyed = janus_get_monotonic_time();
+			g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
+			/* Cleaning up and removing the mountpoint is done in a lazy way */
+			old_mountpoints = g_list_append(old_mountpoints, mp);
+		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
 		response = json_object();
