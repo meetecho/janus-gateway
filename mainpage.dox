@@ -1691,7 +1691,7 @@ var servers = [ws_server, http_server];
  *
  */
 
-/*! \page service Janus as a daemon
+/*! \page service Janus as a daemon/service
  *
  * By default, Janus cannot be started as a daemon. In fact, it is
  * currently conceived as a server application that you start normally.
@@ -1775,7 +1775,26 @@ WantedBy=multi-user.target
  * <a href="https://github.com/meetecho/janus-gateway/pull/306">\@saghul</a> 
  *
  * \section upstart upstart
- * TODO.
+ * This section shows how you can add Janus as a daemon to
+ * <a href="http://upstart.ubuntu.com/">upstart</a>, which is
+ * typically available on Ubuntu systems.
+ *
+ \verbatim
+description "janus"
+
+start on filesystem or runlevel [2345]
+stop on runlevel [!2345]
+limit nofile 50000 50000
+limit core unlimited unlimited
+
+respawn
+respawn limit 10 5
+
+exec /opt/janus/bin/janus
+ \endverbatim
+ *
+ * \note upstart example provided by
+ * <a href="https://github.com/meetecho/janus-gateway/pull/306">\@ploxiln</a> 
  *
  * \section Others
  * TODO.
