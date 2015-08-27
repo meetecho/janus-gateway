@@ -827,7 +827,7 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	session->started = FALSE;	/* This will happen later */
 	session->paused = FALSE;
 	session->destroyed = 0;
-	g_atomic_int_set(&session->hangingup, 1);
+	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);

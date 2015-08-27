@@ -370,7 +370,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
 	session->destroyed = 0;
-	g_atomic_int_set(&session->hangingup, 1);
+	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);

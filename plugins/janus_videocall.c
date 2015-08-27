@@ -519,7 +519,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->peer = NULL;
 	session->username = NULL;
 	session->destroyed = 0;
-	g_atomic_int_set(&session->hangingup, 1);
+	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 
 	return;
