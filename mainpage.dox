@@ -1755,23 +1755,24 @@ screen -r janus
  * Janus lifetime.
  *
  * \section systemd systemd
- * This section shows how you can add Janus as a daemon to
+ * This section shows how you can add Janus as a service to
  * <a href="https://en.wikipedia.org/wiki/Systemd">systemd</a>.
  *
  \verbatim
 [Unit]
 Description=Janus WebRTC gateway
-After=syslog.target
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/opt/janus/bin/janus
+ExecStart=/opt/janus/bin/janus -o
 Restart=on-abnormal
 
 [Install]
 WantedBy=multi-user.target
  \endverbatim
+ *
+ * \note Remember to adjust the path in ExecStart to match the Janus binary path.
  *
  * \note systemd example provided by
  * <a href="https://github.com/meetecho/janus-gateway/pull/306">\@saghul</a> 
