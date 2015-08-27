@@ -640,7 +640,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->arc = NULL;
 	session->vrc = NULL;
 	session->destroyed = 0;
-	g_atomic_int_set(&session->hangingup, 1);
+	g_atomic_int_set(&session->hangingup, 0);
 	session->video_remb_startup = 4;
 	session->video_remb_last = janus_get_monotonic_time();
 	session->video_bitrate = 1024 * 1024; 		/* This is 1mbps by default */
@@ -668,8 +668,9 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
+		janus_recordplay_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
 		g_hash_table_remove(sessions, handle);
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);

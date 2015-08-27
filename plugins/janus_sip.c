@@ -633,7 +633,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
 	session->destroyed = 0;
-	g_atomic_int_set(&session->hangingup, 1);
+	g_atomic_int_set(&session->hangingup, 0);
 	su_home_init(session->stack->s_home);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
