@@ -672,12 +672,12 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 			return;
 		if(buf == NULL || len <= 0)
 			return;
-		char text[1<<16];
-		memset(text, 0, 1<<16);
+		char *text = g_malloc0(len+1);
 		memcpy(text, buf, len);
-		text[len] = '\0';
+		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
 		gateway->relay_data(session->peer->handle, text, strlen(text));
+		g_free(text);
 	}
 }
 
