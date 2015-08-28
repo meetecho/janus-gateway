@@ -508,15 +508,17 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 			return;
 		if(buf == NULL || len <= 0)
 			return;
-		char *text = calloc(len+1, sizeof(char));
+		char *text = g_malloc0(len+1);
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to bounce back: %s\n", strlen(text), text);
-		char reply[1<<16];
-		memset(reply, 0, 1<<16);
-		g_snprintf(reply, 1<<16, "Janus EchoTest here! You wrote: %s", text);
-		free(text);
+		/* We send back the same text with a custom prefix */
+		const char *prefix = "Janus EchoTest here! You wrote: ";
+		char *reply = g_malloc0(strlen(prefix)+len+1);
+		g_snprintf(reply, strlen(prefix)+len, "%s%s", prefix, text);
+		g_free(text);
 		gateway->relay_data(handle, reply, strlen(reply));
+		g_free(reply);
 	}
 }
 

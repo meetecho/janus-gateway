@@ -1310,10 +1310,20 @@ void *janus_sctp_thread(void *data) {
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Leaving SCTP association thread\n", sctp->handle_id);
 	/* This association has been destroyed, wait a bit and then free all the resources */
 	g_usleep (1*G_USEC_PER_SEC);
-	g_queue_free(sctp->in_messages);
+	GQueue *tmp = sctp->in_messages;
 	sctp->in_messages = NULL;
-	g_queue_free(sctp->out_messages);
+	while(!g_queue_is_empty(tmp)) {
+		message = g_queue_pop_head(tmp);
+		janus_sctp_message_destroy(message);
+	}
+	g_queue_free(tmp);
+	tmp = sctp->out_messages;
 	sctp->out_messages = NULL;
+	while(!g_queue_is_empty(tmp)) {
+		message = g_queue_pop_head(tmp);
+		janus_sctp_message_destroy(message);
+	}
+	g_queue_free(tmp);
 	sctp->thread = NULL;
 #ifdef DEBUG_SCTP
 	if(sctp->debug_dump != NULL)
