@@ -1103,7 +1103,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * 
  * Configuring the API secret mechanism is easy enough: you can do that
  * either via the command line (\c -a or \c --apisecret ) or in the
- * \c janus.cfg configuration (\c apisecret value in the \c general section).
+ * \c janus.cfg configuration (\c api_secret value in the \c general section).
  * When enabled, all requests addressed to that Janus instance \b MUST
  * also contain an \c apisecret field in the Janus message headers. For
  * instance, this message presented above would fail:
