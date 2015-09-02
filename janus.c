@@ -3081,6 +3081,20 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 							return 0;
 						}
 						if(session->timeout) {
+							/* Remove all sessions (and handles) created by this ws_client */
+							janus_mutex_lock(&sessions_mutex);
+							GHashTableIter ws_iter;
+							gpointer ws_value;
+							g_hash_table_iter_init(&ws_iter, ws_client->sessions);
+							while(g_hash_table_iter_next(&ws_iter, NULL, &ws_value)) {
+								janus_session *ws_session = ws_value;
+								if(!ws_session || ws_session == session)
+									continue;
+								ws_session->last_activity = 0;	/* This will trigger a timeout */
+							}
+							janus_mutex_unlock(&sessions_mutex);
+							g_hash_table_destroy(ws_client->sessions);
+							ws_client->sessions = NULL;
 							/* Close the WebSocket: the watchdog will get rid of resources */
 							janus_mutex_unlock(&ws_client->mutex);
 							return 1;
