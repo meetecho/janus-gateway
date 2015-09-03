@@ -2,8 +2,9 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    Post-processing to generate .opus files
- * \details  Implementation of the post-processing code (based on libogg)
- * needed to generate .opus files out of Opus RTP frames.
+ * \details  Implementation of the post-processing code (based on libogg
+ * or, optionally, FFmpeg/libav) needed to generate .opus files out of
+ * Opus RTP frames.
  * 
  * \ingroup postprocessing
  * \ref postprocessing
@@ -17,8 +18,15 @@
 
 #include <ogg/ogg.h>
 
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+
 #include "pp-opus.h"
 #include "../debug.h"
+
+
+/* Whether we're going to use libogg or not */
+static gboolean use_libogg = TRUE;
 
 
 /* OGG/Opus helpers */
@@ -35,30 +43,98 @@ int ogg_write(void);
 int ogg_flush(void);
 
 
+/* FFmpeg/libav helpers */
+AVFormatContext *fctx;
+AVStream *audio_stream;
+
+#define LIBAVCODEC_VER_AT_LEAST(major, minor) \
+	(LIBAVCODEC_VERSION_MAJOR > major || \
+	 (LIBAVCODEC_VERSION_MAJOR == major && \
+	  LIBAVCODEC_VERSION_MINOR >= minor))
+
+
 int janus_pp_opus_create(char *destination) {
-	stream = malloc(sizeof(ogg_stream_state));
-	if(stream == NULL) {
-		JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
-		return -1;
+	/* Check the JANUS_PPREC_NOLIBOGG environment variable for the tool to use */
+	if(g_getenv("JANUS_PPREC_NOLIBOGG") != NULL) {
+		int val = atoi(g_getenv("JANUS_PPREC_NOLIBOGG"));
+		if(val)
+			use_libogg = FALSE;
 	}
-	if(ogg_stream_init(stream, rand()) < 0) {
-		JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
-		return -1;
+	JANUS_LOG(LOG_INFO, "Using libogg: %s\n", use_libogg ? "true" : "false");
+	if(use_libogg) {
+		/* Use libogg */
+		stream = malloc(sizeof(ogg_stream_state));
+		if(stream == NULL) {
+			JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
+			return -1;
+		}
+		if(ogg_stream_init(stream, rand()) < 0) {
+			JANUS_LOG(LOG_ERR, "Couldn't initialize Ogg stream state\n");
+			return -1;
+		}
+		ogg_file = fopen(destination, "wb");
+		if(ogg_file == NULL) {
+			JANUS_LOG(LOG_ERR, "Couldn't open output file\n");
+			return -1;
+		}
+		JANUS_LOG(LOG_INFO, "Writing .opus file header\n");
+		/* Write stream headers */
+		ogg_packet *op = op_opushead();
+		ogg_stream_packetin(stream, op);
+		op_free(op);
+		op = op_opustags();
+		ogg_stream_packetin(stream, op);
+		op_free(op);
+		ogg_flush();
+	} else {
+		/* Use FFmpeg/libav */
+		av_register_all();
+		/* Opus output */
+		fctx = avformat_alloc_context();
+		if(fctx == NULL) {
+			JANUS_LOG(LOG_ERR, "Error allocating context\n");
+			return -1;
+		}
+		fctx->oformat = av_guess_format("opus", NULL, NULL);
+		if(fctx->oformat == NULL) {
+			JANUS_LOG(LOG_ERR, "Error guessing format\n");
+			return -1;
+		}
+		snprintf(fctx->filename, sizeof(fctx->filename), "%s", destination);
+		audio_stream = avformat_new_stream(fctx, 0);
+		if(audio_stream == NULL) {
+			JANUS_LOG(LOG_ERR, "Error adding stream\n");
+			return -1;
+		}
+#if LIBAVCODEC_VER_AT_LEAST(53, 21)
+		avcodec_get_context_defaults3(audio_stream->codec, NULL);
+#else
+		avcodec_get_context_defaults2(audio_stream->codec, AVMEDIA_TYPE_AUDIO);
+#endif
+#if LIBAVCODEC_VER_AT_LEAST(54, 25)
+		audio_stream->codec->codec_id = AV_CODEC_ID_OPUS;
+#else
+		audio_stream->codec->codec_id = CODEC_ID_OPUS;
+#endif
+		audio_stream->codec->codec_type = AVMEDIA_TYPE_AUDIO;
+		audio_stream->codec->sample_fmt = AV_SAMPLE_FMT_S16;
+		audio_stream->codec->sample_rate = 48000;
+		audio_stream->codec->channels = 1;
+		audio_stream->codec->delay = 0;
+		audio_stream->time_base = (AVRational){ 1, audio_stream->codec->sample_rate };
+		audio_stream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+		uint8_t extradata[19];
+		audio_stream->codec->extradata = (uint8_t *)&extradata;
+		audio_stream->codec->extradata_size = 19;
+		if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {
+			JANUS_LOG(LOG_ERR, "Error opening file for output\n");
+			return -1;
+		}
+		if(avformat_write_header(fctx, NULL) < 0) {
+			JANUS_LOG(LOG_ERR, "Error writing header\n");
+			return -1;
+		}
 	}
-	ogg_file = fopen(destination, "wb");
-	if(ogg_file == NULL) {
-		JANUS_LOG(LOG_ERR, "Couldn't open output file\n");
-		return -1;
-	}
-	JANUS_LOG(LOG_INFO, "Writing .opus file header\n");
-	/* Write stream headers */
-	ogg_packet *op = op_opushead();
-	ogg_stream_packetin(stream, op);
-	op_free(op);
-	op = op_opustags();
-	ogg_stream_packetin(stream, op);
-	op_free(op);
-	ogg_flush();
 	return 0;
 }
 
@@ -84,31 +160,67 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		bytes = fread(buffer, sizeof(char), len, file);
 		if(bytes != len)
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
-		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
 		if(last_seq == 0)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {
 			last_seq = tmp->seq;
 			steps++;
 		}
-		pos = tmp->seq-list->seq+diff+steps*65535;
-		JANUS_LOG(LOG_VERB, "pos: %04"SCNu64", writing %d bytes out of %d (step=%"SCNu16")\n", pos, bytes, tmp->len, diff);
-		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
-		ogg_stream_packetin(stream, op);
-		free(op);
-		ogg_write();
+		if(use_libogg) {
+			/* Use libogg */
+			ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
+			pos = tmp->seq-list->seq+diff+steps*65535;
+			JANUS_LOG(LOG_VERB, "pos: %04"SCNu64", writing %d bytes out of %d (step=%"SCNu16")\n", pos, bytes, tmp->len, diff);
+			op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
+			ogg_stream_packetin(stream, op);
+			free(op);
+			ogg_write();
+		} else {
+			/* Use FFmpeg/libav */
+			AVPacket packet;
+			av_init_packet(&packet);
+			packet.stream_index = 0;
+			packet.data = buffer;
+			packet.size = bytes;
+			/* First we save to the file... */
+			packet.dts = (tmp->ts-list->ts)/48;
+			packet.pts = (tmp->ts-list->ts)/48;
+			JANUS_LOG(LOG_VERB, "pts: %04"SCNi64", writing %d bytes out of %d (step=%"SCNu16")\n", packet.pts, bytes, tmp->len, diff);
+			if(fctx) {
+				if(av_write_frame(fctx, &packet) < 0) {
+					JANUS_LOG(LOG_ERR, "Error writing audio frame to file...\n");
+				}
+			}
+		}
 		tmp = tmp->next;
 	}
 	return 0;
 }
 
 void janus_pp_opus_close(void) {
-	if(ogg_file)
-		fclose(ogg_file);
-	ogg_file = NULL;
-	if(stream)
-		ogg_stream_destroy(stream);
-	stream = NULL;
+	if(use_libogg) {
+		/* Use libogg */
+		if(ogg_file)
+			fclose(ogg_file);
+		ogg_file = NULL;
+		if(stream)
+			ogg_stream_destroy(stream);
+		stream = NULL;
+	} else {
+		/* Use FFmpeg/libav */
+		if(fctx != NULL)
+			av_write_trailer(fctx);
+		if(audio_stream->codec != NULL)
+			avcodec_close(audio_stream->codec);
+		if(fctx->streams[0] != NULL) {
+			av_free(fctx->streams[0]->codec);
+			av_free(fctx->streams[0]);
+		}
+		if(fctx != NULL) {
+			avio_close(fctx->pb);
+			av_free(fctx);
+		}
+	}
 }
 
 
