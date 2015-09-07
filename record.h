@@ -35,8 +35,12 @@ typedef struct janus_recorder {
 	char *filename;
 	/*! \brief Recording file */
 	FILE *file;
+	/*! \brief When the recording file has been created */
+	gint64 created;
 	/*! \brief Whether this recorder instance is going to record video or audio */ 
 	int video:1;
+	/*! \brief Whether the info header for this recorder instance has already been written or not */
+	int header:1;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
 	int writable:1;
 	/*! \brief Mutex to lock/unlock this recorder instance */ 

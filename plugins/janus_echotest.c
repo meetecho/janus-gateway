@@ -24,13 +24,16 @@
  * which means all responses (successes and errors) will be delivered
  * as events with the same transaction. 
  * 
- * The request has to be formatted as follows:
+ * The request has to be formatted as follows. All the attributes are
+ * optional, so any request can contain a subset of them:
  *
 \verbatim
 {
 	"audio" : true|false,
 	"video" : true|false,
-	"bitrate" : <numeric bitrate value>
+	"bitrate" : <numeric bitrate value>,
+	"record" : true|false,
+	"filename" : <base path/filename to use for the recording>
 }
 \endverbatim
  *
@@ -88,6 +91,7 @@
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"
+#include "../record.h"
 #include "../rtcp.h"
 #include "../utils.h"
 
@@ -173,9 +177,13 @@ static GAsyncQueue *messages = NULL;
 
 typedef struct janus_echotest_session {
 	janus_plugin_session *handle;
+	gboolean has_audio;
+	gboolean has_video;
 	gboolean audio_active;
 	gboolean video_active;
 	uint64_t bitrate;
+	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
+	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	guint16 slowlink_count;
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
@@ -366,6 +374,8 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	session->handle = handle;
+	session->has_audio = FALSE;
+	session->has_video = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
@@ -416,6 +426,14 @@ char *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
 	json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+	if(session->arc || session->vrc) {
+		json_t *recording = json_object();
+		if(session->arc && session->arc->filename)
+			json_object_set_new(recording, "audio", json_string(session->arc->filename));
+		if(session->vrc && session->vrc->filename)
+			json_object_set_new(recording, "video", json_string(session->vrc->filename));
+		json_object_set_new(info, "recording", recording);
+	}
 	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
@@ -471,6 +489,12 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 		if(session->destroyed)
 			return;
 		if((!video && session->audio_active) || (video && session->video_active)) {
+			/* Save the frame if we're recording */
+			if(video && session->vrc)
+				janus_recorder_save_frame(session->vrc, buf, len);
+			else if(!video && session->arc)
+				janus_recorder_save_frame(session->arc, buf, len);
+			/* Send the frame back */
 			gateway->relay_rtp(handle, video, buf, len);
 		}
 	}
@@ -607,7 +631,22 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	int ret = gateway->push_event(handle, &janus_echotest_plugin, NULL, event_text, NULL, NULL);
 	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 	g_free(event_text);
+	/* Get rid of the recorders, if available */
+	if(session->arc) {
+		janus_recorder_close(session->arc);
+		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
+		janus_recorder_free(session->arc);
+	}
+	session->arc = NULL;
+	if(session->vrc) {
+		janus_recorder_close(session->vrc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+		janus_recorder_free(session->vrc);
+	}
+	session->vrc = NULL;
 	/* Reset controls */
+	session->has_audio = FALSE;
+	session->has_video = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;
@@ -663,6 +702,7 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
+		/* Parse request */
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
@@ -684,6 +724,21 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
 			goto error;
 		}
+		json_t *record = json_object_get(root, "record");
+		if(record && !json_is_boolean(record)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (record should be a boolean)");
+			goto error;
+		}
+		json_t *recfile = json_object_get(root, "filename");
+		if(recfile && !json_is_string(recfile)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
+			goto error;
+		}
+		/* Enforce request */
 		if(audio) {
 			session->audio_active = json_is_true(audio);
 			JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
@@ -713,15 +768,91 @@ static void *janus_echotest_handler(void *data) {
 				/* FIXME How should we handle a subsequent "no limit" bitrate? */
 			}
 		}
+		if(record) {
+			if(msg->sdp) {
+				session->has_audio = (strstr(msg->sdp, "m=audio") != NULL);
+				session->has_video = (strstr(msg->sdp, "m=video") != NULL);
+			}
+			gboolean recording = json_is_true(record);
+			const char *recording_base = json_string_value(recfile);
+			JANUS_LOG(LOG_VERB, "Recording %s (base filename: %s)\n", recording ? "enabled" : "disabled", recording_base ? recording_base : "not provided");
+			if(!recording) {
+				/* Not recording (anymore?) */
+				if(session->arc) {
+					janus_recorder_close(session->arc);
+					JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
+					janus_recorder_free(session->arc);
+				}
+				session->arc = NULL;
+				if(session->vrc) {
+					janus_recorder_close(session->vrc);
+					JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+					janus_recorder_free(session->vrc);
+				}
+				session->vrc = NULL;
+			} else {
+				/* We've started recording, send a PLI and go on */
+				char filename[255];
+				gint64 now = janus_get_monotonic_time();
+				if(session->has_audio) {
+					memset(filename, 0, 255);
+					if(recording_base) {
+						/* Use the filename and path we have been provided */
+						g_snprintf(filename, 255, "%s-audio", recording_base);
+						session->arc = janus_recorder_create(NULL, 0, filename);
+						if(session->arc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
+						}
+					} else {
+						/* Build a filename */
+						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-audio", session, now);
+						session->arc = janus_recorder_create(NULL, 0, filename);
+						if(session->arc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
+						}
+					}
+				}
+				if(session->has_video) {
+					memset(filename, 0, 255);
+					if(recording_base) {
+						/* Use the filename and path we have been provided */
+						g_snprintf(filename, 255, "%s-video", recording_base);
+						session->vrc = janus_recorder_create(NULL, 1, filename);
+						if(session->vrc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
+						}
+					} else {
+						/* Build a filename */
+						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
+						session->vrc = janus_recorder_create(NULL, 1, filename);
+						if(session->vrc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
+						}
+					}
+					/* Send a PLI */
+					JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
+					char buf[12];
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					gateway->relay_rtcp(session->handle, 1, buf, 12);
+				}
+			}
+		}
 		/* Any SDP to handle? */
 		if(msg->sdp) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
+			session->has_audio = (strstr(msg->sdp, "m=audio") != NULL);
+			session->has_video = (strstr(msg->sdp, "m=video") != NULL);
 		}
 
-		if(!audio && !video && !bitrate && !msg->sdp) {
-			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, jsep) found\n");
+		if(!audio && !video && !bitrate && !record && !msg->sdp) {
+			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, record, jsep) found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, jsep) found");
+			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, record, jsep) found");
 			goto error;
 		}
 
@@ -752,6 +883,14 @@ static void *janus_echotest_handler(void *data) {
 				/* Turn sendonly to recvonly */
 				sdp = janus_string_replace(sdp, "a=sendonly", "a=recvonly");
 				/* FIXME We should also actually not echo this media back, though... */
+			}
+			/* Make also sure we get rid of ULPfec, red, etc. */
+			if(strstr(sdp, "ulpfec")) {
+				sdp = janus_string_replace(sdp, "100 116 117 96", "100");
+				sdp = janus_string_replace(sdp, "a=rtpmap:116 red/90000\r\n", "");
+				sdp = janus_string_replace(sdp, "a=rtpmap:117 ulpfec/90000\r\n", "");
+				sdp = janus_string_replace(sdp, "a=rtpmap:96 rtx/90000\r\n", "");
+				sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
 			}
 			/* How long will the gateway take to push the event? */
 			gint64 start = janus_get_monotonic_time();

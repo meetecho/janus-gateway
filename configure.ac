@@ -294,6 +294,7 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
       [PKG_CHECK_MODULES([POST_PROCESSING],
                          [
                            glib-2.0,
+                           jansson,
                            libavutil,
                            libavcodec,
                            libavformat,

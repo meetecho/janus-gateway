@@ -66,6 +66,7 @@
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"
+#include "../record.h"
 #include "../rtp.h"
 #include "../rtcp.h"
 #include "../utils.h"
@@ -272,6 +273,10 @@ typedef struct janus_sip_session {
 	janus_sip_media media;
 	char *transaction;
 	char *callee;
+	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
+	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
+	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
+	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 	janus_mutex mutex;
@@ -345,6 +350,7 @@ static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data)
 #define JANUS_SIP_ERROR_MISSING_SDP			448
 #define JANUS_SIP_ERROR_LIBSOFIA_ERROR		449
 #define JANUS_SIP_ERROR_IO_ERROR			450
+#define JANUS_SIP_ERROR_RECORDING_ERROR		451
 
 
 /* SIP watchdog/garbage collector (sort of) */
@@ -650,7 +656,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle; 
+	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No SIP session associated with this handle...\n");
 		*error = -2;
@@ -688,6 +694,18 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
 	if(session->callee)
 		json_object_set_new(info, "callee", json_string(session->callee ? session->callee : "??"));
+	if(session->arc || session->vrc || session->arc_peer || session->vrc_peer) {
+		json_t *recording = json_object();
+		if(session->arc && session->arc->filename)
+			json_object_set_new(recording, "audio", json_string(session->arc->filename));
+		if(session->vrc && session->vrc->filename)
+			json_object_set_new(recording, "video", json_string(session->vrc->filename));
+		if(session->arc_peer && session->arc_peer->filename)
+			json_object_set_new(recording, "audio-peer", json_string(session->arc_peer->filename));
+		if(session->vrc_peer && session->vrc_peer->filename)
+			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
+		json_object_set_new(info, "recording", recording);
+	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(info);
@@ -745,6 +763,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 				JANUS_LOG(LOG_VERB, "Got SIP video SSRC: %"SCNu32"\n", session->media.video_ssrc);
 			}
 			if(session->media.has_video && session->media.video_rtp_fd) {
+				/* Save the frame if we're recording */
+				if(session->vrc)
+					janus_recorder_save_frame(session->vrc, buf, len);
+				/* Forward the frame to the peer */
 				send(session->media.video_rtp_fd, buf, len, 0);
 			}
 		} else {
@@ -754,6 +776,10 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 				JANUS_LOG(LOG_VERB, "Got SIP audio SSRC: %"SCNu32"\n", session->media.audio_ssrc);
 			}
 			if(session->media.has_audio && session->media.audio_rtp_fd) {
+				/* Save the frame if we're recording */
+				if(session->arc)
+					janus_recorder_save_frame(session->arc, buf, len);
+				/* Forward the frame to the peer */
 				send(session->media.audio_rtp_fd, buf, len, 0);
 			}
 		}
@@ -808,6 +834,31 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall))
 		return;
+	/* Get rid of the recorders, if available */
+	if(session->arc) {
+		janus_recorder_close(session->arc);
+		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
+		janus_recorder_free(session->arc);
+	}
+	session->arc = NULL;
+	if(session->arc_peer) {
+		janus_recorder_close(session->arc_peer);
+		JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
+		janus_recorder_free(session->arc_peer);
+	}
+	session->arc_peer = NULL;
+	if(session->vrc) {
+		janus_recorder_close(session->vrc);
+		JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+		janus_recorder_free(session->vrc);
+	}
+	session->vrc = NULL;
+	if(session->vrc_peer) {
+		janus_recorder_close(session->vrc_peer);
+		JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
+		janus_recorder_free(session->vrc_peer);
+	}
+	session->vrc_peer = NULL;
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
@@ -1338,6 +1389,240 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("hangingup"));
+		} else if(!strcasecmp(request_text, "recording")) {
+			/* Start or stop recording */
+			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			json_t *action = json_object_get(root, "action");
+			if(!action) {
+				JANUS_LOG(LOG_ERR, "Missing element (action)\n");
+				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (action)");
+				goto error;
+			}
+			if(!json_is_string(action)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (action should be a string)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (action should be a string)");
+				goto error;
+			}
+			const char *action_text = json_string_value(action);
+			if(strcasecmp(action_text, "start") && strcasecmp(action_text, "stop")) {
+				JANUS_LOG(LOG_ERR, "Invalid action (should be start|stop)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid action (should be start|stop)");
+				goto error;
+			}
+			gboolean record_audio = FALSE, record_video = FALSE,	/* No media is recorded by default */
+				record_peer_audio = FALSE, record_peer_video = FALSE;
+			json_t *audio = json_object_get(root, "audio");
+			if(audio && !json_is_boolean(audio)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
+				goto error;
+			}
+			record_audio = audio ? json_is_true(audio) : FALSE;
+			json_t *video = json_object_get(root, "video");
+			if(video && !json_is_boolean(video)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
+				goto error;
+			}
+			record_video = video ? json_is_true(video) : FALSE;
+			json_t *peer_audio = json_object_get(root, "peer_audio");
+			if(peer_audio && !json_is_boolean(peer_audio)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (peer_audio should be a boolean)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (peer_audio should be a boolean)");
+				goto error;
+			}
+			record_peer_audio = peer_audio ? json_is_true(peer_audio) : FALSE;
+			json_t *peer_video = json_object_get(root, "peer_video");
+			if(peer_video && !json_is_boolean(peer_video)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (peer_video should be a boolean)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (peer_video should be a boolean)");
+				goto error;
+			}
+			record_peer_video = peer_video ? json_is_true(peer_video) : FALSE;
+			if(!record_audio && !record_video && !record_peer_audio && !record_peer_video) {
+				JANUS_LOG(LOG_ERR, "Invalid request (at least one of audio, video, peer_audio and peer_video should be true)\n");
+				error_code = JANUS_SIP_ERROR_RECORDING_ERROR;
+				g_snprintf(error_cause, 512, "Invalid request (at least one of audio, video, peer_audio and peer_video should be true)");
+				goto error;
+			}
+			json_t *recfile = json_object_get(root, "filename");
+			if(recfile && !json_is_string(recfile)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
+				goto error;
+			}
+			const char *recording_base = json_string_value(recfile);
+			if(!strcasecmp(action_text, "start")) {
+				/* Start recording something */
+				char filename[255];
+				gint64 now = janus_get_monotonic_time();
+				if(record_peer_audio || record_peer_video) {
+					JANUS_LOG(LOG_INFO, "Starting recording of peer's %s (user %s, call %s)\n",
+						(record_peer_audio && record_peer_video ? "audio and video" : (record_peer_audio ? "audio" : "video")),
+						session->account.username, session->transaction);
+					/* Start recording this peer's audio and/or video */
+					if(record_peer_audio) {
+						memset(filename, 0, 255);
+						if(recording_base) {
+							/* Use the filename and path we have been provided */
+							g_snprintf(filename, 255, "%s-audio", recording_base);
+							session->arc_peer = janus_recorder_create(NULL, 0, filename);
+							if(session->arc_peer == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
+							}
+						} else {
+							/* Build a filename */
+							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-peer-audio",
+								session->account.username ? session->account.username : "unknown",
+								session->transaction ? session->transaction : "unknown",
+								now);
+							session->arc_peer = janus_recorder_create(NULL, 0, filename);
+							if(session->arc_peer == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
+							}
+						}
+					}
+					if(record_peer_video) {
+						memset(filename, 0, 255);
+						if(recording_base) {
+							/* Use the filename and path we have been provided */
+							g_snprintf(filename, 255, "%s-video", recording_base);
+							session->vrc_peer = janus_recorder_create(NULL, 1, filename);
+							if(session->vrc_peer == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
+							}
+						} else {
+							/* Build a filename */
+							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-peer-video",
+								session->account.username ? session->account.username : "unknown",
+								session->transaction ? session->transaction : "unknown",
+								now);
+							session->vrc_peer = janus_recorder_create(NULL, 1, filename);
+							if(session->vrc_peer == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
+							}
+						}
+						/* TODO We should send a FIR/PLI to this peer... */
+					}
+				}
+				if(record_audio || record_video) {
+					/* Start recording the user's audio and/or video */
+					JANUS_LOG(LOG_INFO, "Starting recording of user's %s (user %s, call %s)\n",
+						(record_audio && record_video ? "audio and video" : (record_audio ? "audio" : "video")),
+						session->account.username, session->transaction);
+					if(record_audio) {
+						memset(filename, 0, 255);
+						if(recording_base) {
+							/* Use the filename and path we have been provided */
+							g_snprintf(filename, 255, "%s-audio", recording_base);
+							session->arc = janus_recorder_create(NULL, 0, filename);
+							if(session->arc == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
+							}
+						} else {
+							/* Build a filename */
+							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-own-audio",
+								session->account.username ? session->account.username : "unknown",
+								session->transaction ? session->transaction : "unknown",
+								now);
+							session->arc = janus_recorder_create(NULL, 0, filename);
+							if(session->arc == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
+							}
+						}
+					}
+					if(record_video) {
+						memset(filename, 0, 255);
+						if(recording_base) {
+							/* Use the filename and path we have been provided */
+							g_snprintf(filename, 255, "%s-video", recording_base);
+							session->vrc = janus_recorder_create(NULL, 1, filename);
+							if(session->vrc == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
+							}
+						} else {
+							/* Build a filename */
+							g_snprintf(filename, 255, "sip-%s-%s-%"SCNi64"-own-video",
+								session->account.username ? session->account.username : "unknown",
+								session->transaction ? session->transaction : "unknown",
+								now);
+							session->vrc = janus_recorder_create(NULL, 1, filename);
+							if(session->vrc == NULL) {
+								/* FIXME We should notify the fact the recorder could not be created */
+								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
+							}
+						}
+						/* Send a PLI */
+						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
+						char buf[12];
+						memset(buf, 0, 12);
+						janus_rtcp_pli((char *)&buf, 12);
+						gateway->relay_rtcp(session->handle, 1, buf, 12);
+					}
+				}
+			} else {
+				/* Stop recording something: notice that this never returns an error, even when we were not recording anything */
+				if(record_audio) {
+					if(session->arc) {
+						janus_recorder_close(session->arc);
+						JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
+						janus_recorder_free(session->arc);
+					}
+					session->arc = NULL;
+				}
+				if(record_video) {
+					if(session->vrc) {
+						janus_recorder_close(session->vrc);
+						JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+						janus_recorder_free(session->vrc);
+					}
+					session->vrc = NULL;
+				}
+				if(record_peer_audio) {
+					if(session->arc_peer) {
+						janus_recorder_close(session->arc_peer);
+						JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
+						janus_recorder_free(session->arc_peer);
+					}
+					session->arc_peer = NULL;
+				}
+				if(record_peer_video) {
+					if(session->vrc_peer) {
+						janus_recorder_close(session->vrc_peer);
+						JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
+						janus_recorder_free(session->vrc_peer);
+					}
+					session->vrc_peer = NULL;
+				}
+			}
+			/* Notify the result */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("recordingupdated"));
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_SIP_ERROR_INVALID_REQUEST;
@@ -1919,7 +2204,7 @@ static void *janus_sip_relay_thread(void *data) {
 	if(!session->callee) {
 		JANUS_LOG(LOG_VERB, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
 		g_thread_unref(g_thread_self());
-		return NULL; 
+		return NULL;
 	}
 	/* Loop */
 	socklen_t addrlen;
@@ -1987,6 +2272,9 @@ static void *janus_sip_relay_thread(void *data) {
 				session->media.audio_ssrc_peer = ntohl(header->ssrc);
 				JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
 			}
+			/* Save the frame if we're recording */
+			if(session->arc_peer)
+				janus_recorder_save_frame(session->arc_peer, buffer, bytes);
 			/* Relay to browser */
 			gateway->relay_rtp(session->handle, 0, buffer, bytes);
 			continue;
@@ -2000,6 +2288,9 @@ static void *janus_sip_relay_thread(void *data) {
 			//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
 			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+			/* Save the frame if we're recording */
+			if(session->vrc_peer)
+				janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 			/* Relay to browser */
 			gateway->relay_rtcp(session->handle, 0, buffer, bytes);
 			continue;

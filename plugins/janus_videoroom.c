@@ -859,6 +859,14 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(media, "video", json_integer(participant->video));
 				json_object_set_new(media, "data", json_integer(participant->data));
 				json_object_set_new(info, "media", media);
+				if(participant->arc || participant->vrc) {
+					json_t *recording = json_object();
+					if(participant->arc && participant->arc->filename)
+						json_object_set_new(recording, "audio", json_string(participant->arc->filename));
+					if(participant->vrc && participant->vrc->filename)
+						json_object_set_new(recording, "video", json_string(participant->vrc->filename));
+					json_object_set_new(info, "recording", recording);
+				}
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			json_object_set_new(info, "type", json_string("listener"));
