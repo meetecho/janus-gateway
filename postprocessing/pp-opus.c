@@ -84,15 +84,16 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		bytes = fread(buffer, sizeof(char), len, file);
 		if(bytes != len)
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
-		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
 		if(last_seq == 0)
 			last_seq = tmp->seq;
 		if(tmp->seq < last_seq) {
 			last_seq = tmp->seq;
 			steps++;
 		}
-		pos = tmp->seq-list->seq+diff+steps*65535;
-		JANUS_LOG(LOG_VERB, "pos: %04"SCNu64", writing %d bytes out of %d (step=%"SCNu16")\n", pos, bytes, tmp->len, diff);
+		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
+		pos = tmp->seq-list->seq+steps*65536;
+		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
+			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/90000);
 		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 		ogg_stream_packetin(stream, op);
 		free(op);

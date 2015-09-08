@@ -20,13 +20,18 @@
 #include <sys/stat.h>
 #include <errno.h>
 
+#include <glib.h>
+#include <jansson.h>
+
 #include "record.h"
 #include "debug.h"
 #include "utils.h"
 
 
-/* Frame header in the structured recording*/
-static const char *header = "MEETECHO";
+/* Info header in the structured recording */
+static const char *header = "MJR00001";
+/* Frame header in the structured recording */
+static const char *frame_header = "MEETECHO";
 
 
 janus_recorder *janus_recorder_create(const char *dir, int video, const char *filename) {
@@ -38,6 +43,7 @@ janus_recorder *janus_recorder_create(const char *dir, int video, const char *fi
 	rc->dir = NULL;
 	rc->filename = NULL;
 	rc->file = NULL;
+	rc->created = janus_get_monotonic_time();
 	if(dir != NULL) {
 		/* Check if this directory exists, and create it if needed */
 		struct stat s;
@@ -90,14 +96,11 @@ janus_recorder *janus_recorder_create(const char *dir, int video, const char *fi
 		rc->dir = g_strdup(dir);
 	rc->filename = g_strdup(newname);
 	rc->video = video;
-	/* Write file header */
+	/* Write the first part of the header */
 	fwrite(header, sizeof(char), strlen(header), rc->file);
-	const char *type = video ? "video" : "audio";
-	uint16_t header_bytes = htons(strlen(type));
-	fwrite(&header_bytes, sizeof(uint16_t), 1, rc->file);
-	fwrite(type, sizeof(char), strlen(type), rc->file);
-	/* Done */
 	rc->writable = 1;
+	/* We still need to also write the info header first */
+	rc->header = 0;
 	janus_mutex_init(&rc->mutex);
 	return rc;
 }
@@ -118,8 +121,24 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
 	}
+	if(!recorder->header) {
+		/* Write info header as a JSON formatted info */
+		json_t *info = json_object();
+		/* FIXME Codecs should be configurable in the future */
+		json_object_set_new(info, "t", json_string(recorder->video ? "v" : "a"));		/* Audio/Video */
+		json_object_set_new(info, "c", json_string(recorder->video ? "vp8" : "opus"));	/* Media codec */
+		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
+		json_object_set_new(info, "u", json_integer(janus_get_monotonic_time()));		/* First frame written time */
+		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
+		json_decref(info);
+		uint16_t info_bytes = htons(strlen(info_text));
+		fwrite(&info_bytes, sizeof(uint16_t), 1, recorder->file);
+		fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
+		/* Done */
+		recorder->header = 1;
+	}
 	/* Write frame header */
-	fwrite(header, sizeof(char), strlen(header), recorder->file);
+	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
 	uint16_t header_bytes = htons(length);
 	fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
 	/* Save packet on file */

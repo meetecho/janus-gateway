@@ -2749,6 +2749,12 @@ gint main(int argc, char *argv[])
 		/* Enable libnice debugging */
 		janus_ice_debugging_enable();
 	}
+	if(stun_server == NULL && turn_server == NULL) {
+		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
+		if(IN_CLASSA(local_ip) || IN_CLASSB(local_ip) || IN_CLASSC(local_ip)) {
+			JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server! Expect trouble if this is supposed to work over the internet and not just in a LAN...\n", local_ip);
+		}
+	}
 	/* Are we going to force BUNDLE and/or rtcp-mux? */
 	gboolean force_bundle = FALSE, force_rtcpmux = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "force-bundle");
