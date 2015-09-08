@@ -2583,12 +2583,12 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 			GList *peek = g_list_first(p->inbuf);
 			janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)(peek ? peek->data : NULL);
-			janus_mutex_unlock(&p->qmutex);
 			if(pkt != NULL) {
 				curBuffer = (opus_int16 *)pkt->data;
 				for(i=0; i<samples; i++)
 					buffer[i] += curBuffer[i];
 			}
+			janus_mutex_unlock(&p->qmutex);
 			ps = ps->next;
 		}
 		/* Are we recording the mix? (only do it if there's someone in, though...) */
