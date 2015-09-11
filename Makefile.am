@@ -70,6 +70,8 @@ CLEANFILES += conf/janus.cfg.sample
 janus_SOURCES = \
 	apierror.c \
 	apierror.h \
+	auth.c \
+	auth.h \
 	cmdline.c \
 	cmdline.h \
 	config.c \

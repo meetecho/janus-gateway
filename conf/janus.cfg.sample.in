@@ -15,6 +15,13 @@ debug_level = 4				; Debug/logging level, valid values are 0-7
 ;							where you do the things your way) and you
 ;							don't want other application to mess with
 ;							this Janus instance.
+;token_auth = yes			; Enable a token based authentication
+;							mechanism to force users to always provide
+;							a valid token in all requests. Useful if
+;							you want to authenticate requests from web
+;							users. For this to work, the Admin API MUST
+;							be enabled, as tokens are added and removed
+;							through messages sent there.
 
 
 ; Web server and WebSockets stuff: whether either one should be enabled,
@@ -100,9 +107,7 @@ cert_key = @certdir@/mycert.key
 ; of the NACK queue for retransmissions per handle the range of ports to
 ; use for RTP and RTCP (by default, no range is envisaged) and the
 ; starting MTU for DTLS (1472 by default, it adapts automatically).
-; If you change any setting in the lines below, remember to uncomment the
-; [media] category as well, which is commented by default!
-;[media]
+[media]
 ;ipv6 = true
 ;max_nack_queue = 300
 ;rtp_port_range = 20000-40000

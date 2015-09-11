@@ -268,6 +268,8 @@ or on the command line:
                                   to be accepted by Janus (useful when wrapping 
                                   Janus API requests in a server, none by 
                                   default)
+	-A, --token-auth              Enable token-based authentication for all
+                                  requests  (default=off)
 	-R, --enable-rabbitmq         Enable RabbitMQ support  (default=off)
 	-H, --rabbitmq-host=string    Address (host:port) of the RabbitMQ server to 
                                   use (default=localhost:5672)

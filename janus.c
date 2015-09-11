@@ -29,6 +29,7 @@
 #include "debug.h"
 #include "rtcp.h"
 #include "sdp.h"
+#include "auth.h"
 #include "utils.h"
 
 
@@ -767,6 +768,21 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 				goto done;
 			}
 		}
+		if(janus_auth_is_enabled()) {
+			/* The token based authentication mechanism is enabled, check that the client provided it */
+			const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
+			if(!token || !janus_auth_check_token(token)) {
+				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+				if(msg->acrm)
+					MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
+				if(msg->acrh)
+					MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
+				MHD_destroy_response(response);
+				goto done;
+			}
+		}
 		/* Update the last activity timer */
 		session->last_activity = janus_get_monotonic_time();
 		/* How many messages can we send back in a single response? (just one by default) */
@@ -960,6 +976,14 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				goto jsondone;
 			}
 		}
+		if(janus_auth_is_enabled()) {
+			/* The token based authentication mechanism is enabled, check that the client provided it */
+			json_t *token = json_object_get(root, "token");
+			if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
+				goto jsondone;
+			}
+		}
 		session_id = 0;
 		json_t *id = json_object_get(root, "id");
 		if(id != NULL) {
@@ -1045,6 +1069,14 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "apisecret");
 		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
+			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
+			goto jsondone;
+		}
+	}
+	if(janus_auth_is_enabled()) {
+		/* The token based authentication mechanism is enabled, check that the client provided it */
+		json_t *token = json_object_get(root, "token");
+		if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -2152,6 +2184,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
+			json_object_set_new(status, "token_auth", json_integer(janus_auth_is_enabled()));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", json_integer(janus_log_timestamps));
 			json_object_set_new(status, "log_colors", json_integer(janus_log_colors));
@@ -2307,6 +2340,66 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "sessions", list);
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "add_token")) {
+			/* Add a token valid for authentication */
+			if(!janus_auth_is_enabled()) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+				goto jsondone;
+			}
+			json_t *token = json_object_get(root, "token");
+			if(!token) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
+				goto jsondone;
+			}
+			if(!json_is_string(token)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
+				goto jsondone;
+			}
+			const char *token_value = json_string_value(token);
+			if(!janus_auth_add_token(token_value)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error adding token");
+				goto jsondone;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "remove_token")) {
+			/* Invalidate a token for authentication purposes */
+			if(!janus_auth_is_enabled()) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+				goto jsondone;
+			}
+			json_t *token = json_object_get(root, "token");
+			if(!token) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
+				goto jsondone;
+			}
+			if(!json_is_string(token)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
+				goto jsondone;
+			}
+			const char *token_value = json_string_value(token);
+			if(!janus_auth_remove_token(token_value)) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error removing token");
+				goto jsondone;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
@@ -4085,6 +4178,9 @@ gint main(int argc, char *argv[])
 	if(args_info.apisecret_given) {
 		janus_config_add_item(config, "general", "api_secret", args_info.apisecret_arg);
 	}
+	if(args_info.token_auth_given) {
+		janus_config_add_item(config, "general", "token_auth", "yes");
+	}
 	if(args_info.no_http_given) {
 		janus_config_add_item(config, "webserver", "http", "no");
 	}
@@ -4316,6 +4412,9 @@ gint main(int argc, char *argv[])
 	if(item && item->value) {
 		ws_api_secret = g_strdup(item->value);
 	}
+	/* Also check if the token based authentication mechanism needs to be enabled */
+	item = janus_config_get_item_drilldown(config, "general", "token_auth");
+	janus_auth_init(item && item->value && janus_is_true(item->value));
 
 	/* Do the same for the admin/monitor interface */
 	/* Pre-parse the web server path, if any */
@@ -5150,6 +5249,10 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_INFO, "Admin/monitor HTTPS webserver started (port %d, %s path listener)...\n", swsport, admin_ws_path);
 		}
 	}
+	if(!admin_ws && !admin_sws && janus_auth_is_enabled()) {
+		JANUS_LOG(LOG_FATAL, "No Admin/monitor is available, but the token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API and restart Janus\n");
+		exit(1);	/* FIXME Should we really give up? */
+	}
 
 	while(!g_atomic_int_get(&stop)) {
 		/* Loop until we have to stop */
@@ -5243,6 +5346,7 @@ gint main(int argc, char *argv[])
 	janus_sctp_deinit();
 #endif
 	janus_ice_deinit();
+	janus_auth_deinit();
 	
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {
