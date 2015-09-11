@@ -1277,7 +1277,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			if(!strcasecmp(jsep_type, "offer")) {
 				offer = 1;
 				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER);
+				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
 			} else if(!strcasecmp(jsep_type, "answer")) {
+				janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
 				offer = 0;
 			} else {
 				/* TODO Handle other message types as well */
@@ -2429,6 +2432,8 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			}
 		}
 		json_t *flags = json_object();
+		json_object_set_new(flags, "got-offer", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER)));
+		json_object_set_new(flags, "got-answer", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER)));
 		json_object_set_new(flags, "processing-offer", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)));
 		json_object_set_new(flags, "starting", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)));
 		json_object_set_new(flags, "ready", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)));
@@ -2445,6 +2450,10 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_object_set_new(flags, "plan-b", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)));
 		json_object_set_new(flags, "cleaning", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)));
 		json_object_set_new(info, "flags", flags);
+		if(handle->agent) {
+			json_object_set_new(info, "ice-mode", json_string(janus_ice_is_ice_lite_enabled() ? "lite" : "full"));
+			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
+		}
 		json_t *sdps = json_object();
 		if(handle->local_sdp)
 			json_object_set_new(sdps, "local", json_string(handle->local_sdp));
@@ -3615,21 +3624,24 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
 	}
-	int offer = 0;
-	if(!strcasecmp(sdp_type, "offer")) {
-		/* This is an offer from a plugin */
-		offer = 1;
-	} else if(!strcasecmp(sdp_type, "answer")) {
-		/* This is an answer from a plugin */
-	} else {
-		/* TODO Handle other messages */
-		JANUS_LOG(LOG_ERR, "Unknown type '%s'\n", sdp_type);
-		return NULL;
-	}
 	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
 	//~ if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 	if(ice_handle == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid ICE handle\n");
+		return NULL;
+	}
+	int offer = 0;
+	if(!strcasecmp(sdp_type, "offer")) {
+		/* This is an offer from a plugin */
+		offer = 1;
+		janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER);
+		janus_flags_clear(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
+	} else if(!strcasecmp(sdp_type, "answer")) {
+		/* This is an answer from a plugin */
+		janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
+	} else {
+		/* TODO Handle other messages */
+		JANUS_LOG(LOG_ERR, "Unknown type '%s'\n", sdp_type);
 		return NULL;
 	}
 	/* Is this valid SDP? */
