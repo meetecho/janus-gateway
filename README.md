@@ -23,7 +23,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [Jansson](http://www.digip.org/jansson/)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
-* [libsrtp](http://srtp.sourceforge.net/srtp.html) (at least v1.5 suggested)
+* [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
 are interested in Data Channels)
@@ -73,7 +73,7 @@ is quite straightforward:
 	wget https://github.com/cisco/libsrtp/archive/v1.5.0.tar.gz
 	tar xfv v1.5.0.tar.gz
 	cd libsrtp-1.5.0
-	./configure --prefix=/usr --enable-openssl
+	./configure --prefix=/usr/local --enable-openssl
 	make libsrtp.so && sudo make install
 
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
