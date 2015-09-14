@@ -1050,7 +1050,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			goto error;
 		}
 		json_t *recfile = json_object_get(root, "record_file");
-		if(recfile && !json_is_string(record)) {
+		if(recfile && !json_is_string(recfile)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (record_file should be a string)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid value (record_file should be a string)");
