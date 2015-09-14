@@ -55,22 +55,20 @@ extern gboolean janus_log_colors;
 
 /*! \brief Coloured prefixes for errors and warnings logging. */
 static const char *janus_log_prefix[] = {
-	"",
-	ANSI_COLOR_MAGENTA"[FATAL]"ANSI_COLOR_RESET" ",
-	ANSI_COLOR_RED"[ERR]"ANSI_COLOR_RESET" ",
-	ANSI_COLOR_YELLOW"[WARN]"ANSI_COLOR_RESET" ",
-	"",
-	"",
-	"",
-	""
-};
-
-/*! \brief Prefixes (no colors) for errors and warnings logging. */
-static const char *janus_log_nocolors_prefix[] = {
+/* no colors */
 	"",
 	"[FATAL] ",
 	"[ERR] ",
 	"[WARN] ",
+	"",
+	"",
+	"",
+	"",
+/* with colors */
+	"",
+	ANSI_COLOR_MAGENTA"[FATAL]"ANSI_COLOR_RESET" ",
+	ANSI_COLOR_RED"[ERR]"ANSI_COLOR_RESET" ",
+	ANSI_COLOR_YELLOW"[WARN]"ANSI_COLOR_RESET" ",
 	"",
 	"",
 	"",
@@ -103,7 +101,9 @@ do { \
 			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
 		g_print("%s%s%s" format, \
-		        janus_log_ts, janus_log_colors ? janus_log_prefix[level] : janus_log_nocolors_prefix[level], janus_log_src, \
+		        janus_log_ts, \
+		        janus_log_prefix[level | ((int)janus_log_colors << 3)], \
+		        janus_log_src, \
 		        ##__VA_ARGS__); \
 	} \
 } while (0)
