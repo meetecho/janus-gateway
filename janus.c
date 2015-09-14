@@ -3943,7 +3943,7 @@ json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, con
 }
 
 void janus_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
-	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
+	if((plugin_session < (janus_plugin_session *)0x1000) || plugin_session->stopped || buf == NULL || len < 1)
 		return;
 	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
@@ -3953,7 +3953,7 @@ void janus_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf,
 }
 
 void janus_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len) {
-	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
+	if((plugin_session < (janus_plugin_session *)0x1000) || plugin_session->stopped || buf == NULL || len < 1)
 		return;
 	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
@@ -3963,7 +3963,7 @@ void janus_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf
 }
 
 void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len) {
-	if(!plugin_session || plugin_session->stopped || buf == NULL || len < 1)
+	if((plugin_session < (janus_plugin_session *)0x1000) || plugin_session->stopped || buf == NULL || len < 1)
 		return;
 	janus_ice_handle *handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
@@ -3978,7 +3978,7 @@ void janus_relay_data(janus_plugin_session *plugin_session, char *buf, int len) 
 
 void janus_close_pc(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a PeerConnection */
-	if(!plugin_session || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped)
+	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped)
 		return;
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
@@ -4015,7 +4015,7 @@ void janus_close_pc(janus_plugin_session *plugin_session) {
 
 void janus_end_session(janus_plugin_session *plugin_session) {
 	/* A plugin asked to get rid of a handle */
-	if(!plugin_session || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped)
+	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped)
 		return;
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle)
