@@ -57,6 +57,8 @@ const char *janus_http_get_description(void);
 const char *janus_http_get_name(void);
 const char *janus_http_get_author(void);
 const char *janus_http_get_package(void);
+gboolean janus_http_is_janus_api_enabled(void);
+gboolean janus_http_is_admin_api_enabled(void);
 int janus_http_send_message(void *transport, void *request_id, gboolean admin, json_t *message);
 void janus_http_session_created(void *transport, guint64 session_id);
 void janus_http_session_over(void *transport, guint64 session_id, gboolean timeout);
@@ -75,7 +77,10 @@ static janus_transport janus_http_transport =
 		.get_name = janus_http_get_name,
 		.get_author = janus_http_get_author,
 		.get_package = janus_http_get_package,
-		
+
+		.is_janus_api_enabled = janus_http_is_janus_api_enabled,
+		.is_admin_api_enabled = janus_http_is_admin_api_enabled,
+
 		.send_message = janus_http_send_message,
 		.session_created = janus_http_session_created,
 		.session_over = janus_http_session_over,
@@ -91,6 +96,8 @@ janus_transport *create(void) {
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
+static gboolean http_janus_api_enabled = FALSE;
+static gboolean http_admin_api_enabled = FALSE;
 
 
 /* Incoming HTTP message */
@@ -623,6 +630,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		JANUS_LOG(LOG_FATAL, "No HTTP/HTTPS server started, giving up...\n"); 
 		return -1;	/* No point in keeping the plugin loaded */
 	}
+	http_janus_api_enabled = ws || sws;
+	http_admin_api_enabled = admin_ws || admin_sws;
 
 	sessions = g_hash_table_new(NULL, NULL);
 	old_sessions = NULL;
@@ -704,6 +713,14 @@ const char *janus_http_get_author(void) {
 
 const char *janus_http_get_package(void) {
 	return JANUS_REST_PACKAGE;
+}
+
+gboolean janus_http_is_janus_api_enabled(void) {
+	return http_janus_api_enabled;
+}
+
+gboolean janus_http_is_admin_api_enabled(void) {
+	return http_admin_api_enabled;
 }
 
 int janus_http_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {

@@ -31,6 +31,7 @@
 #include "debug.h"
 #include "rtcp.h"
 #include "sdp.h"
+#include "auth.h"
 #include "utils.h"
 
 
@@ -517,6 +518,14 @@ int janus_process_incoming_request(janus_request *request) {
 				goto jsondone;
 			}
 		}
+		if(janus_auth_is_enabled()) {
+			/* The token based authentication mechanism is enabled, check that the client provided it */
+			json_t *token = json_object_get(root, "token");
+			if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
+				goto jsondone;
+			}
+		}
 		session_id = 0;
 		json_t *id = json_object_get(root, "id");
 		if(id != NULL) {
@@ -570,6 +579,14 @@ int janus_process_incoming_request(janus_request *request) {
 		/* There's an API secret, check that the client provided it */
 		json_t *secret = json_object_get(root, "apisecret");
 		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), api_secret)) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
+			goto jsondone;
+		}
+	}
+	if(janus_auth_is_enabled()) {
+		/* The token based authentication mechanism is enabled, check that the client provided it */
+		json_t *token = json_object_get(root, "token");
+		if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -1418,6 +1435,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
+			json_object_set_new(status, "token_auth", json_integer(janus_auth_is_enabled()));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", json_integer(janus_log_timestamps));
 			json_object_set_new(status, "log_colors", json_integer(janus_log_colors));
@@ -1555,6 +1573,60 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "sessions", list);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "add_token")) {
+			/* Add a token valid for authentication */
+			if(!janus_auth_is_enabled()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+				goto jsondone;
+			}
+			json_t *token = json_object_get(root, "token");
+			if(!token) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
+				goto jsondone;
+			}
+			if(!json_is_string(token)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
+				goto jsondone;
+			}
+			const char *token_value = json_string_value(token);
+			if(!janus_auth_add_token(token_value)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error adding token");
+				goto jsondone;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "remove_token")) {
+			/* Invalidate a token for authentication purposes */
+			if(!janus_auth_is_enabled()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+				goto jsondone;
+			}
+			json_t *token = json_object_get(root, "token");
+			if(!token) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
+				goto jsondone;
+			}
+			if(!json_is_string(token)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
+				goto jsondone;
+			}
+			const char *token_value = json_string_value(token);
+			if(!janus_auth_remove_token(token_value)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error removing token");
+				goto jsondone;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2515,6 +2587,9 @@ gint main(int argc, char *argv[])
 	if(args_info.apisecret_given) {
 		janus_config_add_item(config, "general", "api_secret", args_info.apisecret_arg);
 	}
+	if(args_info.token_auth_given) {
+		janus_config_add_item(config, "general", "token_auth", "yes");
+	}
 	if(args_info.cert_pem_given) {
 		janus_config_add_item(config, "certificates", "cert_pem", args_info.cert_pem_arg);
 	}
@@ -2657,6 +2732,9 @@ gint main(int argc, char *argv[])
 	if(item && item->value) {
 		admin_api_secret = g_strdup(item->value);
 	}
+	/* Also check if the token based authentication mechanism needs to be enabled */
+	item = janus_config_get_item_drilldown(config, "general", "token_auth");
+	janus_auth_init(item && item->value && janus_is_true(item->value));
 
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL, *turn_server = NULL;
@@ -2949,6 +3027,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Load transports */
+	gboolean janus_api_enabled = FALSE, admin_api_enabled = FALSE;
 	path = TRANSPORTDIR;
 	item = janus_config_get_item_drilldown(config, "general", "transports_folder");
 	if(item && item->value)
@@ -3023,6 +3102,8 @@ gint main(int argc, char *argv[])
 					!janus_transport->get_package ||
 					!janus_transport->get_name ||
 					!janus_transport->send_message ||
+					!janus_transport->is_janus_api_enabled ||
+					!janus_transport->is_admin_api_enabled ||
 					!janus_transport->session_created ||
 					!janus_transport->session_over) {
 				JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this transport plugin...\n");
@@ -3038,6 +3119,10 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_transport->get_package(), janus_transport->get_name());
 			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_transport->get_description());
 			JANUS_LOG(LOG_VERB, "\t   Plugin API version: %d\n", janus_transport->get_api_compatibility());
+			JANUS_LOG(LOG_VERB, "\t   Janus API: %s\n", janus_transport->is_janus_api_enabled() ? "enabled" : "disabled");
+			JANUS_LOG(LOG_VERB, "\t   Admin API: %s\n", janus_transport->is_admin_api_enabled() ? "enabled" : "disabled");
+			janus_api_enabled = janus_api_enabled || janus_transport->is_janus_api_enabled();
+			admin_api_enabled = admin_api_enabled || janus_transport->is_admin_api_enabled();
 			if(transports == NULL)
 				transports = g_hash_table_new(g_str_hash, g_str_equal);
 			g_hash_table_insert(transports, (gpointer)janus_transport->get_package(), janus_transport);
@@ -3050,6 +3135,16 @@ gint main(int argc, char *argv[])
 	if(disabled_transports != NULL)
 		g_strfreev(disabled_transports);
 	disabled_transports = NULL;
+	/* Make sure at least a Janus API transport is available */
+	if(!janus_api_enabled) {
+		JANUS_LOG(LOG_FATAL, "No Janus API transport is available... enable at least one and restart Janus\n");
+		exit(1);	/* FIXME Should we really give up? */
+	}
+	/* Make sure at least an admin API transport is available, if the auth mechanism is enabled */
+	if(!admin_api_enabled && janus_auth_is_enabled()) {
+		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API and restart Janus\n");
+		exit(1);	/* FIXME Should we really give up? */
+	}
 
 	/* Sessions */
 	sessions = g_hash_table_new(NULL, NULL);
@@ -3108,7 +3203,8 @@ gint main(int argc, char *argv[])
 	janus_sctp_deinit();
 #endif
 	janus_ice_deinit();
-	
+	janus_auth_deinit();
+
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
 	if(plugins != NULL) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);

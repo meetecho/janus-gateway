@@ -239,6 +239,8 @@ or on the command line:
                                   to be accepted by Janus (useful when wrapping 
                                   Janus API requests in a server, none by 
                                   default)
+	-A, --token-auth              Enable token-based authentication for all
+                                  requests  (default=off)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:

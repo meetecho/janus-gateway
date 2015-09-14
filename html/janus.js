@@ -119,14 +119,25 @@ function Janus(gatewayCallbacks) {
 	var iceServers = gatewayCallbacks.iceServers;
 	if(iceServers === undefined || iceServers === null)
 		iceServers = [{"url": "stun:stun.l.google.com:19302"}];
+	// Whether IPv6 candidates should be gathered
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
 		ipv6Support = false;
+	// Optional max events
 	var maxev = null;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
 		maxev = gatewayCallbacks.max_poll_events;
 	if(maxev < 1)
 		maxev = 1;
+	// Token to use (only if the token based authentication mechanism is enabled)
+	var token = null;
+	if(gatewayCallbacks.token !== undefined && gatewayCallbacks.token !== null)
+		token = gatewayCallbacks.token;
+	// API secret to use (only if the shared API secret is enabled)
+	var apisecret = null;
+	if(gatewayCallbacks.apisecret !== undefined && gatewayCallbacks.apisecret !== null)
+		apisecret = gatewayCallbacks.apisecret;
+
 	var connected = false;
 	var sessionId = null;
 	var pluginHandles = {};
@@ -141,7 +152,6 @@ function Janus(gatewayCallbacks) {
 	this.getSessionId = function() { return sessionId; };
 	this.destroy = function(callbacks) { destroySession(callbacks); };
 	this.attach = function(callbacks) { createHandle(callbacks); };
-
 	
 	// Private method to create random identifiers (e.g., transaction)
 	function randomString(len) {
@@ -165,6 +175,10 @@ function Janus(gatewayCallbacks) {
 		var longpoll = server + "/" + sessionId + "?rid=" + new Date().getTime();
 		if(maxev !== undefined && maxev !== null)
 			longpoll = longpoll + "&maxev=" + maxev;
+		if(token !== null && token !== undefined)
+			longpoll = longpoll + "&token=" + token;
+		if(apisecret !== null && apisecret !== undefined)
+			longpoll = longpoll + "&apisecret=" + apisecret;
 		$.ajax({
 			type: 'GET',
 			url: longpoll,
@@ -312,6 +326,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		setTimeout(keepAlive, 30000);
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": randomString(12) };
+		if(token !== null && token !== undefined)
+			request["token"] = token;
+		if(apisecret !== null && apisecret !== undefined)
+			request["apisecret"] = a;
 		ws.send(JSON.stringify(request));
 	}
 
@@ -319,6 +337,10 @@ function Janus(gatewayCallbacks) {
 	function createSession(callbacks) {
 		var transaction = randomString(12);
 		var request = { "janus": "create", "transaction": transaction };
+		if(token !== null && token !== undefined)
+			request["token"] = token;
+		if(apisecret !== null && apisecret !== undefined)
+			request["apisecret"] = apisecret;
 		if(server === null && $.isArray(servers)) {
 			// We still need to find a working server from the list we were given
 			server = servers[serversIndex];
@@ -451,6 +473,10 @@ function Janus(gatewayCallbacks) {
 		}
 		// Ok, go on
 		var request = { "janus": "destroy", "transaction": randomString(12) };
+		if(token !== null && token !== undefined)
+			request["token"] = token;
+		if(apisecret !== null && apisecret !== undefined)
+			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
 			ws.send(JSON.stringify(request));
@@ -514,6 +540,10 @@ function Janus(gatewayCallbacks) {
 		}
 		var transaction = randomString(12);
 		var request = { "janus": "attach", "plugin": plugin, "transaction": transaction };
+		if(token !== null && token !== undefined)
+			request["token"] = token;
+		if(apisecret !== null && apisecret !== undefined)
+			request["apisecret"] = apisecret;
 		if(websockets) {
 			transactions[transaction] = function(json) {
 				Janus.log("Create handle:");
@@ -672,6 +702,10 @@ function Janus(gatewayCallbacks) {
 		var jsep = callbacks.jsep;
 		var transaction = randomString(12);
 		var request = { "janus": "message", "body": message, "transaction": transaction };
+		if(token !== null && token !== undefined)
+			request["token"] = token;
+		if(apisecret !== null && apisecret !== undefined)
+			request["apisecret"] = apisecret;
 		if(jsep !== null && jsep !== undefined)
 			request.jsep = jsep;
 		Janus.log("Sending message to plugin (handle=" + handleId + "):");
@@ -763,6 +797,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var request = { "janus": "trickle", "candidate": candidate, "transaction": randomString(12) };
+		if(token !== null && token !== undefined)
+			request["token"] = token;
+		if(apisecret !== null && apisecret !== undefined)
+			request["apisecret"] = apisecret;
 		Janus.log("Sending trickle candidate (handle=" + handleId + "):");
 		Janus.log(request);
 		if(websockets) {
@@ -882,6 +920,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var request = { "janus": "detach", "transaction": randomString(12) };
+		if(token !== null && token !== undefined)
+			request["token"] = token;
+		if(apisecret !== null && apisecret !== undefined)
+			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;

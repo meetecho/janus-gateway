@@ -3134,6 +3134,10 @@ static void *janus_videoroom_handler(void *data) {
 				/* We got an answer (from a listener?), no need to negotiate */
 				int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+				g_free(event_text);
+				root = NULL;
+				janus_videoroom_message_free(msg);
+				continue;
 			} else {
 				/* TODO We don't support anything else right now... */
 				JANUS_LOG(LOG_ERR, "Unknown SDP type '%s'\n", msg->sdp_type);
@@ -3141,7 +3145,13 @@ static void *janus_videoroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Unknown SDP type '%s'", msg->sdp_type);
 				goto error;
 			}
-			if(session->participant_type == janus_videoroom_p_type_publisher) {
+			if(session->participant_type != janus_videoroom_p_type_publisher) {
+				/* We shouldn't be here, we always offer ourselves */
+				JANUS_LOG(LOG_ERR, "Only publishers send offers\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP_TYPE;
+				g_snprintf(error_cause, 512, "Only publishers send offers");
+				goto error;
+			} else {
 				/* This is a new publisher: is there room? */
 				janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 				janus_videoroom *videoroom = participant->room;
@@ -3381,26 +3391,6 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&videoroom->participants_mutex);
 					/* Let's wait for the setup_media event */
 				}
-			} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
-				/* Negotiate by sending the selected publisher SDP back */
-				janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
-				/* FIXME We should handle the case where the participant has no SDP... */
-				if(listener != NULL) {
-					janus_videoroom_participant *feed = (janus_videoroom_participant *)listener->feed;
-					if(feed != NULL && feed->sdp != NULL) {
-						/* How long will the gateway take to push the event? */
-						gint64 start = janus_get_monotonic_time();
-						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, feed->sdp);
-						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
-						if(res != JANUS_OK) {
-							/* TODO Failed to negotiate? We should remove this listener */
-						} else {
-							/* Let's wait for the setup_media event */
-						}
-					}
-				}
-			} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
-				/* FIXME We shouldn't be here, we always offer ourselves */
 			}
 		}
 		g_free(event_text);

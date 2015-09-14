@@ -63,6 +63,8 @@ const char *janus_rabbitmq_get_description(void);
 const char *janus_rabbitmq_get_name(void);
 const char *janus_rabbitmq_get_author(void);
 const char *janus_rabbitmq_get_package(void);
+gboolean janus_rabbitmq_is_janus_api_enabled(void);
+gboolean janus_rabbitmq_is_admin_api_enabled(void);
 int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admin, json_t *message);
 void janus_rabbitmq_session_created(void *transport, guint64 session_id);
 void janus_rabbitmq_session_over(void *transport, guint64 session_id, gboolean timeout);
@@ -81,7 +83,10 @@ static janus_transport janus_rabbitmq_transport =
 		.get_name = janus_rabbitmq_get_name,
 		.get_author = janus_rabbitmq_get_author,
 		.get_package = janus_rabbitmq_get_package,
-		
+
+		.is_janus_api_enabled = janus_rabbitmq_is_janus_api_enabled,
+		.is_admin_api_enabled = janus_rabbitmq_is_admin_api_enabled,
+
 		.send_message = janus_rabbitmq_send_message,
 		.session_created = janus_rabbitmq_session_created,
 		.session_over = janus_rabbitmq_session_over,
@@ -97,6 +102,9 @@ janus_transport *create(void) {
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
+static gboolean rmq_janus_api_enabled = FALSE;
+static gboolean rmq_admin_api_enabled = FALSE;
+
 
 /* RabbitMQ client session: we only create a single one as of now */
 typedef struct janus_rabbitmq_client {
@@ -154,7 +162,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		janus_config_print(config);
 
 	/* Handle configuration, starting from the server details */
-	gboolean janus_api_enabled = FALSE, admin_api_enabled = FALSE; 
 	char *rmqhost = NULL;
 	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "host");
 	if(item && item->value)
@@ -185,7 +192,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 		from_janus = g_strdup(item->value);
 		JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus, from_janus);
-		janus_api_enabled = TRUE;
+		rmq_janus_api_enabled = TRUE;
 	}
 	/* Do the same for the admin API */
 	const char *to_janus_admin = NULL, *from_janus_admin = NULL;
@@ -207,9 +214,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 		from_janus_admin = g_strdup(item->value);
 		JANUS_LOG(LOG_INFO, "RabbitMQ support for Admin API enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus_admin, from_janus_admin);
-		admin_api_enabled = TRUE;
+		rmq_admin_api_enabled = TRUE;
 	}
-	if(!janus_api_enabled && !admin_api_enabled) {
+	if(!rmq_janus_api_enabled && !rmq_admin_api_enabled) {
 		JANUS_LOG(LOG_WARN, "RabbitMQ support disabled for both Janus and Admin API, giving up\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	} else {
@@ -254,7 +261,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			return -1;
 		}
 		rmq_client->janus_api_enabled = FALSE;
-		if(janus_api_enabled) {
+		if(rmq_janus_api_enabled) {
 			rmq_client->janus_api_enabled = TRUE;
 			JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", to_janus);
 			rmq_client->to_janus_queue = amqp_cstring_bytes(to_janus);
@@ -283,7 +290,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			}
 		}
 		rmq_client->admin_api_enabled = FALSE;
-		if(admin_api_enabled) {
+		if(rmq_admin_api_enabled) {
 			rmq_client->admin_api_enabled = TRUE;
 			JANUS_LOG(LOG_VERB, "Declaring incoming queue... (%s)\n", to_janus_admin);
 			rmq_client->to_janus_admin_queue = amqp_cstring_bytes(to_janus_admin);
@@ -392,6 +399,14 @@ const char *janus_rabbitmq_get_author(void) {
 
 const char *janus_rabbitmq_get_package(void) {
 	return JANUS_RABBITMQ_PACKAGE;
+}
+
+gboolean janus_rabbitmq_is_janus_api_enabled(void) {
+	return rmq_janus_api_enabled;
+}
+
+gboolean janus_rabbitmq_is_admin_api_enabled(void) {
+	return rmq_admin_api_enabled;
 }
 
 int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {

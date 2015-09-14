@@ -56,6 +56,8 @@ const char *janus_websockets_get_description(void);
 const char *janus_websockets_get_name(void);
 const char *janus_websockets_get_author(void);
 const char *janus_websockets_get_package(void);
+gboolean janus_websockets_is_janus_api_enabled(void);
+gboolean janus_websockets_is_admin_api_enabled(void);
 int janus_websockets_send_message(void *transport, void *request_id, gboolean admin, json_t *message);
 void janus_websockets_session_created(void *transport, guint64 session_id);
 void janus_websockets_session_over(void *transport, guint64 session_id, gboolean timeout);
@@ -74,7 +76,10 @@ static janus_transport janus_websockets_transport =
 		.get_name = janus_websockets_get_name,
 		.get_author = janus_websockets_get_author,
 		.get_package = janus_websockets_get_package,
-		
+
+		.is_janus_api_enabled = janus_websockets_is_janus_api_enabled,
+		.is_admin_api_enabled = janus_websockets_is_admin_api_enabled,
+
 		.send_message = janus_websockets_send_message,
 		.session_created = janus_websockets_session_created,
 		.session_over = janus_websockets_session_over,
@@ -90,6 +95,9 @@ janus_transport *create(void) {
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
+static gboolean wss_janus_api_enabled = FALSE;
+static gboolean wss_admin_api_enabled = FALSE;
+
 
 /* Logging */
 static int ws_log_level = 0;
@@ -446,6 +454,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		JANUS_LOG(LOG_FATAL, "No WebSockets server started, giving up...\n"); 
 		return -1;	/* No point in keeping the plugin loaded */
 	}
+	wss_janus_api_enabled = wss || swss;
+	wss_admin_api_enabled = admin_wss || admin_swss;
 
 	GError *error = NULL;
 	/* Start the WebSocket service threads */
@@ -543,6 +553,14 @@ const char *janus_websockets_get_author(void) {
 
 const char *janus_websockets_get_package(void) {
 	return JANUS_WEBSOCKETS_PACKAGE;
+}
+
+gboolean janus_websockets_is_janus_api_enabled(void) {
+	return wss_janus_api_enabled;
+}
+
+gboolean janus_websockets_is_admin_api_enabled(void) {
+	return wss_admin_api_enabled;
 }
 
 int janus_websockets_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {

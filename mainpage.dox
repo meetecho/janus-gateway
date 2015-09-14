@@ -533,6 +533,7 @@ janus.attach(
  * anticipated, with other protocols that may be added in the future too)
  * there's no REST-based path involved, you'll need a couple of additional
  * identifiers to bridge the gap.
+ * Some details are also provided in case you're interested in \ref auth.
  * 
  * \section plainhttp Plain HTTP REST Interface
  * As anticipated in the \ref JS documentation, the gateway deploys a
@@ -540,8 +541,7 @@ janus.attach(
  * makes use of it in a transparent way, but if you're interested in
  * more details about it (e.g., because you want to talk to the gateway
  * your own way), this page described the interface and the protocol
- * the API exposes and uses. Some details are also provided in case you're
- * interested in \ref secret when wrapping requests in your application.
+ * the API exposes and uses.
  *
  * There are basically three types/levels of endpoints you can meet:
  *
@@ -1108,60 +1108,6 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * Streaming plugin would create) would never trigger any \c media
  * event, as Janus would never be receiving media, but only send it.
  *
- * \section secret Securing the API
- * Several deployers showed an interested in wrapping the Janus API on
- * their server side: this allows them to keep the interaction with their
- * users the way it was before, while still benefiting from the features
- * Janus provides. This is an easy enough step, as it just needs developers
- * to relay the involved SDP, and implementing the Janus API messages to
- * handle the logic.
- *
- * That said, since in this case Janus would be contacted, through the API,
- * just by a limited number of applications (e.g., application servers
- * made in node.js, Ruby, Java Servlets or whatever) and not random
- * browsers, it is reasonable to involve a mechanism to control who is
- * allowed to contact and control it. To allow for that, Janus exposes a
- * shared API secret mechanism: that is, you configure Janus with a string
- * applications need to present when sending requests, and if they don't,
- * Janus rejects them with an \c unauthorized message.
- * 
- * Configuring the API secret mechanism is easy enough: you can do that
- * either via the command line (\c -a or \c --apisecret ) or in the
- * \c janus.cfg configuration (\c api_secret value in the \c general section).
- * When enabled, all requests addressed to that Janus instance \b MUST
- * also contain an \c apisecret field in the Janus message headers. For
- * instance, this message presented above would fail:
- * 
-\verbatim
-{
-	"janus" : "create",
-	"transaction" : "<random alphanumeric string>"
-}
-\endverbatim
- * 
-\verbatim
-{
-	"janus": "error",
-	"error": {
-		"reason": "Unauthorized request (wrong or missing apisecret)",
-		"code": 403
-	}
-}
-\endverbatim
- * 
- * For a successful transaction, the message would have to look like this:
- * 
-\verbatim
-{
-	"janus" : "create",
-	"apisecret" : "<API secret configured in Janus>",
-	"transaction" : "<random alphanumeric string>"
-}
-\endverbatim
- * 
- * The same applies for the long poll GET messages as well, which will
- * need to contain the \c apisecret as a query string parameter.
- * 
  * \section WS WebSockets Interface
  * In recent version of Janus we added support for WebSockets to control
  * the gateway, along the already existing (and still the default) REST
@@ -1340,21 +1286,168 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * 
  */
 
+/*! \page auth Authenticating the Janus API
+ * By default no authentication is involved when using the Janus API.
+ * This means that the API is completely open, and that everybody can
+ * talk to Janus and its plugins and set up media connections. There are
+ * times, though, where limiting access to Janus may be desirable, e.g.,
+ * when you want to prevent unauthorized users to join a service you
+ * created, or when you wrap the Janus API in your server and you want
+ * your application to be the only one to be able to interact with
+ * Janus from a messaging perspective.
+ * 
+ * There are a couple of ways to authenticate requests in Janus:
+ * 
+ * - using a \ref token (useful for web users);
+ * - using a \ref secret (useful when wrapping the Janus API).
+ * 
+ * \section token Token based authentication mechanism
+ * The token based authentication mechanism expects all users to provide,
+ * in each request, a \c token string attribute: if this token is
+ * known to Janus, the request will be accepted, otherwise it will be
+ * rejected as an \c unauthorized response. Configuring the token based
+ * authentication mechanism is easy enough: you can do that either via
+ * the command line (\c -A or \c --token-auth ) or in the \c janus.cfg
+ * configuration (\c token_auth value in the \c general section).
+ * 
+ * These tokens are completely opaque to Janus, meaning they can be
+ * pretty much anything that you want. Janus does not do any form of
+ * authorization/authentication itself: it's up to you to provide it
+ * with valid tokens users can use, e.g., as part of your server-side
+ * application handling users. You can add and remove tokens
+ * dynamically using the \ref admin, which means you will need to enable
+ * it if you want to use tokens, or otherwise all requests will fail
+ * (Janus will never have a valid token, so all requests will be rejected).
+ * 
+ * You add tokens using the \c add_token admin request, while you
+ * remove them using \c remove_token. Here are a couple of examples of
+ * how you can use them:
+ * 
+\verbatim
+{
+	"janus" : "add_token",
+	"token": "a1b2c3d4",
+	"transaction" : "sBJNyUhH6Vc6",
+	"admin_secret": "adminpassword"
+}
+\endverbatim
+ * 
+\verbatim
+{
+	"janus" : "remove_token",
+	"token": "a1b2c3d4",
+	"transaction" : "sBJNyUhH6Vc6",
+	"admin_secret": "adminpassword"
+}
+\endverbatim
+ * 
+ * As anticipated, with the token based mechanism enabled, all users
+ * will need to provide a valid token as part of their requests. This is
+ * done by adding a \c token attribute to the request root, e.g.:
+ * 
+\verbatim
+{
+	"janus" : "create",
+	"transaction" : "sBJNyUhH6Vc6",
+	"token": "usertoken"
+}
+\endverbatim
+ * 
+ * The same applies for the long poll GET messages as well, which will
+ * need to contain the \c token as a query string parameter.
+ * 
+ * A valid token will mean the request will be accepted and processed
+ * normally. A missing or invalid token, instead, will result in an
+ * error being returned:
+ * 
+\verbatim
+{
+	"janus" : "error",
+	"transaction" : "sBJNyUhH6Vc6",
+	"error" : {
+		"code" : 403,
+		"reason" : "Unauthorized request (wrong or missing secret/token)"
+	}
+} 
+\endverbatim
+ * 
+ * \section secret Shared static secret
+ * Several deployers showed an interested in wrapping the Janus API on
+ * their server side: this allows them to keep the interaction with their
+ * users the way it was before, while still benefiting from the features
+ * Janus provides. This is an easy enough step, as it just needs developers
+ * to relay the involved SDP, and implementing the Janus API messages to
+ * handle the logic.
+ *
+ * That said, since in this case Janus would be contacted, through the API,
+ * just by a limited number of applications (e.g., application servers
+ * made in node.js, Ruby, Java Servlets or whatever) and not random
+ * browsers, it is reasonable to involve a mechanism to control who is
+ * allowed to contact and control it. The previous section described
+ * how you can exploit a token based mechanism for authenticating
+ * requests, but since in this case you only need a single application,
+ * or a limited set of them,
+ * to be able to talk to Janus, it's worthwhile to resort to something
+ * simpler and more static. To allow for that, Janus also exposes a
+ * shared API secret mechanism: that is, you configure Janus with a string
+ * applications need to present when sending requests, and if they don't,
+ * Janus rejects them with an \c unauthorized message.
+ * 
+ * Configuring the API secret mechanism is easy enough: you can do that
+ * either via the command line (\c -a or \c --apisecret ) or in the
+ * \c janus.cfg configuration (\c api_secret value in the \c general section).
+ * When enabled, all requests addressed to that Janus instance \b MUST
+ * also contain an \c apisecret field in the Janus message headers. For
+ * instance, this message presented above would fail:
+ * 
+\verbatim
+{
+	"janus" : "create",
+	"transaction" : "<random alphanumeric string>"
+}
+\endverbatim
+ * 
+\verbatim
+{
+	"janus" : "error",
+	"transaction" : "<same as request>"
+	"error" : {
+		"code" : 403,
+		"reason" : "Unauthorized request (wrong or missing secret/token)"
+	}
+}
+\endverbatim
+ * 
+ * For a successful transaction, the message would have to look like this:
+ * 
+\verbatim
+{
+	"janus" : "create",
+	"apisecret" : "<API secret configured in Janus>",
+	"transaction" : "<random alphanumeric string>"
+}
+\endverbatim
+ * 
+ * The same applies for the long poll GET messages as well, which will
+ * need to contain the \c apisecret as a query string parameter.
+ * 
+ */
+
 /*! \page admin Admin/Monitor API
  * Recent versions of Janus introduced a new feature: an Admin/Monitor
  * API that can be used to ask Janus for more specific information
  * related to sessions and handles. This is especially useful when you
  * want to debug issues at the media level.
  *
- * \note Right now, this new API only allows you to retrieve information,
- * but not act on part of it: for more interaction (e.g., to force a
+ * \note Right now, this new API mostly allows you to retrieve information,
+ * but only act on part of it: for more interaction (e.g., to force a
  * session removal), you can rely on the existing \ref rest for the purpose.
  *
- * The API, for security reasons, should not be enabled by default in any of the
+ * The API, for security reasons, is typically noy enabled by default in any of the
  * transport plugins: that's definitely the case for the stock transport
  * plugins, for instance, while additional, third party plugins may choose
  * to expose the functionality without requiring any tweaking. As to the
- * existing transport, you can enable the admin API by editing the \c [admin]
+ * existing transport, you can enable the admin API by editing the \c [ \c admin \c ]
  * section in the related transport configuration file (e.g., \c janus.transport.http.cfg
  * for the REST interface, to use the admin API over HTTP). The configuration
  * is pretty much the same as the one for the Janus API. In addition, you
@@ -1373,7 +1466,9 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * - \c set_log_level: change the log level in Janus on the fly;
  * - \c set_locking_debug: selectively enable/disable a live debugging of
  * the locks in Janus on the fly (useful if you're experiencing deadlocks
- * and want to investigate them).
+ * and want to investigate them);
+ * - \c add_token: add a valid token (only available if you enabled the \ref token);
+ * - \c remove_token: remove a token (only available if you enabled the \ref token).
  *
  * Following the same spirit of the \ref rest these methods need to be
  * invoked on the right path and/or providing the right \c session_id and

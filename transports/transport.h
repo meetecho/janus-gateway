@@ -52,8 +52,11 @@ janus_transport *create(void) {
  * - \c get_description(): this method should return a verbose description of your transport plugin (e.g., "This is my avian carrier transport plugin for the Janus API");
  * - \c get_name(): this method should return a short display name for your transport plugin (e.g., "My Amazing Transport");
  * - \c get_package(): this method should return a unique package identifier for your transport plugin (e.g., "janus.transport.mytransport");
+ * - \c is_janus_api_enabled(): this method should return TRUE if Janus API can be used with this transport, and support has been enabled by the user;
+ * - \c is_admin_api_enabled(): this method should return TRUE if Admin API can be used with this transport, and support has been enabled by the user;
  * - \c send_message(): this method asks the transport to send a message (be it a response or an event) to a client on the specified transport;
- * - \c session_timeout(): this method notifies the transport that a Janus session originated here timed out;
+ * - \c session_created(): this method notifies the transport that a Janus session has been created by one of its requests;
+ * - \c session_over(): this method notifies the transport that one of its Janus sessionss is now over, whether because of a timeour or not.
  * 
  * All the above methods and callbacks are mandatory: the Janus core will
  * reject a transport plugin that doesn't implement any of the
@@ -91,7 +94,7 @@ janus_transport *create(void) {
 
 
 /*! \brief Version of the API, to match the one transport plugins were compiled against */
-#define JANUS_TRANSPORT_API_VERSION	4
+#define JANUS_TRANSPORT_API_VERSION	5
 
 /*! \brief Initialization of all transport plugin properties to NULL
  * 
@@ -117,7 +120,11 @@ static janus_transport janus_http_transport plugin =
 		.get_name = NULL,				\
 		.get_author = NULL,				\
 		.get_package = NULL,			\
+		.is_janus_api_enabled = NULL,	\
+		.is_admin_api_enabled = NULL,	\
 		.send_message = NULL,			\
+		.session_created = NULL,		\
+		.session_over = NULL,			\
 		## __VA_ARGS__ }
 
 
@@ -153,6 +160,11 @@ struct janus_transport {
 	const char *(* const get_author)(void);
 	/*! \brief Informative method to request the package name of the transport plugin (what will be used in web applications to refer to it) */
 	const char *(* const get_package)(void);
+
+	/*! \brief Informative method to check whether any Janus API support is currently enabled in this transport */
+	gboolean (* const is_janus_api_enabled)(void);
+	/*! \brief Informative method to check whether any Admin API support is currently enabled in this transport */
+	gboolean (* const is_admin_api_enabled)(void);
 
 	/*! \brief Method to send a message to a client over a transport session
 	 * \note It's the transport plugin's responsibility to free the message.
