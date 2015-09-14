@@ -46,7 +46,9 @@
  * applications that want to make use of it are provided in the \ref deploy
  * page. If you're interested in starting Janus as a service/daemon rather
  * than launching it normally, check the information provided in the
- * \ref service page.
+ * \ref service page. Some additional \ref resources are also listed in
+ * case you're interested in talking to Janus from different languages
+ * and platforms.
  *
  * This is only the first version of the gateway, and as such it is a bit
  * rough at the edges: there is definitely room for improvement, there are
@@ -2061,6 +2063,52 @@ ldd janus | grep asan
  * link instead.
  * 
  */
+
+/*! \page resources Resources
+ * This page contains pointers to some third-party resources, in particular
+ * client stacks, libraries and bindings in other languages, that is
+ * tools that you find helpful to interact with Janus outside of the
+ * context of the \c janus.js JavaScript library we provide. It is not
+ * a complete list, but just a summary of the material that has been
+ * shared so far on the <a href="https://groups.google.com/forum/#!forum/meetecho-janus">meetecho-janus</a>
+ * Google group. 
+ * 
+ * If you've developed anything related to Janus (client stacks, plugins,
+ * transports, etc.) and you're willing to share them with the community,
+ * or you know any such effort that is not listed here, just let us know
+ * and we'll add it on this page.
+ * 
+ * \section stacks Client-side stacks
+ * 
+ * \subsection nodejs node-js
+ * <a href="https://github.com/rtc-io/rtc-janus">rtc-janus</a>, a node and
+ * browserify compatible integration layer for the Janus WebRTC gateway.
+ * Experimental and incomplete as per the author words, but a good starting point.
+ * 
+ * \subsection dotnet C#/.NET
+ * <a href="https://github.com/Computician/JanusSharp">JanusSharp</a>,
+ * a C#/.Net client side API wrapper for the Janus API.
+ * 
+ * \section mobile Mobile resources
+ * 
+ * \subsection android Android
+ * <a href="https://github.com/Computician/janus-gateway-android">janus-gateway-android</a>,
+ * an API wrapper that utilizes the native WebRTC build and is made to ease communication with Janus.
+ * 
+ * \subsection ios iOS
+ * <a href="https://github.com/davibe/cordova-webrtc-janus-gateway">cordova-webrtc-janus-gateway</a>,
+ * a cordova application that interfaces with Janus and is based on the PhoneRTC cordova plugin.
+ * 
+ * \section thirdplugins Third-party plugins
+ * 
+ * TBD.
+ * 
+ * \section thirdtrasports Third-party transports
+ * 
+ * TBD. (for more info, see the \c modular-transports branch).
+ * 
+ */
+
 
 /*! \page README README
  *  \verbinclude README.md
