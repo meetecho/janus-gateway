@@ -1036,8 +1036,39 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			goto done;
 		}
 		msg->session_id = session_id;
+
 		/* Since we handle long polls ourselves, the core isn't involved (if not for providing us with events)
 		 * A long poll, though, can act as a keepalive, so we pass a fake one to the core to avoid undesirable timeouts */
+
+		/* First of all, though, API secret and token based authentication may be enabled in the core, so since
+		 * we're bypassing it for notifications we'll have to check those ourselves */
+		const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
+		if(!gateway->is_api_secret_valid(&janus_http_transport, secret)) {
+			/* API secret not provided or invalid */
+			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+			if(msg->acrm)
+				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
+			if(msg->acrh)
+				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
+			MHD_destroy_response(response);
+			goto done;
+		}
+		const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
+		if(!gateway->is_auth_token_valid(&janus_http_transport, token)) {
+			/* Token not provided or invalid */
+			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+			if(msg->acrm)
+				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
+			if(msg->acrh)
+				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
+			MHD_destroy_response(response);
+			goto done;
+		}
+		/* Ok, go on with the keepalive */
 		char tr[12];
 		janus_http_random_string(12, (char *)&tr);		
 		root = json_object();

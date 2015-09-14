@@ -211,10 +211,15 @@ void janus_handle_signal(int signum)
 ///@{
 void janus_transport_incoming_request(janus_transport *plugin, void *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error);
 void janus_transport_gone(janus_transport *plugin, void *transport);
+gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
+gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
+
 static janus_transport_callbacks janus_handler_transport =
 	{
 		.incoming_request = janus_transport_incoming_request,
 		.transport_gone = janus_transport_gone,
+		.is_api_secret_valid = janus_transport_is_api_secret_valid,
+		.is_auth_token_valid = janus_transport_is_auth_token_valid,
 	}; 
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -2014,6 +2019,18 @@ void janus_transport_gone(janus_transport *plugin, void *transport) {
 		}
 	}
 	janus_mutex_unlock(&sessions_mutex);
+}
+
+gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret) {
+	if(api_secret == NULL)
+		return TRUE;
+	return apisecret && !janus_strcmp_const_time(apisecret, api_secret);
+}
+
+gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token) {
+	if(!janus_auth_is_enabled())
+		return TRUE;
+	return token && janus_auth_check_token(token);
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {
