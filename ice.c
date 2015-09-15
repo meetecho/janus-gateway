@@ -867,6 +867,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 			g_object_unref(handle->agent);
 		handle->agent = NULL;
 	}
+	handle->agent_created = 0;
 	if(handle->remote_hashing != NULL) {
 		g_free(handle->remote_hashing);
 		handle->remote_hashing = NULL;
@@ -1086,9 +1087,10 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 	/* FIXME Even in case the state is 'connected', we wait for the 'new-selected-pair' callback to do anything */
 	if(state == NICE_COMPONENT_STATE_FAILED) {
 		/* Failed doesn't mean necessarily we need to give up: we may be trickling */
-		if(handle &&
-				(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES))
-					&& !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+		gboolean trickle_recv = (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES));
+		gboolean answer_recv = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
+		gboolean alert_set = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+		if(handle && trickle_recv && answer_recv && !alert_set) {
 			/* FIXME Should we really give up for what may be a failure in only one of the media? */
 			if(stream->disabled) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but stream is disabled so we don't care...\n", handle->handle_id, component_id, stream_id);
@@ -1103,6 +1105,12 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 					plugin->hangup_media(handle->app_handle);
 			}
 			janus_ice_notify_hangup(handle, "ICE failed");
+		} else {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but we're still waiting for some info so we don't care... (trickle %s, answer %s, alert %s)\n",
+				handle->handle_id, component_id, stream_id,
+				trickle_recv ? "received" : "pending",
+				answer_recv ? "received" : "pending",
+				alert_set ? "set" : "not set");
 		}
 	}
 }
@@ -1185,6 +1193,7 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 	/* Have we been here before? (might happen, when trickling) */
 	if(component->dtls != NULL)
 		return;
+	component->component_connected = janus_get_monotonic_time();
 	/* Create DTLS-SRTP context, at last */
 	component->dtls = janus_dtls_srtp_create(component, stream->dtls_role);
 	if(!component->dtls) {
@@ -2031,10 +2040,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		return -1;
  	}
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
-	gboolean controlling = janus_ice_lite_enabled ? FALSE : !offer;
+	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
-		janus_ice_lite_enabled ? "Lite" : "Full", controlling ? "controlling" : "controlled");
+		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
 	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_DRAFT19);
+	handle->agent_created = janus_get_monotonic_time();
 	if(janus_ice_lite_enabled) {
 		g_object_set(G_OBJECT(handle->agent), "full-mode", FALSE, NULL);
 	}
@@ -2065,7 +2075,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 #endif
 	g_object_set(G_OBJECT(handle->agent), "upnp", FALSE, NULL);
-	g_object_set(G_OBJECT(handle->agent), "controlling-mode", controlling, NULL);
+	g_object_set(G_OBJECT(handle->agent), "controlling-mode", handle->controlling, NULL);
 	g_signal_connect (G_OBJECT (handle->agent), "candidate-gathering-done",
 		G_CALLBACK (janus_ice_cb_candidate_gathering_done), handle);
 	g_signal_connect (G_OBJECT (handle->agent), "component-state-changed",
