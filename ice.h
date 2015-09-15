@@ -147,6 +147,8 @@ typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 #define JANUS_ICE_HANDLE_WEBRTC_CLEANING			(1 << 12)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO			(1 << 13)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO			(1 << 14)
+#define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
+#define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
 
 
 /*! \brief Janus media statistics
@@ -235,6 +237,8 @@ struct janus_ice_handle {
 	GThread *icethread;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
+	/*! \brief ICE role (controlling or controlled) */
+	gboolean controlling;
 	/*! \brief libnice ICE audio ID */
 	guint audio_id;
 	/*! \brief libnice ICE video ID */
