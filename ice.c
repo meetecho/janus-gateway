@@ -900,6 +900,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 			g_object_unref(handle->agent);
 		handle->agent = NULL;
 	}
+	handle->agent_created = 0;
 	if(handle->remote_hashing != NULL) {
 		g_free(handle->remote_hashing);
 		handle->remote_hashing = NULL;
@@ -1225,6 +1226,7 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 	/* Have we been here before? (might happen, when trickling) */
 	if(component->dtls != NULL)
 		return;
+	component->component_connected = janus_get_monotonic_time();
 	/* Create DTLS-SRTP context, at last */
 	component->dtls = janus_dtls_srtp_create(component, stream->dtls_role);
 	if(!component->dtls) {
@@ -2075,6 +2077,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
 		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
 	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_DRAFT19);
+	handle->agent_created = janus_get_monotonic_time();
 	if(janus_ice_lite_enabled) {
 		g_object_set(G_OBJECT(handle->agent), "full-mode", FALSE, NULL);
 	}

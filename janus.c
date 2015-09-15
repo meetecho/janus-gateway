@@ -2504,6 +2504,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_t *info = json_object();
 		json_object_set_new(info, "session_id", json_integer(session_id));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
+		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
 		if(handle->app && handle->app_handle && janus_plugin_session_is_alive(handle->app_handle)) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			json_object_set_new(info, "plugin", json_string(plugin->get_package()));
@@ -2544,6 +2545,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_object_set_new(flags, "cleaning", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)));
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
+			json_object_set_new(info, "agent-created", json_integer(handle->agent_created));
 			json_object_set_new(info, "ice-mode", json_string(janus_ice_is_ice_lite_enabled() ? "lite" : "full"));
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
 		}
@@ -3526,6 +3528,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 	json_t *c = json_object();
 	json_object_set_new(c, "id", json_integer(component->component_id));
 	json_object_set_new(c, "state", json_string(janus_get_ice_state_name(component->state)));
+	if(component->component_connected > 0)
+		json_object_set_new(c, "connected", json_integer(component->component_connected));
 	if(component->local_candidates) {
 		json_t *cs = json_array();
 		GSList *candidates = component->local_candidates, *i = NULL;
@@ -3560,6 +3564,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "valid", json_integer(dtls->srtp_valid));
 		json_object_set_new(d, "ready", json_integer(dtls->ready));
+		if(dtls->dtls_connected > 0)
+			json_object_set_new(d, "connected", json_integer(dtls->dtls_connected));
 		json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
 		json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
 		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data_bytes));

@@ -56,6 +56,8 @@ typedef struct janus_dtls_srtp {
 	janus_dtls_role dtls_role;
 	/*! \brief DTLS state of this component: -1=failed, 0=nothing, 1=trying, 2=connected */
 	janus_dtls_state dtls_state;
+	/*! \brief Monotonic time of when the DTLS state has switched to connected */
+	gint64 dtls_connected;
 	/*! \brief SSL context used for DTLS for this component */
 	SSL *ssl;
 	/*! \brief Read BIO (incoming DTLS data) */

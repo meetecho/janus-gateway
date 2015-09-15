@@ -237,6 +237,8 @@ struct janus_ice_handle {
 	GThread *icethread;
 	/*! \brief libnice ICE agent */
 	NiceAgent *agent;
+	/*! \brief Monotonic time of when the ICE agent has been created */
+	gint64 agent_created;
 	/*! \brief ICE role (controlling or controlled) */
 	gboolean controlling;
 	/*! \brief libnice ICE audio ID */
@@ -328,6 +330,8 @@ struct janus_ice_component {
 	guint component_id;
 	/*! \brief libnice ICE component state */
 	guint state;
+	/*! \brief Monotonic time of when this component has successfully connected */
+	gint64 component_connected;
 	/*! \brief GLib list of libnice remote candidates for this component */
 	GSList *candidates;
 	/*! \brief GLib list of local candidates for this component (summary) */

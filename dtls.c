@@ -263,6 +263,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 #endif
 	janus_mutex_init(&dtls->srtp_mutex);
 	/* Done */
+	dtls->dtls_connected = 0;
 	dtls->component = component;
 	return dtls;
 }
@@ -378,6 +379,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			if(!strcasecmp(remote_fingerprint, handle->remote_fingerprint ? handle->remote_fingerprint : "(none)")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Fingerprint is a match!\n", handle->handle_id);
 				dtls->dtls_state = JANUS_DTLS_STATE_CONNECTED;
+				dtls->dtls_connected = janus_get_monotonic_time();
 			} else {
 				/* FIXME NOT a match! MITM? */
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]  Fingerprint is NOT a match! got %s, expected %s\n", handle->handle_id, remote_fingerprint, handle->remote_fingerprint);
