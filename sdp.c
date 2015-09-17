@@ -355,7 +355,6 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 	janus_ice_handle *handle = stream->handle;
 	if(handle == NULL)
 		return -2;
-	janus_mutex_lock(&handle->mutex);
 	janus_ice_component *component = NULL;
 	if(strstr(candidate, "candidate:") == candidate) {
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
@@ -370,7 +369,6 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		/* Failed to parse this address, can it be IPv6? */
 		if(!janus_ice_is_ipv6_enabled()) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Received IPv6 candidate, but IPv6 support is disabled...\n", handle->handle_id);
-			janus_mutex_unlock(&handle->mutex);
 			return res;
 		}
 	}
@@ -386,14 +384,12 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		} else {
 			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
-				janus_mutex_unlock(&handle->mutex);
 				return 0;
 			}
 			//~ if(trickle) {
 				//~ if(component->dtls != NULL) {
 					//~ /* This component is already ready, ignore this further candidate */
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Ignoring this candidate, the component is already ready\n", handle->handle_id);
-					//~ janus_mutex_unlock(&handle->mutex);
 					//~ return 0;
 				//~ }
 			//~ }
@@ -548,10 +544,8 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		}
 	} else {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate (res=%d)...\n", handle->handle_id, res);
-		janus_mutex_unlock(&handle->mutex);
 		return res;
 	}
-	janus_mutex_unlock(&handle->mutex);
 	return 0;
 }
 
