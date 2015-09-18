@@ -4569,7 +4569,23 @@ gint main(int argc, char *argv[])
 	}
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
-		if(IN_CLASSA(local_ip) || IN_CLASSB(local_ip) || IN_CLASSC(local_ip)) {
+		gboolean private_address = FALSE;
+		struct sockaddr_in addr;
+		if(inet_pton(AF_INET, local_ip, &addr) > 0) {
+			unsigned short int ip[4];
+			sscanf(local_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
+			if(ip[0] == 10) {
+				/* Class A private address */
+				private_address = TRUE;
+			} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
+				/* Class B private address */
+				private_address = TRUE;
+			} else if(ip[0] == 192 && ip[1] == 168) {
+				/* Class C private address */
+				private_address = TRUE;
+			}
+		}
+		if(private_address) {
 			JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server! Expect trouble if this is supposed to work over the internet and not just in a LAN...\n", local_ip);
 		}
 	}
