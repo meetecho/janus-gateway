@@ -1748,6 +1748,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+                                sdp_parser_free(parser);
 				break;
 			}
 			if(session->status >= janus_sip_call_status_inviting) {
@@ -1766,6 +1767,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+                                sdp_parser_free(parser);
 				break;
 			}
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
