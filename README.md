@@ -22,7 +22,7 @@ To install it, you'll need to satisfy the following dependencies:
 * [Jansson](http://www.digip.org/jansson/)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
-* [libsrtp](http://srtp.sourceforge.net/srtp.html) (at least v1.5 suggested)
+* [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
 are interested in Data Channels)
