@@ -42,6 +42,14 @@ void janus_sdp_deinit(void) {
 }
 
 
+/* Fake attribute we use for the sendrecv hack */
+static sdp_attribute_t fakedir = {
+	.a_size = sizeof(sdp_attribute_t),
+	.a_name = "jfmod",
+	.a_value = "sr"
+};
+
+
 /* SDP parser */
 void janus_sdp_free(janus_sdp *sdp) {
 	if(!sdp)
@@ -355,7 +363,6 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 	janus_ice_handle *handle = stream->handle;
 	if(handle == NULL)
 		return -2;
-	janus_mutex_lock(&handle->mutex);
 	janus_ice_component *component = NULL;
 	if(strstr(candidate, "candidate:") == candidate) {
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
@@ -370,7 +377,6 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		/* Failed to parse this address, can it be IPv6? */
 		if(!janus_ice_is_ipv6_enabled()) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Received IPv6 candidate, but IPv6 support is disabled...\n", handle->handle_id);
-			janus_mutex_unlock(&handle->mutex);
 			return res;
 		}
 	}
@@ -386,14 +392,12 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		} else {
 			if(rcomponent == 2 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Skipping component %d in stream %d (rtcp-muxing)\n", handle->handle_id, rcomponent, stream->stream_id);
-				janus_mutex_unlock(&handle->mutex);
 				return 0;
 			}
 			//~ if(trickle) {
 				//~ if(component->dtls != NULL) {
 					//~ /* This component is already ready, ignore this further candidate */
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Ignoring this candidate, the component is already ready\n", handle->handle_id);
-					//~ janus_mutex_unlock(&handle->mutex);
 					//~ return 0;
 				//~ }
 			//~ }
@@ -548,10 +552,8 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 		}
 	} else {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate (res=%d)...\n", handle->handle_id, res);
-		janus_mutex_unlock(&handle->mutex);
 		return res;
 	}
-	janus_mutex_unlock(&handle->mutex);
 	return 0;
 }
 
@@ -692,17 +694,13 @@ char *janus_sdp_anonymize(const char *sdp) {
 			}
 			if(m->m_type != sdp_media_application && m->m_mode == sdp_sendrecv) {
 				/* FIXME sendrecv hack: sofia-sdp doesn't print sendrecv, but we want it to */
-				sdp_attribute_t *fakedir = calloc(1, sizeof(sdp_attribute_t));
-				fakedir->a_size = sizeof(sdp_attribute_t);
-				fakedir->a_name = g_strdup("jfmod");
-				fakedir->a_value = g_strdup("sr");
-				sdp_attribute_append(&m->m_attributes, fakedir);
+				sdp_attribute_append(&m->m_attributes, &fakedir);
 			}
 			m = m->m_next;
 		}
 	}
-	char buf[BUFSIZE];
-	sdp_printer_t *printer = sdp_print(home, anon, buf, BUFSIZE, 0);
+	char buf[JANUS_BUFSIZE];
+	sdp_printer_t *printer = sdp_print(home, anon, buf, JANUS_BUFSIZE, 0);
 	if(sdp_message(printer)) {
 		int retval = sdp_message_size(printer);
 		sdp_printer_free(printer);
@@ -740,7 +738,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	/* Prepare SDP to merge */
 	gchar buffer[512];
 	memset(buffer, 0, 512);
-	char *sdp = (char*)calloc(BUFSIZE, sizeof(char));
+	char *sdp = (char*)calloc(JANUS_BUFSIZE, sizeof(char));
 	if(sdp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		sdp_parser_free(parser);
@@ -756,21 +754,21 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	}
 	/* Version v= */
 	g_strlcat(sdp,
-		"v=0\r\n", BUFSIZE);
+		"v=0\r\n", JANUS_BUFSIZE);
 	/* Origin o= */
 	if(anon->sdp_origin) {
 		g_snprintf(buffer, 512,
 			"o=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",	/* FIXME Should we fix the address? */
 				anon->sdp_origin->o_username ? anon->sdp_origin->o_username : "-",
 				anon->sdp_origin->o_id, anon->sdp_origin->o_version);
-		g_strlcat(sdp, buffer, BUFSIZE);
+		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	} else {
 		gint64 sessid = janus_get_monotonic_time();
 		gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
 		g_snprintf(buffer, 512,
 			"o=%s %"SCNi64" %"SCNi64" IN IP4 127.0.0.1\r\n",	/* FIXME Should we fix the address? */
 				"-", sessid, version);
-		g_strlcat(sdp, buffer, BUFSIZE);
+		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	}
 	/* Session name s= */
 	if(anon->sdp_subject && strlen(anon->sdp_subject) > 0) {
@@ -778,15 +776,15 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	} else {
 		g_snprintf(buffer, 512, "s=%s\r\n", "Meetecho Janus");
 	}
-	g_strlcat(sdp, buffer, BUFSIZE);
+	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	/* Timing t= */
 	g_snprintf(buffer, 512,
 		"t=%lu %lu\r\n", anon->sdp_time ? anon->sdp_time->t_start : 0, anon->sdp_time ? anon->sdp_time->t_stop : 0);
-	g_strlcat(sdp, buffer, BUFSIZE);
+	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	/* ICE Full or Lite? */
 	if(janus_ice_is_ice_lite_enabled()) {
 		/* Janus is acting in ICE Lite mode, advertize this */
-		g_strlcat(sdp, "a=ice-lite\r\n", BUFSIZE);
+		g_strlcat(sdp, "a=ice-lite\r\n", JANUS_BUFSIZE);
 	}
 	/* bundle: add new global attribute */
 	int audio = (strstr(origsdp, "m=audio") != NULL);
@@ -796,30 +794,30 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 #else
 	int data = 0;
 #endif
-	g_strlcat(sdp, "a=group:BUNDLE", BUFSIZE);
+	g_strlcat(sdp, "a=group:BUNDLE", JANUS_BUFSIZE);
 	if(audio) {
 		g_snprintf(buffer, 512,
 			" %s", handle->audio_mid ? handle->audio_mid : "audio");
-		g_strlcat(sdp, buffer, BUFSIZE);
+		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	}
 	if(video) {
 		g_snprintf(buffer, 512,
 			" %s", handle->video_mid ? handle->video_mid : "video");
-		g_strlcat(sdp, buffer, BUFSIZE);
+		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	}
 	if(data) {
 		g_snprintf(buffer, 512,
 			" %s", handle->data_mid ? handle->data_mid : "data");
-		g_strlcat(sdp, buffer, BUFSIZE);
+		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	}
-	g_strlcat(sdp, "\r\n", BUFSIZE);
+	g_strlcat(sdp, "\r\n", JANUS_BUFSIZE);
 	/* msid-semantic: add new global attribute */
 	g_strlcat(sdp,
 		"a=msid-semantic: WMS janus\r\n",
-		BUFSIZE);
-	char wms[BUFSIZE];
-	memset(wms, 0, BUFSIZE);
-	g_strlcat(wms, "WMS", BUFSIZE);
+		JANUS_BUFSIZE);
+	char wms[JANUS_BUFSIZE];
+	memset(wms, 0, JANUS_BUFSIZE);
+	g_strlcat(wms, "WMS", JANUS_BUFSIZE);
 	/* Copy other global attributes, if any */
 	if(anon->sdp_attributes) {
 		sdp_attribute_t *a = anon->sdp_attributes;
@@ -827,11 +825,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			if(a->a_value == NULL) {
 				g_snprintf(buffer, 512,
 					"a=%s\r\n", a->a_name);
-				g_strlcat(sdp, buffer, BUFSIZE);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			} else {
 				g_snprintf(buffer, 512,
 					"a=%s:%s\r\n", a->a_name, a->a_value);
-				g_strlcat(sdp, buffer, BUFSIZE);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			}
 			a = a->a_next;
 		}
@@ -850,11 +848,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				audio++;
 				if(audio > 1 || !handle->audio_id) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have %d audio lines, and the id is %d)\n", handle->handle_id, audio, handle->audio_id);
-					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
+					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
@@ -862,15 +860,15 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
 				if(stream == NULL) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (invalid stream %d)\n", handle->handle_id, handle->audio_id);
-					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", BUFSIZE);
+					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
-				g_strlcat(sdp, "m=audio 1 RTP/SAVPF", BUFSIZE);
+				g_strlcat(sdp, "m=audio 1 RTP/SAVPF", JANUS_BUFSIZE);
 			} else if(m->m_type == sdp_media_video && m->m_port > 0) {
 				video++;
 				gint id = handle->video_id;
@@ -879,11 +877,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				if(video > 1 || !id) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have %d video lines, and the id is %d)\n", handle->handle_id, video,
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_id : handle->video_id);
-					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
+					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
@@ -891,15 +889,15 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 				if(stream == NULL) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (invalid stream %d)\n", handle->handle_id, id);
-					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", BUFSIZE);
+					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
-				g_strlcat(sdp, "m=video 1 RTP/SAVPF", BUFSIZE);
+				g_strlcat(sdp, "m=video 1 RTP/SAVPF", JANUS_BUFSIZE);
 #ifdef HAVE_SCTP
 			} else if(m->m_type == sdp_media_application) {
 				/* Is this SCTP for DataChannels? */
@@ -914,11 +912,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						g_snprintf(buffer, 512,
 							"m=%s 0 %s 0\r\n",
 							m->m_type_name, m->m_proto_name);
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 						g_snprintf(buffer, 512,
 							"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 						m = m->m_next;
 						continue;
 					}
@@ -929,21 +927,21 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						g_snprintf(buffer, 512,
 							"m=%s 0 %s 0\r\n",
 							m->m_type_name, m->m_proto_name);
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 						/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 						g_snprintf(buffer, 512,
 							"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 						m = m->m_next;
 						continue;
 					}
-					g_strlcat(sdp, "m=application 1 DTLS/SCTP", BUFSIZE);
+					g_strlcat(sdp, "m=application 1 DTLS/SCTP", JANUS_BUFSIZE);
 				} else {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported application media line...\n", handle->handle_id);
 					g_snprintf(buffer, 512,
 						"m=%s 0 %s 0\r\n",
 						m->m_type_name, m->m_proto_name);
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
@@ -953,11 +951,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				g_snprintf(buffer, 512,
 					"m=%s 0 %s 0\r\n",
 					m->m_type_name, m->m_proto_name);
-				g_strlcat(sdp, buffer, BUFSIZE);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 				/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 				g_snprintf(buffer, 512,
 					"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-				g_strlcat(sdp, buffer, BUFSIZE);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 				m = m->m_next;
 				continue;
 			}
@@ -966,12 +964,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] No RTP maps?? trying formats...\n", handle->handle_id);
 				if(!m->m_format) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] No formats either?? this sucks!\n", handle->handle_id);
-					g_strlcat(sdp, " 0", BUFSIZE);	/* FIXME Won't work apparently */
+					g_strlcat(sdp, " 0", JANUS_BUFSIZE);	/* FIXME Won't work apparently */
 				} else {
 					sdp_list_t *fmt = m->m_format;
 					while(fmt) {
 						g_snprintf(buffer, 512, " %s", fmt->l_text);
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 						fmt = fmt->l_next;
 					}
 				}
@@ -979,22 +977,22 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				sdp_rtpmap_t *r = m->m_rtpmaps;
 				while(r) {
 					g_snprintf(buffer, 512, " %d", r->rm_pt);
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					r = r->rm_next;
 				}
 			}
-			g_strlcat(sdp, "\r\n", BUFSIZE);
+			g_strlcat(sdp, "\r\n", JANUS_BUFSIZE);
 			/* Media connection c= */
 			g_snprintf(buffer, 512,
 				"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
-			g_strlcat(sdp, buffer, BUFSIZE);
+			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			/* Any bandwidth? */
 			if(m->m_bandwidths) {
 				g_snprintf(buffer, 512,
 					"b=%s:%lu\r\n",	/* FIXME Are we doing this correctly? */
 						m->m_bandwidths->b_modifier_name ? m->m_bandwidths->b_modifier_name : "AS",
 						m->m_bandwidths->b_value);
-				g_strlcat(sdp, buffer, BUFSIZE);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			}
 			/* a=mid:(audio|video|data) */
 			switch(m->m_type) {
@@ -1014,27 +1012,27 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				default:
 					break;
 			}
-			g_strlcat(sdp, buffer, BUFSIZE);
+			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			if(m->m_type != sdp_media_application) {
 				/* What is the direction? */
 				switch(m->m_mode) {
 					case sdp_sendonly:
-						g_strlcat(sdp, "a=sendonly\r\n", BUFSIZE);
+						g_strlcat(sdp, "a=sendonly\r\n", JANUS_BUFSIZE);
 						break;
 					case sdp_recvonly:
-						g_strlcat(sdp, "a=recvonly\r\n", BUFSIZE);
+						g_strlcat(sdp, "a=recvonly\r\n", JANUS_BUFSIZE);
 						break;
 					case sdp_inactive:
-						g_strlcat(sdp, "a=inactive\r\n", BUFSIZE);
+						g_strlcat(sdp, "a=inactive\r\n", JANUS_BUFSIZE);
 						break;
 					case sdp_sendrecv:
 					default:
-						g_strlcat(sdp, "a=sendrecv\r\n", BUFSIZE);
+						g_strlcat(sdp, "a=sendrecv\r\n", JANUS_BUFSIZE);
 						break;
 				}
 				/* rtcp-mux */
 				g_snprintf(buffer, 512, "a=rtcp-mux\n");
-				g_strlcat(sdp, buffer, BUFSIZE);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 				/* RTP maps */
 				if(m->m_rtpmaps) {
 					sdp_rtpmap_t *rm = NULL;
@@ -1043,12 +1041,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 							rm->rm_pt, rm->rm_encoding, rm->rm_rate,
 							rm->rm_params ? "/" : "", 
 							rm->rm_params ? rm->rm_params : "");
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					}
 					for(rm = m->m_rtpmaps; rm; rm = rm->rm_next) {
 						if(rm->rm_fmtp) {
 							g_snprintf(buffer, 512, "a=fmtp:%u %s\r\n", rm->rm_pt, rm->rm_fmtp);
-							g_strlcat(sdp, buffer, BUFSIZE);
+							g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 						}
 					}
 				}
@@ -1074,7 +1072,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 			if(password != NULL)
 				g_free(password);
 			password = NULL;
-			g_strlcat(sdp, buffer, BUFSIZE);
+			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			/* Copy existing media attributes, if any */
 			if(m->m_attributes) {
 				sdp_attribute_t *a = m->m_attributes;
@@ -1087,11 +1085,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					if(a->a_value == NULL) {
 						g_snprintf(buffer, 512,
 							"a=%s\r\n", a->a_name);
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					} else {
 						g_snprintf(buffer, 512,
 							"a=%s:%s\r\n", a->a_name, a->a_value);
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					}
 					a = a->a_next;
 				}
@@ -1106,7 +1104,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						"a=ssrc:%"SCNu32" mslabel:janus\r\n"
 						"a=ssrc:%"SCNu32" label:janusa0\r\n",
 							stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc, stream->audio_ssrc);
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 				} else if(m->m_type == sdp_media_video && m->m_mode != sdp_inactive && m->m_mode != sdp_recvonly) {
 					g_snprintf(buffer, 512,
 						"a=ssrc:%"SCNu32" cname:janusvideo\r\n"
@@ -1114,7 +1112,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						"a=ssrc:%"SCNu32" mslabel:janus\r\n"
 						"a=ssrc:%"SCNu32" label:janusv0\r\n",
 							stream->video_ssrc, stream->video_ssrc, stream->video_ssrc, stream->video_ssrc);
-					g_strlcat(sdp, buffer, BUFSIZE);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 				}
 			} else {
 				/* Multiple SSRCs */
@@ -1151,11 +1149,11 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 								"a=ssrc:%"SCNu32" label:%sv0\r\n",
 									ssrc, id, ssrc, id, id, ssrc, id, ssrc, id);
 						}
-						g_strlcat(sdp, buffer, BUFSIZE);
+						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 						/* Add to msid-semantic, if needed */
 						if(!strstr(wms, id)) {
 							g_snprintf(mslabel, 255, " %s", id);
-							g_strlcat(wms, mslabel, BUFSIZE);
+							g_strlcat(wms, mslabel, JANUS_BUFSIZE);
 						}
 						/* Go on */
 						a = a->a_next;
