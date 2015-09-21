@@ -42,7 +42,7 @@
 #include "plugins/plugin.h"
 
 
-#define JANUS_BUFSIZE	4096
+#define JANUS_BUFSIZE	8192
 
 
 /*! \brief Incoming HTTP message */
