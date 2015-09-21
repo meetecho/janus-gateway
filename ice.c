@@ -2205,11 +2205,13 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
 		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
-	handle->agent = nice_agent_new(handle->icectx, NICE_COMPATIBILITY_DRAFT19);
+	handle->agent = g_object_new(NICE_TYPE_AGENT,
+		"compatibility", NICE_COMPATIBILITY_DRAFT19,
+		"main-context", handle->icectx,
+		"reliable", FALSE,
+		"full-mode", janus_ice_lite_enabled ? FALSE : TRUE,
+		NULL);
 	handle->agent_created = janus_get_monotonic_time();
-	if(janus_ice_lite_enabled) {
-		g_object_set(G_OBJECT(handle->agent), "full-mode", FALSE, NULL);
-	}
 	/* Any STUN server to use? */
 	if(janus_stun_server != NULL && janus_stun_port > 0) {
 		g_object_set(G_OBJECT(handle->agent),
