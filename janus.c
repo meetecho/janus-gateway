@@ -1729,7 +1729,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			int error = 0;
 			const char *error_string = NULL;
 			if((error = janus_ice_trickle_parse(handle, candidate, &error_string)) != 0) {
-				ret = janus_process_error(source, session_id, transaction_text, error, error_string);
+				ret = janus_process_error(source, session_id, transaction_text, error, "%s", error_string);
 				janus_mutex_unlock(&handle->mutex);
 				goto jsondone;
 			}
