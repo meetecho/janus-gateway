@@ -1927,7 +1927,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 #endif
 			}
 		}
-		g_strlcat(sdp, buffer, BUFSIZE);
+		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s", handle->handle_id, buffer); /* buffer already newline terminated */
 		if(log_candidates) {
 			/* Save for the summary, in case we need it */
@@ -2684,7 +2684,7 @@ void *janus_ice_send_thread(void *data) {
 				}
 			} else {
 				/* FIXME Copy in a buffer and fix SSRC */
-				char sbuf[BUFSIZE];
+				char sbuf[JANUS_BUFSIZE];
 				memcpy(&sbuf, pkt->data, pkt->length);
 				/* Fix all SSRCs! */
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
@@ -2784,7 +2784,7 @@ void *janus_ice_send_thread(void *data) {
 					}
 				} else {
 					/* FIXME Copy in a buffer and fix SSRC */
-					char sbuf[BUFSIZE];
+					char sbuf[JANUS_BUFSIZE];
 					memcpy(&sbuf, pkt->data, pkt->length);
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
 						/* Overwrite SSRC */
