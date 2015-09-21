@@ -1483,7 +1483,7 @@ static void *janus_sip_handler(void *data) {
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-audio", recording_base);
+							g_snprintf(filename, 255, "%s-peer-audio", recording_base);
 							session->arc_peer = janus_recorder_create(NULL, 0, filename);
 							if(session->arc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
@@ -1506,7 +1506,7 @@ static void *janus_sip_handler(void *data) {
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-video", recording_base);
+							g_snprintf(filename, 255, "%s-peer-video", recording_base);
 							session->vrc_peer = janus_recorder_create(NULL, 1, filename);
 							if(session->vrc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
@@ -1536,7 +1536,7 @@ static void *janus_sip_handler(void *data) {
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-audio", recording_base);
+							g_snprintf(filename, 255, "%s-user-audio", recording_base);
 							session->arc = janus_recorder_create(NULL, 0, filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
@@ -1559,7 +1559,7 @@ static void *janus_sip_handler(void *data) {
 						memset(filename, 0, 255);
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-video", recording_base);
+							g_snprintf(filename, 255, "%s-user-video", recording_base);
 							session->vrc = janus_recorder_create(NULL, 1, filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
