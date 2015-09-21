@@ -42,6 +42,14 @@ void janus_sdp_deinit(void) {
 }
 
 
+/* Fake attribute we use for the sendrecv hack */
+static sdp_attribute_t fakedir = {
+	.a_size = sizeof(sdp_attribute_t),
+	.a_name = "jfmod",
+	.a_value = "sr"
+};
+
+
 /* SDP parser */
 void janus_sdp_free(janus_sdp *sdp) {
 	if(!sdp)
@@ -686,11 +694,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 			}
 			if(m->m_type != sdp_media_application && m->m_mode == sdp_sendrecv) {
 				/* FIXME sendrecv hack: sofia-sdp doesn't print sendrecv, but we want it to */
-				sdp_attribute_t *fakedir = calloc(1, sizeof(sdp_attribute_t));
-				fakedir->a_size = sizeof(sdp_attribute_t);
-				fakedir->a_name = g_strdup("jfmod");
-				fakedir->a_value = g_strdup("sr");
-				sdp_attribute_append(&m->m_attributes, fakedir);
+				sdp_attribute_append(&m->m_attributes, &fakedir);
 			}
 			m = m->m_next;
 		}

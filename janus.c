@@ -20,7 +20,6 @@
 #include <signal.h>
 #include <getopt.h>
 #include <sys/resource.h>
-#include <sys/socket.h>
 
 #include "janus.h"
 #include "cmdline.h"
