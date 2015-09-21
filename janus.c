@@ -1210,6 +1210,7 @@ int janus_process_incoming_request(janus_request *request) {
 			/* We got multiple candidates in an array */
 			if(!json_is_array(candidates)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "candidates is not an array");
+				janus_mutex_unlock(&handle->mutex);
 				goto jsondone;
 			}
 			JANUS_LOG(LOG_INFO, "Got multiple candidates (%zu)\n", json_array_size(candidates));
