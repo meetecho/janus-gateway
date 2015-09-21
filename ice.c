@@ -26,6 +26,7 @@
 #include "ice.h"
 #include "turnrest.h"
 #include "dtls.h"
+#include "sdp.h"
 #include "rtp.h"
 #include "rtcp.h"
 #include "apierror.h"
@@ -388,6 +389,124 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 
 	janus_session_notify_event(session->session_id, notification);
 }
+
+
+/* Trickle helpers */
+janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate) {
+	if(transaction == NULL || candidate == NULL)
+		return NULL;
+	janus_ice_trickle *trickle = g_malloc0(sizeof(janus_ice_trickle));
+	trickle->handle = handle;
+	trickle->received = janus_get_monotonic_time();
+	trickle->transaction = g_strdup(transaction);
+	trickle->candidate = json_deep_copy(candidate);
+	return trickle;
+}
+
+gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const char **error) {
+	if(handle == NULL) {
+		*error = "Invalid handle";
+		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	}
+	/* Parse trickle candidate */
+	if(!json_is_object(candidate) || json_object_get(candidate, "completed") != NULL) {
+		JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
+	} else {
+		/* Handle remote candidate */
+		json_t *mid = json_object_get(candidate, "sdpMid");
+		if(!mid) {
+			*error = "Trickle error: missing mandatory element (sdpMid)";
+			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
+		}
+		if(!json_is_string(mid)) {
+			*error = "Trickle error: invalid element type (sdpMid should be a string)";
+			return JANUS_ERROR_INVALID_ELEMENT_TYPE;
+		}
+		json_t *mline = json_object_get(candidate, "sdpMLineIndex");
+		if(!mline) {
+			*error = "Trickle error: missing mandatory element (sdpMLineIndex)";
+			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
+		}
+		if(!json_is_integer(mline) || json_integer_value(mline) < 0) {
+			*error = "Trickle error: invalid element type (sdpMLineIndex should be an integer)";
+			return JANUS_ERROR_INVALID_ELEMENT_TYPE;
+		}
+		json_t *rc = json_object_get(candidate, "candidate");
+		if(!rc) {
+			*error = "Trickle error: missing mandatory element (candidate)";
+			return JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
+		}
+		if(!json_is_string(rc)) {
+			*error = "Trickle error: invalid element type (candidate should be a string)";
+			return JANUS_ERROR_INVALID_ELEMENT_TYPE;
+		}
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Trickle candidate (%s): %s\n", handle->handle_id, json_string_value(mid), json_string_value(rc));
+		/* Parse it */
+		int sdpMLineIndex = json_integer_value(mline);
+		int video = 0, data = 0;
+		/* FIXME badly, we should have an array of m-lines in the handle object */
+		switch(sdpMLineIndex) {
+			case 0:
+				if(handle->audio_stream == NULL) {
+					video = handle->video_stream ? 1 : 0;
+					data = !video;
+				}
+				break;
+			case 1:
+				if(handle->audio_stream == NULL) {
+					data = 1;
+				} else {
+					video = handle->video_stream ? 1 : 0;
+					data = !video;
+				}
+				break;
+			case 2:
+				data = 1;
+				break;
+			default:
+				/* FIXME We don't support more than 3 m-lines right now */
+				*error = "Trickle error: invalid element type (sdpMLineIndex not [0,2])";
+				return JANUS_ERROR_INVALID_ELEMENT_TYPE;
+		}
+#ifndef HAVE_SCTP
+		data = 0;
+#endif
+		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
+				&& (
+					((video || data) && handle->audio_stream != NULL) || 
+						((data) && handle->video_stream != NULL))
+					) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
+		} else {
+			janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
+			if(stream == NULL) {
+				*error = "Trickle error: invalid element type (no such stream)";
+				return JANUS_ERROR_TRICKE_INVALID_STREAM;
+			}
+			int res = janus_sdp_parse_candidate(stream, json_string_value(rc), 1);
+			if(res != 0) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
+				/* FIXME Should we return an error? */
+			}
+		}
+	}
+	return 0;
+}
+
+void janus_ice_trickle_destroy(janus_ice_trickle *trickle) {
+	if(trickle == NULL)
+		return;
+	trickle->handle = NULL;
+	if(trickle->transaction)
+		g_free(trickle->transaction);
+	trickle->transaction = NULL;
+	if(trickle->candidate)
+		json_decref(trickle->candidate);
+	trickle->candidate = NULL;
+	g_free(trickle);
+}
+
 
 /* libnice initialization */
 void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port) {
@@ -901,6 +1020,16 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		handle->agent = NULL;
 	}
 	handle->agent_created = 0;
+	if(handle->pending_trickles) {
+		while(handle->pending_trickles) {
+			GList *temp = g_list_first(handle->pending_trickles);
+			handle->pending_trickles = g_list_remove_link(handle->pending_trickles, temp);
+			janus_ice_trickle *trickle = (janus_ice_trickle *)temp->data;
+			g_list_free(temp);
+			janus_ice_trickle_destroy(trickle);
+		}
+	}
+	handle->pending_trickles = NULL;
 	if(handle->remote_hashing != NULL) {
 		g_free(handle->remote_hashing);
 		handle->remote_hashing = NULL;

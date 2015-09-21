@@ -130,6 +130,8 @@ typedef struct janus_ice_stream janus_ice_stream;
 typedef struct janus_ice_component janus_ice_component;
 /*! \brief Janus enqueued (S)RTP/(S)RTCP packet to send */
 typedef struct janus_ice_queued_packet janus_ice_queued_packet;
+/*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
+typedef struct janus_ice_trickle janus_ice_trickle;
 
 
 #define JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER	(1 << 0)
@@ -271,6 +273,8 @@ struct janus_ice_handle {
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
 	gchar *remote_sdp;
+	/*! \brief List of pending trickle candidates (those we received before getting the JSEP offer) */
+	GList *pending_trickles;
 	/*! \brief Queue of outgoing packets to send */
 	GAsyncQueue *queued_packets;
 	/*! \brief GLib thread for sending outgoing packets */
@@ -375,6 +379,40 @@ struct janus_ice_component {
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
 };
+
+/*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
+typedef struct janus_ice_trickle {
+	/*! \brief Janus ICE handle this trickle candidate belongs to */
+	janus_ice_handle *handle;
+	/*! \brief Monotonic time of when this trickle candidate has been received */
+	gint64 received;
+	/*! \brief Janus API transaction ID of the original trickle request */
+	char *transaction;
+	/*! \brief JSON object of the trickle candidate(s) */
+	json_t *candidate;
+} janus_ice_trickle;
+
+/** @name Janus ICE trickle candidates methods
+ */
+///@{
+/*! \brief Helper method to allocate a janus_ice_trickle instance
+ * @param[in] handle The Janus ICE handle this trickle candidate belongs to
+ * @param[in] transaction The Janus API ID of the original trickle request
+ * @param[in] candidate The trickle candidate, as a Jansson object
+ * @returns a pointer to the new instance, if successful, NULL otherwise */
+janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate);
+/*! \brief Helper method to parse trickle candidates
+ * @param[in] handle The Janus ICE handle this candidate belongs to
+ * @param[in] candidate The trickle candidate to parse, as a Jansson object
+ * @param[in,out] error Error string describing the failure, if any
+ * @returns 0 in case of success, any code from apierror.h in case of failure */
+gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const char **error);
+/*! \brief Helper method to destroy a janus_ice_trickle instance
+ * @param[in] trickle The janus_ice_trickle instance to destroy */
+void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
+///@}
+
+
 
 #define JANUS_ICE_PACKET_AUDIO	0
 #define JANUS_ICE_PACKET_VIDEO	1
