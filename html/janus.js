@@ -40,8 +40,11 @@ Janus.init = function(options) {
 		window.onbeforeunload = function() {
 			Janus.log("Closing window");
 			for(var s in Janus.sessions) {
-				Janus.log("Destroying session " + s);
-				Janus.sessions[s].destroy();
+				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
+						Janus.sessions[s].destroyOnUnload) {
+					Janus.log("Destroying session " + s);
+					Janus.sessions[s].destroy();
+				}
 			}
 		}
 		// Helper to add external JavaScript sources
@@ -137,6 +140,10 @@ function Janus(gatewayCallbacks) {
 	var apisecret = null;
 	if(gatewayCallbacks.apisecret !== undefined && gatewayCallbacks.apisecret !== null)
 		apisecret = gatewayCallbacks.apisecret;
+	// Whether we should destroy this session when onbeforeunload is called
+	this.destroyOnUnload = true;
+	if(gatewayCallbacks.destroyOnUnload !== undefined && gatewayCallbacks.destroyOnUnload !== null)
+		this.destroyOnUnload = (gatewayCallbacks.destroyOnUnload === true);
 
 	var connected = false;
 	var sessionId = null;
