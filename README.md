@@ -236,12 +236,15 @@ or on the command line:
 	-k, --cert-key=filename       HTTPS/DTLS certificate key
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g., 
 								  gateway behind NAT, default=none)
+	-E, --ice-enforce-list=list   Comma-separated list of the only interfaces to
+                                  use for ICE gathering; partial strings are
+                                  supported (e.g., eth0 or eno1,wlan0,
+                                  default=none)
 	-X, --ice-ignore-list=list    Comma-separated list of interfaces or IP 
                                   addresses to ignore for ICE gathering; 
                                   partial strings are supported (e.g., 
                                   vmnet8,192.168.0.1,10.0.0.1 or 
                                   vmnet,192.168., default=vmnet)
-	-e, --public-ip=ipaddress     Public address of the machine, to use in SDP
 	-6, --ipv6-candidates         Whether to enable IPv6 candidates or not 
                                   (experimental)  (default=off)
 	-l, --libnice-debug           Whether to enable libnice debugging or not  

@@ -134,32 +134,60 @@ void janus_ice_debugging_disable(void) {
 }
 
 
-/* Interface/IP ignore list */
-GList *janus_ice_ignore_list = NULL;
-janus_mutex ignore_list_mutex;
-void janus_ice_ignore_interface(const char *ip) {
-	if(ip == NULL)
-		return;
-	/* Is this an IP or an interface? */
-	janus_mutex_lock(&ignore_list_mutex);
-	janus_ice_ignore_list = g_list_append(janus_ice_ignore_list, (gpointer)ip);
-	janus_mutex_unlock(&ignore_list_mutex);
-}
+/* Interface/IP enforce/ignore lists */
+GList *janus_ice_enforce_list = NULL, *janus_ice_ignore_list = NULL;
+janus_mutex ice_list_mutex;
 
-gboolean janus_ice_is_ignored(const char *ip) {
-	if(ip == NULL || janus_ice_ignore_list == NULL)
+void janus_ice_enforce_interface(const char *interface) {
+	if(interface == NULL)
+		return;
+	/* The enforce list only handles interfaces */
+	janus_mutex_lock(&ice_list_mutex);
+	janus_ice_enforce_list = g_list_append(janus_ice_enforce_list, (gpointer)interface);
+	janus_mutex_unlock(&ice_list_mutex);
+}
+gboolean janus_ice_is_enforced(const char *interface) {
+	if(interface == NULL || janus_ice_enforce_list == NULL)
 		return false;
-	janus_mutex_lock(&ignore_list_mutex);
-	GList *temp = janus_ice_ignore_list;
+	janus_mutex_lock(&ice_list_mutex);
+	GList *temp = janus_ice_enforce_list;
 	while(temp) {
-		const char *ignored = (const char *)temp->data;
-		if(ignored != NULL && strstr(ip, ignored)) {
-			janus_mutex_unlock(&ignore_list_mutex);
+		const char *enforced = (const char *)temp->data;
+		if(enforced != NULL && strstr(interface, enforced)) {
+			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
 		temp = temp->next;
 	}
-	janus_mutex_unlock(&ignore_list_mutex);
+	janus_mutex_unlock(&ice_list_mutex);
+	return false;
+}
+
+void janus_ice_ignore_interface(const char *ip) {
+	if(ip == NULL)
+		return;
+	/* Is this an IP or an interface? */
+	janus_mutex_lock(&ice_list_mutex);
+	janus_ice_ignore_list = g_list_append(janus_ice_ignore_list, (gpointer)ip);
+	if(janus_ice_enforce_list != NULL) {
+		JANUS_LOG(LOG_WARN, "Added %s to the ICE ignore list, but the ICE enforce list is not empty: the ICE ignore list will not be used\n", ip);
+	}
+	janus_mutex_unlock(&ice_list_mutex);
+}
+gboolean janus_ice_is_ignored(const char *ip) {
+	if(ip == NULL || janus_ice_ignore_list == NULL)
+		return false;
+	janus_mutex_lock(&ice_list_mutex);
+	GList *temp = janus_ice_ignore_list;
+	while(temp) {
+		const char *ignored = (const char *)temp->data;
+		if(ignored != NULL && strstr(ip, ignored)) {
+			janus_mutex_unlock(&ice_list_mutex);
+			return true;
+		}
+		temp = temp->next;
+	}
+	janus_mutex_unlock(&ice_list_mutex);
 	return false;
 }
 
@@ -668,13 +696,17 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", inet_ntoa(address.sin_addr));
+		char *public_ip = inet_ntoa(address.sin_addr);
+		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+		janus_set_public_ip(public_ip);
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", inet_ntoa(address.sin_addr));
+		char *public_ip = inet_ntoa(address.sin_addr);
+		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+		janus_set_public_ip(public_ip);
 		return 0;
 	}
 	return -1;
@@ -1793,16 +1825,11 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 	}
 	NiceAgent* agent = handle->agent;
 	/* adding a stream should cause host candidates to be generated */
+	char *host_ip = NULL;
 	GSList *candidates, *i;
 	candidates = nice_agent_get_local_candidates (agent, stream_id, component_id);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] We have %d candidates for Stream #%d, Component #%d\n", handle->handle_id, g_slist_length(candidates), stream_id, component_id);
 	gboolean log_candidates = (component->local_candidates == NULL);
-	/* Any provided public IP to consider? */
-	char *host_ip = NULL;
-	if(janus_get_public_ip() != janus_get_local_ip()) {
-		host_ip = janus_get_public_ip(); 
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
-	} 
 	for (i = candidates; i; i = i->next) {
 		NiceCandidate *c = (NiceCandidate *) i->data;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Stream #%d, Component #%d\n", handle->handle_id, c->stream_id, c->component_id);
@@ -2273,9 +2300,14 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			/* We only add IPv6 addresses if support for them has been explicitly enabled (still WIP, mostly) */
 			if(family == AF_INET6 && !janus_ipv6_enabled)
 				continue;
-			/* Check the interface name first: we can ignore that as well */
-			if(ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
-				continue;
+			/* Check the interface name first, we can enforce/ignore that as well: enforce list always has precedence */
+			if(janus_ice_enforce_list != NULL) {
+				if(ifa->ifa_name != NULL && !janus_ice_is_enforced(ifa->ifa_name))
+					continue;
+			} else {
+				if(ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
+					continue;
+			}
 			s = getnameinfo(ifa->ifa_addr,
 					(family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
 					host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
@@ -2286,8 +2318,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			/* Skip 0.0.0.0, :: and local scoped addresses  */
 			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || !strncmp(host, "fe80:", 5))
 				continue;
-			/* Check if this IP address is in the ignore list, now */
-			if(janus_ice_is_ignored(host))
+			/* Check if this IP address is in the ignore list, now (if an enforce list is up, then we already checked) */
+			if(janus_ice_enforce_list == NULL && janus_ice_is_ignored(host))
 				continue;
 			/* Ok, add interface to the ICE agent */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding %s to the addresses to gather candidates for\n", handle->handle_id, host);
