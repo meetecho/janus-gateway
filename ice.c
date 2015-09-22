@@ -138,22 +138,22 @@ void janus_ice_debugging_disable(void) {
 GList *janus_ice_enforce_list = NULL, *janus_ice_ignore_list = NULL;
 janus_mutex ice_list_mutex;
 
-void janus_ice_enforce_interface(const char *interface) {
-	if(interface == NULL)
+void janus_ice_enforce_interface(const char *ip) {
+	if(ip == NULL)
 		return;
-	/* The enforce list only handles interfaces */
+	/* Is this an IP or an interface? */
 	janus_mutex_lock(&ice_list_mutex);
-	janus_ice_enforce_list = g_list_append(janus_ice_enforce_list, (gpointer)interface);
+	janus_ice_enforce_list = g_list_append(janus_ice_enforce_list, (gpointer)ip);
 	janus_mutex_unlock(&ice_list_mutex);
 }
-gboolean janus_ice_is_enforced(const char *interface) {
-	if(interface == NULL || janus_ice_enforce_list == NULL)
+gboolean janus_ice_is_enforced(const char *ip) {
+	if(ip == NULL || janus_ice_enforce_list == NULL)
 		return false;
 	janus_mutex_lock(&ice_list_mutex);
 	GList *temp = janus_ice_enforce_list;
 	while(temp) {
 		const char *enforced = (const char *)temp->data;
-		if(enforced != NULL && strstr(interface, enforced)) {
+		if(enforced != NULL && strstr(ip, enforced)) {
 			janus_mutex_unlock(&ice_list_mutex);
 			return true;
 		}
@@ -2300,14 +2300,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			/* We only add IPv6 addresses if support for them has been explicitly enabled (still WIP, mostly) */
 			if(family == AF_INET6 && !janus_ipv6_enabled)
 				continue;
-			/* Check the interface name first, we can enforce/ignore that as well: enforce list always has precedence */
-			if(janus_ice_enforce_list != NULL) {
-				if(ifa->ifa_name != NULL && !janus_ice_is_enforced(ifa->ifa_name))
-					continue;
-			} else {
-				if(ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
-					continue;
-			}
+			/* Check the interface name first, we can ignore that as well: enforce list would be checked later */
+			if(janus_ice_enforce_list == NULL && ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
+				continue;
 			s = getnameinfo(ifa->ifa_addr,
 					(family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
 					host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
@@ -2318,9 +2313,14 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			/* Skip 0.0.0.0, :: and local scoped addresses  */
 			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || !strncmp(host, "fe80:", 5))
 				continue;
-			/* Check if this IP address is in the ignore list, now (if an enforce list is up, then we already checked) */
-			if(janus_ice_enforce_list == NULL && janus_ice_is_ignored(host))
-				continue;
+			/* Check if this IP address is in the ignore/enforce list, now: the enforce list has the precedence */
+			if(janus_ice_enforce_list != NULL) {
+				if(ifa->ifa_name != NULL && !janus_ice_is_enforced(ifa->ifa_name) && !janus_ice_is_enforced(host))
+					continue;
+			} else {
+				if(janus_ice_is_ignored(host))
+					continue;
+			}
 			/* Ok, add interface to the ICE agent */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding %s to the addresses to gather candidates for\n", handle->handle_id, host);
 			NiceAddress addr_local;
