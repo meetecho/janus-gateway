@@ -377,6 +377,22 @@ void *janus_sip_watchdog(void *data) {
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
+					if (session->account.identity) {
+					    g_free(session->account.identity);
+					    session->account.identity = NULL;
+					}
+					if (session->account.proxy) {
+					    g_free(session->account.proxy);
+					    session->account.proxy = NULL;
+					}
+					if (session->account.secret) {
+					    g_free(session->account.secret);
+					    session->account.secret = NULL;
+					}
+					if (session->account.username) {
+					    g_free(session->account.username);
+					    session->account.username = NULL;
+					}
 					if (session->callee) {
 					    g_free(session->callee);
 					    session->callee = NULL;
@@ -385,9 +401,9 @@ void *janus_sip_watchdog(void *data) {
 					    g_free(session->transaction);
 					    session->transaction = NULL;
 					}
-					if (session->stack->session) {
-					    g_free(session->stack->session);
-					    session->stack->session = NULL;
+					if (session->media.remote_ip) {
+					    g_free(session->media.remote_ip);
+					    session->media.remote_ip = NULL;
 					}
 					if (session->stack) {
 					    g_free(session->stack);
