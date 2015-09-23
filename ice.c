@@ -1963,65 +1963,10 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 #endif
 			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
-			/* 'prflx' candidate */
-			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-				g_snprintf(buffer, 100,
-					"a=candidate:%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n", 
-						c->foundation,
-						c->component_id,
-						"udp",
-						c->priority,
-						address,
-						port,
-						base_address,
-						base_port);
-			} else {
-				if(!janus_ice_tcp_enabled) {
-					/* ICE-TCP support disabled */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping prflx TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				}
-#ifndef HAVE_LIBNICE_TCP
-				/* TCP candidates are only supported since libnice 0.1.8 */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping prflx TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
-				nice_candidate_free(c);
-				continue;
-#else
-				const char *type = NULL;
-				switch(c->transport) {
-					case NICE_CANDIDATE_TRANSPORT_TCP_ACTIVE:
-						type = "active";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_PASSIVE:
-						type = "passive";
-						break;
-					case NICE_CANDIDATE_TRANSPORT_TCP_SO:
-						type = "so";
-						break;
-					default:
-						break;
-				}
-				if(type == NULL) {
-					/* FIXME Unsupported transport */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Unsupported transport, skipping non-UDP/TCP prflx candidate...\n", handle->handle_id);
-					nice_candidate_free(c);
-					continue;
-				} else {
-					g_snprintf(buffer, 100,
-						"a=candidate:%s %d %s %d %s %d typ prflx raddr %s rport %d tcptype %s\r\n", 
-							c->foundation,
-							c->component_id,
-							"tcp",
-							c->priority,
-							address,
-							port,
-							base_address,
-							base_port,
-							type);
-				}
-#endif
-			}
+			/* 'prflx' candidate: skip it, we don't add them to the SDP */
+			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
+			nice_candidate_free(c);
+			continue;
 		} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
 			/* 'relay' candidate */
 			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
