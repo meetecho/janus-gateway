@@ -371,29 +371,29 @@ void *janus_sip_watchdog(void *data) {
 					sl = sl->next;
 					continue;
 				}
-				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+				if (now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
 					JANUS_LOG(LOG_VERB, "Freeing old SIP session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
-					sl = rm;					
-                                        if(session->callee) {
-                                            g_free(session->callee);
-                                            session->callee = NULL;
-                                        }
-                                        if(session->transaction) {
-                                            g_free(session->transaction);
-                                            session->transaction = NULL;
-                                        }
-                                        if(session->stack->session) {
-                                            g_free(session->stack->session);
-                                            session->stack->session = NULL;
-                                        }
-                                        if(session->stack) {
-                                            g_free(session->stack);
-                                            session->stack = NULL;
-                                        }
-                                        session->handle = NULL;
+					sl = rm;
+					if (session->callee) {
+					    g_free(session->callee);
+					    session->callee = NULL;
+					}
+					if (session->transaction) {
+					    g_free(session->transaction);
+					    session->transaction = NULL;
+					}
+					if (session->stack->session) {
+					    g_free(session->stack->session);
+					    session->stack->session = NULL;
+					}
+					if (session->stack) {
+					    g_free(session->stack);
+					    session->stack = NULL;
+					}
+					session->handle = NULL;
 					g_free(session);
 					session = NULL;
 					continue;
@@ -1771,22 +1771,22 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* Busy */
 				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
 				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
-                                /* Notify the web app about the missed invite */
-                                json_t *missed = json_object();
-                                json_object_set_new(missed, "sip", json_string("event"));
-                                json_t *result = json_object();
-                                json_object_set_new(result, "event", json_string("missed_call"));
-                                char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
-                                json_object_set_new(result, "caller", json_string(caller_text));
-                                g_free(caller_text);
-                                json_object_set_new(missed, "result", result);
-                                char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-                                json_decref(missed); 
+				/* Notify the web app about the missed invite */
+				json_t *missed = json_object();
+				json_object_set_new(missed, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("missed_call"));
+				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+				json_object_set_new(result, "caller", json_string(caller_text));
+				su_free(session->stack->s_home, caller_text);
+				json_object_set_new(missed, "result", result);
+				char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(missed);
 				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-                                g_free(missed_text);
-                                sdp_parser_free(parser);
+				g_free(missed_text);
+				sdp_parser_free(parser);
 				break;
 			}
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
