@@ -4195,6 +4195,9 @@ gint main(int argc, char *argv[])
 			janus_config_add_item(config, "nat", "stun_port", "3478");
 		}
 	}
+	if(args_info.nat_1_1_given) {
+		janus_config_add_item(config, "nat", "nat_1_1_mapping", args_info.nat_1_1_arg);
+	}
 	if(args_info.ice_enforce_list_given) {
 		janus_config_add_item(config, "nat", "ice_enforce_list", args_info.ice_enforce_list_arg);
 	}
@@ -4434,6 +4437,12 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "stun_port");
 	if(item && item->value)
 		stun_port = atoi(item->value);
+	/* Any 1:1 NAT mapping to take into account? */
+	item = janus_config_get_item_drilldown(config, "nat", "nat_1_1_mapping");
+	if(item && item->value) {
+		janus_set_public_ip(item->value);
+		janus_ice_enable_nat_1_1();
+	}
 	/* Any TURN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "turn_server");
 	if(item && item->value)

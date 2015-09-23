@@ -134,6 +134,12 @@ void janus_ice_debugging_disable(void) {
 }
 
 
+/* NAT 1:1 stuff */
+static gboolean nat_1_1_enabled = FALSE;
+void janus_ice_enable_nat_1_1(void) {
+	nat_1_1_enabled = TRUE;
+}
+
 /* Interface/IP enforce/ignore lists */
 GList *janus_ice_enforce_list = NULL, *janus_ice_ignore_list = NULL;
 janus_mutex ice_list_mutex;
@@ -1826,6 +1832,11 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 	NiceAgent* agent = handle->agent;
 	/* adding a stream should cause host candidates to be generated */
 	char *host_ip = NULL;
+	if(nat_1_1_enabled) {
+		/* A 1:1 NAT mapping was specified, overwrite all the host addresses with the public IP */
+		host_ip = janus_get_public_ip();
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Public IP specified and 1:1 NAT mapping enabled (%s), using that as host address in the candidates\n", handle->handle_id, host_ip);
+	}
 	GSList *candidates, *i;
 	candidates = nice_agent_get_local_candidates (agent, stream_id, component_id);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] We have %d candidates for Stream #%d, Component #%d\n", handle->handle_id, g_slist_length(candidates), stream_id, component_id);

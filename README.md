@@ -236,6 +236,9 @@ or on the command line:
 	-k, --cert-key=filename       HTTPS/DTLS certificate key
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g., 
 								  gateway behind NAT, default=none)
+	-1, --nat-1-1=ip              Public IP to put in all host candidates,
+                                  assuming a 1:1 NAT is in place (e.g., Amazon
+                                  EC2 instances, default=none)
 	-E, --ice-enforce-list=list   Comma-separated list of the only interfaces to
                                   use for ICE gathering; partial strings are
                                   supported (e.g., eth0 or eno1,wlan0,
