@@ -125,17 +125,29 @@ static struct libwebsocket_context *wss = NULL, *swss = NULL,
 /* libwebsockets sessions that have been closed */
 static GList *old_wss;
 static janus_mutex old_wss_mutex;
-/* Callback for HTTP-related events (automatically rejected) */
-static int janus_websockets_callback_http(struct libwebsocket_context *this, 
+/* Callbacks for HTTP-related events (automatically rejected) */
+static int janus_websockets_callback_http(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len);
+static int janus_websockets_callback_https(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
 		enum libwebsocket_callback_reasons reason,
 		void *user, void *in, size_t len);
 /* Callbacks for WebSockets-related events */
-static int janus_websockets_callback(struct libwebsocket_context *this, 
+static int janus_websockets_callback(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
 		enum libwebsocket_callback_reasons reason,
 		void *user, void *in, size_t len);
-static int janus_websockets_admin_callback(struct libwebsocket_context *this, 
+static int janus_websockets_callback_secure(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len);
+static int janus_websockets_admin_callback(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len);
+static int janus_websockets_admin_callback_secure(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
 		enum libwebsocket_callback_reasons reason,
 		void *user, void *in, size_t len);
@@ -145,9 +157,19 @@ static struct libwebsocket_protocols wss_protocols[] = {
 	{ "janus-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
+static struct libwebsocket_protocols swss_protocols[] = {
+	{ "http-only", janus_websockets_callback_https, 0, 0 },
+	{ "janus-protocol", janus_websockets_callback_secure, sizeof(janus_websockets_client), 0 },
+	{ NULL, NULL, 0 }
+};
 static struct libwebsocket_protocols admin_wss_protocols[] = {
 	{ "http-only", janus_websockets_callback_http, 0, 0 },
 	{ "janus-admin-protocol", janus_websockets_admin_callback, sizeof(janus_websockets_client), 0 },
+	{ NULL, NULL, 0 }
+};
+static struct libwebsocket_protocols admin_swss_protocols[] = {
+	{ "http-only", janus_websockets_callback_https, 0, 0 },
+	{ "janus-admin-protocol", janus_websockets_admin_callback_secure, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
 /* Helper for debugging reasons */
@@ -363,7 +385,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				memset(&info, 0, sizeof info);
 				info.port = wsport;
 				info.iface = NULL;
-				info.protocols = wss_protocols;
+				info.protocols = swss_protocols;
 				info.extensions = libwebsocket_get_internal_extensions();
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
@@ -431,7 +453,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				memset(&info, 0, sizeof info);
 				info.port = wsport;
 				info.iface = NULL;
-				info.protocols = admin_wss_protocols;
+				info.protocols = admin_swss_protocols;
 				info.extensions = libwebsocket_get_internal_extensions();
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
@@ -671,6 +693,15 @@ static int janus_websockets_callback_http(struct libwebsocket_context *this,
 	return 0;
 }
 
+static int janus_websockets_callback_https(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len)
+{
+	/* We just forward the event to the HTTP handler */
+	return janus_websockets_callback_http(this, wsi, reason, user, in, len);
+}
+
 /* This callback handles Janus API requests */
 static int janus_websockets_callback(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
@@ -796,6 +827,15 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 	return 0;
 }
 
+static int janus_websockets_callback_secure(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len)
+{
+	/* We just forward the event to the Janus API handler */
+	return janus_websockets_callback(this, wsi, reason, user, in, len);
+}
+
 /* This callback handles Admin API requests */
 static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
@@ -919,4 +959,13 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 			break;
 	}
 	return 0;
+}
+
+static int janus_websockets_admin_callback_secure(struct libwebsocket_context *this,
+		struct libwebsocket *wsi,
+		enum libwebsocket_callback_reasons reason,
+		void *user, void *in, size_t len)
+{
+	/* We just forward the event to the Admin API handler */
+	return janus_websockets_admin_callback(this, wsi, reason, user, in, len);
 }
