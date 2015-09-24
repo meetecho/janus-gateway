@@ -87,7 +87,7 @@ version of the library to a specific location. Use the following steps:
 	git clone https://boringssl.googlesource.com/boringssl
 	cd boringssl
 	# We need a specific revision
-	git fetch origin 12fe1b25ead258858309d22ffa9e1f9a316358d7
+	git checkout 12fe1b25ead258858309d22ffa9e1f9a316358d7
 	# Don't barf on errors
 	sed -i s/" -Werror"//g CMakeLists.txt
 	# Build
