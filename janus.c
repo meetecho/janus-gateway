@@ -77,6 +77,29 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream);
 json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
+/* IP addresses */
+static gchar local_ip[INET6_ADDRSTRLEN];
+gchar *janus_get_local_ip(void) {
+	return local_ip;
+}
+static gchar *public_ip = NULL;
+gchar *janus_get_public_ip(void) {
+	/* Fallback to the local IP, if we have no public one */
+	return public_ip ? public_ip : local_ip;
+}
+void janus_set_public_ip(const char *ip) {
+	if(ip == NULL)
+		return;
+	if(public_ip != NULL)
+		g_free(public_ip);
+	public_ip = g_strdup(ip);
+}
+static volatile gint stop = 0;
+gint janus_is_stopping(void) {
+	return g_atomic_int_get(&stop);
+}
+
+
 /* Information */
 json_t *janus_info(const char *transaction);
 json_t *janus_info(const char *transaction) {
@@ -94,6 +117,9 @@ json_t *janus_info(const char *transaction) {
 #else
 	json_object_set_new(info, "data_channels", json_string("false"));
 #endif
+	json_object_set_new(info, "local-ip", json_string(local_ip));
+	if(public_ip != NULL)
+		json_object_set_new(info, "public-ip", json_string(public_ip));
 	json_object_set_new(info, "ipv6", json_string(janus_ice_is_ipv6_enabled() ? "true" : "false"));
 	json_object_set_new(info, "ice-tcp", json_string(janus_ice_is_ice_tcp_enabled() ? "true" : "false"));
 	if(janus_ice_get_stun_server() != NULL) {
@@ -150,27 +176,6 @@ json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "plugins", p_data);
 	
 	return info;
-}
-
-static gchar local_ip[INET6_ADDRSTRLEN];
-gchar *janus_get_local_ip(void) {
-	return local_ip;
-}
-static gchar *public_ip = NULL;
-gchar *janus_get_public_ip(void) {
-	/* Fallback to the local IP, if we have no public one */
-	return public_ip ? public_ip : local_ip;
-}
-void janus_set_public_ip(const char *ip) {
-	if(ip == NULL)
-		return;
-	if(public_ip != NULL)
-		g_free(public_ip);
-	public_ip = g_strdup(ip);
-}
-static volatile gint stop = 0;
-gint janus_is_stopping(void) {
-	return g_atomic_int_get(&stop);
 }
 
 
@@ -2505,8 +2510,11 @@ gint main(int argc, char *argv[])
 			janus_config_add_item(config, "nat", "stun_port", "3478");
 		}
 	}
-	if(args_info.public_ip_given) {
-		janus_config_add_item(config, "nat", "public_ip", args_info.public_ip_arg);
+	if(args_info.nat_1_1_given) {
+		janus_config_add_item(config, "nat", "nat_1_1_mapping", args_info.nat_1_1_arg);
+	}
+	if(args_info.ice_enforce_list_given) {
+		janus_config_add_item(config, "nat", "ice_enforce_list", args_info.ice_enforce_list_arg);
 	}
 	if(args_info.ice_ignore_list_given) {
 		janus_config_add_item(config, "nat", "ice_ignore_list", args_info.ice_ignore_list_arg);
@@ -2550,7 +2558,25 @@ gint main(int argc, char *argv[])
 		janus_log_colors = janus_is_true(item->value);
 	JANUS_PRINT("Debug/log colors are %s\n", janus_log_colors ? "enabled" : "disabled");
 
-	/* Any IP/interface to ignore? */
+	/* Any IP/interface to enforce/ignore? */
+	item = janus_config_get_item_drilldown(config, "nat", "ice_enforce_list");
+	if(item && item->value) {
+		gchar **list = g_strsplit(item->value, ",", -1);
+		gchar *index = list[0];
+		if(index != NULL) {
+			int i=0;
+			while(index != NULL) {
+				if(strlen(index) > 0) {
+					JANUS_LOG(LOG_INFO, "Adding '%s' to the ICE enforce list...\n", index);
+					janus_ice_enforce_interface(g_strdup(index));
+				}
+				i++;
+				index = list[i];
+			}
+		}
+		g_strfreev(list);
+		list = NULL;
+	}
 	item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
 	if(item && item->value) {
 		gchar **list = g_strsplit(item->value, ",", -1);
@@ -2675,6 +2701,12 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "stun_port");
 	if(item && item->value)
 		stun_port = atoi(item->value);
+	/* Any 1:1 NAT mapping to take into account? */
+	item = janus_config_get_item_drilldown(config, "nat", "nat_1_1_mapping");
+	if(item && item->value) {
+		janus_set_public_ip(item->value);
+		janus_ice_enable_nat_1_1();
+	}
 	/* Any TURN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "turn_server");
 	if(item && item->value)
@@ -2764,19 +2796,6 @@ gint main(int argc, char *argv[])
 		}
 	}
 
-	/* Is there a public_ip value to be used for NAT traversal instead? */
-	item = janus_config_get_item_drilldown(config, "nat", "public_ip");
-	if(item && item->value) {
-		if(public_ip != NULL)
-			g_free(public_ip);
-		public_ip = g_strdup((char *)item->value);
-		if(public_ip == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error\n");
-			exit(1);
-		}
-		JANUS_LOG(LOG_INFO, "Using %s as our public IP in SDP\n", public_ip);
-	}
-	
 	/* Setup OpenSSL stuff */
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
@@ -2784,10 +2803,12 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 	server_pem = (char *)item->value;
-	server_key = (char *)item->value;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
-	if(item && item->value)
-		server_key = (char *)item->value;
+	if(!item || !item->value) {
+		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
+		exit(1);
+	}
+	server_key = (char *)item->value;
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 	SSL_library_init();
 	SSL_load_error_strings();

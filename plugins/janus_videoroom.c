@@ -395,11 +395,11 @@ int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listen
 int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_listener, GList *feeds, char *transaction);
 int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, char *transaction, char *event_text);
 
-static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_participant* p, const gchar* host, int port, int is_video) {
+static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_participant *p, const gchar* host, int port, int is_video) {
 	if(!p || !host) {
 		return 0;
 	}
-	rtp_forwarder* forward = malloc(sizeof(rtp_forwarder));
+	rtp_forwarder *forward = malloc(sizeof(rtp_forwarder));
 	forward->is_video = is_video;
 	forward->serv_addr.sin_family = AF_INET;
 	inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
@@ -1443,7 +1443,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
-		int stream_id = json_integer_value(id);
+		guint32 stream_id = json_integer_value(id);
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
 		janus_mutex_unlock(&rooms_mutex);
@@ -1487,7 +1487,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		janus_mutex_lock(&videoroom->participants_mutex);
-		janus_videoroom_participant* publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
+		janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
 		if(publisher == NULL) {
 			janus_mutex_unlock(&videoroom->participants_mutex);
 			JANUS_LOG(LOG_ERR, "No such publisher (%"SCNu64")\n", publisher_id);
@@ -1496,6 +1496,14 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto error;
 		}
 		janus_mutex_lock(&publisher->rtp_forwarders_mutex);
+		if(g_hash_table_lookup(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id)) == NULL) {
+			janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+			janus_mutex_unlock(&videoroom->participants_mutex);
+			JANUS_LOG(LOG_ERR, "No such stream (%"SCNu32")\n", stream_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such stream (%"SCNu32")", stream_id);
+			goto error;
+		}
 		g_hash_table_remove(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id));
 		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 		janus_mutex_unlock(&videoroom->participants_mutex);
