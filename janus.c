@@ -4520,10 +4520,12 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 	server_pem = (char *)item->value;
-	server_key = (char *)item->value;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
-	if(item && item->value)
-		server_key = (char *)item->value;
+	if(!item || !item->value) {
+		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
+		exit(1);
+	}
+	server_key = (char *)item->value;
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 	SSL_library_init();
 	SSL_load_error_strings();
