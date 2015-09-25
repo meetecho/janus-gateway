@@ -524,22 +524,23 @@ void janus_session_free(janus_session *session) {
 
 /* Connection notifiers */
 int janus_ws_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
-	char *ip = inet_ntoa(sin->sin_addr);
+	char *ip = janus_address_to_ip((struct sockaddr *)addr);
 	JANUS_LOG(LOG_HUGE, "New connection on REST API: %s\n", ip);
+	g_free(ip);
 	/* TODO Implement access limitation based on IP addresses */
 	return MHD_YES;
 }
 
 int janus_admin_ws_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
-	char *ip = inet_ntoa(sin->sin_addr);
+	char *ip = janus_address_to_ip((struct sockaddr *)addr);
 	JANUS_LOG(LOG_HUGE, "New connection on admin/monitor: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_admin_is_allowed(ip)) {
+		g_free(ip);
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the admin/monitor interface\n", ip);
 		return MHD_NO;
 	}
+	g_free(ip);
 	return MHD_YES;
 }
 

@@ -88,4 +88,10 @@ int janus_get_vp8_pt(const char *sdp);
  * @param[in,out] family The address family of the address, set by the method if valid
  * @returns true if the address is valid, false otherwise */
 gboolean janus_is_ip_valid(const char *ip, int *family);
+
+/*! \brief Convert a sockaddr address to an IP string
+ * \note The resulting string is allocated, which means the caller must free it itself when done
+ * @param address The sockaddr address to convert
+ * @returns A string containing the IP address, if successful, NULL otherwise */
+char *janus_address_to_ip(struct sockaddr *address);
 #endif

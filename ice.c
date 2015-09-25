@@ -631,19 +631,14 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		stun_port = 3478;
 	JANUS_LOG(LOG_INFO, "STUN server to use: %s:%u\n", stun_server, stun_port);
 	/* Resolve address to get an IP */
-	struct hostent *he = gethostbyname(stun_server);
-	if(he == NULL) {
+	struct addrinfo *res = NULL;
+	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		return -1;
 	}
-	struct in_addr **addr_list = (struct in_addr **)he->h_addr_list;
-	if(addr_list[0] == NULL) {
-		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
-		return -1;
-	}
-	janus_stun_server = g_strdup(inet_ntoa(*addr_list[0]));
+	janus_stun_server = janus_address_to_ip(res->ai_addr);
 	if(janus_stun_server == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		return -1;
 	}
 	janus_stun_port = stun_port;
@@ -702,17 +697,19 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		char *public_ip = inet_ntoa(address.sin_addr);
+		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
 		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
 		janus_set_public_ip(public_ip);
+		g_free(public_ip);
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		char *public_ip = inet_ntoa(address.sin_addr);
+		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
 		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
 		janus_set_public_ip(public_ip);
+		g_free(public_ip);
 		return 0;
 	}
 	return -1;
@@ -726,17 +723,6 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	if(turn_port == 0)
 		turn_port = 3478;
 	JANUS_LOG(LOG_INFO, "TURN server to use: %s:%u (%s)\n", turn_server, turn_port, turn_type);
-	/* Resolve address to get an IP */
-	struct hostent *he = gethostbyname(turn_server);
-	if(he == NULL) {
-		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
-		return -1;
-	}
-	struct in_addr **addr_list = (struct in_addr **)he->h_addr_list;
-	if(addr_list[0] == NULL) {
-		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
-		return -1;
-	}
 	if(!strcasecmp(turn_type, "udp")) {
 		janus_turn_type = NICE_RELAY_TYPE_TURN_UDP;
 	} else if(!strcasecmp(turn_type, "tcp")) {
@@ -747,11 +733,17 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 		JANUS_LOG(LOG_ERR, "Unsupported relay type '%s'...\n", turn_type);
 		return -1;
 	}
+	/* Resolve address to get an IP */
+	struct addrinfo *res = NULL;
+	if(getaddrinfo(turn_server, NULL, NULL, &res) != 0) {
+		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
+		return -1;
+	}
 	if(janus_turn_server != NULL)
 		g_free(janus_turn_server);
-	janus_turn_server = g_strdup(inet_ntoa(*addr_list[0]));
+	janus_turn_server = janus_address_to_ip(res->ai_addr);
 	if(janus_turn_server == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
 		return -1;
 	}
 	janus_turn_port = turn_port;
