@@ -1861,13 +1861,13 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			} else {
 				if(!janus_ice_tcp_enabled) {
 					/* ICE-TCP support disabled */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping host TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping host TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
 					nice_candidate_free(c);
 					continue;
 				}
 #ifndef HAVE_LIBNICE_TCP
 				/* TCP candidates are only supported since libnice 0.1.8 */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping host TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping host TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
 				nice_candidate_free(c);
 				continue;
 #else
@@ -1921,13 +1921,13 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			} else {
 				if(!janus_ice_tcp_enabled) {
 					/* ICE-TCP support disabled */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping srflx TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping srflx TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
 					nice_candidate_free(c);
 					continue;
 				}
 #ifndef HAVE_LIBNICE_TCP
 				/* TCP candidates are only supported since libnice 0.1.8 */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping srflx TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping srflx TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
 				nice_candidate_free(c);
 				continue;
 #else
@@ -1967,7 +1967,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			}
 		} else if(c->type == NICE_CANDIDATE_TYPE_PEER_REFLEXIVE) {
 			/* 'prflx' candidate: skip it, we don't add them to the SDP */
-			JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping prflx candidate...\n", handle->handle_id);
 			nice_candidate_free(c);
 			continue;
 		} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
@@ -1986,13 +1986,13 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			} else {
 				if(!janus_ice_tcp_enabled) {
 					/* ICE-TCP support disabled */
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping relay TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping relay TCP candidate, ICE-TCP support disabled...\n", handle->handle_id);
 					nice_candidate_free(c);
 					continue;
 				}
 #ifndef HAVE_LIBNICE_TCP
 				/* TCP candidates are only supported since libnice 0.1.8 */
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping relay TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Skipping relay TCP candidate, the libnice version doesn't support it...\n", handle->handle_id);
 				nice_candidate_free(c);
 				continue;
 #else
