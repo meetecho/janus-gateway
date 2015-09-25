@@ -634,9 +634,12 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	struct addrinfo *res = NULL;
 	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
+		if(res)
+			freeaddrinfo(res);
 		return -1;
 	}
 	janus_stun_server = janus_address_to_ip(res->ai_addr);
+	freeaddrinfo(res);
 	if(janus_stun_server == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		return -1;
@@ -737,11 +740,14 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	struct addrinfo *res = NULL;
 	if(getaddrinfo(turn_server, NULL, NULL, &res) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
+		if(res)
+			freeaddrinfo(res);
 		return -1;
 	}
 	if(janus_turn_server != NULL)
 		g_free(janus_turn_server);
 	janus_turn_server = janus_address_to_ip(res->ai_addr);
+	freeaddrinfo(res);
 	if(janus_turn_server == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
 		return -1;
