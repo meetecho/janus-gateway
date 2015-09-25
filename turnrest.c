@@ -241,10 +241,13 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		struct addrinfo *res = NULL;
 		if(getaddrinfo(uri_parts[1], NULL, NULL, &res) != 0) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
+			if(res)
+				freeaddrinfo(res);
 			g_strfreev(uri_parts);
 			continue;
 		}
 		instance->server = janus_address_to_ip(res->ai_addr);
+		freeaddrinfo(res);
 		if(instance->server == NULL) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
 			g_strfreev(uri_parts);
