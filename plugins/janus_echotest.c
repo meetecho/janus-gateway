@@ -539,7 +539,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		/* We send back the same text with a custom prefix */
 		const char *prefix = "Janus EchoTest here! You wrote: ";
 		char *reply = g_malloc0(strlen(prefix)+len+1);
-		g_snprintf(reply, strlen(prefix)+len, "%s%s", prefix, text);
+		g_snprintf(reply, strlen(prefix)+len+1, "%s%s", prefix, text);
 		g_free(text);
 		gateway->relay_data(handle, reply, strlen(reply));
 		g_free(reply);
