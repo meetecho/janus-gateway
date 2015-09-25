@@ -70,11 +70,26 @@ uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to get the specified TURN REST API backend, if any
  * @returns The currently specified  TURN REST API backend, if available, or NULL if not */
 char *janus_ice_get_turn_rest_api(void);
+/*! \brief Helper method to force Janus to overwrite all host candidates with the public IP */
+void janus_ice_enable_nat_1_1(void);
+/*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
+ * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
+ * if you know in advance which interface must be used (e.g., the main interface connected to the internet),
+ * adding it to the enforce list will prevent libnice from gathering candidates from other interfaces.
+ * If you're interested in excluding interfaces explicitly, instead, check janus_ice_ignore_interface.
+ * @param[in] ip Interface/IP to enforce (e.g., 192.168. or eth0) */
+void janus_ice_enforce_interface(const char *ip);
+/*! \brief Method to check whether an interface is currently in the enforce list for ICE (that is, won't have candidates)
+ * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
+ * @returns true if the interface/IP is in the enforce list, false otherwise */
+gboolean janus_ice_is_enforced(const char *ip);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
  * adding it to the ignore list will prevent libnice from gathering a candidate for it.
- * @param[in] ip Interface/IP to ignore (e.g., 192.168.244.1 or eth1) */
+ * Unlike the enforce list, the ignore list also accepts IP addresses, partial or complete.
+ * If you're interested in only using specific interfaces, instead, check janus_ice_enforce_interface.
+ * @param[in] ip Interface/IP to ignore (e.g., 192.168. or eth1) */
 void janus_ice_ignore_interface(const char *ip);
 /*! \brief Method to check whether an interface/IP is currently in the ignore list for ICE (that is, won't have candidates)
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)

@@ -25,6 +25,7 @@
 #include "turnrest.h"
 #include "debug.h"
 #include "mutex.h"
+#include "utils.h"
 
 static const char *api_server = NULL;
 static const char *api_key = NULL;
@@ -237,19 +238,21 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		}
 		gchar **uri_parts = g_strsplit(turn_uri, ":", -1);
 		/* Resolve the TURN URI address */
-		struct hostent *he = gethostbyname(uri_parts[1]);
-		if(he == NULL) {
+		struct addrinfo *res = NULL;
+		if(getaddrinfo(uri_parts[1], NULL, NULL, &res) != 0) {
+			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
+			if(res)
+				freeaddrinfo(res);
+			g_strfreev(uri_parts);
+			continue;
+		}
+		instance->server = janus_address_to_ip(res->ai_addr);
+		freeaddrinfo(res);
+		if(instance->server == NULL) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
 			g_strfreev(uri_parts);
 			continue;
 		}
-		struct in_addr **addr_list = (struct in_addr **)he->h_addr_list;
-		if(addr_list[0] == NULL) {
-			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
-			g_strfreev(uri_parts);
-			continue;
-		}
-		instance->server = g_strdup(inet_ntoa(*addr_list[0]));
 		if(uri_parts[2] == NULL) {
 			/* No port? USe 3478 by default */
 			instance->port = 3478;

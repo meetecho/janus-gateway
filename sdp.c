@@ -758,16 +758,17 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	/* Origin o= */
 	if(anon->sdp_origin) {
 		g_snprintf(buffer, 512,
-			"o=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",	/* FIXME Should we fix the address? */
+			"o=%s %"SCNu64" %"SCNu64" IN IP4 %s\r\n",
 				anon->sdp_origin->o_username ? anon->sdp_origin->o_username : "-",
-				anon->sdp_origin->o_id, anon->sdp_origin->o_version);
+				anon->sdp_origin->o_id, anon->sdp_origin->o_version,
+				janus_get_public_ip());
 		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	} else {
 		gint64 sessid = janus_get_monotonic_time();
 		gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
 		g_snprintf(buffer, 512,
-			"o=%s %"SCNi64" %"SCNi64" IN IP4 127.0.0.1\r\n",	/* FIXME Should we fix the address? */
-				"-", sessid, version);
+			"o=%s %"SCNi64" %"SCNi64" IN IP4 %s\r\n",
+				"-", sessid, version, janus_get_public_ip());
 		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	}
 	/* Session name s= */

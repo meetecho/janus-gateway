@@ -262,3 +262,27 @@ gboolean janus_is_ip_valid(const char *ip, int *family) {
 		return FALSE;
 	}
 }
+
+char *janus_address_to_ip(struct sockaddr *address) {
+	if(address == NULL)
+		return NULL;
+	char addr_buf[INET6_ADDRSTRLEN];
+	const char *addr = NULL;
+	struct sockaddr_in *sin = NULL;
+	struct sockaddr_in6 *sin6 = NULL;
+
+	switch(address->sa_family) {
+		case AF_INET:
+			sin = (struct sockaddr_in *)address;
+			addr = inet_ntop(AF_INET, &sin->sin_addr, addr_buf, INET_ADDRSTRLEN);
+			break;
+		case AF_INET6:
+			sin6 = (struct sockaddr_in6 *)address;
+			addr = inet_ntop(AF_INET6, &sin6->sin6_addr, addr_buf, INET6_ADDRSTRLEN);
+			break;
+		default:
+			/* Unknown family */
+			break;
+	}
+	return addr ? g_strdup(addr) : NULL;
+}
