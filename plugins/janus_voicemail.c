@@ -434,7 +434,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_voicemail_session *session = (janus_voicemail_session *)calloc(1, sizeof(janus_voicemail_session));
+	janus_voicemail_session *session = (janus_voicemail_session *)g_malloc0(sizeof(janus_voicemail_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
@@ -517,7 +517,7 @@ char *janus_voicemail_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	janus_voicemail_message *msg = calloc(1, sizeof(janus_voicemail_message));
+	janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
@@ -571,7 +571,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((now-session->start_time) >= 10*G_USEC_PER_SEC) {
 		/* FIXME Simulate a "stop" coming from the browser */
 		session->started = FALSE;
-		janus_voicemail_message *msg = calloc(1, sizeof(janus_voicemail_message));
+		janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return;
@@ -593,7 +593,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	//~ JANUS_LOG(LOG_VERB, "\tWriting at position %d (%d)\n", seq-session->seq+1, 960*(seq-session->seq+1));
 	op->granulepos = 960*(seq-session->seq+1); // FIXME: get this from the toc byte
 	ogg_stream_packetin(session->stream, op);
-	free(op);
+	g_free(op);
 	ogg_write(session);
 }
 
@@ -631,7 +631,7 @@ static void *janus_voicemail_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VoiceMail handler thread\n");
 	janus_voicemail_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));
+	char *error_cause = g_malloc0(512);
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -700,7 +700,7 @@ static void *janus_voicemail_handler(void *data) {
 				g_snprintf(error_cause, 512, "Already recording");
 				goto error;
 			}
-			session->stream = malloc(sizeof(ogg_stream_state));
+			session->stream = g_malloc0(sizeof(ogg_stream_state));
 			if(session->stream == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
 				error_code = JANUS_VOICEMAIL_ERROR_UNKNOWN_ERROR;
@@ -857,8 +857,8 @@ void le16(unsigned char *p, int v) {
 /* ;anufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = malloc(size);
-	ogg_packet *op = malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	if(!data) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
@@ -892,8 +892,8 @@ ogg_packet *op_opustags(void) {
 	const char *identifier = "OpusTags";
 	const char *vendor = "Janus VoiceMail plugin";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
-	unsigned char *data = malloc(size);
-	ogg_packet *op = malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	if(!data) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
@@ -921,7 +921,7 @@ ogg_packet *op_opustags(void) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = malloc(sizeof(*op));
+	ogg_packet *op = g_malloc0(sizeof(*op));
 	if(!op) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet.\n");
 		return NULL;
@@ -939,9 +939,9 @@ ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
 void op_free(ogg_packet *op) {
 	if(op) {
 		if(op->packet) {
-			free(op->packet);
+			g_free(op->packet);
 		}
-		free(op);
+		g_free(op);
 	}
 }
 

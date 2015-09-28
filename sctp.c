@@ -119,7 +119,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	 * be encapsulated in DTLS and actually sent/received by libnice, and not by
 	 * usrsctp itself... as such, we make use of the AF_CONN approach */
 
-	janus_sctp_association *sctp = (janus_sctp_association *)calloc(1, sizeof(janus_sctp_association));
+	janus_sctp_association *sctp = (janus_sctp_association *)g_malloc0(sizeof(janus_sctp_association));
 	if(sctp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -159,7 +159,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	usrsctp_sysctl_set_sctp_ecn_enable(0);
 	if((sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, janus_sctp_incoming_data, NULL, 0, (void *)sctp)) == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating usrsctp socket...\n", handle_id);
-		free(sctp);
+		g_free(sctp);
 		sctp = NULL;
 		return NULL;
 	}
@@ -169,7 +169,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	linger_opt.l_linger = 0;
 	if(usrsctp_setsockopt(sock, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SO_LINGER\n", handle_id);
-		free(sctp);
+		g_free(sctp);
 		sctp = NULL;
 		return NULL;
 	}
@@ -179,7 +179,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	av.assoc_value = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET\n", handle_id);
-		free(sctp);
+		g_free(sctp);
 		sctp = NULL;
 		return NULL;
 	}
@@ -187,7 +187,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	uint32_t nodelay = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_NODELAY\n", handle_id);
-		free(sctp);
+		g_free(sctp);
 		sctp = NULL;
 		return NULL;
 	}	
@@ -200,7 +200,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 		event.se_type = event_types[i];
 		if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_EVENT, &event, sizeof(event)) < 0) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_EVENT\n", handle_id);
-			free(sctp);
+			g_free(sctp);
 			sctp = NULL;
 			return NULL;
 		}
@@ -212,7 +212,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	initmsg.sinit_max_instreams = 2048;	/* What both Chrome and Firefox say in the INIT */
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof(struct sctp_initmsg)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_INITMSG\n", handle_id);
-		free(sctp);
+		g_free(sctp);
 		sctp = NULL;
 		return NULL;
 	}
@@ -223,7 +223,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	sconn.sconn_addr = (void *)sctp;
 	if(usrsctp_bind(sock, (struct sockaddr *)&sconn, sizeof(struct sockaddr_conn)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error binding client on port %"SCNu16"\n", handle_id, sctp->local_port);
-		free(sctp);
+		g_free(sctp);
 		sctp = NULL;
 		return NULL;
 	}
@@ -467,7 +467,7 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	guint label_size = (strlen(label)+3) & ~3;
 	JANUS_LOG(LOG_VERB, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
 
-	req = calloc(sizeof(janus_datachannel_open_request) + label_size, sizeof(char));
+	req = g_malloc0(sizeof(janus_datachannel_open_request) + label_size);
 	memset(req, 0, sizeof(janus_datachannel_open_request) + label_size);
 	req->msg_type = DATA_CHANNEL_OPEN_REQUEST;
 	switch (pr_policy) {
@@ -707,7 +707,7 @@ void janus_sctp_send_outgoing_stream_reset(janus_sctp_association *sctp) {
 		return;
 	}
 	len = sizeof(sctp_assoc_t) + (2 + sctp->stream_buffer_counter) * sizeof(uint16_t);
-	srs = (struct sctp_reset_streams *)malloc(len);
+	srs = (struct sctp_reset_streams *)g_malloc0(len);
 	if(srs == NULL) {
 		return;
 	}
@@ -725,7 +725,7 @@ void janus_sctp_send_outgoing_stream_reset(janus_sctp_association *sctp) {
 		}
 		sctp->stream_buffer_counter = 0;
 	}
-	free(srs);
+	g_free(srs);
 	return;
 }
 
@@ -824,13 +824,15 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	char *label = NULL;
 	guint len = ntohs(req->label_length);
 	if(len > 0 && len < length) {
-		label = calloc(len+1, sizeof(char));
+		label = g_malloc0(len+1);
 		memcpy(label, req->label, len);
 		label[len] = '\0'; 
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id,
 		label ? label : "??",
-		channel->stream, channel->unordered, channel->pr_policy, channel->pr_value); 
+		channel->stream, channel->unordered, channel->pr_policy, channel->pr_value);
+	if(label)
+		g_free(label);
 }
 
 void janus_sctp_handle_open_response_message(janus_sctp_association *sctp, janus_datachannel_open_response *rsp, size_t length, uint16_t stream) {
@@ -1339,12 +1341,12 @@ void *janus_sctp_thread(void *data) {
 janus_sctp_message *janus_sctp_message_create(char *buffer, size_t length) {
 	if(buffer == NULL || length == 0)
 		return NULL;
-	janus_sctp_message *message = calloc(1, sizeof(janus_sctp_message));
+	janus_sctp_message *message = g_malloc0(sizeof(janus_sctp_message));
 	if(message == NULL)
 		return NULL;
-	message->buffer = calloc(length, sizeof(char));
+	message->buffer = g_malloc0(length);
 	if(message->buffer == NULL) {
-		free(message);
+		g_free(message);
 		message = NULL;
 		return NULL;
 	}
@@ -1357,9 +1359,9 @@ void janus_sctp_message_destroy(janus_sctp_message *message) {
 	if(message == NULL)
 		return;
 	if(message->buffer != NULL)
-		free(message->buffer);
+		g_free(message->buffer);
 	message->buffer = NULL;
-	free(message);
+	g_free(message);
 	message = NULL;
 }
 

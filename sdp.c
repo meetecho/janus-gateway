@@ -59,7 +59,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 		sdp_parser_free(parser);
 	sdp->parser = NULL;
 	sdp->sdp = NULL;
-	free(sdp);
+	g_free(sdp);
 	sdp = NULL;
 }
 
@@ -96,7 +96,7 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int 
 	//~ *trickle = (strstr(jsep_sdp, "trickle") || strstr(jsep_sdp, "google-ice") || strstr(jsep_sdp, "Mozilla")) ? 1 : 0;	/* FIXME This is a really hacky way of checking... */
 	/* FIXME We're assuming trickle is always supported, see https://github.com/meetecho/janus-gateway/issues/83 */
 	*trickle = 1;
-	janus_sdp *sdp = (janus_sdp *)calloc(1, sizeof(janus_sdp));
+	janus_sdp *sdp = (janus_sdp *)g_malloc0(sizeof(janus_sdp));
 	if(sdp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -738,7 +738,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 	/* Prepare SDP to merge */
 	gchar buffer[512];
 	memset(buffer, 0, 512);
-	char *sdp = (char*)calloc(JANUS_BUFSIZE, sizeof(char));
+	char *sdp = (char*)g_malloc0(JANUS_BUFSIZE);
 	if(sdp == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		sdp_parser_free(parser);

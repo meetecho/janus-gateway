@@ -281,7 +281,7 @@ int main(int argc, char *argv[])
 			skip = 4 + ntohs(ext->length)*4;
 		}
 		/* Generate frame packet and insert in the ordered list */
-		janus_pp_frame_packet *p = calloc(1, sizeof(janus_pp_frame_packet));
+		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
 		if(p == NULL) {
 			JANUS_LOG(LOG_ERR, "Memory error!\n");
 			return -1;
@@ -438,6 +438,12 @@ int main(int argc, char *argv[])
 		fseek(file, 0L, SEEK_SET);
 		JANUS_LOG(LOG_INFO, "%s is %zu bytes\n", destination, fsize);
 		fclose(file);
+	}
+	janus_pp_frame_packet *temp = list, *next = NULL;
+	while(temp) {
+		next = temp->next;
+		g_free(temp);
+		temp = next;
 	}
 	
 	JANUS_LOG(LOG_INFO, "Bye!\n");

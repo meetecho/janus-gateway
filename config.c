@@ -109,7 +109,7 @@ janus_config *janus_config_parse(const char *config_file) {
 				free_ini_config_errors(config_errors);
 			return NULL;
 		}
-		jc = calloc(1, sizeof(janus_config));
+		jc = g_malloc0(sizeof(janus_config));
 		if(jc == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			col_unbind_iterator(iterator);
@@ -138,7 +138,7 @@ janus_config *janus_config_parse(const char *config_file) {
 			} else if(col_get_item_type(item) == COL_TYPE_COLLECTIONREF) {
 				/* Configuration category */
 				ci = NULL;
-				janus_config_category *ncg = calloc(1, sizeof(janus_config_category));
+				janus_config_category *ncg = g_malloc0(sizeof(janus_config_category));
 				if(ncg == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					col_unbind_iterator(iterator);
@@ -198,7 +198,7 @@ janus_config *janus_config_parse(const char *config_file) {
 					sc++;
 				}
 				value = trim(temp);
-				janus_config_item *nci = calloc(1, sizeof(janus_config_item));
+				janus_config_item *nci = g_malloc0(sizeof(janus_config_item));
 				if(nci == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					col_unbind_iterator(iterator);
@@ -245,7 +245,7 @@ janus_config *janus_config_parse(const char *config_file) {
 }
 
 janus_config *janus_config_create(const char *name) {
-	janus_config *jc = calloc(1, sizeof(janus_config));
+	janus_config *jc = g_malloc0(sizeof(janus_config));
 	if(jc == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -313,7 +313,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	janus_config_category *c = janus_config_get_category(config, category);
 	if(c == NULL) {
 		/* Create it */
-		c = calloc(1, sizeof(janus_config_category));
+		c = g_malloc0(sizeof(janus_config_category));
 		if(c == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return NULL;
@@ -336,7 +336,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	janus_config_item *item = janus_config_get_item(c, name);
 	if(item == NULL) {
 		/* Create it */
-		item = calloc(1, sizeof(janus_config_item));
+		item = g_malloc0(sizeof(janus_config_item));
 		if(item == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return NULL;
@@ -408,7 +408,7 @@ void janus_config_destroy(janus_config *config) {
 				g_free((gpointer)i->value);
 			tmp = i;
 			i = i->next;
-			free((gpointer)tmp);
+			g_free((gpointer)tmp);
 			tmp = NULL;
 		}
 	}
@@ -428,18 +428,18 @@ void janus_config_destroy(janus_config *config) {
 						g_free((gpointer)i->value);
 					tmp2 = i;
 					i = i->next;
-					free((gpointer)tmp2);
+					g_free((gpointer)tmp2);
 					tmp2 = NULL;
 				}
 			}
 			tmp = c;
 			c = c->next;
-			free((gpointer)tmp);
+			g_free((gpointer)tmp);
 			tmp = NULL;
 		}
 	}
 	if(config->name)
 		g_free((gpointer)config->name);
-	free((gpointer)config);
+	g_free((gpointer)config);
 	config = NULL;
 }

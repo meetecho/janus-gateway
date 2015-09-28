@@ -346,7 +346,7 @@ janus_session *janus_session_create(guint64 session_id) {
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"\n", session_id);
-	janus_session *session = (janus_session *)calloc(1, sizeof(janus_session));
+	janus_session *session = (janus_session *)g_malloc0(sizeof(janus_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -442,7 +442,7 @@ void janus_session_free(janus_session *session) {
 
 /* Requests management */
 janus_request *janus_request_new(janus_transport *transport, void *instance, void *request_id, gboolean admin, json_t *message) {
-	janus_request *request = (janus_request *)calloc(1, sizeof(janus_request));
+	janus_request *request = (janus_request *)g_malloc0(sizeof(janus_request));
 	request->transport = transport;
 	request->instance = instance;
 	request->request_id = request_id;
@@ -1702,7 +1702,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		error_string = calloc(512, sizeof(char));
+		error_string = g_malloc0(512);
 		vsprintf(error_string, format, ap);
 		va_end(ap);
 	}

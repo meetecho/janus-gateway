@@ -522,7 +522,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_videocall_session *session = (janus_videocall_session *)calloc(1, sizeof(janus_videocall_session));
+	janus_videocall_session *session = (janus_videocall_session *)g_malloc0(sizeof(janus_videocall_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
@@ -607,7 +607,7 @@ char *janus_videocall_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	janus_videocall_message *msg = calloc(1, sizeof(janus_videocall_message));
+	janus_videocall_message *msg = g_malloc0(sizeof(janus_videocall_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
@@ -842,7 +842,7 @@ static void *janus_videocall_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VideoCall handler thread\n");
 	janus_videocall_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));
+	char *error_cause = g_malloc0(512);
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;

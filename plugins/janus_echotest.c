@@ -367,7 +367,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_echotest_session *session = (janus_echotest_session *)calloc(1, sizeof(janus_echotest_session));
+	janus_echotest_session *session = (janus_echotest_session *)g_malloc0(sizeof(janus_echotest_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
@@ -444,7 +444,7 @@ char *janus_echotest_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	janus_echotest_message *msg = calloc(1, sizeof(janus_echotest_message));
+	janus_echotest_message *msg = g_malloc0(sizeof(janus_echotest_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
@@ -539,7 +539,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		/* We send back the same text with a custom prefix */
 		const char *prefix = "Janus EchoTest here! You wrote: ";
 		char *reply = g_malloc0(strlen(prefix)+len+1);
-		g_snprintf(reply, strlen(prefix)+len, "%s%s", prefix, text);
+		g_snprintf(reply, strlen(prefix)+len+1, "%s%s", prefix, text);
 		g_free(text);
 		gateway->relay_data(handle, reply, strlen(reply));
 		g_free(reply);
@@ -657,7 +657,7 @@ static void *janus_echotest_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining EchoTest handler thread\n");
 	janus_echotest_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));
+	char *error_cause = g_malloc0(512);
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;

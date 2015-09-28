@@ -195,7 +195,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		JANUS_LOG(LOG_ERR, "No handle/agent, no DTLS...\n");
 		return NULL;
 	}
-	janus_dtls_srtp *dtls = calloc(1, sizeof(janus_dtls_srtp));
+	janus_dtls_srtp *dtls = g_malloc0(sizeof(janus_dtls_srtp));
 	if(dtls == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
