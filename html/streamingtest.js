@@ -113,6 +113,10 @@ $(document).ready(function() {
 											else if(status === 'stopped')
 												stopStream();
 										}
+									} else if(msg["error"] !== undefined && msg["error"] !== null) {
+										bootbox.alert(msg["error"]);
+										stopStream();
+										return;
 									}
 									if(jsep !== undefined && jsep !== null) {
 										console.log("Handling SDP as well...");
@@ -154,6 +158,7 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									console.log(" ::: Got a cleanup notification :::");
+									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
 								}
 							});

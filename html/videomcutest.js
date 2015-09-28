@@ -403,6 +403,8 @@ function newRemoteFeed(id, display) {
 						}
 						console.log("Successfully attached to feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") in room " + msg["room"]);
 						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
+					} else if(msg["error"] !== undefined && msg["error"] !== null) {
+						bootbox.alert(msg["error"]);
 					} else {
 						// What has just happened?
 					}

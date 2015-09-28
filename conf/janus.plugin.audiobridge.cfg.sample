@@ -1,7 +1,8 @@
 ; [<unique room ID>]
 ; description = This is my awesome room
 ; is_private = yes|no (whether this room should be in the public list, default=yes)
-; secret = <password needed for manipulating (e.g. destroying) the room>
+; secret = <optional password needed for manipulating (e.g. destroying) the room>
+; pin = <optional password needed for joining the room>
 ; sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 ; record = true|false (whether this room should be recorded, default=false)
 ; record_file = /path/to/recording.wav (where to save the recording)

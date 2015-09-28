@@ -23,7 +23,8 @@
 [<unique room ID>]
 description = This is my awesome room
 is_private = yes|no (private rooms don't appear when you do a 'list' request)
-secret = <password needed for manipulating (e.g. destroying) the room>
+secret = <optional password needed for manipulating (e.g. destroying) the room>
+pin = <optional password needed for joining the room>
 sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
@@ -69,6 +70,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"room" : <unique numeric ID, optional, chosen by plugin if missing>,
 	"description" : "<pretty name of the room, optional>",
 	"secret" : "<password required to edit/destroy the room, optional>",
+	"pin" : "<password required to join the room, optional>",
 	"is_private" : <true|false, whether the room should appear in a list request>,
 	"sampling" : <sampling rate of the room, optional, 16000 by default>,
 	"record" : <true|false, whether to record the room or not, default false>,
@@ -250,6 +252,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"request" : "join",
 	"room" : <numeric ID of the room to join>,
 	"id" : <unique ID to assign to the participant; optional, assigned by the plugin if missing>,
+	"pin" : "<password required to join the room, if any; optional>",
 	"display" : "<display name to have in the room; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
 	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>
@@ -481,6 +484,7 @@ typedef struct janus_audiobridge_room {
 	guint64 room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
+	gchar *room_pin;			/* Password needed to join this room, if any */
 	gboolean is_private;			/* Whether this room is 'private' (as in hidden) or not */
 	uint32_t sampling_rate;		/* Sampling rate of the mix (e.g., 16000 for wideband; can be 8, 12, 16, 24 or 48kHz) */
 	gboolean record;			/* Whether this room has to be recorded or not */
@@ -702,6 +706,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *priv = janus_config_get_item(cat, "is_private");
 			janus_config_item *sampling = janus_config_get_item(cat, "sampling_rate");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
+			janus_config_item *pin = janus_config_get_item(cat, "pin");
 			janus_config_item *record = janus_config_get_item(cat, "record");
 			janus_config_item *recfile = janus_config_get_item(cat, "record_file");
 			if(sampling == NULL || sampling->value == NULL) {
@@ -746,6 +751,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			if(secret != NULL && secret->value != NULL) {
 				audiobridge->room_secret = g_strdup(secret->value);
 			}
+			if(pin != NULL && pin->value != NULL) {
+				audiobridge->room_pin = g_strdup(pin->value);
+			}
 			audiobridge->record = FALSE;
 			if(record && record->value && janus_is_true(record->value))
 				audiobridge->record = TRUE;
@@ -756,7 +764,11 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->participants = g_hash_table_new(NULL, NULL);
 			audiobridge->destroyed = 0;
 			janus_mutex_init(&audiobridge->mutex);
-			JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->is_private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
+			JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
+				audiobridge->room_id, audiobridge->room_name,
+				audiobridge->is_private ? "private" : "public",
+				audiobridge->room_secret ? audiobridge->room_secret : "no secret",
+				audiobridge->room_pin ? audiobridge->room_pin : "no pin");
 			/* We need a thread for the mix */
 			GError *error = NULL;
 			audiobridge->thread = g_thread_try_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge, &error);
@@ -1028,6 +1040,13 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 			goto error;
 		}
+		json_t *pin = json_object_get(root, "pin");
+		if(pin && !json_is_string(pin)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
+			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
+			goto error;
+		}
 		json_t *is_private = json_object_get(root, "is_private");
 		if(is_private && !json_is_boolean(is_private)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
@@ -1120,6 +1139,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		audiobridge->is_private = is_private ? json_is_true(is_private) : FALSE;
 		if(secret)
 			audiobridge->room_secret = g_strdup(json_string_value(secret));
+		if(pin)
+			audiobridge->room_pin = g_strdup(json_string_value(pin));
 		if(sampling)
 			audiobridge->sampling_rate = json_integer_value(sampling);
 		else
@@ -1150,7 +1171,11 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		audiobridge->destroyed = 0;
 		janus_mutex_init(&audiobridge->mutex);
 		g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
-		JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s)\n", audiobridge->room_id, audiobridge->room_name, audiobridge->is_private ? "private" : "public", audiobridge->room_secret ? audiobridge->room_secret : "no secret");
+		JANUS_LOG(LOG_VERB, "Created audiobridge: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
+			audiobridge->room_id, audiobridge->room_name,
+			audiobridge->is_private ? "private" : "public",
+			audiobridge->room_secret ? audiobridge->room_secret : "no secret",
+			audiobridge->room_pin ? audiobridge->room_pin : "no pin");
 		/* We need a thread for the mix */
 		GError *error = NULL;
 		audiobridge->thread = g_thread_try_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge, &error);
@@ -1738,6 +1763,31 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 				goto error;
 			}
+			if(audiobridge->room_pin) {
+				/* A PIN is required to join this room */
+				json_t *pin = json_object_get(root, "pin");
+				if(!pin) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT;
+					g_snprintf(error_cause, 512, "Missing element (pin)");
+					goto error;
+				}
+				if(!json_is_string(pin)) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
+					goto error;
+				}
+				if(!janus_strcmp_const_time(audiobridge->room_pin, json_string_value(pin))) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
+					goto error;
+				}
+			}
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *display = json_object_get(root, "display");
 			if(display && !json_is_string(display)) {
@@ -2077,6 +2127,31 @@ static void *janus_audiobridge_handler(void *data) {
 				error_code = JANUS_AUDIOBRIDGE_ERROR_NO_SUCH_ROOM;
 				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 				goto error;
+			}
+			if(audiobridge->room_pin) {
+				/* A PIN is required to join this room */
+				json_t *pin = json_object_get(root, "pin");
+				if(!pin) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT;
+					g_snprintf(error_cause, 512, "Missing element (pin)");
+					goto error;
+				}
+				if(!json_is_string(pin)) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
+					goto error;
+				}
+				if(!janus_strcmp_const_time(audiobridge->room_pin, json_string_value(pin))) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
+					error_code = JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
+					goto error;
+				}
 			}
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *display = json_object_get(root, "display");
@@ -2651,6 +2726,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 	/* Free resources */
 	g_free(audiobridge->room_name);
 	g_free(audiobridge->room_secret);
+	g_free(audiobridge->room_pin);
 	g_free(audiobridge->record_file);
 	g_hash_table_destroy(audiobridge->participants);
 	g_free(audiobridge);
