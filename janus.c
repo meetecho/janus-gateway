@@ -771,25 +771,29 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			MHD_destroy_response(response);
 			goto done;
 		}
-		if(ws_api_secret != NULL) {
-			/* There's an API secret, check that the client provided it */
-			const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
-			if(!secret || !janus_strcmp_const_time(secret, ws_api_secret)) {
-				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
-				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-				if(msg->acrm)
-					MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-				if(msg->acrh)
-					MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
-				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
-				MHD_destroy_response(response);
-				goto done;
+		/* Any secret/token to check? */
+		gboolean secret_authorized = FALSE, token_authorized = FALSE;
+		if(ws_api_secret == NULL && !janus_auth_is_enabled()) {
+			/* Nothing to check */
+			secret_authorized = TRUE;
+			token_authorized = TRUE;
+		} else {
+			if(ws_api_secret != NULL) {
+				/* There's an API secret, check that the client provided it */
+				const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
+				if(secret && janus_strcmp_const_time(secret, ws_api_secret)) {
+					secret_authorized = TRUE;
+				}
 			}
-		}
-		if(janus_auth_is_enabled()) {
-			/* The token based authentication mechanism is enabled, check that the client provided it */
-			const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
-			if(!token || !janus_auth_check_token(token)) {
+			if(janus_auth_is_enabled()) {
+				/* The token based authentication mechanism is enabled, check that the client provided it */
+				const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
+				if(token && janus_auth_check_token(token)) {
+					token_authorized = TRUE;
+				}
+			}
+			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
+			if(!secret_authorized && !token_authorized) {
 				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 				if(msg->acrm)
@@ -986,18 +990,29 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-		if(ws_api_secret != NULL) {
-			/* There's an API secret, check that the client provided it */
-			json_t *secret = json_object_get(root, "apisecret");
-			if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
-				goto jsondone;
+		/* Any secret/token to check? */
+		gboolean secret_authorized = FALSE, token_authorized = FALSE;
+		if(ws_api_secret == NULL && !janus_auth_is_enabled()) {
+			/* Nothing to check */
+			secret_authorized = TRUE;
+			token_authorized = TRUE;
+		} else {
+			if(ws_api_secret != NULL) {
+				/* There's an API secret, check that the client provided it */
+				json_t *secret = json_object_get(root, "apisecret");
+				if(secret && json_is_string(secret) && janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
+					secret_authorized = TRUE;
+				}
 			}
-		}
-		if(janus_auth_is_enabled()) {
-			/* The token based authentication mechanism is enabled, check that the client provided it */
-			json_t *token = json_object_get(root, "token");
-			if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
+			if(janus_auth_is_enabled()) {
+				/* The token based authentication mechanism is enabled, check that the client provided it */
+				json_t *token = json_object_get(root, "token");
+				if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token))) {
+					token_authorized = TRUE;
+				}
+			}
+			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
+			if(!secret_authorized && !token_authorized) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -1083,18 +1098,28 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	}
 
 	/* Go on with the processing */
-	if(ws_api_secret != NULL) {
-		/* There's an API secret, check that the client provided it */
-		json_t *secret = json_object_get(root, "apisecret");
-		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
-			goto jsondone;
+	gboolean secret_authorized = FALSE, token_authorized = FALSE;
+	if(ws_api_secret == NULL && !janus_auth_is_enabled()) {
+		/* Nothing to check */
+		secret_authorized = TRUE;
+		token_authorized = TRUE;
+	} else {
+		if(ws_api_secret != NULL) {
+			/* There's an API secret, check that the client provided it */
+			json_t *secret = json_object_get(root, "apisecret");
+			if(secret && json_is_string(secret) && janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
+				secret_authorized = TRUE;
+			}
 		}
-	}
-	if(janus_auth_is_enabled()) {
-		/* The token based authentication mechanism is enabled, check that the client provided it */
-		json_t *token = json_object_get(root, "token");
-		if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
+		if(janus_auth_is_enabled()) {
+			/* The token based authentication mechanism is enabled, check that the client provided it */
+			json_t *token = json_object_get(root, "token");
+			if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token))) {
+				token_authorized = TRUE;
+			}
+		}
+		/* We consider a request authorized if either the proper API secret or a valid token has been provided */
+		if(!secret_authorized && !token_authorized) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
