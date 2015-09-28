@@ -399,8 +399,11 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 		}
 		/* Do we also have to provide an HTTPS one? */
-		char *server_pem = (char *)item->value;
-		char *server_key = (char *)item->value;
+		char *server_pem = NULL;
+		item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
+		if(item && item->value)
+			server_pem = (char *)item->value;
+		char *server_key = NULL;
 		item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 		if(item && item->value)
 			server_key = (char *)item->value;
@@ -410,7 +413,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "HTTPS webserver disabled\n");
 		} else {
-			if(!server_key) {
+			if(!server_key || !server_pem) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
 				int swsport = 8889;
