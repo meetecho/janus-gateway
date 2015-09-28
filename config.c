@@ -16,6 +16,7 @@
 
 #include "config.h"
 #include "debug.h"
+#include "utils.h"
 
 
 /* Filename helper */
@@ -392,7 +393,67 @@ void janus_config_print(janus_config *config) {
 			c = c->next;
 		}
 	}
-	config = NULL;
+}
+
+gboolean janus_config_save(janus_config *config, const char *folder, const char *filename) {
+	if(config == NULL)
+		return -1;
+	FILE *file = NULL;
+	char path[1024];
+	if(folder != NULL) {
+		/* Create folder, if needed */
+		if(janus_mkdir(folder, 0755) < 0) {
+			JANUS_LOG(LOG_ERR, "Couldn't save configuration file, error creating folder '%s'...\n", folder);
+			return -2;
+		}
+		g_snprintf(path, 1024, "%s/%s", folder, filename);
+	} else {
+		g_snprintf(path, 1024, "%s", filename);
+	}
+	file = fopen(path, "wt");
+	if(file == NULL) {
+		JANUS_LOG(LOG_ERR, "Couldn't save configuration file, error opening file '%s'...\n", path);
+		return -3;
+	}
+	if(config->items) {
+		janus_config_item *i = config->items;
+		config->items = NULL;
+		while(i) {
+			if(i->name && i->value) {
+				fwrite(i->name, sizeof(char), strlen(i->name), file);
+				fwrite(" = ", sizeof(char), 3, file);
+				fwrite(i->value, sizeof(char), strlen(i->value), file);
+				fwrite("\r\n", sizeof(char), 2, file);
+			}
+			i = i->next;
+		}
+	}
+	if(config->categories) {
+		janus_config_category *c = config->categories;
+		while(c) {
+			if(c->name) {
+				fwrite("[", sizeof(char), 1, file);
+				fwrite(c->name, sizeof(char), strlen(c->name), file);
+				fwrite("]\r\n", sizeof(char), 3, file);
+				if(c->items) {
+					janus_config_item *i = c->items;
+					while(i) {
+						if(i->name && i->value) {
+							fwrite(i->name, sizeof(char), strlen(i->name), file);
+							fwrite(" = ", sizeof(char), 3, file);
+							fwrite(i->value, sizeof(char), strlen(i->value), file);
+							fwrite("\r\n", sizeof(char), 2, file);
+						}
+						i = i->next;
+					}
+				}
+			}
+			fwrite("\r\n", sizeof(char), 2, file);
+			c = c->next;
+		}
+	}
+	fclose(file);
+	return 0;
 }
 
 void janus_config_destroy(janus_config *config) {
