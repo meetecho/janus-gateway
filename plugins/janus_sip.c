@@ -1783,28 +1783,34 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
                                 sdp_parser_free(parser);
 				break;
 			}
-			if(session->status >= janus_sip_call_status_inviting) {
-				/* Busy */
-				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
-				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
-				/* Notify the web app about the missed invite */
-				json_t *missed = json_object();
-				json_object_set_new(missed, "sip", json_string("event"));
-				json_t *result = json_object();
-				json_object_set_new(result, "event", json_string("missed_call"));
-				char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
-				json_object_set_new(result, "caller", json_string(caller_text));
-				su_free(session->stack->s_home, caller_text);
-				json_object_set_new(missed, "result", result);
-				char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-				json_decref(missed);
-				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(missed_text);
-				sdp_parser_free(parser);
+			if(session->stack->s_nh_i != NULL) {
+				if(session->stack->s_nh_i == nh) {
+					/* re-INVITE, we don't support those. Sofia
+					 * will send a 200 OK response, so just ignore it. */
+				} else if(session->status >= janus_sip_call_status_inviting) {
+					/* Busy with another call */
+					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
+					nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+					/* Notify the web app about the missed invite */
+					json_t *missed = json_object();
+					json_object_set_new(missed, "sip", json_string("event"));
+					json_t *result = json_object();
+					json_object_set_new(result, "event", json_string("missed_call"));
+					char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+					json_object_set_new(result, "caller", json_string(caller_text));
+					su_free(session->stack->s_home, caller_text);
+					json_object_set_new(missed, "result", result);
+					char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+					json_decref(missed);
+					JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
+					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
+					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+					g_free(missed_text);
+					sdp_parser_free(parser);
+				}
 				break;
 			}
+			/* New incoming call */
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
 			session->status = janus_sip_call_status_invited;
 			/* Parse SDP */
