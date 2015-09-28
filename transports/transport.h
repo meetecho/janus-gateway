@@ -209,6 +209,10 @@ struct janus_transport_callbacks {
 	 * @param[in] handle The transport session that went away
 	 * @param[in] transport Opaque pointer to the transport session instance that went away */
 	void (* const transport_gone)(janus_transport *plugin, void *transport);
+	/*! \brief Callback to check with the core if an API secret must be provided
+	 * @param[in] apisecret The API secret to validate
+	 * @returns TRUE if an API secret is needed, FALSE otherwise */
+	gboolean (* const is_api_secret_needed)(janus_transport *plugin);
 	/*! \brief Callback to check with the core if a provided API secret is valid
 	 * \note This callback should only be needed when, for any reason, the transport needs to
 	 * validate requests directly, as in general requests will be validated by the core itself.
@@ -217,6 +221,9 @@ struct janus_transport_callbacks {
 	 * @param[in] apisecret The API secret to validate
 	 * @returns TRUE if the API secret is correct, FALSE otherwise */
 	gboolean (* const is_api_secret_valid)(janus_transport *plugin, const char *apisecret);
+	/*! \brief Callback to check with the core if an authentication token is needed
+	 * @returns TRUE if an auth token is needed, FALSE otherwise */
+	gboolean (* const is_auth_token_needed)(janus_transport *plugin);
 	/*! \brief Callback to check with the core if a provided authentication token is valid
 	 * \note This callback should only be needed when, for any reason, the transport needs to
 	 * validate requests directly, as in general requests will be validated by the core itself.
