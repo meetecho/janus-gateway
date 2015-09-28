@@ -56,7 +56,8 @@
 [<unique room ID>]
 description = This is my awesome room
 is_private = yes|no (private rooms don't appear when you do a 'list' request)
-secret = <password needed for manipulating (e.g. destroying) the room>
+secret = <optional password needed for manipulating (e.g. destroying) the room>
+pin = <optional password needed for joining the room>
 publishers = <max number of concurrent senders> (e.g., 6 for a video
              conference or 1 for a webinar)
 bitrate = <max video bitrate for senders> (e.g., 128000)
@@ -240,6 +241,7 @@ typedef struct janus_videoroom {
 	guint64 room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
+	gchar *room_pin;			/* Password needed to join this room, if any */
 	gboolean is_private;			/* Whether this room is 'private' (as in hidden) or not */
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint64_t bitrate;			/* Global bitrate limit */
@@ -571,6 +573,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *desc = janus_config_get_item(cat, "description");
 			janus_config_item *priv = janus_config_get_item(cat, "is_private");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
+			janus_config_item *pin = janus_config_get_item(cat, "pin");
 			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
 			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
 			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
@@ -595,6 +598,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->room_name = description;
 			if(secret != NULL && secret->value != NULL) {
 				videoroom->room_secret = g_strdup(secret->value);
+			}
+			if(pin != NULL && pin->value != NULL) {
+				videoroom->room_pin = g_strdup(pin->value);
 			}
 			videoroom->is_private = priv && priv->value && janus_is_true(priv->value);
 			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
@@ -622,7 +628,11 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->is_private ? "private" : "public", videoroom->room_secret ? videoroom->room_secret : "no secret");
+			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
+				videoroom->room_id, videoroom->room_name,
+				videoroom->is_private ? "private" : "public",
+				videoroom->room_secret ? videoroom->room_secret : "no secret",
+				videoroom->room_pin ? videoroom->room_pin : "no pin");
 			if(videoroom->record) {
 				JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 			}
@@ -982,6 +992,13 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 			goto error;
 		}
+		json_t *pin = json_object_get(root, "pin");
+		if(pin && !json_is_string(pin)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
+			goto error;
+		}
 		json_t *bitrate = json_object_get(root, "bitrate");
 		if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
@@ -1081,6 +1098,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->is_private = is_private ? json_is_true(is_private) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
+		if(pin)
+			videoroom->room_pin = g_strdup(json_string_value(pin));
 		videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 		if(publishers)
 			videoroom->max_publishers = json_integer_value(publishers);
@@ -1103,7 +1122,11 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->destroyed = 0;
 		janus_mutex_init(&videoroom->participants_mutex);
 		videoroom->participants = g_hash_table_new(NULL, NULL);
-		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s)\n", videoroom->room_id, videoroom->room_name, videoroom->is_private ? "private" : "public", videoroom->room_secret ? videoroom->room_secret : "no secret");
+		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
+			videoroom->room_id, videoroom->room_name,
+			videoroom->is_private ? "private" : "public",
+			videoroom->room_secret ? videoroom->room_secret : "no secret",
+			videoroom->room_pin ? videoroom->room_pin : "no pin");
 		if(videoroom->record) {
 			JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 		}
@@ -2126,19 +2149,46 @@ static void *janus_videoroom_handler(void *data) {
 			guint64 room_id = json_integer_value(room);
 			janus_mutex_lock(&rooms_mutex);
 			janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-			janus_mutex_unlock(&rooms_mutex);
 			if(videoroom == NULL) {
+				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 				goto error;
 			}
 			if(videoroom->destroyed) {
+				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 				goto error;
 			}
+			if(videoroom->room_pin) {
+				/* A pin is required to join this room */
+				json_t *pin = json_object_get(root, "pin");
+				if(!pin) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
+					g_snprintf(error_cause, 512, "Missing element (pin)");
+					goto error;
+				}
+				if(!json_is_string(pin)) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
+					goto error;
+				}
+				if(!janus_strcmp_const_time(videoroom->room_pin, json_string_value(pin))) {
+					janus_mutex_unlock(&rooms_mutex);
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
+					goto error;
+				}
+			}
+			janus_mutex_unlock(&rooms_mutex);
 			json_t *ptype = json_object_get(root, "ptype");
 			if(!ptype) {
 				JANUS_LOG(LOG_ERR, "Missing element (ptype)\n");
@@ -3748,6 +3798,7 @@ static void janus_videoroom_free(janus_videoroom *room) {
 		janus_mutex_lock(&room->participants_mutex);
 		g_free(room->room_name);
 		g_free(room->room_secret);
+		g_free(room->room_pin);
 		g_free(room->rec_dir);
 		g_hash_table_unref(room->participants);
 		janus_mutex_unlock(&room->participants_mutex);

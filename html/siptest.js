@@ -342,6 +342,7 @@ $(document).ready(function() {
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
+									$('.no-video-container').remove();
 									$('#videos').hide();
 									$('#dtmf').parent().html("Remote UA");
 								}

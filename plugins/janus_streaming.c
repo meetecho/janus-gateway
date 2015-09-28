@@ -54,6 +54,7 @@ is_private = yes|no (private streams don't appear when you do a 'list' request)
 filename = path to the local file to stream (only for live/ondemand)
 secret = <optional password needed for manipulating (e.g., destroying
 		or enabling/disabling) the stream>
+pin = <optional password needed for watching the stream>
 audio = yes|no (do/don't stream audio)
 video = yes|no (do/don't stream video)
    The following options are only valid for the 'rtp' type:
@@ -242,6 +243,7 @@ typedef struct janus_streaming_mountpoint {
 	char *description;
 	gboolean is_private;
 	char *secret;
+	char *pin;
 	gboolean enabled;
 	gboolean active;
 	janus_streaming_type streaming_type;
@@ -459,6 +461,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *desc = janus_config_get_item(cat, "description");
 				janus_config_item *priv = janus_config_get_item(cat, "is_private");
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
+				janus_config_item *pin = janus_config_get_item(cat, "pin");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				janus_config_item *amcast = janus_config_get_item(cat, "audiomcast");
@@ -532,12 +535,15 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				mp->is_private = is_private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
+				if(pin && pin->value)
+					mp->pin = g_strdup(pin->value);
 			} else if(!strcasecmp(type->value, "live")) {
 				/* File live source */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
 				janus_config_item *priv = janus_config_get_item(cat, "is_private");
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
+				janus_config_item *pin = janus_config_get_item(cat, "pin");
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
@@ -586,12 +592,15 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				mp->is_private = is_private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
+				if(pin && pin->value)
+					mp->pin = g_strdup(pin->value);
 			} else if(!strcasecmp(type->value, "ondemand")) {
 				/* mu-Law file on demand source */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
 				janus_config_item *priv = janus_config_get_item(cat, "is_private");
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
+				janus_config_item *pin = janus_config_get_item(cat, "pin");
 				janus_config_item *file = janus_config_get_item(cat, "filename");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
@@ -640,6 +649,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				mp->is_private = is_private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
+				if(pin && pin->value)
+					mp->pin = g_strdup(pin->value);
 			} else if(!strcasecmp(type->value, "rtsp")) {
 #ifndef HAVE_LIBCURL
 				JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', libcurl support not compiled...\n", cat->name);
@@ -648,6 +659,9 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 #else
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
+				janus_config_item *priv = janus_config_get_item(cat, "is_private");
+				janus_config_item *secret = janus_config_get_item(cat, "secret");
+				janus_config_item *pin = janus_config_get_item(cat, "pin");
 				janus_config_item *file = janus_config_get_item(cat, "url");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
@@ -656,6 +670,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cat = cat->next;
 					continue;
 				}
+				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				gboolean doaudio = audio && audio->value && janus_is_true(audio->value);
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				if(id == NULL || id->value == NULL) {
@@ -680,13 +695,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cat = cat->next;
 					continue;
 				}
-				
-				janus_config_item *priv = janus_config_get_item(cat, "is_private");
-				janus_config_item *secret = janus_config_get_item(cat, "secret");
-				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
 				mp->is_private = is_private;
 				if(secret && secret->value)
 					mp->secret = g_strdup(secret->value);
+				if(pin && pin->value)
+					mp->pin = g_strdup(pin->value);
 #endif
 			} else {
 				JANUS_LOG(LOG_WARN, "Ignoring unknown stream type '%s' (%s)...\n", type->value, cat->name);
@@ -704,10 +717,11 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	g_hash_table_iter_init(&iter, mountpoints);
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_streaming_mountpoint *mp = value;
-		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %s (%s, %s, %s)\n", mp->id, mp->name, mp->description,
+		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %s (%s, %s, %s, pin: %s)\n", mp->id, mp->name, mp->description,
 			mp->streaming_type == janus_streaming_type_live ? "live" : "on demand",
 			mp->streaming_source == janus_streaming_source_rtp ? "RTP source" : "file source",
-			mp->is_private ? "private" : "public");
+			mp->is_private ? "private" : "public",
+			mp->pin ? mp->pin : "no pin");
 	}
 	janus_mutex_unlock(&mountpoints_mutex);
 
@@ -995,6 +1009,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
+			goto error;
+		}
+		json_t *pin = json_object_get(root, "pin");
+		if(pin && !json_is_string(pin)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
 			goto error;
 		}
 		janus_streaming_mountpoint *mp = NULL;
@@ -1479,6 +1500,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		/* Any secret? */
 		if(secret)
 			mp->secret = g_strdup(json_string_value(secret));
+		/* Any PIN? */
+		if(pin)
+			mp->pin = g_strdup(json_string_value(pin));
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("created"));
@@ -2076,6 +2100,31 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
 				goto error;
 			}
+			if(mp->pin) {
+				/* This mountpoint is protected by a PIN */
+				json_t *pin = json_object_get(root, "pin");
+				if(!pin) {
+					janus_mutex_unlock(&mountpoints_mutex);
+					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
+					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+					g_snprintf(error_cause, 512, "Missing element (pin)");
+					goto error;
+				}
+				if(!json_is_string(pin)) {
+					janus_mutex_unlock(&mountpoints_mutex);
+					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
+					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
+					goto error;
+				}
+				if(!janus_strcmp_const_time(mp->pin, json_string_value(pin))) {
+					janus_mutex_unlock(&mountpoints_mutex);
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
+					error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
+					goto error;
+				}
+			}
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %"SCNu64"\n", id_value);
 			session->stopping = FALSE;
@@ -2400,6 +2449,8 @@ static void janus_streaming_mountpoint_free(janus_streaming_mountpoint *mp) {
 	
 	g_free(mp->name);
 	g_free(mp->description);
+	g_free(mp->secret);
+	g_free(mp->pin);
 	janus_mutex_lock(&mp->mutex);
 	g_list_free(mp->listeners);
 	janus_mutex_unlock(&mp->mutex);

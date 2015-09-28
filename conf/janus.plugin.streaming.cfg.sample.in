@@ -14,6 +14,7 @@
 ;			request)
 ; secret = <optional password needed for manipulating (e.g., destroying
 ;			or enabling/disabling) the stream>
+; pin = <optional password needed for watching the stream>
 ; filename = path to the local file to stream (only for live/ondemand)
 ; audio = yes|no (do/don't stream audio)
 ; video = yes|no (do/don't stream video)
