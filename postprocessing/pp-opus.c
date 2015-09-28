@@ -36,7 +36,7 @@ int ogg_flush(void);
 
 
 int janus_pp_opus_create(char *destination) {
-	stream = malloc(sizeof(ogg_stream_state));
+	stream = g_malloc0(sizeof(ogg_stream_state));
 	if(stream == NULL) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate stream struct\n");
 		return -1;
@@ -69,7 +69,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	long int offset = 0;
 	int bytes = 0, len = 0, steps = 0, last_seq = 0;
 	uint64_t pos = 0;
-	uint8_t *buffer = calloc(1500, sizeof(uint8_t));
+	uint8_t *buffer = g_malloc0(1500);
 	while(*working && tmp != NULL) {
 		if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
@@ -96,10 +96,11 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/90000);
 		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 		ogg_stream_packetin(stream, op);
-		free(op);
+		g_free(op);
 		ogg_write();
 		tmp = tmp->next;
 	}
+	g_free(buffer);
 	return 0;
 }
 
@@ -132,8 +133,8 @@ void le16(unsigned char *p, int v) {
 /* ;anufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
-	unsigned char *data = malloc(size);
-	ogg_packet *op = malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	if(!data) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
@@ -167,8 +168,8 @@ ogg_packet *op_opustags(void) {
 	const char *identifier = "OpusTags";
 	const char *vendor = "Janus post-processing";
 	int size = strlen(identifier) + 4 + strlen(vendor) + 4;
-	unsigned char *data = malloc(size);
-	ogg_packet *op = malloc(sizeof(*op));
+	unsigned char *data = g_malloc0(size);
+	ogg_packet *op = g_malloc0(sizeof(*op));
 
 	if(!data) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate data buffer...\n");
@@ -196,7 +197,7 @@ ogg_packet *op_opustags(void) {
 
 /* Allocate an ogg_packet */
 ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
-	ogg_packet *op = malloc(sizeof(*op));
+	ogg_packet *op = g_malloc0(sizeof(*op));
 	if(!op) {
 		JANUS_LOG(LOG_ERR, "Couldn't allocate Ogg packet.\n");
 		return NULL;
@@ -214,9 +215,9 @@ ogg_packet *op_from_pkt(const unsigned char *pkt, int len) {
 void op_free(ogg_packet *op) {
 	if(op) {
 		if(op->packet) {
-			free(op->packet);
+			g_free(op->packet);
 		}
-		free(op);
+		g_free(op);
 	}
 }
 

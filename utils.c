@@ -43,10 +43,10 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 	size_t maxlen = strlen((char *)string1);
 	if(strlen((char *)string2) > maxlen)
 		maxlen = strlen((char *)string2);
-	unsigned char *buf1 = calloc(maxlen+1, sizeof(unsigned char));
+	unsigned char *buf1 = g_malloc0(maxlen+1);
 	memset(buf1, 0, maxlen);
 	memcpy(buf1, string1, strlen(str1));
-	unsigned char *buf2 = calloc(maxlen+1, sizeof(unsigned char));
+	unsigned char *buf2 = g_malloc0(maxlen+1);
 	memset(buf2, 0, maxlen);
 	memcpy(buf2, string2, strlen(str2));
 	unsigned char result = 0;
@@ -111,8 +111,8 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		}
 		return outgoing;
 	} else {	/* We need to resize */
-		char *outgoing = strdup(message);
-		free(message);
+		char *outgoing = g_strdup(message);
+		g_free(message);
 		if(outgoing == NULL) {
 			return NULL;
 		}
@@ -128,9 +128,9 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 		}
 		uint16_t old_stringlen = strlen(outgoing)+1, new_stringlen = old_stringlen + diff*counter;
 		if(diff > 0) {	/* Resize now */
-			tmp = realloc(outgoing, new_stringlen);
+			tmp = g_realloc(outgoing, new_stringlen);
 			if(!tmp) {
-				free(outgoing);
+				g_free(outgoing);
 				return NULL;
 			}
 			outgoing = tmp;
@@ -154,9 +154,9 @@ char *janus_string_replace(char *message, const char *old_string, const char *ne
 			pos = tmp;
 		}
 		if(diff < 0) {	/* We skipped the resize previously (shrinking memory) */
-			tmp = realloc(outgoing, new_stringlen);
+			tmp = g_realloc(outgoing, new_stringlen);
 			if(!tmp) {
-				free(outgoing);
+				g_free(outgoing);
 				return NULL;
 			}
 			outgoing = tmp;

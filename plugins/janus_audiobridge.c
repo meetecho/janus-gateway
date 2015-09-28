@@ -710,7 +710,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 			}
 			/* Create the audio bridge room */
-			janus_audiobridge_room *audiobridge = calloc(1, sizeof(janus_audiobridge_room));
+			janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
 			if(audiobridge == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				cat = cat->next;
@@ -869,7 +869,7 @@ void janus_audiobridge_create_session(janus_plugin_session *handle, int *error) 
 		*error = -1;
 		return;
 	}	
-	janus_audiobridge_session *session = (janus_audiobridge_session *)calloc(1, sizeof(janus_audiobridge_session));
+	janus_audiobridge_session *session = (janus_audiobridge_session *)g_malloc0(sizeof(janus_audiobridge_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
@@ -1082,7 +1082,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			}
 		}
 		/* Create the audio bridge room */
-		janus_audiobridge_room *audiobridge = calloc(1, sizeof(janus_audiobridge_room));
+		janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
 		if(audiobridge == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -1395,7 +1395,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "configure")
 			|| !strcasecmp(request_text, "changeroom") || !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
-		janus_audiobridge_message *msg = calloc(1, sizeof(janus_audiobridge_message));
+		janus_audiobridge_message *msg = g_malloc0(sizeof(janus_audiobridge_message));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
@@ -1510,12 +1510,12 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		}
 		/* Decode frame (Opus -> slinear) */
 		rtp_header *rtp = (rtp_header *)buf;
-		janus_audiobridge_rtp_relay_packet *pkt = calloc(1, sizeof(janus_audiobridge_rtp_relay_packet));
+		janus_audiobridge_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 		if(pkt == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return;
 		}
-		pkt->data = calloc(BUFFER_SAMPLES, sizeof(opus_int16));
+		pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
 		if(pkt->data == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			g_free(pkt);
@@ -1659,7 +1659,7 @@ static void *janus_audiobridge_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining AudioBridge handler thread\n");
 	janus_audiobridge_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));
+	char *error_cause = g_malloc0(512);
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -1798,7 +1798,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			JANUS_LOG(LOG_VERB, "  -- Participant ID: %"SCNu64"\n", user_id);
 			if(participant == NULL) {
-				participant = calloc(1, sizeof(janus_audiobridge_participant));
+				participant = g_malloc0(sizeof(janus_audiobridge_participant));
 				if(participant == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
@@ -2618,9 +2618,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				/* FIXME Smoothen/Normalize instead of truncating? */
 				outBuffer[i] = sumBuffer[i];
 			/* Enqueue this mixed frame for encoding in the participant thread */
-			janus_audiobridge_rtp_relay_packet *mixedpkt = calloc(1, sizeof(janus_audiobridge_rtp_relay_packet));
+			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 			if(mixedpkt != NULL) {
-				mixedpkt->data = calloc(samples*2, sizeof(char));
+				mixedpkt->data = g_malloc0(samples*2);
 				if(mixedpkt->data == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					g_free(mixedpkt);
@@ -2671,13 +2671,13 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	janus_audiobridge_session *session = participant->session;
 
 	/* Output buffer */
-	janus_audiobridge_rtp_relay_packet *outpkt = calloc(1, sizeof(janus_audiobridge_rtp_relay_packet));
+	janus_audiobridge_rtp_relay_packet *outpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 	if(outpkt == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	outpkt->data = (rtp_header *)calloc(1500, sizeof(unsigned char));
+	outpkt->data = (rtp_header *)g_malloc0(1500);
 	if(outpkt->data == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		g_free(outpkt);
@@ -2741,10 +2741,10 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	/* We're done, get rid of the resources */
 	if(outpkt != NULL) {
 		if(outpkt->data != NULL) {
-			free(outpkt->data);
+			g_free(outpkt->data);
 			outpkt->data = NULL;
 		}
-		free(outpkt);
+		g_free(outpkt);
 		outpkt = NULL;
 	}
 	/* Empty the outgoing queue if there was something still in */

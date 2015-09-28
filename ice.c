@@ -381,9 +381,9 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	json_decref(event);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
 	if(notification == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		g_free(event_text);
 		return;
 	}
 	notification->code = 200;
@@ -412,7 +412,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	json_decref(event);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
 	if(notification == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return;
@@ -840,7 +840,7 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"\n", session->session_id, handle_id);
-	janus_ice_handle *handle = (janus_ice_handle *)calloc(1, sizeof(janus_ice_handle));
+	janus_ice_handle *handle = (janus_ice_handle *)g_malloc0(sizeof(janus_ice_handle));
 	if(handle == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -887,7 +887,7 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 		return JANUS_ERROR_PLUGIN_ATTACH;
 	}
 	int error = 0;
-	janus_plugin_session *session_handle = calloc(1, sizeof(janus_plugin_session));
+	janus_plugin_session *session_handle = g_malloc0(sizeof(janus_plugin_session));
 	if(session_handle == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		janus_mutex_unlock(&session->mutex);
@@ -956,7 +956,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	json_decref(event);
 	/* Send the event before we do anything */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle_id);
-	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
 	if(notification) {
 		notification->code = 200;
 		notification->payload = event_text;
@@ -1498,7 +1498,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				/* Update stats (TODO Do the same for the last second window as well) */
 				if(buflen > 0) {
 					/* Update the last sec queue as well */
-					janus_ice_stats_item *s = calloc(1, sizeof(janus_ice_stats_item));
+					janus_ice_stats_item *s = g_malloc0(sizeof(janus_ice_stats_item));
 					s->bytes = buflen;
 					s->when = janus_get_monotonic_time();
 					janus_mutex_lock(&component->mutex);
@@ -1718,8 +1718,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 									p->last_retransmit = now;
 									retransmits_cnt++;
 									/* Enqueue it */
-									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
-									pkt->data = calloc(p->length, sizeof(char));
+									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+									pkt->data = g_malloc0(p->length);
 									memcpy(pkt->data, p->data, p->length);
 									pkt->length = p->length;
 									pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -2295,7 +2295,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* Add an audio stream */
 		handle->streams_num++;
 		handle->audio_id = nice_agent_add_stream (handle->agent, janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? 1 : 2);
-		janus_ice_stream *audio_stream = (janus_ice_stream *)calloc(1, sizeof(janus_ice_stream));
+		janus_ice_stream *audio_stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
 		if(audio_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
@@ -2350,7 +2350,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 		}
 		handle->audio_stream = audio_stream;
-		janus_ice_component *audio_rtp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
+		janus_ice_component *audio_rtp = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
 		if(audio_rtp == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
@@ -2384,7 +2384,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 		janus_ice_component *audio_rtcp = NULL;
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
-			audio_rtcp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
+			audio_rtcp = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
 			if(audio_rtcp == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
@@ -2451,7 +2451,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* Add a video stream */
 		handle->streams_num++;
 		handle->video_id = nice_agent_add_stream (handle->agent, janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? 1 : 2);
-		janus_ice_stream *video_stream = (janus_ice_stream *)calloc(1, sizeof(janus_ice_stream));
+		janus_ice_stream *video_stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
 		if(video_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
@@ -2473,7 +2473,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		janus_mutex_init(&video_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->video_id), video_stream);
 		handle->video_stream = video_stream;
-		janus_ice_component *video_rtp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
+		janus_ice_component *video_rtp = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
 		if(video_rtp == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
@@ -2536,7 +2536,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 		janus_ice_component *video_rtcp = NULL;
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
-			video_rtcp = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
+			video_rtcp = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
 			if(video_rtcp == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
@@ -2607,7 +2607,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* Add a SCTP/DataChannel stream */
 		handle->streams_num++;
 		handle->data_id = nice_agent_add_stream (handle->agent, 1);
-		janus_ice_stream *data_stream = (janus_ice_stream *)calloc(1, sizeof(janus_ice_stream));
+		janus_ice_stream *data_stream = (janus_ice_stream *)g_malloc0(sizeof(janus_ice_stream));
 		if(data_stream == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
@@ -2653,7 +2653,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		janus_mutex_init(&data_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->data_id), data_stream);
 		handle->data_stream = data_stream;
-		janus_ice_component *data_component = (janus_ice_component *)calloc(1, sizeof(janus_ice_component));
+		janus_ice_component *data_component = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
 		if(data_component == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
@@ -2933,8 +2933,8 @@ void *janus_ice_send_thread(void *data) {
 							}
 						}
 						/* Save the packet for retransmissions that may be needed later */
-						janus_rtp_packet *p = (janus_rtp_packet *)calloc(1, sizeof(janus_rtp_packet));
-						p->data = (char *)calloc(protected, sizeof(char));
+						janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
+						p->data = (char *)g_malloc0(protected);
 						memcpy(p->data, (char *)&sbuf, protected);
 						p->length = protected;
 						p->last_retransmit = 0;
@@ -3025,8 +3025,8 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 			|| (video && !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)))
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
-	pkt->data = calloc(len, sizeof(char));
+	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc0(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3040,8 +3040,8 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	if(!handle || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
-	pkt->data = calloc(len, sizeof(char));
+	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc0(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3056,8 +3056,8 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 	if(!handle || buf == NULL || len < 1)
 		return;
 	/* Queue this packet */
-	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)calloc(1, sizeof(janus_ice_queued_packet));
-	pkt->data = calloc(len, sizeof(char));
+	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+	pkt->data = g_malloc0(len);
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = JANUS_ICE_PACKET_DATA;
@@ -3139,7 +3139,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_decref(event);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
 	if(notification == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return;

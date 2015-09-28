@@ -218,10 +218,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	janus_pp_frame_packet *tmp = list;
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
-	uint8_t *received_frame = calloc(numBytes, sizeof(uint8_t));
-	memset(received_frame, 0, numBytes);
-	uint8_t *buffer = calloc(10000, sizeof(uint8_t)), *start = buffer;
-	memset(buffer, 0, 10000);
+	uint8_t *received_frame = g_malloc0(numBytes);
+	uint8_t *buffer = g_malloc0(10000), *start = buffer;
 	int len = 0, frameLen = 0;
 	//~ int vp8gotFirstKey = 0;	/* FIXME Ugly check to wait for the first key frame, before starting decoding */
 	int keyFrame = 0;
@@ -355,6 +353,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		tmp = tmp->next;
 	}
+	g_free(received_frame);
+	g_free(start);
 	return 0;
 }
 

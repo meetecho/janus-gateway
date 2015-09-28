@@ -399,7 +399,7 @@ static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_participant *p, co
 	if(!p || !host) {
 		return 0;
 	}
-	rtp_forwarder *forward = malloc(sizeof(rtp_forwarder));
+	rtp_forwarder *forward = g_malloc0(sizeof(rtp_forwarder));
 	forward->is_video = is_video;
 	forward->serv_addr.sin_family = AF_INET;
 	inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
@@ -443,7 +443,7 @@ static void janus_rtp_forwarder_free_helper(gpointer data) {
 	if(data) {
 		rtp_forwarder* forward = (rtp_forwarder*)data;
 		if(forward) {
-			free(forward);
+			g_free(forward);
 			forward = NULL;
 		}
 	}
@@ -577,7 +577,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *record = janus_config_get_item(cat, "record");
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
-			janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
+			janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
 			if(videoroom == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				continue;
@@ -737,7 +737,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_videoroom_session *session = (janus_videoroom_session *)calloc(1, sizeof(janus_videoroom_session));
+	janus_videoroom_session *session = (janus_videoroom_session *)g_malloc0(sizeof(janus_videoroom_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
@@ -1043,7 +1043,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		/* Create the room */
-		janus_videoroom *videoroom = calloc(1, sizeof(janus_videoroom));
+		janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
 		if(videoroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -1583,7 +1583,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			|| !strcasecmp(request_text, "add") || !strcasecmp(request_text, "remove") || !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
 
-		janus_videoroom_message *msg = calloc(1, sizeof(janus_videoroom_message));
+		janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -2053,7 +2053,7 @@ static void *janus_videoroom_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VideoRoom handler thread\n");
 	janus_videoroom_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));	/* FIXME 512 should be enough, but anyway... */
+	char *error_cause = g_malloc0(512);
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -2236,7 +2236,7 @@ static void *janus_videoroom_handler(void *data) {
 						goto error;
 					}
 				}
-				janus_videoroom_participant *publisher = calloc(1, sizeof(janus_videoroom_participant));
+				janus_videoroom_participant *publisher = g_malloc0(sizeof(janus_videoroom_participant));
 				if(publisher == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -2366,7 +2366,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
 					goto error;
 				} else {
-					janus_videoroom_listener *listener = calloc(1, sizeof(janus_videoroom_listener));
+					janus_videoroom_listener *listener = g_malloc0(sizeof(janus_videoroom_listener));
 					if(listener == NULL) {
 						JANUS_LOG(LOG_FATAL, "Memory error!\n");
 						error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -2482,7 +2482,7 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				/* Allocate listener */
-				janus_videoroom_listener_muxed *listener = calloc(1, sizeof(janus_videoroom_listener_muxed));
+				janus_videoroom_listener_muxed *listener = g_malloc0(sizeof(janus_videoroom_listener_muxed));
 				if(listener == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -3463,7 +3463,7 @@ int janus_videoroom_muxed_subscribe(janus_videoroom_listener_muxed *muxed_listen
 			ps = ps->next;
 			continue;
 		}
-		janus_videoroom_listener *listener = calloc(1, sizeof(janus_videoroom_listener));
+		janus_videoroom_listener *listener = g_malloc0(sizeof(janus_videoroom_listener));
 		if(listener == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ps = ps->next;
@@ -3752,19 +3752,19 @@ static void janus_videoroom_free(janus_videoroom *room) {
 		g_hash_table_unref(room->participants);
 		janus_mutex_unlock(&room->participants_mutex);
 		janus_mutex_destroy(&room->participants_mutex);
-		free(room);
+		g_free(room);
 		room = NULL;
 	}
 }
 
 static void janus_videoroom_listener_free(janus_videoroom_listener *l) {
 	JANUS_LOG(LOG_VERB, "Freeing listener\n");
-	free(l);
+	g_free(l);
 }
 
 static void janus_videoroom_muxed_listener_free(janus_videoroom_listener_muxed *l) {
 	JANUS_LOG(LOG_VERB, "Freeing muxed-listener\n");
-	free(l);
+	g_free(l);
 }
 
 static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
@@ -3802,5 +3802,5 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 
 	janus_mutex_destroy(&p->listeners_mutex);
 	janus_mutex_destroy(&p->rtp_forwarders_mutex);
-	free(p);
+	g_free(p);
 }
