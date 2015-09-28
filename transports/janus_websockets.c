@@ -749,7 +749,7 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			char *payload = calloc(len+1, sizeof(char));
+			char *payload = g_malloc0(len+1);
 			memcpy(payload, in, len);
 			payload[len] = '\0';
 			JANUS_LOG(LOG_HUGE, "%s\n", payload);
@@ -772,7 +772,7 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 				char *response = g_async_queue_try_pop(ws_client->messages);
 				if(response && !ws_client->destroy && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
-					unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+					unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING);
 					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
 					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(response));
 					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
@@ -883,7 +883,7 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			char *payload = calloc(len+1, sizeof(char));
+			char *payload = g_malloc0(len+1);
 			memcpy(payload, in, len);
 			payload[len] = '\0';
 			JANUS_LOG(LOG_HUGE, "%s\n", payload);
@@ -906,7 +906,7 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 				char *response = g_async_queue_try_pop(ws_client->messages);
 				if(response && !ws_client->destroy && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
-					unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+					unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING);
 					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
 					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(response));
 					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);

@@ -221,7 +221,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		return -1;	/* No point in keeping the plugin loaded */
 	} else {
 		/* FIXME We currently support a single application, create a new janus_rabbitmq_client instance */
-		rmq_client = calloc(1, sizeof(janus_rabbitmq_client));
+		rmq_client = g_malloc0(sizeof(janus_rabbitmq_client));
 		if(rmq_client == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			g_free(rmq_client);
@@ -420,7 +420,7 @@ int janus_rabbitmq_send_message(void *transport, void *request_id, gboolean admi
 	}
 	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
-	janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+	janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc0(sizeof(janus_rabbitmq_response));
 	response->admin = admin;
 	response->payload = message;
 	response->correlation_id = (char *)request_id;
@@ -497,7 +497,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		char *correlation = NULL;
 		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-			correlation = (char *)calloc(p->correlation_id.len+1, sizeof(char));
+			correlation = (char *)g_malloc0(p->correlation_id.len+1);
 			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
 			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
 		}
@@ -506,7 +506,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		/* And the body */
 		uint64_t total = frame.payload.properties.body_size, received = 0;
-		char *payload = (char *)calloc(total+1, sizeof(char)), *index = payload;
+		char *payload = (char *)g_malloc0(total+1), *index = payload;
 		while(received < total) {
 			amqp_simple_wait_frame(rmq_client->rmq_conn, &frame);
 			JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);

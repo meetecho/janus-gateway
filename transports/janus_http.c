@@ -423,7 +423,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 					fseek(pem, 0L, SEEK_END);
 					size_t size = ftell(pem);
 					fseek(pem, 0L, SEEK_SET);
-					cert_pem_bytes = calloc(size, sizeof(char));
+					cert_pem_bytes = g_malloc0(size);
 					char *index = cert_pem_bytes;
 					int read = 0, tot = size;
 					while((read = fread(index, sizeof(char), tot, pem)) > 0) {
@@ -437,7 +437,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 					fseek(key, 0L, SEEK_END);
 					size_t size = ftell(key);
 					fseek(key, 0L, SEEK_SET);
-					cert_key_bytes = calloc(size, sizeof(char));
+					cert_key_bytes = g_malloc0(size);
 					char *index = cert_key_bytes;
 					int read = 0, tot = size;
 					while((read = fread(index, sizeof(char), tot, key)) > 0) {
@@ -559,7 +559,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 						fseek(pem, 0L, SEEK_END);
 						size_t size = ftell(pem);
 						fseek(pem, 0L, SEEK_SET);
-						cert_pem_bytes = calloc(size, sizeof(char));
+						cert_pem_bytes = g_malloc0(size);
 						char *index = cert_pem_bytes;
 						int read = 0, tot = size;
 						while((read = fread(index, sizeof(char), tot, pem)) > 0) {
@@ -575,7 +575,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 						fseek(key, 0L, SEEK_END);
 						size_t size = ftell(key);
 						fseek(key, 0L, SEEK_SET);
-						cert_key_bytes = calloc(size, sizeof(char));
+						cert_key_bytes = g_malloc0(size);
 						char *index = cert_key_bytes;
 						int read = 0, tot = size;
 						while((read = fread(index, sizeof(char), tot, key)) > 0) {
@@ -784,7 +784,7 @@ void janus_http_session_created(void *transport, guint64 session_id) {
 		janus_mutex_unlock(&sessions_mutex);
 		return;
 	}
-	janus_http_session *session = calloc(1, sizeof(janus_http_session));
+	janus_http_session *session = g_malloc0(sizeof(janus_http_session));
 	session->events = g_async_queue_new();
 	session->destroyed = 0;
 	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
@@ -855,7 +855,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		firstround = 1;
 		JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
-		msg = calloc(1, sizeof(janus_http_msg));
+		msg = g_malloc0(sizeof(janus_http_msg));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -897,7 +897,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			basepath = g_strsplit(url, ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
-			basepath = calloc(3, sizeof(char *));
+			basepath = g_malloc0(3);
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
@@ -969,9 +969,9 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
 			if(msg->payload == NULL)
-				msg->payload = calloc(1, *upload_data_size+1);
+				msg->payload = g_malloc0(*upload_data_size+1);
 			else
-				msg->payload = realloc(msg->payload, msg->len+*upload_data_size+1);
+				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
 			if(msg->payload == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -1078,7 +1078,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		gateway->incoming_request(&janus_http_transport, msg, (void *)keepalive_id, FALSE, root, NULL);
 		/* Ok, go on */
 		if(handle_path) {
-			char *location = (char *)calloc(strlen(ws_path) + strlen(session_path) + 2, sizeof(char));
+			char *location = (char *)g_malloc0(strlen(ws_path) + strlen(session_path) + 2);
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
@@ -1221,7 +1221,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		firstround = 1;
 		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
-		msg = calloc(1, sizeof(janus_http_msg));
+		msg = g_malloc0(sizeof(janus_http_msg));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -1269,7 +1269,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 			basepath = g_strsplit(url, admin_ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
-			basepath = calloc(3, sizeof(char *));
+			basepath = g_malloc0(3);
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
@@ -1341,9 +1341,9 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
 			if(msg->payload == NULL)
-				msg->payload = calloc(1, *upload_data_size+1);
+				msg->payload = g_malloc0(*upload_data_size+1);
 			else
-				msg->payload = realloc(msg->payload, msg->len+*upload_data_size+1);
+				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
 			if(msg->payload == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -1464,14 +1464,14 @@ void janus_http_request_completed(void *cls, struct MHD_Connection *connection, 
 	if(!request)
 		return;
 	if(request->payload != NULL)
-		free(request->payload);
+		g_free(request->payload);
 	if(request->contenttype != NULL)
 		free(request->contenttype);
 	if(request->acrh != NULL)
-		free(request->acrh);
+		g_free(request->acrh);
 	if(request->acrm != NULL)
-		free(request->acrm);
-	free(request);
+		g_free(request->acrm);
+	g_free(request);
 	*con_cls = NULL;   
 }
 
@@ -1593,7 +1593,7 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		error_string = calloc(512, sizeof(char));
+		error_string = g_malloc0(512);
 		vsprintf(error_string, format, ap);
 		va_end(ap);
 	}
