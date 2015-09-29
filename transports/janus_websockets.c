@@ -592,24 +592,30 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 		g_free(message);
 		return -1;
 	}
-	janus_websockets_client *client = (janus_websockets_client *)transport;
-	if(!client->context || !client->wsi) {
-		g_free(message);
-		return -1;
-	}
-	/* Make sure this is not related to a closed WebSocket session */
+	/* Make sure this is not related to a closed /freed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
-	if(g_list_find(old_wss, client) == NULL) {
-		janus_mutex_lock(&client->mutex);
-		/* Convert to string and enqueue */
-		char *payload = json_dumps(message, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		g_async_queue_push(client->messages, payload);
-		libwebsocket_callback_on_writable(client->context, client->wsi);
-		janus_mutex_unlock(&client->mutex);
-	}
-	janus_mutex_unlock(&old_wss_mutex);
-	json_decref(message);
-	return 0;
+        janus_websockets_client *client = (janus_websockets_client *)transport;
+                if(g_list_find(old_wss, client) != NULL) {
+                g_free(message);
+                message = NULL;
+                transport = NULL;
+        } else if(!client->context || !client->wsi) {
+                g_free(message);
+                message = NULL;
+        }
+        if(message == NULL) {
+                janus_mutex_unlock(&old_wss_mutex);
+                return -1;
+        }
+        janus_mutex_lock(&client->mutex);
+        /* Convert to string and enqueue */
+        char *payload = json_dumps(message, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+        g_async_queue_push(client->messages, payload);
+        libwebsocket_callback_on_writable(client->context, client->wsi);
+        janus_mutex_unlock(&client->mutex);
+        janus_mutex_unlock(&old_wss_mutex);
+        json_decref(message);
+        return 0;
 }
 
 void janus_websockets_session_created(void *transport, guint64 session_id) {
@@ -621,11 +627,9 @@ void janus_websockets_session_over(void *transport, guint64 session_id, gboolean
 		return;
 	/* We only care if it's a timeout: if so, close the connection */
 	janus_websockets_client *client = (janus_websockets_client *)transport;
-	if(!client->context || !client->wsi)
-		return;
-	/* Make sure this is not related to a closed WebSocket session */
+        /* Make sure this is not related to a closed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
-	if(g_list_find(old_wss, client) == NULL) {
+	if(g_list_find(old_wss, client) == NULL && client->context && client->wsi){
 		janus_mutex_lock(&client->mutex);
 		client->session_timeout = 1;
 		libwebsocket_callback_on_writable(client->context, client->wsi);
