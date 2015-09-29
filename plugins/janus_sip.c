@@ -1738,6 +1738,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->status = janus_sip_call_status_idle;
+				session->stack->s_nh_i = NULL;
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
 				json_t *calling = json_object();
