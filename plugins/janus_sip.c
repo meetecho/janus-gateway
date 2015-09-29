@@ -13,7 +13,7 @@
  * (call, hangup) are made available to the web peer: peers can call
  * extensions at the SIP server or wait for incoming INVITEs, and during
  * a call they can send DTMF tones.
- * 
+ *
  * The concept behind this plugin is to allow different web pages associated
  * to the same peer, and hence the same SIP user, to attach to the plugin
  * at the same time and yet just do a SIP REGISTER once. The same should
@@ -22,17 +22,17 @@
  * answer, in pretty much the same way as SIP forking works but without the
  * need to fork in the same place. This specific functionality, though, has
  * not been implemented as of yet.
- * 
+ *
  * \todo Only Asterisk and Kamailio have been tested as a SIP server, and
  * specifically only with basic audio calls: this plugin needs some work
  * to make it more stable and reliable.
- * 
+ *
  * \section sipapi SIP Plugin API
- * 
+ *
  * All requests you can send in the SIP Plugin API are asynchronous,
  * which means all responses (successes and errors) will be delivered
- * as events with the same transaction. 
- * 
+ * as events with the same transaction.
+ *
  * The supported requests are \c register , \c call , \c accept and
  * \c hangup . \c register can be used, as the name suggests, to register
  * a username at a SIP registrar to call and be called; \c call is used
@@ -41,9 +41,9 @@
  * of inviting; finally, \c hangup can be used to terminate the
  * communication at any time, either to hangup (BYE) an ongoing call or
  * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
- * 
+ *
  * Actual API docs: TBD.
- * 
+ *
  * \ingroup plugins
  * \ref plugins
  */
@@ -113,7 +113,7 @@ static janus_plugin janus_sip_plugin =
 		.get_name = janus_sip_get_name,
 		.get_author = janus_sip_get_author,
 		.get_package = janus_sip_get_package,
-		
+
 		.create_session = janus_sip_create_session,
 		.handle_message = janus_sip_handle_message,
 		.setup_media = janus_sip_setup_media,
@@ -631,7 +631,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
 	session->handle = handle;
 	session->account.identity = NULL;
@@ -687,7 +687,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No SIP session associated with this handle...\n");
@@ -764,7 +764,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -780,7 +780,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 		return;
 	if(gateway) {
 		/* Honour the audio/video active flags */
-		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 		if(!session || session->destroyed) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -822,7 +822,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
-		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 		if(!session || session->destroyed) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -853,7 +853,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1680,7 +1680,7 @@ static void *janus_sip_handler(void *data) {
 			g_free(sdp);
 		janus_sip_message_free(msg);
 		continue;
-		
+
 error:
 		{
 			if(root != NULL)
