@@ -697,7 +697,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		JANUS_LOG(LOG_FATAL, "Unexpected STUN response: %d/%d\n", class, method);
 		return -1;
 	}
-	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
+	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
 		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
@@ -706,7 +706,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		g_free(public_ip);
 		return 0;
 	}
-	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr *)&address, &addrlen);
+	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
 		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
