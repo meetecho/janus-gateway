@@ -238,6 +238,8 @@ struct janus_ice_handle {
 	void *session;
 	/*! \brief Handle identifier, guaranteed to be non-zero */
 	guint64 handle_id;
+	/*! \brief Monotonic time of when the handle has been created */
+	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
 	void *app;
 	/*! \brief Opaque gateway/plugin session pointer */

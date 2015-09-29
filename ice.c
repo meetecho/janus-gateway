@@ -846,6 +846,7 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 		return NULL;
 	}
 	handle->session = gateway_session;
+	handle->created = janus_get_monotonic_time();
 	handle->handle_id = handle_id;
 	handle->app = NULL;
 	handle->app_handle = NULL;
