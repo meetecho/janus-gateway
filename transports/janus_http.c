@@ -202,7 +202,7 @@ static void janus_http_random_string(int length, char *buffer) {
 			int key = rand() % l;
 			buffer[i] = charset[key];
 		}
-		buffer[length] = '\0';
+		buffer[length-1] = '\0';
 	}
 }
 
