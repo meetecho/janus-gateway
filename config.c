@@ -415,6 +415,15 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 		JANUS_LOG(LOG_ERR, "Couldn't save configuration file, error opening file '%s'...\n", path);
 		return -3;
 	}
+	/* Print a header */
+	char date[64], header[256];
+	struct tm tmresult;
+	time_t ltime = time(NULL);
+	localtime_r(&ltime, &tmresult);
+	strftime(date, sizeof(date), "%a %b %e %T %Y", &tmresult);
+	g_snprintf(header, 256, ";\n; File automatically generated on %s\n;\n\n", date);
+	fwrite(header, sizeof(char), strlen(header), file);
+	/* Go on with the configuration */
 	if(config->items) {
 		janus_config_item *i = config->items;
 		config->items = NULL;
@@ -423,7 +432,7 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 				fwrite(i->name, sizeof(char), strlen(i->name), file);
 				fwrite(" = ", sizeof(char), 3, file);
 				fwrite(i->value, sizeof(char), strlen(i->value), file);
-				fwrite("\r\n", sizeof(char), 2, file);
+				fwrite("\n", sizeof(char), 1, file);
 			}
 			i = i->next;
 		}
@@ -434,7 +443,7 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 			if(c->name) {
 				fwrite("[", sizeof(char), 1, file);
 				fwrite(c->name, sizeof(char), strlen(c->name), file);
-				fwrite("]\r\n", sizeof(char), 3, file);
+				fwrite("]\n", sizeof(char), 2, file);
 				if(c->items) {
 					janus_config_item *i = c->items;
 					while(i) {
@@ -442,7 +451,7 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 							fwrite(i->name, sizeof(char), strlen(i->name), file);
 							fwrite(" = ", sizeof(char), 3, file);
 							fwrite(i->value, sizeof(char), strlen(i->value), file);
-							fwrite("\r\n", sizeof(char), 2, file);
+							fwrite("\n", sizeof(char), 1, file);
 						}
 						i = i->next;
 					}
