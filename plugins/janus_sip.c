@@ -1280,6 +1280,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(uri_text),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->account.proxy),
+				NUTAG_AUTOANSWER(0),
 				TAG_END());
 			g_free(sdp);
 			session->callee = g_strdup(uri_text);
@@ -1351,6 +1352,7 @@ static void *janus_sip_handler(void *data) {
 			nua_respond(session->stack->s_nh_i,
 				200, sip_status_phrase(200),
 				SOATAG_USER_SDP_STR(sdp),
+				NUTAG_AUTOANSWER(0),
 				TAG_END());
 			g_free(sdp);
 			/* Send an ack back */
@@ -1785,8 +1787,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(session->stack->s_nh_i != NULL) {
 				if(session->stack->s_nh_i == nh) {
-					/* re-INVITE, we don't support those. Sofia
-					 * will send a 200 OK response, so just ignore it. */
+					/* re-INVITE, we don't support those. */
+					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 				} else if(session->status >= janus_sip_call_status_inviting) {
 					/* Busy with another call */
 					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
