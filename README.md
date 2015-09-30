@@ -80,6 +80,37 @@ is quite straightforward:
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
 
+If you want to make use of BoringSSL instead of OpenSSL for any reason
+(read [here](https://github.com/meetecho/janus-gateway/issues/136) for
+some background on this), you'll have to manually install a specific
+version of the library to a specific location. Use the following steps:
+
+	git clone https://boringssl.googlesource.com/boringssl
+	cd boringssl
+	# We need a specific revision
+	git checkout 12fe1b25ead258858309d22ffa9e1f9a316358d7
+	# Don't barf on errors
+	sed -i s/" -Werror"//g CMakeLists.txt
+	# Build
+	mkdir -p build
+	cd build
+	cmake -DCMAKE_CXX_FLAGS="-lrt" ..
+	make
+	cd ..
+	# Install
+	sudo mkdir -p /opt/boringssl
+	sudo cp -R include /opt/boringssl/
+	sudo mkdir -p /opt/boringssl/lib
+	sudo cp build/ssl/libssl.a /opt/boringssl/lib/
+	sudo cp build/crypto/libcrypto.a /opt/boringssl/lib/
+
+Once the library is installed, you'll have to pass an additional
+```--enable-boringssl``` flag to the configure script, as by default
+Janus will be build assuming OpenSSL will be used. If you were using
+OpenSSL and want to switch to BoringSSL, make sure you also do a
+```make clean``` in the Janus folder before compiling with the new
+BoringSSL support.
+
 For what concerns usrsctp, which is needed for Data Channels support, it
 is usually not available in repositories, so if you're interested in
 them (support is optional) you'll have to install it manually. It is a

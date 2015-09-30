@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
 					JANUS_LOG(LOG_WARN, "Missing recording written time in info header...\n");
 					exit(1);
 				}
-				w_time = json_integer_value(created);
+				w_time = json_integer_value(written);
 				/* Summary */
 				JANUS_LOG(LOG_INFO, "This is %s recording:\n", video ? "a video" : "an audio");
 				JANUS_LOG(LOG_INFO, "  -- Codec:   %s\n", c);

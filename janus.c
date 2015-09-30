@@ -676,6 +676,18 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_NOT_FOUND, "No such plugin '%s'", plugin_text);
 			goto jsondone;
 		}
+		/* If the auth token mechanism is enabled, we should check if this token can access this plugin */
+		if(janus_auth_is_enabled()) {
+			json_t *token = json_object_get(root, "token");
+			if(token != NULL) {
+				const char *token_value = json_string_value(token);
+				if(token_value && !janus_auth_check_plugin(token_value, plugin_t)) {
+					JANUS_LOG(LOG_ERR, "Token '%s' can't access plugin '%s'\n", token_value, plugin_text);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED_PLUGIN, "Provided token can't access plugin '%s'", plugin_text);
+					goto jsondone;
+				}
+			}
+		}
 		/* Create handle */
 		handle = janus_ice_handle_create(session);
 		if(handle == NULL) {
@@ -1490,14 +1502,303 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				goto jsondone;
 			}
 			const char *token_value = json_string_value(token);
+			/* Any plugin this token should be limited to? */
+			json_t *allowed = json_object_get(root, "plugins");
+			if(allowed && !json_is_array(allowed)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugins should be an array)");
+				goto jsondone;
+			}
+			/* First of all, add the new token */
 			if(!janus_auth_add_token(token_value)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error adding token");
 				goto jsondone;
+			}
+			/* Then take care of the plugins access limitations, if any */
+			if(allowed && json_array_size(allowed) > 0) {
+				/* Specify which plugins this token has access to */
+				size_t i = 0;
+				for(i=0; i<json_array_size(allowed); i++) {
+					json_t *p = json_array_get(allowed, i);
+					if(!p || !json_is_string(p)) {
+						/* FIXME Should we fail here? */
+						JANUS_LOG(LOG_WARN, "Invalid plugin passed to the new token request, skipping...\n");
+						continue;
+					}
+					const gchar *plugin_text = json_string_value(p);
+					janus_plugin *plugin_t = janus_plugin_find(plugin_text);
+					if(plugin_t == NULL) {
+						/* FIXME Should we fail here? */
+						JANUS_LOG(LOG_WARN, "No such plugin '%s' passed to the new token request, skipping...\n", plugin_text);
+						continue;
+					}
+					if(!janus_auth_allow_plugin(token_value, plugin_t)) {
+						JANUS_LOG(LOG_WARN, "Error allowing access to '%s' to the new token, bad things may happen...\n", plugin_text);
+					}
+				}
+			} else {
+				/* No plugin limitation specified, allow all plugins */
+				if(plugins && g_hash_table_size(plugins) > 0) {
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, plugins);
+					while (g_hash_table_iter_next(&iter, NULL, &value)) {
+						janus_plugin *plugin_t = value;
+						if(plugin_t == NULL)
+							continue;
+						if(!janus_auth_allow_plugin(token_value, plugin_t)) {
+							JANUS_LOG(LOG_WARN, "Error allowing access to '%s' to the new token, bad things may happen...\n", plugin_t->get_package());
+						}
+					}
+				}
+			}
+			/* Get the list of plugins this new token can access */
+			json_t *plugins_list = json_array();
+			GList *plugins = janus_auth_list_plugins(token_value);
+			if(plugins != NULL) {
+				GList *tmp = plugins;
+				while(tmp) {
+					janus_plugin *p = (janus_plugin *)tmp->data;
+					if(p != NULL)
+						json_array_append_new(plugins_list, json_string(p->get_package()));
+					tmp = tmp->next;
+				}
+				g_list_free(plugins);
+				plugins = NULL;
 			}
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_t *data = json_object();
+			json_object_set_new(data, "plugins", plugins_list);
+			json_object_set_new(reply, "data", data);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "list_tokens")) {
+			/* List all the valid tokens */
+			if(!janus_auth_is_enabled()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+				goto jsondone;
+			}
+			json_t *tokens_list = json_array();
+			GList *list = janus_auth_list_tokens();
+			if(list != NULL) {
+				GList *tmp = list;
+				while(tmp) {
+					char *token = (char *)tmp->data;
+					if(token != NULL) {
+						GList *plugins = janus_auth_list_plugins(token);
+						if(plugins != NULL) {
+							json_t *t = json_object();
+							json_object_set_new(t, "token", json_string(token));
+							json_t *plugins_list = json_array();
+							GList *tmp2 = plugins;
+							while(tmp2) {
+								janus_plugin *p = (janus_plugin *)tmp2->data;
+								if(p != NULL)
+									json_array_append_new(plugins_list, json_string(p->get_package()));
+								tmp2 = tmp2->next;
+							}
+							g_list_free(plugins);
+							plugins = NULL;
+							json_object_set_new(t, "allowed_plugins", plugins_list);
+							json_array_append_new(tokens_list, t);
+						}
+						tmp->data = NULL;
+						g_free(token);
+					}
+					tmp = tmp->next;
+				}
+				g_list_free(list);
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_t *data = json_object();
+			json_object_set_new(data, "tokens", tokens_list);
+			json_object_set_new(reply, "data", data);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "allow_token")) {
+			/* Allow a valid token valid to access a plugin */
+			if(!janus_auth_is_enabled()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+				goto jsondone;
+			}
+			json_t *token = json_object_get(root, "token");
+			if(!token) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
+				goto jsondone;
+			}
+			if(!json_is_string(token)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
+				goto jsondone;
+			}
+			const char *token_value = json_string_value(token);
+			/* Check if the token is valid, first */
+			if(!janus_auth_check_token(token_value)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
+				goto jsondone;
+			}
+			/* Any plugin this token should be limited to? */
+			json_t *allowed = json_object_get(root, "plugins");
+			if(!allowed) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugins)");
+				goto jsondone;
+			}
+			if(!json_is_array(allowed) || json_array_size(allowed) == 0) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugins should be an array)");
+				goto jsondone;
+			}
+			/* Check the list first */
+			size_t i = 0;
+			gboolean ok = TRUE;
+			for(i=0; i<json_array_size(allowed); i++) {
+				json_t *p = json_array_get(allowed, i);
+				if(!p || !json_is_string(p)) {
+					/* FIXME Should we fail here? */
+					JANUS_LOG(LOG_ERR, "Invalid plugin passed to the new token request...\n");
+					ok = FALSE;
+					break;
+				}
+				const gchar *plugin_text = json_string_value(p);
+				janus_plugin *plugin_t = janus_plugin_find(plugin_text);
+				if(plugin_t == NULL) {
+					/* FIXME Should we fail here? */
+					JANUS_LOG(LOG_ERR, "No such plugin '%s' passed to the new token request...\n", plugin_text);
+					ok = FALSE;
+					break;
+				}
+			}
+			if(!ok) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (some of the provided plugins are invalid)");
+				goto jsondone;
+			}
+			/* Take care of the plugins access limitations */
+			i = 0;
+			for(i=0; i<json_array_size(allowed); i++) {
+				json_t *p = json_array_get(allowed, i);
+				const gchar *plugin_text = json_string_value(p);
+				janus_plugin *plugin_t = janus_plugin_find(plugin_text);
+				if(!janus_auth_allow_plugin(token_value, plugin_t)) {
+					/* FIXME Should we notify individual failures? */
+					JANUS_LOG(LOG_WARN, "Error allowing access to '%s' to the new token, bad things may happen...\n", plugin_text);
+				}
+			}
+			/* Get the list of plugins this new token can now access */
+			json_t *plugins_list = json_array();
+			GList *plugins = janus_auth_list_plugins(token_value);
+			if(plugins != NULL) {
+				GList *tmp = plugins;
+				while(tmp) {
+					janus_plugin *p = (janus_plugin *)tmp->data;
+					if(p != NULL)
+						json_array_append_new(plugins_list, json_string(p->get_package()));
+					tmp = tmp->next;
+				}
+				g_list_free(plugins);
+				plugins = NULL;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_t *data = json_object();
+			json_object_set_new(data, "plugins", plugins_list);
+			json_object_set_new(reply, "data", data);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "disallow_token")) {
+			/* Disallow a valid token valid from accessing a plugin */
+			if(!janus_auth_is_enabled()) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
+				goto jsondone;
+			}
+			json_t *token = json_object_get(root, "token");
+			if(!token) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
+				goto jsondone;
+			}
+			if(!json_is_string(token)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
+				goto jsondone;
+			}
+			const char *token_value = json_string_value(token);
+			/* Check if the token is valid, first */
+			if(!janus_auth_check_token(token_value)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_TOKEN_NOT_FOUND, "Token %s not found", token_value);
+				goto jsondone;
+			}
+			/* Any plugin this token should be prevented access to? */
+			json_t *allowed = json_object_get(root, "plugins");
+			if(!allowed) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugins)");
+				goto jsondone;
+			}
+			if(!json_is_array(allowed) || json_array_size(allowed) == 0) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugins should be an array)");
+				goto jsondone;
+			}
+			/* Check the list first */
+			size_t i = 0;
+			gboolean ok = TRUE;
+			for(i=0; i<json_array_size(allowed); i++) {
+				json_t *p = json_array_get(allowed, i);
+				if(!p || !json_is_string(p)) {
+					/* FIXME Should we fail here? */
+					JANUS_LOG(LOG_ERR, "Invalid plugin passed to the new token request...\n");
+					ok = FALSE;
+					break;
+				}
+				const gchar *plugin_text = json_string_value(p);
+				janus_plugin *plugin_t = janus_plugin_find(plugin_text);
+				if(plugin_t == NULL) {
+					/* FIXME Should we fail here? */
+					JANUS_LOG(LOG_ERR, "No such plugin '%s' passed to the new token request...\n", plugin_text);
+					ok = FALSE;
+					break;
+				}
+			}
+			if(!ok) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (some of the provided plugins are invalid)");
+				goto jsondone;
+			}
+			/* Take care of the plugins access limitations */
+			i = 0;
+			for(i=0; i<json_array_size(allowed); i++) {
+				json_t *p = json_array_get(allowed, i);
+				const gchar *plugin_text = json_string_value(p);
+				janus_plugin *plugin_t = janus_plugin_find(plugin_text);
+				if(!janus_auth_disallow_plugin(token_value, plugin_t)) {
+					/* FIXME Should we notify individual failures? */
+					JANUS_LOG(LOG_WARN, "Error allowing access to '%s' to the new token, bad things may happen...\n", plugin_text);
+				}
+			}
+			/* Get the list of plugins this new token can now access */
+			json_t *plugins_list = json_array();
+			GList *plugins = janus_auth_list_plugins(token_value);
+			if(plugins != NULL) {
+				GList *tmp = plugins;
+				while(tmp) {
+					janus_plugin *p = (janus_plugin *)tmp->data;
+					if(p != NULL)
+						json_array_append_new(plugins_list, json_string(p->get_package()));
+					tmp = tmp->next;
+				}
+				g_list_free(plugins);
+				plugins = NULL;
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_t *data = json_object();
+			json_object_set_new(data, "plugins", plugins_list);
+			json_object_set_new(reply, "data", data);
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1987,12 +2288,13 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_plugin_push_event(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
+int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
 	if(!plugin || !message)
 		return -1;
-	if(!handle || !janus_plugin_session_is_alive(handle) || handle->stopped)
+	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
+			!janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped)
 		return -2;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
@@ -2012,7 +2314,7 @@ int janus_plugin_push_event(janus_plugin_session *handle, janus_plugin *plugin, 
 	/* Attach JSEP if possible? */
 	json_t *jsep = NULL;
 	if(sdp_type != NULL && sdp != NULL) {
-		jsep = janus_plugin_handle_sdp(handle, plugin, sdp_type, sdp);
+		jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp);
 		if(jsep == NULL) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
@@ -2044,12 +2346,14 @@ int janus_plugin_push_event(janus_plugin_session *handle, janus_plugin *plugin, 
 	return JANUS_OK;
 }
 
-json_t *janus_plugin_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
-	if(handle == NULL || !janus_plugin_session_is_alive(handle) || handle->stopped || plugin == NULL || sdp_type == NULL || sdp == NULL) {
+json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
+	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
+			!janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped ||
+			plugin == NULL || sdp_type == NULL || sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
 	}
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	//~ if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 	if(ice_handle == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid ICE handle\n");

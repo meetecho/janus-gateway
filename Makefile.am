@@ -114,9 +114,11 @@ janus_CFLAGS = \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
+	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
 janus_LDADD = \
+	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
 	-lsrtp \
