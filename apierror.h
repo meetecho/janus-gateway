@@ -16,8 +16,10 @@
 /*! \brief Success (no error) */
 #define JANUS_OK								0
 
-/*! \brief Unauthorized (can only happen when using apisecret) */
+/*! \brief Unauthorized (can only happen when using apisecret/auth token) */
 #define JANUS_ERROR_UNAUTHORIZED				403
+/*! \brief Unauthorized access to a plugin (can only happen when using auth token) */
+#define JANUS_ERROR_UNAUTHORIZED_PLUGIN			405
 /*! \brief Unknown/undocumented error */
 #define JANUS_ERROR_UNKNOWN						490
 /*! \brief The client needs to use HTTP POST for this request */
@@ -61,6 +63,8 @@
 #define JANUS_ERROR_SESSION_CONFLICT			468
 /*! \brief We got an ANSWER to an OFFER we never made */
 #define JANUS_ERROR_UNEXPECTED_ANSWER			469
+/*! \brief The auth token the request refers to doesn't exist */
+#define JANUS_ERROR_TOKEN_NOT_FOUND				470
 
 
 /*! \brief Helper method to get a string representation of an API error code

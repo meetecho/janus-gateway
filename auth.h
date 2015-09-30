@@ -37,9 +37,34 @@ gboolean janus_auth_add_token(const char *token);
  * @param[in] token The token to validate
  * @returns true if the token is valid, false otherwise */
 gboolean janus_auth_check_token(const char *token);
+/*! \brief Method to return a list of the tokens
+ * \note It's the caller responsibility to free the list and its values
+ * @returns A pointer to a GList instance containing the tokens */
+GList *janus_auth_list_tokens(void);
 /*! \brief Method to invalidate an existing token
  * @param[in] token The valid to invalidate
  * @returns true if the operation was successful, false otherwise */
 gboolean janus_auth_remove_token(const char *token);
+
+/*! \brief Method to allow a token to use a plugin
+ * @param[in] token The token that can now access this plugin
+ * @param[in] plugin Opaque pointer to the janus_plugin instance this token can access
+ * @returns true if the operation was successful, false otherwise */
+gboolean janus_auth_allow_plugin(const char *token, void *plugin);
+/*! \brief Method to check whether a provided token can access a specified plugin
+ * @param[in] token The token to check
+ * @param[in] plugin The plugin to check as an opaque pointer to a janus_plugin instance
+ * @returns true if the token is allowed to access the plugin, false otherwise */
+gboolean janus_auth_check_plugin(const char *token, void *plugin);
+/*! \brief Method to return a list of the plugins a specific token has access to
+ * \note It's the caller responsibility to free the list (but NOT the values)
+ * @param[in] token The token to get the list for
+ * @returns A pointer to a GList instance containing the liist */
+GList *janus_auth_list_plugins(const char *token);
+/*! \brief Method to disallow a token to use a plugin
+ * @param[in] token The token this operation refers to
+ * @param[in] plugin Opaque pointer to the janus_plugin instance this token can not access anymore
+ * @returns true if the operation was successful, false otherwise */
+gboolean janus_auth_disallow_plugin(const char *token, void *plugin);
 
 #endif

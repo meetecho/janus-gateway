@@ -6,6 +6,8 @@ const char *janus_get_api_error(int error) {
 			return "Success";
 		case JANUS_ERROR_UNAUTHORIZED:
 			return "Unauthorized request (wrong or missing secret/token)";
+		case JANUS_ERROR_UNAUTHORIZED_PLUGIN:
+			return "Unauthorized access to plugin (token is not allowed to)";
 		case JANUS_ERROR_UNKNOWN:
 			return "Unknown error";
 		case JANUS_ERROR_USE_GET:
@@ -48,6 +50,8 @@ const char *janus_get_api_error(int error) {
 			return "Session ID already in use";
 		case JANUS_ERROR_UNEXPECTED_ANSWER:
 			return "Unexpected ANSWER (no OFFER)";
+		case JANUS_ERROR_TOKEN_NOT_FOUND:
+			return "Token not found";
 		default:
 			return "Unknown error";
 	}
