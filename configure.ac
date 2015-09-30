@@ -63,6 +63,12 @@ AC_ARG_ENABLE([rabbitmq],
               [],
               [enable_rabbitmq=yes])
 
+AC_ARG_ENABLE([boringssl],
+              [AS_HELP_STRING([--enable-boringssl],
+                              [Use BoringSSL instead of OpenSSL])],
+              [],
+              [enable_boringssl=no])
+
 AC_ARG_ENABLE([turn-rest-api],
               [AS_HELP_STRING([--disable-turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
@@ -79,8 +85,20 @@ PKG_CHECK_MODULES([JANUS],
                     sofia-sip-ua
                     ini_config
                   ])
-
 AC_SUBST(JANUS_MANUAL_LIBS)
+
+AS_IF([test "x$enable_boringssl" = "xyes"],
+	  [echo "Trying to use BoringSSL instead of OpenSSL...";
+	   CFLAGS="$CFLAGS -I/opt/boringssl/include";
+	   BORINGSSL_CFLAGS=" -I/opt/boringssl/include";
+       AC_SUBST(BORINGSSL_CFLAGS)
+	   BORINGSSL_LIBS=" -L/opt/boringssl/lib";
+       AC_SUBST(BORINGSSL_LIBS)
+	   AC_CHECK_HEADERS([openssl/opensslfeatures.h],
+	                    [],
+	                    [AC_MSG_ERROR([BoringSSL headers not found in /opt/boringssl, use --disable-boringssl if you want to use OpenSSL instead])])
+      ])
+AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x$enable_boringssl" = "xyes"])
 
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
@@ -348,6 +366,9 @@ echo
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
+AM_COND_IF([ENABLE_BORINGSSL],
+	[echo "BoringSSL (no OpenSSL):    yes"],
+	[echo "BoringSSL (no OpenSSL):    no"])
 AM_COND_IF([ENABLE_POST_PROCESSING],
 	[echo "Recordings post-processor: yes"],
 	[echo "Recordings post-processor: no"])
