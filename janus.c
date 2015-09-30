@@ -1987,12 +1987,13 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_plugin_push_event(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
+int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
 	if(!plugin || !message)
 		return -1;
-	if(!handle || !janus_plugin_session_is_alive(handle) || handle->stopped)
+	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
+			!janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped)
 		return -2;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
@@ -2012,7 +2013,7 @@ int janus_plugin_push_event(janus_plugin_session *handle, janus_plugin *plugin, 
 	/* Attach JSEP if possible? */
 	json_t *jsep = NULL;
 	if(sdp_type != NULL && sdp != NULL) {
-		jsep = janus_plugin_handle_sdp(handle, plugin, sdp_type, sdp);
+		jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp);
 		if(jsep == NULL) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
@@ -2044,12 +2045,14 @@ int janus_plugin_push_event(janus_plugin_session *handle, janus_plugin *plugin, 
 	return JANUS_OK;
 }
 
-json_t *janus_plugin_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
-	if(handle == NULL || !janus_plugin_session_is_alive(handle) || handle->stopped || plugin == NULL || sdp_type == NULL || sdp == NULL) {
+json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
+	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
+			!janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped ||
+			plugin == NULL || sdp_type == NULL || sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
 	}
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	//~ if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 	if(ice_handle == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid ICE handle\n");
