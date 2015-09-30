@@ -149,7 +149,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);	/* FIXME Max 10 seconds */
 	/* For getting data, we use an helper struct and the libcurl callback */
 	janus_turnrest_buffer data;
-	data.buffer = malloc(1);
+	data.buffer = g_malloc0(1);
 	data.size = 0;
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_turnrest_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&data);
@@ -158,7 +158,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 	res = curl_easy_perform(curl);
 	if(res != CURLE_OK) {
 		JANUS_LOG(LOG_ERR, "Couldn't send the request: %s\n", curl_easy_strerror(res));
-		free(data.buffer);
+		g_free(data.buffer);
 		curl_easy_cleanup(curl);
 		return NULL;
 	}
@@ -171,10 +171,10 @@ janus_turnrest_response *janus_turnrest_request(void) {
 	json_t *root = json_loads(data.buffer, 0, &error);
 	if(!root) {
 		JANUS_LOG(LOG_ERR, "Couldn't parse response: error on line %d: %s", error.line, error.text);
-		free(data.buffer);
+		g_free(data.buffer);
 		return NULL;
 	}
-	free(data.buffer);
+	g_free(data.buffer);
 	json_t *username = json_object_get(root, "username");
 	if(!username) {
 		JANUS_LOG(LOG_ERR, "Invalid response: missing username\n");
@@ -208,7 +208,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		return NULL;
 	}
 	/* Turn the response into a janus_turnrest_response object we can use */
-	janus_turnrest_response *response = calloc(1, sizeof(janus_turnrest_response));
+	janus_turnrest_response *response = g_malloc0(sizeof(janus_turnrest_response));
 	response->username = g_strdup(json_string_value(username));
 	response->password = g_strdup(json_string_value(password));
 	response->ttl = ttl ? json_integer_value(ttl) : 0;
@@ -225,7 +225,7 @@ janus_turnrest_response *janus_turnrest_request(void) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (not a TURN URI)...\n", turn_uri);
 			continue;
 		}
-		janus_turnrest_instance *instance = calloc(1, sizeof(janus_turnrest_instance));
+		janus_turnrest_instance *instance = g_malloc0(sizeof(janus_turnrest_instance));
 		instance->transport = NICE_RELAY_TYPE_TURN_UDP;
 		if(strstr(turn_uri, "turns:") == turn_uri)
 			instance->transport = NICE_RELAY_TYPE_TURN_TLS;

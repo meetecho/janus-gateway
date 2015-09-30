@@ -349,7 +349,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				gchar *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(event);
 
-				janus_http_event *notification = calloc(1, sizeof(janus_http_event));
+				janus_http_event *notification = g_malloc0(sizeof(janus_http_event));
 				notification->code = 200;
 				notification->payload = event_text;
 				notification->allocated = 1;
@@ -414,7 +414,7 @@ janus_session *janus_session_create(guint64 session_id) {
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"\n", session_id);
-	janus_session *session = (janus_session *)calloc(1, sizeof(janus_session));
+	janus_session *session = (janus_session *)g_malloc0(sizeof(janus_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -561,7 +561,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		firstround = 1;
 		JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
-		msg = calloc(1, sizeof(janus_http_msg));
+		msg = g_malloc0(sizeof(janus_http_msg));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -608,7 +608,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			basepath = g_strsplit(url, ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
-			basepath = calloc(3, sizeof(char *));
+			basepath = g_malloc0(3);
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
@@ -680,9 +680,9 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
 			if(msg->payload == NULL)
-				msg->payload = calloc(1, *upload_data_size+1);
+				msg->payload = g_malloc0(*upload_data_size+1);
 			else
-				msg->payload = realloc(msg->payload, msg->len+*upload_data_size+1);
+				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
 			if(msg->payload == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -743,7 +743,7 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 		}
 		msg->session_id = session_id;
 		if(handle_path) {
-			char *location = (char *)calloc(strlen(ws_path) + strlen(session_path) + 2, sizeof(char));
+			char *location = (char *)g_malloc0(strlen(ws_path) + strlen(session_path) + 2);
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
@@ -771,25 +771,29 @@ int janus_ws_handler(void *cls, struct MHD_Connection *connection, const char *u
 			MHD_destroy_response(response);
 			goto done;
 		}
-		if(ws_api_secret != NULL) {
-			/* There's an API secret, check that the client provided it */
-			const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
-			if(!secret || !janus_strcmp_const_time(secret, ws_api_secret)) {
-				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
-				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-				if(msg->acrm)
-					MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-				if(msg->acrh)
-					MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
-				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
-				MHD_destroy_response(response);
-				goto done;
+		/* Any secret/token to check? */
+		gboolean secret_authorized = FALSE, token_authorized = FALSE;
+		if(ws_api_secret == NULL && !janus_auth_is_enabled()) {
+			/* Nothing to check */
+			secret_authorized = TRUE;
+			token_authorized = TRUE;
+		} else {
+			if(ws_api_secret != NULL) {
+				/* There's an API secret, check that the client provided it */
+				const char *secret = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "apisecret");
+				if(secret && janus_strcmp_const_time(secret, ws_api_secret)) {
+					secret_authorized = TRUE;
+				}
 			}
-		}
-		if(janus_auth_is_enabled()) {
-			/* The token based authentication mechanism is enabled, check that the client provided it */
-			const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
-			if(!token || !janus_auth_check_token(token)) {
+			if(janus_auth_is_enabled()) {
+				/* The token based authentication mechanism is enabled, check that the client provided it */
+				const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
+				if(token && janus_auth_check_token(token)) {
+					token_authorized = TRUE;
+				}
+			}
+			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
+			if(!secret_authorized && !token_authorized) {
 				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
 				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 				if(msg->acrm)
@@ -891,7 +895,7 @@ done:
 }
 
 janus_request_source *janus_request_source_new(int type, void *source, void *msg) {
-	janus_request_source *req_source = (janus_request_source *)calloc(1, sizeof(janus_request_source));
+	janus_request_source *req_source = (janus_request_source *)g_malloc0(sizeof(janus_request_source));
 	req_source->type = type;
 	req_source->source = source;
 	req_source->msg = msg;
@@ -968,7 +972,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			json_object_set_new(event, "janus", json_string("rmqtest"));
 			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
-			janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+			janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc0(sizeof(janus_rabbitmq_response));
 			response->payload = event_text;
 			response->correlation_id = NULL;
 			g_async_queue_push(rmq_client->responses, response);
@@ -986,18 +990,29 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-		if(ws_api_secret != NULL) {
-			/* There's an API secret, check that the client provided it */
-			json_t *secret = json_object_get(root, "apisecret");
-			if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
-				goto jsondone;
+		/* Any secret/token to check? */
+		gboolean secret_authorized = FALSE, token_authorized = FALSE;
+		if(ws_api_secret == NULL && !janus_auth_is_enabled()) {
+			/* Nothing to check */
+			secret_authorized = TRUE;
+			token_authorized = TRUE;
+		} else {
+			if(ws_api_secret != NULL) {
+				/* There's an API secret, check that the client provided it */
+				json_t *secret = json_object_get(root, "apisecret");
+				if(secret && json_is_string(secret) && janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
+					secret_authorized = TRUE;
+				}
 			}
-		}
-		if(janus_auth_is_enabled()) {
-			/* The token based authentication mechanism is enabled, check that the client provided it */
-			json_t *token = json_object_get(root, "token");
-			if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
+			if(janus_auth_is_enabled()) {
+				/* The token based authentication mechanism is enabled, check that the client provided it */
+				json_t *token = json_object_get(root, "token");
+				if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token))) {
+					token_authorized = TRUE;
+				}
+			}
+			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
+			if(!secret_authorized && !token_authorized) {
 				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 				goto jsondone;
 			}
@@ -1083,18 +1098,28 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 	}
 
 	/* Go on with the processing */
-	if(ws_api_secret != NULL) {
-		/* There's an API secret, check that the client provided it */
-		json_t *secret = json_object_get(root, "apisecret");
-		if(!secret || !json_is_string(secret) || !janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
-			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
-			goto jsondone;
+	gboolean secret_authorized = FALSE, token_authorized = FALSE;
+	if(ws_api_secret == NULL && !janus_auth_is_enabled()) {
+		/* Nothing to check */
+		secret_authorized = TRUE;
+		token_authorized = TRUE;
+	} else {
+		if(ws_api_secret != NULL) {
+			/* There's an API secret, check that the client provided it */
+			json_t *secret = json_object_get(root, "apisecret");
+			if(secret && json_is_string(secret) && janus_strcmp_const_time(json_string_value(secret), ws_api_secret)) {
+				secret_authorized = TRUE;
+			}
 		}
-	}
-	if(janus_auth_is_enabled()) {
-		/* The token based authentication mechanism is enabled, check that the client provided it */
-		json_t *token = json_object_get(root, "token");
-		if(!token || !json_is_string(token) || !janus_auth_check_token(json_string_value(token))) {
+		if(janus_auth_is_enabled()) {
+			/* The token based authentication mechanism is enabled, check that the client provided it */
+			json_t *token = json_object_get(root, "token");
+			if(token && json_is_string(token) && janus_auth_check_token(json_string_value(token))) {
+				token_authorized = TRUE;
+			}
+		}
+		/* We consider a request authorized if either the proper API secret or a valid token has been provided */
+		if(!secret_authorized && !token_authorized) {
 			ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
 			goto jsondone;
 		}
@@ -1810,7 +1835,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 		firstround = 1;
 		JANUS_LOG(LOG_VERB, "Got an admin/monitor HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
-		msg = calloc(1, sizeof(janus_http_msg));
+		msg = g_malloc0(sizeof(janus_http_msg));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -1855,7 +1880,7 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 			basepath = g_strsplit(url, admin_ws_path, -1);
 		} else {
 			/* The base path is the web server too itself, we process the url itself */
-			basepath = calloc(3, sizeof(char *));
+			basepath = g_malloc0(3);
 			basepath[0] = g_strdup("/");
 			basepath[1] = g_strdup(url);
 		}
@@ -1927,9 +1952,9 @@ int janus_admin_ws_handler(void *cls, struct MHD_Connection *connection, const c
 		JANUS_LOG(LOG_HUGE, "Processing POST data (%s) (%zu bytes)...\n", msg->contenttype, *upload_data_size);
 		if(*upload_data_size != 0) {
 			if(msg->payload == NULL)
-				msg->payload = calloc(1, *upload_data_size+1);
+				msg->payload = g_malloc0(*upload_data_size+1);
 			else
-				msg->payload = realloc(msg->payload, msg->len+*upload_data_size+1);
+				msg->payload = g_realloc(msg->payload, msg->len+*upload_data_size+1);
 			if(msg->payload == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -2383,6 +2408,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 		json_t *info = json_object();
 		json_object_set_new(info, "session_id", json_integer(session_id));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
+		json_object_set_new(info, "created", json_integer(handle->created));
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
 		if(handle->app && handle->app_handle && janus_plugin_session_is_alive(handle->app_handle)) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
@@ -2480,13 +2506,13 @@ int janus_ws_headers(void *cls, enum MHD_ValueKind kind, const char *key, const 
 	JANUS_LOG(LOG_DBG, "%s: %s\n", key, value);
 	if(!strcasecmp(key, MHD_HTTP_HEADER_CONTENT_TYPE)) {
 		if(request)
-			request->contenttype = strdup(value);
+			request->contenttype = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Method")) {
 		if(request)
-			request->acrm = strdup(value);
+			request->acrm = g_strdup(value);
 	} else if(!strcasecmp(key, "Access-Control-Request-Headers")) {
 		if(request)
-			request->acrh = strdup(value);
+			request->acrh = g_strdup(value);
 	}
 	return MHD_YES;
 }
@@ -2497,14 +2523,14 @@ void janus_ws_request_completed(void *cls, struct MHD_Connection *connection, vo
 	if(!request)
 		return;
 	if(request->payload != NULL)
-		free(request->payload);
+		g_free(request->payload);
 	if(request->contenttype != NULL)
-		free(request->contenttype);
+		g_free(request->contenttype);
 	if(request->acrh != NULL)
-		free(request->acrh);
+		g_free(request->acrh);
 	if(request->acrm != NULL)
-		free(request->acrm);
-	free(request);
+		g_free(request->acrm);
+	g_free(request);
 	*con_cls = NULL;   
 }
 
@@ -2588,7 +2614,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 	}
 	if(!found) {
 		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session_id);
-		event = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+		event = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
 		if(event == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -2601,7 +2627,7 @@ int janus_ws_notifier(janus_request_source *source, int max_events) {
 		event->allocated = 0;
 	}
 	if(list != NULL) {
-		event = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+		event = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
 		if(event == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
@@ -2689,7 +2715,7 @@ int janus_process_success(janus_request_source *source, char *payload)
 	} else if(source->type == JANUS_SOURCE_RABBITMQ) {
 #ifdef HAVE_RABBITMQ
 		/* FIXME Add to the queue of outgoing responses */
-		janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+		janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc0(sizeof(janus_rabbitmq_response));
 		response->payload = payload;
 		response->correlation_id = (char *)source->msg;
 		g_async_queue_push(rmq_client->responses, response);
@@ -2718,7 +2744,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		error_string = calloc(512, sizeof(char));
+		error_string = g_malloc0(512);
 		if(error_string == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			if(source->type == JANUS_SOURCE_PLAIN_HTTP) {
@@ -2758,7 +2784,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(reply);
 	if(format != NULL && error_string != NULL)
-		free(error_string);
+		g_free(error_string);
 	/* Send the error */
 	if(source->type == JANUS_SOURCE_PLAIN_HTTP) {
 		struct MHD_Connection *connection = (struct MHD_Connection *)source->source;
@@ -2804,7 +2830,7 @@ int janus_process_error(janus_request_source *source, uint64_t session_id, const
 	} else if(source->type == JANUS_SOURCE_RABBITMQ) {
 #ifdef HAVE_RABBITMQ
 		/* FIXME Add to the queue of outgoing responses */
-		janus_rabbitmq_response *response = (janus_rabbitmq_response *)calloc(1, sizeof(janus_rabbitmq_response));
+		janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc0(sizeof(janus_rabbitmq_response));
 		response->payload = reply_text;
 		response->correlation_id = (char *)source->msg;
 		g_async_queue_push(rmq_client->responses, response);
@@ -2987,7 +3013,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return 1;
 			}
-			char *payload = calloc(len+1, sizeof(char));
+			char *payload = g_malloc0(len+1);
 			memcpy(payload, in, len);
 			payload[len] = '\0';
 			JANUS_LOG(LOG_HUGE, "%s\n", payload);
@@ -3010,7 +3036,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 				return 0;
 			}
 			/* Parse the request now */
-			janus_websocket_request *request = (janus_websocket_request *)calloc(1, sizeof(janus_websocket_request));
+			janus_websocket_request *request = (janus_websocket_request *)g_malloc0(sizeof(janus_websocket_request));
 			request->source = source;
 			request->request = root;
 			GError *tperror = NULL;
@@ -3037,7 +3063,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 				char *response = g_async_queue_try_pop(ws_client->responses);
 				if(response && !ws_client->destroy && !g_atomic_int_get(&stop)) {
 					/* Gotcha! */
-					unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+					unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING);
 					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
 					JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(response));
 					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
@@ -3062,7 +3088,7 @@ static int janus_wss_callback(struct libwebsocket_context *this,
 						janus_http_event *event = g_async_queue_try_pop(session->messages);
 						if(event && event->payload && !ws_client->destroy && session && !session->destroy && !g_atomic_int_get(&stop)) {
 							/* Gotcha! */
-							unsigned char *buf = calloc(LWS_SEND_BUFFER_PRE_PADDING + strlen(event->payload) + LWS_SEND_BUFFER_POST_PADDING, sizeof(char));
+							unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(event->payload) + LWS_SEND_BUFFER_POST_PADDING);
 							memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, event->payload, strlen(event->payload));
 							JANUS_LOG(LOG_VERB, "Sending WebSocket response (%zu bytes)...\n", strlen(event->payload));
 							int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(event->payload), LWS_WRITE_TEXT);
@@ -3231,7 +3257,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		char *correlation = NULL;
 		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-			correlation = (char *)calloc(p->correlation_id.len+1, sizeof(char));
+			correlation = (char *)g_malloc0(p->correlation_id.len+1);
 			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
 			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
 		}
@@ -3240,7 +3266,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		/* And the body */
 		uint64_t total = frame.payload.properties.body_size, received = 0;
-		char *payload = (char *)calloc(total+1, sizeof(char)), *index = payload;
+		char *payload = (char *)g_malloc0(total+1), *index = payload;
 		while(received < total) {
 			amqp_simple_wait_frame(rmq_conn, &frame);
 			JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
@@ -3270,7 +3296,7 @@ void *janus_rmq_in_thread(void *data) {
 		}
 		g_free(payload);
 		/* Parse the request now */
-		janus_rabbitmq_request *request = (janus_rabbitmq_request *)calloc(1, sizeof(janus_rabbitmq_request));
+		janus_rabbitmq_request *request = (janus_rabbitmq_request *)g_malloc0(sizeof(janus_rabbitmq_request));
 		request->source = source;
 		request->request = root;
 		GError *tperror = NULL;
@@ -3532,12 +3558,13 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
+int janus_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
 	if(!plugin || !message)
 		return -1;
-	if(!handle || !janus_plugin_session_is_alive(handle) || handle->stopped)
+	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
+			!janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped)
 		return -2;
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
@@ -3557,7 +3584,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	/* Attach JSEP if possible? */
 	json_t *jsep = NULL;
 	if(sdp_type != NULL && sdp != NULL) {
-		jsep = janus_handle_sdp(handle, plugin, sdp_type, sdp);
+		jsep = janus_handle_sdp(plugin_session, plugin, sdp_type, sdp);
 		if(jsep == NULL) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
@@ -3587,7 +3614,7 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	json_decref(reply);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", ice_handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)calloc(1, sizeof(janus_http_event));
+	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
 	if(notification == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return JANUS_ERROR_UNKNOWN;	/* FIXME Do we need something like "Internal Server Error"? */
@@ -3616,12 +3643,14 @@ int janus_push_event(janus_plugin_session *handle, janus_plugin *plugin, const c
 	return JANUS_OK;
 }
 
-json_t *janus_handle_sdp(janus_plugin_session *handle, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
-	if(handle == NULL || !janus_plugin_session_is_alive(handle) || handle->stopped || plugin == NULL || sdp_type == NULL || sdp == NULL) {
+json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp) {
+	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
+			!janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped ||
+			plugin == NULL || sdp_type == NULL || sdp == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid arguments\n");
 		return NULL;
 	}
-	janus_ice_handle *ice_handle = (janus_ice_handle *)handle->gateway_handle;
+	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	//~ if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 	if(ice_handle == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid ICE handle\n");
@@ -4767,7 +4796,7 @@ gint main(int argc, char *argv[])
 		fseek(pem, 0L, SEEK_END);
 		size_t size = ftell(pem);
 		fseek(pem, 0L, SEEK_SET);
-		cert_pem_bytes = calloc(size, sizeof(char));
+		cert_pem_bytes = g_malloc0(size);
 		if(cert_pem_bytes == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			exit(1);
@@ -4787,7 +4816,7 @@ gint main(int argc, char *argv[])
 		fseek(key, 0L, SEEK_END);
 		size = ftell(key);
 		fseek(key, 0L, SEEK_SET);
-		cert_key_bytes = calloc(size, sizeof(char));
+		cert_key_bytes = g_malloc0(size);
 		if(cert_key_bytes == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			exit(1);
@@ -4986,7 +5015,7 @@ gint main(int argc, char *argv[])
 			exit(1);	/* FIXME Should we really give up? */
 		}
 		/* FIXME We currently support a single application, create a new janus_rabbitmq_client instance */
-		rmq_client = calloc(1, sizeof(janus_rabbitmq_client));
+		rmq_client = g_malloc0(sizeof(janus_rabbitmq_client));
 		if(rmq_client == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			exit(1);	/* FIXME Should we really give up? */
@@ -5123,7 +5152,7 @@ gint main(int argc, char *argv[])
 			fseek(pem, 0L, SEEK_END);
 			size_t size = ftell(pem);
 			fseek(pem, 0L, SEEK_SET);
-			cert_pem_bytes = calloc(size, sizeof(char));
+			cert_pem_bytes = g_malloc0(size);
 			if(cert_pem_bytes == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				exit(1);
@@ -5145,7 +5174,7 @@ gint main(int argc, char *argv[])
 			fseek(key, 0L, SEEK_END);
 			size_t size = ftell(key);
 			fseek(key, 0L, SEEK_SET);
-			cert_key_bytes = calloc(size, sizeof(char));
+			cert_key_bytes = g_malloc0(size);
 			if(cert_key_bytes == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				exit(1);
@@ -5321,5 +5350,5 @@ void janus_http_event_free(janus_http_event *event)
 		g_free(event->payload);
 	}
 
-	free(event);
+	g_free(event);
 }

@@ -627,7 +627,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}	
-	janus_recordplay_session *session = (janus_recordplay_session *)calloc(1, sizeof(janus_recordplay_session));
+	janus_recordplay_session *session = (janus_recordplay_session *)g_malloc0(sizeof(janus_recordplay_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		*error = -2;
@@ -828,7 +828,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	} else if(!strcasecmp(request_text, "record") || !strcasecmp(request_text, "play")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
-		janus_recordplay_message *msg = calloc(1, sizeof(janus_recordplay_message));
+		janus_recordplay_message *msg = g_malloc0(sizeof(janus_recordplay_message));
 		if(msg == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
@@ -1062,7 +1062,7 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 	g_free(event_text);
 
 	/* FIXME Simulate a "stop" coming from the browser */
-	janus_recordplay_message *msg = calloc(1, sizeof(janus_recordplay_message));
+	janus_recordplay_message *msg = g_malloc0(sizeof(janus_recordplay_message));
 	msg->handle = handle;
 	msg->message = json_loads("{\"request\":\"stop\"}", 0, NULL);
 	msg->transaction = NULL;
@@ -1076,7 +1076,7 @@ static void *janus_recordplay_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining Record&Play handler thread\n");
 	janus_recordplay_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = calloc(512, sizeof(char));
+	char *error_cause = g_malloc0(512);
 	if(error_cause == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -1172,7 +1172,7 @@ static void *janus_recordplay_handler(void *data) {
 				}
 			}
 			JANUS_LOG(LOG_VERB, "Starting new recording with ID %"SCNu64"\n", id);
-			janus_recordplay_recording *rec = (janus_recordplay_recording *)calloc(1, sizeof(janus_recordplay_recording));
+			janus_recordplay_recording *rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
 			rec->id = id;
 			rec->name = g_strdup(name_text);
 			rec->viewers = NULL;
@@ -1545,7 +1545,7 @@ void janus_recordplay_update_recordings_list(void) {
 			janus_config_destroy(nfo);
 			continue;
 		}
-		janus_recordplay_recording *rec = (janus_recordplay_recording *)calloc(1, sizeof(janus_recordplay_recording));
+		janus_recordplay_recording *rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
 		rec->id = id;
 		rec->name = g_strdup(name->value);
 		rec->date = g_strdup(date->value);
@@ -1803,7 +1803,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		JANUS_LOG(LOG_HUGE, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 		/* Generate frame packet and insert in the ordered list */
-		janus_recordplay_frame_packet *p = calloc(1, sizeof(janus_recordplay_frame_packet));
+		janus_recordplay_frame_packet *p = g_malloc0(sizeof(janus_recordplay_frame_packet));
 		if(p == NULL) {
 			JANUS_LOG(LOG_ERR, "Memory error!\n");
 			fclose(file);
@@ -1973,7 +1973,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 	gettimeofday(&vbefore, NULL);
 
 	janus_recordplay_frame_packet *audio = session->aframes, *video = session->vframes;
-	char *buffer = (char *)calloc(1500, sizeof(char));
+	char *buffer = (char *)g_malloc0(1500);
 	memset(buffer, 0, 1500);
 	int bytes = 0;
 	int64_t ts_diff = 0, passed = 0;

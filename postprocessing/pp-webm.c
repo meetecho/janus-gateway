@@ -197,8 +197,8 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		}
 		tmp = tmp->next;
 	}
-	int mean_ts = (max_ts_diff+min_ts_diff)/2;	// FIXME;
-	fps = (90000/(mean_ts > 0 ? mean_ts : 30));	// FIXME
+	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
+	fps = (90000/(mean_ts > 0 ? mean_ts : 30));
 	JANUS_LOG(LOG_INFO, "  -- %dx%d (fps [%d,%d] ~ %d)\n", max_width, max_height, min_ts_diff, max_ts_diff, fps);
 	if(max_width == 0 && max_height == 0) {
 		JANUS_LOG(LOG_WARN, "No key frame?? assuming 640x480...\n");
@@ -218,10 +218,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	janus_pp_frame_packet *tmp = list;
 
 	int bytes = 0, numBytes = max_width*max_height*3;	/* FIXME */
-	uint8_t *received_frame = calloc(numBytes, sizeof(uint8_t));
-	memset(received_frame, 0, numBytes);
-	uint8_t *buffer = calloc(10000, sizeof(uint8_t)), *start = buffer;
-	memset(buffer, 0, 10000);
+	uint8_t *received_frame = g_malloc0(numBytes);
+	uint8_t *buffer = g_malloc0(10000), *start = buffer;
 	int len = 0, frameLen = 0;
 	//~ int vp8gotFirstKey = 0;	/* FIXME Ugly check to wait for the first key frame, before starting decoding */
 	int keyFrame = 0;
@@ -355,6 +353,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		tmp = tmp->next;
 	}
+	g_free(received_frame);
+	g_free(start);
 	return 0;
 }
 

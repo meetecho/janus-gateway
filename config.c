@@ -16,6 +16,7 @@
 
 #include "config.h"
 #include "debug.h"
+#include "utils.h"
 
 
 /* Filename helper */
@@ -109,7 +110,7 @@ janus_config *janus_config_parse(const char *config_file) {
 				free_ini_config_errors(config_errors);
 			return NULL;
 		}
-		jc = calloc(1, sizeof(janus_config));
+		jc = g_malloc0(sizeof(janus_config));
 		if(jc == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			col_unbind_iterator(iterator);
@@ -138,7 +139,7 @@ janus_config *janus_config_parse(const char *config_file) {
 			} else if(col_get_item_type(item) == COL_TYPE_COLLECTIONREF) {
 				/* Configuration category */
 				ci = NULL;
-				janus_config_category *ncg = calloc(1, sizeof(janus_config_category));
+				janus_config_category *ncg = g_malloc0(sizeof(janus_config_category));
 				if(ncg == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					col_unbind_iterator(iterator);
@@ -198,7 +199,7 @@ janus_config *janus_config_parse(const char *config_file) {
 					sc++;
 				}
 				value = trim(temp);
-				janus_config_item *nci = calloc(1, sizeof(janus_config_item));
+				janus_config_item *nci = g_malloc0(sizeof(janus_config_item));
 				if(nci == NULL) {
 					JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					col_unbind_iterator(iterator);
@@ -245,7 +246,7 @@ janus_config *janus_config_parse(const char *config_file) {
 }
 
 janus_config *janus_config_create(const char *name) {
-	janus_config *jc = calloc(1, sizeof(janus_config));
+	janus_config *jc = g_malloc0(sizeof(janus_config));
 	if(jc == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -313,7 +314,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	janus_config_category *c = janus_config_get_category(config, category);
 	if(c == NULL) {
 		/* Create it */
-		c = calloc(1, sizeof(janus_config_category));
+		c = g_malloc0(sizeof(janus_config_category));
 		if(c == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return NULL;
@@ -336,7 +337,7 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 	janus_config_item *item = janus_config_get_item(c, name);
 	if(item == NULL) {
 		/* Create it */
-		item = calloc(1, sizeof(janus_config_item));
+		item = g_malloc0(sizeof(janus_config_item));
 		if(item == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return NULL;
@@ -392,7 +393,76 @@ void janus_config_print(janus_config *config) {
 			c = c->next;
 		}
 	}
-	config = NULL;
+}
+
+gboolean janus_config_save(janus_config *config, const char *folder, const char *filename) {
+	if(config == NULL)
+		return -1;
+	FILE *file = NULL;
+	char path[1024];
+	if(folder != NULL) {
+		/* Create folder, if needed */
+		if(janus_mkdir(folder, 0755) < 0) {
+			JANUS_LOG(LOG_ERR, "Couldn't save configuration file, error creating folder '%s'...\n", folder);
+			return -2;
+		}
+		g_snprintf(path, 1024, "%s/%s", folder, filename);
+	} else {
+		g_snprintf(path, 1024, "%s", filename);
+	}
+	file = fopen(path, "wt");
+	if(file == NULL) {
+		JANUS_LOG(LOG_ERR, "Couldn't save configuration file, error opening file '%s'...\n", path);
+		return -3;
+	}
+	/* Print a header */
+	char date[64], header[256];
+	struct tm tmresult;
+	time_t ltime = time(NULL);
+	localtime_r(&ltime, &tmresult);
+	strftime(date, sizeof(date), "%a %b %e %T %Y", &tmresult);
+	g_snprintf(header, 256, ";\n; File automatically generated on %s\n;\n\n", date);
+	fwrite(header, sizeof(char), strlen(header), file);
+	/* Go on with the configuration */
+	if(config->items) {
+		janus_config_item *i = config->items;
+		config->items = NULL;
+		while(i) {
+			if(i->name && i->value) {
+				fwrite(i->name, sizeof(char), strlen(i->name), file);
+				fwrite(" = ", sizeof(char), 3, file);
+				fwrite(i->value, sizeof(char), strlen(i->value), file);
+				fwrite("\n", sizeof(char), 1, file);
+			}
+			i = i->next;
+		}
+	}
+	if(config->categories) {
+		janus_config_category *c = config->categories;
+		while(c) {
+			if(c->name) {
+				fwrite("[", sizeof(char), 1, file);
+				fwrite(c->name, sizeof(char), strlen(c->name), file);
+				fwrite("]\n", sizeof(char), 2, file);
+				if(c->items) {
+					janus_config_item *i = c->items;
+					while(i) {
+						if(i->name && i->value) {
+							fwrite(i->name, sizeof(char), strlen(i->name), file);
+							fwrite(" = ", sizeof(char), 3, file);
+							fwrite(i->value, sizeof(char), strlen(i->value), file);
+							fwrite("\n", sizeof(char), 1, file);
+						}
+						i = i->next;
+					}
+				}
+			}
+			fwrite("\r\n", sizeof(char), 2, file);
+			c = c->next;
+		}
+	}
+	fclose(file);
+	return 0;
 }
 
 void janus_config_destroy(janus_config *config) {
@@ -408,7 +478,7 @@ void janus_config_destroy(janus_config *config) {
 				g_free((gpointer)i->value);
 			tmp = i;
 			i = i->next;
-			free((gpointer)tmp);
+			g_free((gpointer)tmp);
 			tmp = NULL;
 		}
 	}
@@ -428,18 +498,18 @@ void janus_config_destroy(janus_config *config) {
 						g_free((gpointer)i->value);
 					tmp2 = i;
 					i = i->next;
-					free((gpointer)tmp2);
+					g_free((gpointer)tmp2);
 					tmp2 = NULL;
 				}
 			}
 			tmp = c;
 			c = c->next;
-			free((gpointer)tmp);
+			g_free((gpointer)tmp);
 			tmp = NULL;
 		}
 	}
 	if(config->name)
 		g_free((gpointer)config->name);
-	free((gpointer)config);
+	g_free((gpointer)config);
 	config = NULL;
 }

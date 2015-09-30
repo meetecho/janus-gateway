@@ -89,6 +89,12 @@ janus_config_item *janus_config_add_item(janus_config *config, const char *categ
 /*! \brief Helper method to print a configuration on the standard output
  * @param[in] config The configuration to print */
 void janus_config_print(janus_config *config);
+/*! \brief Helper method to save a configuration to a file
+ * @param[in] config The configuration to sav
+ * @param[in] folder The folder the file should be saved to
+ * @param[in] filename The file name, extension included (should be .cfg)
+ * @returns 0 if successful, a negative integer otherwise */
+int janus_config_save(janus_config *config, const char *folder, const char *filename);
 /*! \brief Destroy a configuration container instance
  * @param[in] config The configuration to destroy */
 void janus_config_destroy(janus_config *config);

@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <glib.h>
+#include <netinet/in.h>
 
 /*! \brief Helper to retrieve the system monotonic time, as Glib's
  * g_get_monotonic_time may not be available (only since 2.28)

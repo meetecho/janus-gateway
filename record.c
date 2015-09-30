@@ -35,7 +35,7 @@ static const char *frame_header = "MEETECHO";
 
 
 janus_recorder *janus_recorder_create(const char *dir, int video, const char *filename) {
-	janus_recorder *rc = calloc(1, sizeof(janus_recorder));
+	janus_recorder *rc = g_malloc0(sizeof(janus_recorder));
 	if(rc == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;

@@ -13,7 +13,7 @@
  * (call, hangup) are made available to the web peer: peers can call
  * extensions at the SIP server or wait for incoming INVITEs, and during
  * a call they can send DTMF tones.
- * 
+ *
  * The concept behind this plugin is to allow different web pages associated
  * to the same peer, and hence the same SIP user, to attach to the plugin
  * at the same time and yet just do a SIP REGISTER once. The same should
@@ -22,17 +22,17 @@
  * answer, in pretty much the same way as SIP forking works but without the
  * need to fork in the same place. This specific functionality, though, has
  * not been implemented as of yet.
- * 
+ *
  * \todo Only Asterisk and Kamailio have been tested as a SIP server, and
  * specifically only with basic audio calls: this plugin needs some work
  * to make it more stable and reliable.
- * 
+ *
  * \section sipapi SIP Plugin API
- * 
+ *
  * All requests you can send in the SIP Plugin API are asynchronous,
  * which means all responses (successes and errors) will be delivered
- * as events with the same transaction. 
- * 
+ * as events with the same transaction.
+ *
  * The supported requests are \c register , \c call , \c accept and
  * \c hangup . \c register can be used, as the name suggests, to register
  * a username at a SIP registrar to call and be called; \c call is used
@@ -41,9 +41,9 @@
  * of inviting; finally, \c hangup can be used to terminate the
  * communication at any time, either to hangup (BYE) an ongoing call or
  * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
- * 
+ *
  * Actual API docs: TBD.
- * 
+ *
  * \ingroup plugins
  * \ref plugins
  */
@@ -113,7 +113,7 @@ static janus_plugin janus_sip_plugin =
 		.get_name = janus_sip_get_name,
 		.get_author = janus_sip_get_author,
 		.get_package = janus_sip_get_package,
-		
+
 		.create_session = janus_sip_create_session,
 		.handle_message = janus_sip_handle_message,
 		.setup_media = janus_sip_setup_media,
@@ -371,12 +371,44 @@ void *janus_sip_watchdog(void *data) {
 					sl = sl->next;
 					continue;
 				}
-				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
+				if (now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
 					JANUS_LOG(LOG_VERB, "Freeing old SIP session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
+					if (session->account.identity) {
+					    g_free(session->account.identity);
+					    session->account.identity = NULL;
+					}
+					if (session->account.proxy) {
+					    g_free(session->account.proxy);
+					    session->account.proxy = NULL;
+					}
+					if (session->account.secret) {
+					    g_free(session->account.secret);
+					    session->account.secret = NULL;
+					}
+					if (session->account.username) {
+					    g_free(session->account.username);
+					    session->account.username = NULL;
+					}
+					if (session->callee) {
+					    g_free(session->callee);
+					    session->callee = NULL;
+					}
+					if (session->transaction) {
+					    g_free(session->transaction);
+					    session->transaction = NULL;
+					}
+					if (session->media.remote_ip) {
+					    g_free(session->media.remote_ip);
+					    session->media.remote_ip = NULL;
+					}
+					if (session->stack) {
+					    g_free(session->stack);
+					    session->stack = NULL;
+					}
 					session->handle = NULL;
 					g_free(session);
 					session = NULL;
@@ -599,7 +631,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
 	session->handle = handle;
 	session->account.identity = NULL;
@@ -655,7 +687,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No SIP session associated with this handle...\n");
@@ -732,7 +764,7 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -748,7 +780,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 		return;
 	if(gateway) {
 		/* Honour the audio/video active flags */
-		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 		if(!session || session->destroyed) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -790,7 +822,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
-		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 		if(!session || session->destroyed) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
@@ -821,7 +853,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;	
+	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1248,6 +1280,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(uri_text),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->account.proxy),
+				NUTAG_AUTOANSWER(0),
 				TAG_END());
 			g_free(sdp);
 			session->callee = g_strdup(uri_text);
@@ -1319,6 +1352,7 @@ static void *janus_sip_handler(void *data) {
 			nua_respond(session->stack->s_nh_i,
 				200, sip_status_phrase(200),
 				SOATAG_USER_SDP_STR(sdp),
+				NUTAG_AUTOANSWER(0),
 				TAG_END());
 			g_free(sdp);
 			/* Send an ack back */
@@ -1646,7 +1680,7 @@ static void *janus_sip_handler(void *data) {
 			g_free(sdp);
 		janus_sip_message_free(msg);
 		continue;
-		
+
 error:
 		{
 			if(root != NULL)
@@ -1704,6 +1738,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->status = janus_sip_call_status_idle;
+				session->stack->s_nh_i = NULL;
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
 				json_t *calling = json_object();
@@ -1751,25 +1786,34 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
                                 sdp_parser_free(parser);
 				break;
 			}
-			if(session->status >= janus_sip_call_status_inviting) {
-				/* Busy */
-				JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
-				nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
-				/* Notify the web app about the missed missed */
-				json_t *missed = json_object();
-				json_object_set_new(missed, "sip", json_string("event"));
-				json_t *result = json_object();
-				json_object_set_new(result, "event", json_string("missed_call"));
-				json_object_set_new(result, "caller", json_string(url_as_string(session->stack->s_home, sip->sip_from->a_url)));
-				json_object_set_new(missed, "result", result);
-				char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-				json_decref(missed);
-				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-                                sdp_parser_free(parser);
+			if(session->stack->s_nh_i != NULL) {
+				if(session->stack->s_nh_i == nh) {
+					/* re-INVITE, we don't support those. */
+					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				} else if(session->status >= janus_sip_call_status_inviting) {
+					/* Busy with another call */
+					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
+					nua_respond(nh, 486, sip_status_phrase(486), TAG_END());
+					/* Notify the web app about the missed invite */
+					json_t *missed = json_object();
+					json_object_set_new(missed, "sip", json_string("event"));
+					json_t *result = json_object();
+					json_object_set_new(result, "event", json_string("missed_call"));
+					char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+					json_object_set_new(result, "caller", json_string(caller_text));
+					su_free(session->stack->s_home, caller_text);
+					json_object_set_new(missed, "result", result);
+					char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+					json_decref(missed);
+					JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
+					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
+					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+					g_free(missed_text);
+				}
+				sdp_parser_free(parser);
 				break;
 			}
+			/* New incoming call */
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
 			session->status = janus_sip_call_status_invited;
 			/* Parse SDP */

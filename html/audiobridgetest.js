@@ -223,6 +223,9 @@ $(document).ready(function() {
 													else
 														$('#rp'+id + ' > i').hide();
 												}
+											} else if(msg["error"] !== undefined && msg["error"] !== null) {
+												bootbox.alert(msg["error"]);
+												return;
 											}
 											// Any new feed to attach to?
 											if(msg["leaving"] !== undefined && msg["leaving"] !== null) {
