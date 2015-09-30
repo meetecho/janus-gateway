@@ -473,7 +473,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	janus_config_destroy(config);
 	config = NULL;
 	if(!wss && !swss && !admin_wss && !admin_swss) {
-		JANUS_LOG(LOG_FATAL, "No WebSockets server started, giving up...\n"); 
+		JANUS_LOG(LOG_FATAL, "No WebSockets server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
 	wss_janus_api_enabled = wss || swss;
@@ -594,28 +594,28 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 	}
 	/* Make sure this is not related to a closed /freed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
-        janus_websockets_client *client = (janus_websockets_client *)transport;
-                if(g_list_find(old_wss, client) != NULL) {
-                g_free(message);
-                message = NULL;
-                transport = NULL;
-        } else if(!client->context || !client->wsi) {
-                g_free(message);
-                message = NULL;
-        }
-        if(message == NULL) {
-                janus_mutex_unlock(&old_wss_mutex);
-                return -1;
-        }
-        janus_mutex_lock(&client->mutex);
-        /* Convert to string and enqueue */
-        char *payload = json_dumps(message, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-        g_async_queue_push(client->messages, payload);
-        libwebsocket_callback_on_writable(client->context, client->wsi);
-        janus_mutex_unlock(&client->mutex);
-        janus_mutex_unlock(&old_wss_mutex);
-        json_decref(message);
-        return 0;
+	janus_websockets_client *client = (janus_websockets_client *)transport;
+	if(g_list_find(old_wss, client) != NULL) {
+		g_free(message);
+		message = NULL;
+		transport = NULL;
+	} else if(!client->context || !client->wsi) {
+		g_free(message);
+		message = NULL;
+	}
+	if(message == NULL) {
+		janus_mutex_unlock(&old_wss_mutex);
+		return -1;
+	}
+	janus_mutex_lock(&client->mutex);
+	/* Convert to string and enqueue */
+	char *payload = json_dumps(message, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	g_async_queue_push(client->messages, payload);
+	libwebsocket_callback_on_writable(client->context, client->wsi);
+	janus_mutex_unlock(&client->mutex);
+	janus_mutex_unlock(&old_wss_mutex);
+	json_decref(message);
+	return 0;
 }
 
 void janus_websockets_session_created(void *transport, guint64 session_id) {
@@ -627,7 +627,7 @@ void janus_websockets_session_over(void *transport, guint64 session_id, gboolean
 		return;
 	/* We only care if it's a timeout: if so, close the connection */
 	janus_websockets_client *client = (janus_websockets_client *)transport;
-        /* Make sure this is not related to a closed WebSocket session */
+	/* Make sure this is not related to a closed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
 	if(g_list_find(old_wss, client) == NULL && client->context && client->wsi){
 		janus_mutex_lock(&client->mutex);
@@ -646,7 +646,7 @@ void *janus_websockets_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "Invalid service\n");
 		return NULL;
 	}
-	
+
 	const char *type = NULL;
 	if(service == wss)
 		type = "WebSocket (Janus API)";
@@ -715,7 +715,7 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 	janus_websockets_client *ws_client = (janus_websockets_client *)user;
 	switch(reason) {
 		case LWS_CALLBACK_ESTABLISHED: {
-			/* Is there any filtering we should apply? */ 
+			/* Is there any filtering we should apply? */
 			char name[256], ip[256];
 			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
 			JANUS_LOG(LOG_VERB, "[WSS-%p] WebSocket connection opened from %s by %s\n", wsi, ip, name);
@@ -849,7 +849,7 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 	janus_websockets_client *ws_client = (janus_websockets_client *)user;
 	switch(reason) {
 		case LWS_CALLBACK_ESTABLISHED: {
-			/* Is there any filtering we should apply? */ 
+			/* Is there any filtering we should apply? */
 			char name[256], ip[256];
 			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WebSocket connection opened from %s by %s\n", wsi, ip, name);
