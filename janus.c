@@ -1180,11 +1180,14 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		}
 		/* If the auth token mechanism is enabled, we should check if this token can access this plugin */
 		if(janus_auth_is_enabled()) {
-			const char *token = json_string_value(json_object_get(root, "token"));
-			if(!janus_auth_check_plugin(token, plugin_t)) {
-				JANUS_LOG(LOG_ERR, "Token '%s' can't access plugin '%s'\n", token, plugin_text);
-				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED_PLUGIN, "Provided token can't access plugin '%s'", plugin_text);
-				goto jsondone;
+			json_t *token = json_object_get(root, "token");
+			if(token != NULL) {
+				const char *token_value = json_string_value(token);
+				if(token_value && !janus_auth_check_plugin(token_value, plugin_t)) {
+					JANUS_LOG(LOG_ERR, "Token '%s' can't access plugin '%s'\n", token_value, plugin_text);
+					ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED_PLUGIN, "Provided token can't access plugin '%s'", plugin_text);
+					goto jsondone;
+				}
 			}
 		}
 		/* Create handle */
