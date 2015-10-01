@@ -1507,7 +1507,7 @@ static void *janus_sip_handler(void *data) {
 			if(!strcasecmp(action_text, "start")) {
 				/* Start recording something */
 				char filename[255];
-				gint64 now = janus_get_monotonic_time();
+				gint64 now = janus_get_real_time();
 				if(record_peer_audio || record_peer_video) {
 					JANUS_LOG(LOG_INFO, "Starting recording of peer's %s (user %s, call %s)\n",
 						(record_peer_audio && record_peer_video ? "audio and video" : (record_peer_audio ? "audio" : "video")),

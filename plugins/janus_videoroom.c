@@ -2692,7 +2692,7 @@ static void *janus_videoroom_handler(void *data) {
 					} else if(participant->recording_active && participant->sdp) {
 						/* We've started recording, send a PLI/FIR and go on */
 						char filename[255];
-						gint64 now = janus_get_monotonic_time();
+						gint64 now = janus_get_real_time();
 						if(strstr(participant->sdp, "m=audio")) {
 							memset(filename, 0, 255);
 							if(participant->recording_base) {
@@ -3351,8 +3351,8 @@ static void *janus_videoroom_handler(void *data) {
 					data_mline[0] = '\0';
 				}
 				g_snprintf(sdp, 1280, sdp_template,
-					janus_get_monotonic_time(),		/* We need current time here */
-					janus_get_monotonic_time(),		/* We need current time here */
+					janus_get_real_time(),			/* We need current time here */
+					janus_get_real_time(),			/* We need current time here */
 					participant->room->room_name,	/* Video room name */
 					audio_mline,					/* Audio m-line, if any */
 					video_mline,					/* Video m-line, if any */
@@ -3366,7 +3366,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Is this room recorded? */
 				if(videoroom->record || participant->recording_active) {
 					char filename[255];
-					gint64 now = janus_get_monotonic_time();
+					gint64 now = janus_get_real_time();
 					if(audio) {
 						memset(filename, 0, 255);
 						if(participant->recording_base) {
@@ -3665,8 +3665,8 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 		g_strlcat(video_mline, video_muxed, 2048);
 	}
 	g_snprintf(sdp, 2048, sdp_template,
-		janus_get_monotonic_time(),		/* We need current time here */
-		janus_get_monotonic_time(),		/* We need current time here */
+		janus_get_real_time(),			/* We need current time here */
+		janus_get_real_time(),			/* We need current time here */
 		muxed_listener->room->room_name,	/* Video room name */
 		audio_mline,					/* Audio m-line */
 		video_mline,					/* Video m-line */

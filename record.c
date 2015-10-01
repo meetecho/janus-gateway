@@ -43,7 +43,7 @@ janus_recorder *janus_recorder_create(const char *dir, int video, const char *fi
 	rc->dir = NULL;
 	rc->filename = NULL;
 	rc->file = NULL;
-	rc->created = janus_get_monotonic_time();
+	rc->created = janus_get_real_time();
 	if(dir != NULL) {
 		/* Check if this directory exists, and create it if needed */
 		struct stat s;
@@ -128,7 +128,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length
 		json_object_set_new(info, "t", json_string(recorder->video ? "v" : "a"));		/* Audio/Video */
 		json_object_set_new(info, "c", json_string(recorder->video ? "vp8" : "opus"));	/* Media codec */
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
-		json_object_set_new(info, "u", json_integer(janus_get_monotonic_time()));		/* First frame written time */
+		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
 		uint16_t info_bytes = htons(strlen(info_text));

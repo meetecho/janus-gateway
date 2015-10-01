@@ -2454,8 +2454,8 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", participant->opus_pt);
 			g_snprintf(sdp, 1024, sdp_template,
-				janus_get_monotonic_time(),		/* We need current time here */
-				janus_get_monotonic_time(),		/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
 				participant->room->room_name,	/* Audio bridge name */
 				participant->opus_pt,			/* Opus payload type */
 				participant->opus_pt,			/* Opus payload type */
