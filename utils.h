@@ -21,6 +21,11 @@
  * @returns The system monotonic time */
 gint64 janus_get_monotonic_time(void);
 
+/*! \brief Helper to retrieve the system real time, as Glib's
+ * g_get_real_time may not be available (only since 2.28)
+ * @returns The system real time */
+gint64 janus_get_real_time(void);
+
 /*! \brief Helper to replace strings
  * @param message The string that contains the text to replace, which may be
  * freed if it is too short
