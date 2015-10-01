@@ -66,25 +66,95 @@
 			<div class="page-header">
 				<h1>Janus WebRTC Gateway: Admin/Monitor</h1>
 			</div>
-			<p>This is just an example of how you can build an UI on top of the
-			existing <code>Admin/Monitor</code> interface. This page will only
-			work as it is if you enabled the API (which is disabled by default)
-			and you're using the default values. Edit the backend settings in
-			the <code>admin.js</code> JavaScript code to adapt it to your
-			configuration if you changed anything.</p>
-			<div id="sessions" class="col-md-2">
-				<h4>Sessions (<span id="sessions-num">0</span>) <i id="update-sessions" class="fa fa-refresh" title="Update list of sessions" style="cursor: pointer;"></i></h4>
-				<div id="sessions-list" class="list-group">
+
+			<div>
+				<ul id="admintabs" class="nav nav-tabs" role="tablist">
+					<li role="presentation" class="active"><a href="#home" aria-controls="home" role="tab" data-toggle="tab">Home</a></li>
+					<li role="presentation" class="disabled"><a href="#serverinfo" aria-controls="serverinfo" role="tab" data-toggle="tab">Server Info</a></li>
+					<li role="presentation" class="disabled"><a href="#settings" aria-controls="settings" role="tab" data-toggle="tab">Settings</a></li>
+					<li role="presentation" class="disabled"><a href="#handlesinfo" aria-controls="handlesinfo" role="tab" data-toggle="tab">Handles</a></li>
+					<li role="presentation" class="disabled"><a href="#tokens" aria-controls="tokens" role="tab" data-toggle="tab">Auth Tokens</a></li>
+				</ul>
+
+				<div class="tab-content" style="padding: 20px;">
+					<div role="tabpanel" class="tab-pane fade in active" id="home">
+						<p>This is just an example of how you can build an UI on top of the
+						existing <code>Admin/Monitor</code> interface. This page will only
+						work as it is if you enabled the API (which is disabled by default)
+						and you're using the default values. Edit the backend settings in
+						the <code>admin.js</code> JavaScript code to adapt it to your
+						configuration if you changed anything.</p>
+						<p>The <code>Server Info</code> tab, as the name suggests, provides
+						you with a view of the information related to the Janus instance
+						you're using, e.g., in terms of the features that have been enabled,
+						the plugins that are available and so on. That's the same info you'd
+						get contacting the Janus API at the <code>/janus/info</code> backend.</p>
+						<p>The <code>Settings</code> tab instead allows you to inspect a
+						few of the current settings in Janus (e.g., debug level and so on)
+						and provides you with a way to change them dynamically.</p>
+						<p>The <code>Handles</code> tab allows you to browse the currently active sessions
+						and handles in Janus. Selecting a specific handle will provide you
+						with all the current info related to it, including plugin it is
+						attached to, any plugin specific information that may be relevant,
+						ICE/DTLS states, amount of data being exchanged and so on. This
+						section is especially helpful when you want to debug issues with
+						a PeerConnection: you can find more details in
+						<a href="http://www.meetecho.com/blog/understanding-the-janus-admin-api/" target="_blank">this blog post</a>.</p>
+						<p>Finally, the <code>Auth Tokens</code> tab allows you to list
+						existing authentication tokens, create new ones, associate plugin
+						permissions and the like. This feature will only be possible if
+						you enabled the authentication token mechanism in Janus, of course.</p>
+					</div>
+					<div role="tabpanel" class="tab-pane fade" id="serverinfo">
+						<h4>Server Info</h4>
+						<div>
+							<table class="table table-striped" id="server-details">
+							</table>
+						</div>
+						<h4>Plugins</h4>
+						<div>
+							<table class="table table-striped" id="server-plugins">
+								<tr>
+									<th>Name</th>
+									<th>Author</th>
+									<th>Description</th>
+									<th>Version</th>
+								</tr>
+							</table>
+						</div>
+					</div>
+					<div role="tabpanel" class="tab-pane fade" id="settings">
+						<h4>Settings <i id="update-settings" class="fa fa-refresh" title="Refresh settings" style="cursor: pointer;"></i></h4>
+						<div>
+							<table class="table table-striped" id="server-settings">
+							</table>
+						</div>
+					</div>
+					<div role="tabpanel" class="tab-pane fade" id="handlesinfo">
+						<div id="sessions" class="col-md-2">
+							<h4>Sessions (<span id="sessions-num">0</span>) <i id="update-sessions" class="fa fa-refresh" title="Refresh list of sessions" style="cursor: pointer;"></i></h4>
+							<div id="sessions-list" class="list-group">
+							</div>
+						</div>
+						<div id="handles" class="col-md-2">
+							<h4>Handles (<span id="handles-num"></span>) <i id="update-handles" class="fa fa-refresh" title="Refresh list of handles" style="cursor: pointer;"></i></h4>
+							<div id="handles-list" class="list-group">
+							</div>
+						</div>
+						<div id="info" class="col-md-8">
+							<h4>Handle Info <i id="update-handle" class="fa fa-refresh" title="Refresh handle info" style="cursor: pointer;"></i></h4>
+							<pre id="handle-info"></pre>
+						</div>
+					</div>
+					<div role="tabpanel" class="tab-pane fade" id="tokens">
+						<h4>Auth Tokens <i id="update-tokens" class="fa fa-refresh" title="Refresh tokens" style="cursor: pointer;"></i></h4>
+						<div>
+							<table class="table table-striped" id="auth-tokens">
+							</table>
+						</div>
+					</div>
 				</div>
-			</div>
-			<div id="handles" class="col-md-2">
-				<h4>Handles (<span id="handles-num"></span>) <i id="update-handles" class="fa fa-refresh" title="Update list of handles" style="cursor: pointer;"></i></h4>
-				<div id="handles-list" class="list-group">
-				</div>
-			</div>
-			<div id="info" class="col-md-8">
-				<h4>Handle Info <i id="update-handle" class="fa fa-refresh" title="Update handle info" style="cursor: pointer;"></i></h4>
-				<pre id="handle-info"></pre>
+
 			</div>
 		</div>
 	</div>
