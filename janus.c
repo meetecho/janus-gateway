@@ -132,6 +132,8 @@ json_t *janus_info(const char *transaction) {
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_turn_server(), janus_ice_get_turn_port());
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
+	json_object_set_new(info, "api_secret", json_string(api_secret != NULL ? "true" : "false"));
+	json_object_set_new(info, "auth_token", json_string(janus_auth_is_enabled() ? "true" : "false"));
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
