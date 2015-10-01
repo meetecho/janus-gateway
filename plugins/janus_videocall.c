@@ -1183,7 +1183,7 @@ static void *janus_videocall_handler(void *data) {
 				} else {
 					/* We've started recording, send a PLI and go on */
 					char filename[255];
-					gint64 now = janus_get_monotonic_time();
+					gint64 now = janus_get_real_time();
 					if(session->has_audio) {
 						memset(filename, 0, 255);
 						if(recording_base) {

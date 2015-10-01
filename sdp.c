@@ -764,7 +764,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				janus_get_public_ip());
 		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 	} else {
-		gint64 sessid = janus_get_monotonic_time();
+		gint64 sessid = janus_get_real_time();
 		gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
 		g_snprintf(buffer, 512,
 			"o=%s %"SCNi64" %"SCNi64" IN IP4 %s\r\n",

@@ -787,8 +787,8 @@ static void *janus_voicemail_handler(void *data) {
 			}
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 			g_snprintf(sdp, 1024, sdp_template,
-				janus_get_monotonic_time(),		/* We need current time here */
-				janus_get_monotonic_time(),		/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
 				session->recording_id,			/* Recording ID */
 				opus_pt,						/* Opus payload type */
 				opus_pt							/* Opus payload type */);

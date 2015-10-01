@@ -1237,8 +1237,8 @@ static void *janus_recordplay_handler(void *data) {
 				video_mline[0] = '\0';
 			}
 			g_snprintf(sdptemp, 1024, sdp_template,
-				janus_get_monotonic_time(),		/* We need current time here */
-				janus_get_monotonic_time(),		/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
 				session->recording->name,		/* Playout session */
 				audio_mline,					/* Audio m-line, if any */
 				video_mline);					/* Video m-line, if any */
@@ -1325,8 +1325,8 @@ static void *janus_recordplay_handler(void *data) {
 				video_mline[0] = '\0';
 			}
 			g_snprintf(sdptemp, 1024, sdp_template,
-				janus_get_monotonic_time(),		/* We need current time here */
-				janus_get_monotonic_time(),		/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
 				session->recording->name,		/* Playout session */
 				audio_mline,					/* Audio m-line, if any */
 				video_mline);					/* Video m-line, if any */
