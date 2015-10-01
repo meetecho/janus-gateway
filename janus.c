@@ -2169,7 +2169,63 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "debug", json_integer(lock_debug));
+			json_object_set_new(reply, "locking_debug", json_integer(lock_debug));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_log_timestamps")) {
+			/* Enable/disable the log timestamps */
+			json_t *timestamps = json_object_get(root, "timestamps");
+			if(!timestamps) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (timestamps)");
+				goto jsondone;
+			}
+			if(!json_is_integer(timestamps) || json_integer_value(timestamps) < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timestamps should be a positive integer)");
+				goto jsondone;
+			}
+			int timestamps_num = json_integer_value(timestamps);
+			if(timestamps_num < 0 || timestamps_num > 1) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timestamps should be either 0 or 1)");
+				goto jsondone;
+			}
+			janus_log_timestamps = timestamps_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "log_timestamps", json_integer(janus_log_timestamps));
+			/* Convert to a string */
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			/* Send the success reply */
+			ret = janus_process_success(source, reply_text);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_log_colors")) {
+			/* Enable/disable the log colors */
+			json_t *colors = json_object_get(root, "colors");
+			if(!colors) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (colors)");
+				goto jsondone;
+			}
+			if(!json_is_integer(colors) || json_integer_value(colors) < 0) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (colors should be a positive integer)");
+				goto jsondone;
+			}
+			int colors_num = json_integer_value(colors);
+			if(colors_num < 0 || colors_num > 1) {
+				ret = janus_process_error(source, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (colors should be either 0 or 1)");
+				goto jsondone;
+			}
+			janus_log_colors = colors_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "log_colors", json_integer(janus_log_colors));
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
@@ -2201,7 +2257,7 @@ int janus_process_incoming_admin_request(janus_request_source *source, json_t *r
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "debug", json_integer(janus_ice_is_ice_debugging_enabled()));
+			json_object_set_new(reply, "libnice_debug", json_integer(janus_ice_is_ice_debugging_enabled()));
 			/* Convert to a string */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
