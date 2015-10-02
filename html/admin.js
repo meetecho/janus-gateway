@@ -54,8 +54,11 @@ function updateServerInfo() {
 			console.log("Got server info:");
 			console.log(json);
 			var pluginsJson = json.plugins;
+			var transportsJson = json.transports;
 			delete json.janus;
+			delete json.transaction;
 			delete json.plugins;
+			delete json.transports;
 			for(var k in json) {
 				var v = json[k];
 				$('#server-details').append(
@@ -76,6 +79,16 @@ function updateServerInfo() {
 					'</tr>');
 			}
 			console.log(plugins);
+			for(var t in transportsJson) {
+				var v = transportsJson[t];
+				$('#server-transports').append(
+					'<tr>' +
+					'	<td>' + v.name + '</td>' +
+					'	<td>' + v.author + '</td>' +
+					'	<td>' + v.description + '</td>' +
+					'	<td>' + v.version_string + '</td>' +
+					'</tr>');
+			}
 			// Unlock tabs
 			$('#admintabs li').removeClass('disabled');
 			// Refresh settings now

@@ -87,7 +87,7 @@
 						<p>The <code>Server Info</code> tab, as the name suggests, provides
 						you with a view of the information related to the Janus instance
 						you're using, e.g., in terms of the features that have been enabled,
-						the plugins that are available and so on. That's the same info you'd
+						the modules that are available and so on. That's the same info you'd
 						get contacting the Janus API at the <code>/janus/info</code> backend.</p>
 						<p>The <code>Settings</code> tab instead allows you to inspect a
 						few of the current settings in Janus (e.g., debug level and so on)
@@ -114,6 +114,17 @@
 						<h4>Plugins</h4>
 						<div>
 							<table class="table table-striped" id="server-plugins">
+								<tr>
+									<th>Name</th>
+									<th>Author</th>
+									<th>Description</th>
+									<th>Version</th>
+								</tr>
+							</table>
+						</div>
+						<h4>Transports</h4>
+						<div>
+							<table class="table table-striped" id="server-transports">
 								<tr>
 									<th>Name</th>
 									<th>Author</th>
