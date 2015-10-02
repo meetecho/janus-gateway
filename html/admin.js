@@ -549,7 +549,7 @@ function updateTokens() {
 			}
 			$('#auth-tokens').append(
 				'<tr>' +
-				'	<td><input type="text" id="token" placeholder="Token to add"></td>' +
+				'	<td><input type="text" id="token" placeholder="Token to add" onkeypress="return checkEnter(this, event);" style="width: 100%;"></td>' +
 				'	<td><div id="permissions"></div></td>' +
 				'	<td><button id="addtoken" type="button" class="btn btn-xs btn-success">Add token</button></td>' +
 				'</tr>');
@@ -629,4 +629,15 @@ function sendTokenRequest(request) {
 		},
 		dataType: "json"
 	});
+}
+
+function checkEnter(field, event) {
+	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+	if(theCode == 13) {
+		if(field.id == 'token')
+			$('#addtoken').click();
+		return false;
+	} else {
+		return true;
+	}
 }
