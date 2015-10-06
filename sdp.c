@@ -511,7 +511,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 						/* This is a trickle candidate and ICE has started, we should process it right away */
 						if(!component->process_started) {
 							/* Actually, ICE has JUST started for this component, take care of the candidates we've added so far */
-							JANUS_LOG(LOG_INFO, "[%"SCNu64"] ICE already started for this component, setting candidates we have up to now\n", handle->handle_id);
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE already started for this component, setting candidates we have up to now\n", handle->handle_id);
 							janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
 						} else {
 							GSList *candidates = NULL;
@@ -530,7 +530,7 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 							/* This is a trickle candidate and ICE has started, we should process it right away */
 							if(!component->process_started) {
 								/* Actually, ICE has JUST started for this component, take care of the candidates we've added so far */
-								JANUS_LOG(LOG_INFO, "[%"SCNu64"] SDP processed but ICE not started yet for this component, setting candidates we have up to now\n", handle->handle_id);
+								JANUS_LOG(LOG_VERB, "[%"SCNu64"] SDP processed but ICE not started yet for this component, setting candidates we have up to now\n", handle->handle_id);
 								janus_ice_setup_remote_candidates(handle, component->stream_id, component->component_id);
 							} else {
 								GSList *candidates = NULL;
