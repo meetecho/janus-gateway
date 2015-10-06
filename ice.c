@@ -444,7 +444,7 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 	}
 	/* Parse trickle candidate */
 	if(!json_is_object(candidate) || json_object_get(candidate, "completed") != NULL) {
-		JANUS_LOG(LOG_INFO, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
+		JANUS_LOG(LOG_VERB, "No more remote candidates for handle %"SCNu64"!\n", handle->handle_id);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES);
 	} else {
 		/* Handle remote candidate */
@@ -967,7 +967,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	}
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
 	janus_mutex_lock(&old_handles_mutex);
 	g_hash_table_insert(old_handles, GUINT_TO_POINTER(handle_id), handle);
 	janus_mutex_unlock(&old_handles_mutex);
@@ -1766,7 +1766,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 	}
 	if(component_id == 3 || (janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)
 			&& janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS))) {
-		JANUS_LOG(LOG_INFO, "[%"SCNu64"] Not RTP and not RTCP... may these be data channels?\n", handle->handle_id);
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Not RTP and not RTCP... may these be data channels?\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		/* Update stats (TODO Do the same for the last second window as well) */
 		if(len > 0) {
@@ -2443,10 +2443,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			nice_agent_set_port_range(handle->agent, handle->audio_id, 2, rtp_range_min, rtp_range_max);
 #endif
 		}
-		nice_agent_gather_candidates (handle->agent, handle->audio_id);
-		nice_agent_attach_recv (handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtp);
+		nice_agent_gather_candidates(handle->agent, handle->audio_id);
+		nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtp);
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && audio_rtcp != NULL)
-			nice_agent_attach_recv (handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtcp);
+			nice_agent_attach_recv(handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, audio_rtcp);
 	}
 	if(video && (!audio || !janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE))) {
 		/* Add a video stream */
@@ -2595,10 +2595,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			nice_agent_set_port_range(handle->agent, handle->video_id, 2, rtp_range_min, rtp_range_max);
 #endif
 		}
-		nice_agent_gather_candidates (handle->agent, handle->video_id);
-		nice_agent_attach_recv (handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtp);
+		nice_agent_gather_candidates(handle->agent, handle->video_id);
+		nice_agent_attach_recv(handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtp);
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && video_rtcp != NULL)
-			nice_agent_attach_recv (handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtcp);
+			nice_agent_attach_recv(handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, video_rtcp);
 	}
 #ifndef HAVE_SCTP
 	handle->data_id = 0;
@@ -2682,8 +2682,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* FIXME: libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails with an undefined reference! */
 		nice_agent_set_port_range(handle->agent, handle->data_id, 1, rtp_range_min, rtp_range_max);
 #endif
-		nice_agent_gather_candidates (handle->agent, handle->data_id);
-		nice_agent_attach_recv (handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, data_component);
+		nice_agent_gather_candidates(handle->agent, handle->data_id);
+		nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), janus_ice_cb_nice_recv, data_component);
 	}
 #endif
 #ifdef HAVE_LIBCURL
@@ -2697,7 +2697,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
 	janus_ice_queued_packet *pkt = NULL;
 	gint64 now = janus_get_monotonic_time(), before = now;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
@@ -3014,7 +3014,7 @@ void *janus_ice_send_thread(void *data) {
 			continue;
 		}
 	}
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }

@@ -276,7 +276,7 @@ int janus_sctp_association_setup(janus_sctp_association *sctp) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error connecting to SCTP server at port %"SCNu16"\n", sctp->handle_id, sctp->remote_port);
 		return -1;
 	}
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Connected to the DataChannel peer\n", sctp->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Connected to the DataChannel peer\n", sctp->handle_id);
 
 	janus_mutex_lock(&sctp->mutex);
 	sctp->sock = sock;
@@ -287,7 +287,7 @@ int janus_sctp_association_setup(janus_sctp_association *sctp) {
 void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 	if(sctp == NULL)
 		return;
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Destroying SCTP association\n", sctp->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Destroying SCTP association\n", sctp->handle_id);
 	usrsctp_deregister_address(sctp);
 	usrsctp_shutdown(sctp->sock, SHUT_RDWR);
 	usrsctp_close(sctp->sock);
@@ -1241,7 +1241,7 @@ void *janus_sctp_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
 	janus_sctp_message *message = NULL;
 	gboolean sent_data = FALSE;
 	while(sctp->dtls != NULL && sctp_running) {
@@ -1309,7 +1309,7 @@ void *janus_sctp_thread(void *data) {
 		}
 		janus_mutex_unlock(&sctp->mutex);
 	}
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Leaving SCTP association thread\n", sctp->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Leaving SCTP association thread\n", sctp->handle_id);
 	/* This association has been destroyed, wait a bit and then free all the resources */
 	g_usleep (1*G_USEC_PER_SEC);
 	GQueue *tmp = sctp->in_messages;
