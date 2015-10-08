@@ -576,6 +576,7 @@ function Janus(gatewayCallbacks) {
 						webrtcStuff : {
 							started : false,
 							myStream : null,
+							streamExternal : false,
 							remoteStream : null,
 							mySdp : null,
 							pc : null,
@@ -649,6 +650,7 @@ function Janus(gatewayCallbacks) {
 						webrtcStuff : {
 							started : false,
 							myStream : null,
+							streamExternal : false,
 							remoteStream : null,
 							mySdp : null,
 							pc : null,
@@ -981,12 +983,10 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		if(stream !== null && stream !== undefined)
-			Janus.log(stream);
-		config.myStream = stream;
 		Janus.log("streamsDone:");
 		if(stream !== null && stream !== undefined)
 			Janus.log(stream);
+		config.myStream = stream;
 		var pc_config = {"iceServers": iceServers};
 		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
 		var pc_constraints = {
@@ -1111,7 +1111,17 @@ function Janus(gatewayCallbacks) {
 						}, callbacks.error);
 			}
 			return;
-		} 
+		}
+		// Was a MediaStream object passed, or do we need to take care of that?
+		if(callbacks.stream !== null && callbacks.stream !== undefined) {
+			var stream = callbacks.stream;
+			Janus.log("MediaStream provided by the application:");
+			Janus.log(stream);
+			// Skip the getUserMedia part
+			config.streamExternal = true;
+			streamsDone(handleId, jsep, media, callbacks, stream);
+			return;
+		}
 		config.trickle = isTrickleEnabled(callbacks.trickle);
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};
@@ -1581,6 +1591,8 @@ function Janus(gatewayCallbacks) {
 			return "Invalid handle";
 		}
 		var config = pluginHandle.webrtcStuff;
+		if(config.pc === null || config.pc === undefined)
+			return "Invalid PeerConnection";
 		// Start getting the bitrate, if getStats is supported
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {
 			// Do it the Chrome way
@@ -1696,10 +1708,15 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.tsnow = null;
 			config.bitrate.tsbefore = null;
 			config.bitrate.value = null;
-			if(config.myStream !== null && config.myStream !== undefined) {
-				Janus.log("Stopping local stream");
-				config.myStream.stop();
+			try {
+				if(!config.streamExternal && config.myStream !== null && config.myStream !== undefined) {
+					Janus.log("Stopping local stream");
+					config.myStream.stop();
+				}
+			} catch(e) {
+				// Do nothing
 			}
+			config.streamExternal = false;
 			config.myStream = null;
 			// Close PeerConnection
 			try {
