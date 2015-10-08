@@ -243,7 +243,7 @@ typedef enum {
 typedef struct janus_sip_account {
 	char *identity;
 	char *username;
-    char *authuser;                     /**< username to use for authentication */
+	char *authuser;			/**< username to use for authentication */
 	char *secret;
 	janus_sip_secret_type secret_type;
 	int sip_port;
@@ -1100,7 +1100,7 @@ static void *janus_sip_handler(void *data) {
 			} else {
 				json_t *secret = json_object_get(root, "secret");
 				json_t *ha1_secret = json_object_get(root, "ha1_secret");
-                json_t *authuser = json_object_get(root, "authuser");
+				json_t *authuser = json_object_get(root, "authuser");
 				if(!secret && !ha1_secret) {
 					JANUS_LOG(LOG_ERR, "Missing element (secret or ha1_secret)\n");
 					error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
@@ -1135,19 +1135,19 @@ static void *janus_sip_handler(void *data) {
 					session->account.secret = g_strdup(secret_text);
 					session->account.secret_type = janus_sip_secret_type_hashed;
 				}
-                if (authuser) {
-                    const char *authuser_text;
-                    if (!json_is_string(authuser)) {
+				if (authuser) {
+					const char *authuser_text;
+					if (!json_is_string(authuser)) {
 						JANUS_LOG(LOG_ERR, "Invalid element (authentication username should be a string)\n");
 						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
 						g_snprintf(error_cause, 512, "Invalid element (authentication username should be a string)");
 						goto error;
-                    }
-                    authuser_text = json_string_value(authuser_text);
-                    session->account.authuser = g_strdup(authuser_text);
-                } else {
-                    session->account.authuser = g_strdup(user_id);
-                }
+					}
+					authuser_text = json_string_value(authuser);
+					session->account.authuser = g_strdup(authuser_text);
+				} else {
+					session->account.authuser = g_strdup(user_id);
+				}
 				/* Got the values, try registering now */
 				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
 					username_text, secret_text, username_uri.url->url_host, proxy_text != NULL ? proxy_text : "(null)");
