@@ -392,6 +392,9 @@ janus.attach(
  *     - \c data: \c true/false (do or do not use Data Channels, default is false)
  *   - \c trickle: \c true/false, to tell the library whether you want
  * Trickle ICE to be used (true, the default) or not (false);
+ *   - \c stream: optional, only to be passed in case you obtained a MediaStream object yourself with a \c getUserMedia
+ * request, and that you want the library to use instead of having it get one by itself (makes
+ * the \c media property useless, as it won't be read for accessing any device);
  *   - a set of callbacks to be notified about the result, namely:
  *     - \c success: the session description was created (attached as a parameter) and is ready to be sent to the plugin; 
  *     - \c error: the session description was NOT successfully created;
