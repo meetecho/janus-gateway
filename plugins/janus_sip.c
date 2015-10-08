@@ -243,6 +243,7 @@ typedef enum {
 typedef struct janus_sip_account {
 	char *identity;
 	char *username;
+	char *authuser;			/**< username to use for authentication */
 	char *secret;
 	janus_sip_secret_type secret_type;
 	int sip_port;
@@ -392,6 +393,10 @@ void *janus_sip_watchdog(void *data) {
 					if (session->account.username) {
 					    g_free(session->account.username);
 					    session->account.username = NULL;
+					}
+					if (session->account.authuser) {
+					    g_free(session->account.authuser);
+					    session->account.authuser = NULL;
 					}
 					if (session->callee) {
 					    g_free(session->callee);
@@ -636,6 +641,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->handle = handle;
 	session->account.identity = NULL;
 	session->account.username = NULL;
+	session->account.authuser = NULL;
 	session->account.secret = NULL;
 	session->account.secret_type = janus_sip_secret_type_unknown;
 	session->account.sip_port = 0;
@@ -979,6 +985,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.username != NULL)
 				g_free(session->account.username);
 			session->account.username = NULL;
+			if(session->account.authuser != NULL)
+				g_free(session->account.authuser);
+			session->account.authuser = NULL;
 			if(session->account.secret != NULL)
 				g_free(session->account.secret);
 			session->account.secret = NULL;
@@ -1091,6 +1100,7 @@ static void *janus_sip_handler(void *data) {
 			} else {
 				json_t *secret = json_object_get(root, "secret");
 				json_t *ha1_secret = json_object_get(root, "ha1_secret");
+				json_t *authuser = json_object_get(root, "authuser");
 				if(!secret && !ha1_secret) {
 					JANUS_LOG(LOG_ERR, "Missing element (secret or ha1_secret)\n");
 					error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
@@ -1124,6 +1134,19 @@ static void *janus_sip_handler(void *data) {
 					secret_text = json_string_value(ha1_secret);
 					session->account.secret = g_strdup(secret_text);
 					session->account.secret_type = janus_sip_secret_type_hashed;
+				}
+				if (authuser) {
+					const char *authuser_text;
+					if (!json_is_string(authuser)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (authentication username should be a string)\n");
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid element (authentication username should be a string)");
+						goto error;
+					}
+					authuser_text = json_string_value(authuser);
+					session->account.authuser = g_strdup(authuser_text);
+				} else {
+					session->account.authuser = g_strdup(user_id);
 				}
 				/* Got the values, try registering now */
 				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
@@ -1898,7 +1921,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					scheme,
 					realm,
-					session->account.username ? session->account.username : "null",
+					session->account.authuser ? session->account.authuser : "null",
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					session->account.secret ? session->account.secret : "null");
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
