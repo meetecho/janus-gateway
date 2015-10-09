@@ -269,6 +269,12 @@ int main(int argc, char *argv[])
 			offset += len;
 			continue;
 		}
+		if(len > 2000) {
+			/* Way too large, very likely not RTP, skip */
+			JANUS_LOG(LOG_VERB, "  -- Too large packet (%d bytes), skipping\n", len);
+			offset += len;
+			continue;
+		}
 		/* Only read RTP header */
 		bytes = fread(prebuffer, sizeof(char), 16, file);
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
