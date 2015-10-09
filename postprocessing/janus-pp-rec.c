@@ -122,8 +122,9 @@ int main(int argc, char *argv[])
 		fseek(file, offset, SEEK_SET);
 		bytes = fread(prebuffer, sizeof(char), 8, file);
 		if(bytes != 8 || prebuffer[0] != 'M') {
-			JANUS_LOG(LOG_ERR, "Invalid header...\n");
-			exit(1);
+			JANUS_LOG(LOG_WARN, "Invalid header at offset %ld (%s), the processing will stop here...\n",
+				offset, bytes != 8 ? "not enough bytes" : "wrong prefix");
+			break;
 		}
 		if(prebuffer[1] == 'E') {
 			/* Either the old .mjr format header ('MEETECHO' header followed by 'audio' or 'video'), or a frame */
@@ -256,6 +257,10 @@ int main(int argc, char *argv[])
 		skip = 0;
 		fseek(file, offset, SEEK_SET);
 		bytes = fread(prebuffer, sizeof(char), 8, file);
+		if(bytes != 8 || prebuffer[0] != 'M') {
+			/* Broken packet? Stop here */
+			break;
+		}
 		prebuffer[8] = '\0';
 		JANUS_LOG(LOG_VERB, "Header: %s\n", prebuffer);
 		offset += 8;
