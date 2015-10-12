@@ -1414,6 +1414,18 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			json_object_set_new(rtp_stream, "audio", json_integer(audio_port));
 		}
 		if(video_handle > 0) {
+			/* Send a FIR to the new RTP forward publisher */
+			char buf[20];
+			memset(buf, 0, 20);
+			janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
+			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+			gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
+			/* Send a PLI too, just in case... */
+			memset(buf, 0, 12);
+			janus_rtcp_pli((char *)&buf, 12);
+			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
+			gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
+			/* Done */
 			json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle));
 			json_object_set_new(rtp_stream, "video", json_integer(video_port));
 		}
