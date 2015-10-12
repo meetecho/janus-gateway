@@ -1032,7 +1032,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 						break;
 				}
 				/* rtcp-mux */
-				g_snprintf(buffer, 512, "a=rtcp-mux\n");
+				g_snprintf(buffer, 512, "a=rtcp-mux\r\n");
 				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 				/* RTP maps */
 				if(m->m_rtpmaps) {
