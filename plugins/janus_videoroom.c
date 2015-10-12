@@ -2710,7 +2710,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(participant->recording_base) {
 								/* Use the filename and path we have been provided */
 								g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-								participant->arc = janus_recorder_create(NULL, 0, filename);
+								participant->arc = janus_recorder_create(participant->room->rec_dir, 0, filename);
 								if(participant->arc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 								}
@@ -2729,7 +2729,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(participant->recording_base) {
 								/* Use the filename and path we have been provided */
 								g_snprintf(filename, 255, "%s-video", participant->recording_base);
-								participant->vrc = janus_recorder_create(NULL, 1, filename);
+								participant->vrc = janus_recorder_create(participant->room->rec_dir, 1, filename);
 								if(participant->vrc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 								}
@@ -3384,7 +3384,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(participant->recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-							participant->arc = janus_recorder_create(NULL, 0, filename);
+							participant->arc = janus_recorder_create(videoroom->rec_dir, 0, filename);
 							if(participant->arc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 							}
@@ -3403,7 +3403,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(participant->recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-video", participant->recording_base);
-							participant->vrc = janus_recorder_create(NULL, 1, filename);
+							participant->vrc = janus_recorder_create(videoroom->rec_dir, 1, filename);
 							if(participant->vrc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 							}
