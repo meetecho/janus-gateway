@@ -61,8 +61,8 @@ var audioenabled = false;
 
 
 $(document).ready(function() {
-	// Initialize the library (console debug enabled)
-	Janus.init({debug: true, callback: function() {
+	// Initialize the library (all console debuggers enabled)
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
@@ -86,7 +86,7 @@ $(document).ready(function() {
 								success: function(pluginHandle) {
 									$('#details').remove();
 									mixertest = pluginHandle;
-									console.log("Plugin attached! (" + mixertest.getPlugin() + ", id=" + mixertest.getId() + ")");
+									Janus.log("Plugin attached! (" + mixertest.getPlugin() + ", id=" + mixertest.getId() + ")");
 									// Prepare the username registration
 									$('#audiojoin').removeClass('hide').show();
 									$('#registernow').removeClass('hide').show();
@@ -99,11 +99,11 @@ $(document).ready(function() {
 										});
 								},
 								error: function(error) {
-									console.log("  -- Error attaching plugin... " + error);
+									Janus.error("  -- Error attaching plugin...", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
 								consentDialog: function(on) {
-									console.log("Consent dialog should be " + (on ? "on" : "off") + " now");
+									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
 										$.blockUI({ 
@@ -122,15 +122,15 @@ $(document).ready(function() {
 									}
 								},
 								onmessage: function(msg, jsep) {
-									console.log(" ::: Got a message :::");
-									console.log(JSON.stringify(msg));
+									Janus.debug(" ::: Got a message :::");
+									Janus.debug(JSON.stringify(msg));
 									var event = msg["audiobridge"];
-									console.log("Event: " + event);
+									Janus.debug("Event: " + event);
 									if(event != undefined && event != null) {
 										if(event === "joined") {
 											// Successfully joined, negotiate WebRTC now
 											myid = msg["id"];
-											console.log("Successfully joined room " + msg["room"] + " with ID " + myid);
+											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(!webrtcUp) {
 												webrtcUp = true;
 												// Publish our stream
@@ -138,14 +138,13 @@ $(document).ready(function() {
 													{
 														media: { video: false},	// This is an audio only room
 														success: function(jsep) {
-															console.log("Got SDP!");
-															console.log(jsep);
+															Janus.debug("Got SDP!");
+															Janus.debug(jsep);
 															var publish = { "request": "configure", "muted": false };
 															mixertest.send({"message": publish, "jsep": jsep});
 														},
 														error: function(error) {
-															console.log("WebRTC error:");
-															console.log(error);
+															Janus.error("WebRTC error:", error);
 															bootbox.alert("WebRTC error... " + JSON.stringify(error));
 														}
 													});
@@ -153,13 +152,13 @@ $(document).ready(function() {
 											// Any room participant?
 											if(msg["participants"] !== undefined && msg["participants"] !== null) {
 												var list = msg["participants"];
-												console.log("Got a list of participants:");
-												console.log(list);
+												Janus.debug("Got a list of participants:");
+												Janus.debug(list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
 													var muted = list[f]["muted"];
-													console.log("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
 														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
@@ -174,18 +173,18 @@ $(document).ready(function() {
 										} else if(event === "roomchanged") {
 											// The user switched to a different room
 											myid = msg["id"];
-											console.log("Moved to room " + msg["room"] + ", new ID: " + myid);
+											Janus.log("Moved to room " + msg["room"] + ", new ID: " + myid);
 											// Any room participant?
 											$('#list').empty();
 											if(msg["participants"] !== undefined && msg["participants"] !== null) {
 												var list = msg["participants"];
-												console.log("Got a list of participants:");
-												console.log(list);
+												Janus.debug("Got a list of participants:");
+												Janus.debug(list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
 													var muted = list[f]["muted"];
-													console.log("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
 														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></i></li>');
@@ -199,20 +198,20 @@ $(document).ready(function() {
 											}
 										} else if(event === "destroyed") {
 											// The room has been destroyed
-											console.log("The room has been destroyed!");
+											Janus.warn("The room has been destroyed!");
 											bootbox.alert("The room has been destroyed", function() {
 												window.location.reload();
 											});
 										} else if(event === "event") {
 											if(msg["participants"] !== undefined && msg["participants"] !== null) {
 												var list = msg["participants"];
-												console.log("Got a list of participants:");
-												console.log(list);
+												Janus.debug("Got a list of participants:");
+												Janus.debug(list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
 													var muted = list[f]["muted"];
-													console.log("  >> [" + id + "] " + display + " (muted=" + muted + ")");
+													Janus.debug("  >> [" + id + "] " + display + " (muted=" + muted + ")");
 													if($('#rp'+id).length === 0) {
 														// Add to the participants list
 														$('#list').append('<li id="rp'+id+'" class="list-group-item">'+display+' <i class="fa fa-microphone-slash"></li>');
@@ -231,20 +230,20 @@ $(document).ready(function() {
 											if(msg["leaving"] !== undefined && msg["leaving"] !== null) {
 												// One of the participants has gone away?
 												var leaving = msg["leaving"];
-												console.log("Participant left: " + leaving + " (we have " + $('#rp'+leaving).length + " elements with ID #rp" +leaving + ")");
+												Janus.log("Participant left: " + leaving + " (we have " + $('#rp'+leaving).length + " elements with ID #rp" +leaving + ")");
 												$('#rp'+leaving).remove();
 											}
 										}
 									}
 									if(jsep !== undefined && jsep !== null) {
-										console.log("Handling SDP as well...");
-										console.log(jsep);
+										Janus.debug("Handling SDP as well...");
+										Janus.debug(jsep);
 										mixertest.handleRemoteJsep({jsep: jsep});
 									}
 								},
 								onlocalstream: function(stream) {
-									console.log(" ::: Got a local stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a local stream :::");
+									Janus.debug(JSON.stringify(stream));
 									// We're not going to attach the local audio stream
 									$('#audiojoin').hide();
 									$('#room').removeClass('hide').show();
@@ -271,7 +270,7 @@ $(document).ready(function() {
 								},
 								oncleanup: function() {
 									webrtcUp = false;
-									console.log(" ::: Got a cleanup notification :::");
+									Janus.log(" ::: Got a cleanup notification :::");
 									$('#participant').empty().hide();
 									$('#list').empty();
 									$('#mixedaudio').empty();
@@ -280,7 +279,7 @@ $(document).ready(function() {
 							});
 					},
 					error: function(error) {
-						console.log(error);
+						Janus.error(error);
 						bootbox.alert(error, function() {
 							window.location.reload();
 						});

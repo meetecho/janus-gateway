@@ -60,8 +60,8 @@ var incoming = null;
 
 
 $(document).ready(function() {
-	// Initialize the library (console debug enabled)
-	Janus.init({debug: true, callback: function() {
+	// Initialize the library (all console debuggers enabled)
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
@@ -85,7 +85,7 @@ $(document).ready(function() {
 								success: function(pluginHandle) {
 									$('#details').remove();
 									sipcall = pluginHandle;
-									console.log("Plugin attached! (" + sipcall.getPlugin() + ", id=" + sipcall.getId() + ")");
+									Janus.log("Plugin attached! (" + sipcall.getPlugin() + ", id=" + sipcall.getId() + ")");
 									// Prepare the username registration
 									$('#sipcall').removeClass('hide').show();
 									$('#login').removeClass('hide').show();
@@ -121,11 +121,11 @@ $(document).ready(function() {
 										});
 								},
 								error: function(error) {
-									console.log("  -- Error attaching plugin... " + error);
+									Janus.error("  -- Error attaching plugin...", error);
 									bootbox.alert("  -- Error attaching plugin... " + error);
 								},
 								consentDialog: function(on) {
-									console.log("Consent dialog should be " + (on ? "on" : "off") + " now");
+									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
 										$.blockUI({ 
@@ -144,8 +144,8 @@ $(document).ready(function() {
 									}
 								},
 								onmessage: function(msg, jsep) {
-									console.log(" ::: Got a message :::");
-									console.log(JSON.stringify(msg));
+									Janus.debug(" ::: Got a message :::");
+									Janus.debug(JSON.stringify(msg));
 									// Any error?
 									var error = msg["error"];
 									if(error != null && error != undefined) {
@@ -163,7 +163,7 @@ $(document).ready(function() {
 									if(result !== null && result !== undefined && result["event"] !== undefined && result["event"] !== null) {
 										var event = result["event"];
 										if(event === 'registration_failed') {
-											console.log("Registration failed: " + result["code"] + " " + result["reason"]);
+											Janus.warn("Registration failed: " + result["code"] + " " + result["reason"]);
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
@@ -173,7 +173,7 @@ $(document).ready(function() {
 											return;
 										}
 										if(event === 'registered') {
-											console.log("Successfully registered as " + result["username"] + "!");
+											Janus.log("Successfully registered as " + result["username"] + "!");
 											$('#you').removeClass('hide').show().text("Registered as '" + result["username"] + "'");
 											// TODO Enable buttons to call now
 											if(!registered) {
@@ -183,20 +183,20 @@ $(document).ready(function() {
 												$('#peer').focus();
 											}
 										} else if(event === 'calling') {
-											console.log("Waiting for the peer to answer...");
+											Janus.log("Waiting for the peer to answer...");
 											// TODO Any ringtone?
 											$('#call').removeAttr('disabled').html('Hangup')
 												  .removeClass("btn-success").addClass("btn-danger")
 												  .unbind('click').click(doHangup);
 										} else if(event === 'incomingcall') {
-											console.log("Incoming call from " + result["username"] + "!");
+											Janus.log("Incoming call from " + result["username"] + "!");
 											var doAudio = true, doVideo = true;
 											if(jsep !== null && jsep !== undefined) {
 												// What has been negotiated?
 												doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
 												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
-												console.log("Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
-												console.log("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
+												Janus.debug("Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
+												Janus.debug("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
 											}
 											// Notify user
 											bootbox.hideAll();
@@ -216,8 +216,8 @@ $(document).ready(function() {
 																	jsep: jsep,
 																	media: { audio: doAudio, video: doVideo },
 																	success: function(jsep) {
-																		console.log("Got SDP! audio=" + doAudio + ", video=" + doVideo);
-																		console.log(jsep);
+																		Janus.debug("Got SDP! audio=" + doAudio + ", video=" + doVideo);
+																		Janus.debug(jsep);
 																		var body = { "request": "accept" };
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
@@ -225,8 +225,7 @@ $(document).ready(function() {
 																			.unbind('click').click(doHangup);
 																	},
 																	error: function(error) {
-																		console.log("WebRTC error:");
-																		console.log(error);
+																		Janus.error("WebRTC error:", error);
 																		bootbox.alert("WebRTC error... " + JSON.stringify(error));
 																		// Don't keep the caller waiting any longer
 																		var body = { "request": "decline" };
@@ -247,7 +246,7 @@ $(document).ready(function() {
 												}
 											});											
 										} else if(event === 'accepted') {
-											console.log(result["username"] + " accepted the call!");
+											Janus.log(result["username"] + " accepted the call!");
 											// TODO Video call can start
 											if(jsep !== null && jsep !== undefined) {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
@@ -257,7 +256,7 @@ $(document).ready(function() {
 												incoming.modal('hide');
 												incoming = null;
 											}
-											console.log("Call hung up (" + result["code"] + " " + result["reason"] + ")!");
+											Janus.log("Call hung up (" + result["code"] + " " + result["reason"] + ")!");
 											bootbox.alert(result["code"] + " " + result["reason"]);
 											// Reset status
 											sipcall.hangup();
@@ -270,8 +269,8 @@ $(document).ready(function() {
 									}
 								},
 								onlocalstream: function(stream) {
-									console.log(" ::: Got a local stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a local stream :::");
+									Janus.debug(JSON.stringify(stream));
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -297,8 +296,8 @@ $(document).ready(function() {
 									}
 								},
 								onremotestream: function(stream) {
-									console.log(" ::: Got a remote stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a remote stream :::");
+									Janus.debug(JSON.stringify(stream));
 									if($('#remotevideo').length === 0) {
 										$('#videoright').parent().find('h3').html(
 											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
@@ -338,7 +337,7 @@ $(document).ready(function() {
 									}
 								},
 								oncleanup: function() {
-									console.log(" ::: Got a cleanup notification :::");
+									Janus.log(" ::: Got a cleanup notification :::");
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
@@ -349,7 +348,7 @@ $(document).ready(function() {
 							});
 					},
 					error: function(error) {
-						console.log(error);
+						Janus.error(error);
 						bootbox.alert(error, function() {
 							window.location.reload();
 						});
@@ -506,7 +505,7 @@ function doCall() {
 	}
 	// Call this URI
 	doVideo = $('#dovideo').is(':checked');
-	console.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")"); 
+	Janus.log("This is a SIP " + (doVideo ? "video" : "audio") + " call (dovideo=" + doVideo + ")"); 
 	sipcall.createOffer(
 		{
 			media: {
@@ -514,14 +513,13 @@ function doCall() {
 				videoSend: doVideo, videoRecv: doVideo	// We MAY want video
 			},
 			success: function(jsep) {
-				console.log("Got SDP!");
-				console.log(jsep);
+				Janus.debug("Got SDP!");
+				Janus.debug(jsep);
 				var body = { "request": "call", uri: $('#peer').val() };
 				sipcall.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {
-				console.log("WebRTC error...");
-				console.log(error);
+				Janus.error("WebRTC error...", error);
 				bootbox.alert("WebRTC error... " + JSON.stringify(error));
 			}
 		});

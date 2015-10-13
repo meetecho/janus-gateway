@@ -149,7 +149,10 @@
  * using the static \c init method of the object, which accepts the
  * following options:
  *
- * - \c debug: whether debug should be enabled on the JavaScript console (true/false, default=false)
+ * - \c debug: whether debug should be enabled on the JavaScript console, and what levels
+ *   - \c true or \c "all": all debuggers enabled (Janus.trace, Janus.debug, Janus.log, Janus.warn, Janus.error)
+ *   - array (e.g., <code>["trace", "warn"]</code>): only enable selected debuggers (allowed tokens: trace, debug, log, warn, error)
+ *   - \c false: disable all debuggers
  * - \c callback: a user provided function that is invoked when the initialization is complete. 
  *
  * Here's an example:

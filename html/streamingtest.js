@@ -57,8 +57,8 @@ var selectedStream = null;
 
 
 $(document).ready(function() {
-	// Initialize the library (console debug enabled)
-	Janus.init({debug: true, callback: function() {
+	// Initialize the library (all console debuggers enabled)
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
@@ -82,7 +82,7 @@ $(document).ready(function() {
 								success: function(pluginHandle) {
 									$('#details').remove();
 									streaming = pluginHandle;
-									console.log("Plugin attached! (" + streaming.getPlugin() + ", id=" + streaming.getId() + ")");
+									Janus.log("Plugin attached! (" + streaming.getPlugin() + ", id=" + streaming.getId() + ")");
 									// Setup streaming session
 									$('#update-streams').click(updateStreamsList);
 									updateStreamsList();
@@ -96,12 +96,12 @@ $(document).ready(function() {
 										});
 								},
 								error: function(error) {
-									console.log("  -- Error attaching plugin... " + error);
+									Janus.error("  -- Error attaching plugin... ", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
 								onmessage: function(msg, jsep) {
-									console.log(" ::: Got a message :::");
-									console.log(JSON.stringify(msg));
+									Janus.debug(" ::: Got a message :::");
+									Janus.debug(JSON.stringify(msg));
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
 										if(result["status"] !== undefined && result["status"] !== null) {
@@ -119,31 +119,30 @@ $(document).ready(function() {
 										return;
 									}
 									if(jsep !== undefined && jsep !== null) {
-										console.log("Handling SDP as well...");
-										console.log(jsep);
+										Janus.debug("Handling SDP as well...");
+										Janus.debug(jsep);
 										// Answer
 										streaming.createAnswer(
 											{
 												jsep: jsep,
 												media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
 												success: function(jsep) {
-													console.log("Got SDP!");
-													console.log(jsep);
+													Janus.debug("Got SDP!");
+													Janus.debug(jsep);
 													var body = { "request": "start" };
 													streaming.send({"message": body, "jsep": jsep});
 													$('#watch').html("Stop").removeAttr('disabled').click(stopStream);
 												},
 												error: function(error) {
-													console.log("WebRTC error:");
-													console.log(error);
+													Janus.error("WebRTC error:", error);
 													bootbox.alert("WebRTC error... " + JSON.stringify(error));
 												}
 											});
 									}
 								},
 								onremotestream: function(stream) {
-									console.log(" ::: Got a remote stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a remote stream :::");
+									Janus.debug(JSON.stringify(stream));
 									if($('#remotevideo').length === 0)
 										$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 									// Show the stream and hide the spinner when we get a playing event
@@ -157,14 +156,14 @@ $(document).ready(function() {
 									attachMediaStream($('#remotevideo').get(0), stream);
 								},
 								oncleanup: function() {
-									console.log(" ::: Got a cleanup notification :::");
+									Janus.log(" ::: Got a cleanup notification :::");
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
 								}
 							});
 					},
 					error: function(error) {
-						console.log(error);
+						Janus.error(error);
 						bootbox.alert(error, function() {
 							window.location.reload();
 						});
@@ -180,7 +179,7 @@ $(document).ready(function() {
 function updateStreamsList() {
 	$('#update-streams').unbind('click').addClass('fa-spin');
 	var body = { "request": "list" };
-	console.log("Sending message (" + JSON.stringify(body) + ")");
+	Janus.debug("Sending message (" + JSON.stringify(body) + ")");
 	streaming.send({"message": body, success: function(result) {
 		setTimeout(function() {
 			$('#update-streams').removeClass('fa-spin').click(updateStreamsList);
@@ -194,10 +193,10 @@ function updateStreamsList() {
 			$('#streamslist').empty();
 			$('#watch').attr('disabled', true).unbind('click');
 			var list = result["list"];
-			console.log("Got a list of available streams:");
-			console.log(list);
+			Janus.log("Got a list of available streams");
+			Janus.debug(list);
 			for(var mp in list) {
-				console.log("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
+				Janus.debug("  >> [" + list[mp]["id"] + "] " + list[mp]["description"] + " (" + list[mp]["type"] + ")");
 				$('#streamslist').append("<li><a href='#' id='" + list[mp]["id"] + "'>" + list[mp]["description"] + " (" + list[mp]["type"] + ")" + "</a></li>");
 			}
 			$('#streamslist a').unbind('click').click(function() {
@@ -212,7 +211,7 @@ function updateStreamsList() {
 }
 
 function startStream() {
-	console.log("Selected video id #" + selectedStream);
+	Janus.log("Selected video id #" + selectedStream);
 	if(selectedStream === undefined || selectedStream === null) {
 		bootbox.alert("Select a stream from the list");
 		return;
