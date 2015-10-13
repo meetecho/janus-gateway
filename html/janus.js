@@ -32,8 +32,44 @@ Janus.init = function(options) {
 	} else {
 		if(typeof console == "undefined" || typeof console.log == "undefined")
 			console = { log: function() {} };
-		// Console log (debugging disabled by default)
-		Janus.log = (options.debug === true) ? console.log.bind(console) : Janus.noop;
+		// Console logging (all debugging disabled by default)
+		Janus.trace = Janus.noop;
+		Janus.debug = Janus.noop;
+		Janus.log = Janus.noop;
+		Janus.warn = Janus.noop;
+		Janus.error = Janus.noop;
+		if(options.debug === true || options.debug === "all") {
+			// Enable all debugging levels
+			Janus.trace = console.trace.bind(console);
+			Janus.debug = console.debug.bind(console);
+			Janus.log = console.log.bind(console);
+			Janus.warn = console.warn.bind(console);
+			Janus.error = console.error.bind(console);
+		} else if($.isArray(options.debug)) {
+			for(var i in options.debug) {
+				var d = options.debug[i];
+				switch(d) {
+					case "trace":
+						Janus.trace = console.trace.bind(console);
+						break;
+					case "debug":
+						Janus.debug = console.debug.bind(console);
+						break;
+					case "log":
+						Janus.log = console.log.bind(console);
+						break;
+					case "warn":
+						Janus.warn = console.warn.bind(console);
+						break;
+					case "error":
+						Janus.error = console.error.bind(console);
+						break;
+					default:
+						console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'log', warn', 'error')");
+						break;
+				}
+			}
+		}
 		Janus.log("Initializing library");
 		Janus.initDone = true;
 		// Detect tab close
@@ -114,16 +150,15 @@ function Janus(gatewayCallbacks) {
 		Janus.log("Multiple servers provided (" + server.length + "), will use the first that works");
 		server = null;
 		servers = gatewayCallbacks.server;
-		Janus.log(servers);
+		Janus.debug(servers);
 	} else {
 		if(server.indexOf("ws") === 0) {
 			websockets = true;
-			Janus.log("Using WebSockets to contact Janus");
+			Janus.log("Using WebSockets to contact Janus: " + server);
 		} else {
 			websockets = false;
-			Janus.log("Using REST API to contact Janus");
+			Janus.log("Using REST API to contact Janus: " + server);
 		}
-		Janus.log(server);
 	}
 	var iceServers = gatewayCallbacks.iceServers;
 	if(iceServers === undefined || iceServers === null)
@@ -180,9 +215,9 @@ function Janus(gatewayCallbacks) {
 	function eventHandler() {
 		if(sessionId == null)
 			return;
-		Janus.log('Long poll...');
+		Janus.debug('Long poll...');
 		if(!connected) {
-			Janus.log("Is the gateway down? (connected=false)");
+			Janus.warn("Is the gateway down? (connected=false)");
 			return;
 		}
 		var longpoll = server + "/" + sessionId + "?rid=" + new Date().getTime();
@@ -199,7 +234,7 @@ function Janus(gatewayCallbacks) {
 			timeout: 60000,	// FIXME
 			success: handleEvent,
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
-				Janus.log(textStatus + ": " + errorThrown);
+				Janus.error(textStatus + ": " + errorThrown);
 				//~ clearTimeout(timeoutTimer);
 				retries++;
 				if(retries > 3) {
@@ -219,8 +254,8 @@ function Janus(gatewayCallbacks) {
 		retries = 0;
 		if(!websockets && sessionId !== undefined && sessionId !== null)
 			setTimeout(eventHandler, 200);
-		Janus.log("Got event on session " + sessionId);
-		Janus.log(json);
+		Janus.debug("Got event on session " + sessionId);
+		Janus.debug(json);
 		if(!websockets && $.isArray(json)) {
 			// We got an array: it means we passed a maxev > 1, iterate on all objects
 			for(var i=0; i<json.length; i++) {
@@ -260,12 +295,12 @@ function Janus(gatewayCallbacks) {
 			// A plugin asked the core to hangup a PeerConnection on one of our handles
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
-				Janus.log("Missing sender...");
+				Janus.warn("Missing sender...");
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.log("This handle is not attached to this session");
+				Janus.warn("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.hangup();
@@ -273,19 +308,19 @@ function Janus(gatewayCallbacks) {
 			// A plugin asked the core to detach one of our handles
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
-				Janus.log("Missing sender...");
+				Janus.warn("Missing sender...");
 				return;
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.log("This handle is not attached to this session");
+				Janus.warn("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.ondetached();
 			pluginHandle.detach();
 		} else if(json["janus"] === "error") {
 			// Oops, something wrong happened
-			Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+			Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 			var transaction = json["transaction"];
 			if(transaction !== null && transaction !== undefined) {
 				var reportSuccess = transactions[transaction];
@@ -298,38 +333,38 @@ function Janus(gatewayCallbacks) {
 		} else if(json["janus"] === "event") {
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
-				Janus.log("Missing sender...");
+				Janus.warn("Missing sender...");
 				return;
 			}
 			var plugindata = json["plugindata"];
 			if(plugindata === undefined || plugindata === null) {
-				Janus.log("Missing plugindata...");
+				Janus.warn("Missing plugindata...");
 				return;
 			}
-			Janus.log("  -- Event is coming from " + sender + " (" + plugindata["plugin"] + ")");
+			Janus.debug("  -- Event is coming from " + sender + " (" + plugindata["plugin"] + ")");
 			var data = plugindata["data"];
-			Janus.log(data);
+			Janus.debug(data);
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.log("This handle is not attached to this session");
+				Janus.warn("This handle is not attached to this session");
 				return;
 			}
 			var jsep = json["jsep"];
 			if(jsep !== undefined && jsep !== null) {
-				Janus.log("Handling SDP as well...");
-				Janus.log(jsep);
+				Janus.debug("Handling SDP as well...");
+				Janus.debug(jsep);
 			}
 			var callback = pluginHandle.onmessage;
 			if(callback !== null && callback !== undefined) {
-				Janus.log("Notifying application...");
+				Janus.debug("Notifying application...");
 				// Send to callback specified when attaching plugin handle
 				callback(data, jsep);
 			} else {
 				// Send to generic callback (?)
-				Janus.log("No provided notification callback");
+				Janus.debug("No provided notification callback");
 			}
 		} else {
-			Janus.log("Unknown message '" + json["janus"] + "'");
+			Janus.warn("Unknown message '" + json["janus"] + "'");
 		}
 	}
 	
@@ -359,17 +394,16 @@ function Janus(gatewayCallbacks) {
 			server = servers[serversIndex];
 			if(server.indexOf("ws") === 0) {
 				websockets = true;
-				Janus.log("Server #" + (serversIndex+1) + ": trying WebSockets to contact Janus");
+				Janus.log("Server #" + (serversIndex+1) + ": trying WebSockets to contact Janus (" + server + ")");
 			} else {
 				websockets = false;
-				Janus.log("Server #" + (serversIndex+1) + ": trying REST API to contact Janus");
+				Janus.log("Server #" + (serversIndex+1) + ": trying REST API to contact Janus (" + server + ")");
 			}
-			Janus.log(server);
 		}
 		if(websockets) {
 			ws = new WebSocket(server, 'janus-protocol'); 
 			ws.onerror = function() {
-				Janus.log("Error connecting to the Janus WebSockets server...");
+				Janus.error("Error connecting to the Janus WebSockets server... " + server);
 				if($.isArray(servers)) {
 					serversIndex++;
 					if(serversIndex == servers.length) {
@@ -387,10 +421,9 @@ function Janus(gatewayCallbacks) {
 			ws.onopen = function() {
 				// We need to be notified about the success
 				transactions[transaction] = function(json) {
-					Janus.log("Create session:");
-					Janus.log(json);
+					Janus.debug(json);
 					if(json["janus"] !== "success") {
-						Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+						Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 						callbacks.error(json["error"].reason);
 						return;
 					}
@@ -422,10 +455,9 @@ function Janus(gatewayCallbacks) {
 			contentType: "application/json",
 			data: JSON.stringify(request),
 			success: function(json) {
-				Janus.log("Create session:");
-				Janus.log(json);
+				Janus.debug(json);
 				if(json["janus"] !== "success") {
-					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 					callbacks.error(json["error"].reason);
 					return;
 				}
@@ -437,7 +469,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
-				Janus.log(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ": " + errorThrown);	// FIXME
 				if($.isArray(servers)) {
 					serversIndex++;
 					if(serversIndex == servers.length) {
@@ -467,12 +499,12 @@ function Janus(gatewayCallbacks) {
 		// FIXME This method triggers a success even when we fail
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		if(!connected) {
-			Janus.log("Is the gateway down? (connected=false)");
+			Janus.warn("Is the gateway down? (connected=false)");
 			callbacks.success();
 			return;
 		}
 		if(sessionId === undefined || sessionId === null) {
-			Janus.log("No session to destroy");
+			Janus.warn("No session to destroy");
 			callbacks.success();
 			gatewayCallbacks.destroyed();
 			return;
@@ -506,17 +538,17 @@ function Janus(gatewayCallbacks) {
 			data: JSON.stringify(request),
 			success: function(json) {
 				Janus.log("Destroyed session:");
-				Janus.log(json);
+				Janus.debug(json);
 				sessionId = null;
 				connected = false;
 				if(json["janus"] !== "success") {
-					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 				}
 				callbacks.success();
 				gatewayCallbacks.destroyed();
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
-				Janus.log(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ": " + errorThrown);	// FIXME
 				// Reset everything anyway
 				sessionId = null;
 				connected = false;
@@ -541,13 +573,13 @@ function Janus(gatewayCallbacks) {
 		callbacks.oncleanup = (typeof callbacks.oncleanup == "function") ? callbacks.oncleanup : jQuery.noop;
 		callbacks.ondetached = (typeof callbacks.ondetached == "function") ? callbacks.ondetached : jQuery.noop;
 		if(!connected) {
-			Janus.log("Is the gateway down? (connected=false)");
+			Janus.warn("Is the gateway down? (connected=false)");
 			callbacks.error("Is the gateway down? (connected=false)");
 			return;
 		}
 		var plugin = callbacks.plugin;
 		if(plugin === undefined || plugin === null) {
-			Janus.log("Invalid plugin");
+			Janus.error("Invalid plugin");
 			callbacks.error("Invalid plugin");
 			return;
 		}
@@ -559,10 +591,9 @@ function Janus(gatewayCallbacks) {
 			request["apisecret"] = apisecret;
 		if(websockets) {
 			transactions[transaction] = function(json) {
-				Janus.log("Create handle:");
-				Janus.log(json);
+				Janus.debug(json);
 				if(json["janus"] !== "success") {
-					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 					callbacks.error("Ooops: " + json["error"].code + " " + json["error"].reason);
 					return;
 				}
@@ -633,10 +664,9 @@ function Janus(gatewayCallbacks) {
 			contentType: "application/json",
 			data: JSON.stringify(request),
 			success: function(json) {
-				Janus.log("Create handle:");
-				Janus.log(json);
+				Janus.debug(json);
 				if(json["janus"] !== "success") {
-					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 					callbacks.error("Ooops: " + json["error"].code + " " + json["error"].reason);
 					return;
 				}
@@ -697,7 +727,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success(pluginHandle);
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
-				Janus.log(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ": " + errorThrown);	// FIXME
 			},
 			dataType: "json"
 		});
@@ -709,7 +739,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		if(!connected) {
-			Janus.log("Is the gateway down? (connected=false)");
+			Janus.warn("Is the gateway down? (connected=false)");
 			callbacks.error("Is the gateway down? (connected=false)");
 			return;
 		}
@@ -723,34 +753,34 @@ function Janus(gatewayCallbacks) {
 			request["apisecret"] = apisecret;
 		if(jsep !== null && jsep !== undefined)
 			request.jsep = jsep;
-		Janus.log("Sending message to plugin (handle=" + handleId + "):");
-		Janus.log(request);
+		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
+		Janus.debug(request);
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
 			transactions[transaction] = function(json) {
-				Janus.log(json);
-				Janus.log("Message sent!");
+				Janus.debug("Message sent!");
+				Janus.debug(json);
 				if(json["janus"] === "success") {
 					// We got a success, must have been a synchronous transaction
 					var plugindata = json["plugindata"];
 					if(plugindata === undefined || plugindata === null) {
-						Janus.log("Request succeeded, but missing plugindata...");
+						Janus.warn("Request succeeded, but missing plugindata...");
 						callbacks.success();
 						return;
 					}
 					Janus.log("Synchronous transaction successful (" + plugindata["plugin"] + ")");
 					var data = plugindata["data"];
-					Janus.log(data);
+					Janus.debug(data);
 					callbacks.success(data);
 					return;
 				} else if(json["janus"] !== "ack") {
 					// Not a success and not an ack, must be an error
 					if(json["error"] !== undefined && json["error"] !== null) {
-						Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+						Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 						callbacks.error(json["error"].code + " " + json["error"].reason);
 					} else {
-						Janus.log("Unknown error");	// FIXME
+						Janus.error("Unknown error");	// FIXME
 						callbacks.error("Unknown error");
 					}
 					return;
@@ -768,28 +798,28 @@ function Janus(gatewayCallbacks) {
 			contentType: "application/json",
 			data: JSON.stringify(request),
 			success: function(json) {
-				Janus.log(json);
-				Janus.log("Message sent!");
+				Janus.debug("Message sent!");
+				Janus.debug(json);
 				if(json["janus"] === "success") {
 					// We got a success, must have been a synchronous transaction
 					var plugindata = json["plugindata"];
 					if(plugindata === undefined || plugindata === null) {
-						Janus.log("Request succeeded, but missing plugindata...");
+						Janus.warn("Request succeeded, but missing plugindata...");
 						callbacks.success();
 						return;
 					}
 					Janus.log("Synchronous transaction successful (" + plugindata["plugin"] + ")");
 					var data = plugindata["data"];
-					Janus.log(data);
+					Janus.debug(data);
 					callbacks.success(data);
 					return;
 				} else if(json["janus"] !== "ack") {
 					// Not a success and not an ack, must be an error
 					if(json["error"] !== undefined && json["error"] !== null) {
-						Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+						Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 						callbacks.error(json["error"].code + " " + json["error"].reason);
 					} else {
-						Janus.log("Unknown error");	// FIXME
+						Janus.error("Unknown error");	// FIXME
 						callbacks.error("Unknown error");
 					}
 					return;
@@ -798,7 +828,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success();
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
-				Janus.log(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ": " + errorThrown);	// FIXME
 				callbacks.error(textStatus + ": " + errorThrown);
 			},
 			dataType: "json"
@@ -808,7 +838,7 @@ function Janus(gatewayCallbacks) {
 	// Private method to send a trickle candidate
 	function sendTrickleCandidate(handleId, candidate) {
 		if(!connected) {
-			Janus.log("Is the gateway down? (connected=false)");
+			Janus.warn("Is the gateway down? (connected=false)");
 			return;
 		}
 		var request = { "janus": "trickle", "candidate": candidate, "transaction": randomString(12) };
@@ -816,8 +846,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
-		Janus.log("Sending trickle candidate (handle=" + handleId + "):");
-		Janus.log(request);
+		Janus.debug("Sending trickle candidate (handle=" + handleId + "):");
+		Janus.debug(request);
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
@@ -831,15 +861,15 @@ function Janus(gatewayCallbacks) {
 			contentType: "application/json",
 			data: JSON.stringify(request),
 			success: function(json) {
-				Janus.log(json);
-				Janus.log("Candidate sent!");
+				Janus.debug("Candidate sent!");
+				Janus.debug(json);
 				if(json["janus"] !== "ack") {
-					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 					return;
 				}
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
-				Janus.log(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ": " + errorThrown);	// FIXME
 			},
 			dataType: "json"
 		});
@@ -853,14 +883,14 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
 		var text = callbacks.text;
 		if(text === null || text === undefined) {
-			Janus.log("Invalid text");
+			Janus.warn("Invalid text");
 			callbacks.error("Invalid text");
 			return;
 		}
@@ -877,7 +907,7 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
 		}
@@ -890,24 +920,24 @@ function Janus(gatewayCallbacks) {
 					var local_audio_track = tracks[0];
 					config.dtmfSender = config.pc.createDTMFSender(local_audio_track);
 					Janus.log("Created DTMF Sender");
-					config.dtmfSender.ontonechange = function(tone) { Janus.log("Sent DTMF tone: " + tone.tone); };
+					config.dtmfSender.ontonechange = function(tone) { Janus.debug("Sent DTMF tone: " + tone.tone); };
 				}
 			}
 			if(config.dtmfSender === null || config.dtmfSender === undefined) {
-				Janus.log("Invalid DTMF configuration");
+				Janus.warn("Invalid DTMF configuration");
 				callbacks.error("Invalid DTMF configuration");
 				return;
 			}
 		}
 		var dtmf = callbacks.dtmf;
 		if(dtmf === null || dtmf === undefined) {
-			Janus.log("Invalid DTMF parameters");
+			Janus.warn("Invalid DTMF parameters");
 			callbacks.error("Invalid DTMF parameters");
 			return;
 		}
 		var tones = dtmf.tones;
 		if(tones === null || tones === undefined) {
-			Janus.log("Invalid DTMF string");
+			Janus.warn("Invalid DTMF string");
 			callbacks.error("Invalid DTMF string");
 			return;
 		}
@@ -917,7 +947,7 @@ function Janus(gatewayCallbacks) {
 		var gap = dtmf.gap;
 		if(gap === null || gap === undefined)
 			gap = 50;	// We choose 50ms as the default gap between tones
-		Janus.log("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms"); 
+		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms"); 
 		config.dtmfSender.insertDTMF(tones, duration, gap);
 	}
 
@@ -930,7 +960,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		cleanupWebrtc(handleId);
 		if(!connected) {
-			Janus.log("Is the gateway down? (connected=false)");
+			Janus.warn("Is the gateway down? (connected=false)");
 			callbacks.error("Is the gateway down? (connected=false)");
 			return;
 		}
@@ -956,15 +986,15 @@ function Janus(gatewayCallbacks) {
 			data: JSON.stringify(request),
 			success: function(json) {
 				Janus.log("Destroyed handle:");
-				Janus.log(json);
+				Janus.debug(json);
 				if(json["janus"] !== "success") {
-					Janus.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 				}
 				delete pluginHandles[handleId];
 				callbacks.success();
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
-				Janus.log(textStatus + ": " + errorThrown);	// FIXME
+				Janus.error(textStatus + ": " + errorThrown);	// FIXME
 				// We cleanup anyway
 				delete pluginHandles[handleId];
 				callbacks.success();
@@ -978,14 +1008,12 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		Janus.log("streamsDone:");
-		if(stream !== null && stream !== undefined)
-			Janus.log(stream);
+		Janus.debug("streamsDone:", stream);
 		config.myStream = stream;
 		var pc_config = {"iceServers": iceServers};
 		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
@@ -997,10 +1025,10 @@ function Janus(gatewayCallbacks) {
 			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262 
 			pc_constraints.optional.push({"googIPv6":true});
 		}
-		Janus.log("Creating PeerConnection:");
-		Janus.log(pc_constraints);
+		Janus.log("Creating PeerConnection");
+		Janus.debug(pc_constraints);
 		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
-		Janus.log(config.pc);
+		Janus.debug(config.pc);
 		if(config.pc.getStats) {	// FIXME
 			config.volume.value = 0;
 			config.bitrate.value = "0 kbits/sec";
@@ -1025,7 +1053,7 @@ function Janus(gatewayCallbacks) {
 					"sdpMid": event.candidate.sdpMid,
 					"sdpMLineIndex": event.candidate.sdpMLineIndex
 				};
-				Janus.log("candidates: " + JSON.stringify(candidate));
+				Janus.debug("candidates: " + JSON.stringify(candidate));
 				if(config.trickle === true) {
 					// Send candidate
 					sendTrickleCandidate(handleId, candidate);
@@ -1038,8 +1066,8 @@ function Janus(gatewayCallbacks) {
 			pluginHandle.onlocalstream(stream);
 		}
 		config.pc.onaddstream = function(remoteStream) {
-			Janus.log("Handling Remote Stream:");
-			Janus.log(remoteStream);
+			Janus.log("Handling Remote Stream");
+			Janus.debug(remoteStream);
 			config.remoteStream = remoteStream;
 			pluginHandle.onremotestream(remoteStream.stream);
 		};
@@ -1058,8 +1086,7 @@ function Janus(gatewayCallbacks) {
 				}
 			}
 			var onDataChannelError = function(error) {
-				Janus.log('Got error on data channel:');
-				Janus.log(error);
+				Janus.error('Got error on data channel:', error);
 				// TODO
 			}
 			// Until we implement the proxying of open requests within the Janus core, we open a channel ourselves whatever the case
@@ -1091,7 +1118,7 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
 		}
@@ -1115,8 +1142,8 @@ function Janus(gatewayCallbacks) {
 		// Was a MediaStream object passed, or do we need to take care of that?
 		if(callbacks.stream !== null && callbacks.stream !== undefined) {
 			var stream = callbacks.stream;
-			Janus.log("MediaStream provided by the application:");
-			Janus.log(stream);
+			Janus.log("MediaStream provided by the application");
+			Janus.debug(stream);
 			// Skip the getUserMedia part
 			config.streamExternal = true;
 			streamsDone(handleId, jsep, media, callbacks, stream);
@@ -1150,7 +1177,7 @@ function Janus(gatewayCallbacks) {
 							var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
 							if(firefoxVer < 38) {
 								// Unless this is and old Firefox, which doesn't support it
-								Janus.log(media.video + " unsupported, falling back to stdres (old Firefox)");
+								Janus.warn(media.video + " unsupported, falling back to stdres (old Firefox)");
 								height = 480;
 								maxHeight = 480;
 								width  = 640;
@@ -1200,12 +1227,12 @@ function Janus(gatewayCallbacks) {
 						    'optional': []
 						};
 					}
-					Janus.log(videoSupport);
+					Janus.debug(videoSupport);
 				} else if(media.video === 'screen') {
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
 						// Screen sharing mandates HTTPS
-						Janus.log("Screen sharing only works on HTTPS, try the https:// version of this page");
+						Janus.warn("Screen sharing only works on HTTPS, try the https:// version of this page");
 						pluginHandle.consentDialog(false);
 						callbacks.error("Screen sharing only works on HTTPS, try the https:// version of this page");
 						return;
@@ -1223,7 +1250,7 @@ function Janus(gatewayCallbacks) {
 					};
 					function getScreenMedia(constraints, gsmCallback) {
 						Janus.log("Adding media constraint (screen capture)");
-						Janus.log(constraints);
+						Janus.debug(constraints);
 						getUserMedia(constraints,
 							function(stream) {
 								gsmCallback(null, stream);
@@ -1383,14 +1410,14 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
 		if(jsep !== undefined && jsep !== null) {
 			if(config.pc === null) {
-				Janus.log("Wait, no PeerConnection?? if this is an answer, use createAnswer and not handleRemoteJsep");
+				Janus.warn("Wait, no PeerConnection?? if this is an answer, use createAnswer and not handleRemoteJsep");
 				callbacks.error("No PeerConnection: if this is an answer, use createAnswer and not handleRemoteJsep");
 				return;
 			}
@@ -1412,7 +1439,7 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
 		}
@@ -1433,10 +1460,10 @@ function Janus(gatewayCallbacks) {
 				}
 			};
 		}
-		Janus.log(mediaConstraints);
+		Janus.debug(mediaConstraints);
 		config.pc.createOffer(
 			function(offer) {
-				Janus.log(offer);
+				Janus.debug(offer);
 				if(config.mySdp === null || config.mySdp === undefined) {
 					Janus.log("Setting local description");
 					config.mySdp = offer.sdp;
@@ -1452,7 +1479,7 @@ function Janus(gatewayCallbacks) {
 					return;
 				}
 				Janus.log("Offer ready");
-				Janus.log(callbacks);
+				Janus.debug(callbacks);
 				config.sdpSent = true;
 				// JSON.stringify doesn't work on some WebRTC objects anymore
 				// See https://code.google.com/p/chromium/issues/detail?id=467366
@@ -1471,7 +1498,7 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
 		}
@@ -1491,10 +1518,10 @@ function Janus(gatewayCallbacks) {
 				}
 			};
 		}
-		Janus.log(mediaConstraints);
+		Janus.debug(mediaConstraints);
 		config.pc.createAnswer(
 			function(answer) {
-				Janus.log(answer);
+				Janus.debug(answer);
 				if(config.mySdp === null || config.mySdp === undefined) {
 					Janus.log("Setting local description");
 					config.mySdp = answer.sdp;
@@ -1527,13 +1554,13 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle, not sending anything");
+			Janus.warn("Invalid handle, not sending anything");
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
 		Janus.log("Sending offer/answer SDP...");
 		if(config.mySdp === null || config.mySdp === undefined) {
-			Janus.log("Local SDP instance is invalid, not sending anything...");
+			Janus.warn("Local SDP instance is invalid, not sending anything...");
 			return;
 		}
 		config.mySdp = config.pc.localDescription;
@@ -1541,7 +1568,7 @@ function Janus(gatewayCallbacks) {
 			Janus.log("Offer/Answer SDP already sent, not sending it again");
 			return;
 		}
-		Janus.log(callbacks);
+		Janus.debug(callbacks);
 		config.sdpSent = true;
 		callbacks.success(config.mySdp);
 	}
@@ -1550,14 +1577,14 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			return 0;
 		}
 		var config = pluginHandle.webrtcStuff;
 		// Start getting the volume, if getStats is supported
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
 			if(config.remoteStream === null || config.remoteStream === undefined) {
-				Janus.log("Remote stream unavailable");
+				Janus.warn("Remote stream unavailable");
 				return 0;
 			}
 			// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
@@ -1587,7 +1614,7 @@ function Janus(gatewayCallbacks) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
 				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
-			Janus.log("Invalid handle");
+			Janus.warn("Invalid handle");
 			return "Invalid handle";
 		}
 		var config = pluginHandle.webrtcStuff;
@@ -1597,7 +1624,7 @@ function Janus(gatewayCallbacks) {
 		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {
 			// Do it the Chrome way
 			if(config.remoteStream === null || config.remoteStream === undefined) {
-				Janus.log("Remote stream unavailable");
+				Janus.warn("Remote stream unavailable");
 				return "Remote stream unavailable";
 			}
 			// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
@@ -1634,12 +1661,12 @@ function Janus(gatewayCallbacks) {
 			// Do it the Firefox way
 			if(config.remoteStream === null || config.remoteStream === undefined
 					|| config.remoteStream.stream === null || config.remoteStream.stream === undefined) {
-				Janus.log("Remote stream unavailable");
+				Janus.warn("Remote stream unavailable");
 				return "Remote stream unavailable";
 			}
 			var videoTracks = config.remoteStream.stream.getVideoTracks();
 			if(videoTracks === null || videoTracks === undefined || videoTracks.length < 1) {
-				Janus.log("No video track");
+				Janus.warn("No video track");
 				return "No video track";
 			}
 			// https://github.com/muaz-khan/getStats/blob/master/getStats.js
@@ -1676,14 +1703,13 @@ function Janus(gatewayCallbacks) {
 			}
 			return config.bitrate.value;
 		} else {
-			Janus.log("Getting the video bitrate unsupported by browser");
+			Janus.warn("Getting the video bitrate unsupported by browser");
 			return "Feature unsupported by browser";
 		}
 	}
 	
 	function webrtcError(error) {
-		Janus.log("WebRTC error:");
-		Janus.log(error);
+		Janus.error("WebRTC error:", error);
 	}
 
 	function cleanupWebrtc(handleId) {
@@ -1736,8 +1762,7 @@ function Janus(gatewayCallbacks) {
 
 	// Helper methods to parse a media object
 	function isAudioSendEnabled(media) {
-		Janus.log("isAudioSendEnabled:");
-		Janus.log(media);
+		Janus.debug("isAudioSendEnabled:", media);
 		if(media === undefined || media === null)
 			return true;	// Default
 		if(media.audio === false)
@@ -1748,8 +1773,7 @@ function Janus(gatewayCallbacks) {
 	}
 
 	function isAudioRecvEnabled(media) {
-		Janus.log("isAudioRecvEnabled:");
-		Janus.log(media);
+		Janus.debug("isAudioRecvEnabled:", media);
 		if(media === undefined || media === null)
 			return true;	// Default
 		if(media.audio === false)
@@ -1760,8 +1784,7 @@ function Janus(gatewayCallbacks) {
 	}
 
 	function isVideoSendEnabled(media) {
-		Janus.log("isVideoSendEnabled:");
-		Janus.log(media);
+		Janus.debug("isVideoSendEnabled:", media);
 		if(media === undefined || media === null)
 			return true;	// Default
 		if(media.video === false)
@@ -1772,8 +1795,7 @@ function Janus(gatewayCallbacks) {
 	}
 
 	function isVideoRecvEnabled(media) {
-		Janus.log("isVideoRecvEnabled:");
-		Janus.log(media);
+		Janus.debug("isVideoRecvEnabled:", media);
 		if(media === undefined || media === null)
 			return true;	// Default
 		if(media.video === false)
@@ -1784,16 +1806,14 @@ function Janus(gatewayCallbacks) {
 	}
 
 	function isDataEnabled(media) {
-		Janus.log("isDataEnabled:");
-		Janus.log(media);
+		Janus.debug("isDataEnabled:", media);
 		if(media === undefined || media === null)
 			return false;	// Default
 		return (media.data === true);
 	}
 
 	function isTrickleEnabled(trickle) {
-		Janus.log("isTrickleEnabled:");
-		Janus.log(trickle);
+		Janus.debug("isTrickleEnabled:", trickle);
 		if(trickle === undefined || trickle === null)
 			return true;	// Default is true
 		return (trickle === true);

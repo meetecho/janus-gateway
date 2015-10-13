@@ -58,8 +58,8 @@ var audioenabled = false;
 var videoenabled = false;
 
 $(document).ready(function() {
-	// Initialize the library (console debug enabled)
-	Janus.init({debug: true, callback: function() {
+	// Initialize the library (all console debuggers enabled)
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
@@ -92,24 +92,23 @@ $(document).ready(function() {
 								success: function(pluginHandle) {
 									$('#details').remove();
 									echotest = pluginHandle;
-									console.log("Plugin attached! (" + echotest.getPlugin() + ", id=" + echotest.getId() + ")");
+									Janus.log("Plugin attached! (" + echotest.getPlugin() + ", id=" + echotest.getId() + ")");
 									// Negotiate WebRTC
 									var body = { "audio": true, "video": true };
-									console.log("Sending message (" + JSON.stringify(body) + ")");
+									Janus.debug("Sending message (" + JSON.stringify(body) + ")");
 									echotest.send({"message": body});
-									console.log("Trying a createOffer too (audio/video sendrecv)");
+									Janus.debug("Trying a createOffer too (audio/video sendrecv)");
 									echotest.createOffer(
 										{
 											// No media provided: by default, it's sendrecv for audio and video
 											media: { data: true },	// Let's negotiate data channels as well
 											success: function(jsep) {
-												console.log("Got SDP!");
-												console.log(jsep);
+												Janus.debug("Got SDP!");
+												Janus.debug(jsep);
 												echotest.send({"message": body, "jsep": jsep});
 											},
 											error: function(error) {
-												console.log("WebRTC error:");
-												console.log(error);
+												Janus.error("WebRTC error:", error);
 												bootbox.alert("WebRTC error... " + JSON.stringify(error));
 											}
 										});
@@ -121,11 +120,11 @@ $(document).ready(function() {
 										});
 								},
 								error: function(error) {
-									console.log("  -- Error attaching plugin... " + error);
+									console.error("  -- Error attaching plugin...", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
 								consentDialog: function(on) {
-									console.log("Consent dialog should be " + (on ? "on" : "off") + " now");
+									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
 										$.blockUI({ 
@@ -144,11 +143,11 @@ $(document).ready(function() {
 									}
 								},
 								onmessage: function(msg, jsep) {
-									console.log(" ::: Got a message :::");
-									console.log(JSON.stringify(msg));
+									Janus.debug(" ::: Got a message :::");
+									Janus.debug(JSON.stringify(msg));
 									if(jsep !== undefined && jsep !== null) {
-										console.log("Handling SDP as well...");
-										console.log(jsep);
+										Janus.debug("Handling SDP as well...");
+										Janus.debug(jsep);
 										echotest.handleRemoteJsep({jsep: jsep});
 									}
 									var result = msg["result"];
@@ -171,8 +170,8 @@ $(document).ready(function() {
 									}
 								},
 								onlocalstream: function(stream) {
-									console.log(" ::: Got a local stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a local stream :::");
+									Janus.debug(JSON.stringify(stream));
 									if($('#myvideo').length === 0) {
 										$('#videos').removeClass('hide').show();
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -199,8 +198,8 @@ $(document).ready(function() {
 									}
 								},
 								onremotestream: function(stream) {
-									console.log(" ::: Got a remote stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a remote stream :::");
+									Janus.debug(JSON.stringify(stream));
 									if($('#peervideo').length === 0) {
 										$('#videos').removeClass('hide').show();
 										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
@@ -261,9 +260,9 @@ $(document).ready(function() {
 										var id = $(this).attr("id");
 										var bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
-											console.log("Not limiting bandwidth via REMB");
+											Janus.log("Not limiting bandwidth via REMB");
 										} else {
-											console.log("Capping bandwidth to " + bitrate + " via REMB");
+											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
 										$('#bitrateset').html($(this).html()).parent().removeClass('open');
 										echotest.send({"message": { "bitrate": bitrate }});
@@ -274,22 +273,22 @@ $(document).ready(function() {
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
 											var bitrate = echotest.getBitrate();
-											//~ console.log("Current bitrate is " + echotest.getBitrate());
+											//~ Janus.debug("Current bitrate is " + echotest.getBitrate());
 											$('#curbitrate').text(bitrate);
 										}, 1000);
 									}
 								},
 								ondataopen: function(data) {
-									console.log("The DataChannel is available!");
+									Janus.log("The DataChannel is available!");
 									$('#videos').removeClass('hide').show();
 									$('#datasend').removeAttr('disabled');
 								},
 								ondata: function(data) {
-									console.log("We got data from the DataChannel! " + data);
+									Janus.debug("We got data from the DataChannel! " + data);
 									$('#datarecv').val(data);
 								},
 								oncleanup: function() {
-									console.log(" ::: Got a cleanup notification :::");
+									Janus.log(" ::: Got a cleanup notification :::");
 									if(spinner !== null && spinner !== undefined)
 										spinner.stop();
 									spinner = null;
@@ -306,7 +305,7 @@ $(document).ready(function() {
 							});
 					},
 					error: function(error) {
-						console.log(error);
+						Janus.error(error);
 						bootbox.alert(error, function() {
 							window.location.reload();
 						});
