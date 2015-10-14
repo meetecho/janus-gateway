@@ -244,6 +244,7 @@ bin_PROGRAMS += janus-pp-rec
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-opus.c \
 	postprocessing/pp-opus.h \
+	postprocessing/pp-opus-silence.h \
 	postprocessing/pp-rtp.h \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
