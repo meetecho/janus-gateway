@@ -201,17 +201,27 @@ int janus_mkdir(const char *dir, mode_t mode) {
 int janus_get_opus_pt(const char *sdp) {
 	if(!sdp)
 		return -1;
-	if(!strstr(sdp, "m=audio") || !strstr(sdp, "opus/48000"))	/* FIXME Should be case insensitive */
-		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "opus/48000") && !strstr(sdp, "OPUS/48000")))
+		return -2;
 	const char *line = strstr(sdp, "m=audio");
 	while(line) {
 		char *next = strchr(line, '\n');
 		if(next) {
 			*next = '\0';
+			JANUS_LOG(LOG_WARN, "%s\n", line);
 			if(strstr(line, "a=rtpmap") && strstr(line, "opus/48000")) {
 				/* Gotcha! */
+				JANUS_LOG(LOG_WARN, "opus/48000!\n");
 				int pt = 0;
 				if(sscanf(line, "a=rtpmap:%d opus/48000/2", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "OPUS/48000")) {
+				/* Gotcha! */
+				JANUS_LOG(LOG_WARN, "OPUS/48000!\n");
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d OPUS/48000/2", &pt) == 1) {
 					*next = '\n';
 					return pt;
 				}
@@ -220,14 +230,14 @@ int janus_get_opus_pt(const char *sdp) {
 		}
 		line = next ? (next+1) : NULL;
 	}
-	return -1;
+	return -3;
 }
 
 int janus_get_vp8_pt(const char *sdp) {
 	if(!sdp)
 		return -1;
-	if(!strstr(sdp, "m=video") || !strstr(sdp, "VP8/90000"))	/* FIXME Should be case insensitive */
-		return -1;
+	if(!strstr(sdp, "m=video") || (!strstr(sdp, "VP8/90000") && !strstr(sdp, "vp8/90000")))
+		return -2;
 	const char *line = strstr(sdp, "m=video");
 	while(line) {
 		char *next = strchr(line, '\n');
@@ -240,12 +250,19 @@ int janus_get_vp8_pt(const char *sdp) {
 					*next = '\n';
 					return pt;
 				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "vp8/90000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d vp8/90000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
 			}
 			*next = '\n';
 		}
 		line = next ? (next+1) : NULL;
 	}
-	return -1;
+	return -3;
 }
 
 gboolean janus_is_ip_valid(const char *ip, int *family) {
