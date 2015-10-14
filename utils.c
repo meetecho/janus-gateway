@@ -217,7 +217,6 @@ int janus_get_opus_pt(const char *sdp) {
 				}
 			} else if(strstr(line, "a=rtpmap") && strstr(line, "OPUS/48000")) {
 				/* Gotcha! */
-				JANUS_LOG(LOG_WARN, "OPUS/48000!\n");
 				int pt = 0;
 				if(sscanf(line, "a=rtpmap:%d OPUS/48000/2", &pt) == 1) {
 					*next = '\n';
