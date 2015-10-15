@@ -17,6 +17,9 @@ var handle = null;		// Selected handle
 var plugins = [];
 var settings = {};
 
+var currentHandle = null;
+var localSdp = null, remoteSdp = null;
+
 $(document).ready(function() {
 	if(typeof console == "undefined" || typeof console.log == "undefined")
 		console = { log: function() {} };
@@ -316,9 +319,10 @@ function updateSessions() {
 				}, 1000);
 				session = null;
 				handle = null;
+				currentHandle = null;
 				$('#handles-list').empty();
 				$('#handles').hide();
-				$('#handle-info').empty();
+				$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
 				$('#info').hide();
 				return;
 			}
@@ -339,9 +343,10 @@ function updateSessions() {
 					$('#sessions-list a').removeClass('active');
 					$('#session-'+sh).addClass('active');
 					handle = null;
+					currentHandle = null;
 					$('#handles-list').empty();
 					$('#handles').show();
-					$('#handle-info').empty();
+					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
 					$('#info').hide();
 					updateHandles();
 				});
@@ -353,9 +358,10 @@ function updateSessions() {
 					// The session that was selected has disappeared
 					session = null;
 					handle = null;
+					currentHandle = null;
 					$('#handles-list').empty();
 					$('#handles').hide();
-					$('#handle-info').empty();
+					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
 					$('#info').hide();
 				}
 			}
@@ -375,9 +381,10 @@ function updateSessions() {
 			}, 1000);
 			session = null;
 			handle = null;
+			currentHandle = null;
 			$('#handles-list').empty();
 			$('#handles').hide();
-			$('#handle-info').empty();
+			$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
 			$('#info').hide();
 		},
 		dataType: "json"
@@ -422,9 +429,11 @@ function updateHandles() {
 					var hi = $(this).text();
 					console.log("Getting handle " + hi + " info");
 					handle = hi;
+					if(handle === currentHandle)
+						return;	// The self-refresh takes care of that
 					$('#handles-list a').removeClass('active');
 					$('#handle-'+hi).addClass('active');
-					$('#handle-info').empty();
+					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
 					$('#info').show();
 					updateHandleInfo();
 				});
@@ -435,7 +444,8 @@ function updateHandles() {
 				} else {
 					// The handle that was selected has disappeared
 					handle = null;
-					$('#handle-info').empty();
+					currentHandle = null;
+					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
 					$('#info').hide();
 				}
 			}
@@ -456,9 +466,15 @@ function updateHandles() {
 	});
 }
 
-function updateHandleInfo() {
+function updateHandleInfo(refresh) {
 	if(handle === null || handle === undefined)
 		return;
+	if(refresh !== true) {
+		if(handle === currentHandle)
+			return;	// The self-refresh takes care of that
+		currentHandle = handle;
+	}
+	var updateHandle = currentHandle;
 	$('#update-sessions').unbind('click');
 	$('#update-handles').unbind('click');
 	$('#update-handle').unbind('click').addClass('fa-spin');
@@ -472,7 +488,8 @@ function updateHandleInfo() {
 		success: function(json) {
 			if(json["janus"] !== "success") {
 				console.log("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
-				bootbox.alert(json["error"].reason);
+				if(refresh !== true)
+					bootbox.alert(json["error"].reason);
 				setTimeout(function() {
 					$('#update-sessions').click(updateSessions);
 					$('#update-handles').click(updateHandles);
@@ -480,14 +497,183 @@ function updateHandleInfo() {
 				}, 1000);
 				return;
 			}
+			$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
 			console.log("Got info:");
 			console.log(json);
-			$('#handle-info').text(JSON.stringify(json["info"], null, 4));
+			for(var k in json["info"]) {
+				var v = json["info"][k];
+				if(k === "plugin_specific") {
+					$('#handle-info').parent().append(
+						'<h4>Plugin specific details</h4>' +
+						'<table class="table table-striped" id="plugin-specific">' +
+						'</table>');
+					for(var kk in v) {
+						var vv = v[kk];
+						$('#plugin-specific').append(
+							'<tr>' +
+							'	<td><b>' + kk + ':</b></td>' +
+							'	<td>' + vv + '</td>' +
+							'</tr>');
+					}
+				} else if(k === "flags") {
+					$('#handle-info').parent().append(
+						'<h4>Flags</h4>' +
+						'<table class="table table-striped" id="flags">' +
+						'</table>');
+					for(var kk in v) {
+						var vv = v[kk];
+						$('#flags').append(
+							'<tr>' +
+							'	<td><b>' + kk + ':</b></td>' +
+							'	<td>' + vv + '</td>' +
+							'</tr>');
+					}
+				} else if(k === "sdps") {
+					localSdp = null;
+					remoteSdp = null;
+					$('#handle-info').parent().append(
+						'<h4>Session descriptions (SDP)</h4>' +
+						'<table class="table table-striped" id="sdps">' +
+						'</table>');
+					for(var kk in v) {
+						var vv = v[kk];
+						if(kk === "local") {
+							localSdp = vv;
+						} else if(kk === "remote") {
+							remoteSdp = vv;
+						} else {
+							// What? Skip
+							continue;
+						}
+						$('#sdps').append(
+							'<tr>' +
+							'	<td><b>' + kk + ':</b></td>' +
+							'	<td><a id="' + kk + '" href="#">' + vv.substring(0, 40) + '...</a></td>' +
+							'</tr>');
+						$('#' + kk).click(function(event) {
+							event.preventDefault();
+							var sdp = $(this).attr('id') === "local" ? localSdp : remoteSdp;
+							bootbox.dialog({
+								title: "SDP (" + $(this).attr('id') + ")",
+								message: '<div style="max-height: ' + ($(window).height()*2/3) + 'px; overflow-y: auto;">' + sdp.split("\r\n").join("<br/>") + '</div>'
+							});
+                        });
+					}
+				} else if(k === "streams") {
+					$('#handle-info').parent().append(
+						'<h4>ICE streams</h4>' +
+						'<div id="streams"></table>');
+					for(var kk in v) {
+						$('#streams').append(
+							'<h5>Stream #' + (parseInt(kk)+1) + '</h5>' +
+							'<table class="table table-striped" id="stream' + kk + '">' +
+							'</table>');
+						var vv = v[kk];
+						console.log(vv);
+						for(var sk in vv) {
+							var sv = vv[sk];
+							if(sk === "ssrc") {
+								$('#stream' + kk).append(
+									'<tr>' +
+										'<td colspan="2">' +
+											'<h6>SSRC</h6>' +
+											'<table class="table" id="ssrc' + kk + '">' +
+											'</table>' +
+										'</td>' +
+									'</tr>');
+								for(var ssk in sv) {
+									var ssv = sv[ssk];
+									$('#ssrc' + kk).append(
+										'<tr>' +
+										'	<td><b>' + ssk + ':</b></td>' +
+										'	<td>' + ssv + '</td>' +
+										'</tr>');
+								}
+							} else if(sk === "components") {
+								$('#stream' + kk).append(
+									'<tr>' +
+										'<td colspan="2">' +
+											'<h6>Components of Stream #' + (parseInt(kk)+1) + '</h6>' +
+											'<table class="table" id="components' + kk + '">' +
+											'</table>' +
+										'</td>' +
+									'</tr>');
+								for(var ssk in sv) {
+									var ssv = sv[ssk];
+									$('#components' + kk).append(
+										'<tr>' +
+											'<td colspan="2">' +
+												'<h6>Component #' + (parseInt(ssk)+1) + '</h6>' +
+												'<table class="table" id="stream' + kk + 'component' + ssk + '">' +
+												'</table>' +
+											'</td>' +
+										'</tr>');
+									for(var cssk in ssv) {
+										var cssv = ssv[cssk];
+										if(cssk === "local-candidates" || cssk === "remote-candidates") {
+											var candidates = "<ul>";
+											for(var c in cssv)
+												candidates += "<li>" + cssv[c] + "</li>";
+											candidates += "</ul>";
+											$('#stream' + kk + 'component' + ssk).append(
+												'<tr>' +
+												'	<td><b>' + cssk + ':</b></td>' +
+												'	<td>' + candidates + '</td>' +
+												'</tr>');
+										} else if(cssk === "dtls" || cssk === "in_stats" || cssk === "out_stats") {
+											var dtls = '<table class="table">';
+											for(var d in cssv) {
+												dtls +=
+													'<tr>' +
+														'<td style="width:150px;"><b>' + d + '</b></td>' +
+														'<td>' + cssv[d] + '</td>' +
+													'</tr>';
+											}
+											dtls += '</table>';
+											$('#stream' + kk + 'component' + ssk).append(
+												'<tr>' +
+												'	<td style="width:150px;"><b>' + cssk + ':</b></td>' +
+												'	<td>' + dtls + '</td>' +
+												'</tr>');
+										} else {
+											$('#stream' + kk + 'component' + ssk).append(
+												'<tr>' +
+												'	<td><b>' + cssk + ':</b></td>' +
+												'	<td>' + cssv + '</td>' +
+												'</tr>');
+										}
+									}
+								}
+							} else {
+								$('#stream' + kk).append(
+									'<tr>' +
+									'	<td><b>' + sk + ':</b></td>' +
+									'	<td>' + sv + '</td>' +
+									'</tr>');
+							}
+						}
+					}
+				} else {
+					$('#handle-info').append(
+						'<tr>' +
+						'	<td><b>' + k + ':</b></td>' +
+						'	<td>' + v + '</td>' +
+						'</tr>');
+				}
+			}
 			setTimeout(function() {
 				$('#update-sessions').click(updateSessions);
 				$('#update-handles').click(updateHandles);
 				$('#update-handle').removeClass('fa-spin').click(updateHandleInfo);
 			}, 1000);
+			// Auto refresh this handle info every tot seconds
+			setTimeout(function() {
+				if(updateHandle !== currentHandle) {
+					// The handle changed in the meanwhile, don't autorefresh
+					return;
+				}
+				updateHandleInfo(true);
+			}, 5000);
 		},
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME
