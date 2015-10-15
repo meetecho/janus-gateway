@@ -1283,6 +1283,17 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		return;
 	}
 	component->state = state;
+	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)
+			&& handle->send_thread == NULL) {
+		/* Start the outgoing data thread */
+		GError *error = NULL;
+		handle->send_thread = g_thread_try_new("ice send thread", &janus_ice_send_thread, handle, &error);
+		if(error != NULL) {
+			/* FIXME We should clear some resources... */
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE send thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
+			return;
+		}
+	}
 	/* FIXME Even in case the state is 'connected', we wait for the 'new-selected-pair' callback to do anything */
 	if(state == NICE_COMPONENT_STATE_FAILED) {
 		/* Failed doesn't mean necessarily we need to give up: we may be trickling */
@@ -2177,12 +2188,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		return -1;
  	}
 	handle->queued_packets = g_async_queue_new();
-	handle->send_thread = g_thread_try_new("ice send thread", &janus_ice_send_thread, handle, &error);
-	if(error != NULL) {
-		/* FIXME We should clear some resources... */
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE send thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
-		return -1;
- 	}
+	/* We wait for ICE to succeed before creating the related thread */
+	handle->send_thread = NULL;
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
