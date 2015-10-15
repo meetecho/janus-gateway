@@ -227,8 +227,8 @@ $(document).ready(function() {
 																	error: function(error) {
 																		Janus.error("WebRTC error:", error);
 																		bootbox.alert("WebRTC error... " + JSON.stringify(error));
-																		// Don't keep the caller waiting any longer
-																		var body = { "request": "decline" };
+																		// Don't keep the caller waiting any longer, but use a 480 instead of the default 486 to clarify the cause
+																		var body = { "request": "decline", "code": 480 };
 																		sipcall.send({"message": body});
 																	}
 																});
