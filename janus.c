@@ -1484,34 +1484,28 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
 								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
+								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								nice_agent_remove_stream(handle->agent, handle->video_stream->stream_id);
 								janus_ice_stream_free(handle->streams, handle->video_stream);
 							}
 							handle->video_stream = NULL;
-							if(handle->video_id > 0) {
-								nice_agent_attach_recv(handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								nice_agent_attach_recv(handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-							}
 							handle->video_id = 0;
 							if(handle->streams && handle->data_stream) {
+								nice_agent_attach_recv(handle->agent, handle->data_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								nice_agent_remove_stream(handle->agent, handle->data_stream->stream_id);
 								janus_ice_stream_free(handle->streams, handle->data_stream);
 							}
 							handle->data_stream = NULL;
-							if(handle->data_id > 0) {
-								nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-							}
 							handle->data_id = 0;
 						} else if(video) {
 							/* Get rid of data, if present */
 							if(handle->streams && handle->data_stream) {
+								nice_agent_attach_recv(handle->agent, handle->data_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								nice_agent_remove_stream(handle->agent, handle->data_stream->stream_id);
 								janus_ice_stream_free(handle->streams, handle->data_stream);
 							}
 							handle->data_stream = NULL;
-							if(handle->data_id > 0) {
-								nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-							}
 							handle->data_id = 0;
 						}
 					}
@@ -1777,8 +1771,10 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 			goto trickledone;
 		}
 		/* Is the ICE stack ready already? */
-		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)) {
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still processing the offer, queueing this trickle to wait until we're done there...\n", handle->handle_id);
+		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER) ||
+				!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER) ||
+				!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER)) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still processing the offer (or waiting for offer/answer), queueing this trickle to wait until we're done there...\n", handle->handle_id);
 			/* Enqueue this trickle candidate(s), we'll process this later */
 			janus_ice_trickle *early_trickle = janus_ice_trickle_new(handle, transaction_text, candidate ? candidate : candidates);
 			handle->pending_trickles = g_list_append(handle->pending_trickles, early_trickle);
@@ -4183,34 +4179,28 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 						ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
 						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
 						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
+						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 						nice_agent_remove_stream(ice_handle->agent, ice_handle->video_stream->stream_id);
 						janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
 					}
 					ice_handle->video_stream = NULL;
-					if(ice_handle->video_id > 0) {
-						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-					}
 					ice_handle->video_id = 0;
 					if(ice_handle->streams && ice_handle->data_stream) {
+						nice_agent_attach_recv(ice_handle->agent, ice_handle->data_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 						nice_agent_remove_stream(ice_handle->agent, ice_handle->data_stream->stream_id);
 						janus_ice_stream_free(ice_handle->streams, ice_handle->data_stream);
 					}
 					ice_handle->data_stream = NULL;
-					if(ice_handle->data_id > 0) {
-						nice_agent_attach_recv(ice_handle->agent, ice_handle->data_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-					}
 					ice_handle->data_id = 0;
 				} else if(video) {
 					/* Get rid of data, if present */
 					if(ice_handle->streams && ice_handle->data_stream) {
+						nice_agent_attach_recv(ice_handle->agent, ice_handle->data_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 						nice_agent_remove_stream(ice_handle->agent, ice_handle->data_stream->stream_id);
 						janus_ice_stream_free(ice_handle->streams, ice_handle->data_stream);
 					}
 					ice_handle->data_stream = NULL;
-					if(ice_handle->data_id > 0) {
-						nice_agent_attach_recv(ice_handle->agent, ice_handle->data_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-					}
 					ice_handle->data_id = 0;
 				}
 			}
