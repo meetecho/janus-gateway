@@ -1567,55 +1567,53 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 					}
 					/* We got our answer */
 					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
-				}
-				/* Any pending trickles? */
-				if(handle->pending_trickles) {
-					JANUS_LOG(LOG_WARN, "[%"SCNu64"]   -- Processing %d pending trickle candidates\n", handle->handle_id, g_list_length(handle->pending_trickles));
-					GList *temp = NULL;
-					while(handle->pending_trickles) {
-						temp = g_list_first(handle->pending_trickles);
-						handle->pending_trickles = g_list_remove_link(handle->pending_trickles, temp);
-						janus_ice_trickle *trickle = (janus_ice_trickle *)temp->data;
-						g_list_free(temp);
-						if(trickle == NULL)
-							continue;
-						if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
-							/* FIXME Candidate is too old, discard it */
-							janus_ice_trickle_destroy(trickle);
-							/* FIXME We should report that */
-							continue;
-						}
-						json_t *candidate = trickle->candidate;
-						if(candidate == NULL) {
-							janus_ice_trickle_destroy(trickle);
-							continue;
-						}
-						if(json_is_object(candidate)) {
-							/* We got a single candidate */
-							int error = 0;
-							const char *error_string = NULL;
-							if((error = janus_ice_trickle_parse(handle, candidate, &error_string)) != 0) {
-								/* FIXME We should report the error parsing the trickle candidate */
+					/* Any pending trickles? */
+					if(handle->pending_trickles) {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Processing %d pending trickle candidates\n", handle->handle_id, g_list_length(handle->pending_trickles));
+						GList *temp = NULL;
+						while(handle->pending_trickles) {
+							temp = g_list_first(handle->pending_trickles);
+							handle->pending_trickles = g_list_remove_link(handle->pending_trickles, temp);
+							janus_ice_trickle *trickle = (janus_ice_trickle *)temp->data;
+							g_list_free(temp);
+							if(trickle == NULL)
+								continue;
+							if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+								/* FIXME Candidate is too old, discard it */
+								janus_ice_trickle_destroy(trickle);
+								/* FIXME We should report that */
+								continue;
 							}
-						} else if(json_is_array(candidate)) {
-							/* We got multiple candidates in an array */
-							JANUS_LOG(LOG_VERB, "Got multiple candidates (%zu)\n", json_array_size(candidate));
-							if(json_array_size(candidate) > 0) {
-								/* Handle remote candidates */
-								size_t i = 0;
-								for(i=0; i<json_array_size(candidate); i++) {
-									json_t *c = json_array_get(candidate, i);
-									/* FIXME We don't care if any trickle fails to parse */
-									janus_ice_trickle_parse(handle, c, NULL);
+							json_t *candidate = trickle->candidate;
+							if(candidate == NULL) {
+								janus_ice_trickle_destroy(trickle);
+								continue;
+							}
+							if(json_is_object(candidate)) {
+								/* We got a single candidate */
+								int error = 0;
+								const char *error_string = NULL;
+								if((error = janus_ice_trickle_parse(handle, candidate, &error_string)) != 0) {
+									/* FIXME We should report the error parsing the trickle candidate */
+								}
+							} else if(json_is_array(candidate)) {
+								/* We got multiple candidates in an array */
+								JANUS_LOG(LOG_VERB, "Got multiple candidates (%zu)\n", json_array_size(candidate));
+								if(json_array_size(candidate) > 0) {
+									/* Handle remote candidates */
+									size_t i = 0;
+									for(i=0; i<json_array_size(candidate); i++) {
+										json_t *c = json_array_get(candidate, i);
+										/* FIXME We don't care if any trickle fails to parse */
+										janus_ice_trickle_parse(handle, c, NULL);
+									}
 								}
 							}
+							/* Done, free candidate */
+							janus_ice_trickle_destroy(trickle);
 						}
-						/* Done, free candidate */
-						janus_ice_trickle_destroy(trickle);
 					}
-				}
-				/* If this was an answer, check if it's time to start ICE */
-				if(!offer) {
+					/* This was an answer, check if it's time to start ICE */
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) &&
 							!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- ICE Trickling is supported by the browser, waiting for remote candidates...\n", handle->handle_id);
@@ -1774,7 +1772,15 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER) ||
 				!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER) ||
 				!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER)) {
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still processing the offer (or waiting for offer/answer), queueing this trickle to wait until we're done there...\n", handle->handle_id);
+			const char *cause = NULL;
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER))
+				cause = "processing the offer";
+			else if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER))
+				cause = "waiting for the answer";
+			else if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER))
+				cause = "waiting for the offer";
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still %s, queueing this trickle to wait until we're done there...\n",
+				handle->handle_id, cause);
 			/* Enqueue this trickle candidate(s), we'll process this later */
 			janus_ice_trickle *early_trickle = janus_ice_trickle_new(handle, transaction_text, candidate ? candidate : candidates);
 			handle->pending_trickles = g_list_append(handle->pending_trickles, early_trickle);
@@ -4110,33 +4116,33 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 	char *sdp_stripped = janus_sdp_anonymize(sdp);
 	if(sdp_stripped == NULL) {
 		/* Invalid SDP */
-		JANUS_LOG(LOG_ERR, "Invalid SDP\n");
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid SDP\n", ice_handle->handle_id);
 		return NULL;
 	}
 	/* Add our details */
 	char *sdp_merged = janus_sdp_merge(ice_handle, sdp_stripped);
 	if(sdp_merged == NULL) {
 		/* Couldn't merge SDP */
-		JANUS_LOG(LOG_ERR, "Error merging SDP\n");
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error merging SDP\n", ice_handle->handle_id);
 		g_free(sdp_stripped);
 		return NULL;
 	}
 	/* FIXME Any disabled m-line? */
 	if(strstr(sdp_merged, "m=audio 0")) {
-		JANUS_LOG(LOG_VERB, "Audio disabled via SDP\n");
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio disabled via SDP\n", ice_handle->handle_id);
 		if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 				|| (!video && !data)) {
-			JANUS_LOG(LOG_VERB, "  -- Marking audio stream as disabled\n");
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Marking audio stream as disabled\n", ice_handle->handle_id);
 			janus_ice_stream *stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->audio_id));
 			if(stream)
 				stream->disabled = TRUE;
 		}
 	}
 	if(strstr(sdp_merged, "m=video 0")) {
-		JANUS_LOG(LOG_VERB, "Video disabled via SDP\n");
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video disabled via SDP\n", ice_handle->handle_id);
 		if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 				|| (!audio && !data)) {
-			JANUS_LOG(LOG_VERB, "  -- Marking video stream as disabled\n");
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Marking video stream as disabled\n", ice_handle->handle_id);
 			janus_ice_stream *stream = NULL;
 			if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->video_id));
@@ -4149,10 +4155,10 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 		}
 	}
 	if(strstr(sdp_merged, "m=application 0 DTLS/SCTP")) {
-		JANUS_LOG(LOG_VERB, "Data Channel disabled via SDP\n");
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data Channel disabled via SDP\n", ice_handle->handle_id);
 		if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
 				|| (!audio && !video)) {
-			JANUS_LOG(LOG_VERB, "  -- Marking data channel stream as disabled\n");
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Marking data channel stream as disabled\n", ice_handle->handle_id);
 			janus_ice_stream *stream = NULL;
 			if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 				stream = g_hash_table_lookup(ice_handle->streams, GUINT_TO_POINTER(ice_handle->data_id));
@@ -4218,24 +4224,74 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 				}
 			}
 			janus_mutex_lock(&ice_handle->mutex);
-			/* Not trickling (anymore?), set remote candidates now */
-			if(ice_handle->audio_id > 0) {
-				janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 1);
-				if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-					janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 2);
+			/* We got our answer */
+			janus_flags_clear(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+			/* Any pending trickles? */
+			if(ice_handle->pending_trickles) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Processing %d pending trickle candidates\n", ice_handle->handle_id, g_list_length(ice_handle->pending_trickles));
+				GList *temp = NULL;
+				while(ice_handle->pending_trickles) {
+					temp = g_list_first(ice_handle->pending_trickles);
+					ice_handle->pending_trickles = g_list_remove_link(ice_handle->pending_trickles, temp);
+					janus_ice_trickle *trickle = (janus_ice_trickle *)temp->data;
+					g_list_free(temp);
+					if(trickle == NULL)
+						continue;
+					if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+						/* FIXME Candidate is too old, discard it */
+						janus_ice_trickle_destroy(trickle);
+						/* FIXME We should report that */
+						continue;
+					}
+					json_t *candidate = trickle->candidate;
+					if(candidate == NULL) {
+						janus_ice_trickle_destroy(trickle);
+						continue;
+					}
+					if(json_is_object(candidate)) {
+						/* We got a single candidate */
+						int error = 0;
+						const char *error_string = NULL;
+						if((error = janus_ice_trickle_parse(ice_handle, candidate, &error_string)) != 0) {
+							/* FIXME We should report the error parsing the trickle candidate */
+						}
+					} else if(json_is_array(candidate)) {
+						/* We got multiple candidates in an array */
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got multiple candidates (%zu)\n", ice_handle->handle_id, json_array_size(candidate));
+						if(json_array_size(candidate) > 0) {
+							/* Handle remote candidates */
+							size_t i = 0;
+							for(i=0; i<json_array_size(candidate); i++) {
+								json_t *c = json_array_get(candidate, i);
+								/* FIXME We don't care if any trickle fails to parse */
+								janus_ice_trickle_parse(ice_handle, c, NULL);
+							}
+						}
+					}
+					/* Done, free candidate */
+					janus_ice_trickle_destroy(trickle);
+				}
 			}
-			if(ice_handle->video_id > 0) {
-				janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 1);
-				if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
-					janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
-			}
-			if(ice_handle->data_id > 0) {
-				janus_ice_setup_remote_candidates(ice_handle, ice_handle->data_id, 1);
-			}
-			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE)) {
-				/* Still trickling, but take note of the fact ICE has started now */
-				JANUS_LOG(LOG_VERB, "Still trickling, but we can start sending connectivity checks already, now\n");
+			/* This was an answer, check if it's time to start ICE */
+			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) &&
+					!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- ICE Trickling is supported by the browser, waiting for remote candidates...\n", ice_handle->handle_id);
 				janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START);
+			} else {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Done! Sending connectivity checks...\n", ice_handle->handle_id);
+				if(ice_handle->audio_id > 0) {
+					janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 1);
+					if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+						janus_ice_setup_remote_candidates(ice_handle, ice_handle->audio_id, 2);
+				}
+				if(ice_handle->video_id > 0) {
+					janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 1);
+					if(!janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))	/* http://tools.ietf.org/html/rfc5761#section-5.1.3 */
+						janus_ice_setup_remote_candidates(ice_handle, ice_handle->video_id, 2);
+				}
+				if(ice_handle->data_id > 0) {
+					janus_ice_setup_remote_candidates(ice_handle, ice_handle->data_id, 1);
+				}
 			}
 			janus_mutex_unlock(&ice_handle->mutex);
 		}
