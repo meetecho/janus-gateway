@@ -1736,12 +1736,28 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.tsbefore = null;
 			config.bitrate.value = null;
 			try {
+				// Try a MediaStream.stop() first
 				if(!config.streamExternal && config.myStream !== null && config.myStream !== undefined) {
 					Janus.log("Stopping local stream");
 					config.myStream.stop();
 				}
 			} catch(e) {
-				// Do nothing
+				// Do nothing if this fails
+			}
+			try {
+				// Try a MediaStreamTrack.stop() for each track as well
+				if(!config.streamExternal && config.myStream !== null && config.myStream !== undefined) {
+					Janus.log("Stopping local stream tracks");
+					var tracks = config.myStream.getTracks();
+					for(var i in tracks) {
+						var mst = tracks[i];
+						Janus.log(mst);
+						if(mst !== null && mst !== undefined)
+							mst.stop();
+					}
+				}
+			} catch(e) {
+				// Do nothing if this fails
 			}
 			config.streamExternal = false;
 			config.myStream = null;
