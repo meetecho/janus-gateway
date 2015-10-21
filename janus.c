@@ -1779,7 +1779,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 				cause = "waiting for the answer";
 			else if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER))
 				cause = "waiting for the offer";
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still %s, queueing this trickle to wait until we're done there...\n",
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still %s, queueing this trickle to wait until we're done there...\n",
 				handle->handle_id, cause);
 			/* Enqueue this trickle candidate(s), we'll process this later */
 			janus_ice_trickle *early_trickle = janus_ice_trickle_new(handle, transaction_text, candidate ? candidate : candidates);
