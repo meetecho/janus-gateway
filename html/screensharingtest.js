@@ -94,7 +94,7 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to video MCU test plugin
+						// Attach to video room test plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
