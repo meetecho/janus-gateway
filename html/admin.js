@@ -103,6 +103,11 @@ function updateServerInfo() {
 			$('#update-handles').click(updateHandles);
 			$('#update-handle').click(updateHandleInfo);
 			updateSessions();
+			$("#autorefresh").change(function() {
+				if(this.checked) {
+					updateHandleInfo(true);
+				}
+			});
 			// Only check tokens if the mechanism is enabled
 			if(json["auth_token"] !== "true") {
 				$('a[href=#tokens]').parent().addClass('disabled');
@@ -336,6 +341,7 @@ function updateSessions() {
 				$('#handles-list').empty();
 				$('#handles').hide();
 				$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
+				$('#autorefresh').parent().parent().hide();
 				$('#info').hide();
 				return;
 			}
@@ -360,6 +366,7 @@ function updateSessions() {
 					$('#handles-list').empty();
 					$('#handles').show();
 					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
+					$('#autorefresh').parent().parent().hide();
 					$('#info').hide();
 					updateHandles();
 				});
@@ -375,6 +382,7 @@ function updateSessions() {
 					$('#handles-list').empty();
 					$('#handles').hide();
 					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
+					$('#autorefresh').parent().parent().hide();
 					$('#info').hide();
 				}
 			}
@@ -398,6 +406,7 @@ function updateSessions() {
 			$('#handles-list').empty();
 			$('#handles').hide();
 			$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
+			$('#autorefresh').parent().parent().hide();
 			$('#info').hide();
 		},
 		dataType: "json"
@@ -447,6 +456,7 @@ function updateHandles() {
 					$('#handles-list a').removeClass('active');
 					$('#handle-'+hi).addClass('active');
 					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
+					$('#autorefresh').parent().parent().hide();
 					$('#info').show();
 					updateHandleInfo();
 				});
@@ -459,6 +469,7 @@ function updateHandles() {
 					handle = null;
 					currentHandle = null;
 					$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
+					$('#autorefresh').parent().parent().hide();
 					$('#info').hide();
 				}
 			}
@@ -511,6 +522,7 @@ function updateHandleInfo(refresh) {
 				return;
 			}
 			$('#handle-info').parent().html('<table class="table table-striped" id="handle-info"></table>');
+			$('#autorefresh').parent().parent().hide();
 			console.log("Got info:");
 			console.log(json);
 			for(var k in json["info"]) {
@@ -679,14 +691,21 @@ function updateHandleInfo(refresh) {
 				$('#update-handles').click(updateHandles);
 				$('#update-handle').removeClass('fa-spin').click(updateHandleInfo);
 			}, 1000);
-			// Auto refresh this handle info every tot seconds
-			setTimeout(function() {
-				if(updateHandle !== currentHandle) {
-					// The handle changed in the meanwhile, don't autorefresh
-					return;
-				}
-				updateHandleInfo(true);
-			}, 5000);
+			// If the related box is checked, autorefresh this handle info every tot seconds
+			$('#autorefresh').parent().parent().removeClass('hide').show();
+			if($('#autorefresh')[0].checked) {
+				setTimeout(function() {
+					if(updateHandle !== currentHandle) {
+						// The handle changed in the meanwhile, don't autorefresh
+						return;
+					}
+					if(!$('#autorefresh')[0].checked) {
+						// Unchecked in the meantime
+						return;
+					}
+					updateHandleInfo(true);
+				}, 5000);
+			}
 		},
 		error: function(XMLHttpRequest, textStatus, errorThrown) {
 			console.log(textStatus + ": " + errorThrown);	// FIXME

@@ -282,10 +282,6 @@ struct janus_ice_handle {
 	janus_ice_stream *video_stream;
 	/*! \brief SCTP/DataChannel stream */
 	janus_ice_stream *data_stream;
-	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
-	gchar *remote_hashing;
-	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
-	gchar *remote_fingerprint;
 	/*! \brief SDP generated locally (just for debugging purposes) */
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
@@ -324,6 +320,10 @@ struct janus_ice_stream {
 	gint payload_type;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
+	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
+	gchar *remote_hashing;
+	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
+	gchar *remote_fingerprint;
 	/*! \brief The ICE username for this stream */
 	gchar *ruser;
 	/*! \brief The ICE password for this stream */

@@ -1034,14 +1034,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		}
 	}
 	handle->pending_trickles = NULL;
-	if(handle->remote_hashing != NULL) {
-		g_free(handle->remote_hashing);
-		handle->remote_hashing = NULL;
-	}
-	if(handle->remote_fingerprint != NULL) {
-		g_free(handle->remote_fingerprint);
-		handle->remote_fingerprint = NULL;
-	}
 	if(handle->local_sdp != NULL) {
 		g_free(handle->local_sdp);
 		handle->local_sdp = NULL;
@@ -1095,6 +1087,14 @@ void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 		g_hash_table_destroy(stream->components);
 	}
 	stream->handle = NULL;
+	if(stream->remote_hashing != NULL) {
+		g_free(stream->remote_hashing);
+		stream->remote_hashing = NULL;
+	}
+	if(stream->remote_fingerprint != NULL) {
+		g_free(stream->remote_fingerprint);
+		stream->remote_fingerprint = NULL;
+	}
 	if(stream->ruser != NULL) {
 		g_free(stream->ruser);
 		stream->ruser = NULL;

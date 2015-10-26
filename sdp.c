@@ -294,12 +294,12 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 			return -2;
 		}
 		/* FIXME We're replacing the fingerprint info, assuming it's going to be the same for all media */
-		if(handle->remote_hashing != NULL)
-			g_free(handle->remote_hashing);
-		handle->remote_hashing = g_strdup(rhashing);
-		if(handle->remote_fingerprint != NULL)
-			g_free(handle->remote_fingerprint);
-		handle->remote_fingerprint = g_strdup(rfingerprint);
+		if(stream->remote_hashing != NULL)
+			g_free(stream->remote_hashing);
+		stream->remote_hashing = g_strdup(rhashing);
+		if(stream->remote_fingerprint != NULL)
+			g_free(stream->remote_fingerprint);
+		stream->remote_fingerprint = g_strdup(rfingerprint);
 		/* Store the ICE username and password for this stream */
 		if(stream->ruser != NULL)
 			g_free(stream->ruser);
