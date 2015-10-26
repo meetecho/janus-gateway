@@ -1078,7 +1078,7 @@ void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 	if(stream == NULL)
 		return;
 	if(streams != NULL)
-		g_hash_table_remove(streams, stream);
+		g_hash_table_remove(streams, GUINT_TO_POINTER(stream->stream_id));
 	if(stream->components != NULL) {
 		janus_ice_component_free(stream->components, stream->rtp_component);
 		stream->rtp_component = NULL;
@@ -1118,7 +1118,7 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 		return;
 	//~ janus_mutex_lock(&handle->mutex);
 	if(components != NULL)
-		g_hash_table_remove(components, component);
+		g_hash_table_remove(components, GUINT_TO_POINTER(component->component_id));
 	component->stream = NULL;
 	if(component->source != NULL) {
 		g_source_destroy(component->source);
@@ -2485,6 +2485,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			return -1;
 		}
 		audio_rtp->stream = audio_stream;
+		audio_rtp->stream_id = audio_stream->stream_id;
+		audio_rtp->component_id = 1;
 		audio_rtp->candidates = NULL;
 		audio_rtp->local_candidates = NULL;
 		audio_rtp->remote_candidates = NULL;
@@ -2548,6 +2550,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 			}
 			audio_rtcp->stream = audio_stream;
+			audio_rtcp->stream_id = audio_stream->stream_id;
+			audio_rtcp->component_id = 2;
 			audio_rtcp->candidates = NULL;
 			audio_rtcp->local_candidates = NULL;
 			audio_rtcp->remote_candidates = NULL;
@@ -2601,12 +2605,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->components = g_hash_table_new(NULL, NULL);
 		janus_mutex_init(&video_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->video_id), video_stream);
-		handle->video_stream = video_stream;
-		janus_ice_component *video_rtp = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
-		if(video_rtp == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return -1;
-		}
 		if(!have_turnrest_credentials) {
 			/* No TURN REST API server and credentials, any static ones? */
 			if(janus_turn_server != NULL) {
@@ -2636,7 +2634,15 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			}
 #endif
 		}
+		handle->video_stream = video_stream;
+		janus_ice_component *video_rtp = (janus_ice_component *)g_malloc0(sizeof(janus_ice_component));
+		if(video_rtp == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return -1;
+		}
 		video_rtp->stream = video_stream;
+		video_rtp->stream_id = video_stream->stream_id;
+		video_rtp->component_id = 1;
 		video_rtp->candidates = NULL;
 		video_rtp->local_candidates = NULL;
 		video_rtp->remote_candidates = NULL;
@@ -2700,6 +2706,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 			}
 			video_rtcp->stream = video_stream;
+			video_rtcp->stream_id = video_stream->stream_id;
+			video_rtcp->component_id = 2;
 			video_rtcp->candidates = NULL;
 			video_rtcp->local_candidates = NULL;
 			video_rtcp->remote_candidates = NULL;
@@ -2788,6 +2796,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			return -1;
 		}
 		data_component->stream = data_stream;
+		data_component->stream_id = data_component->stream_id;
+		data_component->component_id = 1;
 		data_component->candidates = NULL;
 		data_component->local_candidates = NULL;
 		data_component->remote_candidates = NULL;
