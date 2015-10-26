@@ -49,7 +49,7 @@ else
 	server = "https://" + window.location.hostname + ":8089/janus";
 
 var janus = null;
-var mcutest = null;
+var sfutest = null;
 var started = false;
 
 var myusername = null;
@@ -80,14 +80,14 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to video MCU test plugin
+						// Attach to video room test plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
 								success: function(pluginHandle) {
 									$('#details').remove();
-									mcutest = pluginHandle;
-									Janus.log("Plugin attached! (" + mcutest.getPlugin() + ", id=" + mcutest.getId() + ")");
+									sfutest = pluginHandle;
+									Janus.log("Plugin attached! (" + sfutest.getPlugin() + ", id=" + sfutest.getId() + ")");
 									Janus.log("  -- This is a publisher/manager");
 									// Prepare the username registration
 									$('#videojoin').removeClass('hide').show();
@@ -208,7 +208,7 @@ $(document).ready(function() {
 									if(jsep !== undefined && jsep !== null) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
-										mcutest.handleRemoteJsep({jsep: jsep});
+										sfutest.handleRemoteJsep({jsep: jsep});
 									}
 								},
 								onlocalstream: function(stream) {
@@ -305,21 +305,21 @@ function registerUsername() {
 		}
 		var register = { "request": "join", "room": 1234, "ptype": "publisher", "display": username };
 		myusername = username;
-		mcutest.send({"message": register});
+		sfutest.send({"message": register});
 	}
 }
 
 function publishOwnFeed(useAudio) {
 	// Publish our stream
 	$('#publish').attr('disabled', true).unbind('click');
-	mcutest.createOffer(
+	sfutest.createOffer(
 		{
 			media: { audioRecv: false, videoRecv: false, audioSend: useAudio, videoSend: true},	// Publishers are sendonly
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
 				var publish = { "request": "configure", "audio": useAudio, "video": true };
-				mcutest.send({"message": publish, "jsep": jsep});
+				sfutest.send({"message": publish, "jsep": jsep});
 			},
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
@@ -356,7 +356,7 @@ function unpublishOwnFeed() {
 	// Unpublish our stream
 	$('#unpublish').attr('disabled', true).unbind('click');
 	var unpublish = { "request": "unpublish" };
-	mcutest.send({"message": unpublish});
+	sfutest.send({"message": unpublish});
 }
 
 function newRemoteFeed(id, display) {

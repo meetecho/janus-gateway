@@ -359,7 +359,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			unsigned char rfingerprint[EVP_MAX_MD_SIZE];
 			char remote_fingerprint[160];
 			char *rfp = (char *)&remote_fingerprint;
-			if(handle->remote_hashing && !strcasecmp(handle->remote_hashing, "sha-1")) {
+			if(stream->remote_hashing && !strcasecmp(stream->remote_hashing, "sha-1")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Computing sha-1 fingerprint of remote certificate...\n", handle->handle_id);
 				X509_digest(rcert, EVP_sha1(), (unsigned char *)rfingerprint, &rsize);
 			} else {
@@ -375,14 +375,14 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 			}
 			*(rfp-1) = 0;
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote fingerprint (%s) of the client is %s\n",
-				handle->handle_id, handle->remote_hashing ? handle->remote_hashing : "sha-256", remote_fingerprint);
-			if(!strcasecmp(remote_fingerprint, handle->remote_fingerprint ? handle->remote_fingerprint : "(none)")) {
+				handle->handle_id, stream->remote_hashing ? stream->remote_hashing : "sha-256", remote_fingerprint);
+			if(!strcasecmp(remote_fingerprint, stream->remote_fingerprint ? stream->remote_fingerprint : "(none)")) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Fingerprint is a match!\n", handle->handle_id);
 				dtls->dtls_state = JANUS_DTLS_STATE_CONNECTED;
 				dtls->dtls_connected = janus_get_monotonic_time();
 			} else {
 				/* FIXME NOT a match! MITM? */
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"]  Fingerprint is NOT a match! got %s, expected %s\n", handle->handle_id, remote_fingerprint, handle->remote_fingerprint);
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"]  Fingerprint is NOT a match! got %s, expected %s\n", handle->handle_id, remote_fingerprint, stream->remote_fingerprint);
 				dtls->dtls_state = JANUS_DTLS_STATE_FAILED;
 				goto done;
 			}
