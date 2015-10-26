@@ -1525,7 +1525,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 #endif
 							strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 							c->priority = 1;
-							nice_address_set_from_string(&c->addr, "1.2.3.4");
+							nice_address_set_from_string(&c->addr, "127.0.0.1");
 							nice_address_set_port(&c->addr, 1234);
 							c->username = g_strdup(handle->audio_stream->ruser);
 							c->password = g_strdup(handle->audio_stream->rpass);
@@ -1548,7 +1548,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 #endif
 							strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 							c->priority = 1;
-							nice_address_set_from_string(&c->addr, "1.2.3.4");
+							nice_address_set_from_string(&c->addr, "127.0.0.1");
 							nice_address_set_port(&c->addr, 1234);
 							c->username = g_strdup(handle->video_stream->ruser);
 							c->password = g_strdup(handle->video_stream->rpass);
@@ -4263,7 +4263,7 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 #endif
 					strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 					c->priority = 1;
-					nice_address_set_from_string(&c->addr, "1.2.3.4");
+					nice_address_set_from_string(&c->addr, "127.0.0.1");
 					nice_address_set_port(&c->addr, 1234);
 					c->username = g_strdup(ice_handle->audio_stream->ruser);
 					c->password = g_strdup(ice_handle->audio_stream->rpass);
@@ -4286,7 +4286,7 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 #endif
 					strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 					c->priority = 1;
-					nice_address_set_from_string(&c->addr, "1.2.3.4");
+					nice_address_set_from_string(&c->addr, "127.0.0.1");
 					nice_address_set_port(&c->addr, 1234);
 					c->username = g_strdup(ice_handle->video_stream->ruser);
 					c->password = g_strdup(ice_handle->video_stream->rpass);
