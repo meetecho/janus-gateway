@@ -1513,13 +1513,49 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", handle->handle_id);
 						if(handle->audio_stream && handle->audio_stream->components != NULL) {
 							nice_agent_attach_recv(handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							/* Free the component */
 							janus_ice_component_free(handle->audio_stream->components, handle->audio_stream->rtcp_component);
 							handle->audio_stream->rtcp_component = NULL;
+							/* Create a dummy candidate and enforce it as the one to use for this now unneeded component */
+							NiceCandidate *c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+							c->component_id = 2;
+							c->stream_id = handle->audio_stream->stream_id;
+#ifndef HAVE_LIBNICE_TCP
+							c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+#endif
+							strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
+							c->priority = 1;
+							nice_address_set_from_string(&c->addr, "1.2.3.4");
+							nice_address_set_port(&c->addr, 1234);
+							c->username = g_strdup(handle->audio_stream->ruser);
+							c->password = g_strdup(handle->audio_stream->rpass);
+							if(!nice_agent_set_selected_remote_candidate(handle->agent, handle->audio_stream->stream_id, 2, c)) {
+								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error forcing dummy candidate on RTCP component of stream %d\n", handle->handle_id, handle->audio_stream->stream_id);
+								nice_candidate_free(c);
+							}
 						}
 						if(handle->video_stream && handle->video_stream->components != NULL) {
 							nice_agent_attach_recv(handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+							/* Free the component */
 							janus_ice_component_free(handle->video_stream->components, handle->video_stream->rtcp_component);
 							handle->video_stream->rtcp_component = NULL;
+							/* Create a dummy candidate and enforce it as the one to use for this now unneeded component */
+							NiceCandidate *c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+							c->component_id = 2;
+							c->stream_id = handle->video_stream->stream_id;
+#ifndef HAVE_LIBNICE_TCP
+							c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+#endif
+							strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
+							c->priority = 1;
+							nice_address_set_from_string(&c->addr, "1.2.3.4");
+							nice_address_set_port(&c->addr, 1234);
+							c->username = g_strdup(handle->video_stream->ruser);
+							c->password = g_strdup(handle->video_stream->rpass);
+							if(!nice_agent_set_selected_remote_candidate(handle->agent, handle->video_stream->stream_id, 2, c)) {
+								JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error forcing dummy candidate on RTCP component of stream %d\n", handle->handle_id, handle->video_stream->stream_id);
+								nice_candidate_free(c);
+							}
 						}
 					}
 					/* FIXME Any disabled m-line? */
@@ -4215,13 +4251,49 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", ice_handle->handle_id);
 				if(ice_handle->audio_stream && ice_handle->audio_stream->rtcp_component && ice_handle->audio_stream->components != NULL) {
 					nice_agent_attach_recv(ice_handle->agent, ice_handle->audio_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					/* Free the component */
 					janus_ice_component_free(ice_handle->audio_stream->components, ice_handle->audio_stream->rtcp_component);
 					ice_handle->audio_stream->rtcp_component = NULL;
+					/* Create a dummy candidate and enforce it as the one to use for this now unneeded component */
+					NiceCandidate *c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+					c->component_id = 2;
+					c->stream_id = ice_handle->audio_stream->stream_id;
+#ifndef HAVE_LIBNICE_TCP
+					c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+#endif
+					strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
+					c->priority = 1;
+					nice_address_set_from_string(&c->addr, "1.2.3.4");
+					nice_address_set_port(&c->addr, 1234);
+					c->username = g_strdup(ice_handle->audio_stream->ruser);
+					c->password = g_strdup(ice_handle->audio_stream->rpass);
+					if(!nice_agent_set_selected_remote_candidate(ice_handle->agent, ice_handle->audio_stream->stream_id, 2, c)) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error forcing dummy candidate on RTCP component of stream %d\n", ice_handle->handle_id, ice_handle->audio_stream->stream_id);
+						nice_candidate_free(c);
+					}
 				}
 				if(ice_handle->video_stream && ice_handle->video_stream->rtcp_component && ice_handle->video_stream->components != NULL) {
 					nice_agent_attach_recv(ice_handle->agent, ice_handle->video_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
+					/* Free the component */
 					janus_ice_component_free(ice_handle->video_stream->components, ice_handle->video_stream->rtcp_component);
 					ice_handle->video_stream->rtcp_component = NULL;
+					/* Create a dummy candidate and enforce it as the one to use for this now unneeded component */
+					NiceCandidate *c = nice_candidate_new(NICE_CANDIDATE_TYPE_HOST);
+					c->component_id = 2;
+					c->stream_id = ice_handle->video_stream->stream_id;
+#ifndef HAVE_LIBNICE_TCP
+					c->transport = NICE_CANDIDATE_TRANSPORT_UDP;
+#endif
+					strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
+					c->priority = 1;
+					nice_address_set_from_string(&c->addr, "1.2.3.4");
+					nice_address_set_port(&c->addr, 1234);
+					c->username = g_strdup(ice_handle->video_stream->ruser);
+					c->password = g_strdup(ice_handle->video_stream->rpass);
+					if(!nice_agent_set_selected_remote_candidate(ice_handle->agent, ice_handle->video_stream->stream_id, 2, c)) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error forcing dummy candidate on RTCP component of stream %d\n", ice_handle->handle_id, ice_handle->video_stream->stream_id);
+						nice_candidate_free(c);
+					}
 				}
 			}
 			janus_mutex_lock(&ice_handle->mutex);

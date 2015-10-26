@@ -1268,10 +1268,14 @@ void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gp
 
 void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice) {
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Component state changed for component %d in stream %d: %d (%s)\n",
-		handle ? handle->handle_id : 0, component_id, stream_id, state, janus_get_ice_state_name(state));
 	if(!handle)
 		return;
+	if(component_id > 1 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+		/* State changed for a component we don't need anymore (rtcp-mux) */
+		return;
+	}
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Component state changed for component %d in stream %d: %d (%s)\n",
+		handle->handle_id, component_id, stream_id, state, janus_get_ice_state_name(state));
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
 	if(!stream) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
@@ -1331,13 +1335,17 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice) {
 #endif
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
-#ifndef HAVE_LIBNICE_TCP
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] New selected pair for component %d in stream %d: %s <-> %s\n", handle ? handle->handle_id : 0, component_id, stream_id, local, remote);
-#else
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] New selected pair for component %d in stream %d: %s <-> %s\n", handle ? handle->handle_id : 0, component_id, stream_id, local->foundation, remote->foundation);
-#endif
 	if(!handle)
 		return;
+	if(component_id > 1 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+		/* New selected pair for a component we don't need anymore (rtcp-mux) */
+		return;
+	}
+#ifndef HAVE_LIBNICE_TCP
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] New selected pair for component %d in stream %d: %s <-> %s\n", handle->handle_id, component_id, stream_id, local, remote);
+#else
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] New selected pair for component %d in stream %d: %s <-> %s\n", handle->handle_id, component_id, stream_id, local->foundation, remote->foundation);
+#endif
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
 	if(!stream) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
@@ -1450,6 +1458,10 @@ void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candida
 #endif
 	if(!handle)
 		return;
+	if(component_id > 1 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+		/* New remote candidate for a component we don't need anymore (rtcp-mux) */
+		return;
+	}
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
 	if(!stream) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
