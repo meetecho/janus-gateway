@@ -1526,7 +1526,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 							strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 							c->priority = 1;
 							nice_address_set_from_string(&c->addr, "127.0.0.1");
-							nice_address_set_port(&c->addr, 1234);
+							nice_address_set_port(&c->addr, janus_ice_get_rtcpmux_blackhole_port());
 							c->username = g_strdup(handle->audio_stream->ruser);
 							c->password = g_strdup(handle->audio_stream->rpass);
 							if(!nice_agent_set_selected_remote_candidate(handle->agent, handle->audio_stream->stream_id, 2, c)) {
@@ -1549,7 +1549,7 @@ int janus_process_incoming_request(janus_request_source *source, json_t *root) {
 							strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 							c->priority = 1;
 							nice_address_set_from_string(&c->addr, "127.0.0.1");
-							nice_address_set_port(&c->addr, 1234);
+							nice_address_set_port(&c->addr, janus_ice_get_rtcpmux_blackhole_port());
 							c->username = g_strdup(handle->video_stream->ruser);
 							c->password = g_strdup(handle->video_stream->rpass);
 							if(!nice_agent_set_selected_remote_candidate(handle->agent, handle->video_stream->stream_id, 2, c)) {
@@ -4264,7 +4264,7 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 					strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 					c->priority = 1;
 					nice_address_set_from_string(&c->addr, "127.0.0.1");
-					nice_address_set_port(&c->addr, 1234);
+					nice_address_set_port(&c->addr, janus_ice_get_rtcpmux_blackhole_port());
 					c->username = g_strdup(ice_handle->audio_stream->ruser);
 					c->password = g_strdup(ice_handle->audio_stream->rpass);
 					if(!nice_agent_set_selected_remote_candidate(ice_handle->agent, ice_handle->audio_stream->stream_id, 2, c)) {
@@ -4287,7 +4287,7 @@ json_t *janus_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plu
 					strncpy(c->foundation, "1", NICE_CANDIDATE_MAX_FOUNDATION);
 					c->priority = 1;
 					nice_address_set_from_string(&c->addr, "127.0.0.1");
-					nice_address_set_port(&c->addr, 1234);
+					nice_address_set_port(&c->addr, janus_ice_get_rtcpmux_blackhole_port());
 					c->username = g_strdup(ice_handle->video_stream->ruser);
 					c->password = g_strdup(ice_handle->video_stream->rpass);
 					if(!nice_agent_set_selected_remote_candidate(ice_handle->agent, ice_handle->video_stream->stream_id, 2, c)) {

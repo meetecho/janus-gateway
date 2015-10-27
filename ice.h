@@ -116,6 +116,9 @@ gboolean janus_ice_is_rtcpmux_forced(void);
 /*! \brief Method to set the rtcp-mux support mode (true means mandatory, false means optional)
  * @param forced whether rtcp-mux support must be forced or not (default is false) */
 void janus_ice_force_rtcpmux(gboolean forced);
+/*! \brief Method to get the port that has been assigned for the RTCP component blackhole in case of rtcp-mux
+ * @returns The blackhole port */
+gint janus_ice_get_rtcpmux_blackhole_port(void);
 /*! \brief Method to modify the max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @param[in] mnq The new max NACK value */
 void janus_set_max_nack_queue(uint mnq);
