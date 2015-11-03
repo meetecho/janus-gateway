@@ -88,10 +88,9 @@ gchar *janus_get_public_ip(void) {
 	return public_ip ? public_ip : local_ip;
 }
 void janus_set_public_ip(const char *ip) {
-	if(ip == NULL)
+	/* once set do not override */
+	if(ip == NULL || public_ip != NULL)
 		return;
-	if(public_ip != NULL)
-		g_free(public_ip);
 	public_ip = g_strdup(ip);
 }
 static volatile gint stop = 0;
@@ -3101,6 +3100,7 @@ gint main(int argc, char *argv[])
 	/* Any 1:1 NAT mapping to take into account? */
 	item = janus_config_get_item_drilldown(config, "nat", "nat_1_1_mapping");
 	if(item && item->value) {
+		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public ip - %s\n", item->value);
 		janus_set_public_ip(item->value);
 		janus_ice_enable_nat_1_1();
 	}
