@@ -1969,7 +1969,7 @@ WantedBy=multi-user.target
  * and \c RateLimitBurst values in the default sytemd configuration, logger
  * messages are dropped if they arrive faster than ~33 per second. You
  * may want to configure them accordingly, or otherwise Janus log messages
- * may be missing. To fix this, setting \c RateLimitInterval=0 in
+ * may be missing. To fix this, setting <code>RateLimitInterval=0s</code> in
  * <code>/etc/systemd/journald.conf</code> is usually enough.
  *
  * \note systemd example provided by
