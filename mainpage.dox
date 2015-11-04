@@ -1965,6 +1965,13 @@ WantedBy=multi-user.target
  *
  * \note Remember to adjust the path in ExecStart to match the Janus binary path.
  *
+ * \warning Please beware that, per the default \c RateLimitInterval and
+ * and \c RateLimitBurst values in the default sytemd configuration, logger
+ * messages are dropped if they arrive faster than ~33 per second. You
+ * may want to configure them accordingly, or otherwise Janus log messages
+ * may be missing. To fix this, setting \c RateLimitInterval=0 in
+ * <code>/etc/systemd/journald.conf</code> is usually enough.
+ *
  * \note systemd example provided by
  * <a href="https://github.com/meetecho/janus-gateway/pull/306">\@saghul</a> 
  *
