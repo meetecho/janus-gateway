@@ -18,6 +18,7 @@
 #include <net/if.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <fcntl.h>
 #include <stun/usages/bind.h>
 #include <nice/debug.h>
 
@@ -98,9 +99,53 @@ gboolean janus_ice_is_bundle_forced(void) {
 
 /* Whether rtcp-mux support is mandatory or not (false by default) */
 static gboolean janus_force_rtcpmux;
+static gint janus_force_rtcpmux_blackhole_port = 1234;
+static gint janus_force_rtcpmux_blackhole_fd = 0;
 void janus_ice_force_rtcpmux(gboolean forced) {
 	janus_force_rtcpmux = forced;
 	JANUS_LOG(LOG_INFO, "rtcp-mux %s going to be forced\n", janus_force_rtcpmux ? "is" : "is NOT");
+	if(!janus_force_rtcpmux) {
+		/*
+		 * Since rtcp-mux is NOT going to be forced, we need to do some magic to get rid of unneeded
+		 * RTCP components when rtcp-mux is indeed negotiated when creating a PeerConnection. In
+		 * particular, there's no way to remove a component in libnice (you can only remove streams),
+		 * and you can read why this is a problem here:
+		 * 		https://github.com/meetecho/janus-gateway/issues/154
+		 * 		https://github.com/meetecho/janus-gateway/pull/362
+		 * This means that, to effectively do that without just ignoring the component, we need
+		 * to set a dummy candidate on it to "trick" libnice into thinking ICE is done for it.
+		 * Since libnice will still occasionally send keepalives to the dummy peer, and we don't
+		 * want it to send messages to a service that might not like it, we create a "blackhole"
+		 * UDP server to receive all those keepalives and then just discard them.
+		 */
+		int blackhole = socket(AF_INET, SOCK_DGRAM, 0);
+		if(blackhole < 0) {
+			JANUS_LOG(LOG_WARN, "Error creating RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
+			return;
+		}
+		int yes = 1;
+		setsockopt(blackhole, SOL_SOCKET, SO_REUSEADDR, (const void *)&yes , sizeof(int));
+		fcntl(blackhole, F_SETFL, O_NONBLOCK);
+		struct sockaddr_in serveraddr;
+		serveraddr.sin_family = AF_INET;
+		serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+		serveraddr.sin_port = htons(0);		/* Choose a random port, that works for us */
+		if(bind(blackhole, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) {
+			JANUS_LOG(LOG_WARN, "Error binding RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
+			return;
+		}
+		socklen_t len = sizeof(serveraddr);
+		if(getsockname(blackhole, (struct sockaddr *)&serveraddr, &len) < 0) {
+			JANUS_LOG(LOG_WARN, "Error retrieving port assigned to RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
+			return;
+		}
+		janus_force_rtcpmux_blackhole_port = ntohs(serveraddr.sin_port);
+		JANUS_LOG(LOG_VERB, "  -- RTCP component blackhole socket bound to port %d\n", janus_force_rtcpmux_blackhole_port);
+		janus_force_rtcpmux_blackhole_fd = blackhole;
+	}
+}
+gint janus_ice_get_rtcpmux_blackhole_port(void) {
+	return janus_force_rtcpmux_blackhole_port;
 }
 gboolean janus_ice_is_rtcpmux_forced(void) {
 	return janus_force_rtcpmux;
@@ -338,6 +383,18 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 		}
 	}
 	janus_mutex_unlock(&old_handles_mutex);
+
+	if(janus_force_rtcpmux_blackhole_fd > 0) {
+		/* Also read the blackhole socket (unneeded RTCP components keepalives) and dump the packets */
+		char buffer[1500];
+		struct sockaddr_storage addr;
+		socklen_t len = sizeof(addr);
+		ssize_t res = 0;
+		do {
+			/* Read and ignore */
+			res = recvfrom(janus_force_rtcpmux_blackhole_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&addr, &len);
+		} while(res > -1);
+	}
 
 	return G_SOURCE_CONTINUE;
 }
@@ -1268,10 +1325,14 @@ void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gp
 
 void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice) {
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Component state changed for component %d in stream %d: %d (%s)\n",
-		handle ? handle->handle_id : 0, component_id, stream_id, state, janus_get_ice_state_name(state));
 	if(!handle)
 		return;
+	if(component_id > 1 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+		/* State changed for a component we don't need anymore (rtcp-mux) */
+		return;
+	}
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Component state changed for component %d in stream %d: %d (%s)\n",
+		handle->handle_id, component_id, stream_id, state, janus_get_ice_state_name(state));
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
 	if(!stream) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
@@ -1331,13 +1392,17 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice) {
 #endif
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
+	if(!handle)
+		return;
+	if(component_id > 1 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+		/* New selected pair for a component we don't need anymore (rtcp-mux) */
+		return;
+	}
 #ifndef HAVE_LIBNICE_TCP
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] New selected pair for component %d in stream %d: %s <-> %s\n", handle ? handle->handle_id : 0, component_id, stream_id, local, remote);
 #else
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] New selected pair for component %d in stream %d: %s <-> %s\n", handle ? handle->handle_id : 0, component_id, stream_id, local->foundation, remote->foundation);
 #endif
-	if(!handle)
-		return;
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
 	if(!stream) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
@@ -1450,6 +1515,10 @@ void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candida
 #endif
 	if(!handle)
 		return;
+	if(component_id > 1 && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)) {
+		/* New remote candidate for a component we don't need anymore (rtcp-mux) */
+		return;
+	}
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
 	if(!stream) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No stream %d??\n", handle->handle_id, stream_id);
