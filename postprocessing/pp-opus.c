@@ -76,12 +76,12 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
 			/* FIXME Write the silence packet N times to fill in the gaps */
-			ogg_packet *op = op_from_pkt((const unsigned char *)opus_silence, 2*sizeof(opus_silence));
+			ogg_packet *op = op_from_pkt((const unsigned char *)opus_silence, sizeof(opus_silence));
 			int i=0;
-			for(i=0; i<(tmp->seq-tmp->prev->seq); i++) {
-				pos = tmp->seq-list->seq+steps*65536+i+1;
+			for(i=0; i<(tmp->seq-tmp->prev->seq-1); i++) {
+				pos = tmp->prev->seq-list->seq+steps*65536+i+1;
 				JANUS_LOG(LOG_WARN, "[FILL] pos: %06"SCNu64", writing silence (seq=%"SCNu16", index=%"SCNu16")\n",
-					pos, tmp->seq+i+1, i+1);
+					pos, tmp->prev->seq+i+1, i+1);
 				op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 				ogg_stream_packetin(stream, op);
 				ogg_write();

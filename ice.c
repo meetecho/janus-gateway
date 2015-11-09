@@ -123,8 +123,6 @@ void janus_ice_force_rtcpmux(gboolean forced) {
 			JANUS_LOG(LOG_WARN, "Error creating RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
 			return;
 		}
-		int yes = 1;
-		setsockopt(blackhole, SOL_SOCKET, SO_REUSEADDR, (const void *)&yes , sizeof(int));
 		fcntl(blackhole, F_SETFL, O_NONBLOCK);
 		struct sockaddr_in serveraddr;
 		serveraddr.sin_family = AF_INET;
@@ -687,8 +685,6 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
 	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	int yes = 1;	/* For setsockopt() SO_REUSEADDR */
-	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 	struct sockaddr_in address, remote;
 	address.sin_family = AF_INET;
 	address.sin_port = 0;

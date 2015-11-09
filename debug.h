@@ -87,8 +87,8 @@ static const char *janus_log_prefix[] = {
 #define JANUS_LOG(level, format, ...) \
 do { \
 	if (level > LOG_NONE && level <= LOG_MAX && level <= janus_log_level) { \
-		char janus_log_ts[32] = ""; \
-		char janus_log_src[64] = ""; \
+		char janus_log_ts[64] = ""; \
+		char janus_log_src[128] = ""; \
 		if (janus_log_timestamps) { \
 			struct tm janustmresult; \
 			time_t janusltime = time(NULL); \

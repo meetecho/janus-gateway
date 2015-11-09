@@ -919,7 +919,12 @@ static void *janus_sip_handler(void *data) {
 			usleep(50000);
 			continue;
 		}
-		janus_sip_session *session = (janus_sip_session *)msg->handle->plugin_handle;
+		janus_sip_session *session = NULL;
+		janus_mutex_lock(&sessions_mutex);
+		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
+			session = (janus_sip_session *)msg->handle->plugin_handle;
+		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_sip_message_free(msg);
@@ -2107,40 +2112,36 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 		JANUS_LOG(LOG_ERR, "Invalid session\n");
 		return -1;
 	}
-	//~ /* Reset status */
-	//~ session->media.ready = 0;
-	//~ session->media.has_audio = 0;
-	//~ session->media.audio_rtp_fd = 0;
-	//~ session->media.audio_rtcp_fd= 0;
-	//~ session->media.local_audio_rtp_port = 0;
-	//~ session->media.remote_audio_rtp_port = 0;
-	//~ session->media.local_audio_rtcp_port = 0;
-	//~ session->media.remote_audio_rtcp_port = 0;
-	//~ session->media.has_video = 0;
-	//~ session->media.video_rtp_fd = 0;
-	//~ session->media.video_rtcp_fd= 0;
-	//~ session->media.local_video_rtp_port = 0;
-	//~ session->media.remote_video_rtp_port = 0;
-	//~ session->media.local_video_rtcp_port = 0;
-	//~ session->media.remote_video_rtcp_port = 0;
+	/* Reset status */
+	if(session->media.audio_rtp_fd > 0) {
+		close(session->media.audio_rtp_fd);
+		session->media.audio_rtp_fd = -1;
+	}
+	if(session->media.audio_rtcp_fd > 0) {
+		close(session->media.audio_rtcp_fd);
+		session->media.audio_rtcp_fd = -1;
+	}
+	if(session->media.video_rtp_fd > 0) {
+		close(session->media.video_rtp_fd);
+		session->media.video_rtp_fd = -1;
+	}
+	if(session->media.video_rtcp_fd > 0) {
+		close(session->media.video_rtcp_fd);
+		session->media.video_rtcp_fd = -1;
+	}
 	/* Start */
 	int attempts = 100;	/* FIXME Don't retry forever */
 	if(session->media.has_audio) {
 		JANUS_LOG(LOG_VERB, "Allocating audio ports:\n");
 		struct sockaddr_in audio_rtp_address, audio_rtcp_address;
-		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
 		while(session->media.local_audio_rtp_port == 0 || session->media.local_audio_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
 			if(session->media.audio_rtp_fd == 0) {
-				yes = 1;
 				session->media.audio_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-				setsockopt(session->media.audio_rtp_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 			}
 			if(session->media.audio_rtcp_fd == 0) {
-				yes = 1;
 				session->media.audio_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-				setsockopt(session->media.audio_rtcp_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
 			if(rtp_port % 2)
@@ -2174,19 +2175,14 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 	if(session->media.has_video) {
 		JANUS_LOG(LOG_VERB, "Allocating video ports:\n");
 		struct sockaddr_in video_rtp_address, video_rtcp_address;
-		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
 		while(session->media.local_video_rtp_port == 0 || session->media.local_video_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
 			if(session->media.video_rtp_fd == 0) {
-				yes = 1;
 				session->media.video_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-				setsockopt(session->media.video_rtp_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 			}
 			if(session->media.video_rtcp_fd == 0) {
-				yes = 1;
 				session->media.video_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-				setsockopt(session->media.video_rtcp_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
 			if(rtp_port % 2)
@@ -2398,6 +2394,22 @@ static void *janus_sip_relay_thread(void *data) {
 			gateway->relay_rtcp(session->handle, 1, buffer, bytes);
 			continue;
 		}
+	}
+	if(session->media.audio_rtp_fd > 0) {
+		close(session->media.audio_rtp_fd);
+		session->media.audio_rtp_fd = -1;
+	}
+	if(session->media.audio_rtcp_fd > 0) {
+		close(session->media.audio_rtcp_fd);
+		session->media.audio_rtcp_fd = -1;
+	}
+	if(session->media.video_rtp_fd > 0) {
+		close(session->media.video_rtp_fd);
+		session->media.video_rtp_fd = -1;
+	}
+	if(session->media.video_rtcp_fd > 0) {
+		close(session->media.video_rtcp_fd);
+		session->media.video_rtcp_fd = -1;
 	}
 	JANUS_LOG(LOG_VERB, "Leaving SIP relay thread\n");
 	g_thread_unref(g_thread_self());
