@@ -216,7 +216,7 @@ $(document).ready(function() {
 									Janus.debug(" ::: Got a local stream :::");
 									mystream = stream;
 									Janus.debug(JSON.stringify(stream));
-                                    var videolength = $('#myvideo').length;
+									var videolength = $('#myvideo').length;
 									$('#videolocal').empty();
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
@@ -242,12 +242,12 @@ $(document).ready(function() {
 												'<span class="no-video-text" style="font-size: 16px;">No webcam available</span>' +
 											'</div>');
 									} else {
-                                        if(videolength === 0) {
-                                            // Add an 'camera' button
-                                            $('#videolocal').append('<button class="btn btn-warning btn-xs" id="camera" style="position: absolute; top: 38px; right: 0px; margin: 0 15px 15px 15px;">Camera off</button>');
-                                            $('#camera').click(toggleCamera);
-                                        }
-                                    }
+										if(videolength === 0) {
+											// Add an 'camera' button
+											$('#videolocal').append('<button class="btn btn-warning btn-xs" id="camera" style="position: absolute; top: 38px; right: 0px; margin: 0 15px 15px 15px;">Camera off</button>');
+											$('#camera').click(toggleCamera);
+										}
+									}
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -361,20 +361,20 @@ function toggleMute() {
 }
 
 function toggleCamera() {
-    camera = !camera;
-    var toggleVideo = { "request": "configure", "video": camera };
-    sfutest.send({"message": toggleVideo}); 
+	camera = !camera;
+	var toggleVideo = { "request": "configure", "video": camera };
+	sfutest.send({"message": toggleVideo}); 
 	$('#camera').html(camera ? "Camera off" : "Camera on");
-    if(!camera) {
-        $('#myvideo').hide();
-        $('#videolocal').append(
-        '<div class="no-video-container">' +
-            '<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
-        '</div>');
-    } else {
-        $('#myvideo').show();
-        $('.no-video-container').remove();
-    }
+	if(!camera) {
+		$('#myvideo').hide();
+		$('#videolocal').append(
+			'<div class="no-video-container">' +
+				'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+			'</div>');
+	} else {
+		$('#myvideo').show();
+		$('.no-video-container').remove();
+	}
 }
 
 function unpublishOwnFeed() {
