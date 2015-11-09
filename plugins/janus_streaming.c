@@ -3280,13 +3280,15 @@ static void *janus_streaming_relay_thread(void *data) {
         v_base_seq_prev = v_last_seq;
         v_base_seq = ntohs(packet.data->seq_number);
       }
-      v_last_ts = (ntohl(packet.data->timestamp)-v_base_ts)+v_base_ts_prev+4500;  /* FIXME We're assuming 15fps here... */
+      // v_last_ts = (uint32_t)((ntohl(packet.data->timestamp)-v_base_ts)/100000)+v_base_ts_prev+4500;  /* FIXME We're assuming 15fps here... */
+      v_last_ts = ntohl(packet.data->timestamp);
 
-      packet.data->timestamp = htonl(v_last_ts);
-      v_last_seq = (ntohs(packet.data->seq_number)-v_base_seq)+v_base_seq_prev+1;
-      packet.data->seq_number = htons(v_last_seq);
-      //~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-      //~   ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+      packet.data->timestamp = packet.data->timestamp;
+      // v_last_seq = (ntohs(packet.data->seq_number)-v_base_seq)+v_base_seq_prev+1;
+      v_last_seq = ntohs(packet.data->seq_number);
+      packet.data->seq_number = packet.data->seq_number;
+      //~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u, bytes=%u)...\n",
+      //~   ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp), bytes);
       packet.data->type = mountpoint->codecs.video_pt;
       /* Is there a recorder? */
       if(source->vrc) {
@@ -3341,6 +3343,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
     /* Update the timestamp and sequence number in the RTP packet, and send it */
     packet->data->timestamp = htonl(session->context.v_last_ts);
     packet->data->seq_number = htons(session->context.v_last_seq);
+    //~ JANUS_LOG(LOG_INFO, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u, bytes=%u)...\n",
+    //~   ntohl(packet->data->ssrc), packet->data->type, ntohs(packet->data->seq_number), ntohl(packet->data->timestamp), packet->length);
     if(gateway != NULL)
       gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
     /* Restore the timestamp and sequence number to what the publisher set them to */
