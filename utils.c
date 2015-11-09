@@ -91,7 +91,7 @@ gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag) {
 	return FALSE;
 }
 
-/* Easy way to replace multiple occurrences of a string with another: ALWAYS creates a NEW string */
+/* Easy way to replace multiple occurrences of a string with another */
 char *janus_string_replace(char *message, const char *old_string, const char *new_string)
 {
 	if(!message || !old_string || !new_string)

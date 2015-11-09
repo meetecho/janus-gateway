@@ -2037,7 +2037,12 @@ static void *janus_streaming_handler(void *data) {
 			usleep(50000);
 			continue;
 		}
-		janus_streaming_session *session = (janus_streaming_session *)msg->handle->plugin_handle;
+		janus_streaming_session *session = NULL;
+		janus_mutex_lock(&sessions_mutex);
+		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
+			session = (janus_streaming_session *)msg->handle->plugin_handle;
+		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_streaming_message_free(msg);
@@ -2382,9 +2387,6 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 		return -1;
 	}	
 	if(port > 0) {
-		int yes = 1;	/* For setsockopt() SO_REUSEADDR */
-		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-		
 		if(IN_MULTICAST(ntohl(mcast))) {
 #ifdef IP_MULTICAST_ALL			
 			int mc_all = 0;

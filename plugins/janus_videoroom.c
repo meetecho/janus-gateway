@@ -2099,8 +2099,12 @@ static void *janus_videoroom_handler(void *data) {
 			usleep(50000);
 			continue;
 		}
-
-		janus_videoroom_session *session = (janus_videoroom_session *)msg->handle->plugin_handle;	
+		janus_videoroom_session *session = NULL;
+		janus_mutex_lock(&sessions_mutex);
+		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
+			session = (janus_videoroom_session *)msg->handle->plugin_handle;
+		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_videoroom_message_free(msg);
