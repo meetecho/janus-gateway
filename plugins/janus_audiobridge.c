@@ -68,6 +68,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 {
 	"request" : "create",
 	"room" : <unique numeric ID, optional, chosen by plugin if missing>,
+	"permanent" : <true|false, whether the room should be saved in the config file, default false>,
 	"description" : "<pretty name of the room, optional>",
 	"secret" : "<password required to edit/destroy the room, optional>",
 	"pin" : "<password required to join the room, optional>",
@@ -107,7 +108,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 {
 	"request" : "destroy",
 	"room" : <unique numeric ID of the room to destroy>,
-	"secret" : "<room secret, mandatory if configured>"
+	"secret" : "<room secret, mandatory if configured>",
+	"permanent" : <true|false, whether the room should be also removed from the config file, default false>
 }
 \endverbatim
  *
@@ -440,6 +442,11 @@ janus_plugin *create(void) {
 }
 
 
+/* Static configuration instance */
+static janus_config *config = NULL;
+static const char *config_folder = NULL;
+static janus_mutex config_mutex;
+
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
@@ -681,9 +688,11 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	char filename[255];
 	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_AUDIOBRIDGE_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
-	janus_config *config = janus_config_parse(filename);
+	config = janus_config_parse(filename);
+	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
+	janus_mutex_init(&config_mutex);
 	
 	rooms = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&rooms_mutex);
@@ -695,10 +704,11 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
-		janus_config_category *cat = janus_config_get_categories(config);
-		while(cat != NULL) {
+		GList *cl = janus_config_get_categories(config);
+		while(cl != NULL) {
+			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL) {
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Adding audio room '%s'\n", cat->name);
@@ -711,14 +721,14 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *recfile = janus_config_get_item(cat, "record_file");
 			if(sampling == NULL || sampling->value == NULL) {
 				JANUS_LOG(LOG_ERR, "Can't add the audio room, missing mandatory information...\n");
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 			}
 			/* Create the audio bridge room */
 			janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
 			if(audiobridge == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 			}
 			audiobridge->room_id = atoi(cat->name);
@@ -729,7 +739,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				description = g_strdup(cat->name);
 			if(description == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 			}
 			audiobridge->room_name = description;
@@ -745,7 +755,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					break;
 				default:
 					JANUS_LOG(LOG_ERR, "Unsupported sampling rate %"SCNu32"...\n", audiobridge->sampling_rate);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 			}
 			if(secret != NULL && secret->value != NULL) {
@@ -780,11 +790,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
 				janus_mutex_unlock(&rooms_mutex);
 			}
-			cat = cat->next;
+			cl = cl->next;
 		}
-		/* Done */
-		janus_config_destroy(config);
-		config = NULL;
+		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 
 	/* Show available rooms */
@@ -807,6 +815,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the AudioBridge watchdog thread...\n", error->code, error->message ? error->message : "??");
+		janus_config_destroy(config);
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
@@ -814,6 +823,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the AudioBridge handler thread...\n", error->code, error->message ? error->message : "??");
+		janus_config_destroy(config);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_AUDIOBRIDGE_NAME);
@@ -842,6 +852,9 @@ void janus_audiobridge_destroy(void) {
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
+
+	janus_config_destroy(config);
+
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_AUDIOBRIDGE_NAME);
@@ -1075,6 +1088,20 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			g_snprintf(error_cause, 512, "Invalid value (record_file should be a string)");
 			goto error;
 		}
+		json_t *permanent = json_object_get(root, "permanent");
+		if(permanent && !json_is_boolean(permanent)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
+			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
+			goto error;
+		}
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent room\n");
+			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't create permanent room");
+			goto error;
+		}
 		guint64 room_id = 0;
 		json_t *room = json_object_get(root, "room");
 		if(room && (!json_is_integer(room) || json_integer_value(room) < 0)) {
@@ -1193,6 +1220,33 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		} else {
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(audiobridge->room_id), audiobridge);
 		}
+		if(save) {
+			/* This room is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Saving room %"SCNu64" permanently in config file\n", audiobridge->room_id);
+			janus_mutex_lock(&config_mutex);
+			char cat[BUFSIZ], value[BUFSIZ];
+			/* The room ID is the category */
+			g_snprintf(cat, BUFSIZ, "%"SCNu64, audiobridge->room_id);
+			janus_config_add_category(config, cat);
+			/* Now for the values */
+			janus_config_add_item(config, cat, "description", audiobridge->room_name);
+			if(audiobridge->is_private)
+				janus_config_add_item(config, cat, "is_private", "yes");
+			g_snprintf(value, BUFSIZ, "%"SCNu32, audiobridge->sampling_rate);
+			janus_config_add_item(config, cat, "sampling_rate", value);
+			if(audiobridge->room_secret)
+				janus_config_add_item(config, cat, "secret", audiobridge->room_secret);
+			if(audiobridge->room_pin)
+				janus_config_add_item(config, cat, "pin", audiobridge->room_pin);
+			if(audiobridge->record_file) {
+				janus_config_add_item(config, cat, "record", "yes");
+				janus_config_add_item(config, cat, "record_file", audiobridge->record_file);
+			}
+			/* Save modified configuration */
+			janus_config_save(config, config_folder, JANUS_AUDIOBRIDGE_PACKAGE);
+			janus_mutex_unlock(&config_mutex);
+		}
 		/* Show updated rooms list */
 		GHashTableIter iter;
 		gpointer value;
@@ -1221,6 +1275,20 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
+			goto error;
+		}
+		json_t *permanent = json_object_get(root, "permanent");
+		if(permanent && !json_is_boolean(permanent)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
+			error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
+			goto error;
+		}
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't destroy room permanently\n");
+			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't destroy room permanently");
 			goto error;
 		}
 		guint64 room_id = json_integer_value(room);
@@ -1260,6 +1328,19 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		}
 		/* Remove room */
 		g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
+		if(save) {
+			/* This change is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Destroying room %"SCNu64" permanently in config file\n", room_id);
+			janus_mutex_lock(&config_mutex);
+			char cat[BUFSIZ];
+			/* The room ID is the category */
+			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
+			janus_config_remove_category(config, cat);
+			/* Save modified configuration */
+			janus_config_save(config, config_folder, JANUS_AUDIOBRIDGE_PACKAGE);
+			janus_mutex_unlock(&config_mutex);
+		}
 		/* Prepare response/notification */
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("destroyed"));

@@ -191,6 +191,11 @@ janus_plugin *create(void) {
 }
 
 
+/* Static configuration instance */
+static janus_config *config = NULL;
+static const char *config_folder = NULL;
+static janus_mutex config_mutex;
+
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
@@ -546,9 +551,11 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	char filename[255];
 	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_VIDEOROOM_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
-	janus_config *config = janus_config_parse(filename);
+	config = janus_config_parse(filename);
+	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
+	janus_mutex_init(&config_mutex);
 
 	rooms = g_hash_table_new_full(NULL, NULL, NULL,
 	                              (GDestroyNotify) janus_videoroom_free);
@@ -563,10 +570,11 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
-		janus_config_category *cat = janus_config_get_categories(config);
-		while(cat != NULL) {
+		GList *cl = janus_config_get_categories(config);
+		while(cl != NULL) {
+			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL) {
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Adding video room '%s'\n", cat->name);
@@ -636,11 +644,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			if(videoroom->record) {
 				JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 			}
-			cat = cat->next;
+			cl = cl->next;
 		}
-		/* Done */
-		janus_config_destroy(config);
-		config = NULL;
+		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 
 	/* Show available rooms */
@@ -662,6 +668,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoRoom watchdog thread...\n", error->code, error->message ? error->message : "??");
+		janus_config_destroy(config);
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
@@ -669,6 +676,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoRoom handler thread...\n", error->code, error->message ? error->message : "??");
+		janus_config_destroy(config);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_VIDEOROOM_NAME);
@@ -707,6 +715,8 @@ void janus_videoroom_destroy(void) {
 
 	g_async_queue_unref(messages);
 	messages = NULL;
+
+	janus_config_destroy(config);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -1034,6 +1044,20 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Invalid element (rec_dir should be a string)");
 			goto error;
 		}
+		json_t *permanent = json_object_get(root, "permanent");
+		if(permanent && !json_is_boolean(permanent)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
+			goto error;
+		}
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent room\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't create permanent room");
+			goto error;
+		}
 		guint64 room_id = 0;
 		json_t *room = json_object_get(root, "room");
 		if(room && (!json_is_integer(room) || json_integer_value(room) < 0)) {
@@ -1130,6 +1154,39 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		if(videoroom->record) {
 			JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 		}
+		if(save) {
+			/* This room is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Saving room %"SCNu64" permanently in config file\n", videoroom->room_id);
+			janus_mutex_lock(&config_mutex);
+			char cat[BUFSIZ], value[BUFSIZ];
+			/* The room ID is the category */
+			g_snprintf(cat, BUFSIZ, "%"SCNu64, videoroom->room_id);
+			janus_config_add_category(config, cat);
+			/* Now for the values */
+			janus_config_add_item(config, cat, "description", videoroom->room_name);
+			if(videoroom->is_private)
+				janus_config_add_item(config, cat, "is_private", "yes");
+			g_snprintf(value, BUFSIZ, "%"SCNu64, videoroom->bitrate);
+			janus_config_add_item(config, cat, "bitrate", value);
+			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
+			janus_config_add_item(config, cat, "publishers", value);
+			if(videoroom->fir_freq) {
+				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
+				janus_config_add_item(config, cat, "fir_freq", value);
+			}
+			if(videoroom->room_secret)
+				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
+			if(videoroom->room_pin)
+				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
+			if(videoroom->rec_dir) {
+				janus_config_add_item(config, cat, "record", "yes");
+				janus_config_add_item(config, cat, "rec_dir", videoroom->rec_dir);
+			}
+			/* Save modified configuration */
+			janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE);
+			janus_mutex_unlock(&config_mutex);
+		}
 		/* Show updated rooms list */
 		GHashTableIter iter;
 		gpointer value;
@@ -1158,6 +1215,20 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
 			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
+			goto error;
+		}
+		json_t *permanent = json_object_get(root, "permanent");
+		if(permanent && !json_is_boolean(permanent)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
+			goto error;
+		}
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't destroy room permanently\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't destroy room permanently");
 			goto error;
 		}
 		guint64 room_id = json_integer_value(room);
@@ -1230,6 +1301,19 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		g_free(destroyed_text);
 		janus_mutex_unlock(&videoroom->participants_mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		if(save) {
+			/* This change is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Destroying room %"SCNu64" permanently in config file\n", room_id);
+			janus_mutex_lock(&config_mutex);
+			char cat[BUFSIZ];
+			/* The room ID is the category */
+			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
+			janus_config_remove_category(config, cat);
+			/* Save modified configuration */
+			janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE);
+			janus_mutex_unlock(&config_mutex);
+		}
 		/* Done */
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("destroyed"));
