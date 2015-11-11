@@ -187,6 +187,11 @@ janus_plugin *create(void) {
 }
 
 
+/* Static configuration instance */
+static janus_config *config = NULL;
+static const char *config_folder = NULL;
+static janus_mutex config_mutex;
+
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
@@ -434,25 +439,28 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	char filename[255];
 	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_STREAMING_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
-	janus_config *config = janus_config_parse(filename);
+	config = janus_config_parse(filename);
+	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
+	janus_mutex_init(&config_mutex);
 	
 	mountpoints = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&mountpoints_mutex);
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
-		janus_config_category *cat = janus_config_get_categories(config);
-		while(cat != NULL) {
+		GList *cl = janus_config_get_categories(config);
+		while(cl != NULL) {
+			janus_config_category *cat = (janus_config_category *)cl->data;
 			if(cat->name == NULL) {
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 			}
 			JANUS_LOG(LOG_VERB, "Adding stream '%s'\n", cat->name);
 			janus_config_item *type = janus_config_get_item(cat, "type");
 			if(type == NULL || type->value == NULL) {
 				JANUS_LOG(LOG_WARN, "  -- Invalid type, skipping stream '%s'...\n", cat->name);
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 			}
 			if(!strcasecmp(type->value, "rtp")) {
@@ -479,7 +487,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean dovideo = video && video->value && janus_is_true(video->value);
 				if(!doaudio && !dovideo) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', no audio or video have to be streamed...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				if(doaudio &&
@@ -487,7 +495,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						acodec == NULL || acodec->value == NULL ||
 						artpmap == NULL || artpmap->value == NULL)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for audio...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				if(dovideo &&
@@ -495,7 +503,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vcodec == NULL || vcodec->value == NULL ||
 						vrtpmap == NULL || vrtpmap->value == NULL)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for video...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				if(id == NULL || id->value == NULL) {
@@ -506,7 +514,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
-						cat = cat->next;
+						cl = cl->next;
 						continue;
 					}
 				}
@@ -529,7 +537,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vrtpmap ? (char *)vrtpmap->value : NULL,
 						vfmtp ? (char *)vfmtp->value : NULL)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream '%s'...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				mp->is_private = is_private;
@@ -549,7 +557,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' stream '%s', missing mandatory information...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
@@ -558,12 +566,12 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
 				if(!doaudio || dovideo) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' stream '%s', we only support audio file streaming right now...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				if(!strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
 					JANUS_LOG(LOG_ERR, "Can't add 'live' stream '%s', unsupported format (we only support raw mu-Law and a-Law files right now)\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				if(id == NULL || id->value == NULL) {
@@ -574,7 +582,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
-						cat = cat->next;
+						cl = cl->next;
 						continue;
 					}
 				}
@@ -586,7 +594,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)file->value,
 						TRUE, doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'live' stream '%s'...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				mp->is_private = is_private;
@@ -606,7 +614,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream '%s', missing mandatory information...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
@@ -615,12 +623,12 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				/* TODO We should support something more than raw a-Law and mu-Law streams... */
 				if(!doaudio || dovideo) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream '%s', we only support audio file streaming right now...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				if(!strstr(file->value, ".alaw") && !strstr(file->value, ".mulaw")) {
 					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream '%s', unsupported format (we only support raw mu-Law and a-Law files right now)\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				if(id == NULL || id->value == NULL) {
@@ -631,7 +639,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
-						cat = cat->next;
+						cl = cl->next;
 						continue;
 					}
 				}
@@ -643,7 +651,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)file->value,
 						FALSE, doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'ondemand' stream '%s'...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				mp->is_private = is_private;
@@ -654,7 +662,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			} else if(!strcasecmp(type->value, "rtsp")) {
 #ifndef HAVE_LIBCURL
 				JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', libcurl support not compiled...\n", cat->name);
-				cat = cat->next;
+				cl = cl->next;
 				continue;
 #else
 				janus_config_item *id = janus_config_get_item(cat, "id");
@@ -667,7 +675,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', missing mandatory information...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				gboolean is_private = priv && priv->value && janus_is_true(priv->value);
@@ -681,7 +689,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
-						cat = cat->next;
+						cl = cl->next;
 						continue;
 					}
 				}
@@ -692,7 +700,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value, doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream '%s'...\n", cat->name);
-					cat = cat->next;
+					cl = cl->next;
 					continue;
 				}
 				mp->is_private = is_private;
@@ -704,11 +712,9 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			} else {
 				JANUS_LOG(LOG_WARN, "Ignoring unknown stream type '%s' (%s)...\n", type->value, cat->name);
 			}
-			cat = cat->next;
+			cl = cl->next;
 		}
-		/* Done */
-		janus_config_destroy(config);
-		config = NULL;
+		/* Done: we keep the configuration file open in case we get a "create" or "destroy" with permanent=true */
 	}
 	/* Show available mountpoints */
 	janus_mutex_lock(&mountpoints_mutex);
@@ -738,6 +744,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	if(!watchdog) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming watchdog thread...\n", error->code, error->message ? error->message : "??");
+		janus_config_destroy(config);
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
@@ -745,6 +752,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming handler thread...\n", error->code, error->message ? error->message : "??");
+		janus_config_destroy(config);
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_STREAMING_NAME);
@@ -790,6 +798,8 @@ void janus_streaming_destroy(void) {
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
+
+	janus_config_destroy(config);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -1016,6 +1026,20 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
+			goto error;
+		}
+		json_t *permanent = json_object_get(root, "permanent");
+		if(permanent && !json_is_boolean(permanent)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
+			goto error;
+		}
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent mountpoint\n");
+			error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't create permanent mountpoint");
 			goto error;
 		}
 		janus_streaming_mountpoint *mp = NULL;
@@ -1503,6 +1527,69 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		/* Any PIN? */
 		if(pin)
 			mp->pin = g_strdup(json_string_value(pin));
+		if(save) {
+			/* This mountpoint is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Saving mountpoint %"SCNu64" permanently in config file\n", mp->id);
+			janus_mutex_lock(&config_mutex);
+			char value[BUFSIZ];
+			/* The category to add is the mountpoint name */
+			janus_config_add_category(config, mp->name);
+			/* Now for the common values */
+			janus_config_add_item(config, mp->name, "type", type_text);
+			g_snprintf(value, BUFSIZ, "%"SCNu64, mp->id);
+			janus_config_add_item(config, mp->name, "id", value);
+			janus_config_add_item(config, mp->name, "description", mp->description);
+			if(mp->is_private)
+				janus_config_add_item(config, mp->name, "is_private", "yes");
+			/* Per type values */
+			if(!strcasecmp(type_text, "rtp")) {
+				janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt >= 0 ? "yes" : "no");
+				janus_streaming_rtp_source *source = mp->source;
+				if(mp->codecs.audio_pt >= 0) {
+					g_snprintf(value, BUFSIZ, "%d", source->audio_port);
+					janus_config_add_item(config, mp->name, "audioport", value);
+					json_t *audiomcast = json_object_get(root, "audiomcast");
+					if(audiomcast)
+						janus_config_add_item(config, mp->name, "audiomcast", json_string_value(json_object_get(root, "audiomcast")));
+					g_snprintf(value, BUFSIZ, "%d", mp->codecs.audio_pt);
+					janus_config_add_item(config, mp->name, "audiopt", value);
+					janus_config_add_item(config, mp->name, "audiortpmap", mp->codecs.audio_rtpmap);
+					if(mp->codecs.audio_fmtp)
+						janus_config_add_item(config, mp->name, "audiofmtp", mp->codecs.audio_fmtp);
+				}
+				janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt >= 0? "yes" : "no");
+				if(mp->codecs.video_pt >= 0) {
+					g_snprintf(value, BUFSIZ, "%d", source->video_port);
+					janus_config_add_item(config, mp->name, "videoport", value);
+					json_t *videomcast = json_object_get(root, "videomcast");
+					if(videomcast)
+						janus_config_add_item(config, mp->name, "videomcast", json_string_value(json_object_get(root, "videomcast")));
+					g_snprintf(value, BUFSIZ, "%d", mp->codecs.video_pt);
+					janus_config_add_item(config, mp->name, "videopt", value);
+					janus_config_add_item(config, mp->name, "videortpmap", mp->codecs.video_rtpmap);
+					if(mp->codecs.video_fmtp)
+						janus_config_add_item(config, mp->name, "videofmtp", mp->codecs.video_fmtp);
+				}
+			} else if(!strcasecmp(type_text, "live") || !strcasecmp(type_text, "ondemand")) {
+				janus_streaming_file_source *source = mp->source;
+				janus_config_add_item(config, mp->name, "filename", source->filename);
+				janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt ? "yes" : "no");
+				janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
+			} else if(!strcasecmp(type_text, "rtsp")) {
+				janus_config_add_item(config, mp->name, "url", json_string_value(json_object_get(root, "url")));
+				janus_config_add_item(config, mp->name, "audio", mp->codecs.audio_pt ? "yes" : "no");
+				janus_config_add_item(config, mp->name, "video", mp->codecs.video_pt ? "yes" : "no");
+			}
+			/* Some more common values */
+			if(mp->secret)
+				janus_config_add_item(config, mp->name, "secret", mp->secret);
+			if(mp->pin)
+				janus_config_add_item(config, mp->name, "pin", mp->pin);
+			/* Save modified configuration */
+			janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE);
+			janus_mutex_unlock(&config_mutex);
+		}
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("created"));
@@ -1527,6 +1614,20 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
 			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
+			goto error;
+		}
+		json_t *permanent = json_object_get(root, "permanent");
+		if(permanent && !json_is_boolean(permanent)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
+			goto error;
+		}
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't destroy mountpoint permanently\n");
+			error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't destroy mountpoint permanently");
 			goto error;
 		}
 		gint64 id_value = json_integer_value(id);
@@ -1592,6 +1693,17 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		g_free(event_text);
 		janus_mutex_unlock(&mp->mutex);
+		if(save) {
+			/* This change is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Destroying mountpoint %"SCNu64" (%s) permanently in config file\n", mp->id, mp->name);
+			janus_mutex_lock(&config_mutex);
+			/* The category to remove is the mountpoint name */
+			janus_config_remove_category(config, mp->name);
+			/* Save modified configuration */
+			janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE);
+			janus_mutex_unlock(&config_mutex);
+		}
 		/* Remove mountpoint from the hashtable: this will get it destroyed */
 		if(!mp->destroyed) {
 			mp->destroyed = janus_get_monotonic_time();

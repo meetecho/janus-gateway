@@ -247,6 +247,7 @@
 
 #include <dirent.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <jansson.h>
 
@@ -1517,12 +1518,13 @@ void janus_recordplay_update_recordings_list(void) {
 			JANUS_LOG(LOG_ERR, "Invalid recording '%s'...\n", recent->d_name);
 			continue;
 		}
-		janus_config_category *cat = janus_config_get_categories(nfo);
-		if(cat == NULL) {
+		GList *cl = janus_config_get_categories(nfo);
+		if(cl == NULL || cl->data == NULL) {
 			JANUS_LOG(LOG_WARN, "No recording info in '%s', skipping...\n", recent->d_name);
 			janus_config_destroy(nfo);
 			continue;
 		}
+		janus_config_category *cat = (janus_config_category *)cl->data;
 		guint64 id = atol(cat->name);
 		if(id == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid ID, skipping...\n");
