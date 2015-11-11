@@ -18,7 +18,6 @@ on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 ##Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
-* [libini-config](https://fedorahosted.org/sssd/) (INI configurations)
 * [Jansson](http://www.digip.org/jansson/)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
@@ -52,15 +51,13 @@ instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel libini_config-devel pkgconfig gengetopt \
-       libtool autoconf automake
+       opus-devel libogg-devel pkgconfig gengetopt libtool autoconf automake
 
 On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
-		libopus-dev libogg-dev libini-config-dev libcollection-dev \
-		pkg-config gengetopt libtool automake
+		libopus-dev libogg-dev pkg-config gengetopt libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu

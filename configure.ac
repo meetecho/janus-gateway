@@ -83,7 +83,6 @@ PKG_CHECK_MODULES([JANUS],
                     libssl >= ssl_version
                     libcrypto
                     sofia-sip-ua
-                    ini_config
                   ])
 AC_SUBST(JANUS_MANUAL_LIBS)
 
@@ -248,7 +247,6 @@ PKG_CHECK_MODULES([PLUGINS],
                     glib-2.0 >= glib_version
                     sofia-sip-ua
                     jansson
-                    ini_config
                   ])
 
 AC_ARG_ENABLE([plugin-audiobridge],
