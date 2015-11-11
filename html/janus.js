@@ -144,7 +144,7 @@ function Janus(gatewayCallbacks) {
 	}
 	var websockets = false;
 	var ws = null;
-	var wsHanders = {};
+	var wsHandlers = {};
 
 	var servers = null, serversIndex = 0;
 	var server = gatewayCallbacks.server;
@@ -404,7 +404,7 @@ function Janus(gatewayCallbacks) {
 		}
 		if(websockets) {
 			ws = new WebSocket(server, 'janus-protocol'); 
-			wsHanders = {
+			wsHandlers = {
 				'error': function() {
 					Janus.error("Error connecting to the Janus WebSockets server... " + server);
 					if ($.isArray(servers)) {
@@ -457,8 +457,8 @@ function Janus(gatewayCallbacks) {
 				}
 			};
 
-			for(eventName in wsHanders) {
-				ws.addEventListener(eventName, wsHanders[eventName]);
+			for(eventName in wsHandlers) {
+				ws.addEventListener(eventName, wsHandlers[eventName]);
 			}
 
 			return;
@@ -542,8 +542,8 @@ function Janus(gatewayCallbacks) {
 			var unbindWebSocket = function(event){
 				var data = JSON.parse(event.data);
 				if(data.session_id == request.session_id && data.transaction == request.transaction) {
-					for(eventName in wsHanders) {
-						ws.removeEventListener(eventName, wsHanders[eventName]);
+					for(eventName in wsHandlers) {
+						ws.removeEventListener(eventName, wsHandlers[eventName]);
 					}
 					ws.removeEventListener('message', unbindWebSocket);
 					callbacks.success();
