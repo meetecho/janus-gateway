@@ -39,6 +39,12 @@ AC_ARG_ENABLE([docs],
               [],
               [enable_docs=yes])
 
+AC_ARG_ENABLE([rest],
+              [AS_HELP_STRING([--disable-rest],
+                              [Disable REST (HTTP/HTTPS) support])],
+              [],
+              [enable_rest=yes])
+
 AC_ARG_ENABLE([websockets],
               [AS_HELP_STRING([--disable-websockets],
                               [Disable WebSockets support])],
@@ -73,7 +79,6 @@ PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= glib_version
                     nice
-                    libmicrohttpd
                     jansson
                     libssl >= ssl_version
                     libcrypto
@@ -116,32 +121,6 @@ AC_CHECK_LIB([srtp],
              [JANUS_MANUAL_LIBS+=" -lsrtp"],
              [AC_MSG_ERROR([libsrtp not found.])])
 
-AC_CHECK_LIB([websockets_shared],
-             [libwebsocket_get_internal_extensions],
-             [
-               AS_IF([test "x$enable_websockets" = "xyes"],
-               [
-                  AC_DEFINE(HAVE_WEBSOCKETS)
-                  JANUS_MANUAL_LIBS+=" -lwebsockets_shared"
-               ])
-             ],
-             [
-				AC_CHECK_LIB([websockets],
-							 [libwebsocket_get_internal_extensions],
-							 [
-							   AS_IF([test "x$enable_websockets" = "xyes"],
-							   [
-								  AC_DEFINE(HAVE_WEBSOCKETS)
-								  JANUS_MANUAL_LIBS+=" -lwebsockets"
-							   ])
-							 ],
-							 [
-							   AS_IF([test "x$enable_websockets" = "xyes"],
-									 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
-							 ])
-             ])
-AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
-
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
              [
@@ -156,21 +135,6 @@ AC_CHECK_LIB([usrsctp],
                      [AC_MSG_ERROR([libusrsctp not found. See README.md for installation instructions or use --disable-data-channels])])
              ])
 AM_CONDITIONAL([ENABLE_SCTP], [test "x$enable_data_channels" = "xyes"])
-
-AC_CHECK_LIB([rabbitmq],
-             [amqp_error_string2],
-             [
-               AS_IF([test "x$enable_rabbitmq" = "xyes"],
-               [
-                  AC_DEFINE(HAVE_RABBITMQ)
-                  JANUS_MANUAL_LIBS+=" -lrabbitmq"
-               ])
-             ],
-             [
-               AS_IF([test "x$enable_rabbitmq" = "xyes"],
-                     [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq])])
-             ])
-AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 
 PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
@@ -211,6 +175,68 @@ AC_CHECK_PROG([GENGETOPT_CHECK],
 if test x"$GENGETOPT_CHECK" != x"yes" ; then
     AC_MSG_ERROR([Please install gengetopt before installing.])
 fi
+
+
+##
+# Transports
+##
+
+PKG_CHECK_MODULES([TRANSPORTS],
+                  [
+                    glib-2.0 >= glib_version
+                    jansson
+                    ini_config
+                  ])
+
+PKG_CHECK_MODULES([MHD],
+                  [libmicrohttpd],
+                  [],
+                  [
+                    AC_MSG_ERROR([libmicrohttpd not found. See README.md for installation instructions or use --disable-rest])
+                  ])
+AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
+
+AC_CHECK_LIB([websockets_shared],
+             [libwebsocket_get_internal_extensions],
+             [
+               AS_IF([test "x$enable_websockets" = "xyes"],
+               [
+                  AC_DEFINE(HAVE_WEBSOCKETS)
+                  WS_MANUAL_LIBS="-lwebsockets_shared"
+               ])
+             ],
+             [
+				AC_CHECK_LIB([websockets],
+							 [libwebsocket_get_internal_extensions],
+							 [
+							   AS_IF([test "x$enable_websockets" = "xyes"],
+							   [
+								  AC_DEFINE(HAVE_WEBSOCKETS)
+								  WS_MANUAL_LIBS="-lwebsockets"
+							   ])
+							 ],
+							 [
+							   AS_IF([test "x$enable_websockets" = "xyes"],
+									 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
+							 ])
+             ])
+AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
+AC_SUBST(WS_MANUAL_LIBS)
+
+AC_CHECK_LIB([rabbitmq],
+             [amqp_error_string2],
+             [
+               AS_IF([test "x$enable_rabbitmq" = "xyes"],
+               [
+                  AC_DEFINE(HAVE_RABBITMQ)
+               ])
+             ],
+             [
+               AS_IF([test "x$enable_rabbitmq" = "xyes"],
+                     [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq])])
+             ])
+AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
+
 
 ##
 # Plugins
@@ -335,12 +361,6 @@ AC_OUTPUT
 ##
 echo
 
-AM_COND_IF([ENABLE_RABBITMQ],
-	[echo "RabbitMQ support:          yes"],
-	[echo "RabbitMQ support:          no"])
-AM_COND_IF([ENABLE_WEBSOCKETS],
-	[echo "WebSockets support:        yes"],
-	[echo "WebSockets support:        no"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
@@ -356,6 +376,16 @@ AM_COND_IF([ENABLE_TURN_REST_API],
 AM_COND_IF([ENABLE_DOCS],
 	[echo "Doxygen documentation:     yes"],
 	[echo "Doxygen documentation:     no"])
+echo "Transports:"
+AM_COND_IF([ENABLE_REST],
+	[echo "    REST (HTTP/HTTPS):     yes"],
+	[echo "    REST (HTTP/HTTPS):     no"])
+AM_COND_IF([ENABLE_WEBSOCKETS],
+	[echo "    WebSockets:            yes"],
+	[echo "    WebSockets:            no"])
+AM_COND_IF([ENABLE_RABBITMQ],
+	[echo "    RabbitMQ:              yes"],
+	[echo "    RabbitMQ:              no"])
 echo "Plugins:"
 AM_COND_IF([ENABLE_PLUGIN_ECHOTEST],
 	[echo "    Echo Test:             yes"],
@@ -383,5 +413,5 @@ AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 	[echo "    Record&Play:           no"])
 
 echo
-echo "If this configuration is ok for you, do a make to start building Janus"
+echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."
 echo

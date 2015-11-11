@@ -18,7 +18,6 @@ on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 ##Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
-* [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/)
 * [Jansson](http://www.digip.org/jansson/)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
@@ -26,12 +25,14 @@ To install it, you'll need to satisfy the following dependencies:
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
 are interested in Data Channels)
+* [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (only
+needed if you are interested in REST support for the Janus API)
 * [libwebsockets](https://libwebsockets.org/) (only needed if
-you are interested in WebSockets support)
+you are interested in WebSockets support for the Janus API)
 * [cmake](http://www.cmake.org/) (only needed if you are interested in
 WebSockets support, as libwebsockets makes use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
-you are interested in RabbitMQ support)
+you are interested in RabbitMQ support for the Janus API)
 
 A couple of plugins depend on a few more libraries:
 
@@ -129,7 +130,7 @@ HTTP REST API, you'll have to install it manually:
 	cd libwebsockets
 	mkdir build
 	cd build
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
 	make && sudo make install
 
 * *Note:* if libwebsockets.org is unreachable for any reason, replace
@@ -220,43 +221,13 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 	
-	janus 0.0.9
+	janus 0.1.0
 
 	Usage: janus [OPTIONS]...
 
 	-h, --help                    Print help and exit
 	-V, --version                 Print version and exit
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
-	-p, --port=portnumber         Web server HTTP port (default=8088)
-	-s, --secure-port=portnumber  Web server HTTPS port (default=no HTTPS)
-	-n, --no-http                 Disable insecure HTTP web server  (default=off)
-	-b, --base-path=basepath      Base path to bind to in the web server 
-								  (default=/janus) 
-	-w, --ws-port=portnumber      WebSockets server port (default=no WebSockets)
-	-W, --ws-secure-port=portnumber
-                                  Secure WebSockets server port (default=no 
-                                  secure WebSockets)
-	-N, --no-websockets           Disable insecure WebSockets server  
-                                  (default=off)
-	-m, --admin-port=portnumber   Admin/monitor web server HTTP port 
-                                  (default=7088)
-	-M, --admin-secure-port=portnumber
-                                  Admin/monitor web server HTTPS port (default=no 
-                                  HTTPS)
-	-O, --no-admin                Disable insecure HTTP admin/monitor web server  
-                                  (default=off)
-	-B, --admin-base-path=basepath
-                                  Base path to bind to in the HTTP/HTTPS 
-                                  admin/monitor web server (default=/admin) 
-	-Q, --admin-secret=randomstring
-                                  Admin/monitor secret all requests need to pass 
-                                  in order to be accepted by Janus (useful a 
-                                  crude form of authentication, none by 
-                                  default)
-	-L, --admin-acl=list          Comma-separated list of IP addresses allowed to 
-                                  use the Admin/monitor; partial strings are 
-                                  supported (e.g., 192.168.0.1,10.0.0.1 or 
-                                  192.168., default=no restriction)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
@@ -304,15 +275,6 @@ or on the command line:
                                   default)
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
-	-R, --enable-rabbitmq         Enable RabbitMQ support  (default=off)
-	-H, --rabbitmq-host=string    Address (host:port) of the RabbitMQ server to 
-                                  use (default=localhost:5672)
-	-t, --rabbitmq-in-queue=string
-                                  Name of the RabbitMQ queue for incoming 
-                                  messages (no default)
-	-f, --rabbitmq-out-queue=string
-                                  Name of the RabbitMQ queue for outgoing 
-                                  messages (no default)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:

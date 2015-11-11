@@ -423,7 +423,7 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying that we %s receiving %s\n",
 		handle->handle_id, up ? "are" : "are NOT", video ? "video" : "audio");
 	janus_session *session = (janus_session *)handle->session;
-	if(session == NULL || session->messages == NULL)
+	if(session == NULL)
 		return;
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("media"));
@@ -431,21 +431,9 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
 	json_object_set_new(event, "receiving", json_string(up ? "true" : "false"));
-	/* Convert to a string */
-	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(event);
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
-	if(notification == NULL) {
-		g_free(event_text);
-		return;
-	}
-	notification->code = 200;
-	notification->payload = event_text;
-	notification->allocated = 1;
-
-	janus_session_notify_event(session->session_id, notification);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	janus_session_notify_event(session->session_id, event);
 }
 
 void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
@@ -462,21 +450,9 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	if(reason != NULL)
 		json_object_set_new(event, "reason", json_string(reason));
-	/* Convert to a string */
-	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(event);
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
-	if(notification == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
-	}
-	notification->code = 200;
-	notification->payload = event_text;
-	notification->allocated = 1;
-
-	janus_session_notify_event(session->session_id, notification);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	janus_session_notify_event(session->session_id, event);
 }
 
 
@@ -1004,20 +980,11 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	/* Prepare JSON event to notify user/application */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("detached"));
+	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle_id));
-	/* Convert to a string */
-	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(event);
-	/* Send the event before we do anything */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle_id);
-	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
-	if(notification) {
-		notification->code = 200;
-		notification->payload = event_text;
-		notification->allocated = 1;
-
-		janus_session_notify_event(session->session_id, notification);
-	}
+	/* Send the event */
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	janus_session_notify_event(session->session_id, event);
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
@@ -3371,19 +3338,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_object_set_new(event, "janus", json_string("webrtcup"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
-	/* Convert to a string */
-	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(event);
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Adding event to queue of messages...\n", handle->handle_id);
-	janus_http_event *notification = (janus_http_event *)g_malloc0(sizeof(janus_http_event));
-	if(notification == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return;
-	}
-	notification->code = 200;
-	notification->payload = event_text;
-	notification->allocated = 1;
-
-	janus_session_notify_event(session->session_id, notification);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	janus_session_notify_event(session->session_id, event);
 }
