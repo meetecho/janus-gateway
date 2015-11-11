@@ -145,6 +145,7 @@ function Janus(gatewayCallbacks) {
 	var websockets = false;
 	var ws = null;
 	var wsHandlers = {};
+	var wsKeepaliveTimeoutId = null;
 
 	var servers = null, serversIndex = 0;
 	var server = gatewayCallbacks.server;
@@ -374,7 +375,7 @@ function Janus(gatewayCallbacks) {
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
 			return;
-		setTimeout(keepAlive, 30000);
+		wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
@@ -433,7 +434,7 @@ function Janus(gatewayCallbacks) {
 							callbacks.error(json["error"].reason);
 							return;
 						}
-						setTimeout(keepAlive, 30000);
+						wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
 						connected = true;
 						sessionId = json.data["id"];
 						Janus.log("Created session: " + sessionId);
@@ -546,6 +547,9 @@ function Janus(gatewayCallbacks) {
 				}
 				ws.removeEventListener('message', onUnbindMessage);
 				ws.removeEventListener('error', onUnbindError);
+				if(wsKeepaliveTimeoutId) {
+					clearTimeout(wsKeepaliveTimeoutId);
+				}
 			};
 
 			var onUnbindMessage = function(event){
