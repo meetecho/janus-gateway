@@ -539,18 +539,32 @@ function Janus(gatewayCallbacks) {
 			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
-			var unbindWebSocket = function(event){
+
+			var unbindWebSocket = function() {
+				for(eventName in wsHandlers) {
+					ws.removeEventListener(eventName, wsHandlers[eventName]);
+				}
+				ws.removeEventListener('message', onUnbindMessage);
+				ws.removeEventListener('error', onUnbindError);
+			};
+
+			var onUnbindMessage = function(event){
 				var data = JSON.parse(event.data);
 				if(data.session_id == request.session_id && data.transaction == request.transaction) {
-					for(eventName in wsHandlers) {
-						ws.removeEventListener(eventName, wsHandlers[eventName]);
-					}
-					ws.removeEventListener('message', unbindWebSocket);
+					unbindWebSocket();
 					callbacks.success();
 					gatewayCallbacks.destroyed();
 				}
 			};
-			ws.addEventListener('message', unbindWebSocket);
+			var onUnbindError = function(event) {
+				unbindWebSocket();
+				callbacks.error("Failed to destroy the gateway: Is the gateway down?");
+				gatewayCallbacks.destroyed();
+			};
+
+			ws.addEventListener('message', onUnbindMessage);
+			ws.addEventListener('error', onUnbindError);
+
 			ws.send(JSON.stringify(request));
 			return;
 		}
