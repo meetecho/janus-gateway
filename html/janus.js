@@ -632,6 +632,12 @@ function Janus(gatewayCallbacks) {
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
 						getVolume : function() { return getVolume(handleId); },
+						isAudioMuted : function() { return isMuted(handleId, false); },
+						muteAudio : function() { return mute(handleId, false, true); },
+						unmuteAudio : function() { return mute(handleId, false, false); },
+						isVideoMuted : function() { return isMuted(handleId, true); },
+						muteVideo : function() { return mute(handleId, true, true); },
+						unmuteVideo : function() { return mute(handleId, true, false); },
 						getBitrate : function() { return getBitrate(handleId); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
@@ -705,6 +711,12 @@ function Janus(gatewayCallbacks) {
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
 						getVolume : function() { return getVolume(handleId); },
+						isAudioMuted : function() { return isMuted(handleId, false); },
+						muteAudio : function() { return mute(handleId, false, true); },
+						unmuteAudio : function() { return mute(handleId, false, false); },
+						isVideoMuted : function() { return isMuted(handleId, true); },
+						muteVideo : function() { return mute(handleId, true, true); },
+						unmuteVideo : function() { return mute(handleId, true, false); },
 						getBitrate : function() { return getBitrate(handleId); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
@@ -1608,6 +1620,82 @@ function Janus(gatewayCallbacks) {
 		} else {
 			Janus.log("Getting the remote volume unsupported by browser");
 			return 0;
+		}
+	}
+
+	function isMuted(handleId, video) {
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			return true;
+		}
+		var config = pluginHandle.webrtcStuff;
+		if(config.pc === null || config.pc === undefined) {
+			Janus.warn("Invalid PeerConnection");
+			return true;
+		}
+		if(config.myStream === undefined || config.myStream === null) {
+			Janus.warn("Invalid local MediaStream");
+			return true;
+		}
+		if(video) {
+			// Check video track
+			if(config.myStream.getVideoTracks() === null
+					|| config.myStream.getVideoTracks() === undefined
+					|| config.myStream.getVideoTracks().length === 0) {
+				Janus.warn("No video track");
+				return true;
+			}
+			return !config.myStream.getVideoTracks()[0].enabled;
+		} else {
+			// Check audio track
+			if(config.myStream.getAudioTracks() === null
+					|| config.myStream.getAudioTracks() === undefined
+					|| config.myStream.getAudioTracks().length === 0) {
+				Janus.warn("No audio track");
+				return true;
+			}
+			return !config.myStream.getAudioTracks()[0].enabled;
+		}
+	}
+
+	function mute(handleId, video, mute) {
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			return false;
+		}
+		var config = pluginHandle.webrtcStuff;
+		if(config.pc === null || config.pc === undefined) {
+			Janus.warn("Invalid PeerConnection");
+			return false;
+		}
+		if(config.myStream === undefined || config.myStream === null) {
+			Janus.warn("Invalid local MediaStream");
+			return false;
+		}
+		if(video) {
+			// Mute/unmute video track
+			if(config.myStream.getVideoTracks() === null
+					|| config.myStream.getVideoTracks() === undefined
+					|| config.myStream.getVideoTracks().length === 0) {
+				Janus.warn("No video track");
+				return false;
+			}
+			config.myStream.getVideoTracks()[0].enabled = mute ? false : true;
+			return true;
+		} else {
+			// Mute/unmute audio track
+			if(config.myStream.getAudioTracks() === null
+					|| config.myStream.getAudioTracks() === undefined
+					|| config.myStream.getAudioTracks().length === 0) {
+				Janus.warn("No audio track");
+				return false;
+			}
+			config.myStream.getAudioTracks()[0].enabled = mute ? false : true;
+			return true;
 		}
 	}
 	
