@@ -182,6 +182,35 @@ typedef struct rtcp_fb
 	char fci[1];
 } rtcp_fb;
 
+typedef struct rtcp_context
+{
+	uint16_t last_seq_nr;
+	uint16_t seq_cycle;
+	uint16_t base_seq;
+	/* payload type */
+	uint16_t pt;
+
+	/* RFC 3550 A.8 Interarrival Jitter */
+	uint64_t transit;
+	double jitter;
+	/* timstamp base e.g. 48000 for opus */
+	uint32_t tb;
+
+	/* last SR received */
+	uint32_t lsr;
+	/* monotonic time of last SR received */
+	int64_t lsr_ts;
+
+	/* last RR / SR we sent */
+	int64_t last_sent;
+
+	/* RFC 3550 A.3 */
+	uint32_t received;
+	uint32_t received_prior;
+	uint32_t expected;
+	uint32_t expected_prior;
+	int32_t lost;
+} rtcp_context;
 
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
@@ -292,5 +321,9 @@ int janus_rtcp_pli(char *packet, int len);
  * @param[in] nacks List of packets to NACK
  * @returns The message data length in bytes, if successful, -1 on errors */
 int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
+
+void janus_rtcp_incoming_sr(rtcp_context *ctx, char * buf, int len);
+void janus_rtcp_incoming_rtp(rtcp_context *ctx, char * buf, int len);
+void janus_rtcp_report_block(rtcp_context *ctx, report_block *rb);
 
 #endif
