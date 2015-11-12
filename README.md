@@ -227,6 +227,8 @@ or on the command line:
 
 	-h, --help                    Print help and exit
 	-V, --version                 Print version and exit
+	-b, --daemon                  Launch Janus in background as a daemon
+                                  (default=off)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use

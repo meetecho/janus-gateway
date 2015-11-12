@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <getopt.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 
 #include "janus.h"
 #include "cmdline.h"
@@ -2911,7 +2912,44 @@ gint main(int argc, char *argv[])
 #if !GLIB_CHECK_VERSION(2, 36, 0)
 	g_type_init();
 #endif
-	
+
+	if(args_info.daemon_given) {
+		JANUS_PRINT("Running Janus as a daemon\n");
+		/* FIXME Logging is still stdout/stderr based, and we close those */
+		JANUS_PRINT("\nNOTE: This is still WIP, and no logging/output is available when running as\n");
+		JANUS_PRINT("      a daemon at the moment. Check the documentation for alternatives on\n");
+		JANUS_PRINT("      running Janus in background.\n");
+
+		/* Fork off the parent process */
+		pid_t pid = fork();
+		if(pid < 0) {
+			JANUS_PRINT("Fork error!\n");
+			exit(1);
+		}
+		if(pid > 0) {
+			exit(0);
+		}
+		/* Change the file mode mask */
+		umask(0);
+
+		/* Create a new SID for the child process */
+		pid_t sid = setsid();
+		if(sid < 0) {
+			JANUS_PRINT("Error setting SID!\n");
+			exit(1);
+		}
+		/* Change the current working directory */
+		if((chdir("/")) < 0) {
+			JANUS_PRINT("Error changing the current working directory!\n");
+			exit(1);
+		}
+
+		/* Close out the standard file descriptors */
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+	}
+
 	/* Logging level: default is info and no timestamps */
 	janus_log_level = LOG_INFO;
 	janus_log_timestamps = FALSE;

@@ -1935,8 +1935,8 @@ var servers = [ws_server, http_server];
 
 /*! \page service Janus as a daemon/service
  *
- * By default, Janus cannot be started as a daemon. In fact, it is
- * currently conceived as a server application that you start normally.
+ * By default, Janus starts in foreground, and as such works as a server
+ * application that you start normally and displays output on the console.
  * That said, there are several reasons why you may not want to keep
  * Janus in the foreground, while still being interested in checking
  * the console to see what's happening.
@@ -1947,8 +1947,16 @@ var servers = [ws_server, http_server];
  * to more sophisticated approaches involving \c systemd, \c upstart
  * and others.
  *
+ * \section daemon Running Janus as a daemon
+ * Since version \c 0.1.0, you can run Janus as a daemon application. To
+ * do so, just pass either \c -b or <code>\--daemon</code> as a command line
+ * argument, and Janus will be daemonized. Just beware, though, that
+ * since all logging in Janus is currently stdout/stderr based, running
+ * Janus as a daemon will make you loose all output and logs. Work is
+ * currently ongoing to change the way logging is implemented.
+ *
  * \section bg Running in background
- * The simplest way to run Janus in the background is to just append the
+ * Another simple way to run Janus in the background is to just append the
  * \c & character to the command line. Anyway, this will still "flood" the console
  * with output from Janus. While there are ways to handle it (e.g., as
  * explained <a href="http://www.thegeekstuff.com/2010/05/unix-background-job/">here</a>),
