@@ -2124,7 +2124,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 		va_list ap;
 		va_start(ap, format);
 		error_string = g_malloc0(512);
-		vsprintf(error_string, format, ap);
+		g_vsnprintf(error_string, 512, format, ap);
 		va_end(ap);
 	}
 	/* Done preparing error */
@@ -2462,7 +2462,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		janus_flags_clear(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
 	} else if(!strcasecmp(sdp_type, "answer")) {
 		/* This is an answer from a plugin */
-		janus_flags_clear(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
+		janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
 	} else {
 		/* TODO Handle other messages */
 		JANUS_LOG(LOG_ERR, "Unknown type '%s'\n", sdp_type);
