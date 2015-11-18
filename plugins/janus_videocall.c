@@ -853,12 +853,7 @@ static void *janus_videocall_handler(void *data) {
 			usleep(50000);
 			continue;
 		}
-		janus_videocall_session *session = NULL;
-		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_videocall_session *)msg->handle->plugin_handle;
-		}
-		janus_mutex_unlock(&sessions_mutex);
+		janus_videocall_session *session = (janus_videocall_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_videocall_message_free(msg);
