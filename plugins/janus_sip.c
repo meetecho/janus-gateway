@@ -2115,20 +2115,26 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 	/* Reset status */
 	if(session->media.audio_rtp_fd > 0) {
 		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = -1;
+		session->media.audio_rtp_fd = 0;
 	}
 	if(session->media.audio_rtcp_fd > 0) {
 		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = -1;
+		session->media.audio_rtcp_fd = 0;
 	}
+	session->media.local_audio_rtp_port = 0;
+	session->media.local_audio_rtcp_port = 0;
+	session->media.audio_ssrc = 0;
 	if(session->media.video_rtp_fd > 0) {
 		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = -1;
+		session->media.video_rtp_fd = 0;
 	}
 	if(session->media.video_rtcp_fd > 0) {
 		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = -1;
+		session->media.video_rtcp_fd = 0;
 	}
+	session->media.local_video_rtp_port = 0;
+	session->media.local_video_rtcp_port = 0;
+	session->media.video_ssrc = 0;
 	/* Start */
 	int attempts = 100;	/* FIXME Don't retry forever */
 	if(session->media.has_audio) {
@@ -2397,20 +2403,26 @@ static void *janus_sip_relay_thread(void *data) {
 	}
 	if(session->media.audio_rtp_fd > 0) {
 		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = -1;
+		session->media.audio_rtp_fd = 0;
 	}
 	if(session->media.audio_rtcp_fd > 0) {
 		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = -1;
+		session->media.audio_rtcp_fd = 0;
 	}
+	session->media.local_audio_rtp_port = 0;
+	session->media.local_audio_rtcp_port = 0;
+	session->media.audio_ssrc = 0;
 	if(session->media.video_rtp_fd > 0) {
 		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = -1;
+		session->media.video_rtp_fd = 0;
 	}
 	if(session->media.video_rtcp_fd > 0) {
 		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = -1;
+		session->media.video_rtcp_fd = 0;
 	}
+	session->media.local_video_rtp_port = 0;
+	session->media.local_video_rtcp_port = 0;
+	session->media.video_ssrc = 0;
 	JANUS_LOG(LOG_VERB, "Leaving SIP relay thread\n");
 	g_thread_unref(g_thread_self());
 	return NULL;
