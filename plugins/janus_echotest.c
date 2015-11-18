@@ -162,9 +162,13 @@ janus_plugin *create(void) {
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
-static GThread *handler_thread;
 static GThread *watchdog;
+
+static janus_mutex handler_mutex;
+static janus_condition handler_cond;
+static GThread *handler_thread;
 static void *janus_echotest_handler(void *data);
+
 
 typedef struct janus_echotest_message {
 	janus_plugin_session *handle;
@@ -173,7 +177,7 @@ typedef struct janus_echotest_message {
 	char *sdp_type;
 	char *sdp;
 } janus_echotest_message;
-static GAsyncQueue *messages = NULL;
+static GQueue *messages = NULL;
 
 typedef struct janus_echotest_session {
 	janus_plugin_session *handle;
@@ -282,7 +286,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
-	messages = g_async_queue_new_full((GDestroyNotify) janus_echotest_message_free);
+	messages = g_queue_new();
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 	g_atomic_int_set(&initialized, 1);
@@ -296,6 +300,8 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
+	janus_mutex_init(&handler_mutex);
+	janus_condition_init(&handler_cond);
 	handler_thread = g_thread_try_new("janus echotest handler", janus_echotest_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
@@ -311,6 +317,9 @@ void janus_echotest_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
+	janus_mutex_lock(&handler_mutex);
+	janus_condition_signal(&handler_cond);
+	janus_mutex_unlock(&handler_mutex);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -324,7 +333,7 @@ void janus_echotest_destroy(void) {
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
 	janus_mutex_unlock(&sessions_mutex);
-	g_async_queue_unref(messages);
+	g_queue_free_full(messages, (GDestroyNotify) janus_echotest_message_free);
 	messages = NULL;
 	sessions = NULL;
 
@@ -454,7 +463,10 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 	msg->message = message;
 	msg->sdp_type = sdp_type;
 	msg->sdp = sdp;
-	g_async_queue_push(messages, msg);
+	janus_mutex_lock(&handler_mutex);
+	g_queue_push_tail(messages, msg);
+	janus_condition_signal(&handler_cond);
+	janus_mutex_unlock(&handler_mutex);
 
 	/* All the requests to this plugin are handled asynchronously */
 	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, "I'm taking my time!");
@@ -664,10 +676,17 @@ static void *janus_echotest_handler(void *data) {
 	}
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
-			usleep(50000);
-			continue;
+		janus_mutex_lock(&handler_mutex);
+		if(!messages || (msg = g_queue_pop_head(messages)) == NULL) {
+			/* Wait for a new message to be queued */
+			janus_condition_wait(&handler_cond, &handler_mutex);
+			msg = g_queue_pop_head(messages);
+			if(msg == NULL) {
+				janus_mutex_unlock(&handler_mutex);
+				continue;
+			}
 		}
+		janus_mutex_unlock(&handler_mutex);
 		janus_echotest_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
 		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {

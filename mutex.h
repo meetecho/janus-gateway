@@ -1,7 +1,7 @@
 /*! \file    mutex.h
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
- * \brief    Semaphors and Mutexes
- * \details  Implementation (based on pthread) of a locking mechanism based on mutexes.
+ * \brief    Semaphors, Mutexes and Conditions
+ * \details  Implementation (based on pthread) of a locking mechanism based on mutexes and conditions.
  * 
  * \ingroup core
  * \ref core
@@ -32,5 +32,18 @@ typedef pthread_mutex_t janus_mutex;
 #define janus_mutex_unlock_debug(a) { printf("[%s:%s:%d:] ", __FILE__, __FUNCTION__, __LINE__); printf("UNLOCK %p\n", a); pthread_mutex_unlock(a); };
 /*! \brief Janus mutex unlock wrapper (selective locking debug) */
 #define janus_mutex_unlock(a) { if(!lock_debug) { janus_mutex_unlock_nodebug(a); } else { janus_mutex_unlock_debug(a); } };
+
+/*! \brief Janus condition implementation */
+typedef pthread_cond_t janus_condition;
+/*! \brief Janus condition initialization */
+#define janus_condition_init(a) pthread_cond_init(a,NULL)
+/*! \brief Janus condition destruction */
+#define janus_condition_destroy(a) pthread_cond_destroy(a)
+/*! \brief Janus condition wait */
+#define janus_condition_wait(a, b) pthread_cond_wait(a, b);
+/*! \brief Janus condition signal */
+#define janus_condition_signal(a) pthread_cond_signal(a);
+/*! \brief Janus condition broadcast */
+#define janus_condition_broadcast(a) pthread_cond_broadcast(a);
 
 #endif
