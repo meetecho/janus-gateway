@@ -2467,32 +2467,18 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
 		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
-	if(session->account.sips) {
-		session->stack->s_nua = nua_create(session->stack->s_root,
-					janus_sip_sofia_callback,
-					session,
-					SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
-					NUTAG_M_USERNAME(session->account.username),
-					NUTAG_URL(sip_url),
-					NUTAG_SIPS_URL(sips_url),
-					SIPTAG_USER_AGENT_STR(user_agent),
-					NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
-					NUTAG_OUTBOUND(outbound_options),
-					SIPTAG_SUPPORTED(NULL),
-					TAG_NULL());
-	} else {
-		session->stack->s_nua = nua_create(session->stack->s_root,
-					janus_sip_sofia_callback,
-					session,
-					SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
-					NUTAG_M_USERNAME(session->account.username),
-					NUTAG_URL(sip_url),
-					SIPTAG_USER_AGENT_STR(user_agent),
-					NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
-					NUTAG_OUTBOUND(outbound_options),
-					SIPTAG_SUPPORTED(NULL),
-					TAG_NULL());
-	}
+	session->stack->s_nua = nua_create(session->stack->s_root,
+				janus_sip_sofia_callback,
+				session,
+				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
+				NUTAG_M_USERNAME(session->account.username),
+				NUTAG_URL(sip_url),
+				TAG_IF(session->account.sips, NUTAG_SIPS_URL(sips_url)),
+				SIPTAG_USER_AGENT_STR(user_agent),
+				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
+				NUTAG_OUTBOUND(outbound_options),
+				SIPTAG_SUPPORTED(NULL),
+				TAG_NULL());
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
 	nua_destroy(session->stack->s_nua);
