@@ -242,6 +242,7 @@ typedef enum {
 
 typedef struct janus_sip_account {
 	char *identity;
+	gboolean sips;
 	char *username;
 	char *authuser;			/**< username to use for authentication */
 	char *secret;
@@ -382,6 +383,7 @@ void *janus_sip_watchdog(void *data) {
 					    g_free(session->account.identity);
 					    session->account.identity = NULL;
 					}
+					session->account.sips = TRUE;
 					if (session->account.proxy) {
 					    g_free(session->account.proxy);
 					    session->account.proxy = NULL;
@@ -640,6 +642,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
 	session->handle = handle;
 	session->account.identity = NULL;
+	session->account.sips = TRUE;
 	session->account.username = NULL;
 	session->account.authuser = NULL;
 	session->account.secret = NULL;
@@ -987,6 +990,7 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.identity != NULL)
 				g_free(session->account.identity);
 			session->account.identity = NULL;
+			session->account.sips = TRUE;
 			if(session->account.username != NULL)
 				g_free(session->account.username);
 			session->account.username = NULL;
@@ -1024,9 +1028,9 @@ static void *janus_sip_handler(void *data) {
 			json_t *do_register = json_object_get(root, "send_register");
 			if(do_register != NULL) {
 				if(!json_is_boolean(do_register)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (type should be boolean)\n");
+					JANUS_LOG(LOG_ERR, "Invalid element (send_register should be boolean)\n");
 					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (type should be boolean)");
+					g_snprintf(error_cause, 512, "Invalid element (send_register should be boolean)");
 					goto error;
 				}
 				if(guest) {
@@ -1036,6 +1040,18 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				send_register = json_is_true(do_register);
+			}
+
+			gboolean sips = TRUE;
+			json_t *do_sips = json_object_get(root, "sips");
+			if(do_sips != NULL) {
+				if(!json_is_boolean(do_sips)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (sips should be boolean)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (sips should be boolean)");
+					goto error;
+				}
+				sips = json_is_true(do_sips);
 			}
 
 			/* Parse address */
@@ -1159,6 +1175,7 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			session->account.identity = g_strdup(username_text);
+			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
 			if (proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
@@ -2450,18 +2467,32 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 		g_strlcat(outbound_options, " options-keepalive", sizeof(outbound_options));
 	if(!behind_nat)
 		g_strlcat(outbound_options, " no-natify", sizeof(outbound_options));
-	session->stack->s_nua = nua_create(session->stack->s_root,
-				janus_sip_sofia_callback,
-				session,
-				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
-				NUTAG_M_USERNAME(session->account.username),
-				NUTAG_URL(sip_url),
-				NUTAG_SIPS_URL(sips_url),
-				SIPTAG_USER_AGENT_STR(user_agent),
-				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
-				NUTAG_OUTBOUND(outbound_options),
-				SIPTAG_SUPPORTED(NULL),
-				TAG_NULL());
+	if(session->account.sips) {
+		session->stack->s_nua = nua_create(session->stack->s_root,
+					janus_sip_sofia_callback,
+					session,
+					SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
+					NUTAG_M_USERNAME(session->account.username),
+					NUTAG_URL(sip_url),
+					NUTAG_SIPS_URL(sips_url),
+					SIPTAG_USER_AGENT_STR(user_agent),
+					NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
+					NUTAG_OUTBOUND(outbound_options),
+					SIPTAG_SUPPORTED(NULL),
+					TAG_NULL());
+	} else {
+		session->stack->s_nua = nua_create(session->stack->s_root,
+					janus_sip_sofia_callback,
+					session,
+					SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS"),
+					NUTAG_M_USERNAME(session->account.username),
+					NUTAG_URL(sip_url),
+					SIPTAG_USER_AGENT_STR(user_agent),
+					NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
+					NUTAG_OUTBOUND(outbound_options),
+					SIPTAG_SUPPORTED(NULL),
+					TAG_NULL());
+	}
 	su_root_run(session->stack->s_root);
 	/* When we get here, we're done */
 	nua_destroy(session->stack->s_nua);
