@@ -144,6 +144,9 @@ function Janus(gatewayCallbacks) {
 	}
 	var websockets = false;
 	var ws = null;
+	var wsHandlers = {};
+	var wsKeepaliveTimeoutId = null;
+
 	var servers = null, serversIndex = 0;
 	var server = gatewayCallbacks.server;
 	if($.isArray(server)) {
@@ -372,7 +375,7 @@ function Janus(gatewayCallbacks) {
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
 			return;
-		setTimeout(keepAlive, 30000);
+		wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
@@ -402,50 +405,63 @@ function Janus(gatewayCallbacks) {
 		}
 		if(websockets) {
 			ws = new WebSocket(server, 'janus-protocol'); 
-			ws.onerror = function() {
-				Janus.error("Error connecting to the Janus WebSockets server... " + server);
-				if($.isArray(servers)) {
-					serversIndex++;
-					if(serversIndex == servers.length) {
-						// We tried all the servers the user gave us and they all failed
-						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+			wsHandlers = {
+				'error': function() {
+					Janus.error("Error connecting to the Janus WebSockets server... " + server);
+					if ($.isArray(servers)) {
+						serversIndex++;
+						if (serversIndex == servers.length) {
+							// We tried all the servers the user gave us and they all failed
+							callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
+							return;
+						}
+						// Let's try the next server
+						server = null;
+						setTimeout(function() {
+							createSession(callbacks);
+						}, 200);
 						return;
 					}
-					// Let's try the next server
-					server = null;
-					setTimeout(function() { createSession(callbacks); }, 200);
-					return;
+					callbacks.error("Error connecting to the Janus WebSockets server: Is the gateway down?");
+				},
+
+				'open': function() {
+					// We need to be notified about the success
+					transactions[transaction] = function(json) {
+						Janus.debug(json);
+						if (json["janus"] !== "success") {
+							Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+							callbacks.error(json["error"].reason);
+							return;
+						}
+						wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
+						connected = true;
+						sessionId = json.data["id"];
+						Janus.log("Created session: " + sessionId);
+						Janus.sessions[sessionId] = that;
+						callbacks.success();
+					};
+					ws.send(JSON.stringify(request));
+				},
+
+				'message': function(event) {
+					handleEvent(JSON.parse(event.data));
+				},
+
+				'close': function() {
+					if (server === null || !connected) {
+						return;
+					}
+					connected = false;
+					// FIXME What if this is called when the page is closed?
+					gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
 				}
-				callbacks.error("Error connecting to the Janus WebSockets server: Is the gateway down?");
 			};
-			ws.onopen = function() {
-				// We need to be notified about the success
-				transactions[transaction] = function(json) {
-					Janus.debug(json);
-					if(json["janus"] !== "success") {
-						Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
-						callbacks.error(json["error"].reason);
-						return;
-					}
-					setTimeout(keepAlive, 30000);
-					connected = true;
-					sessionId = json.data["id"];
-					Janus.log("Created session: " + sessionId);
-					Janus.sessions[sessionId] = that;
-					callbacks.success();
-				};
-				ws.send(JSON.stringify(request));
-			};
-			ws.onmessage = function(event) {
-				handleEvent(JSON.parse(event.data));
-			};
-			ws.onclose = function() {
-				if(server === null || !connected)
-					return;
-				connected = false;
-				// FIXME What if this is called when the page is closed?
-				gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
-			};
+
+			for(eventName in wsHandlers) {
+				ws.addEventListener(eventName, wsHandlers[eventName]);
+			}
+
 			return;
 		}
 		$.ajax({
@@ -524,9 +540,36 @@ function Janus(gatewayCallbacks) {
 			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
+
+			var unbindWebSocket = function() {
+				for(eventName in wsHandlers) {
+					ws.removeEventListener(eventName, wsHandlers[eventName]);
+				}
+				ws.removeEventListener('message', onUnbindMessage);
+				ws.removeEventListener('error', onUnbindError);
+				if(wsKeepaliveTimeoutId) {
+					clearTimeout(wsKeepaliveTimeoutId);
+				}
+			};
+
+			var onUnbindMessage = function(event){
+				var data = JSON.parse(event.data);
+				if(data.session_id == request.session_id && data.transaction == request.transaction) {
+					unbindWebSocket();
+					callbacks.success();
+					gatewayCallbacks.destroyed();
+				}
+			};
+			var onUnbindError = function(event) {
+				unbindWebSocket();
+				callbacks.error("Failed to destroy the gateway: Is the gateway down?");
+				gatewayCallbacks.destroyed();
+			};
+
+			ws.addEventListener('message', onUnbindMessage);
+			ws.addEventListener('error', onUnbindError);
+
 			ws.send(JSON.stringify(request));
-			callbacks.success();
-			gatewayCallbacks.destroyed();
 			return;
 		}
 		$.ajax({
