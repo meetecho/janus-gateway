@@ -28,6 +28,7 @@
 #include "cmdline.h"
 #include "config.h"
 #include "apierror.h"
+#include "log.h"
 #include "debug.h"
 #include "rtcp.h"
 #include "sdp.h"
@@ -2895,6 +2896,8 @@ gint main(int argc, char *argv[])
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
 
+        janus_log_init();
+
 	struct gengetopt_args_info args_info;
 	/* Let's call our cmdline parser */
 	if(cmdline_parser(argc, argv, &args_info) != 0)
@@ -3704,5 +3707,6 @@ gint main(int argc, char *argv[])
 	}
 
 	JANUS_PRINT("Bye!\n");
+	janus_log_destroy();
 	exit(0);
 }

@@ -4,7 +4,7 @@
  * \brief    Logging and Debugging
  * \details  Implementation of a wrapper on printf (or g_print) to either log or debug.
  * \todo     Improve this wrappers to optionally save logs on file
- * 
+ *
  * \ingroup core
  * \ref core
  */
@@ -14,7 +14,8 @@
 
 #include <glib.h>
 #include <glib/gprintf.h>
- 
+#include "log.h"
+
 extern int janus_log_level;
 extern gboolean janus_log_timestamps;
 extern gboolean janus_log_colors;
@@ -80,7 +81,7 @@ static const char *janus_log_prefix[] = {
  */
 ///@{
 /*! \brief Simple wrapper to g_print/printf */
-#define JANUS_PRINT g_print
+#define JANUS_PRINT janus_vprintf
 /*! \brief Logger based on different levels, which can either be displayed
  * or not according to the configuration of the gateway.
  * The format must be a string literal. */
@@ -100,11 +101,11 @@ do { \
 			snprintf(janus_log_src, sizeof(janus_log_src), \
 			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
-		g_print("%s%s%s" format, \
-		        janus_log_ts, \
-		        janus_log_prefix[level | ((int)janus_log_colors << 3)], \
-		        janus_log_src, \
-		        ##__VA_ARGS__); \
+		JANUS_PRINT("%s%s%s" format, \
+    		        janus_log_ts, \
+    		        janus_log_prefix[level | ((int)janus_log_colors << 3)], \
+    		        janus_log_src, \
+    		        ##__VA_ARGS__); \
 	} \
 } while (0)
 ///@}
