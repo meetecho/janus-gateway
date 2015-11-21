@@ -16,14 +16,14 @@
 #define THREAD_NAME   "log"
 
 
-static gint	 initialized = 0;
-static gint	 stopping = 0;
+static gint     initialized = 0;
+static gint     stopping = 0;
 /* Maximum sleep in ms for the print thread */
-static gint	 maxdelay = 3000;
+static gint     maxdelay = 3000;
 /* Buffers over this size will be freed */
-static gsize	maxbuffer = 1024*16;
+static gsize    maxbuffer = 1024*16;
 static GMutex   lock;
-static GCond	cond;
+static GCond    cond;
 static GSList   *printqueue = NULL;
 static GQueue   *freebufs = NULL;
 static GThread  *printthread = NULL;
