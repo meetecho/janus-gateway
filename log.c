@@ -1,8 +1,8 @@
-/*! \file	log.h
- * \author   Jay Ridgeway <jayridge@gmail.com>
+/*! \file     log.c
+ * \author    Jay Ridgeway <jayridge@gmail.com>
  * \copyright GNU General Public License v3
- * \brief	Buffered logging
- * \details  Implementation of a simple buffered logger designed to remove
+ * \brief     Buffered logging
+ * \details   Implementation of a simple buffered logger designed to remove
  * I/O wait from threads that may be sensitive to such delays. Buffers are
  * saved and reused to reduce allocation calls.
  *
@@ -12,16 +12,16 @@
 
 #include "log.h"
 
-#define INITIAL_BUFSZ   2048
-#define THREAD_NAME     "log"
+#define INITIAL_BUFSZ 2048
+#define THREAD_NAME   "log"
 
 
-static gint     initialized = 0;
-static gint     stopping = 0;
+static gint	 initialized = 0;
+static gint	 stopping = 0;
 /* Maximum sleep in ms for the print thread */
-static gint     maxdelay = 3000;
+static gint	 maxdelay = 3000;
 /* Buffers over this size will be freed */
-static gsize    maxbuffer = 1024*16;
+static gsize	maxbuffer = 1024*16;
 static GMutex   lock;
 static GCond	cond;
 static GSList   *printqueue = NULL;
@@ -67,15 +67,15 @@ static void * janus_log_thread(void *ctx)
 			for (p = head; p; p = g_slist_next(p)) {
 				s = (GString *)p->data;
 				fputs(s->str, stdout);
-                if (s->allocated_len > maxbuffer) {
-                    g_string_free(s, TRUE);
-                } else {
-                    g_mutex_lock(&lock);
-    				g_queue_push_head(freebufs, s);
-    				g_mutex_unlock(&lock);
-                }
+				if (s->allocated_len > maxbuffer) {
+					g_string_free(s, TRUE);
+				} else {
+					g_mutex_lock(&lock);
+					g_queue_push_head(freebufs, s);
+					g_mutex_unlock(&lock);
+				}
 			}
-            fflush(stdout);
+			fflush(stdout);
 			g_slist_free(head);
 		}
 	}
@@ -91,17 +91,17 @@ static void * janus_log_thread(void *ctx)
 
 void janus_vprintf(const gchar *format, ...)
 {
-    va_list args;
-    GString *s = getbuf();
+	va_list args;
+	GString *s = getbuf();
 
-    va_start(args, format);
-    g_string_vprintf(s, format, args);
-    va_end(args);
+	va_start(args, format);
+	g_string_vprintf(s, format, args);
+	va_end(args);
 
-    g_mutex_lock(&lock);
-    printqueue = g_slist_append(printqueue, s);
-    g_cond_signal(&cond);
-    g_mutex_unlock(&lock);
+	g_mutex_lock(&lock);
+	printqueue = g_slist_append(printqueue, s);
+	g_cond_signal(&cond);
+	g_mutex_unlock(&lock);
 }
 
 void janus_log_init(void)
@@ -112,8 +112,8 @@ void janus_log_init(void)
 	g_atomic_int_set(&initialized, 1);
 	g_mutex_init(&lock);
 	g_cond_init(&cond);
-    /* Set stdout to block buffering, see BUFSIZ in stdio.h */
-    setvbuf(stdout, NULL, _IOFBF, 0);
+	/* Set stdout to block buffering, see BUFSIZ in stdio.h */
+	setvbuf(stdout, NULL, _IOFBF, 0);
 	freebufs = g_queue_new();
 	printthread = g_thread_new(THREAD_NAME, &janus_log_thread, NULL);
 }
