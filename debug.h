@@ -102,10 +102,10 @@ do { \
 			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
 		JANUS_PRINT("%s%s%s" format, \
-    		        janus_log_ts, \
-    		        janus_log_prefix[level | ((int)janus_log_colors << 3)], \
-    		        janus_log_src, \
-    		        ##__VA_ARGS__); \
+			janus_log_ts, \
+			janus_log_prefix[level | ((int)janus_log_colors << 3)], \
+			janus_log_src, \
+			##__VA_ARGS__); \
 	} \
 } while (0)
 ///@}

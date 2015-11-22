@@ -2896,7 +2896,7 @@ gint main(int argc, char *argv[])
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
 
-        janus_log_init();
+	janus_log_init();
 
 	struct gengetopt_args_info args_info;
 	/* Let's call our cmdline parser */

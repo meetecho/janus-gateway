@@ -18,8 +18,6 @@
 
 static gint     initialized = 0;
 static gint     stopping = 0;
-/* Maximum sleep in ms for the print thread */
-static gint     maxdelay = 3000;
 /* Buffers over this size will be freed */
 static gsize    maxbuffer = 1024*16;
 static GMutex   lock;
@@ -53,12 +51,12 @@ static void * janus_log_thread(void *ctx)
 {
 	GSList  *head, *p;
 	GString *s;
-	gint64  abstime;
 
 	while (!g_atomic_int_get(&stopping)) {
-		abstime = g_get_monotonic_time() + maxdelay * G_TIME_SPAN_MILLISECOND;
 		g_mutex_lock(&lock);
-		g_cond_wait_until(&cond, &lock, abstime);
+		if (!printqueue) {
+			g_cond_wait(&cond, &lock);
+		}
 		head = printqueue;
 		printqueue = NULL;
 		g_mutex_unlock(&lock);
@@ -67,14 +65,18 @@ static void * janus_log_thread(void *ctx)
 			for (p = head; p; p = g_slist_next(p)) {
 				s = (GString *)p->data;
 				fputs(s->str, stdout);
+			}
+			g_mutex_lock(&lock);
+			for (p = head; p; p = g_slist_next(p)) {
+				s = (GString *)p->data;
 				if (s->allocated_len > maxbuffer) {
+					/* free during held lock should be rare */
 					g_string_free(s, TRUE);
 				} else {
-					g_mutex_lock(&lock);
 					g_queue_push_head(freebufs, s);
-					g_mutex_unlock(&lock);
 				}
 			}
+			g_mutex_unlock(&lock);
 			fflush(stdout);
 			g_slist_free(head);
 		}
@@ -112,7 +114,7 @@ void janus_log_init(void)
 	g_atomic_int_set(&initialized, 1);
 	g_mutex_init(&lock);
 	g_cond_init(&cond);
-	/* Set stdout to block buffering, see BUFSIZ in stdio.h */
+	/* set stdout to block buffering, see BUFSIZ in stdio.h */
 	setvbuf(stdout, NULL, _IOFBF, 0);
 	freebufs = g_queue_new();
 	printthread = g_thread_new(THREAD_NAME, &janus_log_thread, NULL);
