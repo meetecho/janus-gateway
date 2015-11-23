@@ -55,7 +55,6 @@ var started = false;
 var myusername = null;
 var myid = null;
 var mystream = null;
-var muted = false;
 
 var feeds = [];
 var bitrateTimer = [];
@@ -247,7 +246,6 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification: we are unpublished now :::");
 									mystream = null;
-									muted = false;
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
 									$('#publish').click(function() { publishOwnFeed(true); });
 								}
@@ -334,21 +332,13 @@ function publishOwnFeed(useAudio) {
 }
 
 function toggleMute() {
-	if(mystream === null || mystream === undefined) {
-		Janus.warn("Cannot " + (muted ? "unmute" : "mute") + ", there's no local stream");
-		return;
-	}
-	if(mystream.getAudioTracks() === null || mystream.getAudioTracks() === undefined) {
-		Janus.warn("Cannot " + (muted ? "unmute" : "mute") + ", there's no audio track");
-		return;
-	}
-	if(mystream.getAudioTracks()[0] === null || mystream.getAudioTracks()[0] === undefined) {
-		Janus.warn("Cannot " + (muted ? "unmute" : "mute") + ", there's no audio track");
-		return;
-	}
+	var muted = sfutest.isAudioMuted();
 	Janus.log((muted ? "Unmuting" : "Muting") + " local stream...");
-	mystream.getAudioTracks()[0].enabled = muted;
-	muted = !muted;
+	if(muted)
+		sfutest.unmuteAudio();
+	else
+		sfutest.muteAudio();
+	muted = sfutest.isAudioMuted();
 	$('#mute').html(muted ? "Unmute" : "Mute");
 }
 
