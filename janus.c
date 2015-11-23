@@ -188,6 +188,9 @@ gboolean janus_log_colors = FALSE;
 int lock_debug = 0;
 
 
+/* We use a condition to figure out when we need to leave */
+janus_mutex stop_mutex;
+janus_condition stop_cond;
 /*! \brief Signal handler (just used to intercept CTRL+C) */
 void janus_handle_signal(int signum);
 void janus_handle_signal(int signum)
@@ -203,7 +206,14 @@ void janus_handle_signal(int signum)
 			JANUS_PRINT("Ok, leaving immediately...\n");
 			break;
 	}
+
+	/* Wake the main loop */
+	janus_mutex_lock(&stop_mutex);
 	g_atomic_int_inc(&stop);
+	janus_condition_signal(&stop_cond);
+	janus_mutex_unlock(&stop_mutex);
+
+	/* Just in case we're stuck somewhere */
 	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
 }
@@ -3648,10 +3658,12 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Loop until we have to stop */
+	janus_mutex_lock(&stop_mutex);
 	while(!g_atomic_int_get(&stop)) {
-		/* Loop until we have to stop */
-		usleep(250000); /* A signal will cancel usleep() but not g_usleep() */
+		janus_condition_wait(&stop_cond, &stop_mutex);
 	}
+	janus_mutex_unlock(&stop_mutex);
 
 	/* Done */
 	JANUS_LOG(LOG_INFO, "Ending watchdog mainloop...\n");

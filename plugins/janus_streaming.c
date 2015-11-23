@@ -289,6 +289,7 @@ typedef struct janus_streaming_message {
 	char *sdp;
 } janus_streaming_message;
 static GAsyncQueue *messages = NULL;
+static janus_streaming_message exit_message;
 
 void janus_streaming_message_free(janus_streaming_message *msg);
 void janus_streaming_message_free(janus_streaming_message *msg) {
@@ -764,7 +765,7 @@ void janus_streaming_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
-	g_async_queue_push(messages, g_malloc0(sizeof(janus_streaming_message)));
+	g_async_queue_push(messages, &exit_message);
 
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
@@ -2150,6 +2151,8 @@ static void *janus_streaming_handler(void *data) {
 		msg = g_async_queue_pop(messages);
 		if(msg == NULL)
 			continue;
+		if(msg == &exit_message)
+			break;
 		if(msg->handle == NULL) {
 			janus_streaming_message_free(msg);
 			continue;

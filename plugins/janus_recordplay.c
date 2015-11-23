@@ -339,6 +339,7 @@ typedef struct janus_recordplay_message {
 	char *sdp;
 } janus_recordplay_message;
 static GAsyncQueue *messages = NULL;
+static janus_recordplay_message exit_message;
 
 typedef struct janus_recordplay_rtp_header_extension {
 	uint16_t type;
@@ -575,7 +576,7 @@ void janus_recordplay_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
-	g_async_queue_push(messages, g_malloc0(sizeof(janus_recordplay_message)));
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -1089,6 +1090,8 @@ static void *janus_recordplay_handler(void *data) {
 		msg = g_async_queue_pop(messages);
 		if(msg == NULL)
 			continue;
+		if(msg == &exit_message)
+			break;
 		if(msg->handle == NULL) {
 			janus_recordplay_message_free(msg);
 			continue;

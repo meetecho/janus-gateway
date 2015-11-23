@@ -221,6 +221,7 @@ typedef struct janus_videoroom_message {
 	char *sdp;
 } janus_videoroom_message;
 static GAsyncQueue *messages = NULL;
+static janus_videoroom_message exit_message;
 
 static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 	if(!msg)
@@ -688,7 +689,7 @@ void janus_videoroom_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
-	g_async_queue_push(messages, g_malloc0(sizeof(janus_videoroom_message)));
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -2184,6 +2185,8 @@ static void *janus_videoroom_handler(void *data) {
 		msg = g_async_queue_pop(messages);
 		if(msg == NULL)
 			continue;
+		if(msg == &exit_message)
+			break;
 		if(msg->handle == NULL) {
 			janus_videoroom_message_free(msg);
 			continue;

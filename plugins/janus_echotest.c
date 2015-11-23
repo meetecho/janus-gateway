@@ -174,6 +174,7 @@ typedef struct janus_echotest_message {
 	char *sdp;
 } janus_echotest_message;
 static GAsyncQueue *messages = NULL;
+static janus_echotest_message exit_message;
 
 typedef struct janus_echotest_session {
 	janus_plugin_session *handle;
@@ -311,7 +312,7 @@ void janus_echotest_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
-	g_async_queue_push(messages, g_malloc0(sizeof(janus_echotest_message)));
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -668,6 +669,8 @@ static void *janus_echotest_handler(void *data) {
 		msg = g_async_queue_pop(messages);
 		if(msg == NULL)
 			continue;
+		if(msg == &exit_message)
+			break;
 		if(msg->handle == NULL) {
 			janus_echotest_message_free(msg);
 			continue;

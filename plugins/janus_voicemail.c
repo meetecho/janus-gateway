@@ -185,6 +185,7 @@ typedef struct janus_voicemail_message {
 	char *sdp;
 } janus_voicemail_message;
 static GAsyncQueue *messages = NULL;
+static janus_voicemail_message exit_message;
 
 void janus_voicemail_message_free(janus_voicemail_message *msg);
 void janus_voicemail_message_free(janus_voicemail_message *msg) {
@@ -381,7 +382,7 @@ void janus_voicemail_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
-	g_async_queue_push(messages, g_malloc0(sizeof(janus_voicemail_message)));
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -643,6 +644,8 @@ static void *janus_voicemail_handler(void *data) {
 		msg = g_async_queue_pop(messages);
 		if(msg == NULL)
 			continue;
+		if(msg == &exit_message)
+			break;
 		if(msg->handle == NULL) {
 			janus_voicemail_message_free(msg);
 			continue;
