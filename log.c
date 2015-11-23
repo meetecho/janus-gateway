@@ -34,13 +34,19 @@ static struct Buffer *printtail = NULL;
 static struct Buffer *bufferpool = NULL;
 
 
-static void freebuffer(struct Buffer *b)
+static void freebuffers(struct Buffer **list)
 {
-	if (b) {
+	struct Buffer *b, *head = *list;
+
+	while (head) {
+		b = head;
+		head = b->next;
 		g_string_free(b->s, TRUE);
 		g_free(b);
 	}
+	*list = NULL;
 }
+
 
 static struct Buffer * getbuf(void)
 {
@@ -51,7 +57,8 @@ static struct Buffer * getbuf(void)
 	if (b) {
 		bufferpool = b->next;
 		b->next = NULL;
-		poolsz--;
+	} else {
+		poolsz++;
 	}
 	g_mutex_unlock(&lock);
 	if (b == NULL) {
@@ -63,7 +70,7 @@ static struct Buffer * getbuf(void)
 
 static void * janus_log_thread(void *ctx)
 {
-	struct Buffer *head, *b;
+	struct Buffer *head, *b, *tofree = NULL;
 
 	while (!g_atomic_int_get(&stopping)) {
 		g_mutex_lock(&lock);
@@ -83,27 +90,25 @@ static void * janus_log_thread(void *ctx)
 				b = head;
 				head = b->next;
 				if (poolsz >= maxpoolsz || b->s->allocated_len > maxbuffersz) {
-					freebuffer(b);
+					b->next = tofree;
+					tofree = b;
+					poolsz--;
 				} else {
 					b->next = bufferpool;
 					bufferpool = b;
-					poolsz++;
 				}
 			}
 			g_mutex_unlock(&lock);
 			fflush(stdout);
+			freebuffers(&tofree);
 		}
 	}
-	g_mutex_lock(&lock);
-	/* free buffers, printhead should be NULL */
-	head = bufferpool;
-	while (head) {
-		b = head;
-		head = b->next;
-		freebuffer(b);
+	/* print any remaining messages, stdout flushed on exit */
+	for (b = printhead; b; b = b->next) {
+		fputs(b->s->str, stdout);
 	}
-	g_mutex_unlock(&lock);
-
+	freebuffers(&printhead);
+	freebuffers(&bufferpool);
 	g_mutex_clear(&lock);
 	g_cond_clear(&cond);
 	return NULL;
