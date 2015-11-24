@@ -499,6 +499,7 @@ void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
 void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	if(dtls == NULL)
 		return;
+	dtls->ready = 0;
 #ifdef HAVE_SCTP
 	/* Destroy the SCTP association if this is a DataChannel */
 	if(dtls->sctp != NULL) {
@@ -633,13 +634,13 @@ void janus_dtls_fd_bridge(janus_dtls_srtp *dtls) {
 
 #ifdef HAVE_SCTP
 void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
-	if(dtls == NULL || dtls->sctp == NULL || buf == NULL || len < 1)
+	if(dtls == NULL || !dtls->ready || dtls->sctp == NULL || buf == NULL || len < 1)
 		return;
 	janus_sctp_send_data(dtls->sctp, buf, len);
 }
 
 int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len) {
-	if(dtls == NULL || buf == NULL || len < 1)
+	if(dtls == NULL || !dtls->ready || buf == NULL || len < 1)
 		return -1;
 	int res = SSL_write(dtls->ssl, buf, len);
 	if(res <= 0) {
