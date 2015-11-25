@@ -154,14 +154,15 @@
 						</div>
 						<div id="info" class="col-md-8">
 							<h4>Handle Info <i id="update-handle" class="fa fa-refresh" title="Refresh handle info" style="cursor: pointer;"></i></h4>
-							<div class="checkbox hide">
-								<label>
+							<div id="options" class="hide">
+								<label class="checkbox-inline">
 									<input id="autorefresh"type="checkbox" value="">Autorefresh
 								</label>
+								<label class="checkbox-inline">
+									<input id="prettify"type="checkbox" value="">Prettify
+								</label>
 							</div>
-							<div>
-								<table class="table table-striped" id="handle-info">
-								</table>
+							<div id="handle-info">
 							</div>
 						</div>
 					</div>
@@ -173,7 +174,6 @@
 						</div>
 					</div>
 				</div>
-
 			</div>
 		</div>
 	</div>
