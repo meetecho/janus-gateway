@@ -785,9 +785,9 @@ int janus_http_send_message(void *transport, void *request_id, gboolean admin, j
 			json_decref(message);
 			return -1;
 		}
+		janus_mutex_lock(&msg->wait_mutex);
 		msg->response = message;
 		msg->got_response = TRUE;
-		janus_mutex_lock(&msg->wait_mutex);
 		janus_condition_signal(&msg->wait_cond);
 		janus_mutex_unlock(&msg->wait_mutex);
 	}
