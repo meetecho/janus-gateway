@@ -11,6 +11,7 @@
 #define _JANUS_MUTEX_H
 
 #include <pthread.h>
+#include <errno.h>
 
 extern int lock_debug;
 
@@ -41,6 +42,8 @@ typedef pthread_cond_t janus_condition;
 #define janus_condition_destroy(a) pthread_cond_destroy(a)
 /*! \brief Janus condition wait */
 #define janus_condition_wait(a, b) pthread_cond_wait(a, b);
+/*! \brief Janus condition timed wait */
+#define janus_condition_timedwait(a, b, c) pthread_cond_timedwait(a, b, c);
 /*! \brief Janus condition signal */
 #define janus_condition_signal(a) pthread_cond_signal(a);
 /*! \brief Janus condition broadcast */
