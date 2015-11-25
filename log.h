@@ -20,7 +20,7 @@
 * @param[in] format Format string as defined by glib
 * @param[in] args Parameters to insert into formatted string
 * \note This output is buffered and may not appear immediately on stdout. */
-void janus_vprintf(const gchar *format, ...) G_GNUC_PRINTF(1, 2);
+void janus_vprintf(const char *format, ...) G_GNUC_PRINTF(1, 2);
 /*! \brief Log initialization
 * \note This should be called before attempting to use the logger. A buffer
 * pool and processing thread are created. */

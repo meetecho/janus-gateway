@@ -12,18 +12,23 @@
 
 #include "log.h"
 
-#define INITIAL_BUFSZ 1024*2
 #define THREAD_NAME   "log"
 
 struct Buffer {
-	GString *s;
+	size_t allocated;
 	struct Buffer *next;
+	/* str is grown by allocating beyond the struct */
+	char   str[1];
 };
+
+#define INITIAL_BUFSZ     1024*2
+#define BUFFER_STRSZ(b)   (b ? b->allocated - sizeof(*b) : 0)
+#define BUFFER_ALLOCSZ(r) (r + sizeof(struct Buffer))
 
 static gint     initialized = 0;
 static gint     stopping = 0;
 static gint     poolsz = 0;
-static gint     maxpoolsz = 8;
+static gint     maxpoolsz = 32;
 /* Buffers over this size will be freed */
 static gsize    maxbuffersz = 1024*8;
 static GMutex   lock;
@@ -41,12 +46,24 @@ static void freebuffers(struct Buffer **list)
 	while (head) {
 		b = head;
 		head = b->next;
-		g_string_free(b->s, TRUE);
 		g_free(b);
 	}
 	*list = NULL;
 }
 
+static struct Buffer * sizebuffer(struct Buffer *b, size_t requested)
+{
+	size_t n = 1;
+
+	if (!b || BUFFER_STRSZ(b) < requested) {
+		while (n < BUFFER_ALLOCSZ(requested)) {
+			n <<= 1;
+		}
+		b = g_realloc(b, n);
+		b->allocated = n;
+	}
+	return b;
+}
 
 static struct Buffer * getbuf(void)
 {
@@ -62,8 +79,9 @@ static struct Buffer * getbuf(void)
 	}
 	g_mutex_unlock(&lock);
 	if (b == NULL) {
-		b = g_malloc0(sizeof(*b));
-		b->s = g_string_sized_new(INITIAL_BUFSZ);
+		b = g_malloc(INITIAL_BUFSZ);
+		b->allocated = INITIAL_BUFSZ;
+		b->next = NULL;
 	}
 	return b;
 }
@@ -83,13 +101,13 @@ static void * janus_log_thread(void *ctx)
 
 		if (head) {
 			for (b = head; b; b = b->next) {
-				fputs(b->s->str, stdout);
+				fputs(b->str, stdout);
 			}
 			g_mutex_lock(&lock);
 			while (head) {
 				b = head;
 				head = b->next;
-				if (poolsz >= maxpoolsz || b->s->allocated_len > maxbuffersz) {
+				if (poolsz >= maxpoolsz || b->allocated > maxbuffersz) {
 					b->next = tofree;
 					tofree = b;
 					poolsz--;
@@ -105,7 +123,7 @@ static void * janus_log_thread(void *ctx)
 	}
 	/* print any remaining messages, stdout flushed on exit */
 	for (b = printhead; b; b = b->next) {
-		fputs(b->s->str, stdout);
+		fputs(b->str, stdout);
 	}
 	freebuffers(&printhead);
 	freebuffers(&bufferpool);
@@ -114,14 +132,22 @@ static void * janus_log_thread(void *ctx)
 	return NULL;
 }
 
-void janus_vprintf(const gchar *format, ...)
+void janus_vprintf(const char *format, ...)
 {
-	va_list args;
-	struct Buffer *b = getbuf();
+	size_t  len;
+	va_list ap, ap2;
+	struct  Buffer *b = getbuf();
 
-	va_start(args, format);
-	g_string_vprintf(b->s, format, args);
-	va_end(args);
+	va_start(ap, format);
+	va_copy(ap2, ap);
+	/* determine buffer length */
+	len = (size_t)vsnprintf(NULL, 0, format, ap);
+	va_end(ap);
+	/* ensure the buffer can hold the message */
+	b = sizebuffer(b, len+1);
+	b->str[0] = '\0';
+	vsnprintf(b->str, len+1, format, ap2);
+	va_end(ap2);
 
 	g_mutex_lock(&lock);
 	if (!printhead) {
