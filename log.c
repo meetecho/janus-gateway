@@ -191,8 +191,8 @@ int janus_log_init(gboolean console, const char *logfile) {
 	if(console) {
 		/* Set stdout to block buffering, see BUFSIZ in stdio.h */
 		setvbuf(stdout, NULL, _IOFBF, 0);
-		janus_log_console = console;
 	}
+	janus_log_console = console;
 	if(logfile != NULL) {
 		/* Open a log file for writing (and append) */
 		janus_log_file = fopen(logfile, "awt");
