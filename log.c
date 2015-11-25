@@ -4,44 +4,51 @@
  * \brief     Buffered logging
  * \details   Implementation of a simple buffered logger designed to remove
  * I/O wait from threads that may be sensitive to such delays. Buffers are
- * saved and reused to reduce allocation calls.
+ * saved and reused to reduce allocation calls. The logger output can then
+ * be printed to stdout and/or a log file.
  *
  * \ingroup core
  * \ref core
  */
 
+#include <errno.h>
+#include <string.h>
+
 #include "log.h"
 
-#define THREAD_NAME   "log"
+#define THREAD_NAME "log"
 
-struct Buffer {
+typedef struct janus_log_buffer janus_log_buffer;
+struct janus_log_buffer {
 	size_t allocated;
-	struct Buffer *next;
+	janus_log_buffer *next;
 	/* str is grown by allocating beyond the struct */
-	char   str[1];
+	char str[1];
 };
 
-#define INITIAL_BUFSZ     1024*2
-#define BUFFER_STRSZ(b)   (b ? b->allocated - sizeof(*b) : 0)
-#define BUFFER_ALLOCSZ(r) (r + sizeof(struct Buffer))
+#define INITIAL_BUFSZ		1024*2
+#define BUFFER_STRSZ(b)		(b ? b->allocated - sizeof(*b) : 0)
+#define BUFFER_ALLOCSZ(r)	(r + sizeof(janus_log_buffer))
 
-static gint     initialized = 0;
-static gint     stopping = 0;
-static gint     poolsz = 0;
-static gint     maxpoolsz = 32;
+static gboolean janus_log_console = TRUE;
+static FILE *janus_log_file = NULL;
+
+static gint initialized = 0;
+static gint stopping = 0;
+static gint poolsz = 0;
+static gint maxpoolsz = 32;
 /* Buffers over this size will be freed */
-static gsize    maxbuffersz = 1024*8;
-static GMutex   lock;
-static GCond    cond;
-static GThread  *printthread = NULL;
-static struct Buffer *printhead = NULL;
-static struct Buffer *printtail = NULL;
-static struct Buffer *bufferpool = NULL;
+static gsize maxbuffersz = 1024*8;
+static GMutex lock;
+static GCond cond;
+static GThread *printthread = NULL;
+static janus_log_buffer *printhead = NULL;
+static janus_log_buffer *printtail = NULL;
+static janus_log_buffer *bufferpool = NULL;
 
 
-static void freebuffers(struct Buffer **list)
-{
-	struct Buffer *b, *head = *list;
+static void janus_log_freebuffers(janus_log_buffer **list) {
+	janus_log_buffer *b, *head = *list;
 
 	while (head) {
 		b = head;
@@ -51,8 +58,7 @@ static void freebuffers(struct Buffer **list)
 	*list = NULL;
 }
 
-static struct Buffer * sizebuffer(struct Buffer *b, size_t requested)
-{
+static janus_log_buffer *janus_log_sizebuffer(janus_log_buffer *b, size_t requested) {
 	size_t n = 1;
 
 	if (!b || BUFFER_STRSZ(b) < requested) {
@@ -65,9 +71,8 @@ static struct Buffer * sizebuffer(struct Buffer *b, size_t requested)
 	return b;
 }
 
-static struct Buffer * getbuf(void)
-{
-	struct Buffer *b;
+static janus_log_buffer *janus_log_getbuf(void) {
+	janus_log_buffer *b;
 
 	g_mutex_lock(&lock);
 	b = bufferpool;
@@ -86,9 +91,8 @@ static struct Buffer * getbuf(void)
 	return b;
 }
 
-static void * janus_log_thread(void *ctx)
-{
-	struct Buffer *head, *b, *tofree = NULL;
+static void *janus_log_thread(void *ctx) {
+	janus_log_buffer *head, *b, *tofree = NULL;
 
 	while (!g_atomic_int_get(&stopping)) {
 		g_mutex_lock(&lock);
@@ -101,7 +105,10 @@ static void * janus_log_thread(void *ctx)
 
 		if (head) {
 			for (b = head; b; b = b->next) {
-				fputs(b->str, stdout);
+				if(janus_log_console)
+					fputs(b->str, stdout);
+				if(janus_log_file)
+					fputs(b->str, janus_log_file);
 			}
 			g_mutex_lock(&lock);
 			while (head) {
@@ -117,34 +124,48 @@ static void * janus_log_thread(void *ctx)
 				}
 			}
 			g_mutex_unlock(&lock);
-			fflush(stdout);
-			freebuffers(&tofree);
+			if(janus_log_console)
+				fflush(stdout);
+			if(janus_log_file)
+				fflush(janus_log_file);
+			janus_log_freebuffers(&tofree);
 		}
 	}
 	/* print any remaining messages, stdout flushed on exit */
 	for (b = printhead; b; b = b->next) {
-		fputs(b->str, stdout);
+		if(janus_log_console)
+			fputs(b->str, stdout);
+		if(janus_log_file)
+			fputs(b->str, janus_log_file);
 	}
-	freebuffers(&printhead);
-	freebuffers(&bufferpool);
+	if(janus_log_console)
+		fflush(stdout);
+	if(janus_log_file)
+		fflush(janus_log_file);
+	janus_log_freebuffers(&printhead);
+	janus_log_freebuffers(&bufferpool);
 	g_mutex_clear(&lock);
 	g_cond_clear(&cond);
+
+	if(janus_log_file)
+		fclose(janus_log_file);
+	janus_log_file = NULL;
+
 	return NULL;
 }
 
-void janus_vprintf(const char *format, ...)
-{
-	size_t  len;
+void janus_vprintf(const char *format, ...) {
+	size_t len;
 	va_list ap, ap2;
-	struct  Buffer *b = getbuf();
+	janus_log_buffer *b = janus_log_getbuf();
 
 	va_start(ap, format);
 	va_copy(ap2, ap);
-	/* determine buffer length */
+	/* Determine buffer length */
 	len = (size_t)vsnprintf(NULL, 0, format, ap);
 	va_end(ap);
-	/* ensure the buffer can hold the message */
-	b = sizebuffer(b, len+1);
+	/* Ensure the buffer can hold the message */
+	b = janus_log_sizebuffer(b, len+1);
 	b->str[0] = '\0';
 	vsnprintf(b->str, len+1, format, ap2);
 	va_end(ap2);
@@ -160,24 +181,34 @@ void janus_vprintf(const char *format, ...)
 	g_mutex_unlock(&lock);
 }
 
-void janus_log_init(void)
-{
+int janus_log_init(gboolean console, const char *logfile) {
 	if (g_atomic_int_get(&initialized)) {
-		return;
+		return 0;
 	}
 	g_atomic_int_set(&initialized, 1);
 	g_mutex_init(&lock);
 	g_cond_init(&cond);
-	/* set stdout to block buffering, see BUFSIZ in stdio.h */
-	setvbuf(stdout, NULL, _IOFBF, 0);
+	if(console) {
+		/* Set stdout to block buffering, see BUFSIZ in stdio.h */
+		setvbuf(stdout, NULL, _IOFBF, 0);
+		janus_log_console = console;
+	}
+	if(logfile != NULL) {
+		/* Open a log file for writing (and append) */
+		janus_log_file = fopen(logfile, "awt");
+		if(janus_log_file == NULL) {
+			g_print("Error opening log file %s: %s\n", logfile, strerror(errno));
+			return -1;
+		}
+	}
 	printthread = g_thread_new(THREAD_NAME, &janus_log_thread, NULL);
+	return 0;
 }
 
-void janus_log_destroy(void)
-{
+void janus_log_destroy(void) {
 	g_atomic_int_set(&stopping, 1);
 	g_mutex_lock(&lock);
-	/* signal print thread to print any remaining message */
+	/* Signal print thread to print any remaining message */
 	g_cond_signal(&cond);
 	g_mutex_unlock(&lock);
 	g_thread_join(printthread);

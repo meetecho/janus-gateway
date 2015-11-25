@@ -66,6 +66,8 @@ void janus_pp_handle_signal(int signum) {
 /* Main Code */
 int main(int argc, char *argv[])
 {
+	janus_log_init(TRUE, NULL);
+
 	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
 		int val = atoi(g_getenv("JANUS_PPREC_DEBUG"));
@@ -456,8 +458,10 @@ int main(int argc, char *argv[])
 		g_free(temp);
 		temp = next;
 	}
-	
+
 	JANUS_LOG(LOG_INFO, "Bye!\n");
-	
+
+	janus_log_destroy();
+
 	return 0;
 }

@@ -300,6 +300,7 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
+	log.c \
 	$(NULL)
 
 janus_pp_rec_CFLAGS = \
