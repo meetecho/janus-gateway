@@ -229,6 +229,8 @@ or on the command line:
 	-V, --version                 Print version and exit
 	-b, --daemon                  Launch Janus in background as a daemon
                                   (default=off)
+	-N, --disable-stdout          Disable stdout based logging  (default=off)
+	-L, --log-file=path           Log to the specified file (default=stdout only)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use

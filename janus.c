@@ -28,6 +28,7 @@
 #include "cmdline.h"
 #include "config.h"
 #include "apierror.h"
+#include "log.h"
 #include "debug.h"
 #include "rtcp.h"
 #include "sdp.h"
@@ -112,6 +113,10 @@ json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
+	json_object_set_new(info, "log-to-stdout", json_string(janus_log_is_stdout_enabled() ? "true" : "false"));
+	json_object_set_new(info, "log-to-file", json_string(janus_log_is_logfile_enabled() ? "true" : "false"));
+	if(janus_log_is_logfile_enabled())
+		json_object_set_new(info, "log-path", json_string(janus_log_get_logfile_path()));
 #ifdef HAVE_SCTP
 	json_object_set_new(info, "data_channels", json_string("true"));
 #else
@@ -2116,6 +2121,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 	if(!request)
 		return -1;
 	gchar *error_string = NULL;
+	gchar error_buf[512];
 	if(format == NULL) {
 		/* No error string provided, use the default one */
 		error_string = (gchar *)janus_get_api_error(error);
@@ -2123,12 +2129,12 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		error_string = g_malloc0(512);
-		g_vsnprintf(error_string, 512, format, ap);
+		g_vsnprintf(error_buf, sizeof(error_buf), format, ap);
 		va_end(ap);
+		error_string = error_buf;
 	}
 	/* Done preparing error */
-	JANUS_LOG(LOG_VERB, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string ? error_string : "no text");
+	JANUS_LOG(LOG_VERB, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string);
 	/* Prepare JSON error */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("error"));
@@ -2138,7 +2144,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *error_data = json_object();
 	json_object_set_new(error_data, "code", json_integer(error));
-	json_object_set_new(error_data, "reason", json_string(error_string ? error_string : "no text"));
+	json_object_set_new(error_data, "reason", json_string(error_string));
 	json_object_set_new(reply, "error", error_data);
 	/* Pass to the right transport plugin */
 	return request->transport->send_message(request->instance, request->request_id, request->admin, reply);
@@ -2900,30 +2906,80 @@ gint main(int argc, char *argv[])
 	if(cmdline_parser(argc, argv, &args_info) != 0)
 		exit(1);
 	
-	JANUS_PRINT("---------------------------------------------------\n");
-	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", JANUS_VERSION_STRING);
-	JANUS_PRINT("---------------------------------------------------\n\n");
-	
-	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
-	signal(SIGINT, janus_handle_signal);
-	signal(SIGTERM, janus_handle_signal);
+	/* Any configuration to open? */
+	if(args_info.config_given) {
+		config_file = g_strdup(args_info.config_arg);
+	}
+	if(args_info.configs_folder_given) {
+		configs_folder = g_strdup(args_info.configs_folder_arg);
+	} else {
+		configs_folder = g_strdup (CONFDIR);
+	}
+	if(config_file == NULL) {
+		char file[255];
+		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
+		config_file = g_strdup(file);
+	}
+	if((config = janus_config_parse(config_file)) == NULL) {
+		if(args_info.config_given) {
+			/* We only give up if the configuration file was explicitly provided */
+			g_print("Error reading configuration from %s\n", config_file);
+			exit(1);
+		}
+		g_print("Error reading/parsing the configuration file, going on with the defaults and the command line arguments\n");
+		config = janus_config_create("janus.cfg");
+		if(config == NULL) {
+			/* If we can't even create an empty configuration, something's definitely wrong */
+			exit(1);
+		}
+	}
 
-	/* Setup Glib */
-#if !GLIB_CHECK_VERSION(2, 36, 0)
-	g_type_init();
-#endif
+	/* Check if we need to log to console and/or file */
+	gboolean use_stdout = TRUE;
+	if(args_info.disable_stdout_given) {
+		use_stdout = FALSE;
+	} else {
+		/* Check if the configuration file is saying anything about this */
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "log_to_stdout");
+		if(item && item->value && !janus_is_true(item->value))
+			use_stdout = FALSE;
+	}
+	const char *logfile = NULL;
+	if(args_info.log_file_given) {
+		logfile = args_info.log_file_arg;
+	} else {
+		/* Check if the configuration file is saying anything about this */
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "log_to_file");
+		if(item && item->value)
+			logfile = item->value;
+	}
 
+	/* Check if we're going to daemonize Janus */
+	gboolean daemonize = FALSE;
 	if(args_info.daemon_given) {
-		JANUS_PRINT("Running Janus as a daemon\n");
-		/* FIXME Logging is still stdout/stderr based, and we close those */
-		JANUS_PRINT("\nNOTE: This is still WIP, and no logging/output is available when running as\n");
-		JANUS_PRINT("      a daemon at the moment. Check the documentation for alternatives on\n");
-		JANUS_PRINT("      running Janus in background.\n");
+		daemonize = TRUE;
+	} else {
+		/* Check if the configuration file is saying anything about this */
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "daemonize");
+		if(item && item->value && janus_is_true(item->value))
+			daemonize = TRUE;
+	}
+	/* If we're going to daemonize, make sure logging to stdout is disabled and a log file has been specified */
+	if(daemonize && use_stdout) {
+		use_stdout = FALSE;
+	}
+	if(daemonize && logfile == NULL) {
+		g_print("Running Janus as a daemon but no log file provided, giving up...\n");
+		exit(1);
+	}
+	/* Daemonize now, if we need to */
+	if(daemonize) {
+		g_print("Running Janus as a daemon\n");
 
 		/* Fork off the parent process */
 		pid_t pid = fork();
 		if(pid < 0) {
-			JANUS_PRINT("Fork error!\n");
+			g_print("Fork error!\n");
 			exit(1);
 		}
 		if(pid > 0) {
@@ -2935,12 +2991,12 @@ gint main(int argc, char *argv[])
 		/* Create a new SID for the child process */
 		pid_t sid = setsid();
 		if(sid < 0) {
-			JANUS_PRINT("Error setting SID!\n");
+			g_print("Error setting SID!\n");
 			exit(1);
 		}
 		/* Change the current working directory */
 		if((chdir("/")) < 0) {
-			JANUS_PRINT("Error changing the current working directory!\n");
+			g_print("Error changing the current working directory!\n");
 			exit(1);
 		}
 
@@ -2949,6 +3005,23 @@ gint main(int argc, char *argv[])
 		close(STDOUT_FILENO);
 		close(STDERR_FILENO);
 	}
+
+	/* Initialize logger */
+	if(janus_log_init(use_stdout, logfile) < 0)
+		exit(1);
+
+	JANUS_PRINT("---------------------------------------------------\n");
+	JANUS_PRINT("  Starting Meetecho Janus (WebRTC Gateway) v%s\n", JANUS_VERSION_STRING);
+	JANUS_PRINT("---------------------------------------------------\n\n");
+
+	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
+	signal(SIGINT, janus_handle_signal);
+	signal(SIGTERM, janus_handle_signal);
+
+	/* Setup Glib */
+#if !GLIB_CHECK_VERSION(2, 36, 0)
+	g_type_init();
+#endif
 
 	/* Logging level: default is info and no timestamps */
 	janus_log_level = LOG_INFO;
@@ -2962,45 +3035,7 @@ gint main(int argc, char *argv[])
 		janus_log_level = args_info.debug_level_arg;
 	}
 
-	/* Any configuration to open? */
-	if(args_info.config_given) {
-		config_file = g_strdup(args_info.config_arg);
-		if(config_file == NULL) {
-			JANUS_PRINT("Memory error!\n");
-			exit(1);
-		}
-	}
-	if(args_info.configs_folder_given) {
-		configs_folder = g_strdup(args_info.configs_folder_arg);
-		if(configs_folder == NULL) {
-			JANUS_PRINT("Memory error!\n");
-			exit(1);
-		}
-	} else {
-		configs_folder = g_strdup (CONFDIR);
-	}
-	if(config_file == NULL) {
-		char file[255];
-		g_snprintf(file, 255, "%s/janus.cfg", configs_folder);
-		config_file = g_strdup(file);
-		if(config_file == NULL) {
-			JANUS_PRINT("Memory error!\n");
-			exit(1);
-		}
-	}
-	JANUS_PRINT("Reading configuration from %s\n", config_file);
-	if((config = janus_config_parse(config_file)) == NULL) {
-		if(args_info.config_given) {
-			/* We only give up if the configuration file was explicitly provided */
-			exit(1);
-		}
-		JANUS_PRINT("Error reading/parsing the configuration file, going on with the defaults and the command line arguments\n");
-		config = janus_config_create("janus.cfg");
-		if(config == NULL) {
-			/* If we can't even create an empty configuration, something's definitely wrong */
-			exit(1);
-		}
-	}
+	/* Proceed with the rest of the configuration */
 	janus_config_print(config);
 	if(args_info.debug_level_given) {
 		char debug[5];
@@ -3704,5 +3739,8 @@ gint main(int argc, char *argv[])
 	}
 
 	JANUS_PRINT("Bye!\n");
+
+	janus_log_destroy();
+
 	exit(0);
 }
