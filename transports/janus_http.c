@@ -1548,16 +1548,18 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 		MHD_destroy_response(response);
 		return ret;
 	}
-	/* We have a timeout for the long poll: 30 seconds */
 	gint64 start = janus_get_monotonic_time();
-	gint64 end = start + 30*G_USEC_PER_SEC;
+	gint64 end = 0;
 	json_t *event = NULL, *list = NULL;
 	gboolean found = FALSE;
-	while(end-start > 0) {
+	/* We have a timeout for the long poll: 30 seconds */
+	while(end-start < 30*G_USEC_PER_SEC) {
 		if(session->destroyed)
 			break;
-		event = g_async_queue_timeout_pop(session->events, end-start);
+		event = g_async_queue_try_pop(session->events);
 		if(session->destroyed || g_atomic_int_get(&stopping) || event != NULL) {
+			if(event == NULL)
+				break;
 			/* Gotcha! */
 			found = TRUE;
 			if(max_events == 1) {
@@ -1577,7 +1579,9 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 				break;
 			}
 		}
-		start = janus_get_monotonic_time();
+		/* Sleep 100ms */
+		g_usleep(100000);
+		end = janus_get_monotonic_time();
 	}
 	if(!found) {
 		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session_id);
@@ -1629,6 +1633,7 @@ int janus_http_return_success(janus_http_msg *msg, char *payload) {
 /* Helper to quickly send an error response */
 int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char *transaction, gint error, const char *format, ...) {
 	gchar *error_string = NULL;
+	gchar error_buf[512];
 	if(format == NULL) {
 		/* No error string provided, use the default one */
 		error_string = (gchar *)janus_get_api_error(error);
@@ -1636,9 +1641,9 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		error_string = g_malloc0(512);
-		g_vsnprintf(error_string, 512, format, ap);
+		g_vsnprintf(error_buf, 512, format, ap);
 		va_end(ap);
+		error_string = error_buf;
 	}
 	/* Done preparing error */
 	JANUS_LOG(LOG_VERB, "[%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
@@ -1651,7 +1656,7 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *error_data = json_object();
 	json_object_set_new(error_data, "code", json_integer(error));
-	json_object_set_new(error_data, "reason", json_string(error_string ? error_string : "no text"));
+	json_object_set_new(error_data, "reason", json_string(error_string));
 	json_object_set_new(reply, "error", error_data);
 	gchar *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(reply);
