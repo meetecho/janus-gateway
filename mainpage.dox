@@ -1951,9 +1951,9 @@ var servers = [ws_server, http_server];
  * Since version \c 0.1.0, you can run Janus as a daemon application. To
  * do so, just pass either \c -b or <code>\--daemon</code> as a command line
  * argument, and Janus will be daemonized. Just beware, though, that
- * since all logging in Janus is currently stdout/stderr based, running
- * Janus as a daemon will make you loose all output and logs. Work is
- * currently ongoing to change the way logging is implemented.
+ * since this results in stdout/stdin/stderr being closed, you MUST
+ * specify a log file for Janus to use, either via command line (\c -L
+ * or <code>\--log-file) or in \c janus.cfg.
  *
  * \section bg Running in background
  * Another simple way to run Janus in the background is to just append the

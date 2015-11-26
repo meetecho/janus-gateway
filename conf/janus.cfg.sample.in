@@ -1,9 +1,16 @@
 ; General configuration: folders where the configuration and the plugins
-; can be found, default interface to use, debug/logging level and, if
-; needed, shared apisecret between application(s) and Janus.
+; can be found, how output should be logged, whether Janus should run as
+; a daemon or in foreground, default interface to use, debug/logging level
+; and, if needed, shared apisecret and/or token authentication mechanism
+; between application(s) and Janus.
 [general]
 configs_folder = @confdir@		; Configuration files folder
 plugins_folder = @plugindir@		; Plugins folder
+;log_to_stdout = false			; Whether the Janus output should be written
+								; to stdout or not (default=true)
+;log_to_file = /tmp/janus.log	; Whether to use a log file or not
+;daemonize = true				; Whether Janus should run as a daemon
+								; or not (default=run in foreground)
 ;interface = 1.2.3.4		; Interface to use (will be used in SDP)
 debug_level = 4				; Debug/logging level, valid values are 0-7
 ;debug_timestamps = yes		; Whether to show a timestamp for each log line

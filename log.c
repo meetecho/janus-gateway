@@ -31,6 +31,7 @@ struct janus_log_buffer {
 #define BUFFER_ALLOCSZ(r)	(r + sizeof(janus_log_buffer))
 
 static gboolean janus_log_console = TRUE;
+static char *janus_log_filepath = NULL;
 static FILE *janus_log_file = NULL;
 
 static gint initialized = 0;
@@ -45,6 +46,19 @@ static GThread *printthread = NULL;
 static janus_log_buffer *printhead = NULL;
 static janus_log_buffer *printtail = NULL;
 static janus_log_buffer *bufferpool = NULL;
+
+
+gboolean janus_log_is_stdout_enabled(void) {
+	return janus_log_console;
+}
+
+gboolean janus_log_is_logfile_enabled(void) {
+	return janus_log_file != NULL;
+}
+
+char *janus_log_get_logfile_path(void) {
+	return janus_log_filepath;
+}
 
 
 static void janus_log_freebuffers(janus_log_buffer **list) {
@@ -150,6 +164,9 @@ static void *janus_log_thread(void *ctx) {
 	if(janus_log_file)
 		fclose(janus_log_file);
 	janus_log_file = NULL;
+	if(janus_log_filepath)
+		g_free(janus_log_filepath);
+	janus_log_filepath = NULL;
 
 	return NULL;
 }
@@ -200,6 +217,11 @@ int janus_log_init(gboolean console, const char *logfile) {
 			g_print("Error opening log file %s: %s\n", logfile, strerror(errno));
 			return -1;
 		}
+		janus_log_filepath = g_strdup(logfile);
+	}
+	if(!janus_log_console && logfile == NULL) {
+		g_print("WARNING: logging completely disabled!\n");
+		g_print("         (no stdout and no logfile, this may not be what you want...)\n");
 	}
 	printthread = g_thread_new(THREAD_NAME, &janus_log_thread, NULL);
 	return 0;
