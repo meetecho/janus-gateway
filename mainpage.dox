@@ -1953,7 +1953,7 @@ var servers = [ws_server, http_server];
  * argument, and Janus will be daemonized. Just beware, though, that
  * since this results in stdout/stdin/stderr being closed, you MUST
  * specify a log file for Janus to use, either via command line (\c -L
- * or <code>\--log-file) or in \c janus.cfg.
+ * or <code>\--log-file</code>) or in \c janus.cfg.
  *
  * \section bg Running in background
  * Another simple way to run Janus in the background is to just append the
