@@ -2117,6 +2117,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 	if(!request)
 		return -1;
 	gchar *error_string = NULL;
+	gchar  error_buf[512];
 	if(format == NULL) {
 		/* No error string provided, use the default one */
 		error_string = (gchar *)janus_get_api_error(error);
@@ -2124,12 +2125,12 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		error_string = g_malloc0(512);
-		g_vsnprintf(error_string, 512, format, ap);
+		g_vsnprintf(error_buf, sizeof(error_buf), format, ap);
 		va_end(ap);
+		error_string = error_buf;
 	}
 	/* Done preparing error */
-	JANUS_LOG(LOG_VERB, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string ? error_string : "no text");
+	JANUS_LOG(LOG_VERB, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string);
 	/* Prepare JSON error */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("error"));
@@ -2139,7 +2140,7 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
 		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *error_data = json_object();
 	json_object_set_new(error_data, "code", json_integer(error));
-	json_object_set_new(error_data, "reason", json_string(error_string ? error_string : "no text"));
+	json_object_set_new(error_data, "reason", json_string(error_string));
 	json_object_set_new(reply, "error", error_data);
 	/* Pass to the right transport plugin */
 	return request->transport->send_message(request->instance, request->request_id, request->admin, reply);
