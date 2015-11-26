@@ -1334,7 +1334,7 @@ janus_sctp_message *janus_sctp_message_create(gboolean incoming, char *buffer, s
 }
 
 void janus_sctp_message_destroy(janus_sctp_message *message) {
-	if(message == NULL)
+	if(message == NULL || message == &exit_message)
 		return;
 	if(message->buffer != NULL)
 		g_free(message->buffer);
