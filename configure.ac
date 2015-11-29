@@ -185,7 +185,6 @@ PKG_CHECK_MODULES([TRANSPORTS],
                   [
                     glib-2.0 >= glib_version
                     jansson
-                    ini_config
                   ])
 
 PKG_CHECK_MODULES([MHD],
