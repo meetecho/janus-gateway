@@ -193,10 +193,8 @@ gboolean janus_log_colors = FALSE;
 int lock_debug = 0;
 
 
-/*! \brief Signal handler (just used to intercept CTRL+C) */
-void janus_handle_signal(int signum);
-void janus_handle_signal(int signum)
-{
+/*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
+static void janus_handle_signal(int signum) {
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
 			JANUS_PRINT("Stopping gateway, please wait...\n");
@@ -211,6 +209,12 @@ void janus_handle_signal(int signum)
 	g_atomic_int_inc(&stop);
 	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
+}
+
+/*! \brief Termination handler (atexit) */
+static void janus_termination_handler(void) {
+	/* Remove the PID file if we created it */
+	janus_pidfile_remove();
 }
 
 
@@ -3021,6 +3025,7 @@ gint main(int argc, char *argv[])
 	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
 	signal(SIGINT, janus_handle_signal);
 	signal(SIGTERM, janus_handle_signal);
+	atexit(janus_termination_handler);
 
 	/* Setup Glib */
 #if !GLIB_CHECK_VERSION(2, 36, 0)
@@ -3342,12 +3347,10 @@ gint main(int argc, char *argv[])
 	janus_ice_init(ice_lite, ice_tcp, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
-		janus_pidfile_remove();
 		exit(1);
 	}
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
-		janus_pidfile_remove();
 		exit(1);
 	}
 #ifndef HAVE_LIBCURL
@@ -3357,7 +3360,6 @@ gint main(int argc, char *argv[])
 #else
 	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s)\n", turn_rest_api, turn_rest_api_key);
-		janus_pidfile_remove();
 		exit(1);
 	}
 #endif
@@ -3411,14 +3413,12 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
-		janus_pidfile_remove();
 		exit(1);
 	}
 	server_pem = (char *)item->value;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
-		janus_pidfile_remove();
 		exit(1);
 	}
 	server_key = (char *)item->value;
@@ -3428,7 +3428,6 @@ gint main(int argc, char *argv[])
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
 	if(janus_dtls_srtp_init(server_pem, server_key) < 0) {
-		janus_pidfile_remove();
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */
@@ -3439,7 +3438,6 @@ gint main(int argc, char *argv[])
 #ifdef HAVE_SCTP
 	/* Initialize SCTP for DataChannels */
 	if(janus_sctp_init() < 0) {
-		janus_pidfile_remove();
 		exit(1);
 	}
 #else
@@ -3448,7 +3446,6 @@ gint main(int argc, char *argv[])
 
 	/* Initialize Sofia-SDP */
 	if(janus_sdp_init() < 0) {
-		janus_pidfile_remove();
 		exit(1);
 	}
 
@@ -3461,7 +3458,6 @@ gint main(int argc, char *argv[])
 	DIR *dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access plugins folder...\n");
-		janus_pidfile_remove();
 		exit(1);
 	}
 	/* Any plugin to ignore? */
@@ -3573,7 +3569,6 @@ gint main(int argc, char *argv[])
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
-		janus_pidfile_remove();
 		exit(1);
 	}
 
@@ -3587,7 +3582,6 @@ gint main(int argc, char *argv[])
 	dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access transport plugins folder...\n");
-		janus_pidfile_remove();
 		exit(1);
 	}
 	/* Any transport to ignore? */
@@ -3690,13 +3684,11 @@ gint main(int argc, char *argv[])
 	/* Make sure at least a Janus API transport is available */
 	if(!janus_api_enabled) {
 		JANUS_LOG(LOG_FATAL, "No Janus API transport is available... enable at least one and restart Janus\n");
-		janus_pidfile_remove();
 		exit(1);	/* FIXME Should we really give up? */
 	}
 	/* Make sure at least an admin API transport is available, if the auth mechanism is enabled */
 	if(!admin_api_enabled && janus_auth_is_enabled()) {
 		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API and restart Janus\n");
-		janus_pidfile_remove();
 		exit(1);	/* FIXME Should we really give up? */
 	}
 
@@ -3711,7 +3703,6 @@ gint main(int argc, char *argv[])
 	GThread *watchdog = g_thread_try_new("watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
-		janus_pidfile_remove();
 		exit(1);
 	}
 
@@ -3774,6 +3765,5 @@ gint main(int argc, char *argv[])
 
 	janus_log_destroy();
 
-	janus_pidfile_remove();
 	exit(0);
 }
