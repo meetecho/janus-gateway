@@ -2939,6 +2939,7 @@ gint main(int argc, char *argv[])
 	gboolean use_stdout = TRUE;
 	if(args_info.disable_stdout_given) {
 		use_stdout = FALSE;
+		janus_config_add_item(config, "general", "log_to_stdout", "no");
 	} else {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "log_to_stdout");
@@ -2948,6 +2949,7 @@ gint main(int argc, char *argv[])
 	const char *logfile = NULL;
 	if(args_info.log_file_given) {
 		logfile = args_info.log_file_arg;
+		janus_config_add_item(config, "general", "log_to_file", "no");
 	} else {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "log_to_file");
@@ -2959,6 +2961,7 @@ gint main(int argc, char *argv[])
 	gboolean daemonize = FALSE;
 	if(args_info.daemon_given) {
 		daemonize = TRUE;
+		janus_config_add_item(config, "general", "daemonize", "yes");
 	} else {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "daemonize");
@@ -3035,6 +3038,20 @@ gint main(int argc, char *argv[])
 			args_info.debug_level_arg = LOG_MAX;
 		janus_log_level = args_info.debug_level_arg;
 	}
+
+	/* Any PID we need to create? */
+	const char *pidfile = NULL;
+	if(args_info.pid_file_given) {
+		pidfile = args_info.pid_file_arg;
+		janus_config_add_item(config, "general", "pid_file", pidfile);
+	} else {
+		/* Check if the configuration file is saying anything about this */
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "pid_file");
+		if(item && item->value)
+			pidfile = item->value;
+	}
+	if(janus_pidfile_create(pidfile) < 0)
+		exit(1);
 
 	/* Proceed with the rest of the configuration */
 	janus_config_print(config);
@@ -3325,10 +3342,12 @@ gint main(int argc, char *argv[])
 	janus_ice_init(ice_lite, ice_tcp, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid STUN address %s:%u\n", stun_server, stun_port);
+		janus_pidfile_remove();
 		exit(1);
 	}
 	if(janus_ice_set_turn_server(turn_server, turn_port, turn_type, turn_user, turn_pwd) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN address %s:%u\n", turn_server, turn_port);
+		janus_pidfile_remove();
 		exit(1);
 	}
 #ifndef HAVE_LIBCURL
@@ -3338,6 +3357,7 @@ gint main(int argc, char *argv[])
 #else
 	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key) < 0) {
 		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s)\n", turn_rest_api, turn_rest_api_key);
+		janus_pidfile_remove();
 		exit(1);
 	}
 #endif
@@ -3391,12 +3411,14 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
+		janus_pidfile_remove();
 		exit(1);
 	}
 	server_pem = (char *)item->value;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
+		janus_pidfile_remove();
 		exit(1);
 	}
 	server_key = (char *)item->value;
@@ -3406,6 +3428,7 @@ gint main(int argc, char *argv[])
 	OpenSSL_add_all_algorithms();
 	/* ... and DTLS-SRTP in particular */
 	if(janus_dtls_srtp_init(server_pem, server_key) < 0) {
+		janus_pidfile_remove();
 		exit(1);
 	}
 	/* Check if there's any custom value for the starting MTU to use in the BIO filter */
@@ -3416,6 +3439,7 @@ gint main(int argc, char *argv[])
 #ifdef HAVE_SCTP
 	/* Initialize SCTP for DataChannels */
 	if(janus_sctp_init() < 0) {
+		janus_pidfile_remove();
 		exit(1);
 	}
 #else
@@ -3424,6 +3448,7 @@ gint main(int argc, char *argv[])
 
 	/* Initialize Sofia-SDP */
 	if(janus_sdp_init() < 0) {
+		janus_pidfile_remove();
 		exit(1);
 	}
 
@@ -3436,6 +3461,7 @@ gint main(int argc, char *argv[])
 	DIR *dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access plugins folder...\n");
+		janus_pidfile_remove();
 		exit(1);
 	}
 	/* Any plugin to ignore? */
@@ -3547,6 +3573,7 @@ gint main(int argc, char *argv[])
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
+		janus_pidfile_remove();
 		exit(1);
 	}
 
@@ -3560,6 +3587,7 @@ gint main(int argc, char *argv[])
 	dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access transport plugins folder...\n");
+		janus_pidfile_remove();
 		exit(1);
 	}
 	/* Any transport to ignore? */
@@ -3662,11 +3690,13 @@ gint main(int argc, char *argv[])
 	/* Make sure at least a Janus API transport is available */
 	if(!janus_api_enabled) {
 		JANUS_LOG(LOG_FATAL, "No Janus API transport is available... enable at least one and restart Janus\n");
+		janus_pidfile_remove();
 		exit(1);	/* FIXME Should we really give up? */
 	}
 	/* Make sure at least an admin API transport is available, if the auth mechanism is enabled */
 	if(!admin_api_enabled && janus_auth_is_enabled()) {
 		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API and restart Janus\n");
+		janus_pidfile_remove();
 		exit(1);	/* FIXME Should we really give up? */
 	}
 
@@ -3681,6 +3711,7 @@ gint main(int argc, char *argv[])
 	GThread *watchdog = g_thread_try_new("watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
+		janus_pidfile_remove();
 		exit(1);
 	}
 
@@ -3743,5 +3774,6 @@ gint main(int argc, char *argv[])
 
 	janus_log_destroy();
 
+	janus_pidfile_remove();
 	exit(0);
 }

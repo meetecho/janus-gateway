@@ -100,4 +100,7 @@ gboolean janus_is_ip_valid(const char *ip, int *family);
  * @param address The sockaddr address to convert
  * @returns A string containing the IP address, if successful, NULL otherwise */
 char *janus_address_to_ip(struct sockaddr *address);
+
+int janus_pidfile_create(const char *file);
+int janus_pidfile_remove(void);
 #endif

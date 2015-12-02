@@ -14,8 +14,10 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -304,4 +306,60 @@ char *janus_address_to_ip(struct sockaddr *address) {
 			break;
 	}
 	return addr ? g_strdup(addr) : NULL;
+}
+
+/* PID file management */
+static char *pidfile = NULL;
+static int pidfd = -1;
+static FILE *pidf = NULL;
+int janus_pidfile_create(const char *file) {
+	if(file == NULL)
+		return 0;
+	pidfile = g_strdup(file);
+	/* Try creating a PID file (or opening an existing one) */
+	pidfd = open(pidfile, O_RDWR|O_CREAT, 0644);
+	if(pidfd < 0) {
+		JANUS_LOG(LOG_FATAL, "Error opening/creating PID file %s, does Janus have enough permissions?\n", pidfile);
+		return -1;
+	}
+	pidf = fdopen(pidfd, "r+");
+	if(pidf == NULL) {
+		JANUS_LOG(LOG_FATAL, "Error opening/creating PID file %s, does Janus have enough permissions?\n", pidfile);
+		close(pidfd);
+		return -1;
+	}
+	/* Try locking the PID file */
+	int pid = 0;
+	if(flock(pidfd, LOCK_EX|LOCK_NB) < 0) {
+		fscanf(pidf, "%d", &pid);
+		JANUS_LOG(LOG_FATAL, "Error locking PID file (lock held by PID %d?)\n", pid);
+		fclose(pidf);
+		return -1;
+	}
+	/* Write the PID */
+	pid = getpid();
+	if(fprintf(pidf, "%d\n", pid) < 0) {
+		JANUS_LOG(LOG_FATAL, "Error writing PID in file, error %d (%s)\n", errno, strerror(errno));
+		fclose(pidf);
+		return -1;
+	}
+	fflush(pidf);
+	/* We're done */
+	return 0;
+}
+
+int janus_pidfile_remove(void) {
+	if(pidfile == NULL || pidfd < 0 || pidf == NULL)
+		return 0;
+	/* Unlock the PID file and remove it */
+	if(flock(pidfd, LOCK_UN) < 0) {
+		JANUS_LOG(LOG_FATAL, "Error unlocking PID file\n");
+		fclose(pidf);
+		close(pidfd);
+		return -1;
+	}
+	fclose(pidf);
+	unlink(pidfile);
+	g_free(pidfile);
+	return 0;
 }
