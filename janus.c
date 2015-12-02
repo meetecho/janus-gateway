@@ -187,7 +187,7 @@ json_t *janus_info(const char *transaction) {
 
 
 /* Logging */
-int janus_log_level = 0;
+int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 int lock_debug = 0;
