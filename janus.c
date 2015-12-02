@@ -215,6 +215,8 @@ static void janus_handle_signal(int signum) {
 static void janus_termination_handler(void) {
 	/* Remove the PID file if we created it */
 	janus_pidfile_remove();
+	/* Close the logger */
+	janus_log_destroy();
 }
 
 
@@ -3762,8 +3764,6 @@ gint main(int argc, char *argv[])
 	}
 
 	JANUS_PRINT("Bye!\n");
-
-	janus_log_destroy();
 
 	exit(0);
 }
