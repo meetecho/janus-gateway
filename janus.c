@@ -187,7 +187,7 @@ json_t *janus_info(const char *transaction) {
 
 
 /* Logging */
-int janus_log_level = 0;
+int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 int lock_debug = 0;
@@ -390,13 +390,14 @@ janus_session *janus_session_find_destroyed(guint64 session_id) {
 
 void janus_session_notify_event(guint64 session_id, json_t *event) {
 	janus_mutex_lock(&sessions_mutex);
-	janus_session *session = g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
-	janus_mutex_unlock(&sessions_mutex);
-	if(session != NULL && session->source != NULL && session->source->transport != NULL) {
+	janus_session *session = sessions ? g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id)) : NULL;
+	if(session != NULL && !session->destroy && session->source != NULL && session->source->transport != NULL) {
+		janus_mutex_unlock(&sessions_mutex);
 		/* Send this to the transport client */
 		JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
 		session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
 	} else {
+		janus_mutex_unlock(&sessions_mutex);
 		/* No transport, free the event */
 		json_decref(event);
 	}

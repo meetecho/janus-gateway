@@ -110,8 +110,66 @@ void *janus_dtls_sctp_setup_thread(void *data);
 #endif
 
 
+/*
+ * FIXME DTLS locking stuff to make OpenSSL thread safe
+ *
+ * Note: this is an attempt to fix the infamous issue #316:
+ * 		https://github.com/meetecho/janus-gateway/issues/316
+ * that is the "tlsv1 alert decrypt error" randomly happening when
+ * doing handshakes that force Janus to be restarted (issue affecting
+ * OpenSSL but NOT BoringSSL, apparently). The cause might be related
+ * to race conditions, and in fact OpenSSL docs state that:
+ *
+ * 		"OpenSSL can safely be used in multi-threaded applications
+ * 		provided that at least two callback functions are set,
+ * 		locking_function and threadid_func."
+ *
+ * See here for the whole docs:
+ * 		https://www.openssl.org/docs/manmaster/crypto/threads.html
+ *
+ * The fix proposed here is heavily derived from a discussion related to
+ * RTPEngine:
+ * 		http://lists.sip-router.org/pipermail/sr-dev/2015-January/026860.html
+ * where it was mentioned the issue was fixed in this commit:
+ * 		https://github.com/sipwise/rtpengine/commit/935487b66363c9932684d8085f47450d65a8c37e
+ * which does indeed implement the callbacks the OpenSSL docs suggest.
+ *
+ */
+static janus_mutex *janus_dtls_locks;
+
+static void janus_dtls_cb_openssl_threadid(CRYPTO_THREADID *tid) {
+	/* FIXME Assuming pthread, which is fine as GLib wraps pthread and
+	 * so that's what we use anyway? */
+	pthread_t me = pthread_self();
+
+	if(sizeof(me) == sizeof(void *)) {
+		CRYPTO_THREADID_set_pointer(tid, (void *) me);
+	} else {
+		CRYPTO_THREADID_set_numeric(tid, (unsigned long) me);
+	}
+}
+
+static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int line) {
+	if((mode & CRYPTO_LOCK)) {
+		janus_mutex_lock(&janus_dtls_locks[type]);
+	} else {
+		janus_mutex_unlock(&janus_dtls_locks[type]);
+	}
+}
+
+
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
+	/* FIXME First of all make OpenSSL thread safe (see note above on issue #316) */
+	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
+	int l=0;
+	for(l = 0; l < CRYPTO_num_locks(); l++) {
+		janus_mutex_init(&janus_dtls_locks[l]);
+	}
+	CRYPTO_THREADID_set_callback(janus_dtls_cb_openssl_threadid);
+	CRYPTO_set_locking_callback(janus_dtls_cb_openssl_lock);
+
+	/* Go on and create the DTLS context */
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
 	if(!ssl_ctx) {
 		JANUS_LOG(LOG_FATAL, "Ops, error creating DTLS context?\n");
@@ -120,17 +178,15 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, janus_dtls_verify_callback);
 	SSL_CTX_set_tlsext_use_srtp(ssl_ctx, "SRTP_AES128_CM_SHA1_80");	/* FIXME Should we support something else as well? */
 	if(!server_pem || !SSL_CTX_use_certificate_file(ssl_ctx, server_pem, SSL_FILETYPE_PEM)) {
-		JANUS_LOG(LOG_FATAL, "Certificate error, does it exist?\n");
-		JANUS_LOG(LOG_FATAL, "  %s\n", server_pem);
+		JANUS_LOG(LOG_FATAL, "Certificate error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		return -2;
 	}
 	if(!server_key || !SSL_CTX_use_PrivateKey_file(ssl_ctx, server_key, SSL_FILETYPE_PEM)) {
-		JANUS_LOG(LOG_FATAL, "Certificate key error, does it exist?\n");
-		JANUS_LOG(LOG_FATAL, "  %s\n", server_key);
+		JANUS_LOG(LOG_FATAL, "Certificate key error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		return -3;
 	}
 	if(!SSL_CTX_check_private_key(ssl_ctx)) {
-		JANUS_LOG(LOG_FATAL, "Certificate check error...\n");
+		JANUS_LOG(LOG_FATAL, "Certificate check error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		return -4;
 	}
 	SSL_CTX_set_read_ahead(ssl_ctx,1);
@@ -140,20 +196,20 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 		return -5;
 	}
 	if(BIO_read_filename(certbio, server_pem) == 0) {
-		JANUS_LOG(LOG_FATAL, "Error reading certificate...\n");
+		JANUS_LOG(LOG_FATAL, "Error reading certificate (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		BIO_free_all(certbio);
 		return -6;
 	}
 	X509 *cert = PEM_read_bio_X509(certbio, NULL, 0, NULL);
 	if(cert == NULL) {
-		JANUS_LOG(LOG_FATAL, "Error reading certificate...\n");
+		JANUS_LOG(LOG_FATAL, "Error reading certificate (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		BIO_free_all(certbio);
 		return -7;
 	}
 	unsigned int size;
 	unsigned char fingerprint[EVP_MAX_MD_SIZE];
 	if(X509_digest(cert, EVP_sha256(), (unsigned char *)fingerprint, &size) == 0) {
-		JANUS_LOG(LOG_FATAL, "Error converting X509 structure...\n");
+		JANUS_LOG(LOG_FATAL, "Error converting X509 structure (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		X509_free(cert);
 		BIO_free_all(certbio);
 		return -7;
@@ -204,7 +260,8 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	dtls->srtp_valid = 0;
 	dtls->ssl = SSL_new(janus_dtls_get_ssl_ctx());
 	if(!dtls->ssl) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component DTLS SSL session??\n", handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error creating DTLS session! (%s)\n",
+			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
 		janus_dtls_srtp_destroy(dtls);
 		return NULL;
 	}
@@ -212,14 +269,16 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	SSL_set_info_callback(dtls->ssl, janus_dtls_callback);
 	dtls->read_bio = BIO_new(BIO_s_mem());
 	if(!dtls->read_bio) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating read BIO!\n", handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating read BIO! (%s)\n",
+			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
 		janus_dtls_srtp_destroy(dtls);
 		return NULL;
 	}
 	BIO_set_mem_eof_return(dtls->read_bio, -1);
 	dtls->write_bio = BIO_new(BIO_s_mem());
 	if(!dtls->write_bio) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating write BIO!\n", handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating write BIO! (%s)\n",
+			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
 		janus_dtls_srtp_destroy(dtls);
 		return NULL;
 	}
@@ -227,7 +286,8 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	/* The write BIO needs our custom filter, or fragmentation won't work */
 	dtls->filter_bio = BIO_new(BIO_janus_dtls_filter());
 	if(!dtls->filter_bio) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating filter BIO!\n", handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating filter BIO! (%s)\n",
+			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
 		janus_dtls_srtp_destroy(dtls);
 		return NULL;
 	}
@@ -250,7 +310,8 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	 */
 	EC_KEY* ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	if(ecdh == NULL) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group!\n", handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
+			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
 		janus_dtls_srtp_destroy(dtls);
 		return NULL;
 	}
@@ -307,7 +368,11 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	janus_dtls_fd_bridge(dtls);
 	int written = BIO_write(dtls->read_bio, buf, len);
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Written %d of those bytes on the read BIO...\n", handle->handle_id, written);
+	if(written != len) {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Only written %d/%d of those bytes on the read BIO...\n", handle->handle_id, written, len);
+	} else {
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Written %d bytes on the read BIO...\n", handle->handle_id, written);
+	}
 	janus_dtls_fd_bridge(dtls);
 	/* Try to read data */
 	char data[1500];	/* FIXME */
@@ -353,7 +418,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 		/* Check the remote fingerprint */
 		X509 *rcert = SSL_get_peer_certificate(dtls->ssl);
 		if(!rcert) {
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] No remote certificate??\n", handle->handle_id);
+			JANUS_LOG(LOG_ERR, "[%"SCNu64"] No remote certificate?? (%s)\n",
+				handle->handle_id, ERR_reason_error_string(ERR_get_error()));
 		} else {
 			unsigned int rsize;
 			unsigned char rfingerprint[EVP_MAX_MD_SIZE];
@@ -394,7 +460,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					/* Export keying material for SRTP */
 					if (!SSL_export_keying_material(dtls->ssl, material, SRTP_MASTER_LENGTH*2, "EXTRACTOR-dtls_srtp", 19, NULL, 0, 0)) {
 						/* Oops... */
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, couldn't extract SRTP keying material for component %d in stream %d?? (%s)\n",
+							handle->handle_id, component->component_id, stream->stream_id, ERR_reason_error_string(ERR_get_error()));
 						goto done;
 					}
 					/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
