@@ -110,8 +110,66 @@ void *janus_dtls_sctp_setup_thread(void *data);
 #endif
 
 
+/*
+ * FIXME DTLS locking stuff to make OpenSSL thread safe
+ *
+ * Note: this is an attempt to fix the infamous issue #316:
+ * 		https://github.com/meetecho/janus-gateway/issues/316
+ * that is the "tlsv1 alert decrypt error" randomly happening when
+ * doing handshakes that force Janus to be restarted (issue affecting
+ * OpenSSL but NOT BoringSSL, apparently). The cause might be related
+ * to race conditions, and in fact OpenSSL docs state that:
+ *
+ * 		"OpenSSL can safely be used in multi-threaded applications
+ * 		provided that at least two callback functions are set,
+ * 		locking_function and threadid_func."
+ *
+ * See here for the whole docs:
+ * 		https://www.openssl.org/docs/manmaster/crypto/threads.html
+ *
+ * The fix proposed here is heavily derived from a discussion related to
+ * RTPEngine:
+ * 		http://lists.sip-router.org/pipermail/sr-dev/2015-January/026860.html
+ * where it was mentioned the issue was fixed in this commit:
+ * 		https://github.com/sipwise/rtpengine/commit/935487b66363c9932684d8085f47450d65a8c37e
+ * which does indeed implement the callbacks the OpenSSL docs suggest.
+ *
+ */
+static janus_mutex *janus_dtls_locks;
+
+static void janus_dtls_cb_openssl_threadid(CRYPTO_THREADID *tid) {
+	/* FIXME Assuming pthread, which is fine as GLib wraps pthread and
+	 * so that's what we use anyway? */
+	pthread_t me = pthread_self();
+
+	if(sizeof(me) == sizeof(void *)) {
+		CRYPTO_THREADID_set_pointer(tid, (void *) me);
+	} else {
+		CRYPTO_THREADID_set_numeric(tid, (unsigned long) me);
+	}
+}
+
+static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int line) {
+	if((mode & CRYPTO_LOCK)) {
+		janus_mutex_lock(&janus_dtls_locks[type]);
+	} else {
+		janus_mutex_unlock(&janus_dtls_locks[type]);
+	}
+}
+
+
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
+	/* FIXME First of all make OpenSSL thread safe (see note above on issue #316) */
+	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
+	int l=0;
+	for(l = 0; l < CRYPTO_num_locks(); l++) {
+		janus_mutex_init(&janus_dtls_locks[l]);
+	}
+	CRYPTO_THREADID_set_callback(janus_dtls_cb_openssl_threadid);
+	CRYPTO_set_locking_callback(janus_dtls_cb_openssl_lock);
+
+	/* Go on and create the DTLS context */
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
 	if(!ssl_ctx) {
 		JANUS_LOG(LOG_FATAL, "Ops, error creating DTLS context?\n");
@@ -310,7 +368,11 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 	}
 	janus_dtls_fd_bridge(dtls);
 	int written = BIO_write(dtls->read_bio, buf, len);
-	JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Written %d of those bytes on the read BIO...\n", handle->handle_id, written);
+	if(written != len) {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Only written %d/%d of those bytes on the read BIO...\n", handle->handle_id, written, len);
+	} else {
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Written %d bytes on the read BIO...\n", handle->handle_id, written);
+	}
 	janus_dtls_fd_bridge(dtls);
 	/* Try to read data */
 	char data[1500];	/* FIXME */
