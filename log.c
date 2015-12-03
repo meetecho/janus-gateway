@@ -26,9 +26,7 @@ struct janus_log_buffer {
 	char str[1];
 };
 
-#define INITIAL_BUFSZ		1024*2
-#define BUFFER_STRSZ(b)		(b ? b->allocated - sizeof(*b) : 0)
-#define BUFFER_ALLOCSZ(r)	(r + sizeof(janus_log_buffer))
+#define INITIAL_BUFSZ		2000
 
 static gboolean janus_log_console = TRUE;
 static char *janus_log_filepath = NULL;
@@ -39,7 +37,7 @@ static gint stopping = 0;
 static gint poolsz = 0;
 static gint maxpoolsz = 32;
 /* Buffers over this size will be freed */
-static gsize maxbuffersz = 1024*8;
+static size_t maxbuffersz = 8000;
 static GMutex lock;
 static GCond cond;
 static GThread *printthread = NULL;
@@ -72,19 +70,6 @@ static void janus_log_freebuffers(janus_log_buffer **list) {
 	*list = NULL;
 }
 
-static janus_log_buffer *janus_log_sizebuffer(janus_log_buffer *b, size_t requested) {
-	size_t n = 1;
-
-	if (!b || BUFFER_STRSZ(b) < requested) {
-		while (n < BUFFER_ALLOCSZ(requested)) {
-			n <<= 1;
-		}
-		b = g_realloc(b, n);
-		b->allocated = n;
-	}
-	return b;
-}
-
 static janus_log_buffer *janus_log_getbuf(void) {
 	janus_log_buffer *b;
 
@@ -98,7 +83,7 @@ static janus_log_buffer *janus_log_getbuf(void) {
 	}
 	g_mutex_unlock(&lock);
 	if (b == NULL) {
-		b = g_malloc(INITIAL_BUFSZ);
+		b = g_malloc(INITIAL_BUFSZ + sizeof(*b));
 		b->allocated = INITIAL_BUFSZ;
 		b->next = NULL;
 	}
@@ -172,19 +157,21 @@ static void *janus_log_thread(void *ctx) {
 }
 
 void janus_vprintf(const char *format, ...) {
-	size_t len;
+	int len;
 	va_list ap, ap2;
 	janus_log_buffer *b = janus_log_getbuf();
 
 	va_start(ap, format);
 	va_copy(ap2, ap);
-	/* Determine buffer length */
-	len = (size_t)vsnprintf(NULL, 0, format, ap);
+	/* first try */
+	len = vsnprintf(b->str, b->allocated, format, ap);
 	va_end(ap);
-	/* Ensure the buffer can hold the message */
-	b = janus_log_sizebuffer(b, len+1);
-	b->str[0] = '\0';
-	vsnprintf(b->str, len+1, format, ap2);
+	if (len >= (int) b->allocated) {
+		/* buffer wasn't big enough */
+		b = g_realloc(b, len + 1 + sizeof(*b));
+		b->allocated = len + 1;
+		vsnprintf(b->str, b->allocated, format, ap2);
+	}
 	va_end(ap2);
 
 	g_mutex_lock(&lock);
