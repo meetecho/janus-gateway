@@ -1847,6 +1847,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 					json_object_set_new(result, "caller", json_string(caller_text));
 					su_free(session->stack->s_home, caller_text);
+					if (sip->sip_from && sip->sip_from->a_display) {
+						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
+					}
 					json_object_set_new(missed, "result", result);
 					char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 					json_decref(missed);
