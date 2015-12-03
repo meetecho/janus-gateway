@@ -1462,13 +1462,13 @@ parsingdone:
 	struct timespec wakeup;
 	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
 	wakeup.tv_nsec = now.tv_usec*1000UL;
-	while(TRUE) {
-		pthread_mutex_lock(&msg->wait_mutex);
+	pthread_mutex_lock(&msg->wait_mutex);
+	while(!msg->got_response) {
 		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
-		pthread_mutex_unlock(&msg->wait_mutex);
 		if(msg->got_response || res == ETIMEDOUT)
 			break;
 	}
+	pthread_mutex_unlock(&msg->wait_mutex);
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
