@@ -331,8 +331,11 @@ int janus_pidfile_create(const char *file) {
 	/* Try locking the PID file */
 	int pid = 0;
 	if(flock(pidfd, LOCK_EX|LOCK_NB) < 0) {
-		fscanf(pidf, "%d", &pid);
-		JANUS_LOG(LOG_FATAL, "Error locking PID file (lock held by PID %d?)\n", pid);
+		if(fscanf(pidf, "%d", &pid) == 1) {
+			JANUS_LOG(LOG_FATAL, "Error locking PID file (lock held by PID %d?)\n", pid);
+		} else {
+			JANUS_LOG(LOG_FATAL, "Error locking PID file (lock held by unknown PID?)\n");
+		}
 		fclose(pidf);
 		return -1;
 	}
