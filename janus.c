@@ -193,10 +193,8 @@ gboolean janus_log_colors = FALSE;
 int lock_debug = 0;
 
 
-/*! \brief Signal handler (just used to intercept CTRL+C) */
-void janus_handle_signal(int signum);
-void janus_handle_signal(int signum)
-{
+/*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
+static void janus_handle_signal(int signum) {
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
 			JANUS_PRINT("Stopping gateway, please wait...\n");
@@ -211,6 +209,14 @@ void janus_handle_signal(int signum)
 	g_atomic_int_inc(&stop);
 	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
+}
+
+/*! \brief Termination handler (atexit) */
+static void janus_termination_handler(void) {
+	/* Remove the PID file if we created it */
+	janus_pidfile_remove();
+	/* Close the logger */
+	janus_log_destroy();
 }
 
 
@@ -2939,6 +2945,7 @@ gint main(int argc, char *argv[])
 	gboolean use_stdout = TRUE;
 	if(args_info.disable_stdout_given) {
 		use_stdout = FALSE;
+		janus_config_add_item(config, "general", "log_to_stdout", "no");
 	} else {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "log_to_stdout");
@@ -2948,6 +2955,7 @@ gint main(int argc, char *argv[])
 	const char *logfile = NULL;
 	if(args_info.log_file_given) {
 		logfile = args_info.log_file_arg;
+		janus_config_add_item(config, "general", "log_to_file", "no");
 	} else {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "log_to_file");
@@ -2959,6 +2967,7 @@ gint main(int argc, char *argv[])
 	gboolean daemonize = FALSE;
 	if(args_info.daemon_given) {
 		daemonize = TRUE;
+		janus_config_add_item(config, "general", "daemonize", "yes");
 	} else {
 		/* Check if the configuration file is saying anything about this */
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "daemonize");
@@ -3018,6 +3027,7 @@ gint main(int argc, char *argv[])
 	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
 	signal(SIGINT, janus_handle_signal);
 	signal(SIGTERM, janus_handle_signal);
+	atexit(janus_termination_handler);
 
 	/* Setup Glib */
 #if !GLIB_CHECK_VERSION(2, 36, 0)
@@ -3035,6 +3045,20 @@ gint main(int argc, char *argv[])
 			args_info.debug_level_arg = LOG_MAX;
 		janus_log_level = args_info.debug_level_arg;
 	}
+
+	/* Any PID we need to create? */
+	const char *pidfile = NULL;
+	if(args_info.pid_file_given) {
+		pidfile = args_info.pid_file_arg;
+		janus_config_add_item(config, "general", "pid_file", pidfile);
+	} else {
+		/* Check if the configuration file is saying anything about this */
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "pid_file");
+		if(item && item->value)
+			pidfile = item->value;
+	}
+	if(janus_pidfile_create(pidfile) < 0)
+		exit(1);
 
 	/* Proceed with the rest of the configuration */
 	janus_config_print(config);
@@ -3740,8 +3764,6 @@ gint main(int argc, char *argv[])
 	}
 
 	JANUS_PRINT("Bye!\n");
-
-	janus_log_destroy();
 
 	exit(0);
 }
