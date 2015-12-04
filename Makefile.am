@@ -155,6 +155,7 @@ transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) -lmicrohttpd
 transports_libjanus_http_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.http.cfg.sample
 EXTRA_DIST += conf/janus.transport.http.cfg.sample.in
+CLEANFILES += conf/janus.transport.http.cfg.sample
 endif
 
 if ENABLE_WEBSOCKETS
@@ -165,6 +166,7 @@ transports_libjanus_websockets_la_LDFLAGS = $(transports_ldflags) $(WS_MANUAL_LI
 transports_libjanus_websockets_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.websockets.cfg.sample
 EXTRA_DIST += conf/janus.transport.websockets.cfg.sample.in
+CLEANFILES += conf/janus.transport.websockets.cfg.sample
 endif
 
 if ENABLE_RABBITMQ
