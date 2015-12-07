@@ -83,12 +83,12 @@ struct janus_refcount {
  * \note Also sets the counter to 1 automatically, so no need to increase
  * it again manually via janus_refcount_increase() after the initialization
  * @param ref Pointer to the Janus reference counter instance
- * @param free Pointer to the function to invoke when the object the counter
+ * @param free_fn Pointer to the function to invoke when the object the counter
  * refers to needs to be destroyed */ 
-static inline void janus_refcount_init(janus_refcount *ref, void (*free)(const janus_refcount *)) {
+static inline void janus_refcount_init(janus_refcount *ref, void (*free_fn)(const janus_refcount *)) {
 	/* Initialize the reference counter */
 	ref->count = 1;
-	ref->free = free;
+	ref->free = free_fn;
 }
 
 /*! \brief Increase the Janus reference counter
