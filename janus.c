@@ -3009,15 +3009,11 @@ gint main(int argc, char *argv[])
 			g_print("Error changing the current working directory!\n");
 			exit(1);
 		}
-
-		/* Close out the standard file descriptors */
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
+		/* We close stdin/stdout/stderr when initializing the logger */
 	}
 
 	/* Initialize logger */
-	if(janus_log_init(use_stdout, logfile) < 0)
+	if(janus_log_init(daemonize, use_stdout, logfile) < 0)
 		exit(1);
 
 	JANUS_PRINT("---------------------------------------------------\n");
