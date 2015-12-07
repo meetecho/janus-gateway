@@ -211,10 +211,6 @@ int janus_log_init(gboolean daemon, gboolean console, const char *logfile) {
 		g_print("         (no stdout and no logfile, this may not be what you want...)\n");
 	}
 	if(daemon) {
-		/* Close out the standard file descriptors */
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
 		/* Replace the standard file descriptors */
 		if (freopen("/dev/null", "r", stdin) == NULL) {
 			g_print("Error replacing stdin with /dev/null\n");
