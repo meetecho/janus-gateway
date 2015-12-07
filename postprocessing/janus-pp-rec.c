@@ -66,7 +66,7 @@ void janus_pp_handle_signal(int signum) {
 /* Main Code */
 int main(int argc, char *argv[])
 {
-	janus_log_init(TRUE, NULL);
+	janus_log_init(FALSE, TRUE, NULL);
 
 	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
