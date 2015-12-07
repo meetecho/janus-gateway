@@ -593,12 +593,9 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 		}
 #endif
 	}
-	/* Automatically enable libnice debugging based on debug_level */
-	if(janus_log_level >= LOG_DBG) {
-		janus_ice_debugging_enable();
-	} else {
-		nice_debug_disable(TRUE);
-	}
+	/* libnice debugging is disabled unless explicitly stated */
+	nice_debug_disable(TRUE);
+
 	/*! \note The RTP/RTCP port range configuration may be just a placeholder: for
 	 * instance, libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails
 	 * when linking with an undefined reference to \c nice_agent_set_port_range 

@@ -1,4 +1,5 @@
 option "daemon" b "Launch Janus in background as a daemon" flag off
+option "pid-file" p "Open the specified PID file when starting Janus (default=none)" string typestr="path" optional
 option "disable-stdout" N "Disable stdout based logging" flag off
 option "log-file" L "Log to the specified file (default=stdout only)" string typestr="path" optional
 option "interface" i "Interface to use (will be the public IP)" string typestr="ipaddress" optional

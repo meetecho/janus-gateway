@@ -26,10 +26,11 @@ void janus_vprintf(const char *format, ...) G_GNUC_PRINTF(1, 2);
 /*! \brief Log initialization
 * \note This should be called before attempting to use the logger. A buffer
 * pool and processing thread are created.
+* @param daemon Whether the Janus is running as a daemon or not
 * @param console Whether the output should be printed on stdout or not
 * @param logfile Log file to save the output to, if any
 * @returns 0 in case of success, a negative integer otherwise */
-int janus_log_init(gboolean console, const char *logfile);
+int janus_log_init(gboolean daemon, gboolean console, const char *logfile);
 /*! \brief Log destruction */
 void janus_log_destroy(void);
 

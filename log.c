@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "log.h"
 
@@ -149,8 +150,7 @@ static void *janus_log_thread(void *ctx) {
 	if(janus_log_file)
 		fclose(janus_log_file);
 	janus_log_file = NULL;
-	if(janus_log_filepath)
-		g_free(janus_log_filepath);
+	g_free(janus_log_filepath);
 	janus_log_filepath = NULL;
 
 	return NULL;
@@ -185,7 +185,7 @@ void janus_vprintf(const char *format, ...) {
 	g_mutex_unlock(&lock);
 }
 
-int janus_log_init(gboolean console, const char *logfile) {
+int janus_log_init(gboolean daemon, gboolean console, const char *logfile) {
 	if (g_atomic_int_get(&initialized)) {
 		return 0;
 	}
@@ -209,6 +209,21 @@ int janus_log_init(gboolean console, const char *logfile) {
 	if(!janus_log_console && logfile == NULL) {
 		g_print("WARNING: logging completely disabled!\n");
 		g_print("         (no stdout and no logfile, this may not be what you want...)\n");
+	}
+	if(daemon) {
+		/* Replace the standard file descriptors */
+		if (freopen("/dev/null", "r", stdin) == NULL) {
+			g_print("Error replacing stdin with /dev/null\n");
+			return -1;
+		}
+		if (freopen("/dev/null", "w", stdout) == NULL) {
+			g_print("Error replacing stdout with /dev/null\n");
+			return -1;
+		}
+		if (freopen("/dev/null", "w", stderr) == NULL) {
+			g_print("Error replacing stderr with /dev/null\n");
+			return -1;
+		}
 	}
 	printthread = g_thread_new(THREAD_NAME, &janus_log_thread, NULL);
 	return 0;
