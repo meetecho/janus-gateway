@@ -77,10 +77,10 @@ AC_ARG_ENABLE([turn-rest-api],
 
 PKG_CHECK_MODULES([JANUS],
                   [
-                    glib-2.0 >= glib_version
+                    glib-2.0 >= $glib_version
                     nice
                     jansson
-                    libssl >= ssl_version
+                    libssl >= $ssl_version
                     libcrypto
                     sofia-sip-ua
                   ])
@@ -183,7 +183,7 @@ fi
 
 PKG_CHECK_MODULES([TRANSPORTS],
                   [
-                    glib-2.0 >= glib_version
+                    glib-2.0 >= $glib_version
                     jansson
                   ])
 
@@ -243,7 +243,7 @@ AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 
 PKG_CHECK_MODULES([PLUGINS],
                   [
-                    glib-2.0 >= glib_version
+                    glib-2.0 >= $glib_version
                     sofia-sip-ua
                     jansson
                   ])
