@@ -543,6 +543,24 @@ void janus_websockets_destroy(void) {
 		admin_swss_thread = NULL;
 	}
 
+	/* Destroy the contexts */
+	if(wss != NULL) {
+		libwebsocket_context_destroy(wss);
+		wss = NULL;
+	}
+	if(swss != NULL) {
+		libwebsocket_context_destroy(swss);
+		swss = NULL;
+	}
+	if(admin_wss != NULL) {
+		libwebsocket_context_destroy(admin_wss);
+		admin_wss = NULL;
+	}
+	if(admin_swss != NULL) {
+		libwebsocket_context_destroy(admin_swss);
+		admin_swss = NULL;
+	}
+
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_WEBSOCKETS_NAME);

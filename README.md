@@ -130,7 +130,7 @@ HTTP REST API, you'll have to install it manually:
 	cd libwebsockets
 	mkdir build
 	cd build
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
+	cmake -DLWS_WITH_OLD_API_WRAPPERS=1 -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
 	make && sudo make install
 
 * *Note:* if libwebsockets.org is unreachable for any reason, replace
