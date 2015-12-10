@@ -97,7 +97,7 @@ void janus_session_free(janus_session *session);
  */
 ///@{
 /*! \brief Helper to address requests and their sources (e.g., a specific HTTP connection, websocket, RabbitMQ or others) */
-typedef struct janus_request {
+struct janus_request {
 	/*! \brief Pointer to the transport plugin */
 	janus_transport *transport;
 	/*! \brief Opaque pointer to the transport-provided instance */
@@ -108,7 +108,7 @@ typedef struct janus_request {
 	gboolean admin;
 	/*! \brief Pointer to the original request, if available */
 	json_t *message;
-} janus_request;
+};
 /*! \brief Helper to allocate a janus_request instance
  * @param[in] transport Pointer to the transport
  * @param[in] instance Opaque pointer to the transport-provided instance
