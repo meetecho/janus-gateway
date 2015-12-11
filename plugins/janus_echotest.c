@@ -193,9 +193,8 @@ static GHashTable *sessions;
 static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
-void janus_echotest_message_free(janus_echotest_message *msg);
-void janus_echotest_message_free(janus_echotest_message *msg) {
-	if(!msg)
+static void janus_echotest_message_free(janus_echotest_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;

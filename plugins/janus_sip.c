@@ -156,9 +156,8 @@ typedef struct janus_sip_message {
 static GAsyncQueue *messages = NULL;
 static janus_sip_message exit_message;
 
-void janus_sip_message_free(janus_sip_message *msg);
-void janus_sip_message_free(janus_sip_message *msg) {
-	if(!msg)
+static void janus_sip_message_free(janus_sip_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;

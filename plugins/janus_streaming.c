@@ -291,9 +291,8 @@ typedef struct janus_streaming_message {
 static GAsyncQueue *messages = NULL;
 static janus_streaming_message exit_message;
 
-void janus_streaming_message_free(janus_streaming_message *msg);
-void janus_streaming_message_free(janus_streaming_message *msg) {
-	if(!msg)
+static void janus_streaming_message_free(janus_streaming_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;

@@ -467,9 +467,8 @@ typedef struct janus_audiobridge_message {
 static GAsyncQueue *messages = NULL;
 static janus_audiobridge_message exit_message;
 
-void janus_audiobridge_message_free(janus_audiobridge_message *msg);
-void janus_audiobridge_message_free(janus_audiobridge_message *msg) {
-	if(!msg)
+static void janus_audiobridge_message_free(janus_audiobridge_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;

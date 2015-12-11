@@ -320,9 +320,8 @@ typedef struct janus_videocall_message {
 static GAsyncQueue *messages = NULL;
 static janus_videocall_message exit_message;
 
-void janus_videocall_message_free(janus_videocall_message *msg);
-void janus_videocall_message_free(janus_videocall_message *msg) {
-	if(!msg)
+static void janus_videocall_message_free(janus_videocall_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;

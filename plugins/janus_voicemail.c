@@ -187,9 +187,8 @@ typedef struct janus_voicemail_message {
 static GAsyncQueue *messages = NULL;
 static janus_voicemail_message exit_message;
 
-void janus_voicemail_message_free(janus_voicemail_message *msg);
-void janus_voicemail_message_free(janus_voicemail_message *msg) {
-	if(!msg)
+static void janus_voicemail_message_free(janus_voicemail_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;

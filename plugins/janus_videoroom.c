@@ -224,7 +224,7 @@ static GAsyncQueue *messages = NULL;
 static janus_videoroom_message exit_message;
 
 static void janus_videoroom_message_free(janus_videoroom_message *msg) {
-	if(!msg)
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;

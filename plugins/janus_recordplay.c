@@ -426,9 +426,8 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		"a=rtcp-fb:%d goog-remb\r\n"		/* VP8 payload type */
 
 
-void janus_recordplay_message_free(janus_recordplay_message *msg);
-void janus_recordplay_message_free(janus_recordplay_message *msg) {
-	if(!msg)
+static void janus_recordplay_message_free(janus_recordplay_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;
