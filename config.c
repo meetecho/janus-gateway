@@ -105,25 +105,15 @@ janus_config *janus_config_parse(const char *config_file) {
 		/* Strip comments */
 		char *line = line_buffer, *sc = line, *c = NULL;
 		while((c = strchr(sc, ';')) != NULL) {
-			if(c == line) {
-				/* Comment starts here */
-				*c = '\0';
-				break;
-			}
-			c--;
-			if(*c != '\\') {
+			if(c == line || *(c-1) != '\\') {
 				/* Comment starts here */
 				*c = '\0';
 				break;
 			}
 			/* Escaped semicolon, remove the slash */
-			sc = c;
-			int len = strlen(line)-(sc-line), pos = 0;
-			for(pos = 0; pos < len; pos++)
-				sc[pos] = sc[pos+1];
-			sc[len-1] = '\0';
-			if(len == 2)
-				break;
+			sc = c-1;
+			/* length will be at least 2: ';' '\0' */
+			memmove(sc, c, strlen(c)+1);
 			/* Go on */
 			sc++;
 		}
