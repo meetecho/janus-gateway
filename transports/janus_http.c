@@ -109,9 +109,13 @@ typedef struct janus_http_msg {
 	gchar *payload;						/* Payload of the message */
 	size_t len;							/* Length of the message in octets */
 	gint64 session_id;					/* Gateway-Client session identifier this message belongs to */
+	janus_mutex wait_mutex;				/* Mutex to wait on the response condition */
+	janus_condition wait_cond;			/* Response condition */
 	gboolean got_response;				/* Whether this message got a response from the core */
 	json_t *response;					/* The response from the core */
 } janus_http_msg;
+static GHashTable *messages = NULL;
+static janus_mutex messages_mutex;
 
 
 /* Helper for long poll: HTTP events to push per session */
@@ -636,6 +640,8 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	http_janus_api_enabled = ws || sws;
 	http_admin_api_enabled = admin_ws || admin_sws;
 
+	messages = g_hash_table_new(NULL, NULL);
+	janus_mutex_init(&messages_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
 	old_sessions = NULL;
 	janus_mutex_init(&sessions_mutex);
@@ -679,6 +685,7 @@ void janus_http_destroy(void) {
 		g_free((gpointer)cert_key_bytes);
 	cert_key_bytes = NULL;
 
+	g_hash_table_destroy(messages);
 	if(sessions_watchdog != NULL) {
 		g_thread_join(sessions_watchdog);
 		sessions_watchdog = NULL;
@@ -765,13 +772,24 @@ int janus_http_send_message(void *transport, void *request_id, gboolean admin, j
 		}
 		/* We have a response */
 		janus_http_msg *msg = (janus_http_msg *)transport;
+		janus_mutex_lock(&messages_mutex);
+		if(g_hash_table_lookup(messages, msg) == NULL) {
+			janus_mutex_unlock(&messages_mutex);
+			JANUS_LOG(LOG_ERR, "Invalid HTTP connection...\n");
+			json_decref(message);
+			return -1;
+		}
+		janus_mutex_unlock(&messages_mutex);
 		if(!msg->connection) {
 			JANUS_LOG(LOG_ERR, "Invalid HTTP connection...\n");
 			json_decref(message);
 			return -1;
 		}
+		janus_mutex_lock(&msg->wait_mutex);
 		msg->response = message;
 		msg->got_response = TRUE;
+		janus_condition_signal(&msg->wait_cond);
+		janus_mutex_unlock(&msg->wait_mutex);
 	}
 	return 0;
 }
@@ -873,6 +891,11 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		msg->session_id = 0;
 		msg->got_response = FALSE;
 		msg->response = NULL;
+		janus_mutex_init(&msg->wait_mutex);
+		janus_condition_init(&msg->wait_cond);
+		janus_mutex_lock(&messages_mutex);
+		g_hash_table_insert(messages, msg, msg);
+		janus_mutex_unlock(&messages_mutex);
 		*ptr = msg;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		ret = MHD_YES;
@@ -1186,16 +1209,19 @@ parsingdone:
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding request to the core (%p)\n", msg);
 	gateway->incoming_request(&janus_http_transport, msg, msg, FALSE, root, &error);
-	gint64 waited = 0;
+	/* Wait for a response (but not forever) */
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	struct timespec wakeup;
+	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
+	wakeup.tv_nsec = now.tv_usec*1000UL;
+	pthread_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
-		/* Still waiting for a response */
-		g_usleep(50000);
-		waited += 50000;
-		if(waited >= 10*G_USEC_PER_SEC) {
-			/* Don't wait forever */
+		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		if(msg->got_response || res == ETIMEDOUT)
 			break;
-		}
 	}
+	pthread_mutex_unlock(&msg->wait_mutex);
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
@@ -1246,6 +1272,11 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		msg->session_id = 0;
 		msg->got_response = FALSE;
 		msg->response = NULL;
+		janus_mutex_init(&msg->wait_mutex);
+		janus_condition_init(&msg->wait_cond);
+		janus_mutex_lock(&messages_mutex);
+		g_hash_table_insert(messages, msg, msg);
+		janus_mutex_unlock(&messages_mutex);
 		*ptr = msg;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		ret = MHD_YES;
@@ -1425,16 +1456,19 @@ parsingdone:
 	/* Suspend the connection and pass the ball to the core */
 	JANUS_LOG(LOG_HUGE, "Forwarding admin request to the core (%p)\n", msg);
 	gateway->incoming_request(&janus_http_transport, msg, msg, TRUE, root, &error);
-	gint64 waited = 0;
+	/* Wait for a response (but not forever) */
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	struct timespec wakeup;
+	wakeup.tv_sec = now.tv_sec+10;	/* Wait at max 10 seconds for a response */
+	wakeup.tv_nsec = now.tv_usec*1000UL;
+	pthread_mutex_lock(&msg->wait_mutex);
 	while(!msg->got_response) {
-		/* Still waiting for a response */
-		g_usleep(50000);
-		waited += 50000;
-		if(waited >= 10*G_USEC_PER_SEC) {
-			/* Don't wait forever */
+		int res = pthread_cond_timedwait(&msg->wait_cond, &msg->wait_mutex, &wakeup);
+		if(msg->got_response || res == ETIMEDOUT)
 			break;
-		}
 	}
+	pthread_mutex_unlock(&msg->wait_mutex);
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
@@ -1473,6 +1507,9 @@ void janus_http_request_completed(void *cls, struct MHD_Connection *connection, 
 	janus_http_msg *request = *con_cls;
 	if(!request)
 		return;
+	janus_mutex_lock(&messages_mutex);
+	g_hash_table_remove(messages, request);
+	janus_mutex_unlock(&messages_mutex);
 	if(request->payload != NULL)
 		g_free(request->payload);
 	if(request->contenttype != NULL)
@@ -1596,6 +1633,7 @@ int janus_http_return_success(janus_http_msg *msg, char *payload) {
 /* Helper to quickly send an error response */
 int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char *transaction, gint error, const char *format, ...) {
 	gchar *error_string = NULL;
+	gchar error_buf[512];
 	if(format == NULL) {
 		/* No error string provided, use the default one */
 		error_string = (gchar *)janus_get_api_error(error);
@@ -1603,9 +1641,9 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 		/* This callback has variable arguments (error string) */
 		va_list ap;
 		va_start(ap, format);
-		error_string = g_malloc0(512);
-		vsprintf(error_string, format, ap);
+		g_vsnprintf(error_buf, 512, format, ap);
 		va_end(ap);
+		error_string = error_buf;
 	}
 	/* Done preparing error */
 	JANUS_LOG(LOG_VERB, "[%s] Returning error %d (%s)\n", transaction, error, error_string ? error_string : "no text");
@@ -1618,7 +1656,7 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 		json_object_set_new(reply, "transaction", json_string(transaction));
 	json_t *error_data = json_object();
 	json_object_set_new(error_data, "code", json_integer(error));
-	json_object_set_new(error_data, "reason", json_string(error_string ? error_string : "no text"));
+	json_object_set_new(error_data, "reason", json_string(error_string));
 	json_object_set_new(reply, "error", error_data);
 	gchar *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(reply);
