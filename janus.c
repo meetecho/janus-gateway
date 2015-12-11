@@ -3576,7 +3576,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "transports_folder");
 	if(item && item->value)
 		path = (char *)item->value;
-	JANUS_LOG(LOG_INFO, "Transpor plugins folder: %s\n", path);
+	JANUS_LOG(LOG_INFO, "Transport plugins folder: %s\n", path);
 	dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access transport plugins folder...\n");
