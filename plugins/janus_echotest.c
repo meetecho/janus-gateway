@@ -174,6 +174,7 @@ typedef struct janus_echotest_message {
 	char *sdp;
 } janus_echotest_message;
 static GAsyncQueue *messages = NULL;
+static janus_echotest_message exit_message;
 
 typedef struct janus_echotest_session {
 	janus_plugin_session *handle;
@@ -192,9 +193,8 @@ static GHashTable *sessions;
 static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
-void janus_echotest_message_free(janus_echotest_message *msg);
-void janus_echotest_message_free(janus_echotest_message *msg) {
-	if(!msg)
+static void janus_echotest_message_free(janus_echotest_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;
@@ -311,6 +311,7 @@ void janus_echotest_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -664,8 +665,13 @@ static void *janus_echotest_handler(void *data) {
 	}
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
-			usleep(50000);
+		msg = g_async_queue_pop(messages);
+		if(msg == NULL)
+			continue;
+		if(msg == &exit_message)
+			break;
+		if(msg->handle == NULL) {
+			janus_echotest_message_free(msg);
 			continue;
 		}
 		janus_echotest_session *session = NULL;
