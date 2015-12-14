@@ -538,10 +538,7 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 		data = 0;
 #endif
 		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)
-				&& (
-					((video || data) && handle->audio_stream != NULL) || 
-						((data) && handle->video_stream != NULL))
-					) {
+				&& sdpMLineIndex != 0) {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a %s candidate but we're bundling, ignoring...\n", handle->handle_id, json_string_value(mid));
 		} else {
 			janus_ice_stream *stream = video ? handle->video_stream : (data ? handle->data_stream : handle->audio_stream);
