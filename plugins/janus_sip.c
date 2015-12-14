@@ -1423,6 +1423,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				/* Ignore */
 				json_decref(root);
+				janus_sip_message_free(msg);
 				continue;
 				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				//~ goto error;
@@ -1458,6 +1459,7 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				/* Ignore */
 				json_decref(root);
+				janus_sip_message_free(msg);
 				continue;
 				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
 				//~ goto error;
