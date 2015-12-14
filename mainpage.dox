@@ -2265,6 +2265,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-ruby">janus-gateway-ruby</a></td>
  * 		<td>ruby client side API wrapper for the Janus API (websocket only at the moment)</td>
  * </tr>
+ * <tr>
+ * 		<td>PHP</td>
+ * 		<td><a href="https://github.com/BenJaziaSadok">Mohamed Sadok Ben Jazia</a></td>
+ * 		<td><a href="https://github.com/BenJaziaSadok/janus-gateway-php">janus-gateway-php</a></td>
+ * 		<td>Client-side PHP/javascript implementation of the Janus and Admin APIs</td>
+ * </tr>
  * </table>
  * <br/>
  *
