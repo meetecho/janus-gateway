@@ -1031,7 +1031,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle) {
 		return;
 	if(handle->queued_packets != NULL)
 		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
-	if(handle->icethread != NULL) {
+	if(handle->icethread == NULL) {
 		/* Get rid of the PeerConnection */
 		if(handle->iceloop) {
 			gint64 waited = 0;
