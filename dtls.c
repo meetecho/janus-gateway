@@ -766,7 +766,7 @@ gboolean janus_dtls_retry(gpointer stack) {
 		}
 		return FALSE;
 	}
-	struct timeval timeout;
+	struct timeval timeout = {0};
 	DTLSv1_get_timeout(dtls->ssl, &timeout);
 	guint64 timeout_value = timeout.tv_sec*1000 + timeout.tv_usec/1000;
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
