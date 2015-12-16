@@ -2158,7 +2158,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 				janus_videoroom_participant *publisher = l->feed;
 				if(publisher != NULL) {
 					janus_mutex_lock(&publisher->listeners_mutex);
-					publisher->listeners = g_slist_remove(publisher->listeners, listener);
+					publisher->listeners = g_slist_remove(publisher->listeners, l);
 					janus_mutex_unlock(&publisher->listeners_mutex);
 					l->feed = NULL;
 				}
@@ -3689,6 +3689,7 @@ int janus_videoroom_muxed_unsubscribe(janus_videoroom_listener_muxed *muxed_list
 				listener->feed = NULL;
 				muxed_listener->listeners = g_slist_remove(muxed_listener->listeners, listener);
 				JANUS_LOG(LOG_VERB, "Now subscribed to %d feeds\n", g_slist_length(muxed_listener->listeners));
+				janus_videoroom_listener_free(listener);
 				/* Add to feeds in the answer */
 				removed_feeds++;
 				json_t *f = json_object();
@@ -3923,6 +3924,15 @@ static void janus_videoroom_listener_free(janus_videoroom_listener *l) {
 
 static void janus_videoroom_muxed_listener_free(janus_videoroom_listener_muxed *l) {
 	JANUS_LOG(LOG_VERB, "Freeing muxed-listener\n");
+	GSList *ls = l->listeners;
+	JANUS_LOG(LOG_VERB, "Freeing muxed-listener %p with %d listener\n", l, g_slist_length(ls));
+	while(ls) {
+		janus_videoroom_listener *listener = (janus_videoroom_listener *)ls->data;
+		if(listener) {
+			janus_videoroom_listener_free(listener);
+		}
+		ls = ls->next;
+	}
 	g_free(l);
 }
 
