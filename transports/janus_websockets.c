@@ -113,6 +113,8 @@ typedef struct janus_websockets_client {
 	struct libwebsocket_context *context;	/* The libwebsock client context */
 	struct libwebsocket *wsi;				/* The libwebsock client instance */
 	GAsyncQueue *messages;					/* Queue of outgoing messages to push */
+	char *partial_message;					/* A message that was not sent entirely */
+	int partial_offset;						/* Offset from where the interrupted partial write should restart */
 	janus_mutex mutex;						/* Mutex to lock/unlock this session */
 	gint session_timeout:1;					/* Whether a Janus session timeout occurred in the core */
 	gint destroy:1;							/* Flag to trigger a lazy session destruction */
@@ -757,6 +759,8 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 			ws_client->context = this;
 			ws_client->wsi = wsi;
 			ws_client->messages = g_async_queue_new();
+			ws_client->partial_message = NULL;
+			ws_client->partial_offset = 0;
 			ws_client->session_timeout = 0;
 			ws_client->destroy = 0;
 			janus_mutex_init(&ws_client->mutex);
@@ -790,17 +794,46 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 			}
 			if(!ws_client->destroy && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->mutex);
-				/* Shoot all the pending messages first */
+				/* Check if we have a pending/partial write to complete first */
+				if(ws_client->partial_message && ws_client->partial_offset > 0
+						&& !ws_client->destroy && !g_atomic_int_get(&stopping)) {
+					int pending = strlen(ws_client->partial_message) - ws_client->partial_offset;
+					JANUS_LOG(LOG_VERB, "[WSS-%p] Completing pending WebSocket write (still need to write last %d/%zu bytes)...\n",
+						wsi, pending, strlen(ws_client->partial_message));
+					int sent = libwebsocket_write(wsi, (unsigned char *)(ws_client->partial_message + ws_client->partial_offset), pending, LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Sent %d/%d bytes\n", wsi, sent, pending);
+					if(sent > -1 && sent < pending) {
+						/* We still couldn't send everything that was left, we'll try and complete this in the next round */
+						ws_client->partial_offset += sent;
+					} else {
+						/* Clear the pending/partial write queue */
+						g_free(ws_client->partial_message);
+						ws_client->partial_message = NULL;
+						ws_client->partial_offset = 0;
+					}
+					/* Done for this round, check the next response/notification later */
+					libwebsocket_callback_on_writable(this, wsi);
+					janus_mutex_unlock(&ws_client->mutex);
+					return 0;
+				}
+				/* Shoot all the pending messages */
 				char *response = g_async_queue_try_pop(ws_client->messages);
 				if(response && !ws_client->destroy && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
 					unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING);
 					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
-					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(response));
+					JANUS_LOG(LOG_VERB, "[WSS-%p] Sending WebSocket message (%zu bytes)...\n", wsi, strlen(response));
 					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
+					JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Sent %d/%zu bytes\n", wsi, sent, strlen(response));
+					if(sent > -1 && sent < (int)strlen(response)) {
+						/* We couldn't send everything in a single write, we'll complete this in the next round */
+						ws_client->partial_message = response;
+						ws_client->partial_offset = sent;
+					} else {
+						/* We can get rid of the message */
+						g_free(response);
+					}
 					g_free(buf);
-					g_free(response);
 					/* Done for this round, check the next response/notification later */
 					libwebsocket_callback_on_writable(this, wsi);
 					janus_mutex_unlock(&ws_client->mutex);
@@ -833,6 +866,10 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 					}
 					g_async_queue_unref(ws_client->messages);
 				}
+				/* ... and any pending/partial write */
+				g_free(ws_client->partial_message);
+				ws_client->partial_message = NULL;
+				ws_client->partial_offset = 0;
 				janus_mutex_unlock(&ws_client->mutex);
 			}
 			JANUS_LOG(LOG_VERB, "[WSS-%p]   -- closed\n", wsi);
@@ -891,6 +928,8 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 			ws_client->context = this;
 			ws_client->wsi = wsi;
 			ws_client->messages = g_async_queue_new();
+			ws_client->partial_message = NULL;
+			ws_client->partial_offset = 0;
 			ws_client->session_timeout = 0;
 			ws_client->destroy = 0;
 			janus_mutex_init(&ws_client->mutex);
@@ -924,17 +963,46 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 			}
 			if(!ws_client->destroy && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->mutex);
-				/* Shoot all the pending messages first */
+				/* Check if we have a pending/partial write to complete first */
+				if(ws_client->partial_message && ws_client->partial_offset > 0
+						&& !ws_client->destroy && !g_atomic_int_get(&stopping)) {
+					int pending = strlen(ws_client->partial_message) - ws_client->partial_offset;
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Completing pending WebSocket write (still need to write last %d/%zu bytes)...\n",
+						wsi, pending, strlen(ws_client->partial_message));
+					int sent = libwebsocket_write(wsi, (unsigned char *)(ws_client->partial_message + ws_client->partial_offset), pending, LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Sent %d/%d bytes\n", wsi, sent, pending);
+					if(sent > -1 && sent < pending) {
+						/* We still couldn't send everything that was left, we'll try and complete this in the next round */
+						ws_client->partial_offset += sent;
+					} else {
+						/* Clear the pending/partial write queue */
+						g_free(ws_client->partial_message);
+						ws_client->partial_message = NULL;
+						ws_client->partial_offset = 0;
+					}
+					/* Done for this round, check the next response/notification later */
+					libwebsocket_callback_on_writable(this, wsi);
+					janus_mutex_unlock(&ws_client->mutex);
+					return 0;
+				}
+				/* Shoot all the pending messages */
 				char *response = g_async_queue_try_pop(ws_client->messages);
 				if(response && !ws_client->destroy && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
 					unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING);
 					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
-					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(response));
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Sending WebSocket message (%zu bytes)...\n", wsi, strlen(response));
 					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Sent %d/%zu bytes\n", wsi, sent, strlen(response));
+					if(sent > -1 && sent < (int)strlen(response)) {
+						/* We couldn't send everything in a single write, we'll complete this in the next round */
+						ws_client->partial_message = response;
+						ws_client->partial_offset = sent;
+					} else {
+						/* We can get rid of the message */
+						g_free(response);
+					}
 					g_free(buf);
-					g_free(response);
 					/* Done for this round, check the next response/notification later */
 					libwebsocket_callback_on_writable(this, wsi);
 					janus_mutex_unlock(&ws_client->mutex);
@@ -967,6 +1035,10 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 					}
 					g_async_queue_unref(ws_client->messages);
 				}
+				/* ... and any pending/partial writes */
+				g_free(ws_client->partial_message);
+				ws_client->partial_message = NULL;
+				ws_client->partial_offset = 0;
 				janus_mutex_unlock(&ws_client->mutex);
 			}
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- closed\n", wsi);
