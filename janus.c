@@ -3273,6 +3273,7 @@ gint main(int argc, char *argv[])
 	uint16_t stun_port = 0, turn_port = 0;
 	char *turn_type = NULL, *turn_user = NULL, *turn_pwd = NULL;
 	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
+	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, ipv6 = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "ipv6");
@@ -3315,6 +3316,7 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "nat_1_1_mapping");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public ip - %s\n", item->value);
+		nat_1_1_mapping = item->value;
 		janus_set_public_ip(item->value);
 		janus_ice_enable_nat_1_1();
 	}
@@ -3369,10 +3371,11 @@ gint main(int argc, char *argv[])
 	if(stun_server == NULL && turn_server == NULL) {
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		gboolean private_address = FALSE;
+		const char *test_ip = nat_1_1_mapping ? nat_1_1_mapping : local_ip;
 		struct sockaddr_in addr;
-		if(inet_pton(AF_INET, local_ip, &addr) > 0) {
+		if(inet_pton(AF_INET, test_ip, &addr) > 0) {
 			unsigned short int ip[4];
-			sscanf(local_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
+			sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
 			if(ip[0] == 10) {
 				/* Class A private address */
 				private_address = TRUE;
@@ -3385,7 +3388,8 @@ gint main(int argc, char *argv[])
 			}
 		}
 		if(private_address) {
-			JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server! Expect trouble if this is supposed to work over the internet and not just in a LAN...\n", local_ip);
+			JANUS_LOG(LOG_WARN, "Janus is deployed on a private address (%s) but you didn't specify any STUN server!"
+			                    " Expect trouble if this is supposed to work over the internet and not just in a LAN...\n", test_ip);
 		}
 	}
 	/* Are we going to force BUNDLE and/or rtcp-mux? */
