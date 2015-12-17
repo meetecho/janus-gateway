@@ -3925,7 +3925,6 @@ static void janus_videoroom_listener_free(janus_videoroom_listener *l) {
 static void janus_videoroom_muxed_listener_free(janus_videoroom_listener_muxed *l) {
 	JANUS_LOG(LOG_VERB, "Freeing muxed-listener\n");
 	GSList *ls = l->listeners;
-	JANUS_LOG(LOG_VERB, "Freeing muxed-listener %p with %d listener\n", l, g_slist_length(ls));
 	while(ls) {
 		janus_videoroom_listener *listener = (janus_videoroom_listener *)ls->data;
 		if(listener) {
@@ -3933,6 +3932,7 @@ static void janus_videoroom_muxed_listener_free(janus_videoroom_listener_muxed *
 		}
 		ls = ls->next;
 	}
+	g_slist_free(l->listeners);
 	g_free(l);
 }
 
