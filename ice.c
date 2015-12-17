@@ -1169,8 +1169,7 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	component->stream = NULL;
 	if(component->source != NULL) {
 		g_source_destroy(component->source);
-		if(G_IS_OBJECT(component->source))
-			g_object_unref(component->source);
+		g_source_unref(component->source);
 		component->source = NULL;
 	}
 	if(component->dtls != NULL) {

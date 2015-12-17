@@ -760,8 +760,7 @@ gboolean janus_dtls_retry(gpointer stack) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
 		if(component->source != NULL) {
 			g_source_destroy(component->source);
-			if(G_IS_OBJECT(component->source))
-				g_object_unref(component->source);
+			g_source_unref(component->source);
 			component->source = NULL;
 		}
 		return FALSE;
