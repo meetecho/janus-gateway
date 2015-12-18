@@ -2833,24 +2833,6 @@ void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Plugin asked to hangup PeerConnection: sending alert\n", ice_handle->handle_id);
 	/* Send an alert on all the DTLS connections */
 	janus_ice_webrtc_hangup(ice_handle);
-	/* Get rid of the PeerConnection */
-	if(ice_handle->iceloop) {
-		gint64 waited = 0;
-		while(ice_handle->iceloop && !g_main_loop_is_running(ice_handle->iceloop)) {
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", ice_handle->handle_id);
-			g_usleep (100000);
-			waited += 100000;
-			if(waited >= G_USEC_PER_SEC) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", ice_handle->handle_id);
-				break;
-			}
-		}
-		if(ice_handle->iceloop && g_main_loop_is_running(ice_handle->iceloop)) {
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", ice_handle->handle_id, g_main_loop_is_running(ice_handle->iceloop) ? "running" : "NOT running");
-			g_main_loop_quit(ice_handle->iceloop);
-			g_main_context_wakeup(ice_handle->icectx);
-		}
-	}
 }
 
 void janus_plugin_end_session(janus_plugin_session *plugin_session) {
