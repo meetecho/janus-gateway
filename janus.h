@@ -29,9 +29,7 @@
 #include <jansson.h>
 
 #include "mutex.h"
-#include "dtls.h"
 #include "ice.h"
-#include "sctp.h"
 #include "transports/transport.h"
 #include "plugins/plugin.h"
 
@@ -57,6 +55,8 @@ typedef struct janus_session {
 	gint timeout:1;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_session;
 
 
@@ -75,17 +75,10 @@ janus_session *janus_session_find(guint64 session_id);
  * @param[in] session_id The Janus Gateway-Client session ID
  * @param[in] event The event to notify as a Jansson JSON object */
 void janus_session_notify_event(guint64 session_id, json_t *event);
-/*! \brief Method to find an existing Janus Gateway-Client session scheduled to be destroyed from its ID
- * @param[in] session_id The Janus Gateway-Client session ID
- * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
-janus_session *janus_session_find_destroyed(guint64 session_id);
 /*! \brief Method to destroy a Janus Gateway-Client session
- * @param[in] session_id The Janus Gateway-Client session ID to destroy
+ * @param[in] session The Janus Gateway-Client session to destroy
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_session_destroy(guint64 session_id);
-/*! \brief Method to actually free the resources allocated by a Janus Gateway-Client session
- * @param[in] session The Janus Gateway-Client session instance to free */
-void janus_session_free(janus_session *session);
+gint janus_session_destroy(janus_session *session);
 ///@}
 
 
@@ -113,6 +106,7 @@ struct janus_request {
  * @param[in] transport Pointer to the transport
  * @param[in] instance Opaque pointer to the transport-provided instance
  * @param[in] request_id Opaque pointer to the request ID, if available
+ * @param[in] admin Whether this is an admin or Janus API request
  * @param[in] message Opaque pointer to the original request, if available
  * @returns A pointer to a janus_request instance if successful, NULL otherwise */
 janus_request *janus_request_new(janus_transport *transport, void *instance, void *request_id, gboolean admin, json_t *message);
@@ -121,7 +115,6 @@ janus_request *janus_request_new(janus_transport *transport, void *instance, voi
  * @note The opaque pointers in the instance are not destroyed, that's up to you */
 void janus_request_destroy(janus_request *request);
 /*! \brief Helper to process an incoming request, no matter where it comes from
- * @param[in] source The request instance and its source
  * @param[in] request The JSON request
  * @returns 0 on success, a negative integer otherwise
  */
@@ -133,6 +126,7 @@ int janus_process_incoming_request(janus_request *request);
 int janus_process_incoming_admin_request(janus_request *request);
 /*! \brief Method to return a successful Janus response message (JSON) to the browser
  * @param[in] request The request instance and its source
+ * @param[in] payload The JSON payload to return
  * @returns 0 on success, a negative integer otherwise
  */
 int janus_process_success(janus_request *request, json_t *payload);
@@ -146,7 +140,7 @@ int janus_process_success(janus_request *request, json_t *payload);
  * associated with the error code is used
  * @returns 0 on success, a negative integer otherwise
  */
-int janus_process_error(janus_request *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
+int janus_process_error(janus_request *request, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 ///@}
 
 

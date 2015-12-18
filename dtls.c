@@ -234,6 +234,39 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 	return 0;
 }
 
+/* DTLS-SRTP de-initialization */
+void janus_dtls_srtp_deinit(void) {
+	SSL_CTX_free(ssl_ctx);
+	g_free(janus_dtls_locks);
+}
+
+static void janus_dtls_srtp_free(const janus_refcount *dtls_ref) {
+	janus_dtls_srtp *dtls = janus_refcount_containerof(dtls_ref, janus_dtls_srtp, ref);
+	JANUS_LOG(LOG_WARN, "Freeing DTLS stack: %p\n", dtls);
+	/* This stack can be destroyed, free all the resources */
+	dtls->component = NULL;
+	if(dtls->ssl != NULL) {
+		SSL_free(dtls->ssl);
+		dtls->ssl = NULL;
+	}
+	/* BIOs are destroyed by SSL_free */
+	dtls->read_bio = NULL;
+	dtls->write_bio = NULL;
+	dtls->filter_bio = NULL;
+	if(dtls->srtp_valid) {
+		if(dtls->srtp_in) {
+			srtp_dealloc(dtls->srtp_in);
+			dtls->srtp_in = NULL;
+		}
+		if(dtls->srtp_out) {
+			srtp_dealloc(dtls->srtp_out);
+			dtls->srtp_out = NULL;
+		}
+		/* FIXME What about dtls->remote_policy and dtls->local_policy? */
+	}
+	g_free(dtls);
+	dtls = NULL;
+}
 
 janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role role) {
 	janus_ice_component *component = (janus_ice_component *)ice_component;
@@ -256,13 +289,14 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
+	janus_refcount_init(&dtls->ref, janus_dtls_srtp_free);
 	/* Create SSL context, at last */
 	dtls->srtp_valid = 0;
 	dtls->ssl = SSL_new(janus_dtls_get_ssl_ctx());
 	if(!dtls->ssl) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error creating DTLS session! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	SSL_set_ex_data(dtls->ssl, 0, dtls);
@@ -271,7 +305,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	if(!dtls->read_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating read BIO! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	BIO_set_mem_eof_return(dtls->read_bio, -1);
@@ -279,7 +313,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	if(!dtls->write_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating write BIO! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	BIO_set_mem_eof_return(dtls->write_bio, -1);
@@ -288,7 +322,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	if(!dtls->filter_bio) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating filter BIO! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	/* Chain filter and write BIOs */
@@ -312,7 +346,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	if(ecdh == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
-		janus_dtls_srtp_destroy(dtls);
+		janus_refcount_decrease(&dtls->ref);
 		return NULL;
 	}
 	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
@@ -530,6 +564,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					dtls->sctp = janus_sctp_association_create(dtls, handle->handle_id, 5000);
 					if(dtls->sctp != NULL) {
 						/* FIXME We need to start it in a thread, though, since it has blocking accept/connect stuff */
+						janus_refcount_increase(&dtls->sctp->ref);
 						GError *error = NULL;
 						g_thread_try_new("DTLS-SCTP", janus_dtls_sctp_setup_thread, dtls, &error);
 						if(error != NULL) {
@@ -571,32 +606,11 @@ void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	/* Destroy the SCTP association if this is a DataChannel */
 	if(dtls->sctp != NULL) {
 		janus_sctp_association_destroy(dtls->sctp);
+		janus_refcount_decrease(&dtls->sctp->ref);
 		dtls->sctp = NULL;
 	}
 #endif
-	/* Destroy DTLS stack and free resources */
-	dtls->component = NULL;
-	if(dtls->ssl != NULL) {
-		SSL_free(dtls->ssl);
-		dtls->ssl = NULL;
-	}
-	/* BIOs are destroyed by SSL_free */
-	dtls->read_bio = NULL;
-	dtls->write_bio = NULL;
-	dtls->filter_bio = NULL;
-	if(dtls->srtp_valid) {
-		if(dtls->srtp_in) {
-			srtp_dealloc(dtls->srtp_in);
-			dtls->srtp_in = NULL;
-		}
-		if(dtls->srtp_out) {
-			srtp_dealloc(dtls->srtp_out);
-			dtls->srtp_out = NULL;
-		}
-		/* FIXME What about dtls->remote_policy and dtls->local_policy? */
-	}
-	g_free(dtls);
-	dtls = NULL;
+	janus_refcount_decrease(&dtls->ref);
 }
 
 /* DTLS alert callback */
@@ -634,7 +648,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
-		if(handle->iceloop)
+		if(handle->icethread == NULL && handle->iceloop != NULL)
 			g_main_loop_quit(handle->iceloop);
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin != NULL) {

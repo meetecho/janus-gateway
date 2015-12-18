@@ -97,8 +97,8 @@
 
 
 /* Plugin information */
-#define JANUS_ECHOTEST_VERSION			6
-#define JANUS_ECHOTEST_VERSION_STRING	"0.0.6"
+#define JANUS_ECHOTEST_VERSION			7
+#define JANUS_ECHOTEST_VERSION_STRING	"0.0.7"
 #define JANUS_ECHOTEST_DESCRIPTION		"This is a trivial EchoTest plugin for Janus, just used to showcase the plugin interface."
 #define JANUS_ECHOTEST_NAME				"JANUS EchoTest plugin"
 #define JANUS_ECHOTEST_AUTHOR			"Meetecho s.r.l."
@@ -163,7 +163,6 @@ janus_plugin *create(void) {
 static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
-static GThread *watchdog;
 static void *janus_echotest_handler(void *data);
 
 typedef struct janus_echotest_message {
@@ -187,16 +186,36 @@ typedef struct janus_echotest_session {
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	guint16 slowlink_count;
 	volatile gint hangingup;
-	gint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint destroyed;
+	janus_refcount ref;
 } janus_echotest_session;
 static GHashTable *sessions;
-static GList *old_sessions;
 static janus_mutex sessions_mutex;
+
+static void janus_echotest_session_destroy(janus_echotest_session *session) {
+	if(!session)
+		return;
+	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		return;
+	session->handle = NULL;
+	janus_refcount_decrease(&session->ref);
+}
+
+static void janus_echotest_session_free(const janus_refcount *session_ref) {
+	janus_echotest_session *session = janus_refcount_containerof(session_ref, janus_echotest_session, ref);
+	JANUS_LOG(LOG_WARN, "Freeing EchoTest session: %p\n", session);
+	/* This session can be destroyed, free all the resources */
+	g_free(session);
+}
 
 static void janus_echotest_message_free(janus_echotest_message *msg) {
 	if(!msg || msg == &exit_message)
 		return;
 
+	if(msg->handle && msg->handle->plugin_handle) {
+		janus_echotest_session *session = (janus_echotest_session *)msg->handle->plugin_handle;
+		janus_refcount_decrease(&session->ref);
+	}
 	msg->handle = NULL;
 
 	g_free(msg->transaction);
@@ -216,46 +235,6 @@ static void janus_echotest_message_free(janus_echotest_message *msg) {
 #define JANUS_ECHOTEST_ERROR_NO_MESSAGE			411
 #define JANUS_ECHOTEST_ERROR_INVALID_JSON		412
 #define JANUS_ECHOTEST_ERROR_INVALID_ELEMENT	413
-
-
-/* EchoTest watchdog/garbage collector (sort of) */
-void *janus_echotest_watchdog(void *data);
-void *janus_echotest_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "EchoTest watchdog started\n");
-	gint64 now = 0;
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		janus_mutex_lock(&sessions_mutex);
-		/* Iterate on all the sessions */
-		now = janus_get_monotonic_time();
-		if(old_sessions != NULL) {
-			GList *sl = old_sessions;
-			JANUS_LOG(LOG_HUGE, "Checking %d old EchoTest sessions...\n", g_list_length(old_sessions));
-			while(sl) {
-				janus_echotest_session *session = (janus_echotest_session *)sl->data;
-				if(!session) {
-					sl = sl->next;
-					continue;
-				}
-				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
-					/* We're lazy and actually get rid of the stuff only after a few seconds */
-					JANUS_LOG(LOG_VERB, "Freeing old EchoTest session\n");
-					GList *rm = sl->next;
-					old_sessions = g_list_delete_link(old_sessions, sl);
-					sl = rm;
-					session->handle = NULL;
-					g_free(session);
-					session = NULL;
-					continue;
-				}
-				sl = sl->next;
-			}
-		}
-		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(500000);
-	}
-	JANUS_LOG(LOG_INFO, "EchoTest watchdog stopped\n");
-	return NULL;
-}
 
 
 /* Plugin implementation */
@@ -280,22 +259,15 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	janus_config_destroy(config);
 	config = NULL;
 	
-	sessions = g_hash_table_new(NULL, NULL);
+	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_echotest_session_destroy);
 	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_echotest_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 	g_atomic_int_set(&initialized, 1);
 
-	GError *error = NULL;
-	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("etest watchdog", &janus_echotest_watchdog, NULL, &error);
-	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the EchoTest watchdog thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
-	}
 	/* Launch the thread that will handle incoming messages */
+	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus echotest handler", janus_echotest_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
@@ -315,10 +287,6 @@ void janus_echotest_destroy(void) {
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
-	}
-	if(watchdog != NULL) {
-		g_thread_join(watchdog);
-		watchdog = NULL;
 	}
 
 	/* FIXME We should destroy the sessions cleanly */
@@ -380,8 +348,9 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
-	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
+	g_atomic_int_set(&session->destroyed, 0);
+	janus_refcount_init(&session->ref, janus_echotest_session_free);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -403,12 +372,7 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	JANUS_LOG(LOG_VERB, "Removing Echo Test session...\n");
 	janus_mutex_lock(&sessions_mutex);
-	if(!session->destroyed) {
-		session->destroyed = janus_get_monotonic_time();
-		g_hash_table_remove(sessions, handle);
-		/* Cleaning up and removing the session is done in a lazy way */
-		old_sessions = g_list_append(old_sessions, session);
-	}
+	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
@@ -422,6 +386,7 @@ char *janus_echotest_query_session(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
+	janus_refcount_increase(&session->ref);
 	/* In the echo test, every session is the same: we just provide some configure info */
 	json_t *info = json_object();
 	json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
@@ -436,20 +401,28 @@ char *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
-	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
+	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(info);
+	janus_refcount_decrease(&session->ref);
 	return info_text;
 }
 
 struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
+	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
+	if(!session)
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle");
 	janus_echotest_message *msg = g_malloc0(sizeof(janus_echotest_message));
 	if(msg == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 	}
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
+
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -462,7 +435,7 @@ struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *
 }
 
 void janus_echotest_setup_media(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_ECHOTEST_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
@@ -470,14 +443,14 @@ void janus_echotest_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed))
 		return;
 	g_atomic_int_set(&session->hangingup, 0);
 	/* We really don't care, as we only send RTP/RTCP we get in the first place back anyway */
 }
 
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -487,7 +460,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(session->destroyed)
+		if(g_atomic_int_get(&session->destroyed))
 			return;
 		if((!video && session->audio_active) || (video && session->video_active)) {
 			/* Save the frame if we're recording */
@@ -502,7 +475,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 }
 
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -511,7 +484,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(session->destroyed)
+		if(g_atomic_int_get(&session->destroyed))
 			return;
 		if(session->bitrate > 0)
 			janus_rtcp_cap_remb(buf, len, session->bitrate);
@@ -520,7 +493,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 }
 
 void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Simple echo test */
 	if(gateway) {
@@ -529,7 +502,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
-		if(session->destroyed)
+		if(g_atomic_int_get(&session->destroyed))
 			return;
 		if(buf == NULL || len <= 0)
 			return;
@@ -549,14 +522,14 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 
 void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video) {
 	/* The core is informing us that our peer got or sent too many NACKs, are we pushing media too hard? */
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed))
 		return;
 	session->slowlink_count++;
 	if(uplink && !video && !session->audio_active) {
@@ -610,7 +583,7 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 }
 
 void janus_echotest_hangup_media(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_ECHOTEST_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_echotest_session *session = (janus_echotest_session *)handle->plugin_handle;
@@ -618,7 +591,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed))
 		return;
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
@@ -685,7 +658,7 @@ static void *janus_echotest_handler(void *data) {
 			janus_echotest_message_free(msg);
 			continue;
 		}
-		if(session->destroyed) {
+		if(g_atomic_int_get(&session->destroyed)) {
 			janus_echotest_message_free(msg);
 			continue;
 		}

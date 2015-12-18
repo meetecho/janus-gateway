@@ -154,6 +154,8 @@ janus_plugin *create(void) {
 #include <unistd.h>
 #include <inttypes.h>
 
+#include "refcount.h"
+
 
 /*! \brief Version of the API, to match the one plugins were compiled against
  * 
@@ -222,7 +224,9 @@ struct janus_plugin_session {
 	void *plugin_handle;
 	/*! \brief Whether this mapping has been stopped definitely or not: if so,
 	 * the plugin shouldn't make use of it anymore */
-	int stopped:1;
+	volatile gint stopped;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 /*! \brief The plugin session and callbacks interface */

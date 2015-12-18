@@ -27,6 +27,8 @@
  * @param[in] server_key Path to the key to use
  * @returns 0 in case of success, a negative integer on errors */
 gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key);
+/*! \brief DTLS stuff de-initialization */
+void janus_dtls_srtp_deinit(void);
 /*! \brief Method to return the shared SSL_CTX instance */
 SSL_CTX *janus_dtls_get_ssl_ctx(void);
 /*! \brief Method to return a string representation (SHA-256) of the certificate fingerprint */
@@ -84,6 +86,8 @@ typedef struct janus_dtls_srtp {
 	/*! \brief SCTP association, if DataChannels are involved */
 	janus_sctp_association *sctp;
 #endif
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_dtls_srtp;
 
 

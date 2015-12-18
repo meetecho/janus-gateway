@@ -177,14 +177,11 @@ int janus_recorder_free(janus_recorder *recorder) {
 		return -1;
 	janus_recorder_close(recorder);
 	janus_mutex_lock_nodebug(&recorder->mutex);
-	if(recorder->dir)
-		g_free(recorder->dir);
+	g_free(recorder->dir);
 	recorder->dir = NULL;
-	if(recorder->filename)
-		g_free(recorder->filename);
+	g_free(recorder->filename);
 	recorder->filename = NULL;
-	if(recorder->file)
-		fclose(recorder->file);
+	fclose(recorder->file);
 	recorder->file = NULL;
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	g_free(recorder);

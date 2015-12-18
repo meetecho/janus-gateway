@@ -112,6 +112,28 @@ void janus_sctp_deinit(void) {
 	sctp_running = FALSE;
 }
 
+static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
+	janus_sctp_association *sctp = janus_refcount_containerof(sctp_ref, janus_sctp_association, ref);
+	JANUS_LOG(LOG_WARN, "Freeing SCTP association: %p\n", sctp);
+	/* This association can be destroyed, free all the resources */
+	if(sctp->dtls != NULL) {
+		janus_dtls_srtp *dtls = (janus_dtls_srtp *)sctp->dtls;
+		janus_refcount_decrease(&dtls->ref);
+	}
+	sctp->dtls = NULL;
+	if(sctp->messages)
+		g_async_queue_unref(sctp->messages);
+	sctp->messages = NULL;
+	sctp->thread = NULL;
+#ifdef DEBUG_SCTP
+	if(sctp->debug_dump != NULL)
+		fclose(sctp->debug_dump);
+	sctp->debug_dump = NULL;
+#endif
+	g_free(sctp);
+	sctp = NULL;
+}
+
 janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handle_id, uint16_t udp_port) {
 	if(dtls == NULL || udp_port == 0)
 		return NULL;
@@ -125,7 +147,10 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
+	janus_refcount_init(&sctp->ref, janus_sctp_association_free);
+	g_atomic_int_set(&sctp->destroyed, 0);
 	sctp->dtls = dtls;
+	janus_refcount_increase(&((janus_dtls_srtp *)dtls)->ref);
 	sctp->handle_id = handle_id;
 	sctp->local_port = 5000;	/* FIXME We always use this one */
 	sctp->remote_port = udp_port;
@@ -160,8 +185,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	usrsctp_sysctl_set_sctp_ecn_enable(0);
 	if((sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, janus_sctp_incoming_data, NULL, 0, (void *)sctp)) == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error creating usrsctp socket...\n", handle_id);
-		g_free(sctp);
-		sctp = NULL;
+		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}
 	/* Set SO_LINGER */
@@ -170,8 +194,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	linger_opt.l_linger = 0;
 	if(usrsctp_setsockopt(sock, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SO_LINGER\n", handle_id);
-		g_free(sctp);
-		sctp = NULL;
+		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}
 	/* Allow resetting streams */
@@ -180,16 +203,14 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	av.assoc_value = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(struct sctp_assoc_value)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_ENABLE_STREAM_RESET\n", handle_id);
-		g_free(sctp);
-		sctp = NULL;
+		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}
 	/* Disable Nagle */
 	uint32_t nodelay = 1;
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay))) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_NODELAY\n", handle_id);
-		g_free(sctp);
-		sctp = NULL;
+		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}	
 	/* Enable the events of interest */
@@ -201,8 +222,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 		event.se_type = event_types[i];
 		if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_EVENT, &event, sizeof(event)) < 0) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_EVENT\n", handle_id);
-			g_free(sctp);
-			sctp = NULL;
+			janus_refcount_decrease(&sctp->ref);
 			return NULL;
 		}
 	}
@@ -213,8 +233,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	initmsg.sinit_max_instreams = 2048;	/* What both Chrome and Firefox say in the INIT */
 	if(usrsctp_setsockopt(sock, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof(struct sctp_initmsg)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] setsockopt error: SCTP_INITMSG\n", handle_id);
-		g_free(sctp);
-		sctp = NULL;
+		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}
 	/* Bind our side of the communication, using AF_CONN as we're doing the actual delivery ourselves */
@@ -224,8 +243,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	sconn.sconn_addr = (void *)sctp;
 	if(usrsctp_bind(sock, (struct sockaddr *)&sconn, sizeof(struct sockaddr_conn)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error binding client on port %"SCNu16"\n", handle_id, sctp->local_port);
-		g_free(sctp);
-		sctp = NULL;
+		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}
 
@@ -244,10 +262,7 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
-		g_async_queue_unref(sctp->messages);
-		sctp->messages = NULL;
-		g_free(sctp);
-		sctp = NULL;
+		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}
 	janus_mutex_unlock(&sctp->mutex);
@@ -289,10 +304,9 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 	usrsctp_deregister_address(sctp);
 	usrsctp_shutdown(sctp->sock, SHUT_RDWR);
 	usrsctp_close(sctp->sock);
-	janus_mutex_lock(&sctp->mutex);
-	sctp->dtls = NULL;	/* This will get rid of the thread */
+	g_atomic_int_set(&sctp->destroyed, 1);
 	g_async_queue_push(sctp->messages, &exit_message);
-	janus_mutex_unlock(&sctp->mutex);
+	janus_refcount_decrease(&sctp->ref);
 }
 
 void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len) {
@@ -830,8 +844,7 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id,
 		label ? label : "??",
 		channel->stream, channel->unordered, channel->pr_policy, channel->pr_value);
-	if(label)
-		g_free(label);
+	g_free(label);
 }
 
 void janus_sctp_handle_open_response_message(janus_sctp_association *sctp, janus_datachannel_open_response *rsp, size_t length, uint16_t stream) {
@@ -1240,10 +1253,11 @@ void *janus_sctp_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
+	janus_refcount_increase(&sctp->ref);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
 	janus_sctp_message *message = NULL;
 	gboolean sent_data = FALSE;
-	while(sctp->dtls != NULL && sctp_running) {
+	while(!g_atomic_int_get(&sctp->destroyed) && sctp_running) {
 		/* Anything to do at all? */
 		message = g_async_queue_pop(sctp->messages);
 		if(message == NULL)
@@ -1299,18 +1313,7 @@ void *janus_sctp_thread(void *data) {
 		message = NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Leaving SCTP association thread\n", sctp->handle_id);
-	/* This association has been destroyed, wait a bit and then free all the resources */
-	g_usleep (1*G_USEC_PER_SEC);
-	g_async_queue_unref(sctp->messages);
-	sctp->messages = NULL;
-	sctp->thread = NULL;
-#ifdef DEBUG_SCTP
-	if(sctp->debug_dump != NULL)
-		fclose(sctp->debug_dump);
-	sctp->debug_dump = NULL;
-#endif
-	g_free(sctp);
-	sctp = NULL;
+	janus_refcount_decrease(&sctp->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
@@ -1336,8 +1339,7 @@ janus_sctp_message *janus_sctp_message_create(gboolean incoming, char *buffer, s
 void janus_sctp_message_destroy(janus_sctp_message *message) {
 	if(message == NULL || message == &exit_message)
 		return;
-	if(message->buffer != NULL)
-		g_free(message->buffer);
+	g_free(message->buffer);
 	message->buffer = NULL;
 	g_free(message);
 	message = NULL;

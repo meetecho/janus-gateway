@@ -21,7 +21,6 @@
 #include <agent.h>
 
 #include "dtls.h"
-#include "sctp.h"
 #include "utils.h"
 #include "plugins/plugin.h"
 
@@ -295,6 +294,8 @@ struct janus_ice_handle {
 	GThread *send_thread;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 /*! \brief Janus ICE stream */
@@ -339,6 +340,8 @@ struct janus_ice_stream {
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 #define LAST_SEQS_MAX_LEN 160
@@ -396,6 +399,8 @@ struct janus_ice_component {
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 };
 
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
@@ -455,9 +460,6 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
  * @param[in] handle_id The Janus ICE handle ID to destroy
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id);
-/*! \brief Method to actually free the resources allocated by a Janus ICE handle
- * @param[in] handle The Janus ICE handle instance to free */
-void janus_ice_free(janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup */
 void janus_ice_webrtc_hangup(janus_ice_handle *handle);
@@ -467,11 +469,11 @@ void janus_ice_webrtc_free(janus_ice_handle *handle);
 /*! \brief Method to only free resources related to a specific ICE stream allocated by a Janus ICE handle
  * @param[in] container The map containing the list of all streams for the handle
  * @param[in] stream The Janus ICE stream instance to free */
-void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream);
+void janus_ice_stream_destroy(GHashTable *container, janus_ice_stream *stream);
 /*! \brief Method to only free resources related to a specific ICE component allocated by a Janus ICE handle
  * @param[in] container The map containing the list of all components for the stream
  * @param[in] component The Janus ICE component instance to free */
-void janus_ice_component_free(GHashTable *container, janus_ice_component *component);
+void janus_ice_component_destroy(GHashTable *container, janus_ice_component *component);
 ///@}
 
 

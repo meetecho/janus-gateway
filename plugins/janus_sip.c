@@ -73,8 +73,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			5
-#define JANUS_SIP_VERSION_STRING	"0.0.5"
+#define JANUS_SIP_VERSION			6
+#define JANUS_SIP_VERSION_STRING	"0.0.6"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -143,7 +143,6 @@ static char *user_agent;
 static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
 
 static GThread *handler_thread;
-static GThread *watchdog;
 static void *janus_sip_handler(void *data);
 
 typedef struct janus_sip_message {
@@ -155,24 +154,6 @@ typedef struct janus_sip_message {
 } janus_sip_message;
 static GAsyncQueue *messages = NULL;
 static janus_sip_message exit_message;
-
-static void janus_sip_message_free(janus_sip_message *msg) {
-	if(!msg || msg == &exit_message)
-		return;
-
-	msg->handle = NULL;
-
-	g_free(msg->transaction);
-	msg->transaction = NULL;
-	g_free(msg->message);
-	msg->message = NULL;
-	g_free(msg->sdp_type);
-	msg->sdp_type = NULL;
-	g_free(msg->sdp);
-	msg->sdp = NULL;
-
-	g_free(msg);
-}
 
 
 typedef enum {
@@ -280,12 +261,87 @@ typedef struct janus_sip_session {
 	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
 	volatile gint hangingup;
-	gint64 destroyed;	/* Time at which this session was marked as destroyed */
+	volatile gint destroyed;
+	janus_refcount ref;
 	janus_mutex mutex;
 } janus_sip_session;
 static GHashTable *sessions;
-static GList *old_sessions;
 static janus_mutex sessions_mutex;
+
+static void janus_sip_session_destroy(janus_sip_session *session) {
+	if(!session)
+		return;
+	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		return;
+	session->handle = NULL;
+	janus_refcount_decrease(&session->ref);
+}
+
+static void janus_sip_session_free(const janus_refcount *session_ref) {
+	janus_sip_session *session = janus_refcount_containerof(session_ref, janus_sip_session, ref);
+	JANUS_LOG(LOG_WARN, "Freeing sip session: %p\n", session);
+	/* This session can be destroyed, free all the resources */
+	if(session->account.identity) {
+		g_free(session->account.identity);
+		session->account.identity = NULL;
+	}
+	session->account.sips = TRUE;
+	if(session->account.proxy) {
+		g_free(session->account.proxy);
+		session->account.proxy = NULL;
+	}
+	if(session->account.secret) {
+		g_free(session->account.secret);
+		session->account.secret = NULL;
+	}
+	if(session->account.username) {
+		g_free(session->account.username);
+		session->account.username = NULL;
+	}
+	if(session->account.authuser) {
+		g_free(session->account.authuser);
+		session->account.authuser = NULL;
+	}
+	if(session->callee) {
+		g_free(session->callee);
+		session->callee = NULL;
+	}
+	if(session->transaction) {
+		g_free(session->transaction);
+		session->transaction = NULL;
+	}
+	if(session->media.remote_ip) {
+		g_free(session->media.remote_ip);
+		session->media.remote_ip = NULL;
+	}
+	if(session->stack) {
+		g_free(session->stack);
+		session->stack = NULL;
+	}
+	g_free(session);
+}
+
+static void janus_sip_message_free(janus_sip_message *msg) {
+	if(!msg || msg == &exit_message)
+		return;
+
+	if(msg->handle && msg->handle->plugin_handle) {
+		janus_sip_session *session = (janus_sip_session *)msg->handle->plugin_handle;
+		janus_refcount_decrease(&session->ref);
+	}
+	msg->handle = NULL;
+
+	g_free(msg->transaction);
+	msg->transaction = NULL;
+	g_free(msg->message);
+	msg->message = NULL;
+	g_free(msg->sdp_type);
+	msg->sdp_type = NULL;
+	g_free(msg->sdp);
+	msg->sdp = NULL;
+
+	g_free(msg);
+}
 
 
 #undef SU_ROOT_MAGIC_T
@@ -353,83 +409,6 @@ static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data)
 #define JANUS_SIP_ERROR_LIBSOFIA_ERROR		449
 #define JANUS_SIP_ERROR_IO_ERROR			450
 #define JANUS_SIP_ERROR_RECORDING_ERROR		451
-
-
-/* SIP watchdog/garbage collector (sort of) */
-void *janus_sip_watchdog(void *data);
-void *janus_sip_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "SIP watchdog started\n");
-	gint64 now = 0;
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		janus_mutex_lock(&sessions_mutex);
-		/* Iterate on all the sessions */
-		now = janus_get_monotonic_time();
-		if(old_sessions != NULL) {
-			GList *sl = old_sessions;
-			JANUS_LOG(LOG_HUGE, "Checking %d old SIP sessions...\n", g_list_length(old_sessions));
-			while(sl) {
-				janus_sip_session *session = (janus_sip_session *)sl->data;
-				if(!session) {
-					sl = sl->next;
-					continue;
-				}
-				if (now-session->destroyed >= 5*G_USEC_PER_SEC) {
-					/* We're lazy and actually get rid of the stuff only after a few seconds */
-					JANUS_LOG(LOG_VERB, "Freeing old SIP session\n");
-					GList *rm = sl->next;
-					old_sessions = g_list_delete_link(old_sessions, sl);
-					sl = rm;
-					if (session->account.identity) {
-					    g_free(session->account.identity);
-					    session->account.identity = NULL;
-					}
-					session->account.sips = TRUE;
-					if (session->account.proxy) {
-					    g_free(session->account.proxy);
-					    session->account.proxy = NULL;
-					}
-					if (session->account.secret) {
-					    g_free(session->account.secret);
-					    session->account.secret = NULL;
-					}
-					if (session->account.username) {
-					    g_free(session->account.username);
-					    session->account.username = NULL;
-					}
-					if (session->account.authuser) {
-					    g_free(session->account.authuser);
-					    session->account.authuser = NULL;
-					}
-					if (session->callee) {
-					    g_free(session->callee);
-					    session->callee = NULL;
-					}
-					if (session->transaction) {
-					    g_free(session->transaction);
-					    session->transaction = NULL;
-					}
-					if (session->media.remote_ip) {
-					    g_free(session->media.remote_ip);
-					    session->media.remote_ip = NULL;
-					}
-					if (session->stack) {
-					    g_free(session->stack);
-					    session->stack = NULL;
-					}
-					session->handle = NULL;
-					g_free(session);
-					session = NULL;
-					continue;
-				}
-				sl = sl->next;
-			}
-		}
-		janus_mutex_unlock(&sessions_mutex);
-		g_usleep(500000);
-	}
-	JANUS_LOG(LOG_INFO, "SIP watchdog stopped\n");
-	return NULL;
-}
 
 
 static void janus_sip_detect_local_ip(char *buf, size_t buflen) {
@@ -554,7 +533,7 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	/* Setup sofia */
 	su_init();
 
-	sessions = g_hash_table_new(NULL, NULL);
+	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_sip_session_destroy);
 	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
@@ -562,15 +541,8 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	g_atomic_int_set(&initialized, 1);
 
-	GError *error = NULL;
-	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("etest watchdog", &janus_sip_watchdog, NULL, &error);
-	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP watchdog thread...\n", error->code, error->message ? error->message : "??");
-		return -1;
-	}
 	/* Launch the thread that will handle incoming messages */
+	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus sip handler", janus_sip_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
@@ -590,10 +562,6 @@ void janus_sip_destroy(void) {
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
-	}
-	if(watchdog != NULL) {
-		g_thread_join(watchdog);
-		watchdog = NULL;
 	}
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
@@ -681,11 +649,12 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
-	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
+	g_atomic_int_set(&session->destroyed, 0);
 	su_home_init(session->stack->s_home);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
+	janus_refcount_init(&session->ref, janus_sip_session_free);
 
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -706,16 +675,12 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	janus_mutex_lock(&sessions_mutex);
-	if(!session->destroyed) {
-		g_hash_table_remove(sessions, handle);
-		janus_sip_hangup_media(handle);
-		session->destroyed = janus_get_monotonic_time();
-		JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
-		/* Shutdown the NUA */
+	janus_sip_hangup_media(handle);
+	JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
+	/* Shutdown the NUA */
+	if(session->stack->s_nua)
 		nua_shutdown(session->stack->s_nua);
-		/* Cleaning up and removing the session is done in a lazy way */
-		old_sessions = g_list_append(old_sessions, session);
-	}
+	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 	return;
 }
@@ -729,6 +694,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
+	janus_refcount_increase(&session->ref);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
@@ -749,16 +715,24 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 			json_object_set_new(recording, "video-peer", json_string(session->vrc_peer->filename));
 		json_object_set_new(info, "recording", recording);
 	}
-	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	json_object_set_new(info, "hangingup", json_integer(g_atomic_int_get(&session->hangingup)));
+	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(info);
+	janus_refcount_decrease(&session->ref);
 	return info_text;
 }
 
 struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
+	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
+	if(!session)
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle");
+
 	JANUS_LOG(LOG_VERB, "%s\n", message);
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
@@ -772,7 +746,7 @@ struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handl
 }
 
 void janus_sip_setup_media(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] WebRTC media is now available\n", JANUS_SIP_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
@@ -780,19 +754,19 @@ void janus_sip_setup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed))
 		return;
 	g_atomic_int_set(&session->hangingup, 0);
 	/* TODO Only relay RTP/RTCP when we get this event */
 }
 
 void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
 		/* Honour the audio/video active flags */
 		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
-		if(!session || session->destroyed) {
+		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -830,11 +804,11 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 }
 
 void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || g_atomic_int_get(&handle->stopped) || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	if(gateway) {
 		janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
-		if(!session || session->destroyed) {
+		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			return;
 		}
@@ -861,7 +835,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 }
 
 void janus_sip_hangup_media(janus_plugin_session *handle) {
-	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
+	JANUS_LOG(LOG_INFO, "[%s-%p] No WebRTC media anymore\n", JANUS_SIP_PACKAGE, handle);
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	janus_sip_session *session = (janus_sip_session *)handle->plugin_handle;
@@ -869,7 +843,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(g_atomic_int_get(&session->destroyed))
 		return;
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
@@ -903,6 +877,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	}
 	session->vrc_peer = NULL;
 	/* FIXME Simulate a "hangup" coming from the browser */
+	janus_refcount_increase(&session->ref);
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->message = g_strdup("{\"request\":\"hangup\"}");
@@ -940,7 +915,7 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_message_free(msg);
 			continue;
 		}
-		if(session->destroyed) {
+		if(g_atomic_int_get(&session->destroyed)) {
 			janus_sip_message_free(msg);
 			continue;
 		}
@@ -994,22 +969,17 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			/* Cleanup old values */
-			if(session->account.identity != NULL)
-				g_free(session->account.identity);
+			g_free(session->account.identity);
 			session->account.identity = NULL;
 			session->account.sips = TRUE;
-			if(session->account.username != NULL)
-				g_free(session->account.username);
+			g_free(session->account.username);
 			session->account.username = NULL;
-			if(session->account.authuser != NULL)
-				g_free(session->account.authuser);
+			g_free(session->account.authuser);
 			session->account.authuser = NULL;
-			if(session->account.secret != NULL)
-				g_free(session->account.secret);
+			g_free(session->account.secret);
 			session->account.secret = NULL;
 			session->account.secret_type = janus_sip_secret_type_unknown;
-			if(session->account.proxy != NULL)
-				g_free(session->account.proxy);
+			g_free(session->account.proxy);
 			session->account.proxy = NULL;
 			session->account.registration_status = janus_sip_registration_status_unregistered;
 
@@ -1336,8 +1306,7 @@ static void *janus_sip_handler(void *data) {
 				TAG_END());
 			g_free(sdp);
 			session->callee = g_strdup(uri_text);
-			if(session->transaction)
-				g_free(session->transaction);
+			g_free(session->transaction);
 			session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
 			/* Send an ack back */
 			result = json_object();
@@ -1730,8 +1699,7 @@ static void *janus_sip_handler(void *data) {
 		int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event_text, sdp_type, sdp);
 		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		g_free(event_text);
-		if(sdp)
-			g_free(sdp);
+		g_free(sdp);
 		janus_sip_message_free(msg);
 		continue;
 
@@ -1807,8 +1775,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				g_free(call_text);
 				/* Get rid of any PeerConnection that may have been set up */
-				if(session->transaction)
-					g_free(session->transaction);
+				g_free(session->transaction);
 				session->transaction = NULL;
 				gateway->close_pc(session->handle);
 			}
@@ -1858,8 +1825,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					su_free(session->stack->s_home, caller_text);
 					if (sip->sip_from && sip->sip_from->a_display) {
 						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
-					}
-					json_object_set_new(missed, "result", result);
+					}					json_object_set_new(missed, "result", result);
 					char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 					json_decref(missed);
 					JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
@@ -2074,8 +2040,7 @@ void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp) {
 		return;
 	/* c= */
 	if(sdp->sdp_connection && sdp->sdp_connection->c_address) {
-		if(session->media.remote_ip != NULL)
-			g_free(session->media.remote_ip);
+		g_free(session->media.remote_ip);
 		session->media.remote_ip = g_strdup(sdp->sdp_connection->c_address);
 		JANUS_LOG(LOG_VERB, "  >> Media connection:\n");
 		JANUS_LOG(LOG_VERB, "       %s\n", session->media.remote_ip);
@@ -2107,8 +2072,7 @@ void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp) {
 			sdp_connection_t *c = m->m_connections;
 			while(c) {
 				if(c->c_address) {
-					if(session->media.remote_ip != NULL)
-						g_free(session->media.remote_ip);
+					g_free(session->media.remote_ip);
 					session->media.remote_ip = g_strdup(c->c_address);
 					JANUS_LOG(LOG_VERB, "         [%s]\n", session->media.remote_ip);
 				}
@@ -2258,6 +2222,7 @@ static void *janus_sip_relay_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
+	janus_refcount_increase(&session->ref);
 	JANUS_LOG(LOG_VERB, "Starting relay thread (%s <--> %s)\n", session->account.username, session->callee);
 
 	gboolean have_server_ip = TRUE;
@@ -2273,6 +2238,13 @@ static void *janus_sip_relay_thread(void *data) {
 			server_addr.sin_addr = *(struct in_addr *)host->h_addr_list;
 		}
 	}
+
+	JANUS_LOG(LOG_VERB, "[SIP-%s] Audio:\n", session->account.username);
+	JANUS_LOG(LOG_VERB, "[SIP-%s]   RTP: %d, %s:%d\n", session->account.username, session->media.audio_rtp_fd, session->media.remote_ip, session->media.remote_audio_rtp_port);
+	JANUS_LOG(LOG_VERB, "[SIP-%s]  RTCP: %d, %s:%d\n", session->account.username, session->media.audio_rtcp_fd, session->media.remote_ip, session->media.remote_audio_rtcp_port);
+	JANUS_LOG(LOG_VERB, "[SIP-%s] Video:\n", session->account.username);
+	JANUS_LOG(LOG_VERB, "[SIP-%s]   RTP: %d, %s:%d\n", session->account.username, session->media.video_rtp_fd, session->media.remote_ip, session->media.remote_video_rtp_port);
+	JANUS_LOG(LOG_VERB, "[SIP-%s]  RTCP: %d, %s:%d\n", session->account.username, session->media.video_rtcp_fd, session->media.remote_ip, session->media.remote_video_rtcp_port);
 
 	/* Connect peers (FIXME This pretty much sucks right now) */
 	if(have_server_ip && session->media.remote_audio_rtp_port) {
@@ -2306,6 +2278,7 @@ static void *janus_sip_relay_thread(void *data) {
 
 	if(!session->callee) {
 		JANUS_LOG(LOG_VERB, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
+		janus_refcount_decrease(&session->ref);
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
@@ -2316,7 +2289,7 @@ static void *janus_sip_relay_thread(void *data) {
 	struct pollfd fds[4];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
-	while(session != NULL && !session->destroyed &&
+	while(session != NULL && !g_atomic_int_get(&session->destroyed) &&
 			session->status > janus_sip_call_status_idle &&
 			session->status < janus_sip_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
 		/* Wait for some data */
@@ -2357,7 +2330,7 @@ static void *janus_sip_relay_thread(void *data) {
 			/* No data, keep going */
 			continue;
 		}
-		if(session == NULL || session->destroyed ||
+		if(session == NULL || g_atomic_int_get(&session->destroyed) ||
 				session->status <= janus_sip_call_status_idle ||
 				session->status >= janus_sip_call_status_closing)
 			break;
@@ -2453,6 +2426,7 @@ static void *janus_sip_relay_thread(void *data) {
 	session->media.local_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	JANUS_LOG(LOG_VERB, "Leaving SIP relay thread\n");
+	janus_refcount_decrease(&session->ref);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
@@ -2465,6 +2439,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
+	janus_refcount_increase(&session->ref);
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack->s_root = su_root_create(session->stack);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
@@ -2499,7 +2474,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	su_home_deinit(session->stack->s_home);
 	su_home_unref(session->stack->s_home);
 	su_deinit();
-	//~ stop = 1;
+	janus_refcount_decrease(&session->ref);
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
 	g_thread_unref(g_thread_self());
 	return NULL;

@@ -16,7 +16,6 @@
  
 #include "janus.h"
 #include "ice.h"
-#include "dtls.h"
 #include "sdp.h"
 #include "utils.h"
 #include "debug.h"
@@ -238,19 +237,15 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 				} else if(!strcasecmp(a->a_name, "fingerprint")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Fingerprint (local) : %s\n", handle->handle_id, a->a_value);
 					if(strcasestr(a->a_value, "sha-256 ") == a->a_value) {
-						if(rhashing)
-							g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
+						g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
 						rhashing = g_strdup("sha-256");
-						if(rfingerprint)
-							g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
+						g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
 						rfingerprint = g_strdup(a->a_value + strlen("sha-256 "));
 					} else if(strcasestr(a->a_value, "sha-1 ") == a->a_value) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"]  Hashing algorithm not the one we expected (sha-1 instead of sha-256), but that's ok\n", handle->handle_id);
-						if(rhashing)
-							g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
+						g_free(rhashing);	/* FIXME We're overwriting the global one, if any */
 						rhashing = g_strdup("sha-1");
-						if(rfingerprint)
-							g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
+						g_free(rfingerprint);	/* FIXME We're overwriting the global one, if any */
 						rfingerprint = g_strdup(a->a_value + strlen("sha-1 "));
 					} else {
 						/* FIXME We should handle this somehow anyway... OpenSSL supports them all */
@@ -265,13 +260,11 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 					/* TODO Handle holdconn... */
 				} else if(!strcasecmp(a->a_name, "ice-ufrag")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE ufrag (local):   %s\n", handle->handle_id, a->a_value);
-					if(ruser)
-						g_free(ruser);	/* FIXME We're overwriting the global one, if any */
+					g_free(ruser);	/* FIXME We're overwriting the global one, if any */
 					ruser = g_strdup(a->a_value);
 				} else if(!strcasecmp(a->a_name, "ice-pwd")) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE pwd (local):     %s\n", handle->handle_id, a->a_value);
-					if(rpass)
-						g_free(rpass);	/* FIXME We're overwriting the global one, if any */
+					g_free(rpass);	/* FIXME We're overwriting the global one, if any */
 					rpass = g_strdup(a->a_value);
 				}
 			}
@@ -279,33 +272,25 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 		}
 		if(!ruser || !rpass || !rfingerprint || !rhashing) {
 			/* Missing mandatory information, failure... */
-			if(ruser)
-				g_free(ruser);
+			g_free(ruser);
 			ruser = NULL;
-			if(rpass)
-				g_free(rpass);
+			g_free(rpass);
 			rpass = NULL;
-			if(rhashing)
-				g_free(rhashing);
+			g_free(rhashing);
 			rhashing = NULL;
-			if(rfingerprint)
-				g_free(rfingerprint);
+			g_free(rfingerprint);
 			rfingerprint = NULL;
 			return -2;
 		}
 		/* FIXME We're replacing the fingerprint info, assuming it's going to be the same for all media */
-		if(stream->remote_hashing != NULL)
-			g_free(stream->remote_hashing);
+		g_free(stream->remote_hashing);
 		stream->remote_hashing = g_strdup(rhashing);
-		if(stream->remote_fingerprint != NULL)
-			g_free(stream->remote_fingerprint);
+		g_free(stream->remote_fingerprint);
 		stream->remote_fingerprint = g_strdup(rfingerprint);
 		/* Store the ICE username and password for this stream */
-		if(stream->ruser != NULL)
-			g_free(stream->ruser);
+		g_free(stream->ruser);
 		stream->ruser = g_strdup(ruser);
-		if(stream->rpass != NULL)
-			g_free(stream->rpass);
+		g_free(stream->rpass);
 		stream->rpass = g_strdup(rpass);
 		/* Now look for candidates and other info */
 		a = m->m_attributes;
@@ -342,17 +327,13 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 		}
 		m = m->m_next;
 	}
-	if(ruser)
-		g_free(ruser);
+	g_free(ruser);
 	ruser = NULL;
-	if(rpass)
-		g_free(rpass);
+	g_free(rpass);
 	rpass = NULL;
-	if(rhashing)
-		g_free(rhashing);
+	g_free(rhashing);
 	rhashing = NULL;
-	if(rfingerprint)
-		g_free(rfingerprint);
+	g_free(rfingerprint);
 	rfingerprint = NULL;
 	return 0;	/* FIXME Handle errors better */
 }
@@ -1067,11 +1048,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					ufrag, password,
 					janus_dtls_get_local_fingerprint(),
 					janus_get_dtls_srtp_role(stream->dtls_role));
-			if(ufrag != NULL)
-				g_free(ufrag);
+			g_free(ufrag);
 			ufrag = NULL;
-			if(password != NULL)
-				g_free(password);
+			g_free(password);
 			password = NULL;
 			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			/* Copy existing media attributes, if any */
