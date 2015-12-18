@@ -265,6 +265,21 @@ gboolean janus_is_rtcp(gchar *buf) {
 }
 
 
+#define JANUS_ICE_PACKET_AUDIO	0
+#define JANUS_ICE_PACKET_VIDEO	1
+#define JANUS_ICE_PACKET_DATA	2
+/* Janus enqueued (S)RTP/(S)RTCP packet to send */
+typedef struct janus_ice_queued_packet {
+	char *data;
+	gint length;
+	gint type;
+	gboolean control;
+	gboolean encrypted;
+} janus_ice_queued_packet;
+/* This is a static, fake, message we use as a trigger to send a DTLS alert */
+static janus_ice_queued_packet janus_ice_dtls_alert;
+
+
 /* Maximum values for the NACK queue/retransmissions */
 #define DEFAULT_MAX_NACK_QUEUE	300
 /* Maximum ignore count after retransmission (100ms) */
@@ -1014,32 +1029,29 @@ void janus_ice_free(janus_ice_handle *handle) {
 void janus_ice_webrtc_hangup(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;
-	janus_mutex_lock(&handle->mutex);
-	handle->icethread = NULL;
-	if(handle->streams != NULL) {
-		if(handle->audio_stream) {
-			janus_ice_stream *stream = handle->audio_stream;
-			if(stream->rtp_component)
-				janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
-			if(stream->rtcp_component)
-				janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
-		}
-		if(handle->video_stream) {
-			janus_ice_stream *stream = handle->video_stream;
-			if(stream->rtp_component)
-				janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
-			if(stream->rtcp_component)
-				janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
-		}
-		if(handle->data_stream) {
-			janus_ice_stream *stream = handle->data_stream;
-			if(stream->rtp_component)
-				janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
-			if(stream->rtcp_component)
-				janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+	if(handle->queued_packets != NULL)
+		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
+	if(handle->icethread == NULL) {
+		/* Get rid of the PeerConnection */
+		if(handle->iceloop) {
+			gint64 waited = 0;
+			while(handle->iceloop && !g_main_loop_is_running(handle->iceloop)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", handle->handle_id);
+				g_usleep (100000);
+				waited += 100000;
+				if(waited >= G_USEC_PER_SEC) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", handle->handle_id);
+					break;
+				}
+			}
+			if(handle->iceloop && g_main_loop_is_running(handle->iceloop)) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
+				g_main_loop_quit(handle->iceloop);
+				g_main_context_wakeup(handle->icectx);
+			}
 		}
 	}
-	janus_mutex_unlock(&handle->mutex);
+	handle->icethread = NULL;
 }
 
 void janus_ice_webrtc_free(janus_ice_handle *handle) {
@@ -1093,7 +1105,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		janus_ice_queued_packet *pkt = NULL;
 		while(g_async_queue_length(handle->queued_packets) > 0) {
 			pkt = g_async_queue_try_pop(handle->queued_packets);
-			if(pkt != NULL) {
+			if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
 				g_free(pkt->data);
 				pkt->data = NULL;
 				g_free(pkt);
@@ -1169,8 +1181,7 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	component->stream = NULL;
 	if(component->source != NULL) {
 		g_source_destroy(component->source);
-		if(G_IS_OBJECT(component->source))
-			g_object_unref(component->source);
+		g_source_unref(component->source);
 		component->source = NULL;
 	}
 	if(component->dtls != NULL) {
@@ -2945,6 +2956,33 @@ void *janus_ice_send_thread(void *data) {
 		if(pkt == NULL) {
 			/* Sleep 10ms */
 			g_usleep(10000);
+			continue;
+		}
+		if(pkt == &janus_ice_dtls_alert) {
+			/* The session is over, send an alert on all streams and components */
+			if(handle->streams != NULL) {
+				if(handle->audio_stream) {
+					janus_ice_stream *stream = handle->audio_stream;
+					if(stream->rtp_component)
+						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+					if(stream->rtcp_component)
+						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+				}
+				if(handle->video_stream) {
+					janus_ice_stream *stream = handle->video_stream;
+					if(stream->rtp_component)
+						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+					if(stream->rtcp_component)
+						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+				}
+				if(handle->data_stream) {
+					janus_ice_stream *stream = handle->data_stream;
+					if(stream->rtp_component)
+						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+					if(stream->rtcp_component)
+						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+				}
+			}
 			continue;
 		}
 		if(pkt->data == NULL) {
