@@ -350,7 +350,7 @@ function unpublishOwnFeed() {
 }
 
 function newRemoteFeed(id, display) {
-	// A new feed has been published, create a new plugin handle and attach to it as a listener
+	// A new feed has been published, create a new plugin handle and attach to it as a subscriber
 	var remoteFeed = null;
 	janus.attach(
 		{
@@ -360,7 +360,7 @@ function newRemoteFeed(id, display) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": 1234, "ptype": "listener", "feed": id };
+				var listen = { "request": "join", "room": 1234, "ptype": "subscriber", "feed": id };
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {
@@ -368,7 +368,7 @@ function newRemoteFeed(id, display) {
 				bootbox.alert("Error attaching plugin... " + error);
 			},
 			onmessage: function(msg, jsep) {
-				Janus.debug(" ::: Got a message (listener) :::");
+				Janus.debug(" ::: Got a message (subscriber) :::");
 				Janus.debug(JSON.stringify(msg));
 				var event = msg["videoroom"];
 				Janus.debug("Event: " + event);
