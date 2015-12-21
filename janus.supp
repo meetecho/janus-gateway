@@ -1,242 +1,141 @@
+# annoying glib2 object type registration stuff
 {
-	gnutls-init-calloc
+	glib2-type-register-fundamental
 	Memcheck:Leak
 	fun:calloc
+	fun:g_malloc0
 	...
-	fun:gtls_gnutls_init
-}
-
-{
-	gnutls-init-realloc
-	Memcheck:Leak
-	fun:realloc
+	fun:g_type_register_fundamental
 	...
-	fun:gtls_gnutls_init
 }
-
 {
-	g-tls-backend-gnutls-init
+	glib2-type-register-fundamental-realloc
 	Memcheck:Leak
-	fun:g_once_impl
-	fun:g_tls_backend_gnutls_init
-}
-
-{
-	p11-tokens-init
-	Memcheck:Leak
-	fun:calloc
 	...
-	fun:create_tokens_inlock
-	fun:initialize_module_inlock_reentrant
+	fun:g_realloc
+	...
+	fun:g_type_register_fundamental
+	...
 }
-
 {
-	gobject-init-malloc
+	glib2-type-register-static
 	Memcheck:Leak
 	fun:malloc
+	fun:g_malloc
 	...
-	fun:gobject_init_ctor
-}
-
-{
-	gobject-init-realloc
-	Memcheck:Leak
-	fun:realloc
-	...
-	fun:gobject_init_ctor
-}
-
-{
-	gobject-init-calloc
-	Memcheck:Leak
-	fun:calloc
-	...
-	fun:gobject_init_ctor
-}
-
-{
-	g-type-register-dynamic
-	Memcheck:Leak
-	fun:malloc
-	...
-	fun:g_type_register_dynamic
-}
-
-{
-	g-type-register-static
-	Memcheck:Leak
-	fun:malloc
-	...
+	fun:type_node_any_new_W
 	fun:g_type_register_static
-}
-
-{
-	g-type-register-static-realloc
-	Memcheck:Leak
-	fun:realloc
 	...
-	fun:g_type_register_static
 }
-
 {
-	g-type-register-static-calloc
+	glib2-type-register-static-realloc
 	Memcheck:Leak
-	fun:calloc
 	...
+	fun:g_realloc
+	...
+	fun:type_node_any_new_W
 	fun:g_type_register_static
+	...
 }
-
 {
-	g-type-add-interface-dynamic
+	glib2-type-add-interface-static
 	Memcheck:Leak
 	fun:malloc
+	fun:g_malloc
 	...
-	fun:g_type_add_interface_dynamic
-}
-
-{
-	g-type-add-interface-static
-	Memcheck:Leak
-	fun:malloc
-	...
+	fun:type_add_interface_Wm
 	fun:g_type_add_interface_static
+	...
 }
-
 {
-	g-test-rand-init
+	glib2-dl-init-gobject-type-data
 	Memcheck:Leak
 	fun:calloc
+	fun:g_malloc0
+	fun:type_data_make_W
+	fun:gobject_init_ctor
 	...
-	fun:g_rand_new_with_seed_array
-	fun:test_run_seed
+	fun:_dl_init
 	...
-	fun:g_test_run
 }
-
 {
-	g-test-rand-init2
+	glib2-dl-init-gobject-type-node
 	Memcheck:Leak
 	fun:calloc
+	fun:g_malloc0
 	...
-	fun:g_rand_new_with_seed_array
+	fun:type_node_fundamental_new_W
+	fun:gobject_init_ctor
 	...
-	fun:get_global_random
+	fun:_dl_init
 	...
-	fun:g_test_init
 }
-
 {
-	g-quark-table-new
+	glib2-signal-new-class
 	Memcheck:Leak
-	fun:g_hash_table_new
+	fun:calloc
+	fun:g_malloc0
 	...
-	fun:quark_new
+	fun:g_signal_type_cclosure_new
+	fun:g_signal_new
+	...
+	fun:g_object_do_class_init
+	...
 }
-
 {
-	g-quark-table-resize
+	glib2-signal-new-class-intern
 	Memcheck:Leak
-	fun:g_hash_table_resize
+	fun:calloc
+	fun:g_malloc0
 	...
-	fun:quark_new
+	fun:g_signal_type_cclosure_new
+	fun:g_signal_new
+	...
+	fun:g_cancellable_class_intern_init
+	...
 }
-
 {
-	g-type-interface-init
+	nice-socket-new-vtable-base
 	Memcheck:Leak
 	fun:malloc
+	fun:g_malloc
 	...
 	fun:type_iface_vtable_base_init_Wm
+	...
+	fun:nice_udp_bsd_socket_new
+	...
 }
-
 {
-	g-type-class-init
+	nice-socket-new-class
 	Memcheck:Leak
 	fun:calloc
+	fun:g_malloc0
 	...
-	fun:type_class_init_Wm
+	fun:g_socket_class_intern_init
+	...
+	fun:nice_udp_bsd_socket_new
+	...
 }
 
 {
-	g-io-module-default-singleton-malloc
+	nice-agent-class-init
 	Memcheck:Leak
-	fun:malloc
+	fun:calloc
+	fun:g_malloc0
 	...
 	fun:g_type_create_instance
 	...
-	fun:_g_io_module_get_default
+	fun:nice_agent_class_init
+	...
 }
 
+# probably a bug in sofia-sip
 {
-	g-io-module-default-singleton-module
+	sofia-sip-su-home
 	Memcheck:Leak
 	fun:calloc
 	...
-	fun:g_module_open
-	...
-	fun:_g_io_module_get_default
-}
-
-{
-	g-get-language-names
-	Memcheck:Leak
-	fun:malloc
-	...
-	fun:g_get_language_names
-}
-
-{
-	g-static-mutex
-	Memcheck:Leak
-	fun:malloc
-	...
-	fun:g_static_mutex_get_mutex_impl
-}
-
-{
-	g-system-thread-init
-	Memcheck:Leak
-	fun:calloc
-	...
-	fun:g_system_thread_new
-}
-
-{
-	g-io-module-default-proxy-resolver-gnome
-	Memcheck:Leak
-	fun:calloc
-	...
-	fun:g_proxy_resolver_gnome_init
-	...
-	fun:_g_io_module_get_default
-}
-
-{
-	gnutls-pkcs11-init
-	Memcheck:Leak
-	fun:calloc
-	...
-	fun:p11_kit_initialize_registered
-	fun:gnutls_pkcs11_init
-}
-
-# Actually a leak, but dlclose() is normally commented out so that debug
-# symbols are available for the plugins.
-{
-	janus-plugins
-	Memcheck:Leak
-	fun:malloc
-	fun:dl_open_worker
-	...
-	fun:main
-}
-
-# Probably a leak, but hard to trace. FIXME.
-{
-	janus-sdp
-	Memcheck:Leak
-	fun:calloc
 	fun:su_home_new
-	fun:janus_sdp_init
+	...
 	fun:main
 }
