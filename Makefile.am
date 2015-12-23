@@ -110,6 +110,7 @@ janus_SOURCES = \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
+	transports/transport.c \
 	$(NULL)
 
 janus_CFLAGS = \

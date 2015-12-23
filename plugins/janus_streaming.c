@@ -1,4 +1,4 @@
-f/*! \file   janus_streaming.c
+/*! \file   janus_streaming.c
  * \author Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief  Janus Streaming plugin
@@ -234,9 +234,6 @@ typedef struct janus_streaming_file_source {
 	char *filename;
 } janus_streaming_file_source;
 
-#define JANUS_STREAMING_VP8		0
-#define JANUS_STREAMING_H264	1
-#define JANUS_STREAMING_VP9		2
 typedef struct janus_streaming_codecs {
 	gint audio_pt;
 	char *audio_rtpmap;

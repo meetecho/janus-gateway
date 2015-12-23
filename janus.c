@@ -224,8 +224,8 @@ static void janus_termination_handler(void) {
  * plugins send the gateway is handled here.
  */
 ///@{
-void janus_transport_incoming_request(janus_transport *plugin, void *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error);
-void janus_transport_gone(janus_transport *plugin, void *transport);
+void janus_transport_incoming_request(janus_transport *plugin, janus_transport_session *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error);
+void janus_transport_gone(janus_transport *plugin, janus_transport_session *transport);
 gboolean janus_transport_is_api_secret_needed(janus_transport *plugin);
 gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
@@ -313,9 +313,8 @@ static gboolean janus_check_sessions(gpointer user_data) {
 					json_t *event = json_object();
 					json_object_set_new(event, "janus", json_string("timeout"));
 					json_object_set_new(event, "session_id", json_integer(session->session_id));
-					/* Send this to the transport client */
+					/* Send this to the transport client and notify the session's over */
 					session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
-					/* Notify the transport plugin about the session timeout */
 					session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
 				}
 				
@@ -346,6 +345,8 @@ static gpointer janus_sessions_watchdog(gpointer user_data) {
 	JANUS_LOG(LOG_INFO, "Sessions watchdog started\n");
 
 	g_main_loop_run(loop);
+
+	JANUS_LOG(LOG_INFO, "Sessions watchdog stopped\n");
 
 	return NULL;
 }
@@ -395,16 +396,12 @@ janus_session *janus_session_find(guint64 session_id) {
 	return session;
 }
 
-void janus_session_notify_event(guint64 session_id, json_t *event) {
-	janus_mutex_lock(&sessions_mutex);
-	janus_session *session = sessions ? g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id)) : NULL;
+void janus_session_notify_event(janus_session *session, json_t *event) {
 	if(session != NULL && !session->destroy && session->source != NULL && session->source->transport != NULL) {
-		janus_mutex_unlock(&sessions_mutex);
 		/* Send this to the transport client */
 		JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
 		session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
 	} else {
-		janus_mutex_unlock(&sessions_mutex);
 		/* No transport, free the event */
 		json_decref(event);
 	}
@@ -414,7 +411,7 @@ void janus_session_notify_event(guint64 session_id, json_t *event) {
 /* Destroys a session but does not remove it from the sessions hash table. */
 gint janus_session_destroy(janus_session *session) {
 	guint64 session_id = session->session_id;
-	JANUS_LOG(LOG_VERB, "Destroying session %"SCNu64"\n", session_id);
+	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	session->destroy = 1;
 	if (session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 		GHashTableIter iter;
@@ -423,16 +420,15 @@ gint janus_session_destroy(janus_session *session) {
 		g_hash_table_iter_init(&iter, session->ice_handles);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_ice_handle *handle = value;
-			if(!handle) {	//|| g_atomic_int_get(&stop)) {
+			if(!handle)
 				continue;
-			}
 			janus_ice_handle_destroy(session, handle->handle_id);
 			g_hash_table_iter_remove(&iter);
 			janus_refcount_decrease(&handle->ref);
 		}
 	}
 
-	/* FIXME Actually destroy session */
+	/* The session will actually be destroyed when the counter gets to 0 */
 	janus_refcount_decrease(&session->ref);
 
 	return 0;
@@ -440,10 +436,11 @@ gint janus_session_destroy(janus_session *session) {
 
 
 /* Requests management */
-janus_request *janus_request_new(janus_transport *transport, void *instance, void *request_id, gboolean admin, json_t *message) {
+janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
 	janus_request *request = (janus_request *)g_malloc0(sizeof(janus_request));
 	request->transport = transport;
 	request->instance = instance;
+	janus_refcount_increase(&instance->ref);
 	request->request_id = request_id;
 	request->admin = admin;
 	request->message = message;
@@ -454,6 +451,7 @@ void janus_request_destroy(janus_request *request) {
 	if(request == NULL)
 		return;
 	request->transport = NULL;
+	janus_refcount_decrease(&request->instance->ref);
 	request->instance = NULL;
 	request->request_id = NULL;
 	if(request->message)
@@ -731,8 +729,9 @@ int janus_process_incoming_request(janus_request *request) {
 		g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
-		if(session->source && session->source->transport)
+		if(session->source && session->source->transport) {
 			session->source->transport->session_over(session->source->instance, session->session_id, FALSE);
+		}
 		/* Schedule the session for deletion */
 		janus_session_destroy(session);
 
@@ -2321,7 +2320,7 @@ void janus_transportso_close(gpointer key, gpointer value, gpointer user_data) {
 }
 
 /* Transport callback interface */
-void janus_transport_incoming_request(janus_transport *plugin, void *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error) {
+void janus_transport_incoming_request(janus_transport *plugin, janus_transport_session *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error) {
 	JANUS_LOG(LOG_VERB, "Got %s API request from %s (%p)\n", admin ? "an admin" : "a Janus", plugin->get_package(), transport);
 	/* Create a janus_request instance to handle the request */
 	janus_request *request = janus_request_new(plugin, transport, request_id, admin, message);
@@ -2337,7 +2336,7 @@ void janus_transport_incoming_request(janus_transport *plugin, void *transport, 
 	}
 }
 
-void janus_transport_gone(janus_transport *plugin, void *transport) {
+void janus_transport_gone(janus_transport *plugin, janus_transport_session *transport) {
 	/* Get rid of sessions this transport was handling */
 	JANUS_LOG(LOG_VERB, "A %s transport instance has gone away (%p)\n", plugin->get_package(), transport);
 	janus_mutex_lock(&sessions_mutex);
@@ -2470,7 +2469,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 		json_object_set_new(event, "jsep", jsep);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 	
 	return JANUS_OK;
 }

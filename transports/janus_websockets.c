@@ -58,9 +58,9 @@ const char *janus_websockets_get_author(void);
 const char *janus_websockets_get_package(void);
 gboolean janus_websockets_is_janus_api_enabled(void);
 gboolean janus_websockets_is_admin_api_enabled(void);
-int janus_websockets_send_message(void *transport, void *request_id, gboolean admin, json_t *message);
-void janus_websockets_session_created(void *transport, guint64 session_id);
-void janus_websockets_session_over(void *transport, guint64 session_id, gboolean timeout);
+int janus_websockets_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
+void janus_websockets_session_created(janus_transport_session *transport, guint64 session_id);
+void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
 
 
 /* Transport setup */
@@ -110,21 +110,22 @@ void *janus_websockets_thread(void *data);
 
 /* WebSocket client session */
 typedef struct janus_websockets_client {
-	struct libwebsocket_context *context;	/* The libwebsock client context */
-	struct libwebsocket *wsi;				/* The libwebsock client instance */
+	struct libwebsocket_context *context;	/* The libwebsockets client context */
+	struct libwebsocket *wsi;				/* The libwebsockets client instance */
 	GAsyncQueue *messages;					/* Queue of outgoing messages to push */
+	unsigned char *buffer;					/* Buffer containing the message to send */
+	int buflen;								/* Length of the buffer (may be resized after re-allocations) */
+	int bufoffset;							/* Offset from where the interrupted previous write should resume */
 	janus_mutex mutex;						/* Mutex to lock/unlock this session */
-	gint session_timeout:1;					/* Whether a Janus session timeout occurred in the core */
-	gint destroy:1;							/* Flag to trigger a lazy session destruction */
+	volatile gint session_timeout;			/* Whether a Janus session timeout occurred in the core */
+	volatile gint destroyed;				/* Whether this libwebsockets client instance has been closed */
+	janus_transport_session *ts;			/* Janus core-transport session */
 } janus_websockets_client;
 
 
 /* libwebsockets WS context(s) */
 static struct libwebsocket_context *wss = NULL, *swss = NULL,
 	*admin_wss = NULL, *admin_swss = NULL;
-/* libwebsockets sessions that have been closed */
-static GList *old_wss;
-static janus_mutex old_wss_mutex;
 /* Callbacks for HTTP-related events (automatically rejected) */
 static int janus_websockets_callback_http(struct libwebsocket_context *this,
 		struct libwebsocket *wsi,
@@ -292,8 +293,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 		JANUS_LOG(LOG_VERB, "libwebsockets logging: %d\n", ws_log_level);
 		lws_set_log_level(ws_log_level, NULL);
-		old_wss = NULL;
-		janus_mutex_init(&old_wss_mutex);
 
 		/* Any ACL for either the Janus or Admin API? */
 		item = janus_config_get_item_drilldown(config, "general", "ws_acl");
@@ -603,57 +602,37 @@ gboolean janus_websockets_is_admin_api_enabled(void) {
 	return wss_admin_api_enabled;
 }
 
-int janus_websockets_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {
+int janus_websockets_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message) {
 	if(message == NULL)
 		return -1;
-	if(transport == NULL) {
+	if(transport == NULL || transport->transport_p == NULL || g_atomic_int_get(&transport->destroyed)) {
 		g_free(message);
 		return -1;
 	}
-	/* Make sure this is not related to a closed /freed WebSocket session */
-	janus_mutex_lock(&old_wss_mutex);
-	janus_websockets_client *client = (janus_websockets_client *)transport;
-	if(g_list_find(old_wss, client) != NULL) {
-		g_free(message);
-		message = NULL;
-		transport = NULL;
-	} else if(!client->context || !client->wsi) {
-		g_free(message);
-		message = NULL;
-	}
-	if(message == NULL) {
-		janus_mutex_unlock(&old_wss_mutex);
-		return -1;
-	}
+	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
 	janus_mutex_lock(&client->mutex);
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	g_async_queue_push(client->messages, payload);
 	libwebsocket_callback_on_writable(client->context, client->wsi);
 	janus_mutex_unlock(&client->mutex);
-	janus_mutex_unlock(&old_wss_mutex);
 	json_decref(message);
 	return 0;
 }
 
-void janus_websockets_session_created(void *transport, guint64 session_id) {
+void janus_websockets_session_created(janus_transport_session *transport, guint64 session_id) {
 	/* We don't care */
 }
 
-void janus_websockets_session_over(void *transport, guint64 session_id, gboolean timeout) {
-	if(transport == NULL || !timeout)
+void janus_websockets_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
+	if(!timeout || transport == NULL || transport->transport_p == NULL || g_atomic_int_get(&transport->destroyed))
 		return;
 	/* We only care if it's a timeout: if so, close the connection */
-	janus_websockets_client *client = (janus_websockets_client *)transport;
-	/* Make sure this is not related to a closed WebSocket session */
-	janus_mutex_lock(&old_wss_mutex);
-	if(g_list_find(old_wss, client) == NULL && client->context && client->wsi){
-		janus_mutex_lock(&client->mutex);
-		client->session_timeout = 1;
-		libwebsocket_callback_on_writable(client->context, client->wsi);
-		janus_mutex_unlock(&client->mutex);
-	}
-	janus_mutex_unlock(&old_wss_mutex);
+	janus_websockets_client *client = (janus_websockets_client *)transport->transport_p;
+	janus_mutex_lock(&client->mutex);
+	g_atomic_int_set(&client->session_timeout, 1);
+	libwebsocket_callback_on_writable(client->context, client->wsi);
+	janus_mutex_unlock(&client->mutex);
 }
 
 
@@ -748,17 +727,16 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			/* Clean the old sessions list, in case this pointer was used before */
-			janus_mutex_lock(&old_wss_mutex);
-			if(g_list_find(old_wss, ws_client) != NULL)
-				old_wss = g_list_remove(old_wss, ws_client);
-			janus_mutex_unlock(&old_wss_mutex);
 			/* Prepare the session */
 			ws_client->context = this;
 			ws_client->wsi = wsi;
 			ws_client->messages = g_async_queue_new();
-			ws_client->session_timeout = 0;
-			ws_client->destroy = 0;
+			ws_client->buffer = NULL;
+			ws_client->buflen = 0;
+			ws_client->bufoffset = 0;
+			g_atomic_int_set(&ws_client->session_timeout, 0);
+			g_atomic_int_set(&ws_client->destroyed, 0);
+			ws_client->ts = janus_transport_session_create(ws_client, NULL);
 			janus_mutex_init(&ws_client->mutex);
 			/* Let us know when the WebSocket channel becomes writeable */
 			libwebsocket_callback_on_writable(this, wsi);
@@ -780,7 +758,7 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 			json_t *root = json_loads(payload, 0, &error);
 			g_free(payload);
 			/* Notify the core, passing both the object and, since it may be needed, the error */
-			gateway->incoming_request(&janus_websockets_transport, ws_client, NULL, FALSE, root, &error);
+			gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, FALSE, root, &error);
 			return 0;
 		}
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
@@ -788,19 +766,56 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			if(!ws_client->destroy && !g_atomic_int_get(&stopping)) {
+			if(!g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->mutex);
-				/* Shoot all the pending messages first */
+				/* Check if we have a pending/partial write to complete first */
+				if(ws_client->buffer && ws_client->bufoffset > 0
+						&& !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
+					int pending = ws_client->buflen - ws_client->bufoffset - LWS_SEND_BUFFER_POST_PADDING;
+					JANUS_LOG(LOG_VERB, "[WSS-%p] Completing pending WebSocket write (still need to write last %d/%d bytes)...\n",
+						wsi, pending, ws_client->buflen - LWS_SEND_BUFFER_PRE_PADDING);
+					int sent = libwebsocket_write(wsi, ws_client->buffer + ws_client->bufoffset, pending, LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Sent %d/%d bytes\n", wsi, sent, pending);
+					if(sent > -1 && sent < pending) {
+						/* We still couldn't send everything that was left, we'll try and complete this in the next round */
+						ws_client->bufoffset += sent;
+					} else {
+						/* Clear the pending/partial write queue */
+						ws_client->bufoffset = 0;
+					}
+					/* Done for this round, check the next response/notification later */
+					libwebsocket_callback_on_writable(this, wsi);
+					janus_mutex_unlock(&ws_client->mutex);
+					return 0;
+				}
+				/* Shoot all the pending messages */
 				char *response = g_async_queue_try_pop(ws_client->messages);
-				if(response && !ws_client->destroy && !g_atomic_int_get(&stopping)) {
+				if(response && !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
-					unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING);
-					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
-					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(response));
-					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
-					g_free(buf);
-					g_free(response);
+					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING;
+					if(ws_client->buffer == NULL) {
+						/* Let's allocate a shared buffer */
+						JANUS_LOG(LOG_VERB, "[WSS-%p] Allocating %d bytes (response is %zu bytes)\n", wsi, buflen, strlen(response));
+						ws_client->buflen = buflen;
+						ws_client->buffer = g_malloc0(buflen);
+					} else if(buflen > ws_client->buflen) {
+						/* We need a larger shared buffer */
+						JANUS_LOG(LOG_VERB, "[WSS-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", wsi, buflen, ws_client->buflen, strlen(response));
+						ws_client->buflen = buflen;
+						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
+					}
+					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
+					JANUS_LOG(LOG_VERB, "[WSS-%p] Sending WebSocket message (%zu bytes)...\n", wsi, strlen(response));
+					int sent = libwebsocket_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Sent %d/%zu bytes\n", wsi, sent, strlen(response));
+					if(sent > -1 && sent < (int)strlen(response)) {
+						/* We couldn't send everything in a single write, we'll complete this in the next round */
+						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
+						JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Couldn't write all bytes, setting offset %d\n", wsi, ws_client->bufoffset);
+					} else {
+						/* We can get rid of the message */
+						g_free(response);
+					}
 					/* Done for this round, check the next response/notification later */
 					libwebsocket_callback_on_writable(this, wsi);
 					janus_mutex_unlock(&ws_client->mutex);
@@ -808,23 +823,23 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 				}
 				janus_mutex_unlock(&ws_client->mutex);
 			}
+			if(g_atomic_int_get(&ws_client->session_timeout))
+				return -1;
 			return 0;
 		}
 		case LWS_CALLBACK_CLOSED: {
 			JANUS_LOG(LOG_VERB, "[WSS-%p] WS connection closed\n", wsi);
 			if(ws_client != NULL) {
-				/* Notify core */
-				gateway->transport_gone(&janus_websockets_transport, ws_client);
-				/* Mark the session as closed */
-				janus_mutex_lock(&old_wss_mutex);
-				old_wss = g_list_append(old_wss, ws_client);
-				janus_mutex_unlock(&old_wss_mutex);
+				g_atomic_int_set(&ws_client->destroyed, 1);
 				/* Cleanup */
 				janus_mutex_lock(&ws_client->mutex);
 				JANUS_LOG(LOG_INFO, "[WSS-%p] Destroying WebSocket client\n", wsi);
-				ws_client->destroy = 1;
 				ws_client->context = NULL;
 				ws_client->wsi = NULL;
+				/* Notify core */
+				gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
+				ws_client->ts->transport_p = NULL;
+				janus_transport_session_destroy(ws_client->ts);
 				/* Remove messages queue too, if needed */
 				if(ws_client->messages != NULL) {
 					char *response = NULL;
@@ -833,6 +848,11 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 					}
 					g_async_queue_unref(ws_client->messages);
 				}
+				/* ... and the shared buffer */
+				g_free(ws_client->buffer);
+				ws_client->buffer = NULL;
+				ws_client->buflen = 0;
+				ws_client->bufoffset = 0;
 				janus_mutex_unlock(&ws_client->mutex);
 			}
 			JANUS_LOG(LOG_VERB, "[WSS-%p]   -- closed\n", wsi);
@@ -882,17 +902,16 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			/* Clean the old sessions list, in case this pointer was used before */
-			janus_mutex_lock(&old_wss_mutex);
-			if(g_list_find(old_wss, ws_client) != NULL)
-				old_wss = g_list_remove(old_wss, ws_client);
-			janus_mutex_unlock(&old_wss_mutex);
 			/* Prepare the session */
 			ws_client->context = this;
 			ws_client->wsi = wsi;
 			ws_client->messages = g_async_queue_new();
-			ws_client->session_timeout = 0;
-			ws_client->destroy = 0;
+			ws_client->buffer = NULL;
+			ws_client->buflen = 0;
+			ws_client->bufoffset = 0;
+			g_atomic_int_set(&ws_client->session_timeout, 0);
+			g_atomic_int_set(&ws_client->destroyed, 0);
+			ws_client->ts = janus_transport_session_create(ws_client, NULL);
 			janus_mutex_init(&ws_client->mutex);
 			/* Let us know when the WebSocket channel becomes writeable */
 			libwebsocket_callback_on_writable(this, wsi);
@@ -914,7 +933,7 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 			json_t *root = json_loads(payload, 0, &error);
 			g_free(payload);
 			/* Notify the core, passing both the object and, since it may be needed, the error */
-			gateway->incoming_request(&janus_websockets_transport, ws_client, NULL, TRUE, root, &error);
+			gateway->incoming_request(&janus_websockets_transport, ws_client->ts, NULL, TRUE, root, &error);
 			return 0;
 		}
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
@@ -922,19 +941,56 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			if(!ws_client->destroy && !g_atomic_int_get(&stopping)) {
+			if(!g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
 				janus_mutex_lock(&ws_client->mutex);
-				/* Shoot all the pending messages first */
+				/* Check if we have a pending/partial write to complete first */
+				if(ws_client->buffer && ws_client->bufoffset > 0
+						&& !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
+					int pending = ws_client->buflen - ws_client->bufoffset - LWS_SEND_BUFFER_POST_PADDING;
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Completing pending WebSocket write (still need to write last %d/%d bytes)...\n",
+						wsi, pending, ws_client->buflen - LWS_SEND_BUFFER_PRE_PADDING);
+					int sent = libwebsocket_write(wsi, ws_client->buffer + ws_client->bufoffset, pending, LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Sent %d/%d bytes\n", wsi, sent, pending);
+					if(sent > -1 && sent < pending) {
+						/* We still couldn't send everything that was left, we'll try and complete this in the next round */
+						ws_client->bufoffset += sent;
+					} else {
+						/* Clear the pending/partial write queue */
+						ws_client->bufoffset = 0;
+					}
+					/* Done for this round, check the next response/notification later */
+					libwebsocket_callback_on_writable(this, wsi);
+					janus_mutex_unlock(&ws_client->mutex);
+					return 0;
+				}
+				/* Shoot all the pending messages */
 				char *response = g_async_queue_try_pop(ws_client->messages);
-				if(response && !ws_client->destroy && !g_atomic_int_get(&stopping)) {
+				if(response && !g_atomic_int_get(&ws_client->destroyed) && !g_atomic_int_get(&stopping)) {
 					/* Gotcha! */
-					unsigned char *buf = g_malloc0(LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING);
-					memcpy(buf+LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
-					JANUS_LOG(LOG_VERB, "Sending WebSocket message (%zu bytes)...\n", strlen(response));
-					int sent = libwebsocket_write(wsi, buf+LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-					JANUS_LOG(LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, strlen(response));
-					g_free(buf);
-					g_free(response);
+					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING;
+					if(ws_client->buffer == NULL) {
+						/* Let's allocate a shared buffer */
+						JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Allocating %d bytes (response is %zu bytes)\n", wsi, buflen, strlen(response));
+						ws_client->buflen = buflen;
+						ws_client->buffer = g_malloc0(buflen);
+					} else if(buflen > ws_client->buflen) {
+						/* We need a larger shared buffer */
+						JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", wsi, buflen, ws_client->buflen, strlen(response));
+						ws_client->buflen = buflen;
+						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
+					}
+					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Sending WebSocket message (%zu bytes)...\n", wsi, strlen(response));
+					int sent = libwebsocket_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
+					JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Sent %d/%zu bytes\n", wsi, sent, strlen(response));
+					if(sent > -1 && sent < (int)strlen(response)) {
+						/* We couldn't send everything in a single write, we'll complete this in the next round */
+						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
+						JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Couldn't write all bytes, setting offset %d\n", wsi, ws_client->bufoffset);
+					} else {
+						/* We can get rid of the message */
+						g_free(response);
+					}
 					/* Done for this round, check the next response/notification later */
 					libwebsocket_callback_on_writable(this, wsi);
 					janus_mutex_unlock(&ws_client->mutex);
@@ -942,23 +998,23 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 				}
 				janus_mutex_unlock(&ws_client->mutex);
 			}
+			if(g_atomic_int_get(&ws_client->session_timeout))
+				return -1;
 			return 0;
 		}
 		case LWS_CALLBACK_CLOSED: {
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WS connection closed\n", wsi);
 			if(ws_client != NULL) {
-				/* Notify core */
-				gateway->transport_gone(&janus_websockets_transport, ws_client);
-				/* Mark the session as closed */
-				janus_mutex_lock(&old_wss_mutex);
-				old_wss = g_list_append(old_wss, ws_client);
-				janus_mutex_unlock(&old_wss_mutex);
+				g_atomic_int_set(&ws_client->destroyed, 1);
 				/* Cleanup */
 				janus_mutex_lock(&ws_client->mutex);
 				JANUS_LOG(LOG_INFO, "[AdminWSS-%p] Destroying WebSocket client\n", wsi);
-				ws_client->destroy = 1;
 				ws_client->context = NULL;
 				ws_client->wsi = NULL;
+				/* Notify core */
+				gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
+				ws_client->ts->transport_p = NULL;
+				janus_transport_session_destroy(ws_client->ts);
 				/* Remove messages queue too, if needed */
 				if(ws_client->messages != NULL) {
 					char *response = NULL;
@@ -967,6 +1023,11 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 					}
 					g_async_queue_unref(ws_client->messages);
 				}
+				/* ... and the shared buffer */
+				g_free(ws_client->buffer);
+				ws_client->buffer = NULL;
+				ws_client->buflen = 0;
+				ws_client->bufoffset = 0;
 				janus_mutex_unlock(&ws_client->mutex);
 			}
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- closed\n", wsi);

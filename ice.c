@@ -423,7 +423,7 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	json_object_set_new(event, "receiving", json_string(up ? "true" : "false"));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 }
 
 void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
@@ -442,7 +442,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 		json_object_set_new(event, "reason", json_string(reason));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 }
 
 
@@ -982,7 +982,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	json_object_set_new(event, "sender", json_integer(handle_id));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
@@ -3376,5 +3376,5 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 }

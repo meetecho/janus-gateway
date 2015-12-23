@@ -72,9 +72,9 @@ janus_session *janus_session_create(guint64 session_id);
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
 janus_session *janus_session_find(guint64 session_id);
 /*! \brief Method to add an event to notify to the queue of notifications for this session
- * @param[in] session_id The Janus Gateway-Client session ID
+ * @param[in] session The Janus Gateway-Client session this notification is related to
  * @param[in] event The event to notify as a Jansson JSON object */
-void janus_session_notify_event(guint64 session_id, json_t *event);
+void janus_session_notify_event(janus_session *session, json_t *event);
 /*! \brief Method to destroy a Janus Gateway-Client session
  * @param[in] session The Janus Gateway-Client session to destroy
  * @returns 0 in case of success, a negative integer otherwise */
@@ -93,8 +93,8 @@ gint janus_session_destroy(janus_session *session);
 struct janus_request {
 	/*! \brief Pointer to the transport plugin */
 	janus_transport *transport;
-	/*! \brief Opaque pointer to the transport-provided instance */
-	void *instance;
+	/*! \brief Pointer to the transport-provided session instance */
+	janus_transport_session *instance;
 	/*! \brief Opaque pointer to the request ID, if available */
 	void *request_id;
 	/*! \brief Whether this is a Janus API or admin API request */
@@ -104,12 +104,12 @@ struct janus_request {
 };
 /*! \brief Helper to allocate a janus_request instance
  * @param[in] transport Pointer to the transport
- * @param[in] instance Opaque pointer to the transport-provided instance
+ * @param[in] instance Pointer to the transport-provided session instance
  * @param[in] request_id Opaque pointer to the request ID, if available
  * @param[in] admin Whether this is an admin or Janus API request
  * @param[in] message Opaque pointer to the original request, if available
  * @returns A pointer to a janus_request instance if successful, NULL otherwise */
-janus_request *janus_request_new(janus_transport *transport, void *instance, void *request_id, gboolean admin, json_t *message);
+janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message);
 /*! \brief Helper to destroy a janus_request instance
  * @param[in] request The janus_request instance to destroy
  * @note The opaque pointers in the instance are not destroyed, that's up to you */
