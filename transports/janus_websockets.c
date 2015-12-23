@@ -799,7 +799,7 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 				/* Check if we have a pending/partial write to complete first */
 				if(ws_client->buffer && ws_client->bufoffset > 0
 						&& !ws_client->destroy && !g_atomic_int_get(&stopping)) {
-					int pending = ws_client->buflen - ws_client->bufoffset;
+					int pending = ws_client->buflen - ws_client->bufoffset - LWS_SEND_BUFFER_POST_PADDING;
 					JANUS_LOG(LOG_VERB, "[WSS-%p] Completing pending WebSocket write (still need to write last %d/%d bytes)...\n",
 						wsi, pending, ws_client->buflen - LWS_SEND_BUFFER_PRE_PADDING);
 					int sent = libwebsocket_write(wsi, ws_client->buffer + ws_client->bufoffset, pending, LWS_WRITE_TEXT);
@@ -823,12 +823,12 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING;
 					if(ws_client->buffer == NULL) {
 						/* Let's allocate a shared buffer */
-						JANUS_LOG(LOG_WARN, "[WSS-%p] Allocating %d bytes (response is %zu bytes)\n", wsi, buflen, strlen(response));
+						JANUS_LOG(LOG_VERB, "[WSS-%p] Allocating %d bytes (response is %zu bytes)\n", wsi, buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_malloc0(buflen);
 					} else if(buflen > ws_client->buflen) {
 						/* We need a larger shared buffer */
-						JANUS_LOG(LOG_WARN, "[WSS-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", wsi, buflen, ws_client->buflen, strlen(response));
+						JANUS_LOG(LOG_VERB, "[WSS-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", wsi, buflen, ws_client->buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
 					}
@@ -839,6 +839,7 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 					if(sent > -1 && sent < (int)strlen(response)) {
 						/* We couldn't send everything in a single write, we'll complete this in the next round */
 						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
+						JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Couldn't write all bytes, setting offset %d\n", wsi, ws_client->bufoffset);
 					} else {
 						/* We can get rid of the message */
 						g_free(response);
@@ -977,7 +978,7 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 				/* Check if we have a pending/partial write to complete first */
 				if(ws_client->buffer && ws_client->bufoffset > 0
 						&& !ws_client->destroy && !g_atomic_int_get(&stopping)) {
-					int pending = ws_client->buflen - ws_client->bufoffset;
+					int pending = ws_client->buflen - ws_client->bufoffset - LWS_SEND_BUFFER_POST_PADDING;
 					JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Completing pending WebSocket write (still need to write last %d/%d bytes)...\n",
 						wsi, pending, ws_client->buflen - LWS_SEND_BUFFER_PRE_PADDING);
 					int sent = libwebsocket_write(wsi, ws_client->buffer + ws_client->bufoffset, pending, LWS_WRITE_TEXT);
@@ -1001,12 +1002,12 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING;
 					if(ws_client->buffer == NULL) {
 						/* Let's allocate a shared buffer */
-						JANUS_LOG(LOG_WARN, "[AdminWSS-%p] Allocating %d bytes (response is %zu bytes)\n", wsi, buflen, strlen(response));
+						JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Allocating %d bytes (response is %zu bytes)\n", wsi, buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_malloc0(buflen);
 					} else if(buflen > ws_client->buflen) {
 						/* We need a larger shared buffer */
-						JANUS_LOG(LOG_WARN, "[AdminWSS-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", wsi, buflen, ws_client->buflen, strlen(response));
+						JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", wsi, buflen, ws_client->buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
 					}
@@ -1017,6 +1018,7 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 					if(sent > -1 && sent < (int)strlen(response)) {
 						/* We couldn't send everything in a single write, we'll complete this in the next round */
 						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
+						JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Couldn't write all bytes, setting offset %d\n", wsi, ws_client->bufoffset);
 					} else {
 						/* We can get rid of the message */
 						g_free(response);
