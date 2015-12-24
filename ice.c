@@ -2911,11 +2911,16 @@ void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
 	janus_ice_queued_packet *pkt = NULL;
-	gint64 now = janus_get_monotonic_time(), before = now;
+	gint64 before = janus_get_monotonic_time();
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-		now = janus_get_monotonic_time();
+		if(handle->queued_packets != NULL) {
+			pkt = g_async_queue_timeout_pop(handle->queued_packets, 500000);
+		} else {
+			g_usleep(100000);
+		}
+		/* First of all, let's see if everything's fine on the recv side */
+		gint64 now = janus_get_monotonic_time();
 		if(now-before >= G_USEC_PER_SEC) {
-			/* First of all, let's see if everything's fine on the recv side */
 			if(handle->audio_stream && handle->audio_stream->rtp_component) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
 				GList *lastitem = g_list_last(component->in_stats.audio_bytes_lastsec);
@@ -2951,11 +2956,7 @@ void *janus_ice_send_thread(void *data) {
 			before = now;
 		}
 		/* Now let's get on with the packets */
-		if(handle->queued_packets != NULL)
-			pkt = g_async_queue_try_pop(handle->queued_packets);
 		if(pkt == NULL) {
-			/* Sleep 10ms */
-			g_usleep(10000);
 			continue;
 		}
 		if(pkt == &janus_ice_dtls_alert) {
