@@ -845,10 +845,9 @@ static int janus_websockets_callback(struct libwebsocket_context *this,
 						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
 						JANUS_LOG(LOG_VERB, "[WSS-%p]   -- Couldn't write all bytes (%d missing), setting offset %d\n",
 							wsi, ws_client->bufpending, ws_client->bufoffset);
-					} else {
-						/* We can get rid of the message */
-						g_free(response);
 					}
+					/* We can get rid of the message */
+					g_free(response);
 					/* Done for this round, check the next response/notification later */
 					libwebsocket_callback_on_writable(this, wsi);
 					janus_mutex_unlock(&ws_client->mutex);
@@ -1029,10 +1028,9 @@ static int janus_websockets_admin_callback(struct libwebsocket_context *this,
 						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
 						JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- Couldn't write all bytes (%d missing), setting offset %d\n",
 							wsi, ws_client->bufpending, ws_client->bufoffset);
-					} else {
-						/* We can get rid of the message */
-						g_free(response);
 					}
+					/* We can get rid of the message */
+					g_free(response);
 					/* Done for this round, check the next response/notification later */
 					libwebsocket_callback_on_writable(this, wsi);
 					janus_mutex_unlock(&ws_client->mutex);
