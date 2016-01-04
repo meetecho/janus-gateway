@@ -1,0 +1,141 @@
+# annoying glib2 object type registration stuff
+{
+	glib2-type-register-fundamental
+	Memcheck:Leak
+	fun:calloc
+	fun:g_malloc0
+	...
+	fun:g_type_register_fundamental
+	...
+}
+{
+	glib2-type-register-fundamental-realloc
+	Memcheck:Leak
+	...
+	fun:g_realloc
+	...
+	fun:g_type_register_fundamental
+	...
+}
+{
+	glib2-type-register-static
+	Memcheck:Leak
+	fun:malloc
+	fun:g_malloc
+	...
+	fun:type_node_any_new_W
+	fun:g_type_register_static
+	...
+}
+{
+	glib2-type-register-static-realloc
+	Memcheck:Leak
+	...
+	fun:g_realloc
+	...
+	fun:type_node_any_new_W
+	fun:g_type_register_static
+	...
+}
+{
+	glib2-type-add-interface-static
+	Memcheck:Leak
+	fun:malloc
+	fun:g_malloc
+	...
+	fun:type_add_interface_Wm
+	fun:g_type_add_interface_static
+	...
+}
+{
+	glib2-dl-init-gobject-type-data
+	Memcheck:Leak
+	fun:calloc
+	fun:g_malloc0
+	fun:type_data_make_W
+	fun:gobject_init_ctor
+	...
+	fun:_dl_init
+	...
+}
+{
+	glib2-dl-init-gobject-type-node
+	Memcheck:Leak
+	fun:calloc
+	fun:g_malloc0
+	...
+	fun:type_node_fundamental_new_W
+	fun:gobject_init_ctor
+	...
+	fun:_dl_init
+	...
+}
+{
+	glib2-signal-new-class
+	Memcheck:Leak
+	fun:calloc
+	fun:g_malloc0
+	...
+	fun:g_signal_type_cclosure_new
+	fun:g_signal_new
+	...
+	fun:g_object_do_class_init
+	...
+}
+{
+	glib2-signal-new-class-intern
+	Memcheck:Leak
+	fun:calloc
+	fun:g_malloc0
+	...
+	fun:g_signal_type_cclosure_new
+	fun:g_signal_new
+	...
+	fun:g_cancellable_class_intern_init
+	...
+}
+{
+	nice-socket-new-vtable-base
+	Memcheck:Leak
+	fun:malloc
+	fun:g_malloc
+	...
+	fun:type_iface_vtable_base_init_Wm
+	...
+	fun:nice_udp_bsd_socket_new
+	...
+}
+{
+	nice-socket-new-class
+	Memcheck:Leak
+	fun:calloc
+	fun:g_malloc0
+	...
+	fun:g_socket_class_intern_init
+	...
+	fun:nice_udp_bsd_socket_new
+	...
+}
+
+{
+	nice-agent-class-init
+	Memcheck:Leak
+	fun:calloc
+	fun:g_malloc0
+	...
+	fun:g_type_create_instance
+	...
+	fun:nice_agent_class_init
+	...
+}
+
+# probably a bug in sofia-sip
+{
+	sofia-sip-su-home
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:su_home_new
+	...
+	fun:main
+}
