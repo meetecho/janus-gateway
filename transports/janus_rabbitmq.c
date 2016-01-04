@@ -331,14 +331,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		JANUS_LOG(LOG_INFO, "Setup of RabbitMQ integration completed\n");
 	}
 	g_free(rmqhost);
-	if(to_janus)
-		g_free((char *)to_janus);
-	if(from_janus)
-		g_free((char *)from_janus);
-	if(to_janus_admin)
-		g_free((char *)to_janus_admin);
-	if(from_janus_admin)
-		g_free((char *)from_janus_admin);
 	janus_config_destroy(config);
 	config = NULL;
 
@@ -383,6 +375,14 @@ void janus_rabbitmq_destroy(void) {
 			amqp_connection_close(rmq_client->rmq_conn, AMQP_REPLY_SUCCESS);
 			amqp_destroy_connection(rmq_client->rmq_conn);
 		}
+		if(rmq_client->to_janus_queue.bytes)
+			g_free((char *)rmq_client->to_janus_queue.bytes);
+		if(rmq_client->from_janus_queue.bytes)
+			g_free((char *)rmq_client->from_janus_queue.bytes);
+		if(rmq_client->to_janus_admin_queue.bytes)
+			g_free((char *)rmq_client->to_janus_admin_queue.bytes);
+		if(rmq_client->from_janus_admin_queue.bytes)
+			g_free((char *)rmq_client->from_janus_admin_queue.bytes);
 	}
 	g_free(rmq_client);
 
