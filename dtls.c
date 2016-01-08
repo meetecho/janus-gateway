@@ -800,17 +800,20 @@ gboolean janus_dtls_retry(gpointer stack) {
 void *janus_dtls_sctp_setup_thread(void *data) {
 	if(data == NULL) {
 		JANUS_LOG(LOG_ERR, "No DTLS stack??\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)data;
 	if(dtls->sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "No SCTP stack??\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_sctp_association *sctp = (janus_sctp_association *)dtls->sctp;
 	/* Do the accept/connect stuff now */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Started thread: setup of the SCTP association\n", sctp->handle_id);
 	janus_sctp_association_setup(sctp);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 #endif

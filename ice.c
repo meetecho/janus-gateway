@@ -1981,6 +1981,7 @@ void *janus_ice_thread(void *data) {
 	if(loop == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid loop...\n", handle->handle_id);
 		janus_refcount_decrease(&handle->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	g_usleep (100000);
@@ -1993,6 +1994,7 @@ void *janus_ice_thread(void *data) {
 	janus_ice_webrtc_free(handle);
 	/* This ICE session is over, unref it */
 	janus_refcount_decrease(&handle->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 

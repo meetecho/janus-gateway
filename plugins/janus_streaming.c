@@ -3070,6 +3070,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "Invalid session!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
@@ -3077,6 +3078,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	if(!mountpoint) {
 		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
 		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&mountpoint->ref);
@@ -3084,12 +3086,14 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "[%s] Not an file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_type != janus_streaming_type_on_demand) {
 		JANUS_LOG(LOG_ERR, "[%s] Not an on-demand file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_file_source *source = mountpoint->source;
@@ -3097,6 +3101,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "[%s] Invalid file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Opening file source %s...\n", mountpoint->name, source->filename);
@@ -3105,6 +3110,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "[%s] Ooops, audio file missing!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Streaming audio file: %s\n", mountpoint->name, source->filename);
@@ -3114,6 +3120,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		JANUS_LOG(LOG_FATAL, "[%s] Memory error!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
@@ -3196,6 +3203,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	fclose(audio);
 	janus_refcount_decrease(&session->ref);
 	janus_refcount_decrease(&mountpoint->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 

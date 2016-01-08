@@ -2220,6 +2220,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 static void *janus_sip_relay_thread(void *data) {
 	janus_sip_session *session = (janus_sip_session *)data;
 	if(!session || !session->account.username || !session->callee) {
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
@@ -2279,6 +2280,7 @@ static void *janus_sip_relay_thread(void *data) {
 	if(!session->callee) {
 		JANUS_LOG(LOG_VERB, "[SIP-%s] Leaving thread, no callee...\n", session->account.username);
 		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	/* Loop */
@@ -2426,6 +2428,7 @@ static void *janus_sip_relay_thread(void *data) {
 	session->media.video_ssrc = 0;
 	JANUS_LOG(LOG_VERB, "Leaving SIP relay thread\n");
 	janus_refcount_decrease(&session->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -2434,6 +2437,7 @@ static void *janus_sip_relay_thread(void *data) {
 gpointer janus_sip_sofia_thread(gpointer user_data) {
 	janus_sip_session *session = (janus_sip_session *)user_data;
 	if(session == NULL || session->account.username == NULL || session->stack == NULL) {
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
@@ -2473,5 +2477,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	su_deinit();
 	janus_refcount_decrease(&session->ref);
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
+	g_thread_unref(g_thread_self());
 	return NULL;
 }

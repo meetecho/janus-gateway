@@ -2841,6 +2841,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)data;
 	if(!participant) {
 		JANUS_LOG(LOG_ERR, "Invalid participant!\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Thread is for participant %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
@@ -2852,6 +2853,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	if(outpkt == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	outpkt->data = (rtp_header *)g_malloc0(1500);
@@ -2859,6 +2861,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		g_free(outpkt);
 		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	outpkt->ssrc = 0;
@@ -2934,6 +2937,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "AudioBridge Participant thread leaving...\n");
 
 	janus_refcount_decrease(&session->ref);
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
