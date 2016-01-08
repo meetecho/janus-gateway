@@ -1935,12 +1935,14 @@ static void *janus_recordplay_playout_thread(void *data) {
 	janus_recordplay_session *session = (janus_recordplay_session *)data;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "Invalid session, can't start playout thread...\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
 	if(!session->recording) {
 		janus_refcount_decrease(&session->ref);
 		JANUS_LOG(LOG_ERR, "No recording object, can't start playout thread...\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->recording->ref);
@@ -1949,12 +1951,14 @@ static void *janus_recordplay_playout_thread(void *data) {
 		janus_refcount_decrease(&rec->ref);
 		janus_refcount_decrease(&session->ref);
 		JANUS_LOG(LOG_ERR, "This is a recorder, can't start playout thread...\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(!session->aframes && !session->vframes) {
 		janus_refcount_decrease(&rec->ref);
 		janus_refcount_decrease(&session->ref);
 		JANUS_LOG(LOG_ERR, "No audio and no video frames, can't start playout thread...\n");
+		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_INFO, "Joining playout thread\n");
@@ -1971,6 +1975,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 			janus_refcount_decrease(&rec->ref);
 			janus_refcount_decrease(&session->ref);
 			JANUS_LOG(LOG_ERR, "Could not open audio file %s, can't start playout thread...\n", source);
+			g_thread_unref(g_thread_self());
 			return NULL;
 		}
 	}
@@ -1988,6 +1993,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 			if(afile)
 				fclose(afile);
 			afile = NULL;
+			g_thread_unref(g_thread_self());
 			return NULL;
 		}
 	}
@@ -2177,5 +2183,6 @@ static void *janus_recordplay_playout_thread(void *data) {
 	janus_refcount_decrease(&session->ref);
 
 	JANUS_LOG(LOG_INFO, "Leaving playout thread\n");
+	g_thread_unref(g_thread_self());
 	return NULL;
 }
