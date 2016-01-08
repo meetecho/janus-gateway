@@ -317,9 +317,9 @@ static void janus_videoroom_subscriber_destroy(janus_videoroom_subscriber *s) {
 	janus_refcount_decrease(&s->ref);
 }
 
-static void janus_videoroom_subscriber_free(const janus_refcount *l_ref) {
-	janus_videoroom_subscriber *s = janus_refcount_containerof(l_ref, janus_videoroom_subscriber, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom subscriber: %p\n", s);
+static void janus_videoroom_subscriber_free(const janus_refcount *s_ref) {
+	janus_videoroom_subscriber *s = janus_refcount_containerof(s_ref, janus_videoroom_subscriber, ref);
+	JANUS_LOG(LOG_WARN, "Freeing videoroom subscriber: %p\n", s_ref);
 	/* This subscriber can be destroyed, free all the resources */
 	g_free(s);
 }
@@ -334,7 +334,7 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 
 static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_videoroom_publisher *p = janus_refcount_containerof(p_ref, janus_videoroom_publisher, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom participant/publisher: %p\n", p);
+	JANUS_LOG(LOG_WARN, "Freeing videoroom participant/publisher: %p\n", p_ref);
 	g_free(p->display);
 	g_free(p->sdp);
 
@@ -358,13 +358,14 @@ static void janus_videoroom_session_destroy(janus_videoroom_session *session) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return;
-	session->handle = NULL;
 	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_videoroom_session_free(const janus_refcount *session_ref) {
 	janus_videoroom_session *session = janus_refcount_containerof(session_ref, janus_videoroom_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom session: %p\n", session);
+	JANUS_LOG(LOG_WARN, "Freeing videoroom session: %p\n", session_ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session);
 }
@@ -380,7 +381,7 @@ static void janus_videoroom_room_destroy(janus_videoroom *room) {
 
 static void janus_videoroom_room_free(const janus_refcount *room_ref) {
 	janus_videoroom *room = janus_refcount_containerof(room_ref, janus_videoroom, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom room: %p\n", room);
+	JANUS_LOG(LOG_WARN, "Freeing videoroom room: %p\n", room_ref);
 	/* This room can be destroyed, free all the resources */
 	g_free(room->room_name);
 	g_free(room->room_secret);

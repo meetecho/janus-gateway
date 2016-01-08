@@ -209,13 +209,14 @@ static void janus_voicemail_session_destroy(janus_voicemail_session *session) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return;
-	session->handle = NULL;
 	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_voicemail_session_free(const janus_refcount *session_ref) {
 	janus_voicemail_session *session = janus_refcount_containerof(session_ref, janus_voicemail_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing voicemail session: %p\n", session);
+	JANUS_LOG(LOG_WARN, "Freeing voicemail session: %p\n", session_ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session);
 }

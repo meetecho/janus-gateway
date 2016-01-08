@@ -294,6 +294,8 @@ struct janus_ice_handle {
 	GThread *send_thread;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
 };
@@ -340,6 +342,8 @@ struct janus_ice_stream {
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
 };
@@ -399,6 +403,8 @@ struct janus_ice_component {
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
 };

@@ -56,6 +56,13 @@ static GHashTable *plugins = NULL;
 static GHashTable *plugins_so = NULL;
 
 
+#ifdef REFCOUNT_DEBUG
+/* Reference counters debugging */
+GHashTable *counters = NULL;
+janus_mutex counters_mutex;
+#endif
+
+
 /* Certificates */
 static char *server_pem = NULL;
 gchar *janus_get_server_pem(void) {
@@ -188,7 +195,11 @@ int janus_log_level = LOG_INFO;
 gboolean janus_log_timestamps = FALSE;
 gboolean janus_log_colors = FALSE;
 int lock_debug = 0;
+#ifdef REFCOUNT_DEBUG
+int refcount_debug = 1;
+#else
 int refcount_debug = 0;
+#endif
 
 
 /*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
@@ -278,9 +289,9 @@ static GMainContext *sessions_watchdog_context = NULL;
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
 
-static void janus_session_free(const janus_refcount *stream_ref) {
-	janus_session *session = janus_refcount_containerof(stream_ref, janus_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing Janus session: %p\n", session);
+static void janus_session_free(const janus_refcount *session_ref) {
+	janus_session *session = janus_refcount_containerof(session_ref, janus_session, ref);
+	JANUS_LOG(LOG_WARN, "Freeing Janus session: %p\n", session_ref);
 	/* This session can be destroyed, free all the resources */
 	if(session->ice_handles != NULL) {
 		g_hash_table_destroy(session->ice_handles);
@@ -301,11 +312,11 @@ static gboolean janus_check_sessions(gpointer user_data) {
 		g_hash_table_iter_init(&iter, sessions);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-			if (!session || session->destroy) {
+			if (!session || g_atomic_int_get(&session->destroyed)) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
+			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !g_atomic_int_get(&session->timeout)) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 
 				/* Notify the transport */
@@ -322,7 +333,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				g_hash_table_iter_remove(&iter);
 
 				/* Mark the session as over, we'll deal with it later */
-				session->timeout = 1;
+				g_atomic_int_set(&session->timeout, 1);
 				janus_session_destroy(session);
 			}
 		}
@@ -374,8 +385,8 @@ janus_session *janus_session_create(guint64 session_id) {
 	session->session_id = session_id;
 	janus_refcount_init(&session->ref, janus_session_free);
 	session->source = NULL;
-	session->destroy = 0;
-	session->timeout = 0;
+	g_atomic_int_set(&session->destroyed, 0);
+	g_atomic_int_set(&session->timeout, 0);
 	session->last_activity = janus_get_monotonic_time();
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
@@ -397,7 +408,7 @@ janus_session *janus_session_find(guint64 session_id) {
 }
 
 void janus_session_notify_event(janus_session *session, json_t *event) {
-	if(session != NULL && !session->destroy && session->source != NULL && session->source->transport != NULL) {
+	if(session != NULL && !g_atomic_int_get(&session->destroyed) && session->source != NULL && session->source->transport != NULL) {
 		/* Send this to the transport client */
 		JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
 		session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
@@ -412,8 +423,9 @@ void janus_session_notify_event(janus_session *session, json_t *event) {
 gint janus_session_destroy(janus_session *session) {
 	guint64 session_id = session->session_id;
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
-	session->destroy = 1;
-	if (session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		return 0;
+	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 		GHashTableIter iter;
 		gpointer value;
 		/* Remove all handles */
@@ -2346,7 +2358,7 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 		g_hash_table_iter_init(&iter, sessions);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-			if(!session || session->destroy || session->timeout || session->last_activity == 0)
+			if(!session || g_atomic_int_get(&session->destroyed) || g_atomic_int_get(&session->timeout) || session->last_activity == 0)
 				continue;
 			if(session->source && session->source->instance == transport) {
 				JANUS_LOG(LOG_VERB, "  -- Marking Session %"SCNu64" as over\n", session->session_id);
@@ -2426,7 +2438,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	if(!ice_handle || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
-	if(!session || session->destroy)
+	if(!session || g_atomic_int_get(&session->destroyed))
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	/* Make sure this is JSON */
 	json_error_t error;
@@ -3762,6 +3774,19 @@ gint main(int argc, char *argv[])
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
 		g_hash_table_destroy(plugins_so);
 	}
+
+#ifdef REFCOUNT_DEBUG
+	/* Any reference counters that are still up while we're leaving? (debug-mode only) */
+	janus_mutex_lock(&counters_mutex);
+	JANUS_PRINT("Debugging reference counters: %d still allocated\n", g_hash_table_size(counters));
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, counters);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		JANUS_PRINT("  -- %p\n", value);
+	}
+	janus_mutex_unlock(&counters_mutex);
+#endif
 
 	JANUS_PRINT("Bye!\n");
 

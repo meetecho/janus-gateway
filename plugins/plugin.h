@@ -218,7 +218,7 @@ typedef struct janus_plugin_result janus_plugin_result;
 
 /*! \brief Plugin-Gateway session mapping */
 struct janus_plugin_session {
-	/*! \brief Opaque pointer to the gateway session */
+	/*! \brief Opaque pointer to the gateway core-level handle */
 	void *gateway_handle;
 	/*! \brief Opaque pointer to the plugin session */
 	void *plugin_handle;

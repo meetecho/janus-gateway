@@ -242,7 +242,7 @@ void janus_dtls_srtp_deinit(void) {
 
 static void janus_dtls_srtp_free(const janus_refcount *dtls_ref) {
 	janus_dtls_srtp *dtls = janus_refcount_containerof(dtls_ref, janus_dtls_srtp, ref);
-	JANUS_LOG(LOG_WARN, "Freeing DTLS stack: %p\n", dtls);
+	JANUS_LOG(LOG_WARN, "Freeing DTLS stack: %p\n", dtls_ref);
 	/* This stack can be destroyed, free all the resources */
 	dtls->component = NULL;
 	if(dtls->ssl != NULL) {
@@ -289,6 +289,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
 	}
+	g_atomic_int_set(&dtls->destroyed, 0);
 	janus_refcount_init(&dtls->ref, janus_dtls_srtp_free);
 	/* Create SSL context, at last */
 	dtls->srtp_valid = 0;
@@ -601,6 +602,8 @@ void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
 void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	if(dtls == NULL)
 		return;
+	if(!g_atomic_int_compare_and_exchange(&dtls->destroyed, 0, 1))
+		return;
 	dtls->ready = 0;
 #ifdef HAVE_SCTP
 	/* Destroy the SCTP association if this is a DataChannel */
@@ -797,20 +800,17 @@ gboolean janus_dtls_retry(gpointer stack) {
 void *janus_dtls_sctp_setup_thread(void *data) {
 	if(data == NULL) {
 		JANUS_LOG(LOG_ERR, "No DTLS stack??\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_dtls_srtp *dtls = (janus_dtls_srtp *)data;
 	if(dtls->sctp == NULL) {
 		JANUS_LOG(LOG_ERR, "No SCTP stack??\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_sctp_association *sctp = (janus_sctp_association *)dtls->sctp;
 	/* Do the accept/connect stuff now */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Started thread: setup of the SCTP association\n", sctp->handle_id);
 	janus_sctp_association_setup(sctp);
-	g_thread_unref(g_thread_self());
 	return NULL;
 }
 #endif

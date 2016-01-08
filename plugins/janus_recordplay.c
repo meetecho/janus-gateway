@@ -397,13 +397,14 @@ static void janus_recordplay_session_destroy(janus_recordplay_session *session) 
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return;
-	session->handle = NULL;
 	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_recordplay_session_free(const janus_refcount *session_ref) {
 	janus_recordplay_session *session = janus_refcount_containerof(session_ref, janus_recordplay_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing recordplay session: %p\n", session);
+	JANUS_LOG(LOG_WARN, "Freeing recordplay session: %p\n", session_ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session);
 }
@@ -419,7 +420,7 @@ static void janus_recordplay_recording_destroy(janus_recordplay_recording *recor
 
 static void janus_recordplay_recording_free(const janus_refcount *recording_ref) {
 	janus_recordplay_recording *recording = janus_refcount_containerof(recording_ref, janus_recordplay_recording, ref);
-	JANUS_LOG(LOG_WARN, "Freeing recordplay recording: %p\n", recording);
+	JANUS_LOG(LOG_WARN, "Freeing recordplay recording: %p\n", recording_ref);
 	/* This recording can be destroyed, free all the resources */
 	g_free(recording->name);
 	g_free(recording->date);
@@ -1934,14 +1935,12 @@ static void *janus_recordplay_playout_thread(void *data) {
 	janus_recordplay_session *session = (janus_recordplay_session *)data;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "Invalid session, can't start playout thread...\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
 	if(!session->recording) {
 		janus_refcount_decrease(&session->ref);
 		JANUS_LOG(LOG_ERR, "No recording object, can't start playout thread...\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->recording->ref);
@@ -1950,14 +1949,12 @@ static void *janus_recordplay_playout_thread(void *data) {
 		janus_refcount_decrease(&rec->ref);
 		janus_refcount_decrease(&session->ref);
 		JANUS_LOG(LOG_ERR, "This is a recorder, can't start playout thread...\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(!session->aframes && !session->vframes) {
 		janus_refcount_decrease(&rec->ref);
 		janus_refcount_decrease(&session->ref);
 		JANUS_LOG(LOG_ERR, "No audio and no video frames, can't start playout thread...\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_INFO, "Joining playout thread\n");
@@ -1974,7 +1971,6 @@ static void *janus_recordplay_playout_thread(void *data) {
 			janus_refcount_decrease(&rec->ref);
 			janus_refcount_decrease(&session->ref);
 			JANUS_LOG(LOG_ERR, "Could not open audio file %s, can't start playout thread...\n", source);
-			g_thread_unref(g_thread_self());
 			return NULL;
 		}
 	}
@@ -1992,7 +1988,6 @@ static void *janus_recordplay_playout_thread(void *data) {
 			if(afile)
 				fclose(afile);
 			afile = NULL;
-			g_thread_unref(g_thread_self());
 			return NULL;
 		}
 	}
@@ -2182,6 +2177,5 @@ static void *janus_recordplay_playout_thread(void *data) {
 	janus_refcount_decrease(&session->ref);
 
 	JANUS_LOG(LOG_INFO, "Leaving playout thread\n");
-	g_thread_unref(g_thread_self());
 	return NULL;
 }

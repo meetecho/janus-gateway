@@ -504,13 +504,14 @@ static void janus_audiobridge_session_destroy(janus_audiobridge_session *session
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return;
-	session->handle = NULL;
 	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_audiobridge_session_free(const janus_refcount *session_ref) {
 	janus_audiobridge_session *session = janus_refcount_containerof(session_ref, janus_audiobridge_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing audiobridge session: %p\n", session);
+	JANUS_LOG(LOG_WARN, "Freeing audiobridge session: %p\n", session_ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session);
 }
@@ -520,12 +521,15 @@ static void janus_audiobridge_room_destroy(janus_audiobridge_room *audiobridge) 
 		return;
 	if(!g_atomic_int_compare_and_exchange(&audiobridge->destroyed, 0, 1))
 		return;
+	/* Wait for the thread to finish */
+	g_thread_join(audiobridge->thread);
+	/* Decrease the counter */
 	janus_refcount_decrease(&audiobridge->ref);
 }
 
-static void janus_audiobridge_room_free(const janus_refcount *session_ref) {
-	janus_audiobridge_room *audiobridge = janus_refcount_containerof(session_ref, janus_audiobridge_room, ref);
-	JANUS_LOG(LOG_WARN, "Freeing audiobridge room: %p\n", audiobridge);
+static void janus_audiobridge_room_free(const janus_refcount *audiobridge_ref) {
+	janus_audiobridge_room *audiobridge = janus_refcount_containerof(audiobridge_ref, janus_audiobridge_room, ref);
+	JANUS_LOG(LOG_WARN, "Freeing audiobridge room: %p\n", audiobridge_ref);
 	/* This room can be destroyed, free all the resources */
 	g_free(audiobridge->room_name);
 	g_free(audiobridge->room_secret);
@@ -1373,8 +1377,6 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		janus_mutex_unlock(&audiobridge->mutex);
 		g_free(response_text);
 		janus_mutex_unlock(&rooms_mutex);
-		JANUS_LOG(LOG_WARN, "Waiting for the mixer thread to complete...\n");
-		g_thread_join(audiobridge->thread);
 		janus_refcount_decrease(&audiobridge->ref);
 		/* Done */
 		JANUS_LOG(LOG_WARN, "Audiobridge room destroyed\n");
@@ -2839,7 +2841,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)data;
 	if(!participant) {
 		JANUS_LOG(LOG_ERR, "Invalid participant!\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Thread is for participant %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
@@ -2851,7 +2852,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	if(outpkt == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		janus_refcount_decrease(&session->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	outpkt->data = (rtp_header *)g_malloc0(1500);
@@ -2859,7 +2859,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		g_free(outpkt);
 		janus_refcount_decrease(&session->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	outpkt->ssrc = 0;

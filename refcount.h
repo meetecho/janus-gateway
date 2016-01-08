@@ -58,6 +58,9 @@ void my_free_function(janus_refcount *counter) {
 #define _JANUS_REFCOUNT_H
 
 #include <glib.h>
+#include "mutex.h"
+
+#define REFCOUNT_DEBUG
 
 extern int refcount_debug;
 
@@ -80,6 +83,25 @@ struct janus_refcount {
 };
 
 
+#ifdef REFCOUNT_DEBUG
+/* Reference counters debugging */
+extern GHashTable *counters;
+extern janus_mutex counters_mutex;
+static inline void janus_refcount_track(janus_refcount *ref) {
+	janus_mutex_lock(&counters_mutex);
+	if(counters == NULL)
+		counters = g_hash_table_new(NULL, NULL);
+	g_hash_table_insert(counters, ref, ref);
+	janus_mutex_unlock(&counters_mutex);
+}
+static inline void janus_refcount_untrack(janus_refcount *ref) {
+	janus_mutex_lock(&counters_mutex);
+	g_hash_table_remove(counters, ref);
+	janus_mutex_unlock(&counters_mutex);
+}
+#endif
+
+
 /*! \brief Janus reference counter initialization (debug according to settings)
  * \note Also sets the counter to 1 automatically, so no need to increase
  * it again manually via janus_refcount_increase() after the initialization
@@ -90,29 +112,47 @@ struct janus_refcount {
 	if(!refcount_debug) { \
 		janus_refcount_init_nodebug(refp, free_fn); \
 	} else { \
-		janus_refcount_init_debug(refp, free_fn); } \
-	};
+		janus_refcount_init_debug(refp, free_fn); \
+	} \
+}
 /*! \brief Janus reference counter initialization (no debug)
  * \note Also sets the counter to 1 automatically, so no need to increase
  * it again manually via janus_refcount_increase() after the initialization
  * @param ref Pointer to the Janus reference counter instance
  * @param free_fn Pointer to the function to invoke when the object the counter
  * refers to needs to be destroyed */
+#ifdef REFCOUNT_DEBUG
+#define janus_refcount_init_nodebug(refp, free_fn) { \
+	(refp)->count = 1; \
+	(refp)->free = free_fn; \
+	janus_refcount_track((refp)); \
+}
+#else
 #define janus_refcount_init_nodebug(refp, free_fn) { \
 	(refp)->count = 1; \
 	(refp)->free = free_fn; \
 }
+#endif
 /*! \brief Janus reference counter initialization (debug)
  * \note Also sets the counter to 1 automatically, so no need to increase
  * it again manually via janus_refcount_increase() after the initialization
  * @param ref Pointer to the Janus reference counter instance
  * @param free_fn Pointer to the function to invoke when the object the counter
  * refers to needs to be destroyed */
+#ifdef REFCOUNT_DEBUG
+#define janus_refcount_init_debug(refp, free_fn) { \
+	JANUS_PRINT("[%s:%s:%d:init] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count+1); \
+	(refp)->count = 1; \
+	(refp)->free = free_fn; \
+	janus_refcount_track((refp)); \
+}
+#else
 #define janus_refcount_init_debug(refp, free_fn) { \
 	JANUS_PRINT("[%s:%s:%d:init] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count+1); \
 	(refp)->count = 1; \
 	(refp)->free = free_fn; \
 }
+#endif
 
 /*! \brief Increase the Janus reference counter (debug according to settings)
  * @param ref Pointer to the Janus reference counter instance */
@@ -120,19 +160,20 @@ struct janus_refcount {
 	if(!refcount_debug) { \
 		janus_refcount_increase_nodebug(refp); \
 	} else { \
-		janus_refcount_increase_debug(refp); } \
-	};
+		janus_refcount_increase_debug(refp); \
+	} \
+}
 /*! \brief Increase the Janus reference counter (no debug)
  * @param ref Pointer to the Janus reference counter instance */
 #define janus_refcount_increase_nodebug(refp)  { \
 	g_atomic_int_inc((gint *)&(refp)->count); \
-};
+}
 /*! \brief Increase the Janus reference counter (debug)
  * @param ref Pointer to the Janus reference counter instance */
 #define janus_refcount_increase_debug(refp)  { \
 	JANUS_PRINT("[%s:%s:%d:increase] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count+1); \
 	g_atomic_int_inc((gint *)&(refp)->count); \
-};
+}
 
 /*! \brief Decrease the Janus reference counter (debug according to settings)
  * \note Will invoke the \c free function if the counter reaches 0
@@ -143,23 +184,42 @@ struct janus_refcount {
 	} else { \
 		janus_refcount_decrease_debug(refp); \
 	} \
-};
+}
 /*! \brief Decrease the Janus reference counter (debug)
  * \note Will invoke the \c free function if the counter reaches 0
  * @param ref Pointer to the Janus reference counter instance */
+#ifdef REFCOUNT_DEBUG
+#define janus_refcount_decrease_debug(refp)  { \
+	JANUS_PRINT("[%s:%s:%d:decrease] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count-1); \
+	if(g_atomic_int_dec_and_test((gint *)&(refp)->count)) { \
+		(refp)->free(refp); \
+		janus_refcount_untrack((refp)); \
+	} \
+}
+#else
 #define janus_refcount_decrease_debug(refp)  { \
 	JANUS_PRINT("[%s:%s:%d:decrease] %p (%d)\n", __FILE__, __FUNCTION__, __LINE__, refp, (refp)->count-1); \
 	if(g_atomic_int_dec_and_test((gint *)&(refp)->count)) { \
 		(refp)->free(refp); \
 	} \
-};
+}
+#endif
 /*! \brief Decrease the Janus reference counter (no debug)
  * \note Will invoke the \c free function if the counter reaches 0
  * @param ref Pointer to the Janus reference counter instance */
+#ifdef REFCOUNT_DEBUG
+#define janus_refcount_decrease_nodebug(refp)  { \
+	if(g_atomic_int_dec_and_test((gint *)&(refp)->count)) { \
+		(refp)->free(refp); \
+		janus_refcount_untrack((refp)); \
+	} \
+}
+#else
 #define janus_refcount_decrease_nodebug(refp)  { \
 	if(g_atomic_int_dec_and_test((gint *)&(refp)->count)) { \
 		(refp)->free(refp); \
 	} \
-};
+}
+#endif
 
 #endif

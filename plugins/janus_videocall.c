@@ -344,13 +344,14 @@ static void janus_videocall_session_destroy(janus_videocall_session *session) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return;
-	session->handle = NULL;
-	janus_refcount_decrease_debug(&session->ref);
+	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_videocall_session_free(const janus_refcount *session_ref) {
 	janus_videocall_session *session = janus_refcount_containerof(session_ref, janus_videocall_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videocall session: %p\n", session);
+	JANUS_LOG(LOG_WARN, "Freeing videocall session: %p\n", session_ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session);
 }
@@ -361,7 +362,7 @@ static void janus_videocall_message_free(janus_videocall_message *msg) {
 
 	if(msg->handle && msg->handle->plugin_handle) {
 		janus_videocall_session *session = (janus_videocall_session *)msg->handle->plugin_handle;
-		janus_refcount_decrease_debug(&session->ref);
+		janus_refcount_decrease(&session->ref);
 	}
 	msg->handle = NULL;
 
@@ -510,7 +511,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	handle->plugin_handle = session;
-	janus_refcount_init_debug(&session->ref, janus_videocall_session_free);
+	janus_refcount_init(&session->ref, janus_videocall_session_free);
 
 	return;
 }
@@ -546,7 +547,7 @@ char *janus_videocall_query_session(janus_plugin_session *handle) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
-	janus_refcount_increase_debug(&session->ref);
+	janus_refcount_increase(&session->ref);
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "state", json_string(session->peer ? "incall" : "idle"));
@@ -570,7 +571,7 @@ char *janus_videocall_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "destroyed", json_integer(g_atomic_int_get(&session->destroyed)));
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(info);
-	janus_refcount_decrease_debug(&session->ref);
+	janus_refcount_decrease(&session->ref);
 	return info_text;
 }
 
@@ -586,8 +587,8 @@ struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session 
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
 	}
-	/* increase_debug the reference counter for this session: we'll decrease_debug it after we handle the message */
-	janus_refcount_increase_debug(&session->ref);
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
 
 	msg->handle = handle;
 	msg->transaction = transaction;
@@ -806,7 +807,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call_text, NULL, NULL);
 		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		g_free(call_text);
-		janus_refcount_decrease_debug(&peer->ref);
+		janus_refcount_decrease(&peer->ref);
 	}
 	/* Reset controls */
 	session->has_audio = FALSE;
@@ -899,10 +900,10 @@ static void *janus_videocall_handler(void *data) {
 			while (g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_videocall_session *user = value;
 				if(user != NULL) {
-					janus_refcount_increase_debug(&user->ref);
+					janus_refcount_increase(&user->ref);
 					if(user->username != NULL)
 						json_array_append_new(list, json_string(user->username));
-					janus_refcount_decrease_debug(&user->ref);
+					janus_refcount_decrease(&user->ref);
 				}
 			}
 			json_object_set_new(result, "list", list);
@@ -994,9 +995,9 @@ static void *janus_videocall_handler(void *data) {
 				g_snprintf(error_cause, 512, "Username '%s' doesn't exist", username_text);
 				goto error;
 			}
-			janus_refcount_increase_debug(&peer->ref);	/* If the call attempt proceeds we keep the reference */
+			janus_refcount_increase(&peer->ref);	/* If the call attempt proceeds we keep the reference */
 			if(peer->peer != NULL) {
-				janus_refcount_decrease_debug(&peer->ref);
+				janus_refcount_decrease(&peer->ref);
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_VERB, "%s is busy\n", username_text);
 				result = json_object();
@@ -1006,7 +1007,7 @@ static void *janus_videocall_handler(void *data) {
 			} else {
 				/* Any SDP to handle? if not, something's wrong */
 				if(!msg->sdp) {
-					janus_refcount_decrease_debug(&peer->ref);
+					janus_refcount_decrease(&peer->ref);
 					janus_mutex_unlock(&sessions_mutex);
 					JANUS_LOG(LOG_ERR, "Missing SDP\n");
 					error_code = JANUS_VIDEOCALL_ERROR_MISSING_SDP;
@@ -1055,10 +1056,10 @@ static void *janus_videocall_handler(void *data) {
 				g_snprintf(error_cause, 512, "No incoming call to accept");
 				goto error;
 			}
-			janus_refcount_increase_debug(&session->peer->ref);
+			janus_refcount_increase(&session->peer->ref);
 			/* Any SDP to handle? if not, something's wrong */
 			if(!msg->sdp) {
-				janus_refcount_decrease_debug(&session->peer->ref);
+				janus_refcount_decrease(&session->peer->ref);
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_VIDEOCALL_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "Missing SDP");
@@ -1241,7 +1242,7 @@ static void *janus_videocall_handler(void *data) {
 				JANUS_LOG(LOG_WARN, "No call to hangup\n");
 			} else {
 				JANUS_LOG(LOG_VERB, "%s is hanging up the call with %s\n", session->username, peer->username);
-				janus_refcount_decrease_debug(&peer->ref);
+				janus_refcount_decrease(&peer->ref);
 				session->peer = NULL;
 				peer->peer = NULL;
 			}

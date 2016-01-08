@@ -252,6 +252,7 @@ typedef struct janus_streaming_mountpoint {
 	char *pin;
 	gboolean enabled;
 	gboolean active;
+	GThread *thread;	/* A mountpoint may or may not have a thread */
 	janus_streaming_type streaming_type;
 	janus_streaming_source streaming_source;
 	void *source;	/* Can differ according to the source type */
@@ -318,13 +319,14 @@ static void janus_streaming_session_destroy(janus_streaming_session *session) {
 		return;
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return;
-	session->handle = NULL;
 	janus_refcount_decrease(&session->ref);
 }
 
 static void janus_streaming_session_free(const janus_refcount *session_ref) {
 	janus_streaming_session *session = janus_refcount_containerof(session_ref, janus_streaming_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing streaming session: %p\n", session);
+	JANUS_LOG(LOG_WARN, "Freeing streaming session: %p\n", session_ref);
+	/* Remove the reference to the core plugin session */
+	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_free(session);
 }
@@ -334,12 +336,16 @@ static void janus_streaming_mountpoint_destroy(janus_streaming_mountpoint *mount
 		return;
 	if(!g_atomic_int_compare_and_exchange(&mountpoint->destroyed, 0, 1))
 		return;
+	/* Wait for the thread to finish */
+	if(mountpoint->thread != NULL)
+		g_thread_join(mountpoint->thread);
+	/* Decrease the counter */
 	janus_refcount_decrease(&mountpoint->ref);
 }
 
 static void janus_streaming_mountpoint_free(const janus_refcount *mp_ref) {
 	janus_streaming_mountpoint *mp = janus_refcount_containerof(mp_ref, janus_streaming_mountpoint, ref);
-	JANUS_LOG(LOG_WARN, "Freeing streaming mountpoint: %p\n", mp);
+	JANUS_LOG(LOG_WARN, "Freeing streaming mountpoint: %p\n", mp_ref);
 	/* This mountpoint can be destroyed, free all the resources */
 
 	g_free(mp->name);
@@ -2669,7 +2675,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtp->id), live_rtp);
 	janus_mutex_unlock(&mountpoints_mutex);
 	GError *error = NULL;
-	g_thread_try_new(live_rtp->name, &janus_streaming_relay_thread, live_rtp, &error);
+	live_rtp->thread = g_thread_try_new(live_rtp->name, &janus_streaming_relay_thread, live_rtp, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n", error->code, error->message ? error->message : "??");
 		janus_refcount_decrease(&live_rtp->ref);
@@ -2766,7 +2772,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	janus_mutex_unlock(&mountpoints_mutex);
 	if(live) {
 		GError *error = NULL;
-		g_thread_try_new(file_source->name, &janus_streaming_filesource_thread, file_source, &error);
+		file_source->thread = g_thread_try_new(file_source->name, &janus_streaming_filesource_thread, file_source, &error);
 		if(error != NULL) {
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n", error->code, error->message ? error->message : "??");
 			janus_refcount_decrease(&file_source->ref);
@@ -3023,7 +3029,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtsp->id), live_rtsp);
 	janus_mutex_unlock(&mountpoints_mutex);	
 	GError *error = NULL;
-	g_thread_try_new(live_rtsp->name, &janus_streaming_relay_thread, live_rtsp, &error);	
+	live_rtsp->thread = g_thread_try_new(live_rtsp->name, &janus_streaming_relay_thread, live_rtsp, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
 		janus_refcount_decrease(&live_rtsp->ref);
@@ -3064,7 +3070,6 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	janus_streaming_session *session = (janus_streaming_session *)data;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "Invalid session!\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&session->ref);
@@ -3072,7 +3077,6 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	if(!mountpoint) {
 		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
 		janus_refcount_decrease(&session->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&mountpoint->ref);
@@ -3080,19 +3084,16 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "[%s] Not an file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_type != janus_streaming_type_on_demand) {
 		JANUS_LOG(LOG_ERR, "[%s] Not an on-demand file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_file_source *source = mountpoint->source;
 	if(source == NULL || source->filename == NULL) {
-		g_thread_unref(g_thread_self());
 		JANUS_LOG(LOG_ERR, "[%s] Invalid file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
@@ -3104,7 +3105,6 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "[%s] Ooops, audio file missing!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Streaming audio file: %s\n", mountpoint->name, source->filename);
@@ -3114,7 +3114,6 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		JANUS_LOG(LOG_FATAL, "[%s] Memory error!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
@@ -3197,7 +3196,6 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	fclose(audio);
 	janus_refcount_decrease(&session->ref);
 	janus_refcount_decrease(&mountpoint->ref);
-	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -3207,26 +3205,22 @@ static void *janus_streaming_filesource_thread(void *data) {
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
 		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&mountpoint->ref);
 	if(mountpoint->streaming_source != janus_streaming_source_file) {
 		JANUS_LOG(LOG_ERR, "[%s] Not an file source mountpoint!\n", mountpoint->name);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	if(mountpoint->streaming_type != janus_streaming_type_live) {
 		JANUS_LOG(LOG_ERR, "[%s] Not a live file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_file_source *source = mountpoint->source;
 	if(source == NULL || source->filename == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] Invalid file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Opening file source %s...\n", mountpoint->name, source->filename);
@@ -3234,7 +3228,6 @@ static void *janus_streaming_filesource_thread(void *data) {
 	if(!audio) {
 		JANUS_LOG(LOG_ERR, "[%s] Ooops, audio file missing!\n", mountpoint->name);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%s] Streaming audio file: %s\n", mountpoint->name, source->filename);
@@ -3243,7 +3236,6 @@ static void *janus_streaming_filesource_thread(void *data) {
 	if(buf == NULL) {
 		JANUS_LOG(LOG_FATAL, "[%s] Memory error!\n", mountpoint->name);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
@@ -3327,7 +3319,6 @@ static void *janus_streaming_filesource_thread(void *data) {
 	g_free(buf);
 	fclose(audio);
 	janus_refcount_decrease(&mountpoint->ref);
-	g_thread_unref(g_thread_self());
 	return NULL;
 }
 		
@@ -3337,21 +3328,18 @@ static void *janus_streaming_relay_thread(void *data) {
 	janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
 	if(!mountpoint) {
 		JANUS_LOG(LOG_ERR, "Invalid mountpoint!\n");
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_refcount_increase(&mountpoint->ref);
 	if(mountpoint->streaming_source != janus_streaming_source_rtp) {
 		janus_refcount_decrease(&mountpoint->ref);
 		JANUS_LOG(LOG_ERR, "[%s] Not an RTP source mountpoint!\n", mountpoint->name);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	janus_streaming_rtp_source *source = mountpoint->source;
 	if(source == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] Invalid RTP source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&mountpoint->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	int audio_fd = source->audio_fd;
@@ -3494,7 +3482,6 @@ static void *janus_streaming_relay_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%s] Leaving streaming relay thread\n", name);
 	g_free(name);
 	janus_refcount_decrease(&mountpoint->ref);
-	g_thread_unref(g_thread_self());
 	return NULL;
 }
 

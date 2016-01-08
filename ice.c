@@ -830,6 +830,7 @@ void janus_ice_stats_reset(janus_ice_stats *stats) {
 
 /* ICE Handles */
 void janus_ice_free(const janus_refcount *handle_ref);
+void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref);
 void janus_ice_stream_free(const janus_refcount *handle_ref);
 void janus_ice_component_free(const janus_refcount *handle_ref);
 
@@ -924,7 +925,7 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 		janus_mutex_unlock(&session->mutex);
 		return error;
 	}
-	janus_refcount_init(&session_handle->ref, NULL);
+	janus_refcount_init(&session_handle->ref, janus_ice_plugin_session_free);
 	/* Handle and plugin session reference each other */
 	janus_refcount_increase(&session_handle->ref);
 	//~ janus_refcount_increase(&handle->ref);
@@ -945,6 +946,8 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
+		return 0;
 	janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
 	janus_mutex_lock(&session->mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
@@ -961,14 +964,16 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
 	/* TODO Actually detach handle... */
 	int error = 0;
-	janus_mutex_lock(&old_plugin_sessions_mutex);
-	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
-	g_atomic_int_set(&handle->app_handle->stopped, 1);
-	/* And this is to put the plugin session in the old sessions list, to avoid it being used */
-	g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
-	janus_mutex_unlock(&old_plugin_sessions_mutex);
-	/* Notify the plugin that the session's over */
-	plugin_t->destroy_session(handle->app_handle, &error);
+	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
+		handle->app_handle->gateway_handle = NULL;
+		/* Put the plugin session in the old sessions list, to avoid it being used */
+		janus_mutex_lock(&old_plugin_sessions_mutex);
+		g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
+		janus_mutex_unlock(&old_plugin_sessions_mutex);
+		/* Notify the plugin that the session's over */
+		plugin_t->destroy_session(handle->app_handle, &error);
+		/* We only unref when actually freeing the ICE handle */
+	}
 	/* Get rid of the handle now */
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
@@ -986,33 +991,34 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
-	janus_refcount_decrease(&session->ref);
+	/* Unref the handle: we only unref the session too when actually freeing the handle, so that it is freed before that */
 	janus_refcount_decrease(&handle->ref);
 	return error;
 }
 
 void janus_ice_free(const janus_refcount *handle_ref) {
 	janus_ice_handle *handle = janus_refcount_containerof(handle_ref, janus_ice_handle, ref);
-	JANUS_LOG(LOG_WARN, "Freeing ICE handle: %p\n", handle);
+	JANUS_LOG(LOG_WARN, "Freeing ICE handle: %p\n", handle_ref);
 	/* This stack can be destroyed, free all the resources */
 	janus_mutex_lock(&handle->mutex);
-	handle->session = NULL;
-	handle->app = NULL;
-	if(handle->app_handle != NULL) {
-		janus_mutex_lock(&old_plugin_sessions_mutex);
-		g_atomic_int_set(&handle->app_handle->stopped, 1);
-		g_hash_table_insert(old_plugin_sessions, handle->app_handle, handle->app_handle);
-		handle->app_handle->gateway_handle = NULL;
-		handle->app_handle->plugin_handle = NULL;
-		g_free(handle->app_handle);
-		handle->app_handle = NULL;
-		janus_mutex_unlock(&old_plugin_sessions_mutex);
-	}
+	if(handle->app_handle != NULL)
+		janus_refcount_decrease(&handle->app_handle->ref);
 	janus_mutex_unlock(&handle->mutex);
 	janus_ice_webrtc_free(handle);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed\n", handle->handle_id);
+	/* Finally, unref the session and free the handle */
+	if(handle->session != NULL) {
+		janus_session *session = (janus_session *)handle->session;
+		janus_refcount_decrease(&session->ref);
+	}
 	g_free(handle);
-	handle = NULL;
+}
+
+void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) {
+	janus_plugin_session *app_handle = janus_refcount_containerof(app_handle_ref, janus_plugin_session, ref);
+	JANUS_LOG(LOG_WARN, "Freeing ICE plugin session: %p\n", app_handle_ref);
+	/* This app handle can be destroyed, free all the resources */
+	g_free(app_handle);
 }
 
 void janus_ice_webrtc_hangup(janus_ice_handle *handle) {
@@ -1045,6 +1051,8 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle) {
 void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;
+	if(handle->send_thread)
+		g_thread_join(handle->send_thread);
 	janus_mutex_lock(&handle->mutex);
 	if(handle->iceloop != NULL) {
 		g_main_loop_unref (handle->iceloop);
@@ -1114,6 +1122,8 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 void janus_ice_stream_destroy(GHashTable *container, janus_ice_stream *stream) {
 	if(stream == NULL)
 		return;
+	if(!g_atomic_int_compare_and_exchange(&stream->destroyed, 0, 1))
+		return;
 	if(container != NULL)
 		g_hash_table_remove(container, GUINT_TO_POINTER(stream->stream_id));
 	if(stream->components != NULL) {
@@ -1133,7 +1143,7 @@ void janus_ice_stream_destroy(GHashTable *container, janus_ice_stream *stream) {
 
 void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	janus_ice_stream *stream = janus_refcount_containerof(stream_ref, janus_ice_stream, ref);
-	JANUS_LOG(LOG_WARN, "Freeing ICE stream: %p\n", stream);
+	JANUS_LOG(LOG_WARN, "Freeing ICE stream: %p\n", stream_ref);
 	/* This stream can be destroyed, free all the resources */
 	stream->handle = NULL;
 	g_free(stream->remote_hashing);
@@ -1151,6 +1161,8 @@ void janus_ice_stream_free(const janus_refcount *stream_ref) {
 void janus_ice_component_destroy(GHashTable *container, janus_ice_component *component) {
 	if(component == NULL)
 		return;
+	if(!g_atomic_int_compare_and_exchange(&component->destroyed, 0, 1))
+		return;
 	if(container != NULL)
 		g_hash_table_remove(container, GUINT_TO_POINTER(component->component_id));
 	janus_ice_stream *stream = component->stream;
@@ -1163,7 +1175,7 @@ void janus_ice_component_destroy(GHashTable *container, janus_ice_component *com
 
 void janus_ice_component_free(const janus_refcount *component_ref) {
 	janus_ice_component *component = janus_refcount_containerof(component_ref, janus_ice_component, ref);
-	JANUS_LOG(LOG_WARN, "Freeing ICE component: %p\n", component);
+	JANUS_LOG(LOG_WARN, "Freeing ICE component: %p\n", component_ref);
 	if(component->source != NULL) {
 		g_source_destroy(component->source);
 		g_source_unref(component->source);
@@ -1969,7 +1981,6 @@ void *janus_ice_thread(void *data) {
 	if(loop == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid loop...\n", handle->handle_id);
 		janus_refcount_decrease(&handle->ref);
-		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	g_usleep (100000);
@@ -1978,12 +1989,10 @@ void *janus_ice_thread(void *data) {
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
-	/* This ICE session is over, unref it */
 	JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
 	janus_ice_webrtc_free(handle);
+	/* This ICE session is over, unref it */
 	janus_refcount_decrease(&handle->ref);
-	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
@@ -2481,6 +2490,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		g_atomic_int_set(&audio_stream->destroyed, 0);
 		janus_refcount_init(&audio_stream->ref, janus_ice_stream_free);
 		handle->audio_mid = NULL;
 		audio_stream->stream_id = handle->audio_id;
@@ -2538,6 +2548,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		g_atomic_int_set(&audio_rtp->destroyed, 0);
 		janus_refcount_init(&audio_rtp->ref, janus_ice_component_free);
 		audio_rtp->stream = audio_stream;
 		janus_refcount_increase(&audio_stream->ref);
@@ -2576,6 +2587,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
 			}
+			g_atomic_int_set(&audio_rtcp->destroyed, 0);
 			janus_refcount_init(&audio_rtcp->ref, janus_ice_component_free);
 			if(!have_turnrest_credentials) {
 				/* No TURN REST API server and credentials, any static ones? */
@@ -2647,6 +2659,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		g_atomic_int_set(&video_stream->destroyed, 0);
 		janus_refcount_init(&video_stream->ref, janus_ice_stream_free);
 		handle->video_mid = NULL;
 		video_stream->handle = handle;
@@ -2700,6 +2713,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		g_atomic_int_set(&video_rtp->destroyed, 0);
 		janus_refcount_init(&video_rtp->ref, janus_ice_component_free);
 		video_rtp->stream = video_stream;
 		janus_refcount_increase(&video_stream->ref);
@@ -2738,6 +2752,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return -1;
 			}
+			g_atomic_int_set(&video_rtcp->destroyed, 0);
 			janus_refcount_init(&video_rtcp->ref, janus_ice_component_free);
 			if(!have_turnrest_credentials) {
 				/* No TURN REST API server and credentials, any static ones? */
@@ -2813,6 +2828,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		g_atomic_int_set(&data_stream->destroyed, 0);
 		janus_refcount_init(&data_stream->ref, janus_ice_stream_free);
 		handle->data_mid = NULL;
 		if(!have_turnrest_credentials) {
@@ -2861,6 +2877,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}
+		g_atomic_int_set(&data_component->destroyed, 0);
 		janus_refcount_init(&data_component->ref, janus_ice_component_free);
 		data_component->stream = data_stream;
 		janus_refcount_increase(&data_stream->ref);
@@ -3255,7 +3272,6 @@ void *janus_ice_send_thread(void *data) {
 		g_main_context_wakeup(handle->icectx);
 	}
 	janus_refcount_decrease(&handle->ref);
-	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
