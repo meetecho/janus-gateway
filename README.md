@@ -30,7 +30,7 @@ needed if you are interested in REST support for the Janus API)
 * [libwebsockets](https://libwebsockets.org/) (only needed if
 you are interested in WebSockets support for the Janus API)
 * [cmake](http://www.cmake.org/) (only needed if you are interested in
-WebSockets support, as libwebsockets makes use of it)
+WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
 you are interested in RabbitMQ support for the Janus API)
 
@@ -128,9 +128,10 @@ HTTP REST API, you'll have to install it manually:
 
 	git clone git://git.libwebsockets.org/libwebsockets
 	cd libwebsockets
+	git checkout v1.5-chrome47-firefox41
 	mkdir build
 	cd build
-	cmake -DLWS_WITH_OLD_API_WRAPPERS=1 -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
+	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
 	make && sudo make install
 
 * *Note:* if libwebsockets.org is unreachable for any reason, replace

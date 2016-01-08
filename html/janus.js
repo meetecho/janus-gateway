@@ -93,7 +93,7 @@ Janus.init = function(options) {
 				}
 			}
 			if(src === 'adapter.js') {
-				if(window.RTCPeerConnection) {
+				if(window.getUserMedia && window.RTCPeerConnection) {
 					// Already loaded
 					return;
 				}
