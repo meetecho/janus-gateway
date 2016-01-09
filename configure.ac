@@ -196,7 +196,7 @@ PKG_CHECK_MODULES([MHD],
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
 
 AC_CHECK_LIB([websockets_shared],
-             [libwebsocket_get_internal_extensions],
+             [lws_get_internal_extensions],
              [
                AS_IF([test "x$enable_websockets" = "xyes"],
                [
@@ -206,7 +206,7 @@ AC_CHECK_LIB([websockets_shared],
              ],
              [
 				AC_CHECK_LIB([websockets],
-							 [libwebsocket_get_internal_extensions],
+							 [lws_get_internal_extensions],
 							 [
 							   AS_IF([test "x$enable_websockets" = "xyes"],
 							   [
