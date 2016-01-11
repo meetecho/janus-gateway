@@ -2035,6 +2035,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 			if(s) {
 				participant->subscribers = g_slist_remove(participant->subscribers, s);
 				s->feed = NULL;
+				janus_refcount_decrease(&s->ref);
 				janus_refcount_decrease(&participant->ref);
 				janus_refcount_decrease(&participant->session->ref);
 			}
@@ -2071,9 +2072,10 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 				janus_mutex_lock(&publisher->subscribers_mutex);
 				publisher->subscribers = g_slist_remove(publisher->subscribers, subscriber);
 				subscriber->feed = NULL;
-				janus_mutex_unlock(&publisher->subscribers_mutex);
+				janus_refcount_decrease(&subscriber->ref);
 				janus_refcount_decrease(&publisher->ref);
 				janus_refcount_decrease(&publisher->session->ref);
+				janus_mutex_unlock(&publisher->subscribers_mutex);
 			}
 		}
 		/* TODO Should we close the handle as well? */
@@ -2355,7 +2357,6 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->udp_sock = -1;
 				g_atomic_int_set(&publisher->destroyed, 0);
 				janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
-				janus_refcount_increase(&publisher->ref);	/* The room references the new publisher too */
 				/* In case we also wanted to configure */
 				if(audio) {
 					publisher->audio_active = json_is_true(audio);
@@ -2502,7 +2503,6 @@ static void *janus_videoroom_handler(void *data) {
 					g_atomic_int_set(&subscriber->destroyed, 0);
 					janus_refcount_init(&subscriber->ref, janus_videoroom_subscriber_free);
 					janus_refcount_increase(&subscriber->ref);	/* The publisher references the new subscriber too */
-					janus_refcount_increase(&subscriber->ref);	/* The room references the new subscriber too */
 					session->participant = subscriber;
 					janus_mutex_lock(&publisher->subscribers_mutex);
 					publisher->subscribers = g_slist_append(publisher->subscribers, subscriber);
