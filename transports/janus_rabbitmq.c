@@ -174,7 +174,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	if(item && item->value)
 		rmqport = atoi(item->value);
 	/* Now check if the Janus API must be supported */
-	const char *to_janus = NULL, *from_janus = NULL;
+	const char *to_janus = NULL, *from_janus = NULL, *vhost = NULL, *username = NULL, *password = NULL;
 	const char *to_janus_admin = NULL, *from_janus_admin = NULL;
 	item = janus_config_get_item_drilldown(config, "general", "enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
@@ -193,6 +193,24 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			goto error;
 		}
 		from_janus = g_strdup(item->value);
+
+	        item = janus_config_get_item_drilldown(config, "general", "vhost");
+	        if(item && item->value)
+                	vhost = g_strdup(item->value);
+        	else
+	                vhost = g_strdup("/");
+
+                item = janus_config_get_item_drilldown(config, "general", "username");
+                if(item && item->value)
+                        username = g_strdup(item->value);
+                else
+                        username = g_strdup("guest");
+
+                item = janus_config_get_item_drilldown(config, "general", "password");
+                if(item && item->value)
+                        password = g_strdup(item->value);
+                else
+                        password = g_strdup("guest");
 		JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus, from_janus);
 		rmq_janus_api_enabled = TRUE;
 	}
@@ -242,7 +260,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			goto error;
 		}
 		JANUS_LOG(LOG_VERB, "Logging in...\n");
-		amqp_rpc_reply_t result = amqp_login(rmq_client->rmq_conn, "/", 0, 131072, 0, AMQP_SASL_METHOD_PLAIN, "guest", "guest");
+		amqp_rpc_reply_t result = amqp_login(rmq_client->rmq_conn, vhost, 0, 131072, 0, AMQP_SASL_METHOD_PLAIN, username, password);
 		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error logging in... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
 			goto error;
