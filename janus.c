@@ -226,7 +226,12 @@ static void janus_termination_handler(void) {
 	/* If we're daemonizing, we send an error code to the parent */
 	if(daemonize) {
 		int code = 1;
-		write(pipefd[1], &code, sizeof(int));
+		ssize_t res = 0;
+		do {
+			res = write(pipefd[1], &code, sizeof(int));
+			if(res == -1 && errno == EINTR)
+				res = 0;	/* Try again */
+		} while(res <= 0);
 	}
 }
 
@@ -3732,7 +3737,12 @@ gint main(int argc, char *argv[])
 	/* Ok, Janus has started! Let the parent now about this if we're daemonizing */
 	if(daemonize) {
 		int code = 0;
-		write(pipefd[1], &code, sizeof(int));
+		ssize_t res = 0;
+		do {
+			res = write(pipefd[1], &code, sizeof(int));
+			if(res == -1 && errno == EINTR)
+				res = 0;	/* Try again */
+		} while(res <= 0);
 	}
 
 	while(!g_atomic_int_get(&stop)) {
