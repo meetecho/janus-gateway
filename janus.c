@@ -229,9 +229,7 @@ static void janus_termination_handler(void) {
 		ssize_t res = 0;
 		do {
 			res = write(pipefd[1], &code, sizeof(int));
-			if(res == -1 && errno == EINTR)
-				res = 0;	/* Try again */
-		} while(res <= 0);
+		} while(res == -1 && errno == EINTR);
 	}
 }
 
@@ -3740,9 +3738,7 @@ gint main(int argc, char *argv[])
 		ssize_t res = 0;
 		do {
 			res = write(pipefd[1], &code, sizeof(int));
-			if(res == -1 && errno == EINTR)
-				res = 0;	/* Try again */
-		} while(res <= 0);
+		} while(res == -1 && errno == EINTR);
 	}
 
 	while(!g_atomic_int_get(&stop)) {
