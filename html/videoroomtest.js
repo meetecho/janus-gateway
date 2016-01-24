@@ -62,7 +62,7 @@ var bitrateTimer = [];
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
-	Janus.init({debug: "all", callback: function() {
+	Janus.init({debug: false, callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
@@ -132,7 +132,7 @@ $(document).ready(function() {
 											// Publisher/manager created, negotiate WebRTC and attach to existing feeds, if any
 											myid = msg["id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
-											publishOwnFeed(true);
+											publishOwnFeed(true, true);
 											// Any new feed to attach to?
 											if(msg["publishers"] !== undefined && msg["publishers"] !== null) {
 												var list = msg["publishers"];
@@ -244,6 +244,9 @@ $(document).ready(function() {
 												'<span class="no-video-text" style="font-size: 16px;">No webcam available</span>' +
 											'</div>');
 									}
+									if(navigator.mediaDevices) {
+										navigator.mediaDevices.enumerateDevices().then(initDevices);
+									}
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -252,7 +255,7 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification: we are unpublished now :::");
 									mystream = null;
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
-									$('#publish').click(function() { publishOwnFeed(true); });
+									$('#publish').click(function() { publishOwnFeed(true, true); });
 								}
 							});
 					},
@@ -269,6 +272,45 @@ $(document).ready(function() {
 		});
 	}});
 });
+
+function initDevices(devices) {
+	$('#devices').removeClass('hide');
+	var audio = $('#audio-device').val();
+	var video = $('#video-device').val();
+	$('#audio-device, #video-device').find('option').remove();
+
+	devices.forEach(function(device) {
+		var option = $('<option value="' + device.deviceId + '">' + device.label + '</option>');
+		if(device.kind === 'audioinput') {
+			$('#audio-device').append(option);
+		} else if(device.kind === 'videoinput') {
+			$('#video-device').append(option);
+		}
+	});
+
+	$('#audio-device').val(audio);
+	$('#video-device').val(video);
+
+	$('#audio-device, #video-device').on('change', function() {
+		sfutest.send({
+			message: { request: "unpublish" },
+			success: function() {
+				// https://github.com/meetecho/janus-gateway/issues/425
+				setTimeout(function() {
+					publishOwnFeed({
+						deviceId: {
+							exact: $('#audio-device').val()
+						}
+					}, {
+						deviceId: {
+							exact: $('#video-device').val()
+						}
+					});
+				}, 1000);
+			}
+		});	
+	});
+}
 
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
@@ -312,28 +354,27 @@ function registerUsername() {
 	}
 }
 
-function publishOwnFeed(useAudio) {
+function publishOwnFeed(audio, video) {
 	// Publish our stream
 	$('#publish').attr('disabled', true).unbind('click');
-	sfutest.createOffer(
-		{
-			media: { audioRecv: false, videoRecv: false, audioSend: useAudio, videoSend: true},	// Publishers are sendonly
-			success: function(jsep) {
-				Janus.debug("Got publisher SDP!");
-				Janus.debug(jsep);
-				var publish = { "request": "configure", "audio": useAudio, "video": true };
-				sfutest.send({"message": publish, "jsep": jsep});
-			},
-			error: function(error) {
-				Janus.error("WebRTC error:", error);
-				if (useAudio) {
-					 publishOwnFeed(false);
-				} else {
-					bootbox.alert("WebRTC error... " + JSON.stringify(error));
-					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
-				}
+	sfutest.createOffer({
+		media: { audioRecv: false, videoRecv: false, audioSend: !!audio, videoSend: !!video, audio: audio, video: video },	// Publishers are sendonly
+		success: function(jsep) {
+			Janus.debug("Got publisher SDP!");
+			Janus.debug(jsep);
+			var publish = { "request": "configure", "audio": !!audio, "video": !!video };
+			sfutest.send({"message": publish, "jsep": jsep});
+		},
+		error: function(error) {
+			Janus.error("WebRTC error:", error);
+			if (useAudio) {
+				 publishOwnFeed(false, video);
+			} else {
+				bootbox.alert("WebRTC error... " + JSON.stringify(error));
+				$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true, video); });
 			}
-		});
+		}
+	});
 }
 
 function toggleMute() {
