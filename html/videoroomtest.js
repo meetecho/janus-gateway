@@ -62,7 +62,7 @@ var bitrateTimer = [];
 
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
-	Janus.init({debug: false, callback: function() {
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
