@@ -173,7 +173,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	item = janus_config_get_item_drilldown(config, "general", "port");
 	if(item && item->value)
 		rmqport = atoi(item->value);
-    
+
 	/* Credentials and Virtual Host */
 	const char *vhost = NULL, *username = NULL, *password = NULL;
 	item = janus_config_get_item_drilldown(config, "general", "vhost");
@@ -191,7 +191,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		password = g_strdup(item->value);
 	else
 		password = g_strdup("guest");
-    
+
 	/* Now check if the Janus API must be supported */
 	const char *to_janus = NULL, *from_janus = NULL;
 	const char *to_janus_admin = NULL, *from_janus_admin = NULL;
