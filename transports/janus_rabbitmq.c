@@ -173,8 +173,27 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	item = janus_config_get_item_drilldown(config, "general", "port");
 	if(item && item->value)
 		rmqport = atoi(item->value);
+    
+    /* Credentials and Virtual Host */
+    const char *vhost = NULL, *username = NULL, *password = NULL
+    item = janus_config_get_item_drilldown(config, "general", "vhost");
+    if(item && item->value)
+        vhost = g_strdup(item->value);
+    else
+        vhost = g_strdup("/");
+    item = janus_config_get_item_drilldown(config, "general", "username");
+    if(item && item->value)
+        username = g_strdup(item->value);
+    else
+        username = g_strdup("guest");
+    item = janus_config_get_item_drilldown(config, "general", "password");
+    if(item && item->value)
+        password = g_strdup(item->value);
+    else
+        password = g_strdup("guest");
+    
 	/* Now check if the Janus API must be supported */
-	const char *to_janus = NULL, *from_janus = NULL, *vhost = NULL, *username = NULL, *password = NULL;
+	const char *to_janus = NULL, *from_janus = NULL;
 	const char *to_janus_admin = NULL, *from_janus_admin = NULL;
 	item = janus_config_get_item_drilldown(config, "general", "enable");
 	if(!item || !item->value || !janus_is_true(item->value)) {
@@ -193,24 +212,6 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			goto error;
 		}
 		from_janus = g_strdup(item->value);
-
-	        item = janus_config_get_item_drilldown(config, "general", "vhost");
-	        if(item && item->value)
-                	vhost = g_strdup(item->value);
-        	else
-	                vhost = g_strdup("/");
-
-                item = janus_config_get_item_drilldown(config, "general", "username");
-                if(item && item->value)
-                        username = g_strdup(item->value);
-                else
-                        username = g_strdup("guest");
-
-                item = janus_config_get_item_drilldown(config, "general", "password");
-                if(item && item->value)
-                        password = g_strdup(item->value);
-                else
-                        password = g_strdup("guest");
 		JANUS_LOG(LOG_INFO, "RabbitMQ support for Janus API enabled, %s:%d (%s/%s)\n", rmqhost, rmqport, to_janus, from_janus);
 		rmq_janus_api_enabled = TRUE;
 	}
@@ -363,6 +364,12 @@ error:
 		g_free(rmq_client);
 	if(rmqhost)
 		g_free(rmqhost);
+    if(vhost)
+        g_free((char *)vhost);
+    if(username)
+        g_free((char *)username);
+    if(password)
+        g_free((char *)password);
 	if(to_janus)
 		g_free((char *)to_janus);
 	if(from_janus)
