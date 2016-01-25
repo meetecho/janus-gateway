@@ -173,6 +173,25 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	item = janus_config_get_item_drilldown(config, "general", "port");
 	if(item && item->value)
 		rmqport = atoi(item->value);
+    
+	/* Credentials and Virtual Host */
+	const char *vhost = NULL, *username = NULL, *password = NULL;
+	item = janus_config_get_item_drilldown(config, "general", "vhost");
+	if(item && item->value)
+		vhost = g_strdup(item->value);
+	else
+	vhost = g_strdup("/");
+	item = janus_config_get_item_drilldown(config, "general", "username");
+	if(item && item->value)
+		username = g_strdup(item->value);
+	else
+		username = g_strdup("guest");
+	item = janus_config_get_item_drilldown(config, "general", "password");
+	if(item && item->value)
+		password = g_strdup(item->value);
+	else
+		password = g_strdup("guest");
+    
 	/* Now check if the Janus API must be supported */
 	const char *to_janus = NULL, *from_janus = NULL;
 	const char *to_janus_admin = NULL, *from_janus_admin = NULL;
@@ -242,7 +261,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			goto error;
 		}
 		JANUS_LOG(LOG_VERB, "Logging in...\n");
-		amqp_rpc_reply_t result = amqp_login(rmq_client->rmq_conn, "/", 0, 131072, 0, AMQP_SASL_METHOD_PLAIN, "guest", "guest");
+		amqp_rpc_reply_t result = amqp_login(rmq_client->rmq_conn, vhost, 0, 131072, 0, AMQP_SASL_METHOD_PLAIN, username, password);
 		if(result.reply_type != AMQP_RESPONSE_NORMAL) {
 			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error logging in... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
 			goto error;
@@ -345,6 +364,12 @@ error:
 		g_free(rmq_client);
 	if(rmqhost)
 		g_free(rmqhost);
+	if(vhost)
+		g_free((char *)vhost);
+	if(username)
+		g_free((char *)username);
+	if(password)
+		g_free((char *)password);
 	if(to_janus)
 		g_free((char *)to_janus);
 	if(from_janus)
