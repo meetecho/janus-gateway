@@ -175,7 +175,7 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		rmqport = atoi(item->value);
     
     /* Credentials and Virtual Host */
-    const char *vhost = NULL, *username = NULL, *password = NULL
+    const char *vhost = NULL, *username = NULL, *password = NULL;
     item = janus_config_get_item_drilldown(config, "general", "vhost");
     if(item && item->value)
         vhost = g_strdup(item->value);
