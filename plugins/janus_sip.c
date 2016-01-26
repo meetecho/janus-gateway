@@ -1833,11 +1833,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			if(ssip == NULL) {
+				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
+				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				break;
+			}
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
 			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
-                                sdp_parser_free(parser);
+				sdp_parser_free(parser);
 				break;
 			}
 			if(session->stack->s_nh_i != NULL) {
@@ -1920,8 +1925,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* shutdown in progress -> return */
 				break;
 			}
-			/* end the event loop. su_root_run() will return */
-			su_root_break(ssip->s_root);
+			if(ssip != NULL) {
+				/* end the event loop. su_root_run() will return */
+				su_root_break(ssip->s_root);
+			}
 			break;
 		case nua_r_terminate:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
@@ -1970,11 +1977,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			} else if(status >= 400) {
 				break;
 			}
-			ssip_t *ssip = session->stack;
+			if(ssip == NULL) {
+				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
+				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				break;
+			}
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
 			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				sdp_parser_free(parser);
 				break;
 			}
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
