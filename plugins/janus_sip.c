@@ -2046,7 +2046,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					scheme,
 					realm,
-					session->account.username,
+					session->account.authuser ? session->account.authuser : "null",
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					session->account.secret);
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
