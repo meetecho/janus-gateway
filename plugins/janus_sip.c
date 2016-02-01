@@ -1711,8 +1711,7 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
-		}
-		else if(!strcasecmp(request_text, "dtmf_info")) {
+		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIP INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
 			 */
@@ -1747,9 +1746,17 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid element (digit should be one character)");
 				goto error;
 			}
+			int duration_ms = 0;
+			json_t *duration = json_object_get(root, "duration");
+			if(duration && json_is_integer(duration)) {
+				duration_ms = json_integer_value(duration);
+			}
+			if (duration_ms <= 0 || duration_ms > 5000) {
+				duration_ms = 160; /* default value */
+			}
 
 			char payload[64];
-			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, 160);
+			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, duration_ms);
 			nua_info(session->stack->s_nh_i,
 				SIPTAG_CONTENT_TYPE_STR("application/dtmf-relay"),
 				SIPTAG_PAYLOAD_STR(payload),
