@@ -313,7 +313,11 @@ $(document).ready(function() {
 										}
 										$('.dtmf').click(function() {
 											// Send DTMF tone
-											sipcall.dtmf({dtmf: { tones: $(this).text()}});
+											// Inband
+											// sipcall.dtmf({dtmf: { tones: $(this).text()}});
+
+											// Use SIP INFO messages
+											sipcall.send({"message": {"request": "dtmf_info", "digit": $(this).text()}});
 										});
 									}
 									// Show the peer and hide the spinner when we get a playing event

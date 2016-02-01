@@ -1711,6 +1711,49 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
+		}
+		else if(!strcasecmp(request_text, "dtmf_info")) {
+			/* Send DMTF tones using SIP INFO
+			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
+			 */
+			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			json_t *digit = json_object_get(root, "digit");
+			if(!digit) {
+				JANUS_LOG(LOG_ERR, "Missing element (digit)\n");
+				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (digit)");
+				goto error;
+			}
+			if(!json_is_string(digit)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (digit should be a string)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (digit should be a string)");
+				goto error;
+			}
+			const char *digit_text = json_string_value(digit);
+			if(strlen(digit_text) != 1) {
+				JANUS_LOG(LOG_ERR, "Invalid element (digit should be one character))\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (digit should be one character)");
+				goto error;
+			}
+
+			char payload[64];
+			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, 160);
+			nua_info(session->stack->s_nh_i,
+				SIPTAG_CONTENT_TYPE_STR("application/dtmf-relay"),
+				SIPTAG_PAYLOAD_STR(payload),
+				TAG_END());
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_SIP_ERROR_INVALID_REQUEST;
