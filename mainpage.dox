@@ -2056,6 +2056,12 @@ exec /opt/janus/bin/janus
  * \note upstart example provided by
  * <a href="https://github.com/meetecho/janus-gateway/pull/306">\@ploxiln</a> 
  *
+ * \warning In case starting Janus depends on some external conditions, you
+ * may need to modify the \c start and \c stop lines accordingly. Here you can
+ * find an <a href="https://github.com/meetecho/janus-gateway/pull/455">example</a>,
+ * provided by <a href="https://github.com/meetecho/janus-gateway/pull/455">\@stormbkk87</a>,
+ * showing how you can wait, for instance, for RabbitMQ to start before starting Janus too.
+ *
  * \section sysvinit sysvinit
  * This section shows how you can add Janus as a daemon to
  * SysVinit based systems.
