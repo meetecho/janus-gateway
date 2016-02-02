@@ -1048,6 +1048,38 @@ static void *janus_sip_handler(void *data) {
 				}
 				send_register = json_is_true(do_register);
 			}
+			gboolean add_authheader = FALSE;
+			const char *realm_text = NULL;
+			if(send_register) {
+				/* Check if we need to add an authorization header (apparently some servers expect this) */
+				json_t *authheader = json_object_get(root, "authheader");
+				if(authheader) {
+					if(!json_is_boolean(authheader)) {
+						JANUS_LOG(LOG_ERR, "Invalid element (authheader should be boolean)\n");
+						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+						g_snprintf(error_cause, 512, "Invalid element (authheader should be boolean)");
+						goto error;
+					}
+					add_authheader = json_is_true(authheader);
+					if(add_authheader) {
+						/* We do, make sure we have a realm to provide */
+						json_t *realm = json_object_get(root, "realm");
+						if(!realm) {
+							JANUS_LOG(LOG_ERR, "Missing element (realm is mandatory with authheader=true)\n");
+							error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
+							g_snprintf(error_cause, 512, "Missing element (realm is mandatory with authheader=true)");
+							goto error;
+						}
+						if(!json_is_string(realm)) {
+							JANUS_LOG(LOG_ERR, "Invalid element (realm should be a string)\n");
+							error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+							g_snprintf(error_cause, 512, "Invalid element (realm should be a string)");
+							goto error;
+						}
+						realm_text = json_string_value(realm);
+					}
+				}
+			}
 
 			gboolean sips = TRUE;
 			json_t *do_sips = json_object_get(root, "sips");
@@ -1229,11 +1261,22 @@ static void *janus_sip_handler(void *data) {
 				}
 				char ttl_text[20];
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
+				/* Do we need to provide an authorization header right away? */
+				char auth[256];
+				if(add_authheader) {
+					memset(auth, 0, sizeof(auth));
+					g_snprintf(auth, sizeof(auth),
+						"Digest username=\"%s\", realm=\"%s\", nonce=\"\", response=\"\", uri=\"sip:%s\"",
+						session->account.authuser ? session->account.authuser : "null",
+						realm_text, realm_text);
+				}
+				/* Send the REGISTER */
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
 					SIPTAG_EXPIRES_STR(ttl_text),
+					TAG_IF(add_authheader, SIPTAG_AUTHORIZATION_STR(auth)),
 					NUTAG_PROXY(proxy_text),
 					TAG_END());
 				result = json_object();
