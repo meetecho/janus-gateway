@@ -98,6 +98,9 @@ static janus_transport_callbacks *gateway = NULL;
 
 #define BUFFER_SIZE		8192
 
+#ifndef UNIX_MAX_PATH
+#define UNIX_MAX_PATH 108
+#endif
 
 /* Unix Sockets server thread */
 static GThread *pfunix_thread = NULL;
@@ -118,6 +121,44 @@ typedef struct janus_pfunix_client {
 static GHashTable *clients = NULL, *clients_by_fd = NULL;
 static janus_mutex clients_mutex;
 
+
+/* Helper to create a named Unix Socket out of the path to link to */
+static int janus_pfunix_create_socket(char *pfname) {
+	if(pfname == NULL)
+		return -1;
+	int fd = -1;
+	if(strlen(pfname) > UNIX_MAX_PATH) {
+		JANUS_LOG(LOG_WARN, "The provided path name (%s) is longer than %d characters, it will be truncated\n", pfname, UNIX_MAX_PATH);
+		pfname[UNIX_MAX_PATH] = '\0';
+	}
+	/* Create socket */
+	fd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
+	if(fd < 0) {
+		JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation failed: %d, %s\n", pfname, errno, strerror(errno));
+	} else {
+		/* Unlink before binding */
+		unlink(pfname);
+		/* Let's bind to the provided path now */
+		struct sockaddr_un address;
+		memset(&address, 0, sizeof(address));
+		address.sun_family = AF_UNIX;
+		g_snprintf(address.sun_path, UNIX_MAX_PATH, "%s", pfname);
+		JANUS_LOG(LOG_VERB, "Binding Unix Socket %s... (Janus API)\n", pfname);
+		if(bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
+			JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s failed: %d, %s\n", pfname, errno, strerror(errno));
+			close(fd);
+			fd = -1;
+		} else {
+			JANUS_LOG(LOG_VERB, "Listening on Unix Socket %s...\n", pfname);
+			if(listen(fd, 128) != 0) {
+				JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s failed: %d, %s\n", pfname, errno, strerror(errno));
+				close(fd);
+				fd = -1;
+			}
+		}
+	}
+	return fd;
+}
 
 /* Transport implementation */
 int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_path) {
@@ -155,37 +196,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		} else {
 			item = janus_config_get_item_drilldown(config, "general", "path");
 			char *pfname = (char *)(item && item->value ? item->value : "/tmp/ux-janusapi");
-			if(strlen(pfname) > 108) {
-				JANUS_LOG(LOG_WARN, "The provided path name (%s) is longer than 108 characters, it will be truncated\n", pfname);
-				pfname[108] = '\0';
-			}
-			/* Create socket */
-			pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
-			if(pfd < 0) {
-				JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation for Janus API failed: %d, %s\n", pfname, errno, strerror(errno));
-				pfd = -1;
-			} else {
-				/* Unlink before binding */
-				unlink(pfname);
-				/* Let's bind to the provided path now */
-				struct sockaddr_un address;
-				memset(&address, 0, sizeof(address));
-				address.sun_family = AF_UNIX;
-				g_snprintf(address.sun_path, 108, "%s", pfname);
-				JANUS_LOG(LOG_VERB, "Binding Unix Socket %s... (Janus API)\n", pfname);
-				if(bind(pfd, (struct sockaddr *)&address, sizeof(address)) != 0) {
-					JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s (Janus API) failed: %d, %s\n", pfname, errno, strerror(errno));
-					close(pfd);
-					pfd = -1;
-				} else {
-					JANUS_LOG(LOG_VERB, "Listening on Unix Socket %s... (Janus API)\n", pfname);
-					if(listen(pfd, 128) != 0) {
-						JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s (Janus API) failed: %d, %s\n", pfname, errno, strerror(errno));
-						close(pfd);
-						pfd = -1;
-					}
-				}
-			}
+			pfd = janus_pfunix_create_socket(pfname);
 		}
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get_item_drilldown(config, "admin", "admin_enabled");
@@ -194,37 +205,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		} else {
 			item = janus_config_get_item_drilldown(config, "admin", "admin_path");
 			char *pfname = (char *)(item && item->value ? item->value : "/tmp/ux-janusadmin");
-			if(strlen(pfname) > 108) {
-				JANUS_LOG(LOG_WARN, "The provided path name (%s) is longer than 108 characters, it will be truncated\n", pfname);
-				pfname[108] = '\0';
-			}
-			/* Create socket */
-			admin_pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
-			if(admin_pfd < 0) {
-				JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation for Admin API failed: %d, %s\n", pfname, errno, strerror(errno));
-				admin_pfd = -1;
-			} else {
-				/* Unlink before binding */
-				unlink(pfname);
-				/* Let's bind to the provided path now */
-				struct sockaddr_un address;
-				memset(&address, 0, sizeof(address));
-				address.sun_family = AF_UNIX;
-				g_snprintf(address.sun_path, 108, "%s", pfname);
-				JANUS_LOG(LOG_VERB, "Binding Unix Socket %s... (Admin API)\n", pfname);
-				if(bind(admin_pfd, (struct sockaddr *)&address, sizeof(address)) != 0) {
-					JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s (Admin API) failed: %d, %s\n", pfname, errno, strerror(errno));
-					close(admin_pfd);
-					admin_pfd = -1;
-				} else {
-					JANUS_LOG(LOG_VERB, "Listening on Unix Socket %s... (Admin API)\n", pfname);
-					if(listen(admin_pfd, 128) != 0) {
-						JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s (Admin API) failed: %d, %s\n", pfname, errno, strerror(errno));
-						close(admin_pfd);
-						admin_pfd = -1;
-					}
-				}
-			}
+			admin_pfd = janus_pfunix_create_socket(pfname);
 		}
 	}
 	janus_config_destroy(config);
