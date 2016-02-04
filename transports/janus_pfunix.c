@@ -96,13 +96,15 @@ janus_transport *create(void) {
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
 
+#define BUFFER_SIZE		8192
+
 
 /* Unix Sockets server thread */
 static GThread *pfunix_thread = NULL;
 void *janus_pfunix_thread(void *data);
 
 /* Unix Sockets servers */
-static int pfd = 0, admin_pfd = 0;
+static int pfd = -1, admin_pfd = -1;
 /* Socket pair to notify about the need for outgoing data */
 static int write_fd[2];
 
@@ -158,10 +160,10 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				pfname[108] = '\0';
 			}
 			/* Create socket */
-			pfd = socket(PF_UNIX, SOCK_SEQPACKET, 0);
+			pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
 			if(pfd < 0) {
 				JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation for Janus API failed: %d, %s\n", pfname, errno, strerror(errno));
-				pfd = 0;
+				pfd = -1;
 			} else {
 				/* Unlink before binding */
 				unlink(pfname);
@@ -174,13 +176,13 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				if(bind(pfd, (struct sockaddr *)&address, sizeof(address)) != 0) {
 					JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s (Janus API) failed: %d, %s\n", pfname, errno, strerror(errno));
 					close(pfd);
-					pfd = 0;
+					pfd = -1;
 				} else {
 					JANUS_LOG(LOG_VERB, "Listening on Unix Socket %s... (Janus API)\n", pfname);
-					if(listen(pfd, 5) != 0) {
+					if(listen(pfd, 128) != 0) {
 						JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s (Janus API) failed: %d, %s\n", pfname, errno, strerror(errno));
 						close(pfd);
-						pfd = 0;
+						pfd = -1;
 					}
 				}
 			}
@@ -190,17 +192,17 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Admin API)\n");
 		} else {
-			item = janus_config_get_item_drilldown(config, "general", "path");
+			item = janus_config_get_item_drilldown(config, "admin", "admin_path");
 			char *pfname = (char *)(item && item->value ? item->value : "/tmp/ux-janusadmin");
 			if(strlen(pfname) > 108) {
 				JANUS_LOG(LOG_WARN, "The provided path name (%s) is longer than 108 characters, it will be truncated\n", pfname);
 				pfname[108] = '\0';
 			}
 			/* Create socket */
-			admin_pfd = socket(PF_UNIX, SOCK_SEQPACKET, 0);
+			admin_pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
 			if(admin_pfd < 0) {
 				JANUS_LOG(LOG_FATAL, "Unix Sockets %s creation for Admin API failed: %d, %s\n", pfname, errno, strerror(errno));
-				admin_pfd = 0;
+				admin_pfd = -1;
 			} else {
 				/* Unlink before binding */
 				unlink(pfname);
@@ -213,13 +215,13 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				if(bind(admin_pfd, (struct sockaddr *)&address, sizeof(address)) != 0) {
 					JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s (Admin API) failed: %d, %s\n", pfname, errno, strerror(errno));
 					close(admin_pfd);
-					admin_pfd = 0;
+					admin_pfd = -1;
 				} else {
 					JANUS_LOG(LOG_VERB, "Listening on Unix Socket %s... (Admin API)\n", pfname);
-					if(listen(admin_pfd, 5) != 0) {
+					if(listen(admin_pfd, 128) != 0) {
 						JANUS_LOG(LOG_FATAL, "Listening on Unix Socket %s (Admin API) failed: %d, %s\n", pfname, errno, strerror(errno));
 						close(admin_pfd);
-						admin_pfd = 0;
+						admin_pfd = -1;
 					}
 				}
 			}
@@ -227,7 +229,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	}
 	janus_config_destroy(config);
 	config = NULL;
-	if(pfd == 0 && admin_pfd == 0) {
+	if(pfd < 0 && admin_pfd < 0) {
 		JANUS_LOG(LOG_FATAL, "No Unix Sockets server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
@@ -239,7 +241,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 
 	GError *error = NULL;
 	/* Start the Unix Sockets service thread */
-	if(pfd > 0 || admin_pfd > 0) {
+	if(pfd > -1 || admin_pfd > -1) {
 		pfunix_thread = g_thread_try_new("pfunix thread", &janus_pfunix_thread, NULL, &error);
 		if(!pfunix_thread) {
 			g_atomic_int_set(&initialized, 0);
@@ -261,7 +263,11 @@ void janus_pfunix_destroy(void) {
 
 	/* Stop the service thread */
 	char c;
-	write(write_fd[1], &c, 1);
+	int res = 0;
+	do {
+		res = write(write_fd[1], &c, 1);
+	} while(res == -1 && errno == EINTR);
+
 	if(pfunix_thread != NULL) {
 		g_thread_join(pfunix_thread);
 		pfunix_thread = NULL;
@@ -302,11 +308,11 @@ const char *janus_pfunix_get_package(void) {
 }
 
 gboolean janus_pfunix_is_janus_api_enabled(void) {
-	return pfd > 0;
+	return pfd > -1;
 }
 
 gboolean janus_pfunix_is_admin_api_enabled(void) {
-	return admin_pfd > 0;
+	return admin_pfd > -1;
 }
 
 int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {
@@ -319,7 +325,7 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 	/* Make sure this is related to a still valid Unix Sockets session */
 	janus_pfunix_client *client = (janus_pfunix_client *)transport;
 	janus_mutex_lock(&clients_mutex);
-	if(g_hash_table_lookup(clients, client) == NULL || client->fd <= 0) {
+	if(g_hash_table_lookup(clients, client) == NULL || client->fd < 0) {
 		janus_mutex_unlock(&clients_mutex);
 		JANUS_LOG(LOG_WARN, "Outgoing message for invalid client %p\n", client);
 		g_free(message);
@@ -333,7 +339,10 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 	g_async_queue_push(client->messages, payload);
 	/* Notify the thread there's data to send */
 	char c;
-	write(write_fd[1], &c, 1);
+	int res = 0;
+	do {
+		res = write(write_fd[1], &c, 1);
+	} while(res == -1 && errno == EINTR);
 	return 0;
 }
 
@@ -348,7 +357,7 @@ void janus_pfunix_session_over(void *transport, guint64 session_id, gboolean tim
 	/* FIXME Should we really close the connection in case of a timeout? */
 	janus_pfunix_client *client = (janus_pfunix_client *)transport;
 	janus_mutex_lock(&clients_mutex);
-	if(g_hash_table_lookup(clients, client) != NULL && client->fd > 0) {
+	if(g_hash_table_lookup(clients, client) != NULL && client->fd > -1) {
 		/* Shutdown the client socket */
 		shutdown(client->fd, SHUT_WR);
 	}
@@ -362,7 +371,7 @@ void *janus_pfunix_thread(void *data) {
 
 	int fds = 0;
 	struct pollfd poll_fds[1024];	/* FIXME Should we allow for more clients? */
-	char buffer[4096];
+	char buffer[BUFFER_SIZE];
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Prepare poll list of file descriptors */
@@ -371,13 +380,13 @@ void *janus_pfunix_thread(void *data) {
 		poll_fds[fds].fd = write_fd[0];
 		poll_fds[fds].events = POLLIN;
 		fds++;
-		if(pfd > 0) {
+		if(pfd > -1) {
 			/* Janus API */
 			poll_fds[fds].fd = pfd;
 			poll_fds[fds].events = POLLIN;
 			fds++;
 		}
-		if(admin_pfd > 0) {
+		if(admin_pfd > -1) {
 			/* Admin API */
 			poll_fds[fds].fd = admin_pfd;
 			poll_fds[fds].events = POLLIN;
@@ -390,19 +399,16 @@ void *janus_pfunix_thread(void *data) {
 		g_hash_table_iter_init(&iter, clients_by_fd);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_pfunix_client *client = value;
-			if(client->fd > 0) {
+			if(client->fd > -1) {
 				poll_fds[fds].fd = client->fd;
-				poll_fds[fds].events = POLLIN;
-				if(g_async_queue_length(client->messages) > 0) {
-					poll_fds[fds].events = POLLOUT;
-				}
+				poll_fds[fds].events = g_async_queue_length(client->messages) > 0 ? POLLIN | POLLOUT : POLLIN;
 				fds++;
 			}
 		}
 		janus_mutex_unlock(&clients_mutex);
 
 		/* Start polling */
-		int res = poll(poll_fds, fds, 10000);
+		int res = poll(poll_fds, fds, -1);
 		if(res == 0)
 			continue;
 		if(res < 0) {
@@ -414,10 +420,13 @@ void *janus_pfunix_thread(void *data) {
 				/* Find the client from its file descriptor */
 				janus_mutex_lock(&clients_mutex);
 				janus_pfunix_client *client = g_hash_table_lookup(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
-				if(client != NULL && client->fd > 0) {
+				if(client != NULL) {
 					char *payload = NULL;
 					while((payload = g_async_queue_try_pop(client->messages)) != NULL) {
-						int res = write(client->fd, payload, strlen(payload));
+						int res = 0;
+						do {
+							res = write(client->fd, payload, strlen(payload));
+						} while(res == -1 && errno == EINTR);
 						/* FIXME Should we check if sent everything? */
 						JANUS_LOG(LOG_HUGE, "Written %d/%zu bytes on %d\n", res, strlen(payload), client->fd);
 						g_free(payload);
@@ -428,37 +437,19 @@ void *janus_pfunix_thread(void *data) {
 			if((poll_fds[i].revents & POLLIN) == POLLIN) {
 				if(poll_fds[i].fd == write_fd[0]) {
 					/* Read and ignore: we use this to unlock the poll if there's data to write */
-					res = read(poll_fds[i].fd, buffer, 4096);
-				} else if(poll_fds[i].fd == pfd) {
-					/* Janus API: accept the new client */
+					res = read(poll_fds[i].fd, buffer, BUFFER_SIZE);
+				} else if(poll_fds[i].fd == pfd || poll_fds[i].fd == admin_pfd) {
+					/* Janus/Admin API: accept the new client */
 					struct sockaddr_un address;
 					socklen_t address_length = 0;
 					int cfd = accept(pfd, (struct sockaddr *) &address, &address_length);
-					if(cfd > 0) {
-						JANUS_LOG(LOG_VERB, "Got new Unix Sockets Janus API client: %d\n", cfd);
+					if(cfd > -1) {
+						JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %d\n",
+							poll_fds[i].fd == pfd ? "Janus" : "Admin", cfd);
 						/* Allocate new client */
 						janus_pfunix_client *client = g_malloc0(sizeof(janus_pfunix_client));
 						client->fd = cfd;
-						client->admin = FALSE;	/* Janus API client */
-						client->messages = g_async_queue_new();
-						client->session_timeout = 0;
-						/* Take note of this new client */
-						janus_mutex_lock(&clients_mutex);
-						g_hash_table_insert(clients_by_fd, GINT_TO_POINTER(cfd), client);
-						g_hash_table_insert(clients, client, client);
-						janus_mutex_unlock(&clients_mutex);
-					}
-				} else if(poll_fds[i].fd == admin_pfd) {
-					/* Admin API: accept the new client */
-					struct sockaddr_un address;
-					socklen_t address_length = 0;
-					int cfd = accept(admin_pfd, (struct sockaddr *) &address, &address_length);
-					if(cfd > 0) {
-						JANUS_LOG(LOG_VERB, "Got new Unix Sockets Admin API client: %d\n", cfd);
-						/* Allocate new client */
-						janus_pfunix_client *client = g_malloc0(sizeof(janus_pfunix_client));
-						client->fd = cfd;
-						client->admin = TRUE;	/* Admin API client */
+						client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 						client->messages = g_async_queue_new();
 						client->session_timeout = 0;
 						/* Take note of this new client */
@@ -469,7 +460,7 @@ void *janus_pfunix_thread(void *data) {
 					}
 				} else {
 					/* Client data: receive */
-					res = read(poll_fds[i].fd, buffer, 4096);
+					res = read(poll_fds[i].fd, buffer, BUFFER_SIZE);
 					if(res < 0) {
 						JANUS_LOG(LOG_ERR, "Error reading from client %d...\n", poll_fds[i].fd);
 						continue;
@@ -486,10 +477,13 @@ void *janus_pfunix_thread(void *data) {
 						continue;
 					}
 					if(res == 0) {
-						JANUS_LOG(LOG_VERB, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
+						JANUS_LOG(LOG_INFO, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
+						/* Notify core */
+						gateway->transport_gone(&janus_pfunix_transport, client);
 						/* Close socket */
 						shutdown(SHUT_RDWR, poll_fds[i].fd);
 						close(poll_fds[i].fd);
+						client->fd = -1;
 						/* Destroy the client */
 						g_hash_table_remove(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
 						g_hash_table_remove(clients, client);
@@ -519,12 +513,12 @@ void *janus_pfunix_thread(void *data) {
 		}
 	}
 
-	if(pfd > 0)
+	if(pfd > -1)
 		close(pfd);
-	pfd = 0;
-	if(admin_pfd > 0)
+	pfd = -1;
+	if(admin_pfd > -1)
 		close(admin_pfd);
-	admin_pfd = 0;
+	admin_pfd = -1;
 
 	/* Done */
 	JANUS_LOG(LOG_INFO, "Unix Sockets thread ended\n");
