@@ -98,8 +98,9 @@ static janus_transport_callbacks *gateway = NULL;
 
 #define BUFFER_SIZE		8192
 
-#ifndef UNIX_MAX_PATH
-#define UNIX_MAX_PATH 108
+struct sockaddr_un sizecheck;
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX sizeof(sizecheck.sun_path)
 #endif
 
 /* Unix Sockets server thread */
@@ -127,9 +128,9 @@ static int janus_pfunix_create_socket(char *pfname) {
 	if(pfname == NULL)
 		return -1;
 	int fd = -1;
-	if(strlen(pfname) > UNIX_MAX_PATH) {
-		JANUS_LOG(LOG_WARN, "The provided path name (%s) is longer than %d characters, it will be truncated\n", pfname, UNIX_MAX_PATH);
-		pfname[UNIX_MAX_PATH] = '\0';
+	if(strlen(pfname) > UNIX_PATH_MAX) {
+		JANUS_LOG(LOG_WARN, "The provided path name (%s) is longer than %lu characters, it will be truncated\n", pfname, UNIX_PATH_MAX);
+		pfname[UNIX_PATH_MAX] = '\0';
 	}
 	/* Create socket */
 	fd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
@@ -142,7 +143,7 @@ static int janus_pfunix_create_socket(char *pfname) {
 		struct sockaddr_un address;
 		memset(&address, 0, sizeof(address));
 		address.sun_family = AF_UNIX;
-		g_snprintf(address.sun_path, UNIX_MAX_PATH, "%s", pfname);
+		g_snprintf(address.sun_path, UNIX_PATH_MAX, "%s", pfname);
 		JANUS_LOG(LOG_VERB, "Binding Unix Socket %s... (Janus API)\n", pfname);
 		if(bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
 			JANUS_LOG(LOG_FATAL, "Bind for Unix Socket %s failed: %d, %s\n", pfname, errno, strerror(errno));
