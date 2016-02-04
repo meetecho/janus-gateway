@@ -110,10 +110,10 @@ static int write_fd[2];
 
 /* Unix Sockets client session */
 typedef struct janus_pfunix_client {
-	int fd;					/* Client socket */
-	gboolean admin;			/* Whether this client is for the Admin or Janus API */
-	GAsyncQueue *messages;	/* Queue of outgoing messages to push */
-	gint session_timeout:1;	/* Whether a Janus session timeout occurred in the core */
+	int fd;						/* Client socket */
+	gboolean admin;				/* Whether this client is for the Admin or Janus API */
+	GAsyncQueue *messages;		/* Queue of outgoing messages to push */
+	gboolean session_timeout;	/* Whether a Janus session timeout occurred in the core */
 } janus_pfunix_client;
 static GHashTable *clients = NULL, *clients_by_fd = NULL;
 static janus_mutex clients_mutex;
@@ -239,15 +239,13 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	clients_by_fd = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&clients_mutex);
 
-	GError *error = NULL;
 	/* Start the Unix Sockets service thread */
-	if(pfd > -1 || admin_pfd > -1) {
-		pfunix_thread = g_thread_try_new("pfunix thread", &janus_pfunix_thread, NULL, &error);
-		if(!pfunix_thread) {
-			g_atomic_int_set(&initialized, 0);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Unix Sockets thread...\n", error->code, error->message ? error->message : "??");
-			return -1;
-		}
+	GError *error = NULL;
+	pfunix_thread = g_thread_try_new("pfunix thread", &janus_pfunix_thread, NULL, &error);
+	if(!pfunix_thread) {
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Unix Sockets thread...\n", error->code, error->message ? error->message : "??");
+		return -1;
 	}
 
 	/* Done */
@@ -262,10 +260,9 @@ void janus_pfunix_destroy(void) {
 	g_atomic_int_set(&stopping, 1);
 
 	/* Stop the service thread */
-	char c;
 	int res = 0;
 	do {
-		res = write(write_fd[1], &c, 1);
+		res = write(write_fd[1], "x", 1);
 	} while(res == -1 && errno == EINTR);
 
 	if(pfunix_thread != NULL) {
@@ -338,10 +335,9 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 	json_decref(message);
 	g_async_queue_push(client->messages, payload);
 	/* Notify the thread there's data to send */
-	char c;
 	int res = 0;
 	do {
-		res = write(write_fd[1], &c, 1);
+		res = write(write_fd[1], "x", 1);
 	} while(res == -1 && errno == EINTR);
 	return 0;
 }
@@ -359,6 +355,7 @@ void janus_pfunix_session_over(void *transport, guint64 session_id, gboolean tim
 	janus_mutex_lock(&clients_mutex);
 	if(g_hash_table_lookup(clients, client) != NULL && client->fd > -1) {
 		/* Shutdown the client socket */
+		client->session_timeout = TRUE;
 		shutdown(client->fd, SHUT_WR);
 	}
 	janus_mutex_unlock(&clients_mutex);
@@ -441,7 +438,7 @@ void *janus_pfunix_thread(void *data) {
 				} else if(poll_fds[i].fd == pfd || poll_fds[i].fd == admin_pfd) {
 					/* Janus/Admin API: accept the new client */
 					struct sockaddr_un address;
-					socklen_t address_length = 0;
+					socklen_t address_length = sizeof(address);
 					int cfd = accept(pfd, (struct sockaddr *) &address, &address_length);
 					if(cfd > -1) {
 						JANUS_LOG(LOG_INFO, "Got new Unix Sockets %s API client: %d\n",
@@ -451,7 +448,7 @@ void *janus_pfunix_thread(void *data) {
 						client->fd = cfd;
 						client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 						client->messages = g_async_queue_new();
-						client->session_timeout = 0;
+						client->session_timeout = FALSE;
 						/* Take note of this new client */
 						janus_mutex_lock(&clients_mutex);
 						g_hash_table_insert(clients_by_fd, GINT_TO_POINTER(cfd), client);
@@ -462,7 +459,9 @@ void *janus_pfunix_thread(void *data) {
 					/* Client data: receive */
 					res = read(poll_fds[i].fd, buffer, BUFFER_SIZE);
 					if(res < 0) {
-						JANUS_LOG(LOG_ERR, "Error reading from client %d...\n", poll_fds[i].fd);
+						if(errno != EWOULDBLOCK) {
+							JANUS_LOG(LOG_ERR, "Error reading from client %d...\n", poll_fds[i].fd);
+						}
 						continue;
 					}
 					/* Find the client from its file descriptor */
