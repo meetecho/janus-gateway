@@ -242,6 +242,26 @@ AC_CHECK_LIB([rabbitmq],
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 
+AC_TRY_COMPILE([
+               #include <stdlib.h>
+               #include <sys/socket.h>
+               #include <sys/un.h>
+               void test() {
+                 int pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
+                 if(pfd < 0)
+                   exit(1);
+               }],
+               [],
+               [
+                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                 [
+                    AC_DEFINE(HAVE_PFUNIX)
+                 ])
+               ],
+               [
+                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                       [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
+               ])
 AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_pfunix" = "xyes"])
 
 
