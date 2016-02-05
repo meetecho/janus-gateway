@@ -1200,6 +1200,7 @@ static void *janus_sip_handler(void *data) {
 				}
 				char ttl_text[20];
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
+				/* Send the REGISTER */
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
 					SIPTAG_FROM_STR(username_text),
@@ -1885,7 +1886,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					su_free(session->stack->s_home, caller_text);
 					if (sip->sip_from && sip->sip_from->a_display) {
 						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
-					}					json_object_set_new(missed, "result", result);
+					}
+					json_object_set_new(missed, "result", result);
 					char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 					json_decref(missed);
 					JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
