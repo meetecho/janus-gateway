@@ -185,6 +185,11 @@ $(document).ready(function() {
 												// One of the publishers has unpublished?
 												var unpublished = msg["unpublished"];
 												Janus.log("Publisher left: " + unpublished);
+												if(unpublished === 'ok') {
+													// That's us
+													sfutest.hangup();
+													return;
+												}
 												var remoteFeed = null;
 												for(var i=1; i<6; i++) {
 													if(feeds[i] != null && feeds[i] != undefined && feeds[i].rfid == unpublished) {
