@@ -450,7 +450,7 @@ void *janus_pfunix_thread(void *data) {
 					iov[0].iov_len = sizeof(buffer);
 					res = recvmsg(poll_fds[i].fd, &msg, MSG_WAITALL);
 					if(res < 0) {
-						if(errno != EWOULDBLOCK) {
+						if(errno != EAGAIN && errno != EWOULDBLOCK) {
 							JANUS_LOG(LOG_ERR, "Error reading from client %d...\n", poll_fds[i].fd);
 						}
 						continue;
