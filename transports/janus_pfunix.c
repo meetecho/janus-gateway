@@ -351,6 +351,14 @@ void *janus_pfunix_thread(void *data) {
 	int fds = 0;
 	struct pollfd poll_fds[1024];	/* FIXME Should we allow for more clients? */
 	char buffer[BUFFER_SIZE];
+	struct iovec iov[1];
+	struct msghdr msg;
+	memset(&msg, 0, sizeof(msg));
+	memset(iov, 0, sizeof(iov));
+	iov[0].iov_base = buffer;
+	iov[0].iov_len = sizeof(buffer);
+	msg.msg_iov = iov;
+	msg.msg_iovlen = 1;
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Prepare poll list of file descriptors */
@@ -438,12 +446,18 @@ void *janus_pfunix_thread(void *data) {
 						janus_mutex_unlock(&clients_mutex);
 					}
 				} else {
-					/* Client data: receive */
-					res = read(poll_fds[i].fd, buffer, BUFFER_SIZE);
+					/* Client data: receive message */
+					iov[0].iov_len = sizeof(buffer);
+					res = recvmsg(poll_fds[i].fd, &msg, MSG_WAITALL);
 					if(res < 0) {
 						if(errno != EWOULDBLOCK) {
 							JANUS_LOG(LOG_ERR, "Error reading from client %d...\n", poll_fds[i].fd);
 						}
+						continue;
+					}
+					if(msg.msg_flags & MSG_TRUNC) {
+						/* Apparently our buffer is not large enough? */
+						JANUS_LOG(LOG_WARN, "Incoming message from client %d truncated (%d bytes), dropping it...\n", poll_fds[i].fd, res);
 						continue;
 					}
 					/* Find the client from its file descriptor */
