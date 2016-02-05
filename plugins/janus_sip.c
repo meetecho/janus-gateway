@@ -1326,6 +1326,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid NUA Handle");
 				goto error;
 			}
+			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_inviting;
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(session->account.identity),
@@ -1397,6 +1398,7 @@ static void *janus_sip_handler(void *data) {
 				sdp = janus_string_replace(sdp, "m=video 1", mline);
 			}
 			/* Send 200 OK */
+			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_incall;
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");

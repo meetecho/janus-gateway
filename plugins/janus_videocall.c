@@ -1055,6 +1055,7 @@ static void *janus_videocall_handler(void *data) {
 					sdp = janus_string_replace(sdp, "a=rtpmap:96 rtx/90000\r\n", "");
 					sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
 				}
+				g_atomic_int_set(&session->hangingup, 0);
 				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call_text, msg->sdp_type, sdp);
 				g_free(sdp);
@@ -1092,6 +1093,7 @@ static void *janus_videocall_handler(void *data) {
 			json_object_set_new(call, "result", calling);
 			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(call);
+			g_atomic_int_set(&session->hangingup, 0);
 			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
 			int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, call_text, msg->sdp_type, msg->sdp);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));

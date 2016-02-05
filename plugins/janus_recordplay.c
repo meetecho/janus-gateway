@@ -1452,6 +1452,7 @@ static void *janus_recordplay_handler(void *data) {
 		} else {
 			const char *type = session->recorder ? "answer" : "offer";
 			/* How long will the gateway take to push the event? */
+			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_recordplay_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",

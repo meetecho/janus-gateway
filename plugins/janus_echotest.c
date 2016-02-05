@@ -904,6 +904,7 @@ static void *janus_echotest_handler(void *data) {
 				sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
 			}
 			/* How long will the gateway take to push the event? */
+			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",
