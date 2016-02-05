@@ -1748,9 +1748,13 @@ static void *janus_sip_handler(void *data) {
 			}
 			int duration_ms = 0;
 			json_t *duration = json_object_get(root, "duration");
-			if(duration && json_is_integer(duration)) {
-				duration_ms = json_integer_value(duration);
+			if(duration && !json_is_integer(duration)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (duration should be an integer)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (duration should be an integer)");
+				goto error;
 			}
+			duration_ms = duration ? json_integer_value(duration) : 0;
 			if (duration_ms <= 0 || duration_ms > 5000) {
 				duration_ms = 160; /* default value */
 			}
@@ -1988,6 +1992,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_cancel:
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			break;
+		case nua_r_info:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_invite: {
