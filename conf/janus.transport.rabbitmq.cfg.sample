@@ -18,6 +18,9 @@
 enable = no					; Whether the support must be enabled
 host = localhost			; The address of the RabbitMQ server
 ;port = 5672				; The port of the RabbitMQ server (5672 by default)
+;username = guest			; Username to use to authenticate, if needed
+;password = guest			; Password to use to authenticate, if needed
+;vhost = /					; Virtual host to specify when logging in, if needed
 to_janus = to-janus			; Name of the queue for incoming messages
 from_janus = from-janus		; Name of the queue for outgoing messages
 

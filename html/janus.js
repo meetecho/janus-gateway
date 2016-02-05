@@ -458,7 +458,7 @@ function Janus(gatewayCallbacks) {
 				}
 			};
 
-			for(eventName in wsHandlers) {
+			for(var eventName in wsHandlers) {
 				ws.addEventListener(eventName, wsHandlers[eventName]);
 			}
 
@@ -527,7 +527,7 @@ function Janus(gatewayCallbacks) {
 		}
 		delete Janus.sessions[sessionId];
 		// Destroy all handles first
-		for(ph in pluginHandles) {
+		for(var ph in pluginHandles) {
 			var phv = pluginHandles[ph];
 			Janus.log("Destroying handle " + phv.id + " (" + phv.plugin + ")");
 			destroyHandle(phv.id, null, syncRequest);
@@ -542,7 +542,7 @@ function Janus(gatewayCallbacks) {
 			request["session_id"] = sessionId;
 
 			var unbindWebSocket = function() {
-				for(eventName in wsHandlers) {
+				for(var eventName in wsHandlers) {
 					ws.removeEventListener(eventName, wsHandlers[eventName]);
 				}
 				ws.removeEventListener('message', onUnbindMessage);

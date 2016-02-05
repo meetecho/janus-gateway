@@ -1681,6 +1681,60 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
+		} else if(!strcasecmp(request_text, "dtmf_info")) {
+			/* Send DMTF tones using SIP INFO
+			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
+			 */
+			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			json_t *digit = json_object_get(root, "digit");
+			if(!digit) {
+				JANUS_LOG(LOG_ERR, "Missing element (digit)\n");
+				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
+				g_snprintf(error_cause, 512, "Missing element (digit)");
+				goto error;
+			}
+			if(!json_is_string(digit)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (digit should be a string)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (digit should be a string)");
+				goto error;
+			}
+			const char *digit_text = json_string_value(digit);
+			if(strlen(digit_text) != 1) {
+				JANUS_LOG(LOG_ERR, "Invalid element (digit should be one character))\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (digit should be one character)");
+				goto error;
+			}
+			int duration_ms = 0;
+			json_t *duration = json_object_get(root, "duration");
+			if(duration && !json_is_integer(duration)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (duration should be an integer)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (duration should be an integer)");
+				goto error;
+			}
+			duration_ms = duration ? json_integer_value(duration) : 0;
+			if (duration_ms <= 0 || duration_ms > 5000) {
+				duration_ms = 160; /* default value */
+			}
+
+			char payload[64];
+			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, duration_ms);
+			nua_info(session->stack->s_nh_i,
+				SIPTAG_CONTENT_TYPE_STR("application/dtmf-relay"),
+				SIPTAG_PAYLOAD_STR(payload),
+				TAG_END());
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_SIP_ERROR_INVALID_REQUEST;
@@ -1801,11 +1855,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		}
 		case nua_i_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			if(ssip == NULL) {
+				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
+				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				break;
+			}
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
 			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
-                                sdp_parser_free(parser);
+				sdp_parser_free(parser);
 				break;
 			}
 			if(session->stack->s_nh_i != NULL) {
@@ -1887,8 +1946,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* shutdown in progress -> return */
 				break;
 			}
-			/* end the event loop. su_root_run() will return */
-			su_root_break(ssip->s_root);
+			if(ssip != NULL) {
+				/* end the event loop. su_root_run() will return */
+				su_root_break(ssip->s_root);
+			}
 			break;
 		case nua_r_terminate:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
@@ -1898,6 +1959,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_cancel:
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			break;
+		case nua_r_info:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			break;
 		case nua_r_invite: {
@@ -1937,11 +2001,16 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			} else if(status >= 400) {
 				break;
 			}
-			ssip_t *ssip = session->stack;
+			if(ssip == NULL) {
+				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
+				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				break;
+			}
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
 			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				sdp_parser_free(parser);
 				break;
 			}
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
@@ -2001,7 +2070,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					scheme,
 					realm,
-					session->account.username,
+					session->account.authuser ? session->account.authuser : "null",
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					session->account.secret);
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
