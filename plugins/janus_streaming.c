@@ -3400,23 +3400,15 @@ static void *janus_streaming_relay_thread(void *data) {
 		/* Prepare poll */
 		num = 0;
 		if(audio_fd >= 0) {
-			fds[num].fd = 0;
-			fds[num].events = 0;
+			fds[num].fd = audio_fd;
+			fds[num].events = POLLIN;
 			fds[num].revents = 0;
-			if(audio_fd > 0) {
-				fds[num].fd = audio_fd;
-				fds[num].events = POLLIN;
-			}
 			num++;
 		}
 		if(video_fd >= 0) {
-			fds[num].fd = 0;
-			fds[num].events = 0;
+			fds[num].fd = video_fd;
+			fds[num].events = POLLIN;
 			fds[num].revents = 0;
-			if(video_fd > 0) {
-				fds[num].fd = video_fd;
-				fds[num].events = POLLIN;
-			}
 			num++;
 		}
 		/* Wait for some data */
