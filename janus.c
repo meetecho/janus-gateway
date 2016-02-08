@@ -2995,6 +2995,7 @@ gint main(int argc, char *argv[])
 		}
 		if(pid > 0) {
 			/* Ok, we're the parent: let's wait for the child to tell us everything started fine */
+			close(pipefd[1]);
 			int code = -1;
 			struct pollfd pollfds;
 
@@ -3006,6 +3007,8 @@ gint main(int argc, char *argv[])
 					break;
 				if(res == 0)
 					continue;
+				if(pollfds.revents & POLLERR || pollfds.revents & POLLHUP)
+					break;
 				if(pollfds.revents & POLLIN) {
 					read(pipefd[0], &code, sizeof(int));
 					break;
