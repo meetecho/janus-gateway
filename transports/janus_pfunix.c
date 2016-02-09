@@ -411,7 +411,9 @@ void *janus_pfunix_thread(void *data) {
 					/* Error in the wake-up socketpair, that sucks: try recreating it */
 					JANUS_LOG(LOG_WARN, "Error in the wake-up socketpair, recreating it...\n");
 					close(write_fd[0]);
+					write_fd[0] = -1;
 					close(write_fd[1]);
+					write_fd[1] = -1;
 					if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
 						JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
 						continue;
