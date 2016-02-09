@@ -184,7 +184,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		/* Handle configuration */
 		janus_config_print(config);
 
-		/* First of all Initialize the socketpair for writeable notifications */
+		/* First of all, initialize the socketpair for writeable notifications */
 		if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
 			JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
 			return -1;
@@ -403,7 +403,63 @@ void *janus_pfunix_thread(void *data) {
 			break;
 		}
 		for(int i=0; i<fds; i++) {
-			if((poll_fds[i].revents & POLLOUT) == POLLOUT) {
+			if(poll_fds[i].revents & (POLLERR | POLLHUP)) {
+				/* Socket error? Shall we do something? */
+				JANUS_LOG(LOG_ERR, "Error polling %d: %s...\n", poll_fds[i].fd,
+					poll_fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
+				if(poll_fds[i].fd == write_fd[0]) {
+					/* Error in the wake-up socketpair, that sucks: try recreating it */
+					JANUS_LOG(LOG_WARN, "Error in the wake-up socketpair, recreating it...\n");
+					close(write_fd[0]);
+					close(write_fd[1]);
+					if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
+						JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
+						continue;
+					}
+				} else if(poll_fds[i].fd == pfd) {
+					/* Error in the Janus API socket */
+					JANUS_LOG(LOG_WARN, "Disabling Unix Sockets Janus API interface\n");
+					close(pfd);
+					pfd = -1;
+					continue;
+				} else if(poll_fds[i].fd == admin_pfd) {
+					/* Error in the Admin API socket */
+					JANUS_LOG(LOG_WARN, "Disabling Unix Sockets Admin API interface\n");
+					close(admin_pfd);
+					admin_pfd = -1;
+					continue;
+				} else {
+					/* Error in a client socket, find and remove it */
+					janus_mutex_lock(&clients_mutex);
+					janus_pfunix_client *client = g_hash_table_lookup(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
+					if(client == NULL) {
+						/* We're not handling this, ignore */
+						continue;
+					}
+					JANUS_LOG(LOG_INFO, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
+					/* Notify core */
+					gateway->transport_gone(&janus_pfunix_transport, client);
+					/* Close socket */
+					shutdown(SHUT_RDWR, poll_fds[i].fd);
+					close(poll_fds[i].fd);
+					client->fd = -1;
+					/* Destroy the client */
+					g_hash_table_remove(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
+					g_hash_table_remove(clients, client);
+					if(client->messages != NULL) {
+						char *response = NULL;
+						while((response = g_async_queue_try_pop(client->messages)) != NULL) {
+							g_free(response);
+						}
+						g_async_queue_unref(client->messages);
+					}
+					g_free(client);
+					janus_mutex_unlock(&clients_mutex);
+					continue;
+				}
+				continue;
+			}
+			if(poll_fds[i].revents & POLLOUT) {
 				/* Find the client from its file descriptor */
 				janus_mutex_lock(&clients_mutex);
 				janus_pfunix_client *client = g_hash_table_lookup(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
@@ -421,7 +477,7 @@ void *janus_pfunix_thread(void *data) {
 				}
 				janus_mutex_unlock(&clients_mutex);
 			}
-			if((poll_fds[i].revents & POLLIN) == POLLIN) {
+			if(poll_fds[i].revents & POLLIN) {
 				if(poll_fds[i].fd == write_fd[0]) {
 					/* Read and ignore: we use this to unlock the poll if there's data to write */
 					res = read(poll_fds[i].fd, buffer, BUFFER_SIZE);
