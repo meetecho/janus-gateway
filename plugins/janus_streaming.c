@@ -3422,13 +3422,13 @@ static void *janus_streaming_relay_thread(void *data) {
 			continue;
 		}
 		for(int i=0; i<num; i++) {
-			if((fds[i].revents & POLLERR) == POLLERR || (fds[i].revents & POLLHUP) == POLLHUP) {
+			if(fds[i].revents & (POLLERR | POLLHUP)) {
 				/* Socket error? */
 				JANUS_LOG(LOG_ERR, "[%s] Error polling: %s... %d (%s)\n", mountpoint->name,
-					(fds[i].revents & POLLERR) == POLLERR ? "POLLERR" : "POLLHUP", errno, strerror(errno));
+					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP", errno, strerror(errno));
 				mountpoint->enabled = FALSE;
 				break;
-			} else if((fds[i].revents & POLLIN) == POLLIN) {
+			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP packet */
 				if(audio_fd != -1 && fds[i].fd == audio_fd) {
 					/* Got something audio (RTP) */

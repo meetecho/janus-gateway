@@ -2243,10 +2243,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 		while(session->media.local_audio_rtp_port == 0 || session->media.local_audio_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
-			if(session->media.audio_rtp_fd < 0) {
+			if(session->media.audio_rtp_fd == -1) {
 				session->media.audio_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
-			if(session->media.audio_rtcp_fd < 0) {
+			if(session->media.audio_rtcp_fd == -1) {
 				session->media.audio_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
@@ -2284,10 +2284,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 		while(session->media.local_video_rtp_port == 0 || session->media.local_video_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
-			if(session->media.video_rtp_fd < 0) {
+			if(session->media.video_rtp_fd == -1) {
 				session->media.video_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
-			if(session->media.video_rtcp_fd < 0) {
+			if(session->media.video_rtcp_fd == -1) {
 				session->media.video_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
@@ -2433,13 +2433,13 @@ static void *janus_sip_relay_thread(void *data) {
 				session->status >= janus_sip_call_status_closing)
 			break;
 		for(int i=0; i<num; i++) {
-			if((fds[i].revents & POLLERR) == POLLERR || (fds[i].revents & POLLHUP) == POLLHUP) {
+			if(fds[i].revents & (POLLERR | POLLHUP)) {
 				/* Socket error? */
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
-					(fds[i].revents & POLLERR) == POLLERR ? "POLLERR" : "POLLHUP");
+					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 				break;
-			} else if((fds[i].revents & POLLIN) == POLLIN) {
+			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP/RTCP packet */
 				if(session->media.audio_rtp_fd != -1 && fds[i].fd == session->media.audio_rtp_fd) {
 					/* Got something audio (RTP) */
