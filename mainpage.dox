@@ -350,13 +350,13 @@ janus.attach(
  *
  * -# you use \c attach() to create a \c Handle object;
  * -# in the \c success callback, your application logic can kick in: you may
- * want to send a message to the plugin ( \c send(msg) ), negotiate
+ * want to send a message to the plugin ( \c send({msg}) ), negotiate
  * a PeerConnection with the plugin right away ( \c createOffer followed
- * by a \c send(msg, jsep) ) or wait for something to happen to do anything;
+ * by a \c send({msg, jsep}) ) or wait for something to happen to do anything;
  * -# the \c onmessage callback tells you when you've got messages from the plugin;
  * if the \c jsep parameter is not null, just pass it to the library, which will take
  * care of it for you; if it's an \b OFFER use \c createAnswer (followed by a
- * \c send(msg, jsep) to close the loop with the plugin), otherwise use
+ * \c send({msg, jsep}) to close the loop with the plugin), otherwise use
  * \c handleRemoteJsep ;
  * -# whether you took the initiative to set up a PeerConnection or the plugin did,
  * the \c onlocalstream and/or the \c onremotestream callbacks will provide
