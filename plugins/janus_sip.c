@@ -2213,22 +2213,22 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 		return -1;
 	}
 	/* Reset status */
-	if(session->media.audio_rtp_fd >= 0) {
+	if(session->media.audio_rtp_fd != -1) {
 		close(session->media.audio_rtp_fd);
 		session->media.audio_rtp_fd = -1;
 	}
-	if(session->media.audio_rtcp_fd >= 0) {
+	if(session->media.audio_rtcp_fd != -1) {
 		close(session->media.audio_rtcp_fd);
 		session->media.audio_rtcp_fd = -1;
 	}
 	session->media.local_audio_rtp_port = 0;
 	session->media.local_audio_rtcp_port = 0;
 	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd >= 0) {
+	if(session->media.video_rtp_fd != -1) {
 		close(session->media.video_rtp_fd);
 		session->media.video_rtp_fd = -1;
 	}
-	if(session->media.video_rtcp_fd >= 0) {
+	if(session->media.video_rtcp_fd != -1) {
 		close(session->media.video_rtcp_fd);
 		session->media.video_rtcp_fd = -1;
 	}
@@ -2394,25 +2394,25 @@ static void *janus_sip_relay_thread(void *data) {
 			session->status < janus_sip_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
 		/* Prepare poll */
 		num = 0;
-		if(session->media.audio_rtp_fd >= 0) {
+		if(session->media.audio_rtp_fd != -1) {
 			fds[num].fd = session->media.audio_rtp_fd;
 			fds[num].events = POLLIN;
 			fds[num].revents = 0;
 			num++;
 		}
-		if(session->media.audio_rtcp_fd >= 0) {
+		if(session->media.audio_rtcp_fd != -1) {
 			fds[num].fd = session->media.audio_rtcp_fd;
 			fds[num].events = POLLIN;
 			fds[num].revents = 0;
 			num++;
 		}
-		if(session->media.video_rtp_fd >= 0) {
+		if(session->media.video_rtp_fd != -1) {
 			fds[num].fd = session->media.video_rtp_fd;
 			fds[num].events = POLLIN;
 			fds[num].revents = 0;
 			num++;
 		}
-		if(session->media.video_rtcp_fd >= 0) {
+		if(session->media.video_rtcp_fd != -1) {
 			fds[num].fd = session->media.video_rtcp_fd;
 			fds[num].events = POLLIN;
 			fds[num].revents = 0;
@@ -2441,7 +2441,7 @@ static void *janus_sip_relay_thread(void *data) {
 				break;
 			} else if((fds[i].revents & POLLIN) == POLLIN) {
 				/* Got an RTP/RTCP packet */
-				if(session->media.audio_rtp_fd >= 0 && fds[i].fd == session->media.audio_rtp_fd) {
+				if(session->media.audio_rtp_fd != -1 && fds[i].fd == session->media.audio_rtp_fd) {
 					/* Got something audio (RTP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.audio_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
@@ -2460,7 +2460,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Relay to browser */
 					gateway->relay_rtp(session->handle, 0, buffer, bytes);
 					continue;
-				} else if(session->media.audio_rtcp_fd >= 0 && fds[i].fd == session->media.audio_rtcp_fd) {
+				} else if(session->media.audio_rtcp_fd != -1 && fds[i].fd == session->media.audio_rtcp_fd) {
 					/* Got something audio (RTCP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.audio_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
@@ -2474,7 +2474,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Relay to browser */
 					gateway->relay_rtcp(session->handle, 0, buffer, bytes);
 					continue;
-				} else if(session->media.video_rtp_fd >= 0 && fds[i].fd == session->media.video_rtp_fd) {
+				} else if(session->media.video_rtp_fd != -1 && fds[i].fd == session->media.video_rtp_fd) {
 					/* Got something video (RTP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.video_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
@@ -2490,7 +2490,7 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Relay to browser */
 					gateway->relay_rtp(session->handle, 1, buffer, bytes);
 					continue;
-				} else if(session->media.video_rtcp_fd >= 0 && fds[i].fd == session->media.video_rtcp_fd) {
+				} else if(session->media.video_rtcp_fd != -1 && fds[i].fd == session->media.video_rtcp_fd) {
 					/* Got something video (RTCP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.video_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
@@ -2505,22 +2505,22 @@ static void *janus_sip_relay_thread(void *data) {
 			}
 		}
 	}
-	if(session->media.audio_rtp_fd >= 0) {
+	if(session->media.audio_rtp_fd != -1) {
 		close(session->media.audio_rtp_fd);
 		session->media.audio_rtp_fd = -1;
 	}
-	if(session->media.audio_rtcp_fd >= 0) {
+	if(session->media.audio_rtcp_fd != -1) {
 		close(session->media.audio_rtcp_fd);
 		session->media.audio_rtcp_fd = -1;
 	}
 	session->media.local_audio_rtp_port = 0;
 	session->media.local_audio_rtcp_port = 0;
 	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd >= 0) {
+	if(session->media.video_rtp_fd != -1) {
 		close(session->media.video_rtp_fd);
 		session->media.video_rtp_fd = -1;
 	}
-	if(session->media.video_rtcp_fd >= 0) {
+	if(session->media.video_rtcp_fd != -1) {
 		close(session->media.video_rtcp_fd);
 		session->media.video_rtcp_fd = -1;
 	}

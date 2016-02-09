@@ -2958,7 +2958,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char uri[1024];
 	char transport[1024];
 	int video_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "video", &vpt, transport, vrtpmap, vfmtp, vcontrol);
-	if(video_fd >= 0) {
+	if(video_fd != -1) {
 		/* Send an RTSP SETUP for video */
 		g_free(data.buffer);
 		data.buffer = g_malloc0(1);
@@ -2980,7 +2980,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char afmtp[2048];
 	char acontrol[2048];
 	int audio_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "audio", &apt, transport, artpmap, afmtp, acontrol);
-	if(audio_fd >= 0) {
+	if(audio_fd != -1) {
 		/* Send an RTSP SETUP for audio */
 		g_free(data.buffer);
 		data.buffer = g_malloc0(1);
@@ -3399,13 +3399,13 @@ static void *janus_streaming_relay_thread(void *data) {
 	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
 		/* Prepare poll */
 		num = 0;
-		if(audio_fd >= 0) {
+		if(audio_fd != -1) {
 			fds[num].fd = audio_fd;
 			fds[num].events = POLLIN;
 			fds[num].revents = 0;
 			num++;
 		}
-		if(video_fd >= 0) {
+		if(video_fd != -1) {
 			fds[num].fd = video_fd;
 			fds[num].events = POLLIN;
 			fds[num].revents = 0;
@@ -3430,7 +3430,7 @@ static void *janus_streaming_relay_thread(void *data) {
 				break;
 			} else if((fds[i].revents & POLLIN) == POLLIN) {
 				/* Got an RTP packet */
-				if(audio_fd >= 0 && fds[i].fd == audio_fd) {
+				if(audio_fd != -1 && fds[i].fd == audio_fd) {
 					/* Got something audio (RTP) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
@@ -3476,7 +3476,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
 					janus_mutex_unlock(&mountpoint->mutex);
 					continue;
-				} else if(video_fd >= 0 && fds[i].fd == video_fd) {
+				} else if(video_fd != -1 && fds[i].fd == video_fd) {
 					/* Got something video (RTP) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
