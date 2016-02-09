@@ -664,8 +664,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_ip = NULL;
 	session->media.ready = 0;
 	session->media.has_audio = 0;
-	session->media.audio_rtp_fd = 0;
-	session->media.audio_rtcp_fd= 0;
+	session->media.audio_rtp_fd = -1;
+	session->media.audio_rtcp_fd= -1;
 	session->media.local_audio_rtp_port = 0;
 	session->media.remote_audio_rtp_port = 0;
 	session->media.local_audio_rtcp_port = 0;
@@ -673,8 +673,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_ssrc = 0;
 	session->media.audio_ssrc_peer = 0;
 	session->media.has_video = 0;
-	session->media.video_rtp_fd = 0;
-	session->media.video_rtcp_fd= 0;
+	session->media.video_rtp_fd = -1;
+	session->media.video_rtcp_fd= -1;
 	session->media.local_video_rtp_port = 0;
 	session->media.remote_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
@@ -2213,24 +2213,24 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 		return -1;
 	}
 	/* Reset status */
-	if(session->media.audio_rtp_fd > 0) {
+	if(session->media.audio_rtp_fd >= 0) {
 		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = 0;
+		session->media.audio_rtp_fd = -1;
 	}
-	if(session->media.audio_rtcp_fd > 0) {
+	if(session->media.audio_rtcp_fd >= 0) {
 		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = 0;
+		session->media.audio_rtcp_fd = -1;
 	}
 	session->media.local_audio_rtp_port = 0;
 	session->media.local_audio_rtcp_port = 0;
 	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd > 0) {
+	if(session->media.video_rtp_fd >= 0) {
 		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = 0;
+		session->media.video_rtp_fd = -1;
 	}
-	if(session->media.video_rtcp_fd > 0) {
+	if(session->media.video_rtcp_fd >= 0) {
 		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = 0;
+		session->media.video_rtcp_fd = -1;
 	}
 	session->media.local_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
@@ -2243,10 +2243,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 		while(session->media.local_audio_rtp_port == 0 || session->media.local_audio_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
-			if(session->media.audio_rtp_fd == 0) {
+			if(session->media.audio_rtp_fd < 0) {
 				session->media.audio_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
-			if(session->media.audio_rtcp_fd == 0) {
+			if(session->media.audio_rtcp_fd < 0) {
 				session->media.audio_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
@@ -2269,7 +2269,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */
 				close(session->media.audio_rtp_fd);
-				session->media.audio_rtp_fd = 0;
+				session->media.audio_rtp_fd = -1;
 				attempts--;
 				continue;
 			}
@@ -2284,10 +2284,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 		while(session->media.local_video_rtp_port == 0 || session->media.local_video_rtcp_port == 0) {
 			if(attempts == 0)	/* Too many failures */
 				return -1;
-			if(session->media.video_rtp_fd == 0) {
+			if(session->media.video_rtp_fd < 0) {
 				session->media.video_rtp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
-			if(session->media.video_rtcp_fd == 0) {
+			if(session->media.video_rtcp_fd < 0) {
 				session->media.video_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
@@ -2310,7 +2310,7 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTCP (port %d), trying a different one...\n", rtcp_port);
 				/* RTP socket is not valid anymore, reset it */
 				close(session->media.video_rtp_fd);
-				session->media.video_rtp_fd = 0;
+				session->media.video_rtp_fd = -1;
 				attempts--;
 				continue;
 			}
@@ -2380,46 +2380,46 @@ static void *janus_sip_relay_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	/* Loop */
+	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_in remote;
 	int resfd = 0, bytes = 0;
 	struct pollfd fds[4];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
+	/* Loop */
+	int num = 0;
 	while(session != NULL && !session->destroyed &&
 			session->status > janus_sip_call_status_idle &&
 			session->status < janus_sip_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
+		/* Prepare poll */
+		num = 0;
+		if(session->media.audio_rtp_fd >= 0) {
+			fds[num].fd = session->media.audio_rtp_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
+		if(session->media.audio_rtcp_fd >= 0) {
+			fds[num].fd = session->media.audio_rtcp_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
+		if(session->media.video_rtp_fd >= 0) {
+			fds[num].fd = session->media.video_rtp_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
+		if(session->media.video_rtcp_fd >= 0) {
+			fds[num].fd = session->media.video_rtcp_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
 		/* Wait for some data */
-		fds[0].fd = 0;
-		fds[0].events = 0;
-		fds[0].revents = 0;
-		if(session->media.audio_rtp_fd > 0) {
-			fds[0].fd = session->media.audio_rtp_fd;
-			fds[0].events = POLLIN;
-		}
-		fds[1].fd = 0;
-		fds[1].events = 0;
-		fds[1].revents = 0;
-		if(session->media.audio_rtcp_fd > 0) {
-			fds[1].fd = session->media.audio_rtcp_fd;
-			fds[1].events = POLLIN;
-		}
-		fds[2].fd = 0;
-		fds[2].events = 0;
-		fds[2].revents = 0;
-		if(session->media.video_rtp_fd > 0) {
-			fds[2].fd = session->media.video_rtp_fd;
-			fds[2].events = POLLIN;
-		}
-		fds[3].fd = 0;
-		fds[3].events = 0;
-		fds[3].revents = 0;
-		if(session->media.video_rtcp_fd > 0) {
-			fds[3].fd = session->media.video_rtcp_fd;
-			fds[3].events = POLLIN;
-		}
-		resfd = poll(fds, 4, 1000);
+		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
 			JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling...\n", session->account.username);
 			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
@@ -2432,93 +2432,97 @@ static void *janus_sip_relay_thread(void *data) {
 				session->status <= janus_sip_call_status_idle ||
 				session->status >= janus_sip_call_status_closing)
 			break;
-		if(session->media.audio_rtp_fd && (fds[0].revents & POLLIN)) {
-			/* Got something audio (RTP) */
-			fds[0].revents = 0;
-			addrlen = sizeof(remote);
-			bytes = recvfrom(session->media.audio_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTP channel...\n", bytes);
-			//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
-			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			if(session->media.audio_ssrc_peer == 0) {
-				rtp_header *header = (rtp_header *)buffer;
-				session->media.audio_ssrc_peer = ntohl(header->ssrc);
-				JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
+		for(int i=0; i<num; i++) {
+			if((fds[i].revents & POLLERR) == POLLERR || (fds[i].revents & POLLHUP) == POLLHUP) {
+				/* Socket error? */
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
+					(fds[i].revents & POLLERR) == POLLERR ? "POLLERR" : "POLLHUP");
+				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
+				break;
+			} else if((fds[i].revents & POLLIN) == POLLIN) {
+				/* Got an RTP/RTCP packet */
+				if(session->media.audio_rtp_fd >= 0 && fds[i].fd == session->media.audio_rtp_fd) {
+					/* Got something audio (RTP) */
+					addrlen = sizeof(remote);
+					bytes = recvfrom(session->media.audio_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTP channel...\n", bytes);
+					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
+					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					if(session->media.audio_ssrc_peer == 0) {
+						rtp_header *header = (rtp_header *)buffer;
+						session->media.audio_ssrc_peer = ntohl(header->ssrc);
+						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
+					}
+					/* Save the frame if we're recording */
+					if(session->arc_peer)
+						janus_recorder_save_frame(session->arc_peer, buffer, bytes);
+					/* Relay to browser */
+					gateway->relay_rtp(session->handle, 0, buffer, bytes);
+					continue;
+				} else if(session->media.audio_rtcp_fd >= 0 && fds[i].fd == session->media.audio_rtcp_fd) {
+					/* Got something audio (RTCP) */
+					addrlen = sizeof(remote);
+					bytes = recvfrom(session->media.audio_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTCP channel...\n", bytes);
+					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
+					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					/* Save the frame if we're recording */
+					if(session->vrc_peer)
+						janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
+					/* Relay to browser */
+					gateway->relay_rtcp(session->handle, 0, buffer, bytes);
+					continue;
+				} else if(session->media.video_rtp_fd >= 0 && fds[i].fd == session->media.video_rtp_fd) {
+					/* Got something video (RTP) */
+					addrlen = sizeof(remote);
+					bytes = recvfrom(session->media.video_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTP channel...\n", bytes);
+					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
+					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					if(session->media.video_ssrc_peer == 0) {
+						rtp_header *header = (rtp_header *)buffer;
+						session->media.video_ssrc_peer = ntohl(header->ssrc);
+						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
+					}
+					/* Relay to browser */
+					gateway->relay_rtp(session->handle, 1, buffer, bytes);
+					continue;
+				} else if(session->media.video_rtcp_fd >= 0 && fds[i].fd == session->media.video_rtcp_fd) {
+					/* Got something video (RTCP) */
+					addrlen = sizeof(remote);
+					bytes = recvfrom(session->media.video_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTCP channel...\n", bytes);
+					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
+					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					/* Relay to browser */
+					gateway->relay_rtcp(session->handle, 1, buffer, bytes);
+					continue;
+				}
 			}
-			/* Save the frame if we're recording */
-			if(session->arc_peer)
-				janus_recorder_save_frame(session->arc_peer, buffer, bytes);
-			/* Relay to browser */
-			gateway->relay_rtp(session->handle, 0, buffer, bytes);
-			continue;
-		}
-		if(session->media.audio_rtcp_fd && (fds[1].revents & POLLIN)) {
-			/* Got something audio (RTCP) */
-			fds[1].revents = 0;
-			addrlen = sizeof(remote);
-			bytes = recvfrom(session->media.audio_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTCP channel...\n", bytes);
-			//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
-			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			/* Save the frame if we're recording */
-			if(session->vrc_peer)
-				janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
-			/* Relay to browser */
-			gateway->relay_rtcp(session->handle, 0, buffer, bytes);
-			continue;
-		}
-		if(session->media.video_rtp_fd && (fds[2].revents & POLLIN)) {
-			/* Got something video (RTP) */
-			fds[2].revents = 0;
-			addrlen = sizeof(remote);
-			bytes = recvfrom(session->media.video_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTP channel...\n", bytes);
-			//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
-			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			if(session->media.video_ssrc_peer == 0) {
-				rtp_header *header = (rtp_header *)buffer;
-				session->media.video_ssrc_peer = ntohl(header->ssrc);
-				JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
-			}
-			/* Relay to browser */
-			gateway->relay_rtp(session->handle, 1, buffer, bytes);
-			continue;
-		}
-		if(session->media.video_rtcp_fd && (fds[3].revents & POLLIN)) {
-			/* Got something video (RTCP) */
-			fds[3].revents = 0;
-			addrlen = sizeof(remote);
-			bytes = recvfrom(session->media.video_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTCP channel...\n", bytes);
-			//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
-			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			/* Relay to browser */
-			gateway->relay_rtcp(session->handle, 1, buffer, bytes);
-			continue;
 		}
 	}
-	if(session->media.audio_rtp_fd > 0) {
+	if(session->media.audio_rtp_fd >= 0) {
 		close(session->media.audio_rtp_fd);
-		session->media.audio_rtp_fd = 0;
+		session->media.audio_rtp_fd = -1;
 	}
-	if(session->media.audio_rtcp_fd > 0) {
+	if(session->media.audio_rtcp_fd >= 0) {
 		close(session->media.audio_rtcp_fd);
-		session->media.audio_rtcp_fd = 0;
+		session->media.audio_rtcp_fd = -1;
 	}
 	session->media.local_audio_rtp_port = 0;
 	session->media.local_audio_rtcp_port = 0;
 	session->media.audio_ssrc = 0;
-	if(session->media.video_rtp_fd > 0) {
+	if(session->media.video_rtp_fd >= 0) {
 		close(session->media.video_rtp_fd);
-		session->media.video_rtp_fd = 0;
+		session->media.video_rtp_fd = -1;
 	}
-	if(session->media.video_rtcp_fd > 0) {
+	if(session->media.video_rtcp_fd >= 0) {
 		close(session->media.video_rtcp_fd);
-		session->media.video_rtcp_fd = 0;
+		session->media.video_rtcp_fd = -1;
 	}
 	session->media.local_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
