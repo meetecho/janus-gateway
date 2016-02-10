@@ -45,7 +45,7 @@ Janus.init = function(options) {
 			Janus.log = console.log.bind(console);
 			Janus.warn = console.warn.bind(console);
 			Janus.error = console.error.bind(console);
-		} else if($.isArray(options.debug)) {
+		} else if(Array.isArray(options.debug)) {
 			for(var i in options.debug) {
 				var d = options.debug[i];
 				switch(d) {
