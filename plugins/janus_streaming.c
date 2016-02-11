@@ -2958,7 +2958,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char uri[1024];
 	char transport[1024];
 	int video_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "video", &vpt, transport, vrtpmap, vfmtp, vcontrol);
-	if(video_fd >= 0) {
+	if(video_fd != -1) {
 		/* Send an RTSP SETUP for video */
 		g_free(data.buffer);
 		data.buffer = g_malloc0(1);
@@ -2980,7 +2980,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char afmtp[2048];
 	char acontrol[2048];
 	int audio_fd = janus_streaming_rtsp_parse_sdp(data.buffer, name, "audio", &apt, transport, artpmap, afmtp, acontrol);
-	if(audio_fd >= 0) {
+	if(audio_fd != -1) {
 		/* Send an RTSP SETUP for audio */
 		g_free(data.buffer);
 		data.buffer = g_malloc0(1);
@@ -3386,135 +3386,175 @@ static void *janus_streaming_relay_thread(void *data) {
 			v_last_ssrc = 0, v_last_ts = 0, v_base_ts = 0, v_base_ts_prev = 0;
 	uint16_t a_last_seq = 0, a_base_seq = 0, a_base_seq_prev = 0,
 			v_last_seq = 0, v_base_seq = 0, v_base_seq_prev = 0;
-	/* Loop */
+	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_in remote;
 	int resfd = 0, bytes = 0;
 	struct pollfd fds[2];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
+	/* Loop */
+	int num = 0;
 	janus_streaming_rtp_relay_packet packet;
 	while(!g_atomic_int_get(&stopping) && !mountpoint->destroyed) {
+		/* Prepare poll */
+		num = 0;
+		if(audio_fd != -1) {
+			fds[num].fd = audio_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
+		if(video_fd != -1) {
+			fds[num].fd = video_fd;
+			fds[num].events = POLLIN;
+			fds[num].revents = 0;
+			num++;
+		}
 		/* Wait for some data */
-		fds[0].fd = 0;
-		fds[0].events = 0;
-		fds[0].revents = 0;
-		if(audio_fd > 0) {
-			fds[0].fd = audio_fd;
-			fds[0].events = POLLIN;
-		}
-		fds[1].fd = 0;
-		fds[1].events = 0;
-		fds[1].revents = 0;
-		if(video_fd > 0) {
-			fds[1].fd = video_fd;
-			fds[1].events = POLLIN;
-		}
-		resfd = poll(fds, 2, 1000);
+		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
 			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", mountpoint->name, errno, strerror(errno));
+			mountpoint->enabled = FALSE;
 			break;
 		} else if(resfd == 0) {
 			/* No data, keep going */
 			continue;
 		}
-		if(audio_fd && (fds[0].revents & POLLIN)) {
-			/* Got something audio (RTP) */
-			fds[0].revents = 0;
-			if(mountpoint->active == FALSE)
-				mountpoint->active = TRUE;
-			addrlen = sizeof(remote);
-			bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
-			/* If paused, ignore this packet */
-			if(!mountpoint->enabled)
-				continue;
-			rtp_header *rtp = (rtp_header *)buffer;
-			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			/* Relay on all sessions */
-			packet.data = rtp;
-			packet.length = bytes;
-			packet.is_video = 0;
-			/* Do we have a new stream? */
-			if(ntohl(packet.data->ssrc) != a_last_ssrc) {
-				a_last_ssrc = ntohl(packet.data->ssrc);
-				JANUS_LOG(LOG_INFO, "[%s] New audio stream! (ssrc=%u)\n", name, a_last_ssrc);
-				a_base_ts_prev = a_last_ts;
-				a_base_ts = ntohl(packet.data->timestamp);
-				a_base_seq_prev = a_last_seq;
-				a_base_seq = ntohs(packet.data->seq_number);
+		for(int i=0; i<num; i++) {
+			if(fds[i].revents & (POLLERR | POLLHUP)) {
+				/* Socket error? */
+				JANUS_LOG(LOG_ERR, "[%s] Error polling: %s... %d (%s)\n", mountpoint->name,
+					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP", errno, strerror(errno));
+				mountpoint->enabled = FALSE;
+				break;
+			} else if(fds[i].revents & POLLIN) {
+				/* Got an RTP packet */
+				if(audio_fd != -1 && fds[i].fd == audio_fd) {
+					/* Got something audio (RTP) */
+					if(mountpoint->active == FALSE)
+						mountpoint->active = TRUE;
+					addrlen = sizeof(remote);
+					bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
+					/* If paused, ignore this packet */
+					if(!mountpoint->enabled)
+						continue;
+					rtp_header *rtp = (rtp_header *)buffer;
+					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					/* Relay on all sessions */
+					packet.data = rtp;
+					packet.length = bytes;
+					packet.is_video = 0;
+					/* Do we have a new stream? */
+					if(ntohl(packet.data->ssrc) != a_last_ssrc) {
+						a_last_ssrc = ntohl(packet.data->ssrc);
+						JANUS_LOG(LOG_INFO, "[%s] New audio stream! (ssrc=%u)\n", name, a_last_ssrc);
+						a_base_ts_prev = a_last_ts;
+						a_base_ts = ntohl(packet.data->timestamp);
+						a_base_seq_prev = a_last_seq;
+						a_base_seq = ntohs(packet.data->seq_number);
+					}
+					a_last_ts = (ntohl(packet.data->timestamp)-a_base_ts)+a_base_ts_prev+960;	/* FIXME We're assuming Opus here... */
+					packet.data->timestamp = htonl(a_last_ts);
+					a_last_seq = (ntohs(packet.data->seq_number)-a_base_seq)+a_base_seq_prev+1;
+					packet.data->seq_number = htons(a_last_seq);
+					//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					packet.data->type = mountpoint->codecs.audio_pt;
+					/* Is there a recorder? */
+					if(source->arc) {
+						JANUS_LOG(LOG_HUGE, "[%s] Saving audio frame (%d bytes)\n", name, bytes);
+						janus_recorder_save_frame(source->arc, buffer, bytes);
+					}
+					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
+					packet.timestamp = ntohl(packet.data->timestamp);
+					packet.seq_number = ntohs(packet.data->seq_number);
+					/* Go! */
+					janus_mutex_lock(&mountpoint->mutex);
+					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+					janus_mutex_unlock(&mountpoint->mutex);
+					continue;
+				} else if(video_fd != -1 && fds[i].fd == video_fd) {
+					/* Got something video (RTP) */
+					if(mountpoint->active == FALSE)
+						mountpoint->active = TRUE;
+					addrlen = sizeof(remote);
+					bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
+					/* If paused, ignore this packet */
+					if(!mountpoint->enabled)
+						continue;
+					rtp_header *rtp = (rtp_header *)buffer;
+					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					/* Relay on all sessions */
+					packet.data = rtp;
+					packet.length = bytes;
+					packet.is_video = 1;
+					/* Do we have a new stream? */
+					if(ntohl(packet.data->ssrc) != v_last_ssrc) {
+						v_last_ssrc = ntohl(packet.data->ssrc);
+						JANUS_LOG(LOG_INFO, "[%s] New video stream! (ssrc=%u)\n", name, v_last_ssrc);
+						v_base_ts_prev = v_last_ts;
+						v_base_ts = ntohl(packet.data->timestamp);
+						v_base_seq_prev = v_last_seq;
+						v_base_seq = ntohs(packet.data->seq_number);
+					}
+					v_last_ts = (ntohl(packet.data->timestamp)-v_base_ts)+v_base_ts_prev+4500;	/* FIXME We're assuming 15fps here... */
+					packet.data->timestamp = htonl(v_last_ts);
+					v_last_seq = (ntohs(packet.data->seq_number)-v_base_seq)+v_base_seq_prev+1;
+					packet.data->seq_number = htons(v_last_seq);
+					//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+					packet.data->type = mountpoint->codecs.video_pt;
+					/* Is there a recorder? */
+					if(source->vrc) {
+						JANUS_LOG(LOG_HUGE, "[%s] Saving video frame (%d bytes)\n", name, bytes);
+						janus_recorder_save_frame(source->vrc, buffer, bytes);
+					}
+					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
+					packet.timestamp = ntohl(packet.data->timestamp);
+					packet.seq_number = ntohs(packet.data->seq_number);
+					/* Go! */
+					janus_mutex_lock(&mountpoint->mutex);
+					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+					janus_mutex_unlock(&mountpoint->mutex);
+					continue;
+				}
 			}
-			a_last_ts = (ntohl(packet.data->timestamp)-a_base_ts)+a_base_ts_prev+960;	/* FIXME We're assuming Opus here... */
-			packet.data->timestamp = htonl(a_last_ts);
-			a_last_seq = (ntohs(packet.data->seq_number)-a_base_seq)+a_base_seq_prev+1;
-			packet.data->seq_number = htons(a_last_seq);
-			//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			packet.data->type = mountpoint->codecs.audio_pt;
-			/* Is there a recorder? */
-			if(source->arc) {
-				JANUS_LOG(LOG_HUGE, "[%s] Saving audio frame (%d bytes)\n", name, bytes);
-				janus_recorder_save_frame(source->arc, buffer, bytes);
-			}
-			/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
-			packet.timestamp = ntohl(packet.data->timestamp);
-			packet.seq_number = ntohs(packet.data->seq_number);
-			/* Go! */
-			janus_mutex_lock(&mountpoint->mutex);
-			g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
-			janus_mutex_unlock(&mountpoint->mutex);
-			continue;
-		}
-		if(video_fd && (fds[1].revents & POLLIN)) {
-			/* Got something video (RTP) */
-			fds[1].revents = 0;
-			if(mountpoint->active == FALSE)
-				mountpoint->active = TRUE;
-			addrlen = sizeof(remote);
-			bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-			//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
-			/* If paused, ignore this packet */
-			if(!mountpoint->enabled)
-				continue;
-			rtp_header *rtp = (rtp_header *)buffer;
-			//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			/* Relay on all sessions */
-			packet.data = rtp;
-			packet.length = bytes;
-			packet.is_video = 1;
-			/* Do we have a new stream? */
-			if(ntohl(packet.data->ssrc) != v_last_ssrc) {
-				v_last_ssrc = ntohl(packet.data->ssrc);
-				JANUS_LOG(LOG_INFO, "[%s] New video stream! (ssrc=%u)\n", name, v_last_ssrc);
-				v_base_ts_prev = v_last_ts;
-				v_base_ts = ntohl(packet.data->timestamp);
-				v_base_seq_prev = v_last_seq;
-				v_base_seq = ntohs(packet.data->seq_number);
-			}
-			v_last_ts = (ntohl(packet.data->timestamp)-v_base_ts)+v_base_ts_prev+4500;	/* FIXME We're assuming 15fps here... */
-			packet.data->timestamp = htonl(v_last_ts);
-			v_last_seq = (ntohs(packet.data->seq_number)-v_base_seq)+v_base_seq_prev+1;
-			packet.data->seq_number = htons(v_last_seq);
-			//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-				//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-			packet.data->type = mountpoint->codecs.video_pt;
-			/* Is there a recorder? */
-			if(source->vrc) {
-				JANUS_LOG(LOG_HUGE, "[%s] Saving video frame (%d bytes)\n", name, bytes);
-				janus_recorder_save_frame(source->vrc, buffer, bytes);
-			}
-			/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
-			packet.timestamp = ntohl(packet.data->timestamp);
-			packet.seq_number = ntohs(packet.data->seq_number);
-			/* Go! */
-			janus_mutex_lock(&mountpoint->mutex);
-			g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
-			janus_mutex_unlock(&mountpoint->mutex);
-			continue;
 		}
 	}
+
+	/* Notify users this mountpoint is done */
+	janus_mutex_lock(&mountpoint->mutex);
+	GList *viewer = g_list_first(mountpoint->listeners);
+	/* Prepare JSON event */
+	json_t *event = json_object();
+	json_object_set_new(event, "streaming", json_string("event"));
+	json_t *result = json_object();
+	json_object_set_new(result, "status", json_string("stopped"));
+	json_object_set_new(event, "result", result);
+	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(event);
+	while(viewer) {
+		janus_streaming_session *session = (janus_streaming_session *)viewer->data;
+		if(session != NULL) {
+			session->stopping = TRUE;
+			session->started = FALSE;
+			session->paused = FALSE;
+			session->mountpoint = NULL;
+			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event_text, NULL, NULL);
+			gateway->close_pc(session->handle);
+		}
+		mountpoint->listeners = g_list_remove_all(mountpoint->listeners, session);
+		viewer = g_list_first(mountpoint->listeners);
+	}
+	g_free(event_text);
+	janus_mutex_unlock(&mountpoint->mutex);
+
 	JANUS_LOG(LOG_VERB, "[%s] Leaving streaming relay thread\n", name);
 	g_free(name);
 	g_thread_unref(g_thread_self());
