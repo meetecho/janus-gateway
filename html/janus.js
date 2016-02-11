@@ -83,18 +83,35 @@ Janus.init = function(options) {
 				}
 			}
 		}
-		// Helper to add external JavaScript sources
-		function addJs(src) {
+		function addJsList(srcArray) {
+			if (!srcArray || !Array.isArray(srcArray) || srcArray.length == 0) {
+				options.callback();
+			}
+			var count = 0;
+			addJs(srcArray[count],next);
+			
+			function next() {
+				count++;
+				if (count<srcArray.length) {
+					addJs(srcArray[count],next);
+				}
+				else {
+					options.callback();
+				}
+			}
+		}
+		function addJs(src,done) {
 			if(src === 'jquery.min.js') {
 				if(window.jQuery) {
 					// Already loaded
-					options.callback();
+					done();
 					return;
 				}
 			}
 			if(src === 'adapter.js') {
 				if(window.getUserMedia && window.RTCPeerConnection) {
 					// Already loaded
+					done();
 					return;
 				}
 			}
@@ -104,15 +121,11 @@ Janus.init = function(options) {
 			oScript.src = src;
 			oScript.onload = function() {
 				Janus.log("Library " + src + " loaded");
-				if(src === 'jquery.min.js') {
-					options.callback();
-				}
+				done();
 			}
 			oHead.appendChild(oScript);
-		};
-
-		addJs('adapter.js');
-		addJs('jquery.min.js');
+		}
+		addJsList(["adapter.js","jquery.min.js"]);
 	}
 };
 
