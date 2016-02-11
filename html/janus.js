@@ -86,7 +86,7 @@ Janus.init = function(options) {
 				return;
 			}
 			// Validate async
-			params.async = (params.async === null && params.async === undefined) ? true : (params.async === true);
+			params.async = (params.async === null || params.async === undefined) ? true : (params.async === true);
 			Janus.log(params);
 			// IE doesn't even know what WebRTC is, so no polyfill needed
 			var XHR = new XMLHttpRequest();
