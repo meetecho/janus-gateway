@@ -128,7 +128,6 @@ HTTP REST API, you'll have to install it manually:
 
 	git clone git://git.libwebsockets.org/libwebsockets
 	cd libwebsockets
-	git checkout v1.5-chrome47-firefox41
 	mkdir build
 	cd build
 	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
