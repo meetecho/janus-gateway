@@ -84,6 +84,7 @@ PKG_CHECK_MODULES([JANUS],
                     libcrypto
                     sofia-sip-ua
                   ])
+JANUS_MANUAL_LIBS+=" -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 
 AS_IF([test "x$enable_boringssl" = "xyes"],

@@ -32,7 +32,6 @@
 #include "rtcp.h"
 #include "apierror.h"
 
-
 /* STUN server/port, if any */
 static char *janus_stun_server = NULL;
 static uint16_t janus_stun_port = 0;
@@ -1162,6 +1161,12 @@ void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 		g_free(stream->rpass);
 		stream->rpass = NULL;
 	}
+	if(stream->audio_rtcp_ctx != NULL)
+		g_free(stream->audio_rtcp_ctx);
+	stream->audio_rtcp_ctx = NULL;
+	if(stream->video_rtcp_ctx != NULL)
+		g_free(stream->video_rtcp_ctx);
+	stream->video_rtcp_ctx = NULL;
 	g_free(stream);
 	stream = NULL;
 }
@@ -1733,6 +1738,21 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					janus_mutex_unlock(&component->mutex);
 				}
 
+				/* Update the RTCP context as well */
+				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
+				if(rtcp_ctx == NULL) {
+					/* We still need an RTCP context here, create it now */
+					rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+					if(video) {
+						rtcp_ctx->tb = 90000;	/* FIXME */
+						stream->video_rtcp_ctx = rtcp_ctx;
+					} else {
+						rtcp_ctx->tb = 48000;	/* FIXME */
+						stream->audio_rtcp_ctx = rtcp_ctx;
+					}
+				}
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen, janus_get_max_nack_queue());
+
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
 				guint16 new_seqn = ntohs(header->seq_number);
@@ -1888,6 +1908,22 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 						}
 					}
 				}
+				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
+				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
+				if(rtcp_ctx == NULL) {
+					/* We still need an RTCP context here, create it now */
+					rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+					if(video) {
+						rtcp_ctx->tb = 90000;	/* FIXME */
+						stream->video_rtcp_ctx = rtcp_ctx;
+					} else {
+						rtcp_ctx->tb = 48000;	/* FIXME */
+						stream->audio_rtcp_ctx = rtcp_ctx;
+					}
+				}
+				janus_rtcp_parse(rtcp_ctx, buf, buflen);
+
+				/* Now let's see if there are any NACKs to handle */
 				gint64 now = janus_get_monotonic_time();
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
 				guint nacks_count = g_slist_length(nacks);
@@ -2911,7 +2947,7 @@ void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
 	janus_ice_queued_packet *pkt = NULL;
-	gint64 before = janus_get_monotonic_time();
+	gint64 before = janus_get_monotonic_time(), rtcp_last = before;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		if(handle->queued_packets != NULL) {
 			pkt = g_async_queue_timeout_pop(handle->queued_packets, 500000);
@@ -2955,6 +2991,50 @@ void *janus_ice_send_thread(void *data) {
 			}
 			before = now;
 		}
+		/* Let's check if it's time to send a RTCP RR as well */
+		if(now-rtcp_last >= 5*G_USEC_PER_SEC) {
+			int rrlen = 32;
+			char rtcpbuf[32];
+			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+			if(handle->audio_stream) {
+				janus_ice_stream *stream = handle->audio_stream;
+				if(stream->audio_rtcp_ctx && stream->audio_rtcp_ctx->enabled) {
+					/* Create a RR */
+					rr->header.version = 2;
+					rr->header.type = RTCP_RR;
+					rr->header.rc = 1;
+					rr->header.length = htons((rrlen/4)-1);
+					janus_rtcp_report_block(stream->audio_rtcp_ctx, &rr->rb[0]);
+					/* Enqueue it, we'll send it later */
+					janus_ice_relay_rtcp(handle, 0, rtcpbuf, 32);
+				}
+				if(stream->video_rtcp_ctx && stream->video_rtcp_ctx->enabled) {
+					/* Create a RR */
+					rr->header.version = 2;
+					rr->header.type = RTCP_RR;
+					rr->header.rc = 1;
+					rr->header.length = htons((rrlen/4)-1);
+					janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
+					/* Enqueue it, we'll send it later */
+					janus_ice_relay_rtcp(handle, 1, rtcpbuf, 32);
+				}
+			}
+			if(handle->video_stream) {
+				janus_ice_stream *stream = handle->video_stream;
+				if(stream->video_rtcp_ctx && stream->video_rtcp_ctx->enabled) {
+					/* Create a RR */
+					rr->header.version = 2;
+					rr->header.type = RTCP_RR;
+					rr->header.rc = 1;
+					rr->header.length = htons((rrlen/4)-1);
+					janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
+					/* Enqueue it, we'll send it later */
+					janus_ice_relay_rtcp(handle, 1, rtcpbuf, 32);
+				}
+			}
+			rtcp_last = now;
+		}
+
 		/* Now let's get on with the packets */
 		if(pkt == NULL) {
 			continue;
@@ -3049,14 +3129,14 @@ void *janus_ice_send_thread(void *data) {
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
 						video ? stream->video_ssrc : stream->audio_ssrc,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
-					janus_rtcp_fix_ssrc((char *)&sbuf, pkt->length, 1,
+					janus_rtcp_fix_ssrc(NULL, (char *)&sbuf, pkt->length, 1,
 						video ? stream->video_ssrc : stream->audio_ssrc,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
 				} else {
 					/* Plan B involved, we trust the plugin to set the right 'local' SSRC and we don't mess with it */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing peer SSRC (Plan B, peer %u)\n", handle->handle_id,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
-					janus_rtcp_fix_ssrc((char *)&sbuf, pkt->length, 1, 0,
+					janus_rtcp_fix_ssrc(NULL, (char *)&sbuf, pkt->length, 1, 0,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
 				}
 				int protected = pkt->length;

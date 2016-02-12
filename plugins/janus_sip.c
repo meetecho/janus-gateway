@@ -844,7 +844,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 			video ? session->media.video_ssrc : session->media.audio_ssrc,
 			video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
-		janus_rtcp_fix_ssrc((char *)buf, len, 1,
+		janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1,
 			video ? session->media.video_ssrc : session->media.audio_ssrc,
 			video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer);
 		/* Forward to our SIP peer */

@@ -22,6 +22,7 @@
 
 #include "dtls.h"
 #include "sctp.h"
+#include "rtcp.h"
 #include "utils.h"
 #include "plugins/plugin.h"
 
@@ -319,6 +320,10 @@ struct janus_ice_stream {
 	guint32 video_ssrc_peer_rtx;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
+	/*! \brief RTCP context for the audio stream (may be bundled) */
+	rtcp_context *audio_rtcp_ctx;
+	/*! \brief RTCP context for the video stream (may be bundled) */
+	rtcp_context *video_rtcp_ctx;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
