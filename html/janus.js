@@ -109,7 +109,7 @@ Janus.init = function(options) {
 				};
 			}
 			try {
-				XHR.send(XHR.data);
+				XHR.send(params.data);
 				if(!params.async) {
 					if(XHR.status !== 200) {
 						// Got an error?
