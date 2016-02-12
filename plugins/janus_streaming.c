@@ -3421,7 +3421,8 @@ static void *janus_streaming_relay_thread(void *data) {
 			/* No data, keep going */
 			continue;
 		}
-		for(int i=0; i<num; i++) {
+		int i = 0;
+		for(i=0; i<num; i++) {
 			if(fds[i].revents & (POLLERR | POLLHUP)) {
 				/* Socket error? */
 				JANUS_LOG(LOG_ERR, "[%s] Error polling: %s... %d (%s)\n", mountpoint->name,

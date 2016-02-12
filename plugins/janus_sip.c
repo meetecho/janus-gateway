@@ -2432,7 +2432,8 @@ static void *janus_sip_relay_thread(void *data) {
 				session->status <= janus_sip_call_status_idle ||
 				session->status >= janus_sip_call_status_closing)
 			break;
-		for(int i=0; i<num; i++) {
+		int i = 0;
+		for(i=0; i<num; i++) {
 			if(fds[i].revents & (POLLERR | POLLHUP)) {
 				/* Socket error? */
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
