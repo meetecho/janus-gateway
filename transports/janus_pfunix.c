@@ -456,7 +456,8 @@ void *janus_pfunix_thread(void *data) {
 			JANUS_LOG(LOG_ERR, "poll() failed\n");
 			break;
 		}
-		for(int i=0; i<fds; i++) {
+		int i = 0;
+		for(i=0; i<fds; i++) {
 			if(poll_fds[i].revents & (POLLERR | POLLHUP)) {
 				/* Socket error? Shall we do something? */
 				if(poll_fds[i].fd == write_fd[0]) {
