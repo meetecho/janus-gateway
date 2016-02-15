@@ -3890,7 +3890,7 @@ static gboolean janus_streaming_is_keyframe(gint codec, char* buffer, int len) {
 				((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
 			JANUS_LOG(LOG_HUGE, "Got an H264 key frame\n");
 			return TRUE;
-        }
+		}
 		/* If we got here it's not a key frame */
 		return FALSE;
 	} else {
