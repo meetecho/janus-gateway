@@ -1954,6 +1954,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "offer", fixed_sdp);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
+			g_free(fixed_sdp);
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 			session->stack->s_nh_i = nh;
@@ -2071,6 +2072,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "answer", fixed_sdp);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
+			g_free(fixed_sdp);
 			break;
 		}
 		case nua_r_register: {
