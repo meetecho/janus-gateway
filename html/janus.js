@@ -1303,7 +1303,7 @@ function Janus(gatewayCallbacks) {
 						};
 					}
 					if(typeof media.video === 'object') {
-						videoSupport = media.video;
+						videoSupport = jQuery.extend({}, videoSupport, media.video);
 					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen') {
