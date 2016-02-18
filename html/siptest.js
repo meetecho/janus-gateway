@@ -518,7 +518,10 @@ function doCall() {
 			success: function(jsep) {
 				Janus.debug("Got SDP!");
 				Janus.debug(jsep);
-				var body = { "request": "call", uri: $('#peer').val() };
+				var body = { request: "call", uri: $('#peer').val() };
+				// Note: you can ask the plugin to negotiate SDES-SRTP, instead of the
+				// default plain RTP, by adding a srtp:true attribute to the request, e.g.:
+				//		var body = { request: "call", uri: $('#peer').val(), srtp: true };
 				sipcall.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {
