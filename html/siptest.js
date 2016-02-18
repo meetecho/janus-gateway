@@ -218,7 +218,16 @@ $(document).ready(function() {
 																	success: function(jsep) {
 																		Janus.debug("Got SDP! audio=" + doAudio + ", video=" + doVideo);
 																		Janus.debug(jsep);
-																		var body = { "request": "accept" };
+																		var body = { request: "accept" };
+																		// Note: as with "call", you can add a "srtp" attribute to
+																		// negotiate/mandate SDES support for this incoming call.
+																		// The default behaviour is to automatically use it if
+																		// the caller negotiated it, but you may choose to require
+																		// SDES support by setting "srtp" to "sdes_mandatory", e.g.:
+																		//		var body = { request: "accept", srtp: "sdes_mandatory" };
+																		// This way you'll tell the plugin to accept the call, but ONLY
+																		// if SDES is available, and you don't want plain RTP. If it
+																		// is not available, you'll get an error (452) back.
 																		sipcall.send({"message": body, "jsep": jsep});
 																		$('#call').removeAttr('disabled').html('Hangup')
 																			.removeClass("btn-success").addClass("btn-danger")
@@ -520,8 +529,14 @@ function doCall() {
 				Janus.debug(jsep);
 				var body = { request: "call", uri: $('#peer').val() };
 				// Note: you can ask the plugin to negotiate SDES-SRTP, instead of the
-				// default plain RTP, by adding a srtp:true attribute to the request, e.g.:
-				//		var body = { request: "call", uri: $('#peer').val(), srtp: true };
+				// default plain RTP, by adding a "srtp" attribute to the request. Valid
+				// values are "sdes_optional" and "sdes_mandatory", e.g.:
+				//		var body = { request: "call", uri: $('#peer').val(), srtp: "sdes_optional" };
+				// "sdes_optional" will negotiate RTP/AVP and add a crypto line,
+				// "sdes_mandatory" will set the protocol to RTP/SAVP instead.
+				// Just beware that some endpoints will NOT accept an INVITE
+				// with a crypto line in it if the protocol is not RTP/SAVP,
+				// so if you want SDES use "sdes_optional" with care.
 				sipcall.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {

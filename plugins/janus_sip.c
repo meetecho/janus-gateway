@@ -258,7 +258,7 @@ typedef struct janus_sip_account {
 typedef struct janus_sip_media {
 	char *remote_ip;
 	int ready:1;
-	gboolean has_srtp_local, has_srtp_remote;
+	gboolean require_srtp, has_srtp_local, has_srtp_remote;
 	int has_audio:1;
 	int audio_rtp_fd, audio_rtcp_fd;
 	int local_audio_rtp_port, remote_audio_rtp_port;
@@ -422,6 +422,7 @@ static int janus_sip_srtp_set_remote(janus_sip_session *session, gboolean video,
 static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	if(session == NULL)
 		return;
+	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
 	/* Audio */
@@ -502,6 +503,7 @@ static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data)
 #define JANUS_SIP_ERROR_LIBSOFIA_ERROR		449
 #define JANUS_SIP_ERROR_IO_ERROR			450
 #define JANUS_SIP_ERROR_RECORDING_ERROR		451
+#define JANUS_SIP_ERROR_TOO_STRICT			452
 
 
 /* SIP watchdog/garbage collector (sort of) */
@@ -804,6 +806,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->callee = NULL;
 	session->media.remote_ip = NULL;
 	session->media.ready = 0;
+	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
 	session->media.has_audio = 0;
@@ -886,6 +889,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
 	if(session->callee) {
 		json_object_set_new(info, "callee", json_string(session->callee ? session->callee : "??"));
+		json_object_set_new(info, "srtp-required", json_string(session->media.require_srtp ? "yes" : "no"));
 		json_object_set_new(info, "sdes-local", json_string(session->media.has_srtp_local ? "yes" : "no"));
 		json_object_set_new(info, "sdes-remote", json_string(session->media.has_srtp_remote ? "yes" : "no"));
 	}
@@ -1502,14 +1506,31 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid element (uri should be a string)");
 				goto error;
 			}
+			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
+			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			json_t *srtp = json_object_get(root, "srtp");
-			if(srtp && !json_is_boolean(srtp)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (srtp should be a boolean)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (srtp should be a boolean)");
-				goto error;
+			if(srtp) {
+				if(!json_is_string(srtp)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (srtp should be a string)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (srtp should be a string)");
+					goto error;
+				}
+				const char *srtp_text = json_string_value(srtp);
+				if(!strcasecmp(srtp_text, "sdes_optional")) {
+					/* Negotiate SDES, but make it optional */
+					offer_srtp = TRUE;
+				} else if(!strcasecmp(srtp_text, "sdes_mandatory")) {
+					/* Negotiate SDES, and require it */
+					offer_srtp = TRUE;
+					require_srtp = TRUE;
+				} else {
+					JANUS_LOG(LOG_ERR, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
+					goto error;
+				}
 			}
-			gboolean offer_srtp = srtp ? json_is_true(srtp) : FALSE;
 			/* Parse address */
 			const char *uri_text = json_string_value(uri);
 			janus_sip_uri_t target_uri;
@@ -1530,9 +1551,10 @@ static void *janus_sip_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
 			/* Clean up SRTP stuff from before first, in case it's still needed */
 			janus_sip_srtp_cleanup(session);
+			session->media.require_srtp = require_srtp;
 			session->media.has_srtp_local = offer_srtp;
 			if(offer_srtp) {
-				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP...\n");
+				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", require_srtp ? "mandatory" : "optional");
 			}
 			/* Allocate RTP ports and merge them with the anonymized SDP */
 			if(strstr(msg->sdp, "m=audio")) {
@@ -1551,7 +1573,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			char *sdp = g_strdup(msg->sdp);
 			sdp = janus_string_replace(sdp, " UDP/TLS/", " ");
-			sdp = janus_string_replace(sdp, "RTP/SAVPF", offer_srtp ? "RTP/SAVP" : "RTP/AVP");
+			sdp = janus_string_replace(sdp, "RTP/SAVPF", require_srtp ? "RTP/SAVP" : "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
@@ -1646,13 +1668,41 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			json_t *srtp = json_object_get(root, "srtp");
-			if(srtp && !json_is_boolean(srtp)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (srtp should be a boolean)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (srtp should be a boolean)");
+			gboolean answer_srtp = FALSE;
+			if(srtp) {
+				if(!json_is_string(srtp)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (srtp should be a string)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (srtp should be a string)");
+					goto error;
+				}
+				const char *srtp_text = json_string_value(srtp);
+				if(!strcasecmp(srtp_text, "sdes_optional")) {
+					/* Negotiate SDES, but make it optional */
+					answer_srtp = TRUE;
+				} else if(!strcasecmp(srtp_text, "sdes_mandatory")) {
+					/* Negotiate SDES, and require it */
+					answer_srtp = TRUE;
+					session->media.require_srtp = TRUE;
+				} else {
+					JANUS_LOG(LOG_ERR, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (srtp can only be sdes_optional or sdes_mandatory)");
+					goto error;
+				}
+			}
+			if(session->media.require_srtp && !session->media.has_srtp_remote) {
+				JANUS_LOG(LOG_ERR, "Can't accept the call: SDES-SRTP required, but caller didn't offer it\n");
+				error_code = JANUS_SIP_ERROR_TOO_STRICT;
+				g_snprintf(error_cause, 512, "Can't accept the call: SDES-SRTP required, but caller didn't offer it");
+				/* Send a 488 back to the caller */
+				session->status = janus_sip_call_status_closing;
+				nua_respond(session->stack->s_nh_i, 488, sip_status_phrase(488), TAG_END());
+				g_free(session->callee);
+				session->callee = NULL;
 				goto error;
 			}
-			gboolean answer_srtp =  session->media.has_srtp_remote || (srtp ? json_is_true(srtp) : FALSE);
+			answer_srtp =  answer_srtp || session->media.has_srtp_remote;
 			/* Any SDP to handle? if not, something's wrong */
 			if(!msg->sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
@@ -1667,7 +1717,7 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_srtp_cleanup(session);
 			session->media.has_srtp_local = answer_srtp;
 			if(answer_srtp) {
-				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP...\n");
+				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", session->media.require_srtp ? "mandatory" : "optional");
 			}
 			/* Allocate RTP ports and merge them with the anonymized SDP */
 			if(strstr(msg->sdp, "m=audio")) {
@@ -1686,7 +1736,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			char *sdp = g_strdup(msg->sdp);
 			sdp = janus_string_replace(sdp, " UDP/TLS/", " ");
-			sdp = janus_string_replace(sdp, "RTP/SAVPF", answer_srtp ? "RTP/SAVP" : "RTP/AVP");
+			sdp = janus_string_replace(sdp, "RTP/SAVPF", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
 			sdp = janus_string_replace(sdp, "1.1.1.1", local_ip);
 			if(session->media.has_audio) {
 				JANUS_LOG(LOG_VERB, "Setting local audio port: %d\n", session->media.local_audio_rtp_port);
@@ -2404,8 +2454,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			sdp_session_t *sdp = sdp_session(parser);
 			janus_sip_sdp_process(session, sdp);
 			/* If we asked for SRTP and are not getting it, fail */
-			if(session->media.has_srtp_local && !session->media.has_srtp_remote) {
-				JANUS_LOG(LOG_ERR, "\tWe asked for SRTP but didn't get any!\n");
+			if(session->media.require_srtp && !session->media.has_srtp_remote) {
+				JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
 				sdp_parser_free(parser);
 				g_free(fixed_sdp);
 				/* Hangup immediately */
@@ -2517,6 +2567,7 @@ void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp) {
 	JANUS_LOG(LOG_VERB, "  >> Media lines:\n");
 	sdp_media_t *m = sdp->sdp_media;
 	while(m) {
+		session->media.require_srtp = session->media.require_srtp || (m->m_proto_name && !strcasecmp(m->m_proto_name, "RTP/SAVP"));
 		if(m->m_type == sdp_media_audio) {
 			JANUS_LOG(LOG_VERB, "       Audio: %lu\n", m->m_port);
 			if(m->m_port) {
