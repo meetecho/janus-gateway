@@ -198,10 +198,17 @@ $(document).ready(function() {
 												Janus.debug("Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
 												Janus.debug("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
 											}
+											// Any security offered? A missing "srtp" attribute means plain RTP
+											var rtpType = "";
+											var srtp = result["srtp"];
+											if(srtp === "sdes_optional")
+												rtpType = " (SDES-SRTP offered)";
+											else if(srtp === "sdes_mandatory")
+												rtpType = " (SDES-SRTP mandatory)";
 											// Notify user
 											bootbox.hideAll();
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!",
+												message: "Incoming call from " + result["username"] + "!" + rtpType,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {
