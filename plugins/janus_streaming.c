@@ -543,7 +543,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_rtp_source(
-						(id && id->value) ? atoi(id->value) : 0,
+						(id && id->value) ? atol(id->value) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						doaudio,
@@ -611,7 +611,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_file_source(
-						(id && id->value) ? atoi(id->value) : 0,
+						(id && id->value) ? atol(id->value) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value,
@@ -668,7 +668,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_file_source(
-						(id && id->value) ? atoi(id->value) : 0,
+						(id && id->value) ? atol(id->value) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value,
@@ -718,7 +718,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_rtsp_source(
-						(id && id->value) ? atoi(id->value) : 0,
+						(id && id->value) ? atol(id->value) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value, doaudio, dovideo)) == NULL) {
