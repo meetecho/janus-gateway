@@ -107,7 +107,7 @@ $(document).ready(function() {
 									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
-										$.blockUI({ 
+										$.blockUI({
 											message: '<div><img src="up_arrow.png"/></div>',
 											css: {
 												border: 'none',
@@ -240,8 +240,8 @@ $(document).ready(function() {
 										$('#myvideo').hide();
 										$('#videolocal').append(
 											'<div class="no-video-container">' +
-												'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
-												'<span class="no-video-text" style="font-size: 16px;">No webcam available</span>' +
+											'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+											'<span class="no-video-text" style="font-size: 16px;">No webcam available</span>' +
 											'</div>');
 									}
 								},
@@ -327,7 +327,7 @@ function publishOwnFeed(useAudio) {
 			error: function(error) {
 				Janus.error("WebRTC error:", error);
 				if (useAudio) {
-					 publishOwnFeed(false);
+					publishOwnFeed(false);
 				} else {
 					bootbox.alert("WebRTC error... " + JSON.stringify(error));
 					$('#publish').removeAttr('disabled').click(function() { publishOwnFeed(true); });
@@ -463,8 +463,8 @@ function newRemoteFeed(id, display) {
 					$('#remotevideo'+remoteFeed.rfindex).hide();
 					$('#videoremote'+remoteFeed.rfindex).append(
 						'<div class="no-video-container">' +
-							'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
-							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
+						'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+						'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
 						'</div>');
 				}
 				if(webrtcDetectedBrowser == "chrome" || webrtcDetectedBrowser == "firefox") {
@@ -484,7 +484,7 @@ function newRemoteFeed(id, display) {
 				$('#waitingvideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
-				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
+				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null)
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
 			}
