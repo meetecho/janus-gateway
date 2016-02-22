@@ -13,22 +13,22 @@
  * files. This utility allows you to process those files, in order to
  * get a working .webm (if the recording includes VP8 frames) or .opus
  * (if the recording includes Opus frames) file.
- * 
+ *
  * Using the utility is quite simple. Just pass, as arguments to the tool,
  * the path to the .mjr source file you want to post-process, and the
  * path to the destination file (a .webm if it's a video recording,
  * .opus otherwise), e.g.:
- * 
+ *
 \verbatim
-./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|webm] 
-\endverbatim 
- * 
+./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|webm]
+\endverbatim
+ *
  * \note This utility does not do any form of transcoding. It just
  * depacketizes the RTP frames in order to get the payload, and saves
  * the frames in a valid container. Any further post-processing (e.g.,
  * muxing audio and video belonging to the same media session in a single
  * .webm file) is up to third-party applications.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 	}
-	
+
 	/* Evaluate arguments */
 	if(argc != 3) {
 		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|webm]\n", argv[0]);
@@ -254,6 +254,7 @@ int main(int argc, char *argv[])
 	}
 	/* Now let's parse the frames and order them */
 	offset = 0;
+	uint64_t ts_reset_offset = 0;
 	while(offset < fsize) {
 		/* Read frame header */
 		skip = 0;
@@ -290,7 +291,7 @@ int main(int argc, char *argv[])
 		if(rtp->extension) {
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
 		JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
-				ntohs(ext->type), ntohs(ext->length)); 
+				ntohs(ext->type), ntohs(ext->length));
 			skip = 4 + ntohs(ext->length)*4;
 		}
 		/* Generate frame packet and insert in the ordered list */
@@ -318,6 +319,7 @@ int main(int argc, char *argv[])
 		p->len = len;
 		p->offset = offset;
 		p->skip = skip;
+		p->ts += ts_reset_offset;
 		p->next = NULL;
 		p->prev = NULL;
 		if(list == NULL) {
@@ -343,6 +345,31 @@ int main(int argc, char *argv[])
 					tmp->next = p;
 					p->prev = tmp;
 					break;
+				} else if(tmp->ts > p->ts) {
+					/* The new packet is older that the last one detected, but this is fine */
+					if(tmp->prev == NULL && reset != 0) {
+						/* The new packet is older than any packet on the list. Cannot find any previous one to be linked */
+						JANUS_LOG(LOG_INFO, "Keep going back and looking for previous packet has failed\n");
+
+						/* Keep timestamp of last packet before the timestamp reset has been detected */
+						ts_reset_offset = last->ts;
+						/* Update timestamp for current packet by adding offset of last on the list */
+						/* TODO: What to do with seq number? Leaving like it is for now! */
+						p->ts += ts_reset_offset;
+
+						added = 1;
+						if(tmp->next != NULL) {
+							/* We're inserting */
+							tmp->next->prev = p;
+							p->next = tmp->next;
+						} else {
+							/* Update the last packet */
+							last = p;
+						}
+						tmp->next = p;
+						p->prev = tmp;
+						break;
+					}
 				} else if(tmp->ts == p->ts) {
 					/* Same timestamp, check the sequence number */
 					if(tmp->seq < p->seq && (abs(tmp->seq - p->seq) < 10000)) {
@@ -389,7 +416,7 @@ int main(int argc, char *argv[])
 		offset += len;
 		count++;
 	}
-	
+
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
@@ -418,7 +445,7 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 	}
-	
+
 	/* Handle SIGINT */
 	signal(SIGINT, janus_pp_handle_signal);
 
@@ -441,7 +468,7 @@ int main(int argc, char *argv[])
 		janus_pp_opus_close();
 	}
 	fclose(file);
-	
+
 	file = fopen(destination, "rb");
 	if(file == NULL) {
 		JANUS_LOG(LOG_INFO, "No destination file %s??\n", destination);
