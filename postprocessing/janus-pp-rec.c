@@ -342,7 +342,6 @@ int main(int argc, char *argv[])
 			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
 			p->ts = (times_resetted*max32)+ntohl(rtp->timestamp);
 		}
-		JANUS_LOG(LOG_INFO, "%"SCNu32" --> %"SCNu64"\n", ntohl(rtp->timestamp), p->ts);
 		last_ts = ntohl(rtp->timestamp);
 		post_reset_pkts++;
 		/* Fill in the rest of the details */
