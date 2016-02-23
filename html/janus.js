@@ -1461,7 +1461,7 @@ function Janus(gatewayCallbacks) {
 					getUserMedia(
 						{audio: audioExist && isAudioSendEnabled(media), video: videoExist ? videoSupport : false},
 						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-						function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+						function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
 				});
 
 			}
