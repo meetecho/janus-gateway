@@ -113,11 +113,10 @@
  * used, check the demos in the \b html folder of this package.
  *
  * \note The current \c janus.js library makes use of jQuery (http://jquery.com/)
- * as a support. We're considering preparing versions that make use of
- * different libraries as well (e.g., Prototype, Dojo, Script.aculo.us, etc.)
- * in case your web application us based on something that cannot make use
- * of jQuery. Of course, if you happen to prepare one yourself in the
- * meanwhile don't hesitate and let us know! :-)
+ * as a support. A version without that dependency is available as
+ * \c janus.nojquery.js in the same folder, so you can use that one instead
+ * if required by your web application: all the documentation related to
+ * \c janus.js applies to \c janus.nojquery.js as well.
  *
  * In general, when using the gateway features, you would normally do the following:
  *

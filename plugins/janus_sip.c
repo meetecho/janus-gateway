@@ -412,10 +412,6 @@ void *janus_sip_watchdog(void *data) {
 					    g_free(session->media.remote_ip);
 					    session->media.remote_ip = NULL;
 					}
-					if (session->stack) {
-					    g_free(session->stack);
-					    session->stack = NULL;
-					}
 					session->handle = NULL;
 					g_free(session);
 					session = NULL;
@@ -653,12 +649,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.proxy = NULL;
 	session->account.registration_status = janus_sip_registration_status_unregistered;
 	session->status = janus_sip_call_status_idle;
-	session->stack = g_malloc0(sizeof(ssip_t));
-	session->stack->session = session;
-	session->stack->s_nua = NULL;
-	session->stack->s_nh_r = NULL;
-	session->stack->s_nh_i = NULL;
-	session->stack->s_root = NULL;
+	session->stack = NULL;
 	session->transaction = NULL;
 	session->callee = NULL;
 	session->media.remote_ip = NULL;
@@ -683,7 +674,6 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_ssrc_peer = 0;
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
-	su_home_init(session->stack->s_home);
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
 
@@ -711,10 +701,13 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 		janus_sip_hangup_media(handle);
 		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
-		/* Shutdown the NUA */
-		nua_shutdown(session->stack->s_nua);
-		/* Cleaning up and removing the session is done in a lazy way */
-		old_sessions = g_list_append(old_sessions, session);
+		if(session->stack != NULL) {
+			/* Shutdown the NUA: this will remove the session later on */
+			nua_shutdown(session->stack->s_nua);
+		} else {
+			/* No stack, maybe never registered: cleaning up and removing the session is done in a lazy way */
+			old_sessions = g_list_append(old_sessions, session);
+		}
 	}
 	janus_mutex_unlock(&sessions_mutex);
 	return;
@@ -1189,7 +1182,7 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			session->account.registration_status = janus_sip_registration_status_registering;
-			if(session->stack->s_nua == NULL) {
+			if(session->stack == NULL) {
 				/* Start the thread first */
 				GError *error = NULL;
 				g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
@@ -1200,7 +1193,7 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				}
 				long int timeout = 0;
-				while(session->stack->s_nua == NULL) {
+				while(session->stack == NULL || session->stack->s_nua == NULL) {
 					g_usleep(100000);
 					timeout += 100000;
 					if(timeout >= 2000000) {
@@ -1248,6 +1241,12 @@ static void *janus_sip_handler(void *data) {
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
+			if(session->stack == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (register first)");
+				goto error;
+			}
 			if(session->status >= janus_sip_call_status_inviting) {
 				JANUS_LOG(LOG_ERR, "Wrong state (already in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
@@ -1955,6 +1954,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "offer", fixed_sdp);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
+			g_free(fixed_sdp);
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 			session->stack->s_nh_i = nh;
@@ -2072,6 +2072,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "answer", fixed_sdp);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
+			g_free(fixed_sdp);
 			break;
 		}
 		case nua_r_register: {
@@ -2432,7 +2433,8 @@ static void *janus_sip_relay_thread(void *data) {
 				session->status <= janus_sip_call_status_idle ||
 				session->status >= janus_sip_call_status_closing)
 			break;
-		for(int i=0; i<num; i++) {
+		int i = 0;
+		for(i=0; i<num; i++) {
 			if(fds[i].revents & (POLLERR | POLLHUP)) {
 				/* Socket error? */
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
@@ -2465,12 +2467,6 @@ static void *janus_sip_relay_thread(void *data) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.audio_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio RTCP channel...\n", bytes);
-					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
-					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-					/* Save the frame if we're recording */
-					if(session->vrc_peer)
-						janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 					/* Relay to browser */
 					gateway->relay_rtcp(session->handle, 0, buffer, bytes);
 					continue;
@@ -2487,6 +2483,9 @@ static void *janus_sip_relay_thread(void *data) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
 					}
+					/* Save the frame if we're recording */
+					if(session->vrc_peer)
+						janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 					/* Relay to browser */
 					gateway->relay_rtp(session->handle, 1, buffer, bytes);
 					continue;
@@ -2495,9 +2494,6 @@ static void *janus_sip_relay_thread(void *data) {
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.video_rtcp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video RTCP channel...\n", bytes);
-					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
-					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					/* Relay to browser */
 					gateway->relay_rtcp(session->handle, 1, buffer, bytes);
 					continue;
@@ -2536,12 +2532,18 @@ static void *janus_sip_relay_thread(void *data) {
 /* Sofia Event thread */
 gpointer janus_sip_sofia_thread(gpointer user_data) {
 	janus_sip_session *session = (janus_sip_session *)user_data;
-	if(session == NULL || session->account.username == NULL || session->stack == NULL) {
+	if(session == NULL || session->account.username == NULL) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
+	session->stack = g_malloc0(sizeof(ssip_t));
+	session->stack->session = session;
+	session->stack->s_nua = NULL;
+	session->stack->s_nh_r = NULL;
+	session->stack->s_nh_i = NULL;
 	session->stack->s_root = su_root_create(session->stack);
+	su_home_init(session->stack->s_home);
 	JANUS_LOG(LOG_VERB, "Setting up sofia stack (sip:%s@%s)\n", session->account.username, local_ip);
 	char sip_url[128];
 	char sips_url[128];
@@ -2574,8 +2576,16 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	su_home_deinit(session->stack->s_home);
 	su_home_unref(session->stack->s_home);
 	su_deinit();
+	if (session->stack) {
+		g_free(session->stack);
+		session->stack = NULL;
+	}
 	//~ stop = 1;
 	JANUS_LOG(LOG_VERB, "Leaving sofia loop thread...\n");
 	g_thread_unref(g_thread_self());
+	/* Cleaning up and removing the session is done in a lazy way */
+	janus_mutex_lock(&sessions_mutex);
+	old_sessions = g_list_append(old_sessions, session);
+	janus_mutex_unlock(&sessions_mutex);
 	return NULL;
 }

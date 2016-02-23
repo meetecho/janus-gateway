@@ -731,7 +731,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			audiobridge->room_id = atoi(cat->name);
+			audiobridge->room_id = atol(cat->name);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);
@@ -744,7 +744,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			audiobridge->room_name = description;
 			audiobridge->is_private = priv && priv->value && janus_is_true(priv->value);
-			audiobridge->sampling_rate = atoi(sampling->value);
+			audiobridge->sampling_rate = atol(sampling->value);
 			switch(audiobridge->sampling_rate) {
 				case 8000:
 				case 12000:
