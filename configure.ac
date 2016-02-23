@@ -212,7 +212,7 @@ AC_CHECK_LIB([websockets],
 							   AS_IF([test "x$enable_websockets" = "xyes"],
 							   [
 								  AC_DEFINE(HAVE_WEBSOCKETS)
-								  AC_DEFINE(HAVE_WEBSOCKETS_NEWAPI)
+								  AC_DEFINE(HAVE_LIBWEBSOCKETS_NEWAPI)
 								  WS_MANUAL_LIBS="-lwebsockets"
 							   ])
 							 ],

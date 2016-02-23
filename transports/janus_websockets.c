@@ -737,9 +737,9 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 	janus_mutex_lock(&old_wss_mutex);
 	janus_websockets_client *client = (janus_websockets_client *)transport;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-	if(g_list_find(old_wss, client) != NULL || !client->context || !client->wsi) {
-#else
 	if(g_list_find(old_wss, client) != NULL || !client->wsi) {
+#else
+	if(g_list_find(old_wss, client) != NULL || !client->context || !client->wsi) {
 #endif
 		g_free(message);
 		message = NULL;
@@ -883,7 +883,11 @@ static int janus_websockets_callback_https(
 		void *user, void *in, size_t len)
 {
 	/* We just forward the event to the HTTP handler */
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+	return janus_websockets_callback_http(wsi, reason, user, in, len);
+#else
 	return janus_websockets_callback_http(this, wsi, reason, user, in, len);
+#endif
 }
 
 /* This callback handles Janus API requests */
