@@ -191,7 +191,8 @@ PKG_CHECK_MODULES([MHD],
                   [libmicrohttpd],
                   [],
                   [
-                    AC_MSG_ERROR([libmicrohttpd not found. See README.md for installation instructions or use --disable-rest])
+                    AS_IF([test "x$enable_rest" = "xyes"],
+                          [AC_MSG_ERROR([libmicrohttpd not found. See README.md for installation instructions or use --disable-rest])])
                   ])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
 

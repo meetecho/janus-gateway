@@ -556,7 +556,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				continue;
 			}
-			videoroom->room_id = atoi(cat->name);
+			videoroom->room_id = atol(cat->name);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);
@@ -2520,6 +2520,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Negotiate by sending the selected publisher SDP back */
 					if(publisher->sdp != NULL) {
 						/* How long will the gateway take to push the event? */
+						g_atomic_int_set(&session->hangingup, 0);
 						gint64 start = janus_get_monotonic_time();
 						int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, "offer", publisher->sdp);
 						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
@@ -2985,6 +2986,7 @@ static void *janus_videoroom_handler(void *data) {
 				type = "answer";
 			} else if(!strcasecmp(msg->sdp_type, "answer")) {
 				/* We got an answer (from a subscriber?), no need to negotiate */
+				g_atomic_int_set(&session->hangingup, 0);
 				int ret = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, NULL, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 				g_free(event_text);
@@ -3204,6 +3206,7 @@ static void *janus_videoroom_handler(void *data) {
 
 				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, newsdp);
 				/* How long will the gateway take to push the event? */
+				g_atomic_int_set(&session->hangingup, 0);
 				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, newsdp);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);

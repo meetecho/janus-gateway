@@ -45,7 +45,7 @@ Janus.init = function(options) {
 			Janus.log = console.log.bind(console);
 			Janus.warn = console.warn.bind(console);
 			Janus.error = console.error.bind(console);
-		} else if(Array.isArray(options.debug)) {
+		} else if($.isArray(options.debug)) {
 			for(var i in options.debug) {
 				var d = options.debug[i];
 				switch(d) {
@@ -83,35 +83,18 @@ Janus.init = function(options) {
 				}
 			}
 		}
-		function addJsList(srcArray) {
-			if (!srcArray || !Array.isArray(srcArray) || srcArray.length == 0) {
-				options.callback();
-			}
-			var count = 0;
-			addJs(srcArray[count],next);
-			
-			function next() {
-				count++;
-				if (count<srcArray.length) {
-					addJs(srcArray[count],next);
-				}
-				else {
-					options.callback();
-				}
-			}
-		}
-		function addJs(src,done) {
+		// Helper to add external JavaScript sources
+		function addJs(src) {
 			if(src === 'jquery.min.js') {
 				if(window.jQuery) {
 					// Already loaded
-					done();
+					options.callback();
 					return;
 				}
 			}
 			if(src === 'adapter.js') {
-				if(window.getUserMedia && window.RTCPeerConnection) {
+				if(window.RTCPeerConnection) {
 					// Already loaded
-					done();
 					return;
 				}
 			}
@@ -121,11 +104,15 @@ Janus.init = function(options) {
 			oScript.src = src;
 			oScript.onload = function() {
 				Janus.log("Library " + src + " loaded");
-				done();
+				if(src === 'jquery.min.js') {
+					options.callback();
+				}
 			}
 			oHead.appendChild(oScript);
-		}
-		addJsList(["adapter.js","jquery.min.js"]);
+		};
+
+		addJs('adapter.js');
+		addJs('jquery.min.js');
 	}
 };
 
@@ -157,9 +144,6 @@ function Janus(gatewayCallbacks) {
 	}
 	var websockets = false;
 	var ws = null;
-	var wsHandlers = {};
-	var wsKeepaliveTimeoutId = null;
-
 	var servers = null, serversIndex = 0;
 	var server = gatewayCallbacks.server;
 	if($.isArray(server)) {
@@ -388,7 +372,7 @@ function Janus(gatewayCallbacks) {
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
 			return;
-		wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
+		setTimeout(keepAlive, 30000);
 		var request = { "janus": "keepalive", "session_id": sessionId, "transaction": randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
@@ -418,63 +402,50 @@ function Janus(gatewayCallbacks) {
 		}
 		if(websockets) {
 			ws = new WebSocket(server, 'janus-protocol'); 
-			wsHandlers = {
-				'error': function() {
-					Janus.error("Error connecting to the Janus WebSockets server... " + server);
-					if ($.isArray(servers)) {
-						serversIndex++;
-						if (serversIndex == servers.length) {
-							// We tried all the servers the user gave us and they all failed
-							callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
-							return;
-						}
-						// Let's try the next server
-						server = null;
-						setTimeout(function() {
-							createSession(callbacks);
-						}, 200);
+			ws.onerror = function() {
+				Janus.error("Error connecting to the Janus WebSockets server... " + server);
+				if($.isArray(servers)) {
+					serversIndex++;
+					if(serversIndex == servers.length) {
+						// We tried all the servers the user gave us and they all failed
+						callbacks.error("Error connecting to any of the provided Janus servers: Is the gateway down?");
 						return;
 					}
-					callbacks.error("Error connecting to the Janus WebSockets server: Is the gateway down?");
-				},
-
-				'open': function() {
-					// We need to be notified about the success
-					transactions[transaction] = function(json) {
-						Janus.debug(json);
-						if (json["janus"] !== "success") {
-							Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
-							callbacks.error(json["error"].reason);
-							return;
-						}
-						wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
-						connected = true;
-						sessionId = json.data["id"];
-						Janus.log("Created session: " + sessionId);
-						Janus.sessions[sessionId] = that;
-						callbacks.success();
-					};
-					ws.send(JSON.stringify(request));
-				},
-
-				'message': function(event) {
-					handleEvent(JSON.parse(event.data));
-				},
-
-				'close': function() {
-					if (server === null || !connected) {
-						return;
-					}
-					connected = false;
-					// FIXME What if this is called when the page is closed?
-					gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
+					// Let's try the next server
+					server = null;
+					setTimeout(function() { createSession(callbacks); }, 200);
+					return;
 				}
+				callbacks.error("Error connecting to the Janus WebSockets server: Is the gateway down?");
 			};
-
-			for(var eventName in wsHandlers) {
-				ws.addEventListener(eventName, wsHandlers[eventName]);
-			}
-
+			ws.onopen = function() {
+				// We need to be notified about the success
+				transactions[transaction] = function(json) {
+					Janus.debug(json);
+					if(json["janus"] !== "success") {
+						Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+						callbacks.error(json["error"].reason);
+						return;
+					}
+					setTimeout(keepAlive, 30000);
+					connected = true;
+					sessionId = json.data["id"];
+					Janus.log("Created session: " + sessionId);
+					Janus.sessions[sessionId] = that;
+					callbacks.success();
+				};
+				ws.send(JSON.stringify(request));
+			};
+			ws.onmessage = function(event) {
+				handleEvent(JSON.parse(event.data));
+			};
+			ws.onclose = function() {
+				if(server === null || !connected)
+					return;
+				connected = false;
+				// FIXME What if this is called when the page is closed?
+				gatewayCallbacks.error("Lost connection to the gateway (is it down?)");
+			};
 			return;
 		}
 		$.ajax({
@@ -540,7 +511,7 @@ function Janus(gatewayCallbacks) {
 		}
 		delete Janus.sessions[sessionId];
 		// Destroy all handles first
-		for(var ph in pluginHandles) {
+		for(ph in pluginHandles) {
 			var phv = pluginHandles[ph];
 			Janus.log("Destroying handle " + phv.id + " (" + phv.plugin + ")");
 			destroyHandle(phv.id, null, syncRequest);
@@ -553,36 +524,9 @@ function Janus(gatewayCallbacks) {
 			request["apisecret"] = apisecret;
 		if(websockets) {
 			request["session_id"] = sessionId;
-
-			var unbindWebSocket = function() {
-				for(var eventName in wsHandlers) {
-					ws.removeEventListener(eventName, wsHandlers[eventName]);
-				}
-				ws.removeEventListener('message', onUnbindMessage);
-				ws.removeEventListener('error', onUnbindError);
-				if(wsKeepaliveTimeoutId) {
-					clearTimeout(wsKeepaliveTimeoutId);
-				}
-			};
-
-			var onUnbindMessage = function(event){
-				var data = JSON.parse(event.data);
-				if(data.session_id == request.session_id && data.transaction == request.transaction) {
-					unbindWebSocket();
-					callbacks.success();
-					gatewayCallbacks.destroyed();
-				}
-			};
-			var onUnbindError = function(event) {
-				unbindWebSocket();
-				callbacks.error("Failed to destroy the gateway: Is the gateway down?");
-				gatewayCallbacks.destroyed();
-			};
-
-			ws.addEventListener('message', onUnbindMessage);
-			ws.addEventListener('error', onUnbindError);
-
 			ws.send(JSON.stringify(request));
+			callbacks.success();
+			gatewayCallbacks.destroyed();
 			return;
 		}
 		$.ajax({
@@ -709,8 +653,8 @@ function Janus(gatewayCallbacks) {
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
 						ondetached : callbacks.ondetached,
-						hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
-						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
+						hangup : function() { cleanupWebrtc(handleId); },
+						detach : function(callbacks) { destroyHandle(handleId, callbacks); },
 					}
 				pluginHandles[handleId] = pluginHandle;
 				callbacks.success(pluginHandle);
@@ -788,7 +732,7 @@ function Janus(gatewayCallbacks) {
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
 						ondetached : callbacks.ondetached,
-						hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
+						hangup : function() { cleanupWebrtc(handleId); },
 						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
 					}
 				pluginHandles[handleId] = pluginHandle;
@@ -1461,7 +1405,7 @@ function Janus(gatewayCallbacks) {
 					getUserMedia(
 						{audio: audioExist && isAudioSendEnabled(media), video: videoExist ? videoSupport : false},
 						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-						function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+						function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
 				});
 
 			}
@@ -1857,7 +1801,7 @@ function Janus(gatewayCallbacks) {
 		Janus.error("WebRTC error:", error);
 	}
 
-	function cleanupWebrtc(handleId, hangupRequest) {
+	function cleanupWebrtc(handleId) {
 		Janus.log("Cleaning WebRTC stuff");
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined) {
@@ -1866,31 +1810,7 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		if(config !== null && config !== undefined) {
-			if(hangupRequest === true) {
-				// Send a hangup request (we don't really care about the response)
-				var request = { "janus": "hangup", "transaction": randomString(12) };
-				if(token !== null && token !== undefined)
-					request["token"] = token;
-				if(apisecret !== null && apisecret !== undefined)
-					request["apisecret"] = apisecret;
-				Janus.debug("Sending hangup request (handle=" + handleId + "):");
-				Janus.debug(request);
-				if(websockets) {
-					request["session_id"] = sessionId;
-					request["handle_id"] = handleId;
-					ws.send(JSON.stringify(request));
-				} else {
-					$.ajax({
-						type: 'POST',
-						url: server + "/" + sessionId + "/" + handleId,
-						cache: false,
-						contentType: "application/json",
-						data: JSON.stringify(request),
-						dataType: "json"
-					});
-				}
-			}
-			// Cleanup stack
+			// Cleanup
 			config.remoteStream = null;
 			if(config.volume.timer)
 				clearInterval(config.volume.timer);

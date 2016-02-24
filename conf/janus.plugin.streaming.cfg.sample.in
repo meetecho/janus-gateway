@@ -27,6 +27,8 @@
 ; videomcast = multicast group port for receiving video frames, if any
 ; videocodec = <video RTP payload type> (e.g., 100)
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
+; videobufferkf = yes|no (whether the plugin should store the latest
+;		keyframe and send it immediately for new viewers, EXPERIMENTAL)
 ; url = RTSP stream URL (only for restreaming RTSP)
 ;
 ; To test the [gstreamer-sample] example, check the test_gstreamer.sh

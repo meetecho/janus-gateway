@@ -190,10 +190,15 @@ usual to start the whole compilation process:
 	make
 	make install
 
-To also automatically install the default configuration files to use,
-also do a:
+Since Janus requires configuration files for both the core and its
+modules in order to work, you'll probably also want to install the
+default configuration files to use, which you can do this way:
 
 	make configs
+
+Remember to only do this once, or otherwise a subsequent ```make configs```
+will overwrite any configuration file you may have modified in the
+meanwhile.
 
 If you're not interested in Data Channels, WebSockets and/or RabbitMQ
 (or you don't care about either of them) you can disable them when
@@ -287,32 +292,32 @@ specified in the configuration file. To start the gateway, simply run:
 	<installdir>/bin/janus
 
 This will start the gateway, and have it look at the configuration file.
-By default, only an HTTP webserver is started. To enable HTTPS support,
-edit the configuration file accordingly or use the command line. The
-webserver will make use of the same certificates provided for DTLS. You
-can also change the base path that the webserver uses: by default this
-is /janus, but you can change it to anything you want and with any nesting
-you want (e.g., /mypath, /my/path, or /my/really/nested/path). This is
-done to allow you to more easily customize rules in any frontend you
-may have (e.g., Apache in front of your services). Please notice that
-the path configuration has no effect on the WebSockets usage of the API,
-instead, as it is not needed there.
+
+As far as transports are concerned (that is, with respect to how you can
+interact with your Janus instance), using the default configuration files
+provided after issuing a ```make configs``` will result in Janus only
+enabling an HTTP webserver (port 8088) and a plain WebSocket server (8188),
+assuming the related transport modules have been compiled, of course.
+To enable HTTPS or Secure WebSockets support, edit the related transport
+configuration file accordingly. You can also change the base path that
+the webserver uses: by default this is ```/janus```, but you can change
+it to anything you want and with any nesting you want (e.g., ```/mypath```,
+```/my/path```, or ```/my/really/nested/path```). This is done to allow
+you to more easily customize rules in any frontend you may have (e.g.,
+Apache in front of your services). Please notice that the path configuration
+is not provided for WebSockets, instead, as it is not needed there. The
+RabbitMQ module, if compiled, is disabled by default, so you'll have
+to enable it manually if interested in it. 
  
-In the absence of a configuration file, the only mandatory options to
-specify in the command line are the ones related to the DTLS certificate.
-A default certificate is provided with this package in the certs folder,
-which you can use launching the executable with these parameters:
-
-	<installdir>/bin/janus -c /path/to/mycert.pem -k /path/to/mycert.key
-
-At this point, the gateway will be listening on the 8088 port (or whatever
-you changed that to) of your machine. To test whether it's working
-correctly, you can use the demos provided with this package in the html
-folder: these are exactly the same demos available online on the
-[project website](http://janus.conf.meetecho.com/). Just copy the file
-it contains in a webserver, and open the index.html page in either
-Chrome or Firefox. A list of demo pages exploiting the different plugins
-will be available.
+To test whether it's working correctly, you can use the demos provided
+with this package in the ```html``` folder: these are exactly the same demos
+available online on the [project website](http://janus.conf.meetecho.com/).
+Just copy the file it contains in a webserver, or use a userspace webserver
+to serve the files in the ```html``` folder (e.g., with php or python),
+and open the index.html page in either Chrome or Firefox. A list of demo
+pages exploiting the different plugins will be available. Remember to
+edit the transport/port details in the demo JavaScript files if you
+changed any transport-related configuration from its defaults.
 
 
 ##Help us!
