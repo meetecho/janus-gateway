@@ -34,10 +34,10 @@ ssl_version=1.0.1
 ##
 
 AC_ARG_ENABLE([docs],
-              [AS_HELP_STRING([--disable-docs],
-                              [Disable building documentation])],
+              [AS_HELP_STRING([--enable-docs],
+                              [Enable building documentation])],
               [],
-              [enable_docs=yes])
+              [enable_docs=no])
 
 AC_ARG_ENABLE([rest],
               [AS_HELP_STRING([--disable-rest],
@@ -165,7 +165,7 @@ AC_CHECK_PROG([DOT],
 AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
       [
         AS_IF([test "x$enable_docs" = "xyes"],
-              [AC_MSG_ERROR([doxygen or dot not found. See README.md for installation instructions or use --disable-docs])])
+              [AC_MSG_ERROR([doxygen or dot not found. See README.md for installation instructions or remove --enable-docs])])
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 
