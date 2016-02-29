@@ -758,8 +758,8 @@ function Janus(gatewayCallbacks) {
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
 						ondetached : callbacks.ondetached,
-						hangup : function() { cleanupWebrtc(handleId); },
-						detach : function(callbacks) { destroyHandle(handleId, callbacks); },
+						hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
+						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
 					}
 				pluginHandles[handleId] = pluginHandle;
 				callbacks.success(pluginHandle);
@@ -837,7 +837,7 @@ function Janus(gatewayCallbacks) {
 						ondataopen : callbacks.ondataopen,
 						oncleanup : callbacks.oncleanup,
 						ondetached : callbacks.ondetached,
-						hangup : function() { cleanupWebrtc(handleId); },
+						hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
 						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
 					}
 				pluginHandles[handleId] = pluginHandle;
@@ -1510,7 +1510,7 @@ function Janus(gatewayCallbacks) {
 					getUserMedia(
 						{audio: audioExist && isAudioSendEnabled(media), video: videoExist ? videoSupport : false},
 						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-						function(error) { pluginHandle.consentDialog(false); callbacks.error(error); });
+						function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
 				});
 
 			}
@@ -1906,7 +1906,7 @@ function Janus(gatewayCallbacks) {
 		Janus.error("WebRTC error:", error);
 	}
 
-	function cleanupWebrtc(handleId) {
+	function cleanupWebrtc(handleId, hangupRequest) {
 		Janus.log("Cleaning WebRTC stuff");
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined) {
@@ -1915,7 +1915,31 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		if(config !== null && config !== undefined) {
-			// Cleanup
+			if(hangupRequest === true) {
+				// Send a hangup request (we don't really care about the response)
+				var request = { "janus": "hangup", "transaction": randomString(12) };
+				if(token !== null && token !== undefined)
+					request["token"] = token;
+				if(apisecret !== null && apisecret !== undefined)
+					request["apisecret"] = apisecret;
+				Janus.debug("Sending hangup request (handle=" + handleId + "):");
+				Janus.debug(request);
+				if(websockets) {
+					request["session_id"] = sessionId;
+					request["handle_id"] = handleId;
+					ws.send(JSON.stringify(request));
+				} else {
+					$.ajax({
+						type: 'POST',
+						url: server + "/" + sessionId + "/" + handleId,
+						cache: false,
+						contentType: "application/json",
+						data: JSON.stringify(request),
+						dataType: "json"
+					});
+				}
+			}
+			// Cleanup stack
 			config.remoteStream = null;
 			if(config.volume.timer)
 				clearInterval(config.volume.timer);
