@@ -731,7 +731,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				cl = cl->next;
 				continue;
 			}
-			audiobridge->room_id = atoi(cat->name);
+			audiobridge->room_id = atol(cat->name);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);
@@ -744,7 +744,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			audiobridge->room_name = description;
 			audiobridge->is_private = priv && priv->value && janus_is_true(priv->value);
-			audiobridge->sampling_rate = atoi(sampling->value);
+			audiobridge->sampling_rate = atol(sampling->value);
 			switch(audiobridge->sampling_rate) {
 				case 8000:
 				case 12000:
@@ -2552,6 +2552,7 @@ static void *janus_audiobridge_handler(void *data) {
 				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
 			}
 			/* How long will the gateway take to push the event? */
+			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_audiobridge_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);

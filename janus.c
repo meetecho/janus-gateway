@@ -23,6 +23,7 @@
 #include <getopt.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <poll.h>
 
 #include "janus.h"
 #include "cmdline.h"
@@ -57,6 +58,11 @@ static GHashTable *transports_so = NULL;
 
 static GHashTable *plugins = NULL;
 static GHashTable *plugins_so = NULL;
+
+
+/* Daemonization */
+static gboolean daemonize = FALSE;
+static int pipefd[2];
 
 
 /* Certificates */
@@ -217,6 +223,14 @@ static void janus_termination_handler(void) {
 	janus_pidfile_remove();
 	/* Close the logger */
 	janus_log_destroy();
+	/* If we're daemonizing, we send an error code to the parent */
+	if(daemonize) {
+		int code = 1;
+		ssize_t res = 0;
+		do {
+			res = write(pipefd[1], &code, sizeof(int));
+		} while(res == -1 && errno == EINTR);
+	}
 }
 
 
@@ -779,6 +793,24 @@ int janus_process_incoming_request(janus_request *request) {
 			/* TODO Delete handle instance */
 			goto jsondone;
 		}
+		/* Prepare JSON reply */
+		json_t *reply = json_object();
+		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
+		/* Send the success reply */
+		ret = janus_process_success(request, reply);
+	} else if(!strcasecmp(message_text, "hangup")) {
+		if(handle == NULL) {
+			/* Query is an handle-level command */
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			goto jsondone;
+		}
+		if(handle->app == NULL || handle->app_handle == NULL) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin attached");
+			goto jsondone;
+		}
+		janus_ice_webrtc_hangup(handle);
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -2946,7 +2978,6 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Check if we're going to daemonize Janus */
-	gboolean daemonize = FALSE;
 	if(args_info.daemon_given) {
 		daemonize = TRUE;
 		janus_config_add_item(config, "general", "daemonize", "yes");
@@ -2968,6 +2999,12 @@ gint main(int argc, char *argv[])
 	if(daemonize) {
 		g_print("Running Janus as a daemon\n");
 
+		/* Create a pipe for parent<->child communication during the startup phase */
+		if(pipe(pipefd) == -1) {
+			g_print("pipe error!\n");
+			exit(1);
+		}
+
 		/* Fork off the parent process */
 		pid_t pid = fork();
 		if(pid < 0) {
@@ -2975,7 +3012,33 @@ gint main(int argc, char *argv[])
 			exit(1);
 		}
 		if(pid > 0) {
-			exit(0);
+			/* Ok, we're the parent: let's wait for the child to tell us everything started fine */
+			close(pipefd[1]);
+			int code = -1;
+			struct pollfd pollfds;
+
+			while(code < 0) {
+				pollfds.fd = pipefd[0];
+				pollfds.events = POLLIN;
+				int res = poll(&pollfds, 1, -1);
+				if(res < 0)
+					break;
+				if(res == 0)
+					continue;
+				if(pollfds.revents & POLLERR || pollfds.revents & POLLHUP)
+					break;
+				if(pollfds.revents & POLLIN) {
+					read(pipefd[0], &code, sizeof(int));
+					break;
+				}
+			}
+			if(code < 0)
+				code = 1;
+
+			/* Leave the parent and return the exit code we received from the child */
+			if(code)
+				g_print("Error launching Janus (error code %d), check the logs for more details\n", code);
+			exit(code);
 		}
 		/* Change the file mode mask */
 		umask(0);
@@ -3688,6 +3751,15 @@ gint main(int argc, char *argv[])
 	if(error != NULL) {
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
 		exit(1);
+	}
+
+	/* Ok, Janus has started! Let the parent now about this if we're daemonizing */
+	if(daemonize) {
+		int code = 0;
+		ssize_t res = 0;
+		do {
+			res = write(pipefd[1], &code, sizeof(int));
+		} while(res == -1 && errno == EINTR);
 	}
 
 	while(!g_atomic_int_get(&stop)) {

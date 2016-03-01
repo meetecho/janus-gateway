@@ -802,6 +802,7 @@ static void *janus_voicemail_handler(void *data) {
 				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
 			}
 			/* How long will the gateway take to push the event? */
+			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
