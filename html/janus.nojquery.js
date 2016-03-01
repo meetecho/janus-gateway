@@ -442,7 +442,7 @@ function Janus(gatewayCallbacks) {
 		if(token !== null && token !== undefined)
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
-			request["apisecret"] = a;
+			request["apisecret"] = apisecret;
 		ws.send(JSON.stringify(request));
 	}
 
