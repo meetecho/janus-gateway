@@ -908,7 +908,7 @@ static int janus_websockets_callback(
 			/* Is there any filtering we should apply? */
 			char name[256], ip[256];
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			lws_get_peer_addresses(wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
+			lws_get_peer_addresses(wsi, lws_get_socket_fd(wsi), name, 256, ip, 256);
 #else
 			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
 #endif
@@ -1147,7 +1147,7 @@ static int janus_websockets_admin_callback(
 			/* Is there any filtering we should apply? */
 			char name[256], ip[256];
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			lws_get_peer_addresses(wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
+			lws_get_peer_addresses(wsi, lws_get_socket_fd(wsi), name, 256, ip, 256);
 #else
 			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
 #endif
