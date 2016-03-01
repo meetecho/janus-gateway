@@ -23,6 +23,15 @@
 ./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|webm] 
 \endverbatim 
  * 
+ * You can also just print the internal header of the recording, or parse
+ * it without processing it (e.g., for debugging), by invoking the tool
+ * in a different way:
+ *
+\verbatim
+./janus-pp-rec --header /path/to/source.mjr
+./janus-pp-rec --parse /path/to/source.mjr
+\endverbatim
+ *
  * \note This utility does not do any form of transcoding. It just
  * depacketizes the RTP frames in order to get the payload, and saves
  * the frames in a valid container. Any further post-processing (e.g.,
