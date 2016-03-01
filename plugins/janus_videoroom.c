@@ -594,7 +594,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				continue;
 			}
-			videoroom->room_id = atoi(cat->name);
+			videoroom->room_id = atol(cat->name);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);

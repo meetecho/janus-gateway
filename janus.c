@@ -800,6 +800,24 @@ int janus_process_incoming_request(janus_request *request) {
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
+	} else if(!strcasecmp(message_text, "hangup")) {
+		if(handle == NULL) {
+			/* Query is an handle-level command */
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
+			goto jsondone;
+		}
+		if(handle->app == NULL || handle->app_handle == NULL) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin attached");
+			goto jsondone;
+		}
+		janus_ice_webrtc_hangup(handle);
+		/* Prepare JSON reply */
+		json_t *reply = json_object();
+		json_object_set_new(reply, "janus", json_string("success"));
+		json_object_set_new(reply, "session_id", json_integer(session_id));
+		json_object_set_new(reply, "transaction", json_string(transaction_text));
+		/* Send the success reply */
+		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "message")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */

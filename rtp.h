@@ -55,4 +55,10 @@ typedef struct janus_rtp_packet {
 	gint64 last_retransmit;
 } janus_rtp_packet;
 
+/*! \brief RTP extension */
+typedef struct janus_rtp_header_extension {
+	uint16_t type;
+	uint16_t length;
+} janus_rtp_header_extension;
+
 #endif
