@@ -197,13 +197,13 @@ PKG_CHECK_MODULES([MHD],
                   ])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
 
+AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], false)
 AC_CHECK_LIB([websockets],
              [libwebsocket_create_context],
              [
                AS_IF([test "x$enable_websockets" = "xyes"],
                [
                   AC_DEFINE(HAVE_WEBSOCKETS)
-                  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], false)
                   WS_MANUAL_LIBS="-lwebsockets"
                ])
              ],
