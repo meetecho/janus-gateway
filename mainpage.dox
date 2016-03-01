@@ -335,7 +335,9 @@ janus.attach(
  * - \c dtmf(parameters): sends a DTMF tone on the PeerConnection;
  * - \c data(parameters): sends data through the Data Channel, if available;
  * - \c getBitrate(): gets a verbose description of the currently received stream bitrate (only available on Chrome, for now);
- * - \c hangup(): tells the library to close the PeerConnection;
+ * - \c hangup(sendRequest): tells the library to close the PeerConnection; if the optional \c sendRequest argument is
+ * set to \c true, then a \c hangup Janus API request is sent to Janus as well (disabled by default, Janus can usually
+ * figure this out via DTLS alerts and the like but it may be useful to enable it sometimes);
  * - \c detach(parameters): detaches from the plugin and destroys the handle, tearing
  * down the related PeerConnection if it exists.
  *
@@ -1018,6 +1020,23 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * The plugin implementation and the gateway core should do this
  * automatically, but implementing the right behaviour in clients would
  * help avoid potential issues nonetheless.
+ *
+ * If you're interested in keeping the handle alive but want to hang up
+ * the associated PeerConnection, if available, just send a "hangup" \c janus
+ * request:
+ *
+\verbatim
+{
+	"janus" : "hangup",
+	"transaction" : "<random string>"
+}
+\endverbatim
+ *
+ * This is usually not required, as you can typically just hangup your
+ * WebRTC PeerConnection normally and Janus will figure out it's gone
+ * by itself. Anyway, there are cases where this might be useful (e.g.,
+ * the connection was stuck in some weird ICE/DTLS state) as it can be
+ * used to reset the connection state for the handle.
  *
  * \section events WebRTC-related events
  *
@@ -2276,6 +2295,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/BenJaziaSadok/janus-gateway-php">janus-gateway-php</a></td>
  * 		<td>Client-side PHP/javascript implementation of the Janus and Admin APIs</td>
  * </tr>
+ * <tr>
+ * 		<td>Golang</td>
+ * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
+ * 		<td><a href="https://github.com/nowylie/go-janus">go-janus</a></td>
+ * 		<td>Golang library to the Janus API (Unix Sockets/SOCK_DGRAM only at the moment)</td>
+ * </tr>
  * </table>
  * <br/>
  *
@@ -2300,12 +2325,27 @@ ldd janus | grep asan
  *
  * \section thirdplugins Third-party plugins
  *
- * TBD.
- * <br/><br/>
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
+ * 		<td><a href="https://github.com/cargomedia/janus-gateway-rtpbroadcast">janus-gateway-rtpbroadcast</a></td>
+ * 		<td>Janus-gateway plugin to broadcast RTP video</td>
+ * </tr>
+ * </table>
+ * <br/>
  *
  * \section thirdtrasports Third-party transports
  *
- * TBD.
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
+ * 		<td><a href="https://github.com/nowylie/janus-ud-transport">janus-gateway-rtpbroadcast</a></td>
+ * 		<td>Janus transport plugin that adds support for Datagram messages over Unix Domain Sockets</td>
+ * </tr>
+ * </table>
+ * <br/>
  *
  */
 

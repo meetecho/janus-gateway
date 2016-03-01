@@ -53,6 +53,9 @@ instance, is very simple:
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
        opus-devel libogg-devel pkgconfig gengetopt libtool autoconf automake
 
+Notice that you may have to ```yum install epel-release``` as well if you're
+attempting an installation on a CentOS machine instead.
+
 On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
@@ -128,7 +131,8 @@ HTTP REST API, you'll have to install it manually:
 
 	git clone git://git.libwebsockets.org/libwebsockets
 	cd libwebsockets
-	git checkout v1.5-chrome47-firefox41
+	# If you want the stable version of libwebsockets, uncomment the next line
+	# git checkout v1.5-chrome47-firefox41
 	mkdir build
 	cd build
 	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
@@ -206,11 +210,12 @@ configuring:
 
 	./configure --disable-websockets --disable-data-channels --disable-rabbitmq
 
-If Doxygen and graphviz are available, the process will also build the
-documentation for you. If you prefer not to build it, use the
---disable-docs configuration option:
+If Doxygen and graphviz are available, the process can also build the
+documentation for you. By default the compilation process will not try
+to build the documentation, so if you instead prefer to build it, use the
+--enable-docs configuration option:
 
-	./configure --disable-docs
+	./configure --enable-docs
 
 You can also selectively enable/disable other features (e.g., specific
 plugins you don't care about). Use the --help option when configuring
