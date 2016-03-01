@@ -431,13 +431,13 @@ static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	session->media.audio_srtp_out = NULL;
 	g_free(session->media.audio_local_policy.key);
 	session->media.audio_local_policy.key = NULL;
-	session->media.audio_srtp_suite_in = 0;
+	session->media.audio_srtp_suite_out = 0;
 	if(session->media.audio_srtp_in)
 		srtp_dealloc(session->media.audio_srtp_in);
 	session->media.audio_srtp_in = NULL;
 	g_free(session->media.audio_remote_policy.key);
 	session->media.audio_remote_policy.key = NULL;
-	session->media.audio_srtp_suite_out = 0;
+	session->media.audio_srtp_suite_in = 0;
 	/* Video */
 	if(session->media.video_srtp_out)
 		srtp_dealloc(session->media.video_srtp_out);
@@ -450,7 +450,7 @@ static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	session->media.video_srtp_in = NULL;
 	g_free(session->media.video_remote_policy.key);
 	session->media.video_remote_policy.key = NULL;
-	session->media.video_srtp_suite_out = 0;
+	session->media.video_srtp_suite_in = 0;
 }
 
 
@@ -2638,7 +2638,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp) {
 		if(session->media.has_video) {
 			char *crypto = NULL;
 			session->media.video_srtp_suite_out = 80;
-			janus_sip_srtp_set_local(session, FALSE, &crypto);
+			janus_sip_srtp_set_local(session, TRUE, &crypto);
 			/* FIXME 32? 80? Both? */
 			char cryptoline[100];
 			g_snprintf(cryptoline, 100, "a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:%s", crypto);
