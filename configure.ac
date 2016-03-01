@@ -197,22 +197,24 @@ PKG_CHECK_MODULES([MHD],
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
 
 AC_CHECK_LIB([websockets],
-             [libwebsocket_get_internal_extensions],
+             [libwebsocket_create_context],
              [
                AS_IF([test "x$enable_websockets" = "xyes"],
                [
                   AC_DEFINE(HAVE_WEBSOCKETS)
+                  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], false)
                   WS_MANUAL_LIBS="-lwebsockets"
                ])
              ],
              [
 				AC_CHECK_LIB([websockets],
-							 [lws_get_internal_extensions],
+							 [lws_create_context],
 							 [
 							   AS_IF([test "x$enable_websockets" = "xyes"],
 							   [
 								  AC_DEFINE(HAVE_WEBSOCKETS)
 								  AC_DEFINE(HAVE_LIBWEBSOCKETS_NEWAPI)
+								  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], true)
 								  WS_MANUAL_LIBS="-lwebsockets"
 							   ])
 							 ],
@@ -382,7 +384,11 @@ AM_COND_IF([ENABLE_REST],
 	[echo "    REST (HTTP/HTTPS):     yes"],
 	[echo "    REST (HTTP/HTTPS):     no"])
 AM_COND_IF([ENABLE_WEBSOCKETS],
-	[echo "    WebSockets:            yes"],
+	[
+     AM_COND_IF([ENABLE_WEBSOCKETS_NEWAPI],
+		[echo "    WebSockets:            yes (new API)"],
+		[echo "    WebSockets:            yes (old API)"])
+	],
 	[echo "    WebSockets:            no"])
 AM_COND_IF([ENABLE_RABBITMQ],
 	[echo "    RabbitMQ:              yes"],
