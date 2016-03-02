@@ -847,18 +847,21 @@ void janus_ice_stats_queue_free(gpointer data) {
 void janus_ice_stats_reset(janus_ice_stats *stats) {
 	if(stats == NULL)
 		return;
+	stats->audio_packets = 0;
 	stats->audio_bytes = 0;
 	if(stats->audio_bytes_lastsec)
 		g_list_free_full(stats->audio_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->audio_bytes_lastsec = NULL;
 	stats->audio_notified_lastsec = FALSE;
 	stats->audio_nacks = 0;
+	stats->video_packets = 0;
 	stats->video_bytes = 0;
 	if(stats->video_bytes_lastsec)
 		g_list_free_full(stats->video_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->video_bytes_lastsec = NULL;
 	stats->video_notified_lastsec = FALSE;
 	stats->video_nacks = 0;
+	stats->data_packets = 0;
 	stats->data_bytes = 0;
 }
 
@@ -1634,6 +1637,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		/* Update stats (TODO Do the same for the last second window as well) */
+		component->in_stats.data_packets++;
 		component->in_stats.data_bytes += len;
 		return;
 	}
@@ -1710,6 +1714,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							component->in_stats.audio_notified_lastsec = FALSE;
 							janus_ice_notify_media(handle, FALSE, TRUE);
 						}
+						component->in_stats.audio_packets++;
 						component->in_stats.audio_bytes += buflen;
 						component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
 						if(g_list_length(component->in_stats.audio_bytes_lastsec) > 100) {
@@ -1725,6 +1730,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							component->in_stats.video_notified_lastsec = FALSE;
 							janus_ice_notify_media(handle, TRUE, TRUE);
 						}
+						component->in_stats.video_packets++;
 						component->in_stats.video_bytes += buflen;
 						component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
 						if(g_list_length(component->in_stats.video_bytes_lastsec) > 100) {
@@ -2002,6 +2008,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		/* Update stats (TODO Do the same for the last second window as well) */
 		if(len > 0) {
+			component->in_stats.data_packets++;
 			component->in_stats.data_bytes += len;
 		}
 		return;
@@ -3248,8 +3255,10 @@ void *janus_ice_send_thread(void *data) {
 						/* Update stats */
 						if(sent > 0) {
 							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
+								component->out_stats.audio_packets++;
 								component->out_stats.audio_bytes += sent;
 							} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
+								component->out_stats.video_packets++;
 								component->out_stats.video_bytes += sent;
 							}
 						}

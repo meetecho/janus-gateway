@@ -23,6 +23,15 @@
 ./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|webm] 
 \endverbatim 
  * 
+ * You can also just print the internal header of the recording, or parse
+ * it without processing it (e.g., for debugging), by invoking the tool
+ * in a different way:
+ *
+\verbatim
+./janus-pp-rec --header /path/to/source.mjr
+./janus-pp-rec --parse /path/to/source.mjr
+\endverbatim
+ *
  * \note This utility does not do any form of transcoding. It just
  * depacketizes the RTP frames in order to get the payload, and saves
  * the frames in a valid container. Any further post-processing (e.g.,
@@ -79,12 +88,15 @@ int main(int argc, char *argv[])
 	/* Evaluate arguments */
 	if(argc != 3) {
 		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|webm]\n", argv[0]);
-		JANUS_LOG(LOG_INFO, "       %s --header source.mjr\n", argv[0]);
+		JANUS_LOG(LOG_INFO, "       %s --header source.mjr (only parse header)\n", argv[0]);
+		JANUS_LOG(LOG_INFO, "       %s --parse source.mjr (only parse and re-order packets)\n", argv[0]);
 		return -1;
 	}
 	char *source = NULL, *destination = NULL;
-	if(!strcmp(argv[1], "--header")) {
-		/* Only parse the .mjr header */
+	gboolean header_only = !strcmp(argv[1], "--header");
+	gboolean parse_only = !strcmp(argv[1], "--parse");
+	if(header_only || parse_only) {
+		/* Only parse the .mjr header and/or re-order the packets, no processing */
 		source = argv[2];
 	} else {
 		/* Post-process the .mjr recording */
@@ -110,12 +122,14 @@ int main(int argc, char *argv[])
 	int bytes = 0, skip = 0;
 	long offset = 0;
 	uint16_t len = 0, count = 0;
-	uint32_t first_ts = 0, last_ts = 0, reset = 0;	/* To handle whether there's a timestamp reset in the recording */
+	uint32_t last_ts = 0, reset = 0;
+	int times_resetted = 0;
+	uint32_t post_reset_pkts = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
 	while(offset < fsize) {
-		if(destination == NULL && parsed_header) {
+		if(header_only && parsed_header) {
 			/* We only needed to parse the header */
 			exit(0);
 		}
@@ -232,28 +246,40 @@ int main(int argc, char *argv[])
 		/* Only read RTP header */
 		bytes = fread(prebuffer, sizeof(char), 16, file);
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
-		if(last_ts == 0) {
-			first_ts = ntohl(rtp->timestamp);
-			if(first_ts > 1000*1000)	/* Just used to check whether a packet is pre- or post-reset */
-				first_ts -= 1000*1000;
-		} else {
-			if(ntohl(rtp->timestamp) < last_ts) {
-				/* The new timestamp is smaller than the next one, is it a timestamp reset or simply out of order? */
-				if(last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000) {
-					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_INFO, "Timestamp reset: %"SCNu32"\n", reset);
-				}
-			} else if(ntohl(rtp->timestamp) < reset) {
-				JANUS_LOG(LOG_INFO, "Updating timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
+		if(last_ts > 0) {
+			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
+			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
 				reset = ntohl(rtp->timestamp);
+				JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
+				times_resetted++;
+				post_reset_pkts = 0;
+			} else if(ntohl(rtp->timestamp) < reset) {
+				if(post_reset_pkts < 1000) {
+					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
+					reset = ntohl(rtp->timestamp);
+				} else {
+					reset = ntohl(rtp->timestamp);
+					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
+					times_resetted++;
+					post_reset_pkts = 0;
+				}
 			}
 		}
 		last_ts = ntohl(rtp->timestamp);
+		post_reset_pkts++;
 		/* Skip data for now */
 		offset += len;
 	}
+	JANUS_LOG(LOG_WARN, "Counted %d timestamp resets\n", times_resetted);
 	/* Now let's parse the frames and order them */
 	offset = 0;
+	/* Timestamp reset related stuff */
+	last_ts = 0;
+	reset = 0;
+	times_resetted = 0;
+	post_reset_pkts = 0;
+	uint64_t max32 = UINT32_MAX;
+	/* Start loop */
 	while(offset < fsize) {
 		/* Read frame header */
 		skip = 0;
@@ -300,21 +326,34 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 		p->seq = ntohs(rtp->seq_number);
-		if(reset == 0) {
+		/* Due to resets, we need to mess a bit with the original timestamps */
+		if(last_ts == 0) {
 			/* Simple enough... */
 			p->ts = ntohl(rtp->timestamp);
 		} else {
-			/* Is this packet pre- or post-reset? */
-			if(ntohl(rtp->timestamp) > first_ts) {
-				/* Pre-reset... */
-				p->ts = ntohl(rtp->timestamp);
-			} else {
-				/* Post-reset... */
-				uint64_t max32 = UINT32_MAX;
-				max32++;
-				p->ts = max32+ntohl(rtp->timestamp);
+			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
+			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
+				reset = ntohl(rtp->timestamp);
+				JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
+				times_resetted++;
+				post_reset_pkts = 0;
+			} else if(ntohl(rtp->timestamp) < reset) {
+				if(post_reset_pkts < 1000) {
+					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
+					reset = ntohl(rtp->timestamp);
+				} else {
+					reset = ntohl(rtp->timestamp);
+					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
+					times_resetted++;
+					post_reset_pkts = 0;
+				}
 			}
+			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
+			p->ts = (times_resetted*max32)+ntohl(rtp->timestamp);
 		}
+		last_ts = ntohl(rtp->timestamp);
+		post_reset_pkts++;
+		/* Fill in the rest of the details */
 		p->len = len;
 		p->offset = offset;
 		p->skip = skip;
@@ -399,6 +438,11 @@ int main(int argc, char *argv[])
 		tmp = tmp->next;
 	}
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" frame packets\n", count);
+
+	if(parse_only) {
+		/* We only needed to parse and re-order the packets, we're done here */
+		exit(0);
+	}
 
 	if(!video) {
 		/* We don't need any pre-parsing for audio */
