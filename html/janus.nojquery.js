@@ -1409,15 +1409,9 @@ function Janus(gatewayCallbacks) {
 					function getScreenMedia(constraints, gsmCallback) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
-						navigator.mediaDevices.getUserMedia(constraints,
-							function(stream) {
-								gsmCallback(null, stream);
-							},
-							function(error) {
-								pluginHandle.consentDialog(false);
-								gsmCallback(error);
-							}
-						);
+						navigator.mediaDevices.getUserMedia(constraints)
+							.then(function(stream) { gsmCallback(null, stream); })
+							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
 					if(window.navigator.userAgent.match('Chrome')) {
 						var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
@@ -1509,16 +1503,17 @@ function Janus(gatewayCallbacks) {
 									audio: isAudioSendEnabled(media),
 									video: {
 										mandatory: {
-										chromeMediaSource: 'desktop',
-										maxWidth: window.screen.width,
-										maxHeight: window.screen.height,
-										maxFrameRate: 3
-									},
-									optional: [
-										{googLeakyBucket: true},
-										{googTemporalLayeredScreencast: true}
-									]
-								}};
+											chromeMediaSource: 'desktop',
+											maxWidth: window.screen.width,
+											maxHeight: window.screen.height,
+											maxFrameRate: 3
+										},
+										optional: [
+											{googLeakyBucket: true},
+											{googTemporalLayeredScreencast: true}
+										]
+									}
+								};
 								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
 								getScreenMedia(constraints, callback);
 							}
