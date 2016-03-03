@@ -71,7 +71,37 @@ Janus.init = function(options) {
 			}
 		}
 		Janus.log("Initializing library");
-		Janus.initDone = true;
+		// Helper method to enumerate devices
+		Janus.listDevices = function(callback) {
+			callback = (typeof callback == "function") ? callback : Janus.noop;
+			if(navigator.mediaDevices) {
+				getUserMedia({ audio: true, video: true }, function(stream) {
+					navigator.mediaDevices.enumerateDevices().then(function(devices) {
+						Janus.debug(devices);
+						callback(devices);
+						// Get rid of the now useless stream
+						try {
+							stream.stop();
+						} catch(e) {}
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								Janus.log(mst);
+								if(mst !== null && mst !== undefined)
+									mst.stop();
+							}
+						} catch(e) {}
+					});
+				}, function(err) {
+					Janus.error(err);
+					callback([]);
+				});
+			} else {
+				Janus.warn("navigator.mediaDevices unavailable");
+				callback([]);
+			}
+		}
 		// Prepare a helper method to send AJAX requests in a syntax similar to jQuery (at least for what we care)
 		Janus.ajax = function(params) {
 			// Check params
@@ -172,6 +202,7 @@ Janus.init = function(options) {
 			}
 			oHead.appendChild(oScript);
 		}
+		Janus.initDone = true;
 		addJsList(["adapter.js"]);	// We may need others in the future
 	}
 };
@@ -1271,6 +1302,12 @@ function Janus(gatewayCallbacks) {
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
+			var audioSupport = isAudioSendEnabled(media);
+			if(audioSupport === true && media != undefined && media != null) {
+				if(typeof media.audio === 'object') {
+					audioSupport = media.audio;
+				}
+			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
 				if(media.video && media.video != 'screen') {
@@ -1345,6 +1382,9 @@ function Janus(gatewayCallbacks) {
 						    'optional': []
 						};
 					}
+					if(typeof media.video === 'object') {
+						videoSupport = media.video;
+					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen') {
 					// Not a webcam, but screen capture
@@ -1369,7 +1409,7 @@ function Janus(gatewayCallbacks) {
 					function getScreenMedia(constraints, gsmCallback) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
-						getUserMedia(constraints,
+						navigator.mediaDevices.getUserMedia(constraints,
 							function(stream) {
 								gsmCallback(null, stream);
 							},
@@ -1491,13 +1531,12 @@ function Janus(gatewayCallbacks) {
 			// If we got here, we're not screensharing
 			if(media === null || media === undefined || media.video !== 'screen') {
 				// Check whether all media sources are actually available or not
-				// as per https://github.com/meetecho/janus-gateway/pull/114
-				MediaStreamTrack.getSources(function(sources) {
-					var audioExist = sources.some(function(source) {
-						return source.kind === 'audio';
+				navigator.mediaDevices.enumerateDevices().then(function(devices) {
+					var audioExist = devices.some(function(device) {
+						return device.kind === 'audioinput';
 					}),
-					videoExist = sources.some(function(source) {
-						return source.kind === 'video';
+					videoExist = devices.some(function(device) {
+						return device.kind === 'videoinput';
 					});
 
 					// FIXME Should we really give up, or just assume recvonly for both?
@@ -1507,12 +1546,17 @@ function Janus(gatewayCallbacks) {
 						return false;
 					}
 
-					getUserMedia(
-						{audio: audioExist && isAudioSendEnabled(media), video: videoExist ? videoSupport : false},
-						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-						function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+					navigator.mediaDevices.getUserMedia({
+						audio: audioExist ? audioSupport : false,
+						video: videoExist ? videoSupport : false
+					})
+					.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
+					.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+				})
+				.catch(function(error) {
+					pluginHandle.consentDialog(false);
+					callbacks.error('enumerateDevices error', error);
 				});
-
 			}
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away
