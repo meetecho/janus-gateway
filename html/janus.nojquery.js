@@ -87,7 +87,6 @@ Janus.init = function(options) {
 							var tracks = stream.getTracks();
 							for(var i in tracks) {
 								var mst = tracks[i];
-								Janus.log(mst);
 								if(mst !== null && mst !== undefined)
 									mst.stop();
 							}
