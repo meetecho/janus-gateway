@@ -290,6 +290,8 @@ struct janus_ice_handle {
 	janus_ice_stream *video_stream;
 	/*! \brief SCTP/DataChannel stream */
 	janus_ice_stream *data_stream;
+	/*! \brief RTP profile set by caller (so that we can match it) */
+	gchar *rtp_profile;
 	/*! \brief SDP generated locally (just for debugging purposes) */
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */

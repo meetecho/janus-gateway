@@ -1095,14 +1095,12 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		}
 	}
 	handle->pending_trickles = NULL;
-	if(handle->local_sdp != NULL) {
-		g_free(handle->local_sdp);
-		handle->local_sdp = NULL;
-	}
-	if(handle->remote_sdp != NULL) {
-		g_free(handle->remote_sdp);
-		handle->remote_sdp = NULL;
-	}
+	g_free(handle->rtp_profile);
+	handle->rtp_profile = NULL;
+	g_free(handle->local_sdp);
+	handle->local_sdp = NULL;
+	g_free(handle->remote_sdp);
+	handle->remote_sdp = NULL;
 	if(handle->queued_packets != NULL) {
 		janus_ice_queued_packet *pkt = NULL;
 		while(g_async_queue_length(handle->queued_packets) > 0) {

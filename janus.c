@@ -2104,6 +2104,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
 		}
 		json_t *sdps = json_object();
+		if(handle->rtp_profile)
+			json_object_set_new(sdps, "profile", json_string(handle->rtp_profile));
 		if(handle->local_sdp)
 			json_object_set_new(sdps, "local", json_string(handle->local_sdp));
 		if(handle->remote_sdp)

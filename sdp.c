@@ -151,6 +151,8 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 	while(m) {
 		/* What media type is this? */
 		if(m->m_type == sdp_media_audio) {
+			if(handle->rtp_profile == NULL && m->m_proto_name != NULL)
+				handle->rtp_profile = g_strdup(m->m_proto_name);
 			if(m->m_port > 0) {
 				audio++;
 				if(audio > 1) {
@@ -165,6 +167,8 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio rejected by peer...\n", handle->handle_id);
 			}
 		} else if(m->m_type == sdp_media_video) {
+			if(handle->rtp_profile == NULL && m->m_proto_name != NULL)
+				handle->rtp_profile = g_strdup(m->m_proto_name);
 			if(m->m_port > 0) {
 				video++;
 				if(video > 1) {
@@ -745,6 +749,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 		return NULL;
 	}
 	sdp[0] = '\0';
+	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"RTP/SAVPF";
 	/* FIXME Any Plan B to take into account? */
 	int planb = strstr(origsdp, "a=planb:") ? 1 : 0;
 	if(planb) {
@@ -849,7 +854,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				audio++;
 				if(audio > 1 || !handle->audio_id) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have %d audio lines, and the id is %d)\n", handle->handle_id, audio, handle->audio_id);
-					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
+					g_snprintf(buffer, 512,
+						"m=audio 0 %s 0\r\n", rtp_profile);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
@@ -861,7 +868,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->audio_id));
 				if(stream == NULL) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (invalid stream %d)\n", handle->handle_id, handle->audio_id);
-					g_strlcat(sdp, "m=audio 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
+					g_snprintf(buffer, 512,
+						"m=audio 0 %s 0\r\n", rtp_profile);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
@@ -869,7 +878,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					m = m->m_next;
 					continue;
 				}
-				g_strlcat(sdp, "m=audio 1 RTP/SAVPF", JANUS_BUFSIZE);
+				g_snprintf(buffer, 512,
+					"m=audio 1 %s", rtp_profile);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 			} else if(m->m_type == sdp_media_video && m->m_port > 0) {
 				video++;
 				gint id = handle->video_id;
@@ -878,7 +889,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				if(video > 1 || !id) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have %d video lines, and the id is %d)\n", handle->handle_id, video,
 						janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_id : handle->video_id);
-					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
+					g_snprintf(buffer, 512,
+						"m=video 0 %s 0\r\n", rtp_profile);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
@@ -890,7 +903,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
 				if(stream == NULL) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (invalid stream %d)\n", handle->handle_id, id);
-					g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", JANUS_BUFSIZE);
+					g_snprintf(buffer, 512,
+						"m=video 0 %s 0\r\n", rtp_profile);
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
@@ -898,7 +913,9 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					m = m->m_next;
 					continue;
 				}
-				g_strlcat(sdp, "m=video 1 RTP/SAVPF", JANUS_BUFSIZE);
+				g_snprintf(buffer, 512,
+					"m=video 1 %s", rtp_profile);
+				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 #ifdef HAVE_SCTP
 			} else if(m->m_type == sdp_media_application) {
 				/* Is this SCTP for DataChannels? */
