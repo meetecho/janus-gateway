@@ -901,12 +901,19 @@ GET http://host:port/janus/<sessionid>?maxev=5
 }
 \endverbatim
  *
- * If you're going to \c trickle candidates rather than including them
- * all in an SDP OFFER or ANSWER, there is an ad-hoc message you can use
- * to do so which is called, unsurprisingly, \c trickle and which you
- * can use to send one or more trickle candidates to Janus. Since such
- * a message is related to a specific PeerConnection, it will need to be
- * addressed to the right Handle just as the \c message introduced
+ * Please notice that, if for any reason you don't want to use the
+ * trickling of ICE candidates from your application (which means you'll
+ * include them all in the SDP OFFER or ANSWER, which is usually not
+ * recommended), you'll have to add an additional <code>"trickle" : false</code>
+ * attribute to the "jsep" object, to explicitly tell Janus you won't
+ * send any \c trickle candidate (by default Janus will always assume
+ * support for trickle).
+ *
+ * If you're going to \c trickle candidates, instead, there is an ad-hoc
+ * message you can use to do so which is called, unsurprisingly, \c trickle
+ * and which you can use to send one or more trickle candidates to Janus.
+ * Since such a message is related to a specific PeerConnection, it will
+ * need to be addressed to the right Handle just as the \c message introduced
  * previously. A \c trickle message can contain three different kind of
  * information:
  *
