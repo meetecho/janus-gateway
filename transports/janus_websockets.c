@@ -117,6 +117,7 @@ typedef struct janus_websockets_client {
 	struct libwebsocket *wsi;				/* The libwebsockets client instance */
 #endif
 	GAsyncQueue *messages;					/* Queue of outgoing messages to push */
+	char *incoming;							/* Buffer containing the incoming message to process (in case there are fragments) */
 	unsigned char *buffer;					/* Buffer containing the message to send */
 	int buflen;								/* Length of the buffer (may be resized after re-allocations) */
 	int bufpending;							/* Data an interrupted previous write couldn't send */
@@ -965,14 +966,41 @@ static int janus_websockets_callback(
 				JANUS_LOG(LOG_ERR, "[WSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			char *payload = g_malloc0(len+1);
-			memcpy(payload, in, len);
-			payload[len] = '\0';
-			JANUS_LOG(LOG_HUGE, "%s\n", payload);
-			/* Parse the JSON payload */
+			/* Is this a new message, or part of a fragmented one? */
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+			const size_t remaining = lws_remaining_packet_payload(wsi);
+#else
+			const size_t remaining = libwebsockets_remaining_packet_payload(wsi);
+#endif
+			if(ws_client->incoming == NULL) {
+				JANUS_LOG(LOG_VERB, "[WSS-%p] First fragment: %zu bytes, %zu remaining\n", wsi, len, remaining);
+				ws_client->incoming = g_malloc0(len+1);
+				memcpy(ws_client->incoming, in, len);
+				ws_client->incoming[len] = '\0';
+				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming);
+			} else {
+				size_t offset = strlen(ws_client->incoming);
+				JANUS_LOG(LOG_VERB, "[WSS-%p] Appending fragment: offset %zu, %zu bytes, %zu remaining\n", wsi, offset, len, remaining);
+				ws_client->incoming = g_realloc(ws_client->incoming, offset+len+1);
+				memcpy(ws_client->incoming+offset, in, len);
+				ws_client->incoming[offset+len] = '\0';
+				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming+offset);
+			}
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+			if(remaining > 0 || !lws_is_final_fragment(wsi)) {
+#else
+			if(remaining > 0 || !libwebsocket_is_final_fragment(wsi)) {
+#endif
+				/* Still waiting for some more fragments */
+				JANUS_LOG(LOG_VERB, "[WSS-%p] Waiting for more fragments\n", wsi);
+				return 0;
+			}
+			JANUS_LOG(LOG_WARN, "[WSS-%p] Done, parsing message: %zu bytes\n", wsi, strlen(ws_client->incoming));
+			/* If we got here, the message is complete: parse the JSON payload */
 			json_error_t error;
-			json_t *root = json_loads(payload, 0, &error);
-			g_free(payload);
+			json_t *root = json_loads(ws_client->incoming, 0, &error);
+			g_free(ws_client->incoming);
+			ws_client->incoming = NULL;
 			/* Notify the core, passing both the object and, since it may be needed, the error */
 			gateway->incoming_request(&janus_websockets_transport, ws_client, NULL, FALSE, root, &error);
 			return 0;
@@ -1088,7 +1116,9 @@ static int janus_websockets_callback(
 					}
 					g_async_queue_unref(ws_client->messages);
 				}
-				/* ... and the shared buffer */
+				/* ... and the shared buffers */
+				g_free(ws_client->incoming);
+				ws_client->incoming = NULL;
 				g_free(ws_client->buffer);
 				ws_client->buffer = NULL;
 				ws_client->buflen = 0;
@@ -1204,14 +1234,41 @@ static int janus_websockets_admin_callback(
 				JANUS_LOG(LOG_ERR, "[AdminWSS-%p] Invalid WebSocket client instance...\n", wsi);
 				return -1;
 			}
-			char *payload = g_malloc0(len+1);
-			memcpy(payload, in, len);
-			payload[len] = '\0';
-			JANUS_LOG(LOG_HUGE, "%s\n", payload);
-			/* Parse the JSON payload */
+			/* Is this a new message, or part of a fragmented one? */
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+			const size_t remaining = lws_remaining_packet_payload(wsi);
+#else
+			const size_t remaining = libwebsockets_remaining_packet_payload(wsi);
+#endif
+			if(ws_client->incoming == NULL) {
+				JANUS_LOG(LOG_VERB, "[AdminWSS-%p] First fragment: %zu bytes, %zu remaining\n", wsi, len, remaining);
+				ws_client->incoming = g_malloc0(len+1);
+				memcpy(ws_client->incoming, in, len);
+				ws_client->incoming[len] = '\0';
+				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming);
+			} else {
+				size_t offset = strlen(ws_client->incoming);
+				JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Appending fragment: offset %zu, %zu bytes, %zu remaining\n", wsi, offset, len, remaining);
+				ws_client->incoming = g_realloc(ws_client->incoming, offset+len+1);
+				memcpy(ws_client->incoming+offset, in, len);
+				ws_client->incoming[offset+len] = '\0';
+				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming+offset);
+			}
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+			if(remaining > 0 || !lws_is_final_fragment(wsi)) {
+#else
+			if(remaining > 0 || !libwebsocket_is_final_fragment(wsi)) {
+#endif
+				/* Still waiting for some more fragments */
+				JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Waiting for more fragments\n", wsi);
+				return 0;
+			}
+			JANUS_LOG(LOG_WARN, "[AdminWSS-%p] Done, parsing message: %zu bytes\n", wsi, strlen(ws_client->incoming));
+			/* If we got here, the message is complete: parse the JSON payload */
 			json_error_t error;
-			json_t *root = json_loads(payload, 0, &error);
-			g_free(payload);
+			json_t *root = json_loads(ws_client->incoming, 0, &error);
+			g_free(ws_client->incoming);
+			ws_client->incoming = NULL;
 			/* Notify the core, passing both the object and, since it may be needed, the error */
 			gateway->incoming_request(&janus_websockets_transport, ws_client, NULL, TRUE, root, &error);
 			return 0;
@@ -1327,7 +1384,9 @@ static int janus_websockets_admin_callback(
 					}
 					g_async_queue_unref(ws_client->messages);
 				}
-				/* ... and the shared buffer */
+				/* ... and the shared buffers */
+				g_free(ws_client->incoming);
+				ws_client->incoming = NULL;
 				g_free(ws_client->buffer);
 				ws_client->buffer = NULL;
 				ws_client->buflen = 0;
