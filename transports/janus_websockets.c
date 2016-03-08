@@ -995,7 +995,7 @@ static int janus_websockets_callback(
 				JANUS_LOG(LOG_VERB, "[WSS-%p] Waiting for more fragments\n", wsi);
 				return 0;
 			}
-			JANUS_LOG(LOG_WARN, "[WSS-%p] Done, parsing message: %zu bytes\n", wsi, strlen(ws_client->incoming));
+			JANUS_LOG(LOG_VERB, "[WSS-%p] Done, parsing message: %zu bytes\n", wsi, strlen(ws_client->incoming));
 			/* If we got here, the message is complete: parse the JSON payload */
 			json_error_t error;
 			json_t *root = json_loads(ws_client->incoming, 0, &error);
@@ -1263,7 +1263,7 @@ static int janus_websockets_admin_callback(
 				JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Waiting for more fragments\n", wsi);
 				return 0;
 			}
-			JANUS_LOG(LOG_WARN, "[AdminWSS-%p] Done, parsing message: %zu bytes\n", wsi, strlen(ws_client->incoming));
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] Done, parsing message: %zu bytes\n", wsi, strlen(ws_client->incoming));
 			/* If we got here, the message is complete: parse the JSON payload */
 			json_error_t error;
 			json_t *root = json_loads(ws_client->incoming, 0, &error);
