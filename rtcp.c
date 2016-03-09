@@ -128,7 +128,7 @@ static void janus_rtcp_incoming_sr(rtcp_context *ctx, rtcp_sr *sr) {
 }
 
 int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr) {
-	if(packet == NULL || len == 0)
+	if(packet == NULL || len <= 0)
 		return -1;
 	rtcp_header *rtcp = (rtcp_header *)packet;
 	if(rtcp->version != 2)
@@ -175,9 +175,9 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 				/* SDES, source description */
 				JANUS_LOG(LOG_HUGE, "     #%d SDES (202)\n", pno);
 				rtcp_sdes *sdes = (rtcp_sdes*)rtcp;
-				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u\n", ntohl(sr->ssrc));
+				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u\n", ntohl(sdes->chunk.ssrc));
 				if(fixssrc && newssrcl) {
-					sdes->ssrc = htonl(newssrcl);
+					sdes->chunk.ssrc = htonl(newssrcl);
 				}
 				break;
 			}
@@ -348,11 +348,69 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 	return 0;
 }
 
+char *janus_rtcp_filter(char *packet, int len, int *newlen) {
+	if(packet == NULL || len <= 0 || newlen == NULL)
+		return NULL;
+	*newlen = 0;
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return NULL;
+	char *filtered = NULL;
+	int total = len, length = 0, bytes = 0;
+	/* Iterate on the compound packets */
+	gboolean keep = TRUE;
+	while(rtcp) {
+		keep = TRUE;
+		length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		bytes = length*4+4;
+		switch(rtcp->type) {
+			case RTCP_SR:
+			case RTCP_RR:
+			case RTCP_SDES:
+				/* These are packets we generate ourselves, so remove them */
+				keep = FALSE;
+				break;
+			case RTCP_BYE:
+			case RTCP_APP:
+			case RTCP_FIR:
+			case RTCP_PSFB:
+				break;
+			case RTCP_RTPFB:
+				if(rtcp->rc == 1) {
+					/* We handle NACKs ourselves as well, remove this too */
+					keep = FALSE;
+					break;
+				}
+				break;
+			default:
+				JANUS_LOG(LOG_ERR, "Unknown RTCP PT %d\n", rtcp->type);
+				/* FIXME Should we allow this to go through instead? */
+				keep = FALSE;
+				break;
+		}
+		if(keep) {
+			/* Keep this packet */
+			if(filtered == NULL)
+				filtered = g_malloc0(total);
+			memcpy(filtered+*newlen, (char *)rtcp, bytes);
+			*newlen += bytes;
+		}
+		total -= bytes;
+		if(total <= 0)
+			break;
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return filtered;
+}
+
 
 int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len, int max_nack_queue) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
 
+	/* RTP packet received: it means we can start sending RR */
 	ctx->enabled = 1;
 	/* Parse this RTP packet header and update the rtcp_context instance */
 	rtp_header *rtp = (rtp_header *)packet;
@@ -728,7 +786,7 @@ int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen) {
 	rtcp->version = 2;
 	rtcp->type = RTCP_SDES;
 	rtcp->rc = 1;
-	int plen = 12;	/* Header + SSRC + CSRC in chunk */
+	int plen = 8;	/* Header + chunk + item header */
 	plen += cnamelen+2;
 	if((cnamelen+2)%4)	/* Account for padding */
 		plen += 4;

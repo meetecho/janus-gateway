@@ -755,22 +755,9 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
 				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->peer->bitrate : session->bitrate);
 			/* ... and send a new REMB back */
-			char rtcpbuf[200];
-			memset(rtcpbuf, 0, 200);
-			/* FIXME First put a RR (fake)... */
-			int rrlen = 32;
-			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-			rr->header.version = 2;
-			rr->header.type = RTCP_RR;
-			rr->header.rc = 1;
-			rr->header.length = htons((rrlen/4)-1);
-			/* ... then put a SDES... */
-			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-			if(sdeslen > 0) {
-				/* ... and then finally a REMB */
-				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, uplink ? session->peer->bitrate : session->bitrate);
-				gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, rrlen+sdeslen+24);
-			}
+			char rtcpbuf[24];
+			janus_rtcp_remb((char *)(&rtcpbuf), 24, uplink ? session->peer->bitrate : session->bitrate);
+			gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, 24);
 			/* As a last thing, notify the affected user about this */
 			json_t *event = json_object();
 			json_object_set_new(event, "videocall", json_string("event"));

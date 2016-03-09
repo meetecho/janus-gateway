@@ -1898,23 +1898,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					bitrate = bitrate/participant->remb_startup;
 					participant->remb_startup--;
 				}
-				char rtcpbuf[200];
-				memset(rtcpbuf, 0, 200);
-				/* FIXME First put a RR (fake)... */
-				int rrlen = 32;
-				rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-				rr->header.version = 2;
-				rr->header.type = RTCP_RR;
-				rr->header.rc = 1;
-				rr->header.length = htons((rrlen/4)-1);
-				/* ... then put a SDES... */
-				int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-				if(sdeslen > 0) {
-					/* ... and then finally a REMB */
-					janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
-					gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
-				}
 				JANUS_LOG(LOG_VERB, "Sending REMB\n");
+				char rtcpbuf[24];
+				janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
+				gateway->relay_rtcp(handle, video, rtcpbuf, 24);
 				if(participant->remb_startup == 0)
 					participant->remb_latest = janus_get_monotonic_time();
 			}
@@ -2755,22 +2742,9 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64" (room %"SCNu64", user %"SCNu64")\n", participant->bitrate, participant->room->room_id, participant->user_id);
 					/* Send a new REMB */
 					participant->remb_latest = janus_get_monotonic_time();
-					char rtcpbuf[200];
-					memset(rtcpbuf, 0, 200);
-					/* FIXME First put a RR (fake)... */
-					int rrlen = 32;
-					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-					rr->header.version = 2;
-					rr->header.type = RTCP_RR;
-					rr->header.rc = 1;
-					rr->header.length = htons((rrlen/4)-1);
-					/* ... then put a SDES... */
-					int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-					if(sdeslen > 0) {
-						/* ... and then finally a REMB */
-						janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, participant->bitrate ? participant->bitrate : 256*1024);
-						gateway->relay_rtcp(msg->handle, 1, rtcpbuf, rrlen+sdeslen+24);
-					}
+					char rtcpbuf[24];
+					janus_rtcp_remb((char *)(&rtcpbuf), 24, participant->bitrate ? participant->bitrate : 256*1024);
+					gateway->relay_rtcp(msg->handle, 1, rtcpbuf, 24);
 				}
 				gboolean prev_recording_active = participant->recording_active;
 				if(record) {

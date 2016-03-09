@@ -332,6 +332,10 @@ struct janus_ice_stream {
 	rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context for the video stream (may be bundled) */
 	rtcp_context *video_rtcp_ctx;
+	/*! \brief Last sent audio RTP timestamp */
+	guint32 audio_last_ts;
+	/*! \brief Last sent video RTP timestamp */
+	guint32 video_last_ts;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */

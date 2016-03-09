@@ -96,7 +96,7 @@ typedef struct rtcp_rr
 /*! \brief RTCP SDES (http://tools.ietf.org/html/rfc3550#section-6.5) */
 typedef struct rtcp_sdes_chunk
 {
-	uint32_t csrc;
+	uint32_t ssrc;
 } rtcp_sdes_chunk;
 
 typedef struct rtcp_sdes_item
@@ -109,7 +109,6 @@ typedef struct rtcp_sdes_item
 typedef struct rtcp_sdes
 {
 	rtcp_header header;
-	uint32_t ssrc;
 	rtcp_sdes_chunk chunk;
 	rtcp_sdes_item item;
 } rtcp_sdes;
@@ -187,7 +186,7 @@ typedef struct rtcp_fb
 typedef struct rtcp_context
 {
 	/* Whether we received any RTP packet at all (don't send RR otherwise) */
-	uint16_t enabled:1;
+	uint8_t enabled:1;
 
 	uint16_t last_seq_nr;
 	uint16_t seq_cycle;
@@ -270,6 +269,13 @@ int janus_rtcp_parse(rtcp_context *ctx, char *packet, int len);
  * @param[in] newssrcr The SSRC of the receiver to put in the message
  * @returns 0 in case of success, -1 on errors */
 int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
+
+/*! \brief Method to filter an outgoing RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
+ * @param[in] packet The message data
+ * @param[in] len The message data length in bytes
+ * @param[in,out] newlen The data length of the filtered RTCP message
+ * @returns A pointer to the new RTCP message data, NULL in case all messages have been filtered out */
+char *janus_rtcp_filter(char *packet, int len, int *newlen);
 
 /*! \brief Method to quickly process the header of an incoming RTP packet to update the associated RTCP context
  * @param[in] ctx RTCP context to update, if needed (optional)
