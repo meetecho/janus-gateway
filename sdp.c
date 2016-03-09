@@ -861,6 +861,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					g_strlcat(sdp, "a=inactive\r\n", JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
@@ -875,6 +876,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					g_strlcat(sdp, "a=inactive\r\n", JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
@@ -896,6 +898,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					g_strlcat(sdp, "a=inactive\r\n", JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
@@ -910,6 +913,7 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					g_snprintf(buffer, 512,
 						"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					g_strlcat(sdp, "a=inactive\r\n", JANUS_BUFSIZE);
 					m = m->m_next;
 					continue;
 				}
@@ -968,12 +972,14 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 				g_snprintf(buffer, 512,
 					"m=%s 0 %s 0\r\n",
-					m->m_type_name, m->m_proto_name);
+					m->m_type_name, m->m_type == sdp_media_application ? m->m_proto_name : rtp_profile);
 				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 				/* FIXME Adding a c-line anyway because otherwise Firefox complains? ("c= connection line not specified for every media level, validation failed") */
 				g_snprintf(buffer, 512,
 					"c=IN %s %s\r\n", ipv6 ? "IP6" : "IP4", janus_get_public_ip());
 				g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+				if(m->m_type == sdp_media_audio || m->m_type == sdp_media_video)
+					g_strlcat(sdp, "a=inactive\r\n", JANUS_BUFSIZE);
 				m = m->m_next;
 				continue;
 			}
