@@ -291,6 +291,8 @@ typedef struct janus_videoroom_participant {
 	gboolean audio, video, data;		/* Whether audio, video and/or data is going to be sent by this publisher */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
+	rtcp_context *audio_rtcp_ctx;
+	rtcp_context *video_rtcp_ctx;
 	gboolean audio_active;
 	gboolean video_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
@@ -1849,6 +1851,13 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		rtp_header *rtp = (rtp_header *)buf;
 		rtp->type = video ? VP8_PT : OPUS_PT;
 		rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
+
+		if (video) {
+			janus_rtcp_incoming_rtp(participant->video_rtcp_ctx, buf, len);
+		} else {
+			janus_rtcp_incoming_rtp(participant->audio_rtcp_ctx, buf, len);
+		}
+
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated wih this publisher, if there are any */
 		GHashTableIter iter;
 		gpointer value;
@@ -1900,13 +1909,15 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				}
 				char rtcpbuf[200];
 				memset(rtcpbuf, 0, 200);
-				/* FIXME First put a RR (fake)... */
+				/* First put a RR ... */
 				int rrlen = 32;
 				rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
 				rr->header.version = 2;
 				rr->header.type = RTCP_RR;
 				rr->header.rc = 1;
 				rr->header.length = htons((rrlen/4)-1);
+				janus_rtcp_report_block(participant->video_rtcp_ctx, &rr->rb[0]);
+
 				/* ... then put a SDES... */
 				int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
 				if(sdeslen > 0) {
@@ -1937,14 +1948,29 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					gateway->relay_rtcp(handle, video, rtcpbuf, 12);
 				}
 			}
+		} else if (!video && participant->audio_active) {
+			if(janus_get_monotonic_time()-participant->audio_rtcp_ctx->last_sent >= 5*G_USEC_PER_SEC) {
+				char rtcpbuf[200];
+				memset(rtcpbuf, 0, 200);
+				/* Send a RR ... */
+				int rrlen = 32;
+				rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
+				rr->header.version = 2;
+				rr->header.type = RTCP_RR;
+				rr->header.rc = 1;
+				rr->header.length = htons((rrlen/4)-1);
+				janus_rtcp_report_block(participant->audio_rtcp_ctx, &rr->rb[0]);
+				gateway->relay_rtcp(handle, video, rtcpbuf, rrlen);
+			}
 		}
+
 	}
 }
 
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -1985,6 +2011,41 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 		uint64_t bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* FIXME We got a REMB from this listener, should we do something about it? */
+		}
+	} else {
+		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+		JANUS_LOG(LOG_VERB, "Publisher RTCP");
+		rtcp_header *rtcp = (rtcp_header *)buf;
+		rtcp_context *rtcp_ctx = video ? participant->video_rtcp_ctx : participant->audio_rtcp_ctx;
+		if(rtcp->version != 2)
+			return;
+		int pno = 0, total = len;
+		while(rtcp) {
+			pno++;
+			switch(rtcp->type) {
+				case RTCP_SR: {
+					/* SR, sender report */
+					janus_rtcp_incoming_sr(rtcp_ctx, buf, len);
+					break;
+				}
+				case RTCP_RR: {
+					/* RR, receiver report */
+					JANUS_LOG(LOG_VERB, "Publisher RR ??");
+					break;
+				}
+				default:
+					break;
+			}
+			/* Is this a compound packet? */
+			int length = ntohs(rtcp->length);
+			if(length == 0) {
+				break;
+			}
+			total -= length*4+4;
+			if(total <= 0) {
+				break;
+			}
+			rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
 		}
 	}
 }
@@ -2401,6 +2462,12 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Memory error");
 					goto error;
 				}
+				publisher->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+				publisher->audio_rtcp_ctx->pt = OPUS_PT;
+				publisher->audio_rtcp_ctx->tb = 48000;
+				publisher->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+				publisher->video_rtcp_ctx->pt = VP8_PT;
+				publisher->video_rtcp_ctx->tb = 90000;
 				publisher->session = session;
 				publisher->room = videoroom;
 				publisher->user_id = user_id;
@@ -2757,13 +2824,14 @@ static void *janus_videoroom_handler(void *data) {
 					participant->remb_latest = janus_get_monotonic_time();
 					char rtcpbuf[200];
 					memset(rtcpbuf, 0, 200);
-					/* FIXME First put a RR (fake)... */
+					/* First put a RR ... */
 					int rrlen = 32;
 					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;
 					rr->header.rc = 1;
 					rr->header.length = htons((rrlen/4)-1);
+					janus_rtcp_report_block(participant->video_rtcp_ctx, &rr->rb[0]);
 					/* ... then put a SDES... */
 					int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
 					if(sdeslen > 0) {
@@ -3943,6 +4011,8 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 	JANUS_LOG(LOG_VERB, "Freeing publisher\n");
 	g_free(p->display);
 	g_free(p->sdp);
+	g_free(p->audio_rtcp_ctx);
+	g_free(p->video_rtcp_ctx);
 
 	if(p->arc) {
 		janus_recorder_free(p->arc);

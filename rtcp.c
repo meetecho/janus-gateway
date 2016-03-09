@@ -8,13 +8,22 @@
  * fixed before they are sent to the peers (e.g., to fix SSRCs that may
  * have been changed by the gateway). Methods to generate FIR messages
  * and generate/cap REMB messages are provided as well.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
+
+#include <math.h>
+#include <stdlib.h>
+
 #include "debug.h"
 #include "rtcp.h"
+
+#include "rtp.h"
+#include "utils.h"
+#include "janus.h"
+#include "ice.h"
 
 int janus_rtcp_parse(char *packet, int len) {
 	return janus_rtcp_fix_ssrc(packet, len, 0, 0, 0);
@@ -756,3 +765,101 @@ int janus_rtcp_nacks(char *packet, int len, GSList *nacks) {
 	rtcp->length = htons(words);
 	return words*4+4;
 }
+
+void janus_rtcp_incoming_rtp(rtcp_context *ctx, char * buf, int len) {
+	rtp_header *rtp = (rtp_header *)buf;
+	uint16_t seq_number = ntohs(rtp->seq_number);
+	if (ctx->base_seq == 0 && ctx->seq_cycle == 0)
+		ctx->base_seq = seq_number;
+
+	if (janus_get_max_nack_queue() + seq_number < ctx->last_seq_nr)
+		ctx->seq_cycle++;
+	ctx->last_seq_nr = seq_number;
+	ctx->received++;
+	uint32_t rtp_expected = 0x0;
+	if (ctx->seq_cycle > 0) {
+		rtp_expected = ctx->seq_cycle;
+		rtp_expected = rtp_expected << 16;
+	}
+	rtp_expected = rtp_expected + 1 + seq_number - ctx->base_seq;
+	ctx->lost = rtp_expected - ctx->received;
+	ctx->expected = rtp_expected;
+
+	uint64_t arrival = (janus_get_monotonic_time() * ctx->tb) / 1000000;
+	uint64_t transit = arrival - ntohl(rtp->timestamp);
+	uint64_t d = abs(transit - ctx->transit);
+	ctx->transit = transit;
+	ctx->jitter += (1./16.) * ((double)d  - ctx->jitter);
+}
+
+void janus_rtcp_incoming_sr(rtcp_context *ctx, char * buf, int len) {
+	rtcp_header *rtcp = (rtcp_header *)buf;
+	rtcp_sr *sr = (rtcp_sr*)rtcp;
+
+	ctx->lsr_ts = janus_get_monotonic_time();
+
+	uint64_t ntp = ntohl(sr->si.ntp_ts_msw);
+	ntp = (ntp << 32) | ntohl(sr->si.ntp_ts_lsw);
+	ctx->lsr = (ntp >> 16);
+
+	// TODO think about how to log this so we can process it later...,
+	// also still needs some math to calculate round-trip-time and actual jitter
+	/* uint32_t rtp_ts = ntohl(sr->si.rtp_ts); */
+	/* uint32_t s_packets = ntohl(sr->si.s_packets); */
+	/* uint32_t s_octets = ntohl(sr->si.s_octets); */
+	/* JANUS_LOG(LOG_VERB, "Publisher SR, RB: %d, lsr: %"SCNu32" packets: %"SCNu32" bytes: %"SCNu32" \n", */
+	/* 		ctx->lsr, */
+	/* 		sr->header.rc, */
+	/* 		s_packets, */
+	/* 		s_octets); */
+	/* int i; */
+	/* for(i=0; i<sr->header.rc; i++) { */
+	/* 	uint32_t ssrc = ntohl(sr->rb[i].ssrc); */
+	/* 	uint32_t flcnpl = ntohl(sr->rb[i].flcnpl); */
+	/* 	uint32_t ehsnr = ntohl(sr->rb[i].ehsnr); */
+	/* 	uint32_t jitter = ntohl(sr->rb[i].jitter); */
+	/* 	uint32_t lsr = ntohl(sr->rb[i].lsr); */
+	/* 	uint32_t delay = ntohl(sr->rb[i].delay); */
+	/* 	int32_t lost = flcnpl & 0x00FFFFFF; */
+	/* 	if (lost & 0x00800000) */
+	/* 		lost = - (lost & 0x007fffff); */
+	/* 	int32_t fraction = (flcnpl & 0xFF000000) >> 24; */
+	/* 	JANUS_LOG(LOG_VERB, "RB ssrc: %"SCNu32" lost: %"SCNi32" percentile: %"SCNi32"\n", lost, ((fraction * 1000) >> 8), ssrc); */
+	/* } */
+}
+
+void janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {
+
+	rb->jitter = htonl((uint32_t) ctx->jitter);
+	rb->ehsnr = htonl((((uint32_t) 0x0 + ctx->seq_cycle) << 16) + ctx->last_seq_nr);
+	uint32_t lost;
+	if (ctx->lost > 0x7fffff) {
+		lost = 0x7fffff;
+	} else {
+		lost = 0x00FFFFFF & ctx->lost;
+	}
+	uint32_t expected_interval = ctx->expected - ctx->expected_prior;
+	ctx->expected_prior = ctx->expected;
+	uint32_t received_interval = ctx->received - ctx->received_prior;
+	ctx->received_prior = ctx->received;
+	int32_t lost_interval = expected_interval - received_interval;
+	uint32_t fraction;
+	if (expected_interval == 0 || lost_interval <=0)
+		fraction = 0;
+	else
+		fraction = (lost_interval << 8) / expected_interval;
+	fraction = fraction << 24;
+	rb->flcnpl = htonl(lost | fraction);
+	JANUS_LOG(LOG_VERB, "%d lsr: %"SCNu32" received: %"SCNu32" lost: %"SCNu32" lost promille: %"SCNu32" jitter: %"SCNu32" ms\n",
+		ctx->lsr,
+		ctx->pt,
+		ctx->received,
+		lost,
+		((fraction>>24) * 1000) >> 8,
+		(uint32_t) floor(ctx->jitter * 1000.0 / ctx->tb));
+
+	rb->lsr = htonl(ctx->lsr);
+	rb->delay = htonl(((janus_get_monotonic_time() - ctx->lsr_ts) << 16) / 1000000);
+	ctx->last_sent = janus_get_monotonic_time();
+}
+
