@@ -2832,7 +2832,8 @@ static void *janus_sip_relay_thread(void *data) {
 	memset(buffer, 0, 1500);
 	/* Loop */
 	int num = 0;
-	while(session != NULL && !session->destroyed &&
+	gboolean goon = TRUE;
+	while(goon && session != NULL && !session->destroyed &&
 			session->status > janus_sip_call_status_idle &&
 			session->status < janus_sip_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
 		/* Prepare poll */
@@ -2882,6 +2883,15 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
 					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
+				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
+				/* FIXME Simulate a "hangup" coming from the browser */
+				janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+				msg->handle = session->handle;
+				msg->message = g_strdup("{\"request\":\"hangup\"}");
+				msg->transaction = NULL;
+				msg->sdp_type = NULL;
+				msg->sdp = NULL;
+				g_async_queue_push(messages, msg);
 				break;
 			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP/RTCP packet */
