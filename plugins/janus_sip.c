@@ -2589,7 +2589,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp) {
 	if(sdp->sdp_connection && sdp->sdp_connection->c_address) {
 		sdp->sdp_connection->c_address = local_ip;
 	}
-	JANUS_LOG(LOG_WARN, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
+	JANUS_LOG(LOG_VERB, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
 	sdp_media_t *m = sdp->sdp_media;
 	while(m) {
 		m->m_proto = session->media.require_srtp ? sdp_proto_srtp : sdp_proto_rtp;
