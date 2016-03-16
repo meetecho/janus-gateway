@@ -277,6 +277,8 @@ typedef struct janus_streaming_mountpoint {
 	janus_streaming_codecs codecs;
 	GList/*<unowned janus_streaming_session>*/ *listeners;
 	gint64 destroyed;
+	gint64 last_received_video;
+	gint64 last_received_audio;
 	janus_mutex mutex;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints;
@@ -1015,6 +1017,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_object_set_new(ml, "id", json_integer(mp->id));
 			json_object_set_new(ml, "description", json_string(mp->description));
 			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+			if(mp->streaming_source == janus_streaming_source_rtp) {
+				janus_mutex_lock(&mp->mutex);
+				json_object_set_new(ml, "last_received_audio", json_integer(mp->last_received_audio));
+				json_object_set_new(ml, "last_received_video", json_integer(mp->last_received_video));
+				janus_mutex_unlock(&mp->mutex);
+				json_object_set_new(ml, "now", json_integer(janus_get_monotonic_time()));
+			}
 			json_array_append_new(list, ml);
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
@@ -2787,6 +2796,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
 	live_rtp->listeners = NULL;
 	live_rtp->destroyed = 0;
+	live_rtp->last_received_audio = 0;
+	live_rtp->last_received_video = 0;
 	janus_mutex_init(&live_rtp->mutex);
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtp->id), live_rtp);
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -2891,6 +2902,8 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->codecs.video_rtpmap = NULL;
 	file_source->listeners = NULL;
 	file_source->destroyed = 0;
+	file_source->last_received_audio = 0;
+	file_source->last_received_video = 0;
 	janus_mutex_init(&file_source->mutex);
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(file_source->id), file_source);
 	janus_mutex_unlock(&mountpoints_mutex);
@@ -3154,6 +3167,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp->codecs.video_fmtp = dovideo ? g_strdup(vfmtp) : NULL;
 	live_rtsp->listeners = NULL;
 	live_rtsp->destroyed = 0;
+	live_rtp->last_received_audio = 0;
+	live_rtp->last_received_video = 0;
 	janus_mutex_init(&live_rtsp->mutex);
 	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtsp->id), live_rtsp);
 	janus_mutex_unlock(&mountpoints_mutex);	
@@ -3565,6 +3580,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Go! */
 					janus_mutex_lock(&mountpoint->mutex);
 					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+					mountpoint->last_received_audio = janus_get_monotonic_time();
 					janus_mutex_unlock(&mountpoint->mutex);
 					continue;
 				} else if(video_fd != -1 && fds[i].fd == video_fd) {
@@ -3667,6 +3683,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Go! */
 					janus_mutex_lock(&mountpoint->mutex);
 					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
+					mountpoint->last_received_video = janus_get_monotonic_time();
 					janus_mutex_unlock(&mountpoint->mutex);
 					continue;
 				}
