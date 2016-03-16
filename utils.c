@@ -4,7 +4,7 @@
  * \brief    Utilities and helpers
  * \details  Implementations of a few methods that may be of use here
  * and there in the code.
- * 
+ *
  * \ingroup core
  * \ref core
  */
@@ -221,6 +221,102 @@ int janus_get_opus_pt(const char *sdp) {
 				/* Gotcha! */
 				int pt = 0;
 				if(sscanf(line, "a=rtpmap:%d OPUS/48000/2", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
+int janus_get_isac32_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "isac/32000") && !strstr(sdp, "ISAC/32000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "isac/32000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d isac/32000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "ISAC/32000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d ISAC/32000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
+int janus_get_isac16_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "isac/16000") && !strstr(sdp, "ISAC/16000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "isac/16000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d isac/16000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "ISAC/16000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d ISAC/16000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
+int janus_get_pcmu_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "pcmu/8000") && !strstr(sdp, "PCMU/8000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "pcmu/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d pcmu/8000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "PCMU/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d PCMU/8000", &pt) == 1) {
 					*next = '\n';
 					return pt;
 				}
