@@ -59,8 +59,8 @@ var audioenabled = false;
 
 
 $(document).ready(function() {
-	// Initialize the library (console debug enabled)
-	Janus.init({debug: true, callback: function() {
+	// Initialize the library (all console debuggers enabled)
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
@@ -84,7 +84,7 @@ $(document).ready(function() {
 								success: function(pluginHandle) {
 									$('#details').remove();
 									vmailtest = pluginHandle;
-									console.log("Plugin attached! (" + vmailtest.getPlugin() + ", id=" + vmailtest.getId() + ")");
+									Janus.log("Plugin attached! (" + vmailtest.getPlugin() + ", id=" + vmailtest.getId() + ")");
 									$('#voicemail').removeClass('hide').show();
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
@@ -98,11 +98,11 @@ $(document).ready(function() {
 										});
 								},
 								error: function(error) {
-									console.log("  -- Error attaching plugin... " + error);
+									Janus.error("  -- Error attaching plugin...", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
 								consentDialog: function(on) {
-									console.log("Consent dialog should be " + (on ? "on" : "off") + " now");
+									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
 										$.blockUI({ 
@@ -121,10 +121,10 @@ $(document).ready(function() {
 									}
 								},
 								onmessage: function(msg, jsep) {
-									console.log(" ::: Got a message :::");
-									console.log(JSON.stringify(msg));
+									Janus.debug(" ::: Got a message :::");
+									Janus.debug(JSON.stringify(msg));
 									var event = msg["voicemail"];
-									console.log("Event: " + event);
+									Janus.debug("Event: " + event);
 									if(event != undefined && event != null) {
 										if(event === "event") {
 											if(msg["status"] !== undefined && msg["status"] !== null) {
@@ -167,8 +167,8 @@ $(document).ready(function() {
 										}
 									}
 									if(jsep !== undefined && jsep !== null) {
-										console.log("Handling SDP as well...");
-										console.log(jsep);
+										Janus.debug("Handling SDP as well...");
+										Janus.debug(jsep);
 										vmailtest.handleRemoteJsep({jsep: jsep});
 									}
 								},
@@ -179,12 +179,12 @@ $(document).ready(function() {
 									// We're not going to receive anything from the plugin
 								},
 								oncleanup: function() {
-									console.log(" ::: Got a cleanup notification :::");
+									Janus.log(" ::: Got a cleanup notification :::");
 								}
 							});
 					},
 					error: function(error) {
-						console.log(error);
+						Janus.error(error);
 						bootbox.alert(error, function() {
 							window.location.reload();
 						});
@@ -203,14 +203,13 @@ function startRecording() {
 		{
 			media: { audioRecv: false, video: false},	// We're going to only send, and not receive, audio
 			success: function(jsep) {
-				console.log("Got SDP!");
-				console.log(jsep);
+				Janus.debug("Got SDP!");
+				Janus.debug(jsep);
 				var publish = { "request": "record" };
 				vmailtest.send({"message": publish, "jsep": jsep});
 			},
 			error: function(error) {
-				console.log("WebRTC error:");
-				console.log(error);
+				Janus.error("WebRTC error:", error);
 				bootbox.alert("WebRTC error... " + JSON.stringify(error));
 			}
 		});

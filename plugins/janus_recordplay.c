@@ -247,6 +247,7 @@
 
 #include <dirent.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <jansson.h>
 
@@ -338,6 +339,7 @@ typedef struct janus_recordplay_message {
 	char *sdp;
 } janus_recordplay_message;
 static GAsyncQueue *messages = NULL;
+static janus_recordplay_message exit_message;
 
 typedef struct janus_recordplay_rtp_header_extension {
 	uint16_t type;
@@ -424,9 +426,8 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		"a=rtcp-fb:%d goog-remb\r\n"		/* VP8 payload type */
 
 
-void janus_recordplay_message_free(janus_recordplay_message *msg);
-void janus_recordplay_message_free(janus_recordplay_message *msg) {
-	if(!msg)
+static void janus_recordplay_message_free(janus_recordplay_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;
@@ -573,6 +574,8 @@ void janus_recordplay_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
+
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -1083,11 +1086,21 @@ static void *janus_recordplay_handler(void *data) {
 	}
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
-			usleep(50000);
+		msg = g_async_queue_pop(messages);
+		if(msg == NULL)
+			continue;
+		if(msg == &exit_message)
+			break;
+		if(msg->handle == NULL) {
+			janus_recordplay_message_free(msg);
 			continue;
 		}
-		janus_recordplay_session *session = (janus_recordplay_session *)msg->handle->plugin_handle;
+		janus_recordplay_session *session = NULL;
+		janus_mutex_lock(&sessions_mutex);
+		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
+			session = (janus_recordplay_session *)msg->handle->plugin_handle;
+		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_recordplay_message_free(msg);
@@ -1439,6 +1452,7 @@ static void *janus_recordplay_handler(void *data) {
 		} else {
 			const char *type = session->recorder ? "answer" : "offer";
 			/* How long will the gateway take to push the event? */
+			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_recordplay_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",
@@ -1512,12 +1526,13 @@ void janus_recordplay_update_recordings_list(void) {
 			JANUS_LOG(LOG_ERR, "Invalid recording '%s'...\n", recent->d_name);
 			continue;
 		}
-		janus_config_category *cat = janus_config_get_categories(nfo);
-		if(cat == NULL) {
+		GList *cl = janus_config_get_categories(nfo);
+		if(cl == NULL || cl->data == NULL) {
 			JANUS_LOG(LOG_WARN, "No recording info in '%s', skipping...\n", recent->d_name);
 			janus_config_destroy(nfo);
 			continue;
 		}
+		janus_config_category *cat = (janus_config_category *)cl->data;
 		guint64 id = atol(cat->name);
 		if(id == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid ID, skipping...\n");

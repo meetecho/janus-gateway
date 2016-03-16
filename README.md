@@ -18,8 +18,6 @@ on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 ##Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
-* [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/)
-* [libini-config](https://fedorahosted.org/sssd/) (INI configurations)
 * [Jansson](http://www.digip.org/jansson/)
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
@@ -27,12 +25,14 @@ To install it, you'll need to satisfy the following dependencies:
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
 are interested in Data Channels)
+* [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (only
+needed if you are interested in REST support for the Janus API)
 * [libwebsockets](https://libwebsockets.org/) (only needed if
-you are interested in WebSockets support)
+you are interested in WebSockets support for the Janus API)
 * [cmake](http://www.cmake.org/) (only needed if you are interested in
-WebSockets support, as libwebsockets makes use of it)
+WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
-you are interested in RabbitMQ support)
+you are interested in RabbitMQ support for the Janus API)
 
 A couple of plugins depend on a few more libraries:
 
@@ -51,15 +51,16 @@ instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel libini_config-devel pkgconfig gengetopt \
-       libtool autoconf automake
+       opus-devel libogg-devel pkgconfig gengetopt libtool autoconf automake
+
+Notice that you may have to ```yum install epel-release``` as well if you're
+attempting an installation on a CentOS machine instead.
 
 On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
-		libopus-dev libogg-dev libini-config-dev libcollection-dev \
-		pkg-config gengetopt libtool automake
+		libopus-dev libogg-dev pkg-config gengetopt libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
@@ -130,9 +131,11 @@ HTTP REST API, you'll have to install it manually:
 
 	git clone git://git.libwebsockets.org/libwebsockets
 	cd libwebsockets
+	# If you want the stable version of libwebsockets, uncomment the next line
+	# git checkout v1.5-chrome47-firefox41
 	mkdir build
 	cd build
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
 	make && sudo make install
 
 * *Note:* if libwebsockets.org is unreachable for any reason, replace
@@ -191,10 +194,15 @@ usual to start the whole compilation process:
 	make
 	make install
 
-To also automatically install the default configuration files to use,
-also do a:
+Since Janus requires configuration files for both the core and its
+modules in order to work, you'll probably also want to install the
+default configuration files to use, which you can do this way:
 
 	make configs
+
+Remember to only do this once, or otherwise a subsequent ```make configs```
+will overwrite any configuration file you may have modified in the
+meanwhile.
 
 If you're not interested in Data Channels, WebSockets and/or RabbitMQ
 (or you don't care about either of them) you can disable them when
@@ -202,11 +210,12 @@ configuring:
 
 	./configure --disable-websockets --disable-data-channels --disable-rabbitmq
 
-If Doxygen and graphviz are available, the process will also build the
-documentation for you. If you prefer not to build it, use the
---disable-docs configuration option:
+If Doxygen and graphviz are available, the process can also build the
+documentation for you. By default the compilation process will not try
+to build the documentation, so if you instead prefer to build it, use the
+--enable-docs configuration option:
 
-	./configure --disable-docs
+	./configure --enable-docs
 
 You can also selectively enable/disable other features (e.g., specific
 plugins you don't care about). Use the --help option when configuring
@@ -223,43 +232,17 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 	
-	janus 0.0.9
+	janus 0.1.0
 
 	Usage: janus [OPTIONS]...
 
 	-h, --help                    Print help and exit
 	-V, --version                 Print version and exit
+	-b, --daemon                  Launch Janus in background as a daemon
+                                  (default=off)
+	-N, --disable-stdout          Disable stdout based logging  (default=off)
+	-L, --log-file=path           Log to the specified file (default=stdout only)
 	-i, --interface=ipaddress     Interface to use (will be the public IP)
-	-p, --port=portnumber         Web server HTTP port (default=8088)
-	-s, --secure-port=portnumber  Web server HTTPS port (default=no HTTPS)
-	-n, --no-http                 Disable insecure HTTP web server  (default=off)
-	-b, --base-path=basepath      Base path to bind to in the web server 
-								  (default=/janus) 
-	-w, --ws-port=portnumber      WebSockets server port (default=no WebSockets)
-	-W, --ws-secure-port=portnumber
-                                  Secure WebSockets server port (default=no 
-                                  secure WebSockets)
-	-N, --no-websockets           Disable insecure WebSockets server  
-                                  (default=off)
-	-m, --admin-port=portnumber   Admin/monitor web server HTTP port 
-                                  (default=7088)
-	-M, --admin-secure-port=portnumber
-                                  Admin/monitor web server HTTPS port (default=no 
-                                  HTTPS)
-	-O, --no-admin                Disable insecure HTTP admin/monitor web server  
-                                  (default=off)
-	-B, --admin-base-path=basepath
-                                  Base path to bind to in the HTTP/HTTPS 
-                                  admin/monitor web server (default=/admin) 
-	-Q, --admin-secret=randomstring
-                                  Admin/monitor secret all requests need to pass 
-                                  in order to be accepted by Janus (useful a 
-                                  crude form of authentication, none by 
-                                  default)
-	-L, --admin-acl=list          Comma-separated list of IP addresses allowed to 
-                                  use the Admin/monitor; partial strings are 
-                                  supported (e.g., 192.168.0.1,10.0.0.1 or 
-                                  192.168., default=no restriction)
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
@@ -307,15 +290,6 @@ or on the command line:
                                   default)
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
-	-R, --enable-rabbitmq         Enable RabbitMQ support  (default=off)
-	-H, --rabbitmq-host=string    Address (host:port) of the RabbitMQ server to 
-                                  use (default=localhost:5672)
-	-t, --rabbitmq-in-queue=string
-                                  Name of the RabbitMQ queue for incoming 
-                                  messages (no default)
-	-f, --rabbitmq-out-queue=string
-                                  Name of the RabbitMQ queue for outgoing 
-                                  messages (no default)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:
@@ -323,32 +297,32 @@ specified in the configuration file. To start the gateway, simply run:
 	<installdir>/bin/janus
 
 This will start the gateway, and have it look at the configuration file.
-By default, only an HTTP webserver is started. To enable HTTPS support,
-edit the configuration file accordingly or use the command line. The
-webserver will make use of the same certificates provided for DTLS. You
-can also change the base path that the webserver uses: by default this
-is /janus, but you can change it to anything you want and with any nesting
-you want (e.g., /mypath, /my/path, or /my/really/nested/path). This is
-done to allow you to more easily customize rules in any frontend you
-may have (e.g., Apache in front of your services). Please notice that
-the path configuration has no effect on the WebSockets usage of the API,
-instead, as it is not needed there.
+
+As far as transports are concerned (that is, with respect to how you can
+interact with your Janus instance), using the default configuration files
+provided after issuing a ```make configs``` will result in Janus only
+enabling an HTTP webserver (port 8088) and a plain WebSocket server (8188),
+assuming the related transport modules have been compiled, of course.
+To enable HTTPS or Secure WebSockets support, edit the related transport
+configuration file accordingly. You can also change the base path that
+the webserver uses: by default this is ```/janus```, but you can change
+it to anything you want and with any nesting you want (e.g., ```/mypath```,
+```/my/path```, or ```/my/really/nested/path```). This is done to allow
+you to more easily customize rules in any frontend you may have (e.g.,
+Apache in front of your services). Please notice that the path configuration
+is not provided for WebSockets, instead, as it is not needed there. The
+RabbitMQ module, if compiled, is disabled by default, so you'll have
+to enable it manually if interested in it. 
  
-In the absence of a configuration file, the only mandatory options to
-specify in the command line are the ones related to the DTLS certificate.
-A default certificate is provided with this package in the certs folder,
-which you can use launching the executable with these parameters:
-
-	<installdir>/bin/janus -c /path/to/mycert.pem -k /path/to/mycert.key
-
-At this point, the gateway will be listening on the 8088 port (or whatever
-you changed that to) of your machine. To test whether it's working
-correctly, you can use the demos provided with this package in the html
-folder: these are exactly the same demos available online on the
-[project website](http://janus.conf.meetecho.com/). Just copy the file
-it contains in a webserver, and open the index.html page in either
-Chrome or Firefox. A list of demo pages exploiting the different plugins
-will be available.
+To test whether it's working correctly, you can use the demos provided
+with this package in the ```html``` folder: these are exactly the same demos
+available online on the [project website](http://janus.conf.meetecho.com/).
+Just copy the file it contains in a webserver, or use a userspace webserver
+to serve the files in the ```html``` folder (e.g., with php or python),
+and open the index.html page in either Chrome or Firefox. A list of demo
+pages exploiting the different plugins will be available. Remember to
+edit the transport/port details in the demo JavaScript files if you
+changed any transport-related configuration from its defaults.
 
 
 ##Help us!

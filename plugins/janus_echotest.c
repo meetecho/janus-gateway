@@ -174,6 +174,7 @@ typedef struct janus_echotest_message {
 	char *sdp;
 } janus_echotest_message;
 static GAsyncQueue *messages = NULL;
+static janus_echotest_message exit_message;
 
 typedef struct janus_echotest_session {
 	janus_plugin_session *handle;
@@ -192,9 +193,8 @@ static GHashTable *sessions;
 static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
-void janus_echotest_message_free(janus_echotest_message *msg);
-void janus_echotest_message_free(janus_echotest_message *msg) {
-	if(!msg)
+static void janus_echotest_message_free(janus_echotest_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;
@@ -311,6 +311,7 @@ void janus_echotest_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -664,11 +665,21 @@ static void *janus_echotest_handler(void *data) {
 	}
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
-			usleep(50000);
+		msg = g_async_queue_pop(messages);
+		if(msg == NULL)
+			continue;
+		if(msg == &exit_message)
+			break;
+		if(msg->handle == NULL) {
+			janus_echotest_message_free(msg);
 			continue;
 		}
-		janus_echotest_session *session = (janus_echotest_session *)msg->handle->plugin_handle;
+		janus_echotest_session *session = NULL;
+		janus_mutex_lock(&sessions_mutex);
+		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
+			session = (janus_echotest_session *)msg->handle->plugin_handle;
+		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_echotest_message_free(msg);
@@ -886,13 +897,23 @@ static void *janus_echotest_handler(void *data) {
 			}
 			/* Make also sure we get rid of ULPfec, red, etc. */
 			if(strstr(sdp, "ulpfec")) {
-				sdp = janus_string_replace(sdp, "100 116 117 96", "100");
+				/* FIXME This really needs some better code */
 				sdp = janus_string_replace(sdp, "a=rtpmap:116 red/90000\r\n", "");
 				sdp = janus_string_replace(sdp, "a=rtpmap:117 ulpfec/90000\r\n", "");
 				sdp = janus_string_replace(sdp, "a=rtpmap:96 rtx/90000\r\n", "");
 				sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
+				sdp = janus_string_replace(sdp, "a=rtpmap:97 rtx/90000\r\n", "");
+				sdp = janus_string_replace(sdp, "a=fmtp:97 apt=101\r\n", "");
+				sdp = janus_string_replace(sdp, "a=rtpmap:98 rtx/90000\r\n", "");
+				sdp = janus_string_replace(sdp, "a=fmtp:98 apt=116\r\n", "");
+				sdp = janus_string_replace(sdp, " 116", "");
+				sdp = janus_string_replace(sdp, " 117", "");
+				sdp = janus_string_replace(sdp, " 96", "");
+				sdp = janus_string_replace(sdp, " 97", "");
+				sdp = janus_string_replace(sdp, " 98", "");
 			}
 			/* How long will the gateway take to push the event? */
+			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",

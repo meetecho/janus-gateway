@@ -89,6 +89,16 @@ int janus_get_opus_pt(const char *sdp);
  * @returns The VP8 payload type, if found, -1 otherwise */
 int janus_get_vp8_pt(const char *sdp);
 
+/*! \brief Ugly and dirty helper to quickly get the VP9 payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The VP9 payload type, if found, -1 otherwise */
+int janus_get_vp9_pt(const char *sdp);
+
+/*! \brief Ugly and dirty helper to quickly get the H.264 payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The H.264 payload type, if found, -1 otherwise */
+int janus_get_h264_pt(const char *sdp);
+
 /*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
  * @param ip The IP address to check
  * @param[in,out] family The address family of the address, set by the method if valid
@@ -100,4 +110,13 @@ gboolean janus_is_ip_valid(const char *ip, int *family);
  * @param address The sockaddr address to convert
  * @returns A string containing the IP address, if successful, NULL otherwise */
 char *janus_address_to_ip(struct sockaddr *address);
+
+/*! \brief Create and lock a PID file
+ * @param file Path to the PID file to use
+ * @returns 0 if successful, a negative integer otherwise */
+int janus_pidfile_create(const char *file);
+
+/*! \brief Unlock and remove a previously created PID file
+ * @returns 0 if successful, a negative integer otherwise */
+int janus_pidfile_remove(void);
 #endif

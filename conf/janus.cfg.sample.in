@@ -1,9 +1,19 @@
 ; General configuration: folders where the configuration and the plugins
-; can be found, default interface to use, debug/logging level and, if
-; needed, shared apisecret between application(s) and Janus.
+; can be found, how output should be logged, whether Janus should run as
+; a daemon or in foreground, default interface to use, debug/logging level
+; and, if needed, shared apisecret and/or token authentication mechanism
+; between application(s) and Janus.
 [general]
 configs_folder = @confdir@		; Configuration files folder
 plugins_folder = @plugindir@		; Plugins folder
+transports_folder = @transportdir@	; Transports folder
+;log_to_stdout = false			; Whether the Janus output should be written
+								; to stdout or not (default=true)
+;log_to_file = /tmp/janus.log	; Whether to use a log file or not
+;daemonize = true				; Whether Janus should run as a daemon
+								; or not (default=run in foreground)
+;pid_file = /tmp/janus.pid		; PID file to create when Janus has been
+								; started, and to destroy at shutdown
 ;interface = 1.2.3.4		; Interface to use (will be used in SDP)
 debug_level = 4				; Debug/logging level, valid values are 0-7
 ;debug_timestamps = yes		; Whether to show a timestamp for each log line
@@ -22,96 +32,32 @@ debug_level = 4				; Debug/logging level, valid values are 0-7
 ;							users. For this to work, the Admin API MUST
 ;							be enabled, as tokens are added and removed
 ;							through messages sent there.
-
-
-; Web server and WebSockets stuff: whether either one should be enabled,
-; which ports they should use, whether security should be handled directly
-; or demanded to an external application (e.g., web frontend) and what
-; should be the base path for the Janus API protocol (plain HTTP only).
-; You can also specify the threading model to use for the HTTP webserver:
-; by default this is 'unlimited' (which means a thread per connection, as
-; specified by the libmicrohttpd documentation), using a number will make
-; use of a thread pool instead. Since long polls are involved, make sure
-; you choose a value that doesn't keep new connections waiting.
-; Please beware that the WebSockets server will only be available if you
-; built Janus compiling support for it.
-[webserver]
-base_path = /janus			; Base path to bind to in the web server (plain HTTP only)
-threads = unlimited			; unlimited=thread per connection, number=thread pool
-http = yes					; Whether to enable the plain HTTP interface
-port = 8088					; Web server HTTP port
-https = no					; Whether to enable HTTPS (default=no)
-;secure_port = 8889			; Web server HTTPS port, if enabled
-ws = yes					; Whether to enable the WebSockets interface
-ws_port = 8188				; WebSockets server port
-ws_ssl = no					; Whether to enable secure WebSockets
-;ws_secure_port = 8989;		; WebSockets server secure port, if enabled
-
-
-; Recent versions of Janus now also support RabbitMQ based messaging as
-; an alternative "transport" for API requests, responses and notifications.
-; This is only useful when you're wrapping Janus requests in your server
-; application, and handling the communication with clients your own way.
-; At the moment, only a single "application" can be handled at the same
-; time, meaning that Janus won't implement multiple queues to handle
-; multiple concurrent "application servers" taking advantage of its
-; features. Support for this is planned, though (e.g., through some kind
-; of negotiation to create queues on the fly). Right now, you can only
-; configure the address of the RabbitMQ server to use, and the queues to
-; make use of to receive (to-janus) and send (from-janus) messages
-; from/to an external application. If you're using the same RabbitMQ
-; server instance for multiple Janus instances, make sure you configure
-; different queues for each of them (e.g., from-janus-1/to-janus-1 and
-; from-janus-2/to-janus-2), or otherwise both the instances will make
-; use of the same queues and messages will get lost. The integration
-; is disabled by default, so set enable=yes if you want to use it.
-[rabbitmq]
-enable = no					; Whether the support must be enabled
-host = localhost			; The address of the RabbitMQ server
-;port = 5672				; The port of the RabbitMQ server (5672 by default)
-to_janus = to-janus			; Name of the queue for incoming messages
-from_janus = from-janus		; Name of the queue for outgoing messages
-
-
-; Janus can also expose an admin/monitor endpoint, to allow you to check
-; which sessions are up, which handles they're managing, their current
-; status and so on. This provides a useful aid when debugging potential
-; issues in Janus. The configuration is pretty much the same as the one
-; already presented above for the webserver stuff, as the API is very
-; similar: choose the base bath for the admin/monitor endpoint (/admin
-; by default), ports, threading model, etc. Besides, you can specify
-; a secret that must be provided in all requests as a crude form of
-; authorization mechanism, and partial or full source IPs if you want to
-; limit access basing on IP addresses. For security reasons, this
-; endpoint is disabled by default, enable it by setting admin_http=yes.
-[admin]
-admin_base_path = /admin		; Base path to bind to in the admin/monitor web server (plain HTTP only)
-admin_threads = unlimited		; unlimited=thread per connection, number=thread pool
-admin_http = no					; Whether to enable the plain HTTP interface
-admin_port = 7088				; Admin/monitor web server HTTP port
-admin_https = no				; Whether to enable HTTPS (default=no)
-;admin_secure_port = 7889		; Admin/monitor web server HTTPS port, if enabled
 admin_secret = janusoverlord	; String that all Janus requests must contain
 ;								  to be accepted/authorized by the admin/monitor.
-;admin_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
+;								  only needed if you enabled the admin API
+;								  in any of the available transports.
 
 
-; Certificate and key to use for DTLS and/or HTTPS/WSS.
+; Certificate and key to use for DTLS.
 [certificates]
 cert_pem = @certdir@/mycert.pem
 cert_key = @certdir@/mycert.key
 
 
-; Media-related stuff: right now, you can only configure whether you want
+; Media-related stuff: you can configure whether if you want
 ; to enable IPv6 support (still WIP, so handle with care), the maximum size
 ; of the NACK queue for retransmissions per handle the range of ports to
-; use for RTP and RTCP (by default, no range is envisaged) and the
-; starting MTU for DTLS (1472 by default, it adapts automatically).
+; use for RTP and RTCP (by default, no range is envisaged), the
+; starting MTU for DTLS (1472 by default, it adapts automatically),
+; if BUNDLE should be forced (defaults to false) and if RTCP muxing should
+; be forced (defaults to false).
 [media]
 ;ipv6 = true
 ;max_nack_queue = 300
 ;rtp_port_range = 20000-40000
 ;dtls_mtu = 1200
+;force-bundle = true
+;force-rtcp-mux = true
 
 
 ; NAT-related stuff: specifically, you can configure the STUN/TURN
@@ -140,6 +86,8 @@ nice_debug = false
 ; all host candidates (which normally have a private IP address) to
 ; be rewritten with the public address provided in the settings. As
 ; such, use the option with caution and only if you know what you're doing.
+; Besides, it's still recommended to also enable STUN in those cases,
+; and keep ICE Lite disabled as it's not strictly speaking a public server.
 ;nat_1_1_mapping = 1.2.3.4
 
 ; You can configure a TURN server in two different ways: specifying a
@@ -193,10 +141,18 @@ nice_debug = false
 ; name starts with 'vmnet', to skip VMware interfaces:
 ice_ignore_list = vmnet
 
-; Finally, you can choose which of the available plugins should be
+; You can choose which of the available plugins should be
 ; enabled or not. Use the 'disable' directive to prevent Janus from
 ; loading one or more plugins: use a comma separated list of plugin file
 ; names to identify the plugins to disable. By default all available
-; plugins are enabled and loaded at startup. 
+; plugins are enabled and loaded at startup.
 [plugins]
 ; disable = libjanus_voicemail.so,libjanus_recordplay.so
+
+; You can choose which of the available transports should be enabled or
+; not. Use the 'disable' directive to prevent Janus from loading one
+; or more transport: use a comma separated list of transport file names
+; to identify the transports to disable. By default all available
+; transports are enabled and loaded at startup.
+[transports]
+; disable = libjanus_rabbitmq.so

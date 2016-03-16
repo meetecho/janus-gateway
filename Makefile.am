@@ -12,7 +12,7 @@ AM_CFLAGS = \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
 AM_CFLAGS += -Wno-undef  # sophiasip is not -Wundef--safe
 AM_CFLAGS += -Wno-redundant-decls  # sophiasip also contains redundant declarations
-AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT
+AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
@@ -29,8 +29,8 @@ bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
 header_HEADERS = \
-	plugins/plugin.h apierror.h config.h debug.h dtls.h ice.h mutex.h record.h \
-	rtcp.h rtp.h sctp.h sdp.h turnrest.h utils.h
+	plugins/plugin.h transports/transport.h apierror.h config.h debug.h dtls.h \
+	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h turnrest.h utils.h log.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -40,6 +40,9 @@ cert_DATA = certs/mycert.key certs/mycert.pem
 
 plugindir = $(libdir)/janus/plugins
 plugin_LTLIBRARIES = $(NULL)
+
+transportdir = $(libdir)/janus/transports
+transport_LTLIBRARIES = $(NULL)
 
 SUBDIRS = html
 html_DATA = README.md
@@ -56,6 +59,7 @@ recordings_DATA = $(NULL)
 	    s|[@]confdir[@]|$(confdir)|;\
 	    s|[@]certdir[@]|$(certdir)|;\
 	    s|[@]plugindir[@]|$(plugindir)|;\
+	    s|[@]transportdir[@]|$(transportdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
@@ -85,6 +89,8 @@ janus_SOURCES = \
 	ice.h \
 	janus.c \
 	janus.h \
+	log.c \
+	log.h \
 	mutex.h \
 	record.c \
 	record.h \
@@ -101,12 +107,14 @@ janus_SOURCES = \
 	utils.h \
 	plugins/plugin.c \
 	plugins/plugin.h \
+	transports/transport.h \
 	$(NULL)
 
 janus_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
+	-DTRANSPORTDIR=\"$(transportdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
@@ -125,6 +133,51 @@ cmdline.c: janus.ggo
 
 EXTRA_DIST += janus.ggo
 CLEANFILES += cmdline.c cmdline.h
+
+##
+# Transports
+##
+
+transports_cflags = \
+	$(AM_CFLAGS) \
+	$(TRANSPORTS_CFLAGS) \
+	$(NULL)
+
+transports_libadd = \
+	$(TRANSPORTS_LIBS) \
+	$(NULL)
+
+if ENABLE_REST
+transport_LTLIBRARIES += transports/libjanus_http.la
+transports_libjanus_http_la_SOURCES = transports/janus_http.c
+transports_libjanus_http_la_CFLAGS = $(transports_cflags)
+transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) -lmicrohttpd
+transports_libjanus_http_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.http.cfg.sample
+EXTRA_DIST += conf/janus.transport.http.cfg.sample.in
+CLEANFILES += conf/janus.transport.http.cfg.sample
+endif
+
+if ENABLE_WEBSOCKETS
+transport_LTLIBRARIES += transports/libjanus_websockets.la
+transports_libjanus_websockets_la_SOURCES = transports/janus_websockets.c
+transports_libjanus_websockets_la_CFLAGS = $(transports_cflags)
+transports_libjanus_websockets_la_LDFLAGS = $(transports_ldflags) $(WS_MANUAL_LIBS)
+transports_libjanus_websockets_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.websockets.cfg.sample
+EXTRA_DIST += conf/janus.transport.websockets.cfg.sample.in
+CLEANFILES += conf/janus.transport.websockets.cfg.sample
+endif
+
+if ENABLE_RABBITMQ
+transport_LTLIBRARIES += transports/libjanus_rabbitmq.la
+transports_libjanus_rabbitmq_la_SOURCES = transports/janus_rabbitmq.c
+transports_libjanus_rabbitmq_la_CFLAGS = $(transports_cflags)
+transports_libjanus_rabbitmq_la_LDFLAGS = $(transports_ldflags) -lrabbitmq
+transports_libjanus_rabbitmq_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.rabbitmq.cfg.sample
+EXTRA_DIST += conf/janus.transport.rabbitmq.cfg.sample
+endif
 
 ##
 # Plugins
@@ -244,10 +297,12 @@ bin_PROGRAMS += janus-pp-rec
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-opus.c \
 	postprocessing/pp-opus.h \
+	postprocessing/pp-opus-silence.h \
 	postprocessing/pp-rtp.h \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
+	log.c \
 	$(NULL)
 
 janus_pp_rec_CFLAGS = \

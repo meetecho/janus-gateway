@@ -116,6 +116,9 @@ gboolean janus_ice_is_rtcpmux_forced(void);
 /*! \brief Method to set the rtcp-mux support mode (true means mandatory, false means optional)
  * @param forced whether rtcp-mux support must be forced or not (default is false) */
 void janus_ice_force_rtcpmux(gboolean forced);
+/*! \brief Method to get the port that has been assigned for the RTCP component blackhole in case of rtcp-mux
+ * @returns The blackhole port */
+gint janus_ice_get_rtcpmux_blackhole_port(void);
 /*! \brief Method to modify the max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @param[in] mnq The new max NACK value */
 void janus_set_max_nack_queue(uint mnq);
@@ -143,8 +146,6 @@ typedef struct janus_ice_handle janus_ice_handle;
 typedef struct janus_ice_stream janus_ice_stream;
 /*! \brief Janus ICE component */
 typedef struct janus_ice_component janus_ice_component;
-/*! \brief Janus enqueued (S)RTP/(S)RTCP packet to send */
-typedef struct janus_ice_queued_packet janus_ice_queued_packet;
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
 typedef struct janus_ice_trickle janus_ice_trickle;
 
@@ -171,6 +172,8 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 /*! \brief Janus media statistics
  * \note To improve with more stuff */
 typedef struct janus_ice_stats {
+	/*! \brief Audio packets sent or received */
+	guint32 audio_packets;
 	/*! \brief Audio bytes sent or received */
 	guint64 audio_bytes;
 	/*! \brief Audio bytes sent or received in the last second */
@@ -179,6 +182,8 @@ typedef struct janus_ice_stats {
 	gboolean audio_notified_lastsec;
 	/*! \brief Number of audio NACKs sent or received */
 	guint32 audio_nacks;
+	/*! \brief Video packets sent or received */
+	guint32 video_packets;
 	/*! \brief Video bytes sent or received */
 	guint64 video_bytes;
 	/*! \brief Video bytes sent or received in the last second */
@@ -187,6 +192,8 @@ typedef struct janus_ice_stats {
 	gboolean video_notified_lastsec;
 	/*! \brief Number of video NACKs sent or received */
 	guint32 video_nacks;
+	/*! \brief Data packets sent or received */
+	guint32 data_packets;
 	/*! \brief Data bytes sent or received */
 	guint64 data_bytes;
 } janus_ice_stats;
@@ -282,10 +289,8 @@ struct janus_ice_handle {
 	janus_ice_stream *video_stream;
 	/*! \brief SCTP/DataChannel stream */
 	janus_ice_stream *data_stream;
-	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
-	gchar *remote_hashing;
-	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
-	gchar *remote_fingerprint;
+	/*! \brief RTP profile set by caller (so that we can match it) */
+	gchar *rtp_profile;
 	/*! \brief SDP generated locally (just for debugging purposes) */
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
@@ -324,6 +329,10 @@ struct janus_ice_stream {
 	gint payload_type;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
+	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */
+	gchar *remote_hashing;
+	/*! \brief Hashed fingerprint of the peer's certificate, as parsed in SDP */
+	gchar *remote_fingerprint;
 	/*! \brief The ICE username for this stream */
 	gchar *ruser;
 	/*! \brief The ICE password for this stream */
@@ -398,7 +407,7 @@ struct janus_ice_component {
 };
 
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
-typedef struct janus_ice_trickle {
+struct janus_ice_trickle {
 	/*! \brief Janus ICE handle this trickle candidate belongs to */
 	janus_ice_handle *handle;
 	/*! \brief Monotonic time of when this trickle candidate has been received */
@@ -407,7 +416,7 @@ typedef struct janus_ice_trickle {
 	char *transaction;
 	/*! \brief JSON object of the trickle candidate(s) */
 	json_t *candidate;
-} janus_ice_trickle;
+};
 
 /** @name Janus ICE trickle candidates methods
  */
@@ -429,24 +438,6 @@ gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const 
 void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 ///@}
 
-
-
-#define JANUS_ICE_PACKET_AUDIO	0
-#define JANUS_ICE_PACKET_VIDEO	1
-#define JANUS_ICE_PACKET_DATA	2
-/*! \brief Janus enqueued (S)RTP/(S)RTCP packet to send */
-struct janus_ice_queued_packet {
-	/*! \brief Packet data */
-	char *data;
-	/*! \brief Packet length */
-	gint length;
-	/*! \brief Type of data (audio/video/data, or RTCP related to any of them) */
-	gint type;
-	/*! \brief Whether this is an RTCP message or not */
-	gboolean control;
-	/*! \brief Whether the data is already encrypted or not */
-	gboolean encrypted;
-};
 
 /** @name Janus ICE handle methods
  */
@@ -518,6 +509,17 @@ void janus_ice_cb_component_state_changed (NiceAgent *agent, guint stream_id, gu
 void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice);
 #else
 void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice);
+#endif
+/*! \brief libnice callback to notify when a new remote candidate has been discovered for an ICE agent
+ * @param[in] agent The libnice agent for which the callback applies
+ * @param[in] stream_id The stream ID for which the callback applies
+ * @param[in] component_id The component ID for which the callback applies
+ * @param[in] foundation Candidate (or foundation)
+ * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
+#ifndef HAVE_LIBNICE_TCP
+void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
+#else
+void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice);
 #endif
 /*! \brief libnice callback to notify when data has been received by an ICE agent
  * @param[in] agent The libnice agent for which the callback applies

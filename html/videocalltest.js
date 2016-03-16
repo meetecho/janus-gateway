@@ -86,7 +86,7 @@ $(document).ready(function() {
 								success: function(pluginHandle) {
 									$('#details').remove();
 									videocall = pluginHandle;
-									console.log("Plugin attached! (" + videocall.getPlugin() + ", id=" + videocall.getId() + ")");
+									Janus.log("Plugin attached! (" + videocall.getPlugin() + ", id=" + videocall.getId() + ")");
 									// Prepare the username registration
 									$('#videocall').removeClass('hide').show();
 									$('#login').removeClass('hide').show();
@@ -100,11 +100,11 @@ $(document).ready(function() {
 										});
 								},
 								error: function(error) {
-									console.log("  -- Error attaching plugin... " + error);
+									Janus.error("  -- Error attaching plugin...", error);
 									bootbox.alert("  -- Error attaching plugin... " + error);
 								},
 								consentDialog: function(on) {
-									console.log("Consent dialog should be " + (on ? "on" : "off") + " now");
+									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen and show hint
 										$.blockUI({ 
@@ -123,22 +123,22 @@ $(document).ready(function() {
 									}
 								},
 								onmessage: function(msg, jsep) {
-									console.log(" ::: Got a message :::");
-									console.log(JSON.stringify(msg));
+									Janus.debug(" ::: Got a message :::");
+									Janus.debug(JSON.stringify(msg));
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
 										if(result["list"] !== undefined && result["list"] !== null) {
 											var list = result["list"];
-											console.log("Got a list of registered peers:");
-											console.log(list);
+											Janus.debug("Got a list of registered peers:");
+											Janus.debug(list);
 											for(var mp in list) {
-												console.log("  >> [" + list[mp] + "]");
+												Janus.debug("  >> [" + list[mp] + "]");
 											}
 										} else if(result["event"] !== undefined && result["event"] !== null) {
 											var event = result["event"];
 											if(event === 'registered') {
 												myusername = result["username"];
-												console.log("Successfully registered as " + myusername + "!");
+												Janus.log("Successfully registered as " + myusername + "!");
 												$('#youok').removeClass('hide').show().html("Registered as '" + myusername + "'");
 												// Get a list of available peers, just for fun
 												videocall.send({"message": { "request": "list" }});
@@ -147,10 +147,10 @@ $(document).ready(function() {
 												$('#call').unbind('click').click(doCall);
 												$('#peer').focus();
 											} else if(event === 'calling') {
-												console.log("Waiting for the peer to answer...");
+												Janus.log("Waiting for the peer to answer...");
 												// TODO Any ringtone?
 											} else if(event === 'incomingcall') {
-												console.log("Incoming call from " + result["username"] + "!");
+												Janus.log("Incoming call from " + result["username"] + "!");
 												$('#peer').val(result["username"]).attr('disabled');
 												yourusername = result["username"];
 												// TODO Enable buttons to answer
@@ -160,8 +160,8 @@ $(document).ready(function() {
 														// No media provided: by default, it's sendrecv for audio and video
 														media: { data: true },	// Let's negotiate data channels as well
 														success: function(jsep) {
-															console.log("Got SDP!");
-															console.log(jsep);
+															Janus.debug("Got SDP!");
+															Janus.debug(jsep);
 															var body = { "request": "accept" };
 															videocall.send({"message": body, "jsep": jsep});
 															$('#peer').attr('disabled', true);
@@ -170,17 +170,16 @@ $(document).ready(function() {
 																.unbind('click').click(doHangup);
 														},
 														error: function(error) {
-															console.log("WebRTC error:");
-															console.log(error);
+															Janus.error("WebRTC error:", error);
 															bootbox.alert("WebRTC error... " + JSON.stringify(error));
 														}
 													});
 											} else if(event === 'accepted') {
 												var peer = result["username"];
 												if(peer === null || peer === undefined) {
-													console.log("Call started!");
+													Janus.log("Call started!");
 												} else {
-													console.log(peer + " accepted the call!");
+													Janus.log(peer + " accepted the call!");
 													yourusername = peer;
 												}
 												// TODO Video call can start
@@ -190,7 +189,7 @@ $(document).ready(function() {
 													.removeClass("btn-success").addClass("btn-danger")
 													.unbind('click').click(doHangup);
 											} else if(event === 'hangup') {
-												console.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
+												Janus.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
 												// TODO Reset status
 												videocall.hangup();
 												if(spinner !== null && spinner !== undefined)
@@ -238,8 +237,8 @@ $(document).ready(function() {
 									}
 								},
 								onlocalstream: function(stream) {
-									console.log(" ::: Got a local stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a local stream :::");
+									Janus.debug(JSON.stringify(stream));
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -265,8 +264,8 @@ $(document).ready(function() {
 									}
 								},
 								onremotestream: function(stream) {
-									console.log(" ::: Got a remote stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a remote stream :::");
+									Janus.debug(JSON.stringify(stream));
 									if($('#remotevideo').length === 0)
 										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 									// Show the video, hide the spinner and show the resolution when we get a playing event
@@ -329,9 +328,9 @@ $(document).ready(function() {
 										var id = $(this).attr("id");
 										var bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
-											console.log("Not limiting bandwidth via REMB");
+											Janus.log("Not limiting bandwidth via REMB");
 										} else {
-											console.log("Capping bandwidth to " + bitrate + " via REMB");
+											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
 										$('#bitrateset').html($(this).html()).parent().removeClass('open');
 										videocall.send({"message": { "request": "set", "bitrate": bitrate }});
@@ -347,16 +346,16 @@ $(document).ready(function() {
 									}
 								},
 								ondataopen: function(data) {
-									console.log("The DataChannel is available!");
+									Janus.log("The DataChannel is available!");
 									$('#videos').removeClass('hide').show();
 									$('#datasend').removeAttr('disabled');
 								},
 								ondata: function(data) {
-									console.log("We got data from the DataChannel! " + data);
+									Janus.debug("We got data from the DataChannel! " + data);
 									$('#datarecv').val(data);
 								},
 								oncleanup: function() {
-									console.log(" ::: Got a cleanup notification :::");
+									Janus.log(" ::: Got a cleanup notification :::");
 									$('#myvideo').remove();
 									$('#remotevideo').remove();
 									$('#callee').empty().hide();
@@ -382,7 +381,7 @@ $(document).ready(function() {
 							});
 					},
 					error: function(error) {
-						console.log(error);
+						Janus.error(error);
 						bootbox.alert(error, function() {
 							window.location.reload();
 						});
@@ -454,13 +453,13 @@ function doCall() {
 			// By default, it's sendrecv for audio and video...
 			media: { data: true },	// ... let's negotiate data channels as well
 			success: function(jsep) {
-				console.log("Got SDP!");
-				console.log(jsep);
+				Janus.debug("Got SDP!");
+				Janus.debug(jsep);
 				var body = { "request": "call", "username": $('#peer').val() };
 				videocall.send({"message": body, "jsep": jsep});
 			},
 			error: function(error) {
-				console.log("WebRTC error... " + error);
+				Janus.error("WebRTC error...", error);
 				bootbox.alert("WebRTC error... " + error);
 			}
 		});

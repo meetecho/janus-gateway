@@ -22,10 +22,8 @@
 #define JANUS_ERROR_UNAUTHORIZED_PLUGIN			405
 /*! \brief Unknown/undocumented error */
 #define JANUS_ERROR_UNKNOWN						490
-/*! \brief The client needs to use HTTP POST for this request */
-#define JANUS_ERROR_USE_GET						450
-/*! \brief The client needs to use HTTP POST for this request */
-#define JANUS_ERROR_USE_POST					451
+/*! \brief Transport related error */
+#define JANUS_ERROR_TRANSPORT_SPECIFIC			450
 /*! \brief The request is missing in the message */
 #define JANUS_ERROR_MISSING_REQUEST				452
 /*! \brief The gateway does not suppurt this request */

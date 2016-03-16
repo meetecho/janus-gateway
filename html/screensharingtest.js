@@ -76,8 +76,8 @@ function randomString(len, charSet) {
 
 
 $(document).ready(function() {
-   	// Initialize the library (console debug enabled)
-	Janus.init({debug: true, callback: function() {
+	// Initialize the library (all console debuggers enabled)
+	Janus.init({debug: "all", callback: function() {
 		// Use a button to start the demo
 		$('#start').click(function() {
 			if(started)
@@ -94,14 +94,14 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to video MCU test plugin
+						// Attach to video room test plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
 								success: function(pluginHandle) {
 									$('#details').remove();
 									screentest = pluginHandle;
-									console.log("Plugin attached! (" + screentest.getPlugin() + ", id=" + screentest.getId() + ")");
+									Janus.log("Plugin attached! (" + screentest.getPlugin() + ", id=" + screentest.getId() + ")");
 									// Prepare the username registration
 									$('#screenmenu').removeClass('hide').show();
 									$('#createnow').removeClass('hide').show();
@@ -116,11 +116,11 @@ $(document).ready(function() {
 										});
 								},
 								error: function(error) {
-									console.log("  -- Error attaching plugin... " + error);
+									Janus.error("  -- Error attaching plugin...", error);
 									bootbox.alert("Error attaching plugin... " + error);
 								},
 								consentDialog: function(on) {
-									console.log("Consent dialog should be " + (on ? "on" : "off") + " now");
+									Janus.debug("Consent dialog should be " + (on ? "on" : "off") + " now");
 									if(on) {
 										// Darken screen
 										$.blockUI({
@@ -137,31 +137,30 @@ $(document).ready(function() {
 									}
 								},
 								onmessage: function(msg, jsep) {
-									console.log(" ::: Got a message (publisher) :::");
-									console.log(JSON.stringify(msg));
+									Janus.debug(" ::: Got a message (publisher) :::");
+									Janus.debug(JSON.stringify(msg));
 									var event = msg["videoroom"];
-									console.log("Event: " + event);
+									Janus.debug("Event: " + event);
 									if(event != undefined && event != null) {
 										if(event === "joined") {
 											myid = msg["id"];
 											$('#session').html(room);
 											$('#title').html(msg["description"]);
-											console.log("Successfully joined room " + msg["room"] + " with ID " + myid);
+											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(role === "publisher") {
 												// This is our session, publish our stream
-												console.log("Negotiating WebRTC stream for our screen");
+												Janus.debug("Negotiating WebRTC stream for our screen");
 												screentest.createOffer(
 													{
 														media: { video: "screen", audio: false, videoRecv: false},	// Screen sharing doesn't work with audio, and Publishers are sendonly
 														success: function(jsep) {
-															console.log("Got publisher SDP!");
-															console.log(jsep);
+															Janus.debug("Got publisher SDP!");
+															Janus.debug(jsep);
 															var publish = { "request": "configure", "audio": true, "video": true };
 															screentest.send({"message": publish, "jsep": jsep});
 														},
 														error: function(error) {
-															console.log("WebRTC error:");
-															console.log(error);
+															Janus.error("WebRTC error:", error);
 															bootbox.alert("WebRTC error... " + JSON.stringify(error));
 														}
 													});
@@ -169,12 +168,12 @@ $(document).ready(function() {
 												// We're just watching a session, any feed to attach to?
 												if(msg["publishers"] !== undefined && msg["publishers"] !== null) {
 													var list = msg["publishers"];
-													console.log("Got a list of available publishers/feeds:");
-													console.log(list);
+													Janus.debug("Got a list of available publishers/feeds:");
+													Janus.debug(list);
 													for(var f in list) {
 														var id = list[f]["id"];
 														var display = list[f]["display"];
-														console.log("  >> [" + id + "] " + display);
+														Janus.debug("  >> [" + id + "] " + display);
 														newRemoteFeed(id, display)
 													}
 												}
@@ -183,18 +182,18 @@ $(document).ready(function() {
 											// Any feed to attach to?
 											if(role === "listener" && msg["publishers"] !== undefined && msg["publishers"] !== null) {
 												var list = msg["publishers"];
-												console.log("Got a list of available publishers/feeds:");
-												console.log(list);
+												Janus.debug("Got a list of available publishers/feeds:");
+												Janus.debug(list);
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
-													console.log("  >> [" + id + "] " + display);
+													Janus.debug("  >> [" + id + "] " + display);
 													newRemoteFeed(id, display)
 												}
 											} else if(msg["leaving"] !== undefined && msg["leaving"] !== null) {
 												// One of the publishers has gone away?
 												var leaving = msg["leaving"];
-												console.log("Publisher left: " + leaving);
+												Janus.log("Publisher left: " + leaving);
 												if(role === "listener" && msg["leaving"] === source) {
 													bootbox.alert("The screen sharing session is over, the publisher left", function() {
 														window.location.reload();
@@ -206,14 +205,14 @@ $(document).ready(function() {
 										}
 									}
 									if(jsep !== undefined && jsep !== null) {
-										console.log("Handling SDP as well...");
-										console.log(jsep);
+										Janus.debug("Handling SDP as well...");
+										Janus.debug(jsep);
 										screentest.handleRemoteJsep({jsep: jsep});
 									}
 								},
 								onlocalstream: function(stream) {
-									console.log(" ::: Got a local stream :::");
-									console.log(JSON.stringify(stream));
+									Janus.debug(" ::: Got a local stream :::");
+									Janus.debug(JSON.stringify(stream));
 									$('#screenmenu').hide();
 									$('#room').removeClass('hide').show();
 									if($('#screenvideo').length === 0) {
@@ -226,14 +225,14 @@ $(document).ready(function() {
 									// The publisher stream is sendonly, we don't expect anything here
 								},
 								oncleanup: function() {
-									console.log(" ::: Got a cleanup notification :::");
+									Janus.log(" ::: Got a cleanup notification :::");
 									$('#screencapture').empty();
 									$('#room').hide();
 								}
 							});
 					},
 					error: function(error) {
-						console.log(error);
+						Janus.error(error);
 						bootbox.alert(error, function() {
 							window.location.reload();
 						});
@@ -292,11 +291,11 @@ function shareScreen() {
 	var create = { "request": "create", "description": desc, "bitrate": 0, "publishers": 1 };
 	screentest.send({"message": create, success: function(result) {
 		var event = result["videoroom"];
-		console.log("Event: " + event);
+		Janus.debug("Event: " + event);
 		if(event != undefined && event != null) {
 			// Our own screen sharing session has been created, join it
 			room = result["room"];
-			console.log("Screen sharing session created: " + room);
+			Janus.log("Screen sharing session created: " + room);
 			myusername = randomString(12);
 			var register = { "request": "join", "room": room, "ptype": "publisher", "display": myusername };
 			screentest.send({"message": register});
@@ -345,21 +344,21 @@ function newRemoteFeed(id, display) {
 			plugin: "janus.plugin.videoroom",
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
-				console.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
-				console.log("  -- This is a subscriber");
+				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
+				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
 				var listen = { "request": "join", "room": room, "ptype": "listener", "feed": id };
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {
-				console.log("  -- Error attaching plugin... " + error);
+				Janus.error("  -- Error attaching plugin...", error);
 				bootbox.alert("Error attaching plugin... " + error);
 			},
 			onmessage: function(msg, jsep) {
-				console.log(" ::: Got a message (listener) :::");
-				console.log(JSON.stringify(msg));
+				Janus.debug(" ::: Got a message (listener) :::");
+				Janus.debug(JSON.stringify(msg));
 				var event = msg["videoroom"];
-				console.log("Event: " + event);
+				Janus.debug("Event: " + event);
 				if(event != undefined && event != null) {
 					if(event === "attached") {
 						// Subscriber created and attached
@@ -369,7 +368,7 @@ function newRemoteFeed(id, display) {
 						} else {
 							spinner.spin();
 						}
-						console.log("Successfully attached to feed " + id + " (" + display + ") in room " + msg["room"]);
+						Janus.log("Successfully attached to feed " + id + " (" + display + ") in room " + msg["room"]);
 						$('#screenmenu').hide();
 						$('#room').removeClass('hide').show();
 					} else {
@@ -377,22 +376,21 @@ function newRemoteFeed(id, display) {
 					}
 				}
 				if(jsep !== undefined && jsep !== null) {
-					console.log("Handling SDP as well...");
-					console.log(jsep);
+					Janus.debug("Handling SDP as well...");
+					Janus.debug(jsep);
 					// Answer and attach
 					remoteFeed.createAnswer(
 						{
 							jsep: jsep,
 							media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
 							success: function(jsep) {
-								console.log("Got SDP!");
-								console.log(jsep);
+								Janus.debug("Got SDP!");
+								Janus.debug(jsep);
 								var body = { "request": "start", "room": room };
 								remoteFeed.send({"message": body, "jsep": jsep});
 							},
 							error: function(error) {
-								console.log("WebRTC error:");
-								console.log(error);
+								Janus.error("WebRTC error:", error);
 								bootbox.alert("WebRTC error... " + error);
 							}
 						});
@@ -418,7 +416,7 @@ function newRemoteFeed(id, display) {
 				attachMediaStream($('#screenvideo').get(0), stream);
 			},
 			oncleanup: function() {
-				console.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
+				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
 				$('#waitingvideo').remove();
 				if(spinner !== null && spinner !== undefined)
 					spinner.stop();

@@ -185,10 +185,10 @@ typedef struct janus_voicemail_message {
 	char *sdp;
 } janus_voicemail_message;
 static GAsyncQueue *messages = NULL;
+static janus_voicemail_message exit_message;
 
-void janus_voicemail_message_free(janus_voicemail_message *msg);
-void janus_voicemail_message_free(janus_voicemail_message *msg) {
-	if(!msg)
+static void janus_voicemail_message_free(janus_voicemail_message *msg) {
+	if(!msg || msg == &exit_message)
 		return;
 
 	msg->handle = NULL;
@@ -380,6 +380,8 @@ void janus_voicemail_destroy(void) {
 	if(!g_atomic_int_get(&initialized))
 		return;
 	g_atomic_int_set(&stopping, 1);
+
+	g_async_queue_push(messages, &exit_message);
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
@@ -638,11 +640,21 @@ static void *janus_voicemail_handler(void *data) {
 	}
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		if(!messages || (msg = g_async_queue_try_pop(messages)) == NULL) {
-			usleep(50000);
+		msg = g_async_queue_pop(messages);
+		if(msg == NULL)
+			continue;
+		if(msg == &exit_message)
+			break;
+		if(msg->handle == NULL) {
+			janus_voicemail_message_free(msg);
 			continue;
 		}
-		janus_voicemail_session *session = (janus_voicemail_session *)msg->handle->plugin_handle;	
+		janus_voicemail_session *session = NULL;
+		janus_mutex_lock(&sessions_mutex);
+		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
+			session = (janus_voicemail_session *)msg->handle->plugin_handle;
+		}
+		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_voicemail_message_free(msg);
@@ -776,15 +788,7 @@ static void *janus_voicemail_handler(void *data) {
 			/* Fill the SDP template and use that as our answer */
 			char sdp[1024];
 			/* What is the Opus payload type? */
-			int opus_pt = 0;
-			char *fmtp = strstr(msg->sdp, "opus/48000");
-			if(fmtp != NULL) {
-				fmtp -= 5;
-				fmtp = strstr(fmtp, ":");
-				if(fmtp)
-					fmtp++;
-				opus_pt = atoi(fmtp);
-			}
+			int opus_pt = janus_get_opus_pt(msg->sdp);
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 			g_snprintf(sdp, 1024, sdp_template,
 				janus_get_real_time(),			/* We need current time here */
@@ -798,6 +802,7 @@ static void *janus_voicemail_handler(void *data) {
 				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
 			}
 			/* How long will the gateway take to push the event? */
+			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
 			int res = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, type, sdp);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);

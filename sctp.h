@@ -109,10 +109,8 @@ typedef struct janus_sctp_association {
 	uint16_t local_port;
 	/*! \brief Remote port to be used for SCTP */
 	uint16_t remote_port;
-	/*! \brief Queue of incoming messages */
-	GQueue *in_messages;
-	/*! \brief Queue of outgoing messages */
-	GQueue *out_messages;
+	/*! \brief Queue of incoming/outgoing messages */
+	GAsyncQueue *messages;
 	/*! \brief Thread for handling SCTP messaging */
 	GThread *thread;
 #ifdef DEBUG_SCTP
@@ -122,8 +120,13 @@ typedef struct janus_sctp_association {
 	janus_mutex mutex;
 } janus_sctp_association;
 
+/*! \brief Helper structure to handle incoming and outgoing messages */
 typedef struct janus_sctp_message {
+	/*! \brief Whether the message is incoming or outgoing */
+	gboolean incoming;
+	/*! \brief The message data */
 	char *buffer;
+	/*! \brief The message length */
 	size_t length;
 } janus_sctp_message;
 

@@ -88,8 +88,9 @@ void janus_sctp_handle_send_failed_event(struct sctp_send_failed_event *ssfe);
 void janus_sctp_handle_notification(janus_sctp_association *sctp, union sctp_notification *notif, size_t n);
 
 void *janus_sctp_thread(void *data);
-janus_sctp_message *janus_sctp_message_create(char *buffer, size_t length);
+janus_sctp_message *janus_sctp_message_create(gboolean incoming, char *buffer, size_t length);
 void janus_sctp_message_destroy(janus_sctp_message *message);
+static janus_sctp_message exit_message;
 
 static gboolean sctp_running;
 int janus_sctp_init(void) {
@@ -237,17 +238,14 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	/* We're done for now, the setup is done elsewhere */
 	janus_mutex_lock(&sctp->mutex);
 	sctp->sock = sock;
-	sctp->in_messages = g_queue_new();
-	sctp->out_messages = g_queue_new();
+	sctp->messages = g_async_queue_new_full((GDestroyNotify) janus_sctp_message_destroy);
 	GError *error = NULL;
 	sctp->thread = g_thread_try_new("JanusSCTP", &janus_sctp_thread, sctp, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
-		g_queue_free(sctp->in_messages);
-		sctp->in_messages = NULL;
-		g_queue_free(sctp->out_messages);
-		sctp->out_messages = NULL;
+		g_async_queue_unref(sctp->messages);
+		sctp->messages = NULL;
 		g_free(sctp);
 		sctp = NULL;
 		return NULL;
@@ -293,6 +291,7 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 	usrsctp_close(sctp->sock);
 	janus_mutex_lock(&sctp->mutex);
 	sctp->dtls = NULL;	/* This will get rid of the thread */
+	g_async_queue_push(sctp->messages, &exit_message);
 	janus_mutex_unlock(&sctp->mutex);
 }
 
@@ -301,8 +300,8 @@ void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len)
 		return;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data from DTLS to SCTP stack: %d bytes\n", sctp->handle_id, len);
 	janus_mutex_lock(&sctp->mutex);
-	if(sctp->in_messages != NULL)
-		g_queue_push_tail(sctp->in_messages, janus_sctp_message_create(buf, len));
+	if(sctp->messages != NULL)
+		g_async_queue_push(sctp->messages, janus_sctp_message_create(TRUE, buf, len));
 	janus_mutex_unlock(&sctp->mutex);
 }
 
@@ -312,8 +311,8 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 		return -1;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data from SCTP to DTLS stack: %zu bytes\n", sctp->handle_id, length);
 	janus_mutex_lock(&sctp->mutex);
-	if(sctp->out_messages != NULL)
-		g_queue_push_tail(sctp->out_messages, janus_sctp_message_create(buffer, length));
+	if(sctp->messages != NULL)
+		g_async_queue_push(sctp->messages, janus_sctp_message_create(FALSE, buffer, length));
 	janus_mutex_unlock(&sctp->mutex);
 	return 0;
 }
@@ -1246,86 +1245,64 @@ void *janus_sctp_thread(void *data) {
 	gboolean sent_data = FALSE;
 	while(sctp->dtls != NULL && sctp_running) {
 		/* Anything to do at all? */
-		janus_mutex_lock(&sctp->mutex);
-		if(g_queue_is_empty(sctp->in_messages) && g_queue_is_empty(sctp->out_messages)) {
-			janus_mutex_unlock(&sctp->mutex);
-			g_usleep (10000);
+		message = g_async_queue_pop(sctp->messages);
+		if(message == NULL)
 			continue;
-		}
-		/* Check incoming messages */
-		if(!g_queue_is_empty(sctp->in_messages) && sent_data) {
-			while(!g_queue_is_empty(sctp->in_messages)) {
-				message = g_queue_pop_head(sctp->in_messages);
-				if(message == NULL)
-					continue;
-#ifdef DEBUG_SCTP
-				if(sctp->debug_dump != NULL) {
-					/* Dump incoming message */
-					char *dump = usrsctp_dumppacket(message->buffer, message->length, SCTP_DUMP_INBOUND);
-					if(dump != NULL) {
-						fwrite(dump, sizeof(char), strlen(dump), sctp->debug_dump);
-						fflush(sctp->debug_dump);
-						usrsctp_freedumpbuffer(dump);
-					}
-				}
-#endif
-				/* Pass this data to the SCTP association */
-				janus_mutex_unlock(&sctp->mutex);
-				usrsctp_conninput((void *)sctp, message->buffer, message->length, 0);
-				janus_mutex_lock(&sctp->mutex);
-				janus_sctp_message_destroy(message);
-				message = NULL;
-			}
-		}
-		/* Check outgoing messages */
+		if(message == &exit_message)
+			break;
+		janus_mutex_lock(&sctp->mutex);
 		if(sctp->dtls == NULL) {
 			/* No DTLS stack anymore, we're done */
+			janus_sctp_message_destroy(message);
+			message = NULL;
 			janus_mutex_unlock(&sctp->mutex);
 			break;
 		}
-		if(!g_queue_is_empty(sctp->out_messages)) {
-			while(!g_queue_is_empty(sctp->out_messages)) {
-				message = g_queue_pop_head(sctp->out_messages);
-				if(message == NULL)
-					continue;
+		/* Check incoming/outgoing messages */
+		if(!message->incoming) {
 #ifdef DEBUG_SCTP
-				if(sctp->debug_dump != NULL) {
-					/* Dump incoming message */
-					char *dump = usrsctp_dumppacket(message->buffer, message->length, SCTP_DUMP_OUTBOUND);
-					if(dump != NULL) {
-						fwrite(dump, sizeof(char), strlen(dump), sctp->debug_dump);
-						fflush(sctp->debug_dump);
-						usrsctp_freedumpbuffer(dump);
-					}
+			if(sctp->debug_dump != NULL) {
+				/* Dump outgoing message */
+				char *dump = usrsctp_dumppacket(message->buffer, message->length, SCTP_DUMP_OUTBOUND);
+				if(dump != NULL) {
+					fwrite(dump, sizeof(char), strlen(dump), sctp->debug_dump);
+					fflush(sctp->debug_dump);
+					usrsctp_freedumpbuffer(dump);
 				}
-#endif
-				/* Encapsulate this data in DTLS and send it */
-				janus_dtls_send_sctp_data((janus_dtls_srtp *)sctp->dtls, message->buffer, message->length);
-				janus_sctp_message_destroy(message);
-				message = NULL;
-				if(!sent_data)
-					sent_data = TRUE;
 			}
+#endif
+			/* Encapsulate this data in DTLS and send it */
+			janus_dtls_send_sctp_data((janus_dtls_srtp *)sctp->dtls, message->buffer, message->length);
+			janus_sctp_message_destroy(message);
+			message = NULL;
+			if(!sent_data)
+				sent_data = TRUE;
+		} else if(message->incoming && sent_data) {
+#ifdef DEBUG_SCTP
+			if(sctp->debug_dump != NULL) {
+				/* Dump incoming message */
+				char *dump = usrsctp_dumppacket(message->buffer, message->length, SCTP_DUMP_INBOUND);
+				if(dump != NULL) {
+					fwrite(dump, sizeof(char), strlen(dump), sctp->debug_dump);
+					fflush(sctp->debug_dump);
+					usrsctp_freedumpbuffer(dump);
+				}
+			}
+#endif
+			/* Pass this data to the SCTP association */
+			janus_mutex_unlock(&sctp->mutex);
+			usrsctp_conninput((void *)sctp, message->buffer, message->length, 0);
+			janus_mutex_lock(&sctp->mutex);
 		}
 		janus_mutex_unlock(&sctp->mutex);
+		janus_sctp_message_destroy(message);
+		message = NULL;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Leaving SCTP association thread\n", sctp->handle_id);
 	/* This association has been destroyed, wait a bit and then free all the resources */
 	g_usleep (1*G_USEC_PER_SEC);
-	GQueue *tmp = sctp->in_messages;
-	sctp->in_messages = NULL;
-	while(!g_queue_is_empty(tmp)) {
-		message = g_queue_pop_head(tmp);
-		janus_sctp_message_destroy(message);
-	}
-	g_queue_free(tmp);
-	tmp = sctp->out_messages;
-	sctp->out_messages = NULL;
-	while(!g_queue_is_empty(tmp)) {
-		message = g_queue_pop_head(tmp);
-		janus_sctp_message_destroy(message);
-	}
-	g_queue_free(tmp);
+	g_async_queue_unref(sctp->messages);
+	sctp->messages = NULL;
 	sctp->thread = NULL;
 #ifdef DEBUG_SCTP
 	if(sctp->debug_dump != NULL)
@@ -1338,7 +1315,7 @@ void *janus_sctp_thread(void *data) {
 	return NULL;
 }
 
-janus_sctp_message *janus_sctp_message_create(char *buffer, size_t length) {
+janus_sctp_message *janus_sctp_message_create(gboolean incoming, char *buffer, size_t length) {
 	if(buffer == NULL || length == 0)
 		return NULL;
 	janus_sctp_message *message = g_malloc0(sizeof(janus_sctp_message));
@@ -1352,11 +1329,12 @@ janus_sctp_message *janus_sctp_message_create(char *buffer, size_t length) {
 	}
 	memcpy(message->buffer, buffer, length);
 	message->length = length;
+	message->incoming = incoming;
 	return message;
 }
 
 void janus_sctp_message_destroy(janus_sctp_message *message) {
-	if(message == NULL)
+	if(message == NULL || message == &exit_message)
 		return;
 	if(message->buffer != NULL)
 		g_free(message->buffer);
