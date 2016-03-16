@@ -328,6 +328,38 @@ int janus_get_pcmu_pt(const char *sdp) {
 	return -3;
 }
 
+int janus_get_pcma_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "pcma/8000") && !strstr(sdp, "PCMA/8000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "pcma/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d pcma/8000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "PCMA/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d PCMA/8000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
 int janus_get_vp8_pt(const char *sdp) {
 	if(!sdp)
 		return -1;
