@@ -1019,9 +1019,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
 			if(mp->streaming_source == janus_streaming_source_rtp) {
 				janus_streaming_rtp_source *source = mp->source;
-				json_object_set_new(ml, "last_received_audio", json_integer(source->last_received_audio));
-				json_object_set_new(ml, "last_received_video", json_integer(source->last_received_video));
-				json_object_set_new(ml, "now", json_integer(janus_get_monotonic_time()));
+				gint64 now = janus_get_monotonic_time();
+				json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
+				json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
 			}
 			json_array_append_new(list, ml);
 		}
