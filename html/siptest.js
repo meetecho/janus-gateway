@@ -534,8 +534,19 @@ function doCall() {
 			success: function(jsep) {
 				Janus.debug("Got SDP!");
 				Janus.debug(jsep);
+				// By default, you only pass the SIP URI to call as an
+				// argument to a "call" request. Should you want the
+				// SIP stack to add some custom headers to the INVITE,
+				// you can do so by adding an additional "headers" object,
+				// containing each of the headers as key-value, e.g.:
+				//		var body = { request: "call", uri: $('#peer').val(),
+				//			headers: {
+				//				"My-Header": "value",
+				//				"AnotherHeader": "another string"
+				//			}
+				//		};
 				var body = { request: "call", uri: $('#peer').val() };
-				// Note: you can ask the plugin to negotiate SDES-SRTP, instead of the
+				// Note: you can also ask the plugin to negotiate SDES-SRTP, instead of the
 				// default plain RTP, by adding a "srtp" attribute to the request. Valid
 				// values are "sdes_optional" and "sdes_mandatory", e.g.:
 				//		var body = { request: "call", uri: $('#peer').val(), srtp: "sdes_optional" };

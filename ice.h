@@ -172,6 +172,8 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 /*! \brief Janus media statistics
  * \note To improve with more stuff */
 typedef struct janus_ice_stats {
+	/*! \brief Audio packets sent or received */
+	guint32 audio_packets;
 	/*! \brief Audio bytes sent or received */
 	guint64 audio_bytes;
 	/*! \brief Audio bytes sent or received in the last second */
@@ -180,6 +182,8 @@ typedef struct janus_ice_stats {
 	gboolean audio_notified_lastsec;
 	/*! \brief Number of audio NACKs sent or received */
 	guint32 audio_nacks;
+	/*! \brief Video packets sent or received */
+	guint32 video_packets;
 	/*! \brief Video bytes sent or received */
 	guint64 video_bytes;
 	/*! \brief Video bytes sent or received in the last second */
@@ -188,6 +192,8 @@ typedef struct janus_ice_stats {
 	gboolean video_notified_lastsec;
 	/*! \brief Number of video NACKs sent or received */
 	guint32 video_nacks;
+	/*! \brief Data packets sent or received */
+	guint32 data_packets;
 	/*! \brief Data bytes sent or received */
 	guint64 data_bytes;
 } janus_ice_stats;
@@ -283,6 +289,8 @@ struct janus_ice_handle {
 	janus_ice_stream *video_stream;
 	/*! \brief SCTP/DataChannel stream */
 	janus_ice_stream *data_stream;
+	/*! \brief RTP profile set by caller (so that we can match it) */
+	gchar *rtp_profile;
 	/*! \brief SDP generated locally (just for debugging purposes) */
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
@@ -293,6 +301,8 @@ struct janus_ice_handle {
 	GAsyncQueue *queued_packets;
 	/*! \brief GLib thread for sending outgoing packets */
 	GThread *send_thread;
+	/*! \brief Atomic flag to make sure we only create the thread once */
+	volatile gint send_thread_created;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };

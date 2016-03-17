@@ -848,18 +848,21 @@ void janus_ice_stats_queue_free(gpointer data) {
 void janus_ice_stats_reset(janus_ice_stats *stats) {
 	if(stats == NULL)
 		return;
+	stats->audio_packets = 0;
 	stats->audio_bytes = 0;
 	if(stats->audio_bytes_lastsec)
 		g_list_free_full(stats->audio_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->audio_bytes_lastsec = NULL;
 	stats->audio_notified_lastsec = FALSE;
 	stats->audio_nacks = 0;
+	stats->video_packets = 0;
 	stats->video_bytes = 0;
 	if(stats->video_bytes_lastsec)
 		g_list_free_full(stats->video_bytes_lastsec, &janus_ice_stats_queue_free);
 	stats->video_bytes_lastsec = NULL;
 	stats->video_notified_lastsec = FALSE;
 	stats->video_nacks = 0;
+	stats->data_packets = 0;
 	stats->data_bytes = 0;
 }
 
@@ -1093,14 +1096,12 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		}
 	}
 	handle->pending_trickles = NULL;
-	if(handle->local_sdp != NULL) {
-		g_free(handle->local_sdp);
-		handle->local_sdp = NULL;
-	}
-	if(handle->remote_sdp != NULL) {
-		g_free(handle->remote_sdp);
-		handle->remote_sdp = NULL;
-	}
+	g_free(handle->rtp_profile);
+	handle->rtp_profile = NULL;
+	g_free(handle->local_sdp);
+	handle->local_sdp = NULL;
+	g_free(handle->remote_sdp);
+	handle->remote_sdp = NULL;
 	if(handle->queued_packets != NULL) {
 		janus_ice_queued_packet *pkt = NULL;
 		while(g_async_queue_length(handle->queued_packets) > 0) {
@@ -1129,6 +1130,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	}
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	g_atomic_int_set(&handle->send_thread_created, 0);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
 }
@@ -1314,6 +1316,10 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 	component->state = state;
 	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)
 			&& handle->send_thread == NULL) {
+		/* Make sure we're not trying to start the thread more than once */
+		if(!g_atomic_int_compare_and_exchange(&handle->send_thread_created, 0, 1)) {
+			return;
+		}
 		/* Start the outgoing data thread */
 		GError *error = NULL;
 		handle->send_thread = g_thread_try_new("ice send thread", &janus_ice_send_thread, handle, &error);
@@ -1629,6 +1635,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		/* Update stats (TODO Do the same for the last second window as well) */
+		component->in_stats.data_packets++;
 		component->in_stats.data_bytes += len;
 		return;
 	}
@@ -1705,6 +1712,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							component->in_stats.audio_notified_lastsec = FALSE;
 							janus_ice_notify_media(handle, FALSE, TRUE);
 						}
+						component->in_stats.audio_packets++;
 						component->in_stats.audio_bytes += buflen;
 						component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
 						if(g_list_length(component->in_stats.audio_bytes_lastsec) > 100) {
@@ -1720,6 +1728,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 							component->in_stats.video_notified_lastsec = FALSE;
 							janus_ice_notify_media(handle, TRUE, TRUE);
 						}
+						component->in_stats.video_packets++;
 						component->in_stats.video_bytes += buflen;
 						component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
 						if(g_list_length(component->in_stats.video_bytes_lastsec) > 100) {
@@ -1966,6 +1975,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		/* Update stats (TODO Do the same for the last second window as well) */
 		if(len > 0) {
+			component->in_stats.data_packets++;
 			component->in_stats.data_bytes += len;
 		}
 		return;
@@ -2379,6 +2389,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
 		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
+	g_atomic_int_set(&handle->send_thread_created, 0);
 	handle->agent = g_object_new(NICE_TYPE_AGENT,
 		"compatibility", NICE_COMPATIBILITY_DRAFT19,
 		"main-context", handle->icectx,
@@ -3168,8 +3179,10 @@ void *janus_ice_send_thread(void *data) {
 						/* Update stats */
 						if(sent > 0) {
 							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
+								component->out_stats.audio_packets++;
 								component->out_stats.audio_bytes += sent;
 							} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
+								component->out_stats.video_packets++;
 								component->out_stats.video_bytes += sent;
 							}
 						}

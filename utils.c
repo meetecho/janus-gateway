@@ -264,6 +264,70 @@ int janus_get_vp8_pt(const char *sdp) {
 	return -3;
 }
 
+int janus_get_vp9_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=video") || (!strstr(sdp, "VP9/90000") && !strstr(sdp, "vp9/90000")))
+		return -2;
+	const char *line = strstr(sdp, "m=video");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "VP9/90000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d VP9/90000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "vp9/90000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d vp9/90000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
+int janus_get_h264_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=video") || (!strstr(sdp, "h264/90000") && !strstr(sdp, "H264/90000")))
+		return -2;
+	const char *line = strstr(sdp, "m=video");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "H264/90000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d H264/90000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "h264/90000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d h264/90000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
 gboolean janus_is_ip_valid(const char *ip, int *family) {
 	if(ip == NULL)
 		return FALSE;
