@@ -238,6 +238,8 @@ typedef struct janus_streaming_rtp_source {
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
 	int audio_fd;
 	int video_fd;
+	gint64 last_received_video;
+	gint64 last_received_audio;
 #ifdef HAVE_LIBCURL
 	CURL* curl;
 #endif
@@ -1015,6 +1017,14 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_object_set_new(ml, "id", json_integer(mp->id));
 			json_object_set_new(ml, "description", json_string(mp->description));
 			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+			if(mp->streaming_source == janus_streaming_source_rtp) {
+				janus_streaming_rtp_source *source = mp->source;
+				gint64 now = janus_get_monotonic_time();
+				if ( source->audio_fd != -1 )
+					json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
+				if ( source->video_fd != -1 )
+					json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
+			}
 			json_array_append_new(list, ml);
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
@@ -2763,6 +2773,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->vrc = NULL;
 	live_rtp_source->audio_fd = audio_fd;
 	live_rtp_source->video_fd = video_fd;
+	live_rtp_source->last_received_audio = janus_get_monotonic_time();
+	live_rtp_source->last_received_video = janus_get_monotonic_time();
 	live_rtp_source->keyframe.enabled = bufferkf;
 	live_rtp_source->keyframe.latest_keyframe = NULL;
 	live_rtp_source->keyframe.temp_keyframe = NULL;
@@ -3524,6 +3536,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Got something audio (RTP) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
+					source->last_received_audio = janus_get_monotonic_time();
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
@@ -3571,6 +3584,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Got something video (RTP) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
+					source->last_received_video = janus_get_monotonic_time();
 					addrlen = sizeof(remote);
 					bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
