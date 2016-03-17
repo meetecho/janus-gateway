@@ -1033,6 +1033,50 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		json_object_set_new(response, "streaming", json_string("list"));
 		json_object_set_new(response, "list", list);
 		goto plugin_response;
+	} else if(!strcasecmp(request_text, "info")) {
+		JANUS_LOG(LOG_VERB, "Request info on a specific mountpoint\n");
+		/* Return info on a specific mountpoint */
+		json_t *id = json_object_get(root, "id");
+		if(!id) {
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (id)");
+			goto error;
+		}
+		if(!json_is_integer(id) || json_integer_value(id) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
+			goto error;
+		}
+		gint64 id_value = json_integer_value(id);
+		janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		if(mp == NULL) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
+			goto error;
+		}
+		json_t *ml = json_object();
+		json_object_set_new(ml, "id", json_integer(mp->id));
+		json_object_set_new(ml, "description", json_string(mp->description));
+		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+		if(mp->streaming_source == janus_streaming_source_rtp) {
+			janus_streaming_rtp_source *source = mp->source;
+			gint64 now = janus_get_monotonic_time();
+			if(source->audio_fd != -1)
+				json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
+			if(source->video_fd != -1)
+				json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
+		}
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Send info back */
+		response = json_object();
+		json_object_set_new(response, "streaming", json_string("info"));
+		json_object_set_new(response, "info", ml);
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "create")) {
 		/* Create a new stream */
 		json_t *type = json_object_get(root, "type");
