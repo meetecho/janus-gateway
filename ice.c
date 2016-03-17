@@ -1130,6 +1130,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	}
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	g_atomic_int_set(&handle->send_thread_created, 0);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
 }
@@ -1315,6 +1316,10 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 	component->state = state;
 	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)
 			&& handle->send_thread == NULL) {
+		/* Make sure we're not trying to start the thread more than once */
+		if(!g_atomic_int_compare_and_exchange(&handle->send_thread_created, 0, 1)) {
+			return;
+		}
 		/* Start the outgoing data thread */
 		GError *error = NULL;
 		handle->send_thread = g_thread_try_new("ice send thread", &janus_ice_send_thread, handle, &error);
@@ -2384,6 +2389,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
 		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
+	g_atomic_int_set(&handle->send_thread_created, 0);
 	handle->agent = g_object_new(NICE_TYPE_AGENT,
 		"compatibility", NICE_COMPATIBILITY_DRAFT19,
 		"main-context", handle->icectx,
