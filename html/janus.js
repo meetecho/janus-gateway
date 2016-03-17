@@ -1632,11 +1632,16 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Local SDP instance is invalid, not sending anything...");
 			return;
 		}
-		config.mySdp = config.pc.localDescription;
+		config.mySdp = {
+			"type": config.pc.localDescription.type,
+			"sdp": config.pc.localDescription.sdp
+		};
 		if(config.sdpSent) {
 			Janus.log("Offer/Answer SDP already sent, not sending it again");
 			return;
 		}
+		if(config.trickle === false)
+			config.mySdp["trickle"] = false;
 		Janus.debug(callbacks);
 		config.sdpSent = true;
 		callbacks.success(config.mySdp);

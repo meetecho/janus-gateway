@@ -302,6 +302,8 @@ struct janus_ice_handle {
 	GAsyncQueue *queued_packets;
 	/*! \brief GLib thread for sending outgoing packets */
 	GThread *send_thread;
+	/*! \brief Atomic flag to make sure we only create the thread once */
+	volatile gint send_thread_created;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };

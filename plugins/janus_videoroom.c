@@ -62,9 +62,13 @@ publishers = <max number of concurrent senders> (e.g., 6 for a video
              conference or 1 for a webinar)
 bitrate = <max video bitrate for senders> (e.g., 128000)
 fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
+videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8)
 record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
 \endverbatim
+ *
+ * Note that, due to current limitations in our recording and postprocessing
+ * code, recording will only work when using VP8 for video in the room.
  *
  * \section sfuapi Video Room API
  * 
@@ -242,16 +246,35 @@ static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 	g_free(msg);
 }
 
+typedef enum janus_videoroom_videocodec {
+	JANUS_VIDEOROOM_VP8,	/* Publishers will have to use VP8 */
+	JANUS_VIDEOROOM_VP9,	/* Publishers will have to use VP9 */
+	JANUS_VIDEOROOM_H264	/* Publishers will have to use H264 */
+} janus_videoroom_videocodec;
+static const char *janus_videoroom_videocodec_name(janus_videoroom_videocodec vcodec) {
+	switch(vcodec) {
+		case JANUS_VIDEOROOM_VP8:
+			return "vp8";
+		case JANUS_VIDEOROOM_VP9:
+			return "vp9";
+		case JANUS_VIDEOROOM_H264:
+			return "h264";
+		default:
+			/* Shouldn't happen */
+			return "vp8";
+	}
+}
 
 typedef struct janus_videoroom {
 	guint64 room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
 	gchar *room_pin;			/* Password needed to join this room, if any */
-	gboolean is_private;			/* Whether this room is 'private' (as in hidden) or not */
+	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint64_t bitrate;			/* Global bitrate limit */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
+	janus_videoroom_videocodec vcodec;	/* Video codec to force on publishers*/
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
 	gint64 destroyed;			/* Value to flag the room for destruction, done lazily */
@@ -289,6 +312,8 @@ typedef struct janus_videoroom_participant {
 	gchar *display;	/* Display name (just for fun) */
 	gchar *sdp;			/* The SDP this publisher negotiated, if any */
 	gboolean audio, video, data;		/* Whether audio, video and/or data is going to be sent by this publisher */
+	guint32 audio_pt;		/* Audio payload type (Opus) */
+	guint32 video_pt;		/* Video payload type (depends on room configuration) */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
 	gboolean audio_active;
@@ -350,6 +375,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 /* SDP offer/answer templates */
 #define OPUS_PT		111
 #define VP8_PT		100
+#define VP9_PT		101
+#define H264_PT		107
 #define sdp_template \
 		"v=0\r\n" \
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
@@ -361,7 +388,7 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
 		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
-#define sdp_v_template \
+#define sdp_v_template_vp8 \
 		"m=video 1 RTP/SAVPF %d\r\n"		/* VP8 payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"b=AS:%d\r\n"						/* Bandwidth */ \
@@ -371,6 +398,27 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"a=rtcp-fb:%d nack\r\n"				/* VP8 payload type */ \
 		"a=rtcp-fb:%d nack pli\r\n"			/* VP8 payload type */ \
 		"a=rtcp-fb:%d goog-remb\r\n"		/* VP8 payload type */
+#define sdp_v_template_vp9 \
+		"m=video 1 RTP/SAVPF %d\r\n"		/* VP9 payload type */ \
+		"c=IN IP4 1.1.1.1\r\n" \
+		"b=AS:%d\r\n"						/* Bandwidth */ \
+		"a=%s\r\n"							/* Media direction */ \
+		"a=rtpmap:%d VP9/90000\r\n"			/* VP9 payload type */ \
+		"a=rtcp-fb:%d ccm fir\r\n"			/* VP9 payload type */ \
+		"a=rtcp-fb:%d nack\r\n"				/* VP9 payload type */ \
+		"a=rtcp-fb:%d nack pli\r\n"			/* VP9 payload type */ \
+		"a=rtcp-fb:%d goog-remb\r\n"		/* VP9 payload type */
+#define sdp_v_template_h264 \
+		"m=video 1 RTP/SAVPF %d\r\n"		/* H264 payload type */ \
+		"c=IN IP4 1.1.1.1\r\n" \
+		"b=AS:%d\r\n"						/* Bandwidth */ \
+		"a=%s\r\n"							/* Media direction */ \
+		"a=rtpmap:%d H264/90000\r\n"		/* H264 payload type */ \
+		"a=fmtp:%d profile-level-id=42e01f;packetization-mode=1\r\n" \
+		"a=rtcp-fb:%d ccm fir\r\n"			/* H264 payload type */ \
+		"a=rtcp-fb:%d nack\r\n"				/* H264 payload type */ \
+		"a=rtcp-fb:%d nack pli\r\n"			/* H264 payload type */ \
+		"a=rtcp-fb:%d goog-remb\r\n"		/* H264 payload type */
 #define sdp_d_template \
 		"m=application 1 DTLS/SCTP 5000\r\n" \
 		"c=IN IP4 1.1.1.1\r\n" \
@@ -586,6 +634,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
 			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
 			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
+			janus_config_item *videocodec = janus_config_get_item(cat, "videocodec");
 			janus_config_item *record = janus_config_get_item(cat, "record");
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
@@ -625,6 +674,19 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->fir_freq = 0;
 			if(firfreq != NULL && firfreq->value != NULL)
 				videoroom->fir_freq = atol(firfreq->value);
+			videoroom->vcodec = JANUS_VIDEOROOM_VP8;
+			if(videocodec && videocodec->value) {
+				if(!strcasecmp(videocodec->value, "vp8"))
+					videoroom->vcodec = JANUS_VIDEOROOM_VP8;
+				else if(!strcasecmp(videocodec->value, "vp9"))
+					videoroom->vcodec = JANUS_VIDEOROOM_VP9;
+				else if(!strcasecmp(videocodec->value, "h264"))
+					videoroom->vcodec = JANUS_VIDEOROOM_H264;
+				else {
+					JANUS_LOG(LOG_WARN, "Unsupported video codec '%s', falling back to VP8\n", videocodec->value);
+					videoroom->vcodec = JANUS_VIDEOROOM_VP8;
+				}
+			}
 			if(record && record->value) {
 				videoroom->record = janus_is_true(record->value);
 				if(rec_dir && rec_dir->value) {
@@ -637,9 +699,10 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
+			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s codec, secret: %s, pin: %s)\n",
 				videoroom->room_id, videoroom->room_name,
 				videoroom->is_private ? "private" : "public",
+				janus_videoroom_videocodec_name(videoroom->vcodec),
 				videoroom->room_secret ? videoroom->room_secret : "no secret",
 				videoroom->room_pin ? videoroom->room_pin : "no pin");
 			if(videoroom->record) {
@@ -657,7 +720,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	g_hash_table_iter_init(&iter, rooms);
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom *vr = value;
-		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq);
+		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds, %s codec\n",
+			vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq,
+			janus_videoroom_videocodec_name(vr->vcodec));
 	}
 	janus_mutex_unlock(&rooms_mutex);
 
@@ -1033,6 +1098,22 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Invalid element (publishers should be a positive integer)");
 			goto error;
 		}
+		json_t *videocodec = json_object_get(root, "videocodec");
+		if(videocodec) {
+			if(!json_is_string(videocodec)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (videocodec should be a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (videocodec should be a string)");
+				goto error;
+			}
+			const char *videocodec_value = json_string_value(videocodec);
+			if(!strcasecmp(videocodec_value, "vp8") && !strcasecmp(videocodec_value, "vp9") && !strcasecmp(videocodec_value, "h264")) {
+				JANUS_LOG(LOG_ERR, "Invalid element (videocodec can only be vp8, vp9 or h264)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element (videocodec can only be vp8, vp9 or h264)");
+				goto error;
+			}
+		}
 		json_t *record = json_object_get(root, "record");
 		if(record && !json_is_boolean(record)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
@@ -1140,6 +1221,20 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->fir_freq = 0;
 		if(fir_freq)
 			videoroom->fir_freq = json_integer_value(fir_freq);
+		videoroom->vcodec = JANUS_VIDEOROOM_VP8;
+		if(videocodec) {
+			const char *videocodec_value = json_string_value(videocodec);
+			if(!strcasecmp(videocodec_value, "vp8"))
+				videoroom->vcodec = JANUS_VIDEOROOM_VP8;
+			else if(!strcasecmp(videocodec_value, "vp9"))
+				videoroom->vcodec = JANUS_VIDEOROOM_VP9;
+			else if(!strcasecmp(videocodec_value, "h264"))
+				videoroom->vcodec = JANUS_VIDEOROOM_H264;
+			else {
+				JANUS_LOG(LOG_WARN, "Unsupported video codec '%s', falling back to VP8\n", videocodec_value);
+				videoroom->vcodec = JANUS_VIDEOROOM_VP8;
+			}
+		}
 		if(record) {
 			videoroom->record = json_is_true(record);
 			if(videoroom->record && rec_dir) {
@@ -1149,9 +1244,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->destroyed = 0;
 		janus_mutex_init(&videoroom->participants_mutex);
 		videoroom->participants = g_hash_table_new(NULL, NULL);
-		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
+		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s codec, secret: %s, pin: %s)\n",
 			videoroom->room_id, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
+			janus_videoroom_videocodec_name(videoroom->vcodec),
 			videoroom->room_secret ? videoroom->room_secret : "no secret",
 			videoroom->room_pin ? videoroom->room_pin : "no pin");
 		if(videoroom->record) {
@@ -1178,6 +1274,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
 				janus_config_add_item(config, cat, "fir_freq", value);
 			}
+			janus_config_add_item(config, cat, "videocodec", janus_videoroom_videocodec_name(videoroom->vcodec));
 			if(videoroom->room_secret)
 				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
@@ -1346,6 +1443,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_object_set_new(rl, "max_publishers", json_integer(room->max_publishers));
 				json_object_set_new(rl, "bitrate", json_integer(room->bitrate));
 				json_object_set_new(rl, "fir_freq", json_integer(room->fir_freq));
+				json_object_set_new(rl, "videocodec", json_string(janus_videoroom_videocodec_name(room->vcodec)));
 				json_object_set_new(rl, "record", json_string(room->record ? "true" : "false"));
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
 				/* TODO: Should we list participants as well? or should there be a separate API call on a specific room for this? */
@@ -1847,7 +1945,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		/* Update payload type and SSRC */
 		rtp_header *rtp = (rtp_header *)buf;
-		rtp->type = video ? VP8_PT : OPUS_PT;
+		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated wih this publisher, if there are any */
 		GHashTableIter iter;
@@ -2406,6 +2504,22 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->bitrate = videoroom->bitrate;
 				publisher->listeners = NULL;
 				janus_mutex_init(&publisher->listeners_mutex);
+				publisher->audio_pt = OPUS_PT;
+				switch(videoroom->vcodec) {
+					case JANUS_VIDEOROOM_VP8:
+						publisher->video_pt = VP8_PT;
+						break;
+					case JANUS_VIDEOROOM_VP9:
+						publisher->video_pt = VP9_PT;
+						break;
+					case JANUS_VIDEOROOM_H264:
+						publisher->video_pt = H264_PT;
+						break;
+					default:
+						/* Shouldn't happen */
+						publisher->video_pt = VP8_PT;
+						break;
+				}
 				publisher->audio_ssrc = g_random_int();
 				publisher->video_ssrc = g_random_int();
 				publisher->remb_startup = 4;
@@ -3395,12 +3509,27 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				sdp_parser_free(parser);
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", audio ? "is" : "is NOT");
+				int opus_pt = 0, vp8_pt = 0, vp9_pt = 0, h264_pt = 0;
 				if(audio) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", audio_mode);
+					opus_pt = janus_get_opus_pt(msg->sdp);
+					JANUS_LOG(LOG_VERB, "  -- -- Opus payload type is %d\n", opus_pt);
 				}
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT");
 				if(video) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", video_mode);
+					vp8_pt = janus_get_vp8_pt(msg->sdp);
+					if(vp8_pt > 0) {
+						JANUS_LOG(LOG_VERB, "  -- -- VP8 payload type is %d\n", vp8_pt);
+					}
+					vp9_pt = janus_get_vp9_pt(msg->sdp);
+					if(vp9_pt > 0) {
+						JANUS_LOG(LOG_VERB, "  -- -- VP9 payload type is %d\n", vp9_pt);
+					}
+					h264_pt = janus_get_h264_pt(msg->sdp);
+					if(h264_pt > 0) {
+						JANUS_LOG(LOG_VERB, "  -- -- H264 payload type is %d\n", h264_pt);
+					}
 				}
 				JANUS_LOG(LOG_VERB, "The publisher %s going to open a data channel\n", data ? "is" : "is NOT");
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
@@ -3410,22 +3539,67 @@ static void *janus_videoroom_handler(void *data) {
 				char sdp[1280], audio_mline[256], video_mline[512], data_mline[256];
 				if(audio) {
 					g_snprintf(audio_mline, 256, sdp_a_template,
-						OPUS_PT,						/* Opus payload type */
+						opus_pt,						/* Opus payload type */
 						audio_mode,						/* The publisher gets a recvonly or inactive back */
-						OPUS_PT); 						/* Opus payload type */
+						opus_pt); 						/* Opus payload type */
 				} else {
 					audio_mline[0] = '\0';
 				}
 				if(video) {
-					g_snprintf(video_mline, 512, sdp_v_template,
-						VP8_PT,							/* VP8 payload type */
-						b,								/* Bandwidth */
-						video_mode,						/* The publisher gets a recvonly or inactive back */
-						VP8_PT, 						/* VP8 payload type */
-						VP8_PT, 						/* VP8 payload type */
-						VP8_PT, 						/* VP8 payload type */
-						VP8_PT, 						/* VP8 payload type */
-						VP8_PT); 						/* VP8 payload type */
+					switch(videoroom->vcodec) {
+						case JANUS_VIDEOROOM_VP8:
+							if(vp8_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
+								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+							} else {
+								g_snprintf(video_mline, 512, sdp_v_template_vp8,
+									vp8_pt,							/* VP8 payload type */
+									b,								/* Bandwidth */
+									video_mode,						/* The publisher gets a recvonly or inactive back */
+									vp8_pt, 						/* VP8 payload type */
+									vp8_pt, 						/* VP8 payload type */
+									vp8_pt, 						/* VP8 payload type */
+									vp8_pt, 						/* VP8 payload type */
+									vp8_pt); 						/* VP8 payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_VP9:
+							if(vp9_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP9, but publisher didn't offer any... rejecting video\n");
+								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+							} else {
+								g_snprintf(video_mline, 512, sdp_v_template_vp9,
+									vp9_pt,							/* VP9 payload type */
+									b,								/* Bandwidth */
+									video_mode,						/* The publisher gets a recvonly or inactive back */
+									vp9_pt, 						/* VP9 payload type */
+									vp9_pt, 						/* VP9 payload type */
+									vp9_pt, 						/* VP9 payload type */
+									vp9_pt, 						/* VP9 payload type */
+									vp9_pt); 						/* VP9 payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_H264:
+							if(h264_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing H264, but publisher didn't offer any... rejecting video\n");
+								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+							} else {
+								g_snprintf(video_mline, 512, sdp_v_template_h264,
+									h264_pt,						/* H264 payload type */
+									b,								/* Bandwidth */
+									video_mode,						/* The publisher gets a recvonly or inactive back */
+									h264_pt, 						/* H264 payload type */
+									h264_pt, 						/* H264 payload type */
+									h264_pt, 						/* H264 payload type */
+									h264_pt, 						/* H264 payload type */
+									h264_pt, 						/* H264 payload type */
+									h264_pt); 						/* H264 payload type */
+							}
+							break;
+						default:
+							/* Shouldn't happen */
+							break;
+					}
 				} else {
 					video_mline[0] = '\0';
 				}
@@ -3497,8 +3671,97 @@ static void *janus_videoroom_handler(void *data) {
 				gint64 start = janus_get_monotonic_time();
 				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, newsdp);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
-				if(strstr(newsdp, "recvonly"))
-					newsdp = janus_string_replace(newsdp, "recvonly", "sendonly");
+
+				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
+				if(audio) {
+					g_snprintf(audio_mline, 256, sdp_a_template,
+						OPUS_PT,						/* Opus payload type */
+						/* Subscribers gets a sendonly or inactive back */
+						strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
+						OPUS_PT); 						/* Opus payload type */
+				} else {
+					audio_mline[0] = '\0';
+				}
+				if(video) {
+					switch(videoroom->vcodec) {
+						case JANUS_VIDEOROOM_VP8:
+							if(vp8_pt < 0) {
+								video_mline[0] = '\0';
+							} else {
+								g_snprintf(video_mline, 512, sdp_v_template_vp8,
+									VP8_PT,							/* VP8 payload type */
+									b,								/* Bandwidth */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(video_mode, "inactive") ? "sendonly" : "inactive",
+									VP8_PT, 						/* VP8 payload type */
+									VP8_PT, 						/* VP8 payload type */
+									VP8_PT, 						/* VP8 payload type */
+									VP8_PT, 						/* VP8 payload type */
+									VP8_PT); 						/* VP8 payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_VP9:
+							if(vp9_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
+								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+							} else {
+								g_snprintf(video_mline, 512, sdp_v_template_vp9,
+									VP9_PT,							/* VP9 payload type */
+									b,								/* Bandwidth */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(video_mode, "inactive") ? "sendonly" : "inactive",
+									VP9_PT, 						/* VP9 payload type */
+									VP9_PT, 						/* VP9 payload type */
+									VP9_PT, 						/* VP9 payload type */
+									VP9_PT, 						/* VP9 payload type */
+									VP9_PT); 						/* VP9 payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_H264:
+							if(h264_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
+								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+							} else {
+								g_snprintf(video_mline, 512, sdp_v_template_h264,
+									H264_PT,						/* H264 payload type */
+									b,								/* Bandwidth */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(video_mode, "inactive") ? "sendonly" : "inactive",
+									H264_PT, 						/* H264 payload type */
+									H264_PT, 						/* H264 payload type */
+									H264_PT, 						/* H264 payload type */
+									H264_PT, 						/* H264 payload type */
+									H264_PT, 						/* H264 payload type */
+									H264_PT); 						/* H264 payload type */
+							}
+							break;
+						default:
+							/* Shouldn't happen */
+							break;
+					}
+				} else {
+					video_mline[0] = '\0';
+				}
+				if(data) {
+					g_snprintf(data_mline, 256, sdp_d_template);
+				} else {
+					data_mline[0] = '\0';
+				}
+				g_snprintf(sdp, 1280, sdp_template,
+					janus_get_real_time(),			/* We need current time here */
+					janus_get_real_time(),			/* We need current time here */
+					participant->room->room_name,	/* Video room name */
+					audio_mline,					/* Audio m-line, if any */
+					video_mline,					/* Video m-line, if any */
+					data_mline);					/* Data channel m-line, if any */
+				g_free(newsdp);
+				newsdp = g_strdup(sdp);
+				if(video && b == 0) {
+					/* Remove useless bandwidth attribute */
+					newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
+				}
+
+				/* Done */
 				if(res != JANUS_OK) {
 					/* TODO Failed to negotiate? We should remove this publisher */
 				} else {
@@ -3711,17 +3974,47 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 	/* Prepare the m-lines (FIXME this will result in an audio line even for video-only rooms, but we don't care) */
 	g_snprintf(audio_mline, 512, sdp_a_template,
 		OPUS_PT,						/* Opus payload type */
-		"sendonly",						/* The publisher gets a recvonly back */
+		"sendonly",						/* The subscribers gets a sendonly back */
 		OPUS_PT); 						/* Opus payload type */
-	g_snprintf(video_mline, 512, sdp_v_template,
-		VP8_PT,							/* VP8 payload type */
-		0,								/* Bandwidth */
-		"sendonly",						/* The publisher gets a recvonly back */
-		VP8_PT, 						/* VP8 payload type */
-		VP8_PT, 						/* VP8 payload type */
-		VP8_PT, 						/* VP8 payload type */
-		VP8_PT, 						/* VP8 payload type */
-		VP8_PT); 						/* VP8 payload type */
+	switch(muxed_listener->room->vcodec) {
+		case JANUS_VIDEOROOM_VP8:
+			g_snprintf(video_mline, 512, sdp_v_template_vp8,
+				VP8_PT,							/* VP8 payload type */
+				0,								/* Bandwidth */
+				"sendonly",						/* The subscribers gets a sendonly back */
+				VP8_PT, 						/* VP8 payload type */
+				VP8_PT, 						/* VP8 payload type */
+				VP8_PT, 						/* VP8 payload type */
+				VP8_PT, 						/* VP8 payload type */
+				VP8_PT); 						/* VP8 payload type */
+			break;
+		case JANUS_VIDEOROOM_VP9:
+			g_snprintf(video_mline, 512, sdp_v_template_vp9,
+				VP9_PT,							/* VP9 payload type */
+				0,								/* Bandwidth */
+				"sendonly",						/* The subscribers gets a sendonly back */
+				VP9_PT, 						/* VP9 payload type */
+				VP9_PT, 						/* VP9 payload type */
+				VP9_PT, 						/* VP9 payload type */
+				VP9_PT, 						/* VP9 payload type */
+				VP9_PT); 						/* VP9 payload type */
+			break;
+		case JANUS_VIDEOROOM_H264:
+			g_snprintf(video_mline, 512, sdp_v_template_h264,
+				H264_PT,						/* H264 payload type */
+				0,								/* Bandwidth */
+				"sendonly",						/* The subscribers gets a sendonly back */
+				H264_PT, 						/* H264 payload type */
+				H264_PT, 						/* H264 payload type */
+				H264_PT, 						/* H264 payload type */
+				H264_PT, 						/* H264 payload type */
+				H264_PT, 						/* H264 payload type */
+				H264_PT); 						/* H264 payload type */
+			break;
+		default:
+			/* Shouldn't happen */
+			break;
+	}
 	/* FIXME Add a fake user/SSRC just to avoid the "Failed to set max send bandwidth for video content" bug */
 	g_strlcat(audio_muxed, "a=planb:sfu0 1\r\n", 1024);
 	g_strlcat(video_muxed, "a=planb:sfu0 2\r\n", 1024);
