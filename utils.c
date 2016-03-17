@@ -4,7 +4,7 @@
  * \brief    Utilities and helpers
  * \details  Implementations of a few methods that may be of use here
  * and there in the code.
- *
+ * 
  * \ingroup core
  * \ref core
  */

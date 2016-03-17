@@ -12,7 +12,7 @@
  * different scenarios, ranging from a simple webinar (one speaker, several
  * listeners) to a fully meshed video conference (each peer sending and
  * receiving to and from all the others).
- *
+ * 
  * For what concerns the subscriber side, there are two different ways to
  * attach to a publisher's feed: a generic 'listener', which can attach to
  * a single feed, and a more complex 'Multiplexed listener', which instead can
@@ -27,7 +27,7 @@
  * \note As of now, work on Plan B is still going on, and as such its support in Janus
  * is flaky to say the least. Don't try to attach as a Multiplexed listener or bad
  * things will probably happen!
- *
+ * 
  * Considering that this plugin allows for several different WebRTC PeerConnections
  * to be on at the same time for the same peer (specifically, each peer
  * potentially has 1 PeerConnection on for publishing and N on for subscriptions
@@ -42,16 +42,16 @@
  * be used, for instance, to unmute in the room, as its only purpose would
  * be to provide a context in which creating the sendonly PeerConnection
  * for the subscription to the active participant.
- *
+ * 
  * Rooms to make available are listed in the plugin configuration file.
  * A pre-filled configuration file is provided in \c conf/janus.plugin.videoroom.cfg
  * and includes a demo room for testing. The same plugin is also used
  * dynamically (that is, with rooms created on the fly via API) in the
  * Screen Sharing demo as well.
- *
+ * 
  * To add more rooms or modify the existing one, you can use the following
  * syntax:
- *
+ * 
  * \verbatim
 [<unique room ID>]
 description = This is my awesome room
@@ -71,12 +71,12 @@ rec_dir = <folder where recordings should be stored, when enabled>
  * code, recording will only work when using VP8 for video in the room.
  *
  * \section sfuapi Video Room API
- *
+ * 
  * The Video Room API supports several requests, some of which are
  * synchronous and some asynchronous. There are some situations, though,
  * (invalid JSON, invalid request) which will always result in a
- * synchronous error response even for asynchronous requests.
- *
+ * synchronous error response even for asynchronous requests. 
+ * 
  * \c create , \c destroy , \c exists, \c list and \c listparticipants
  * are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
@@ -87,7 +87,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
  * exists; finally, \c list lists all the available rooms, while \c
  * listparticipants lists all the participants of a specific room and
  * their details.
- *
+ * 
  * The \c join , \c joinandconfigure , \c configure , \c publish ,
  * \c unpublish , \c start , \c pause , \c switch , \c stop , \c add ,
  * \c remove and \c leave requests instead are all asynchronous, which
@@ -108,9 +108,9 @@ rec_dir = <folder where recordings should be stored, when enabled>
  * are just used when involving "Plan B", and are used to add or remove
  * publishers to be muxed in the single viewer PeerConnection; finally,
  * \c leave allows you to leave a video room for good.
- *
+ * 
  * Actual API docs: TBD.
- *
+ * 
  * \ingroup plugins
  * \ref plugins
  */
@@ -175,7 +175,7 @@ static janus_plugin janus_videoroom_plugin =
 		.get_name = janus_videoroom_get_name,
 		.get_author = janus_videoroom_get_author,
 		.get_package = janus_videoroom_get_package,
-
+		
 		.create_session = janus_videoroom_create_session,
 		.handle_message = janus_videoroom_handle_message,
 		.setup_media = janus_videoroom_setup_media,
@@ -247,11 +247,11 @@ static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 }
 
 typedef enum janus_videoroom_audiocodec {
-	JANUS_VIDEOROOM_OPUS,	/* Publishers will have to use OPUS */
+	JANUS_VIDEOROOM_OPUS,		/* Publishers will have to use OPUS 	*/
 	JANUS_VIDEOROOM_ISAC_32K,	/* Publishers will have to use ISAC 32K */
 	JANUS_VIDEOROOM_ISAC_16K,	/* Publishers will have to use ISAC 16K */
-	JANUS_VIDEOROOM_PCMU,	/* Publishers will have to use PCMU 8K */
-	JANUS_VIDEOROOM_PCMA	/* Publishers will have to use PCMA 8K */
+	JANUS_VIDEOROOM_PCMU,		/* Publishers will have to use PCMU 8K 	*/
+	JANUS_VIDEOROOM_PCMA		/* Publishers will have to use PCMA 8K 	*/
 } janus_videoroom_audiocodec;
 static const char *janus_videoroom_audiocodec_name(janus_videoroom_audiocodec acodec) {
 	switch(acodec) {
@@ -527,9 +527,9 @@ static void session_free(gpointer data) {
 	if(data) {
 		janus_videoroom_session* session = (janus_videoroom_session*)data;
 		switch(session->participant_type) {
-		case janus_videoroom_p_type_publisher:
+		case janus_videoroom_p_type_publisher: 
 			janus_videoroom_participant_free(session->participant);
-			break;
+			break;   
 		case janus_videoroom_p_type_subscriber:
 			janus_videoroom_listener_free(session->participant);
 			break;
@@ -893,7 +893,7 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}
+	}	
 	janus_videoroom_session *session = (janus_videoroom_session *)g_malloc0(sizeof(janus_videoroom_session));
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -917,8 +917,8 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	}	
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle; 
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No VideoRoom session associated with this handle...\n");
 		*error = -2;
@@ -989,7 +989,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 char *janus_videoroom_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
-	}
+	}	
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -1004,7 +1004,7 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "type", json_string("publisher"));
 			janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 			if(participant) {
-				janus_videoroom *room = participant->room;
+				janus_videoroom *room = participant->room; 
 				json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 				json_object_set_new(info, "id", json_integer(participant->user_id));
 				if(participant->display)
@@ -1031,7 +1031,7 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 			if(participant) {
 				janus_videoroom_participant *feed = (janus_videoroom_participant *)participant->feed;
 				if(feed) {
-					janus_videoroom *room = feed->room;
+					janus_videoroom *room = feed->room; 
 					json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 					json_object_set_new(info, "feed_id", json_integer(feed->user_id));
 					if(feed->display)
@@ -1057,7 +1057,7 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-
+	
 	/* Pre-parse the message */
 	int error_code = 0;
 	char error_cause[512];
@@ -1072,7 +1072,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	}
 	JANUS_LOG(LOG_VERB, "Handling message: %s\n", message);
 
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -1446,7 +1446,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 			goto error;
 		}
-
+		
 		if(videoroom->destroyed) {
 			janus_mutex_unlock(&rooms_mutex)
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", videoroom->room_id);
@@ -1624,7 +1624,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Invalid element (host should be a string)");
 			goto error;
 		}
-
+		
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
 		const gchar* host = json_string_value(json_host);
@@ -1840,7 +1840,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(response, "stream_id", json_integer(stream_id));
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "exists")) {
-		/* Check whether a given room exists or not, returns true/false */
+		/* Check whether a given room exists or not, returns true/false */	
 		json_t *room = json_object_get(root, "room");
 		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
 			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
@@ -1858,7 +1858,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(response, "exists", json_string(room_exists ? "true" : "false"));
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
-		/* List all participants in a room, specifying whether they're publishers or just attendees */
+		/* List all participants in a room, specifying whether they're publishers or just attendees */	
 		json_t *room = json_object_get(root, "room");
 		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
 			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
@@ -1981,7 +1981,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -2083,7 +2083,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		packet.seq_number = ntohs(packet.data->seq_number);
 		/* Go */
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
-
+		
 		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
 		if(video && participant->video_active) {
 			/* Did we send a REMB already, or is it time to send one? */
@@ -2094,7 +2094,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			} else if(participant->remb_latest > 0 && janus_get_monotonic_time()-participant->remb_latest >= 5*G_USEC_PER_SEC) {
 				/* 5 seconds have passed since the last REMB, send a new one */
 				send_remb = TRUE;
-			}
+			}		
 			if(send_remb) {
 				/* We send a few incremental REMB messages at startup */
 				uint64_t bitrate = (participant->bitrate ? participant->bitrate : 256*1024);
@@ -2148,7 +2148,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -2267,7 +2267,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -3470,7 +3470,7 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				list = g_list_reverse(list);
-
+				
 				if(!listener->room) {
 					JANUS_LOG(LOG_ERR, "Error unsubscribing!\n");
 					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;	/* FIXME */
@@ -3709,7 +3709,7 @@ static void *janus_videoroom_handler(void *data) {
 					b = (int)(videoroom->bitrate/1000);
 				char sdp[1280], audio_mline[256], video_mline[512], data_mline[256];
 				if(audio) {
-					switch (videoroom->acodec) {
+					switch(videoroom->acodec) {
 						case JANUS_VIDEOROOM_OPUS:
 							if(opus_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing OPUS, but publisher didn't offer any... rejecting audio\n");
@@ -3901,7 +3901,7 @@ static void *janus_videoroom_handler(void *data) {
 
 				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
 				if(audio) {
-						switch ( videoroom->acodec ) {
+						switch(videoroom->acodec) {
 								case JANUS_VIDEOROOM_OPUS:
 									if(opus_pt < 0) {
 										audio_mline[0] = '\0';
@@ -4089,7 +4089,7 @@ static void *janus_videoroom_handler(void *data) {
 		janus_videoroom_message_free(msg);
 
 		continue;
-
+		
 error:
 		{
 			/* Prepare JSON error event */
@@ -4258,8 +4258,7 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 	memset(audio_mline, 0, 512);
 	memset(video_mline, 0, 512);
 	/* Prepare the m-lines (FIXME this will result in an audio line even for video-only rooms, but we don't care) */
-
-	switch (muxed_listener->room->acodec) {
+	switch(muxed_listener->room->acodec) {
 		case JANUS_VIDEOROOM_OPUS:
 			g_snprintf(audio_mline, 512, sdp_a_template_opus,
 				OPUS_PT,						/* Opus payload type */
@@ -4294,7 +4293,6 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 			/* Shouldn't happen */
 			break;
 	}
-
 	switch(muxed_listener->room->vcodec) {
 		case JANUS_VIDEOROOM_VP8:
 			g_snprintf(video_mline, 512, sdp_v_template_vp8,
@@ -4413,7 +4411,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		// JANUS_LOG(LOG_ERR, "Streaming not started yet for this session...\n");
 		return;
 	}
-
+	
 	/* Make sure there hasn't been a publisher switch by checking the SSRC */
 	if(packet->is_video) {
 		/* Check if this listener is subscribed to this medium */

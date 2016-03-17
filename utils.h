@@ -4,11 +4,11 @@
  * \brief    Utilities and helpers (headers)
  * \details  Implementations of a few methods that may be of use here
  * and there in the code.
- *
+ * 
  * \ingroup core
  * \ref core
  */
-
+ 
 #ifndef _JANUS_UTILS_H
 #define _JANUS_UTILS_H
 
