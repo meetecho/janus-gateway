@@ -399,14 +399,14 @@ typedef struct janus_videoroom_rtp_relay_packet {
 } janus_videoroom_rtp_relay_packet;
 
 /* SDP offer/answer templates */
-#define OPUS_PT		111
+#define OPUS_PT	111
 #define ISAC32_PT	104
 #define ISAC16_PT	103
-#define PCMU_PT		0
-#define PCMA_PT		8
+#define PCMU_PT	0
+#define PCMA_PT	8
 #define VP8_PT		100
 #define VP9_PT		101
-#define H264_PT		107
+#define H264_PT	107
 #define sdp_template \
 		"v=0\r\n" \
 		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
@@ -3901,69 +3901,69 @@ static void *janus_videoroom_handler(void *data) {
 
 				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
 				if(audio) {
-						switch(videoroom->acodec) {
-								case JANUS_VIDEOROOM_OPUS:
-									if(opus_pt < 0) {
-										audio_mline[0] = '\0';
-									}else {
-                                        g_snprintf(audio_mline, 256, sdp_a_template_opus,
-                                            OPUS_PT,						/* Opus payload type */
-                                            /* Subscribers gets a sendonly or inactive back */
-                                            strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-                                            OPUS_PT); 						/* Opus payload type */
-									}
-									break;
-								case JANUS_VIDEOROOM_ISAC_32K:
-									if(isac32_pt < 0 ) {
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
-										g_snprintf(audio_mline, 256, "m=audio 104 RTP/SAVPF 0\r\n");
-									}else {
-										g_snprintf(audio_mline, 256, sdp_a_template_isac32,
-											ISAC32_PT,						/* ISAC 32K payload type */
-											/* Subscribers gets a sendonly or inactive back */
-											strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-											ISAC32_PT);						/* ISAC 32K payload type */
-									}
-									break;
-								case JANUS_VIDEOROOM_ISAC_16K:
-									if(isac16_pt < 0) {
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
-										g_snprintf(audio_mline, 256, "m=audio 103 RTP/SAVPF 0\r\n");
-									}else {
-										g_snprintf(audio_mline, 256, sdp_a_template_isac16,
-											ISAC16_PT,						/* ISAC 16K payload type */
-											/* Subscribers gets a sendonly or inactive back */
-											strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-											ISAC16_PT);						/* ISAC 16K payload type */
-									}
-									break;
-								case JANUS_VIDEOROOM_PCMU:
-									if(pcmu_pt < 0) {
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
-										g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-									}else {
-										g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
-											PCMU_PT,						/*PCMU payload type */
-											/* Subscribers gets a sendonly or inactive back */
-											strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-											PCMU_PT); 						/*PCMU   payload type */
-									}
-									break;
-								case JANUS_VIDEOROOM_PCMA:
-									if(pcma_pt < 0) {
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
-										g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-									}else {
-										g_snprintf(audio_mline, 256, sdp_a_template_pcma,
-											PCMA_PT,						/*PCMA payload type */
-											/* Subscribers gets a sendonly or inactive back */
-											strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-											PCMA_PT); 						/*PCMA   payload type */
-									}
-									break;
-								default:
-									/* Shouldn't happen */
-									break;
+					switch(videoroom->acodec) {
+						case JANUS_VIDEOROOM_OPUS:
+							if(opus_pt < 0) {
+								audio_mline[0] = '\0';
+							}else {
+								g_snprintf(audio_mline, 256, sdp_a_template_opus,
+									OPUS_PT,						/* Opus payload type */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
+									OPUS_PT); 						/* Opus payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_ISAC_32K:
+							if(isac32_pt < 0 ) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
+								g_snprintf(audio_mline, 256, "m=audio 104 RTP/SAVPF 0\r\n");
+							}else {
+								g_snprintf(audio_mline, 256, sdp_a_template_isac32,
+									ISAC32_PT,						/* ISAC 32K payload type */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
+									ISAC32_PT);						/* ISAC 32K payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_ISAC_16K:
+							if(isac16_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
+								g_snprintf(audio_mline, 256, "m=audio 103 RTP/SAVPF 0\r\n");
+							}else {
+								g_snprintf(audio_mline, 256, sdp_a_template_isac16,
+									ISAC16_PT,						/* ISAC 16K payload type */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
+									ISAC16_PT);						/* ISAC 16K payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_PCMU:
+							if(pcmu_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
+								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
+							}else {
+								g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
+									PCMU_PT,						/*PCMU payload type */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
+									PCMU_PT); 						/*PCMU   payload type */
+							}
+							break;
+						case JANUS_VIDEOROOM_PCMA:
+							if(pcma_pt < 0) {
+								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
+								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
+							}else {
+								g_snprintf(audio_mline, 256, sdp_a_template_pcma,
+									PCMA_PT,						/*PCMA payload type */
+									/* Subscribers gets a sendonly or inactive back */
+									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
+									PCMA_PT); 						/*PCMA   payload type */
+							}
+							break;
+						default:
+							/* Shouldn't happen */
+							break;
 						}
 				} else {
 					audio_mline[0] = '\0';
