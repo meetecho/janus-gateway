@@ -12,7 +12,7 @@
  * different scenarios, ranging from a simple webinar (one speaker, several
  * listeners) to a fully meshed video conference (each peer sending and
  * receiving to and from all the others).
-
+ *
  * For what concerns the subscriber side, there are two different ways to
  * attach to a publisher's feed: a generic 'listener', which can attach to
  * a single feed, and a more complex 'Multiplexed listener', which instead can
@@ -299,8 +299,8 @@ typedef struct janus_videoroom {
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint64_t bitrate;			/* Global bitrate limit */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
-	janus_videoroom_videocodec vcodec;	/* Video codec to force on publishers*/
 	janus_videoroom_audiocodec acodec;	/* Audio codec to force on publishers*/
+	janus_videoroom_videocodec vcodec;	/* Video codec to force on publishers*/
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
 	gint64 destroyed;			/* Value to flag the room for destruction, done lazily */
@@ -432,12 +432,12 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* PCMU_PT payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d PCMU/8000\r\n"		/* PCMU_PT payload type */
+		"a=rtpmap:%d PCMU/8000\r\n"		    /* PCMU_PT payload type */
 #define sdp_a_template_pcma \
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* PCMA_PT payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d PCMA/8000\r\n"		/* PCMA_PT payload type */
+		"a=rtpmap:%d PCMA/8000\r\n"		    /* PCMA_PT payload type */
 #define sdp_v_template_vp8 \
 		"m=video 1 RTP/SAVPF %d\r\n"		/* VP8 payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
@@ -789,7 +789,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	g_hash_table_iter_init(&iter, rooms);
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom *vr = value;
-		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds, %s video codec %s audio codec\n",
+		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds, %s audio codec, %s video codec\n",
 			vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq,
 			janus_videoroom_audiocodec_name(vr->acodec), janus_videoroom_videocodec_name(vr->vcodec));
 	}
@@ -1378,8 +1378,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
 				janus_config_add_item(config, cat, "fir_freq", value);
 			}
-			janus_config_add_item(config, cat, "videocodec", janus_videoroom_videocodec_name(videoroom->vcodec));
 			janus_config_add_item(config, cat, "audiocodec", janus_videoroom_audiocodec_name(videoroom->acodec));
+			janus_config_add_item(config, cat, "videocodec", janus_videoroom_videocodec_name(videoroom->vcodec));
 			if(videoroom->room_secret)
 				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
@@ -3681,7 +3681,7 @@ static void *janus_videoroom_handler(void *data) {
 					if(pcmu_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMU payload type is %d\n", pcmu_pt);
 					}
-					pcma_pt = janus_get_pcmu_pt(msg->sdp);
+					pcma_pt = janus_get_pcma_pt(msg->sdp);
 					if(pcma_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMA payload type is %d\n", pcma_pt);
 					}
@@ -3717,8 +3717,8 @@ static void *janus_videoroom_handler(void *data) {
 							}else {
 								g_snprintf(audio_mline, 256, sdp_a_template_opus,
 									opus_pt,						/* Opus payload type */
-									audio_mode,					/* The publisher gets a recvonly or inactive back */
-									opus_pt); 					/* Opus payload type */
+									audio_mode,						/* The publisher gets a recvonly or inactive back */
+									opus_pt); 						/* Opus payload type */
 							}
 							break;
 						case JANUS_VIDEOROOM_ISAC_32K:
@@ -3740,7 +3740,7 @@ static void *janus_videoroom_handler(void *data) {
 								g_snprintf(audio_mline, 256, sdp_a_template_isac16,
 									isac16_pt,						/* ISAC 16K payload type */
 									audio_mode,						/* The publisher gets a recvonly or inactive back */
-									isac16_pt); 					/* ISAC 16K payload type */
+									isac16_pt);						/* ISAC 16K payload type */
 							}
 							break;
 						case JANUS_VIDEOROOM_PCMU:
@@ -3750,8 +3750,8 @@ static void *janus_videoroom_handler(void *data) {
 							}else {
 								g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
 									pcmu_pt,						/* PCMU payload type */
-									audio_mode,					/* The publisher gets a recvonly or inactive back */
-									pcmu_pt); 					/* PCMU payload type */
+									audio_mode,						/* The publisher gets a recvonly or inactive back */
+									pcmu_pt);						/* PCMU payload type */
 							}
 							break;
 						case JANUS_VIDEOROOM_PCMA:
@@ -3761,8 +3761,8 @@ static void *janus_videoroom_handler(void *data) {
 							}else {
 								g_snprintf(audio_mline, 256, sdp_a_template_pcma,
 									pcma_pt,						/* PCMA payload type */
-									audio_mode,					/* The publisher gets a recvonly or inactive back */
-									pcma_pt); 					/* PCMA payload type */
+									audio_mode,						/* The publisher gets a recvonly or inactive back */
+									pcma_pt);						/* PCMA payload type */
 							}
 							break;
 						default:
@@ -3906,11 +3906,11 @@ static void *janus_videoroom_handler(void *data) {
 									if(opus_pt < 0) {
 										audio_mline[0] = '\0';
 									}else {
-											g_snprintf(audio_mline, 256, sdp_a_template_opus,
-												OPUS_PT,						/* Opus payload type */
-												/* Subscribers gets a sendonly or inactive back */
-												strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-												OPUS_PT); 						/* Opus payload type */
+                                        g_snprintf(audio_mline, 256, sdp_a_template_opus,
+                                            OPUS_PT,						/* Opus payload type */
+                                            /* Subscribers gets a sendonly or inactive back */
+                                            strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
+                                            OPUS_PT); 						/* Opus payload type */
 									}
 									break;
 								case JANUS_VIDEOROOM_ISAC_32K:
@@ -3922,7 +3922,7 @@ static void *janus_videoroom_handler(void *data) {
 											ISAC32_PT,						/* ISAC 32K payload type */
 											/* Subscribers gets a sendonly or inactive back */
 											strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-											ISAC32_PT); 						/* ISAC 32K payload type */
+											ISAC32_PT);						/* ISAC 32K payload type */
 									}
 									break;
 								case JANUS_VIDEOROOM_ISAC_16K:
@@ -3934,7 +3934,7 @@ static void *janus_videoroom_handler(void *data) {
 											ISAC16_PT,						/* ISAC 16K payload type */
 											/* Subscribers gets a sendonly or inactive back */
 											strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-											ISAC16_PT); 						/* ISAC 16K payload type */
+											ISAC16_PT);						/* ISAC 16K payload type */
 									}
 									break;
 								case JANUS_VIDEOROOM_PCMU:
@@ -4263,32 +4263,32 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 		case JANUS_VIDEOROOM_OPUS:
 			g_snprintf(audio_mline, 512, sdp_a_template_opus,
 				OPUS_PT,						/* Opus payload type */
-				"sendonly",					/* The subscribers gets a sendonly back */
-				OPUS_PT); 					/* Opus payload type */
+				"sendonly",						/* The subscribers gets a sendonly back */
+				OPUS_PT); 						/* Opus payload type */
 			break;
 		case JANUS_VIDEOROOM_ISAC_32K:
 			g_snprintf(audio_mline, 512, sdp_a_template_isac32,
-				ISAC32_PT,					/* ISAC 32K payload type */
+				ISAC32_PT,						/* ISAC 32K payload type */
 				"sendonly",						/* The subscribers gets a sendonly back */
 				ISAC32_PT); 					/* ISAC 32K payload type */
 			break;
 		case JANUS_VIDEOROOM_ISAC_16K:
 			g_snprintf(audio_mline, 512, sdp_a_template_isac16,
-				ISAC16_PT,					/* ISAC 16K payload type */
-				"sendonly",					/* The subscribers gets a sendonly back */
-				ISAC16_PT); 				/* ISAC 16K payload type */
+				ISAC16_PT,						/* ISAC 16K payload type */
+				"sendonly",						/* The subscribers gets a sendonly back */
+				ISAC16_PT);						/* ISAC 16K payload type */
 			break;
 		case JANUS_VIDEOROOM_PCMU:
 			g_snprintf(audio_mline, 512, sdp_a_template_pcmu,
 				PCMU_PT,						/* PCMU payload type */
-				"sendonly",					/* The subscribers gets a sendonly back */
-				PCMU_PT); 					/* PCMU payload type */
+				"sendonly",						/* The subscribers gets a sendonly back */
+				PCMU_PT);						/* PCMU payload type */
 			break;
 		case JANUS_VIDEOROOM_PCMA:
 			g_snprintf(audio_mline, 512, sdp_a_template_pcma,
 				PCMA_PT,						/* PCMA payload type */
-				"sendonly",					/* The subscribers gets a sendonly back */
-				PCMA_PT); 					/* PCMA payload type */
+				"sendonly",						/* The subscribers gets a sendonly back */
+				PCMA_PT);						/* PCMA payload type */
 			break;
 		default:
 			/* Shouldn't happen */
