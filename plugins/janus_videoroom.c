@@ -12,6 +12,7 @@
  * different scenarios, ranging from a simple webinar (one speaker, several
  * listeners) to a fully meshed video conference (each peer sending and
  * receiving to and from all the others).
+
  * For what concerns the subscriber side, there are two different ways to
  * attach to a publisher's feed: a generic 'listener', which can attach to
  * a single feed, and a more complex 'Multiplexed listener', which instead can
@@ -1349,8 +1350,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codec, secret: %s, pin: %s)\n",
 			videoroom->room_id, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
-			janus_videoroom_videocodec_name(videoroom->vcodec),
 			janus_videoroom_audiocodec_name(videoroom->acodec),
+			janus_videoroom_videocodec_name(videoroom->vcodec),
 			videoroom->room_secret ? videoroom->room_secret : "no secret",
 			videoroom->room_pin ? videoroom->room_pin : "no pin");
 		if(videoroom->record) {
@@ -3661,7 +3662,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				sdp_parser_free(parser);
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", audio ? "is" : "is NOT");
-				int opus_pt = 0, isac32_pt = 0, isac16_pt = 0, pcmu_pt = 0, vp8_pt = 0, vp9_pt = 0, h264_pt = 0;
+				int opus_pt = 0, isac32_pt = 0, isac16_pt = 0, pcmu_pt = 0, pcma_pt = 0, vp8_pt = 0, vp9_pt = 0, h264_pt = 0;
 				if(audio) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", audio_mode);
 					opus_pt = janus_get_opus_pt(msg->sdp);
@@ -3680,7 +3681,7 @@ static void *janus_videoroom_handler(void *data) {
 					if(pcmu_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMU payload type is %d\n", pcmu_pt);
 					}
-					pcmu_pt = janus_get_pcmu_pt(msg->sdp);
+					pcma_pt = janus_get_pcmu_pt(msg->sdp);
 					if(pcma_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMA payload type is %d\n", pcma_pt);
 					}
