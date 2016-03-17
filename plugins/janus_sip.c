@@ -1522,15 +1522,20 @@ static void *janus_sip_handler(void *data) {
 					/* Parse custom headers */
 					const char *key = NULL;
 					json_t *value = NULL;
-					json_object_foreach(headers, key, value) {
+					void *iter = json_object_iter(headers);
+					while(iter != NULL) {
+						key = json_object_iter_key(iter);
+						value = json_object_get(headers, key);
 						if(value == NULL || !json_is_string(value)) {
 							JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+							iter = json_object_iter_next(headers, iter);
 							continue;
 						}
 						char h[255];
 						g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
 						JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
 						g_strlcat(custom_headers, h, 2048);
+						iter = json_object_iter_next(headers, iter);
 					}
 				}
 			}
