@@ -417,7 +417,7 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d OPUS/48000/2\r\n"		/* Opus payload type */
+		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
 #define sdp_a_template_isac32 \
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* ISAC32_PT payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
@@ -767,7 +767,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codec, secret: %s, pin: %s)\n",
+			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s)\n",
 				videoroom->room_id, videoroom->room_name,
 				videoroom->is_private ? "private" : "public",
 				janus_videoroom_audiocodec_name(videoroom->acodec),
@@ -1347,7 +1347,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->destroyed = 0;
 		janus_mutex_init(&videoroom->participants_mutex);
 		videoroom->participants = g_hash_table_new(NULL, NULL);
-		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codec, secret: %s, pin: %s)\n",
+		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s)\n",
 			videoroom->room_id, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
 			janus_videoroom_audiocodec_name(videoroom->acodec),
@@ -3662,7 +3662,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				sdp_parser_free(parser);
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", audio ? "is" : "is NOT");
-				int opus_pt = 0, isac32_pt = 0, isac16_pt = 0, pcmu_pt = 0, pcma_pt = 0, vp8_pt = 0, vp9_pt = 0, h264_pt = 0;
+				int opus_pt = 0, isac32_pt = 0, isac16_pt = 0, pcmu_pt = 0, pcma_pt = 0,
+					vp8_pt = 0, vp9_pt = 0, h264_pt = 0;
 				if(audio) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", audio_mode);
 					opus_pt = janus_get_opus_pt(msg->sdp);
@@ -3714,7 +3715,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(opus_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing OPUS, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 111 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_opus,
 									opus_pt,						/* Opus payload type */
 									audio_mode,						/* The publisher gets a recvonly or inactive back */
@@ -3725,7 +3726,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(isac32_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 104 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_isac32,
 									isac32_pt,						/* ISAC 32K payload type */
 									audio_mode,						/* The publisher gets a recvonly or inactive back */
@@ -3736,7 +3737,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(isac16_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 103 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_isac16,
 									isac16_pt,						/* ISAC 16K payload type */
 									audio_mode,						/* The publisher gets a recvonly or inactive back */
@@ -3747,7 +3748,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(pcmu_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
 									pcmu_pt,						/* PCMU payload type */
 									audio_mode,						/* The publisher gets a recvonly or inactive back */
@@ -3758,7 +3759,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(pcma_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_pcma,
 									pcma_pt,						/* PCMA payload type */
 									audio_mode,						/* The publisher gets a recvonly or inactive back */
@@ -3905,7 +3906,7 @@ static void *janus_videoroom_handler(void *data) {
 						case JANUS_VIDEOROOM_OPUS:
 							if(opus_pt < 0) {
 								audio_mline[0] = '\0';
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_opus,
 									OPUS_PT,						/* Opus payload type */
 									/* Subscribers gets a sendonly or inactive back */
@@ -3917,7 +3918,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(isac32_pt < 0 ) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 104 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_isac32,
 									ISAC32_PT,						/* ISAC 32K payload type */
 									/* Subscribers gets a sendonly or inactive back */
@@ -3929,7 +3930,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(isac16_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 103 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_isac16,
 									ISAC16_PT,						/* ISAC 16K payload type */
 									/* Subscribers gets a sendonly or inactive back */
@@ -3941,7 +3942,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(pcmu_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
 									PCMU_PT,						/*PCMU payload type */
 									/* Subscribers gets a sendonly or inactive back */
@@ -3953,7 +3954,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(pcma_pt < 0) {
 								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
 								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							}else {
+							} else {
 								g_snprintf(audio_mline, 256, sdp_a_template_pcma,
 									PCMA_PT,						/*PCMA payload type */
 									/* Subscribers gets a sendonly or inactive back */
