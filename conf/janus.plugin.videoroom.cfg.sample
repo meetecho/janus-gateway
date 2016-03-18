@@ -17,6 +17,7 @@ secret = adminpwd
 publishers = 6
 bitrate = 128000
 fir_freq = 10
+;audiocodec = opus
 ;videocodec = vp8
 record = false
 ;rec_dir = /tmp/janus-videoroom

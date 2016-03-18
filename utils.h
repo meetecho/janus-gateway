@@ -84,6 +84,26 @@ int janus_mkdir(const char *dir, mode_t mode);
  * @returns The Opus payload type, if found, -1 otherwise */
 int janus_get_opus_pt(const char *sdp);
 
+/*! \brief Ugly and dirty helper to quickly get the ISAC 32K payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The ISAC 32K payload type, if found, -1 otherwise */
+int janus_get_isac32_pt(const char *sdp);
+
+/*! \brief Ugly and dirty helper to quickly get the ISAC 16K payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The ISAC 16K payload type, if found, -1 otherwise */
+int janus_get_isac16_pt(const char *sdp);
+
+/*! \brief Ugly and dirty helper to quickly get the PCMU payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The PCMU payload type, if found, -1 otherwise */
+int janus_get_pcmu_pt(const char *sdp);
+
+/*! \brief Ugly and dirty helper to quickly get the PCMU payload type in an SDP
+ * @param sdp The SDP to parse
+ * @returns The PCMA payload type, if found, -1 otherwise */
+int janus_get_pcma_pt(const char *sdp);
+
 /*! \brief Ugly and dirty helper to quickly get the VP8 payload type in an SDP
  * @param sdp The SDP to parse
  * @returns The VP8 payload type, if found, -1 otherwise */
