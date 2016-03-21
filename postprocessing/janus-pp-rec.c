@@ -489,7 +489,7 @@ int main(int argc, char *argv[])
 		}
 	} else {
 		if(janus_pp_webm_process(file, list, &working) < 0) {
-			JANUS_LOG(LOG_ERR, "Error processing Opus RTP frames...\n");
+			JANUS_LOG(LOG_ERR, "Error processing VP8 RTP frames...\n");
 		}
 	}
 
