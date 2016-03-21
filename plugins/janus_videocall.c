@@ -1046,14 +1046,23 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(call, "result", calling);
 				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
-				/* Make sure we get rid of ULPfec, red, etc. */
+				/* Make also sure we get rid of ULPfec, red, etc. */
 				char *sdp = g_strdup(msg->sdp);
 				if(strstr(sdp, "ulpfec")) {
-					sdp = janus_string_replace(sdp, "100 116 117 96", "100");
+					/* FIXME This really needs some better code */
 					sdp = janus_string_replace(sdp, "a=rtpmap:116 red/90000\r\n", "");
 					sdp = janus_string_replace(sdp, "a=rtpmap:117 ulpfec/90000\r\n", "");
 					sdp = janus_string_replace(sdp, "a=rtpmap:96 rtx/90000\r\n", "");
 					sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
+					sdp = janus_string_replace(sdp, "a=rtpmap:97 rtx/90000\r\n", "");
+					sdp = janus_string_replace(sdp, "a=fmtp:97 apt=101\r\n", "");
+					sdp = janus_string_replace(sdp, "a=rtpmap:98 rtx/90000\r\n", "");
+					sdp = janus_string_replace(sdp, "a=fmtp:98 apt=116\r\n", "");
+					sdp = janus_string_replace(sdp, " 116", "");
+					sdp = janus_string_replace(sdp, " 117", "");
+					sdp = janus_string_replace(sdp, " 96", "");
+					sdp = janus_string_replace(sdp, " 97", "");
+					sdp = janus_string_replace(sdp, " 98", "");
 				}
 				g_atomic_int_set(&session->hangingup, 0);
 				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
