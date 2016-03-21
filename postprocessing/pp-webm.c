@@ -195,6 +195,12 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
 				}
 			}
 		}
+		if(tmp->drop) {
+			/* We marked this packet as one to drop, before */
+			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/90000);
+			tmp = tmp->next;
+			continue;
+		}
 		tmp = tmp->next;
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
@@ -230,6 +236,13 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		frameLen = 0;
 		len = 0;
 		while(1) {
+			if(tmp->drop) {
+				/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
+				tmp = tmp->next;
+				continue;
+			}
 			/* RTP payload */
 			buffer = start;
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
