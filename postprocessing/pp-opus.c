@@ -90,7 +90,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
-			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/48000);
+			JANUS_LOG(LOG_WARN, "Dropping previously marked audio packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/48000);
 			tmp = tmp->next;
 			continue;
 		}
