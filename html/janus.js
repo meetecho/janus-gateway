@@ -1456,8 +1456,8 @@ function Janus(gatewayCallbacks) {
 					var videoSend = isVideoSendEnabled(media);
 					if(audioSend || videoSend) {
 						// We need to send either audio or video
-						var haveAudioDevice = audioExist && audioSend;
-						var haveVideoDevice = videoExist && videoSend;
+						var haveAudioDevice = audioSend ? audioExist : false;
+						var haveVideoDevice = videoSend ? videoExist : false;
 						if(!haveAudioDevice && !haveVideoDevice) {
 							// FIXME Should we really give up, or just assume recvonly for both?
 							pluginHandle.consentDialog(false);
