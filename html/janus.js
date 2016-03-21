@@ -1451,15 +1451,23 @@ function Janus(gatewayCallbacks) {
 						return source.kind === 'video';
 					});
 
-					// FIXME Should we really give up, or just assume recvonly for both?
-					if(!audioExist && !videoExist) {
-						pluginHandle.consentDialog(false);
-						callbacks.error('No capture device found');
-						return false;
+					// Check whether a missing device is really a problem
+					var audioSend = isAudioSendEnabled(media);
+					var videoSend = isVideoSendEnabled(media);
+					if(audioSend || videoSend) {
+						// We need to send either audio or video
+						var haveAudioDevice = audioExist && audioSend;
+						var haveVideoDevice = videoExist && videoSend;
+						if(!haveAudioDevice && !haveVideoDevice) {
+							// FIXME Should we really give up, or just assume recvonly for both?
+							pluginHandle.consentDialog(false);
+							callbacks.error('No capture device found');
+							return false;
+						}
 					}
 
 					getUserMedia(
-						{audio: audioExist && isAudioSendEnabled(media), video: videoExist ? videoSupport : false},
+						{audio: audioExist && audioSend, video: videoExist && videoSend ? videoSupport : false},
 						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
 						function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
 				});
