@@ -142,6 +142,9 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								mediaState: function(medium, on) {
+									Janus.debug("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
 									Janus.debug(JSON.stringify(msg));
