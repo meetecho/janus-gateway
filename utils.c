@@ -246,7 +246,6 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 	/* First of all, let's check if the codec is there */
 	if(!video) {
 		if(!strstr(sdp, "m=audio") || (!strstr(sdp, format) && !strstr(sdp, format2)))
-			JANUS_LOG(LOG_FATAL, "Can't find audio %s and %s\n", format, format2);
 			return -2;
 	} else {
 		if(!strstr(sdp, "m=video") || (!strstr(sdp, format) && !strstr(sdp, format2)))
