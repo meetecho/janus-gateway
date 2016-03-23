@@ -1915,8 +1915,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				goto error;
 			}
 			if(audio) {
+				const char *codec = NULL;
+				if(strstr(mp->codecs.audio_rtpmap, "opus") || strstr(mp->codecs.audio_rtpmap, "OPUS"))
+					codec = "opus";
+				else if(strstr(mp->codecs.audio_rtpmap, "pcm") || strstr(mp->codecs.audio_rtpmap, "PCM"))
+					codec = "g711";
 				const char *audiofile = json_string_value(audio);
-				source->arc = janus_recorder_create(NULL, 0, (char *)audiofile);
+				source->arc = janus_recorder_create(NULL, codec, (char *)audiofile);
 				if(source->arc == NULL) {
 					JANUS_LOG(LOG_ERR, "Error starting recorder for audio\n");
 				} else {
@@ -1924,8 +1929,15 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				}
 			}
 			if(video) {
+				const char *codec = NULL;
+				if(strstr(mp->codecs.video_rtpmap, "vp8") || strstr(mp->codecs.video_rtpmap, "VP8"))
+					codec = "vp8";
+				else if(strstr(mp->codecs.video_rtpmap, "vp9") || strstr(mp->codecs.video_rtpmap, "VP9"))
+					codec = "vp9";
+				else if(strstr(mp->codecs.video_rtpmap, "h264") || strstr(mp->codecs.video_rtpmap, "H264"))
+					codec = "h264";
 				const char *videofile = json_string_value(video);
-				source->vrc = janus_recorder_create(NULL, 1, (char *)videofile);
+				source->vrc = janus_recorder_create(NULL, codec, (char *)videofile);
 				if(source->vrc == NULL) {
 					JANUS_LOG(LOG_ERR, "Error starting recorder for video\n");
 				} else {

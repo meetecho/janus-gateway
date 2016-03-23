@@ -1927,7 +1927,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-peer-audio", recording_base);
-							session->arc_peer = janus_recorder_create(NULL, 0, filename);
+							/* FIXME badly: assuming Opus for now, we should check what was negotiated */
+							session->arc_peer = janus_recorder_create(NULL, "opus", filename);
 							if(session->arc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -1938,7 +1939,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->arc_peer = janus_recorder_create(NULL, 0, filename);
+							/* FIXME badly: assuming Opus for now, we should check what was negotiated */
+							session->arc_peer = janus_recorder_create(NULL, "opus", filename);
 							if(session->arc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -1950,7 +1952,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-peer-video", recording_base);
-							session->vrc_peer = janus_recorder_create(NULL, 1, filename);
+							/* FIXME badly: assuming VP8 for now, we should check what was negotiated */
+							session->vrc_peer = janus_recorder_create(NULL, "vp8", filename);
 							if(session->vrc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
@@ -1961,7 +1964,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->vrc_peer = janus_recorder_create(NULL, 1, filename);
+							/* FIXME badly: assuming VP8 for now, we should check what was negotiated */
+							session->vrc_peer = janus_recorder_create(NULL, "vp8", filename);
 							if(session->vrc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
@@ -1980,7 +1984,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-user-audio", recording_base);
-							session->arc = janus_recorder_create(NULL, 0, filename);
+							/* FIXME badly: assuming Opus for now, we should check what was negotiated */
+							session->arc = janus_recorder_create(NULL, "opus", filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -1991,7 +1996,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->arc = janus_recorder_create(NULL, 0, filename);
+							/* FIXME badly: assuming Opus for now, we should check what was negotiated */
+							session->arc = janus_recorder_create(NULL, "opus", filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -2003,7 +2009,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-user-video", recording_base);
-							session->vrc = janus_recorder_create(NULL, 1, filename);
+							/* FIXME badly: assuming Opus for now, we should check what was negotiated */
+							session->vrc = janus_recorder_create(NULL, "vp8", filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
@@ -2014,7 +2021,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->vrc = janus_recorder_create(NULL, 1, filename);
+							/* FIXME badly: assuming Opus for now, we should check what was negotiated */
+							session->vrc = janus_recorder_create(NULL, "vp8", filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");

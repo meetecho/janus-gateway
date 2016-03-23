@@ -3049,7 +3049,8 @@ static void *janus_videoroom_handler(void *data) {
 							if(participant->recording_base) {
 								/* Use the filename and path we have been provided */
 								g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-								participant->arc = janus_recorder_create(participant->room->rec_dir, 0, filename);
+								participant->arc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 								if(participant->arc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 								}
@@ -3057,7 +3058,8 @@ static void *janus_videoroom_handler(void *data) {
 								/* Build a filename */
 								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
 									participant->room->room_id, participant->user_id, now);
-								participant->arc = janus_recorder_create(participant->room->rec_dir, 0, filename);
+								participant->arc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 								if(participant->arc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 								}
@@ -3068,7 +3070,8 @@ static void *janus_videoroom_handler(void *data) {
 							if(participant->recording_base) {
 								/* Use the filename and path we have been provided */
 								g_snprintf(filename, 255, "%s-video", participant->recording_base);
-								participant->vrc = janus_recorder_create(participant->room->rec_dir, 1, filename);
+								participant->vrc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 								if(participant->vrc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 								}
@@ -3076,7 +3079,8 @@ static void *janus_videoroom_handler(void *data) {
 								/* Build a filename */
 								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
 									participant->room->room_id, participant->user_id, now);
-								participant->vrc = janus_recorder_create(participant->room->rec_dir, 1, filename);
+								participant->vrc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 								if(participant->vrc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 								}
@@ -3667,23 +3671,23 @@ static void *janus_videoroom_handler(void *data) {
 					vp8_pt = 0, vp9_pt = 0, h264_pt = 0;
 				if(audio) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", audio_mode);
-					opus_pt = janus_get_opus_pt(msg->sdp);
+					opus_pt = janus_get_codec_pt(msg->sdp, "opus");
 					if(opus_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- Opus payload type is %d\n", opus_pt);
 					}
-					isac32_pt = janus_get_isac32_pt(msg->sdp);
+					isac32_pt = janus_get_codec_pt(msg->sdp, "isac32");
 					if(isac32_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- ISAC 32K payload type is %d\n", isac32_pt);
 					}
-					isac16_pt = janus_get_isac16_pt(msg->sdp);
+					isac16_pt = janus_get_codec_pt(msg->sdp, "isac16");
 					if(isac16_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- ISAC 16K payload type is %d\n", isac16_pt);
 					}
-					pcmu_pt = janus_get_pcmu_pt(msg->sdp);
+					pcmu_pt = janus_get_codec_pt(msg->sdp, "pcmu");
 					if(pcmu_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMU payload type is %d\n", pcmu_pt);
 					}
-					pcma_pt = janus_get_pcma_pt(msg->sdp);
+					pcma_pt = janus_get_codec_pt(msg->sdp, "pcma");
 					if(pcma_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMA payload type is %d\n", pcma_pt);
 					}
@@ -3691,15 +3695,15 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT");
 				if(video) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", video_mode);
-					vp8_pt = janus_get_vp8_pt(msg->sdp);
+					vp8_pt = janus_get_codec_pt(msg->sdp, "vp8");
 					if(vp8_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- VP8 payload type is %d\n", vp8_pt);
 					}
-					vp9_pt = janus_get_vp9_pt(msg->sdp);
+					vp9_pt = janus_get_codec_pt(msg->sdp, "vp9");
 					if(vp9_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- VP9 payload type is %d\n", vp9_pt);
 					}
-					h264_pt = janus_get_h264_pt(msg->sdp);
+					h264_pt = janus_get_codec_pt(msg->sdp, "h264");
 					if(h264_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- H264 payload type is %d\n", h264_pt);
 					}
@@ -3859,7 +3863,8 @@ static void *janus_videoroom_handler(void *data) {
 						if(participant->recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-							participant->arc = janus_recorder_create(videoroom->rec_dir, 0, filename);
+							participant->arc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 							if(participant->arc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 							}
@@ -3867,7 +3872,8 @@ static void *janus_videoroom_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
 								videoroom->room_id, participant->user_id, now);
-							participant->arc = janus_recorder_create(videoroom->rec_dir, 0, filename);
+							participant->arc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 							if(participant->arc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 							}
@@ -3878,7 +3884,8 @@ static void *janus_videoroom_handler(void *data) {
 						if(participant->recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-video", participant->recording_base);
-							participant->vrc = janus_recorder_create(videoroom->rec_dir, 1, filename);
+							participant->vrc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 							if(participant->vrc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 							}
@@ -3886,7 +3893,8 @@ static void *janus_videoroom_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
 								videoroom->room_id, participant->user_id, now);
-							participant->vrc = janus_recorder_create(videoroom->rec_dir, 1, filename);
+							participant->vrc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 							if(participant->vrc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 							}
