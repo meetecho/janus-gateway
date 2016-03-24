@@ -68,8 +68,7 @@ record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
 \endverbatim
  *
- * Note that, due to current limitations in our recording and postprocessing
- * code, recording will only work when using VP8 for video in the room.
+ * Note that recording will work with all codecs except iSAC.
  *
  * \section sfuapi Video Room API
  * 
