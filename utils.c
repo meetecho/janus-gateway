@@ -303,7 +303,7 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 				if(sscanf(line, "a=rtpmap:%d %s", &pt, name) == 2) {
 					*next = '\n';
 					if(strstr(name, "vp8") || strstr(name, "VP8"))
-						return "cp8";
+						return "vp8";
 					if(strstr(name, "vp9") || strstr(name, "VP9"))
 						return "vp9";
 					if(strstr(name, "h264") || strstr(name, "H264"))
