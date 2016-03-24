@@ -542,7 +542,7 @@ static int janus_sip_parse_uri(janus_sip_uri_t *sip_uri, const char *data) {
 	return 0;
 }
 
-/* Similar to th above function, but it also accepts SIPS URIs */
+/* Similar to the above function, but it also accepts SIPS URIs */
 static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data) {
 	g_strlcpy(sip_uri->data, data, JANUS_SIP_URI_MAXLEN);
 	if (url_d(sip_uri->url, sip_uri->data) < 0 || (sip_uri->url->url_type != url_sip && sip_uri->url->url_type != url_sips))
@@ -1483,6 +1483,38 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid element (uri should be a string)");
 				goto error;
 			}
+			/* Check if the INVITE needs to be enriched with custom headers */
+			char custom_headers[2048];
+			custom_headers[0] = '\0';
+			json_t *headers = json_object_get(root, "headers");
+			if(headers) {
+				if(!json_is_object(headers)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (headers should be an object)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (headers should be an object)");
+					goto error;
+				}
+				if(json_object_size(headers) > 0) {
+					/* Parse custom headers */
+					const char *key = NULL;
+					json_t *value = NULL;
+					void *iter = json_object_iter(headers);
+					while(iter != NULL) {
+						key = json_object_iter_key(iter);
+						value = json_object_get(headers, key);
+						if(value == NULL || !json_is_string(value)) {
+							JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+							iter = json_object_iter_next(headers, iter);
+							continue;
+						}
+						char h[255];
+						g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+						JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+						g_strlcat(custom_headers, h, 2048);
+						iter = json_object_iter_next(headers, iter);
+					}
+				}
+			}
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			json_t *srtp = json_object_get(root, "srtp");
@@ -1568,7 +1600,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
-			/* Send INVITE */
+			/* Prepare the stack */
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
 			session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
@@ -1582,11 +1614,13 @@ static void *janus_sip_handler(void *data) {
 			}
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_inviting;
+			/* Send INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(session->account.identity),
 				SIPTAG_TO_STR(uri_text),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->account.proxy),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
 				TAG_END());
 			g_free(sdp);
@@ -2814,7 +2848,8 @@ static void *janus_sip_relay_thread(void *data) {
 	memset(buffer, 0, 1500);
 	/* Loop */
 	int num = 0;
-	while(session != NULL && !g_atomic_int_get(&session->destroyed) &&
+	gboolean goon = TRUE;
+	while(goon && session != NULL && !g_atomic_int_get(&session->destroyed) &&
 			session->status > janus_sip_call_status_idle &&
 			session->status < janus_sip_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
 		/* Prepare poll */
@@ -2864,6 +2899,15 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
 					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
+				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
+				/* FIXME Simulate a "hangup" coming from the browser */
+				janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+				msg->handle = session->handle;
+				msg->message = g_strdup("{\"request\":\"hangup\"}");
+				msg->transaction = NULL;
+				msg->sdp_type = NULL;
+				msg->sdp = NULL;
+				g_async_queue_push(messages, msg);
 				break;
 			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP/RTCP packet */

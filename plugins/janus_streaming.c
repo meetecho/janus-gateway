@@ -238,6 +238,8 @@ typedef struct janus_streaming_rtp_source {
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
 	int audio_fd;
 	int video_fd;
+	gint64 last_received_video;
+	gint64 last_received_audio;
 #ifdef HAVE_LIBCURL
 	CURL* curl;
 #endif
@@ -976,6 +978,14 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_object_set_new(ml, "id", json_integer(mp->id));
 			json_object_set_new(ml, "description", json_string(mp->description));
 			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+			if(mp->streaming_source == janus_streaming_source_rtp) {
+				janus_streaming_rtp_source *source = mp->source;
+				gint64 now = janus_get_monotonic_time();
+				if(source->audio_fd != -1)
+					json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
+				if(source->video_fd != -1)
+					json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
+			}
 			json_array_append_new(list, ml);
 			janus_refcount_decrease(&mp->ref);
 		}
@@ -984,6 +994,52 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("list"));
 		json_object_set_new(response, "list", list);
+		goto plugin_response;
+	} else if(!strcasecmp(request_text, "info")) {
+		JANUS_LOG(LOG_VERB, "Request info on a specific mountpoint\n");
+		/* Return info on a specific mountpoint */
+		json_t *id = json_object_get(root, "id");
+		if(!id) {
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
+			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (id)");
+			goto error;
+		}
+		if(!json_is_integer(id) || json_integer_value(id) < 0) {
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
+			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
+			goto error;
+		}
+		gint64 id_value = json_integer_value(id);
+		janus_mutex_lock(&mountpoints_mutex);
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		if(mp == NULL) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
+			goto error;
+		}
+		janus_refcount_increase(&mp->ref);
+		json_t *ml = json_object();
+		json_object_set_new(ml, "id", json_integer(mp->id));
+		json_object_set_new(ml, "description", json_string(mp->description));
+		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+		if(mp->streaming_source == janus_streaming_source_rtp) {
+			janus_streaming_rtp_source *source = mp->source;
+			gint64 now = janus_get_monotonic_time();
+			if(source->audio_fd != -1)
+				json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
+			if(source->video_fd != -1)
+				json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
+		}
+		janus_refcount_decrease(&mp->ref);
+		janus_mutex_unlock(&mountpoints_mutex);
+		/* Send info back */
+		response = json_object();
+		json_object_set_new(response, "streaming", json_string("info"));
+		json_object_set_new(response, "info", ml);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "create")) {
 		/* Create a new stream */
@@ -1775,6 +1831,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *secret = json_object_get(root, "secret");
 			if(!secret) {
 				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
 				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
 				g_snprintf(error_cause, 512, "Missing element (secret)");
@@ -1782,6 +1839,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			if(!json_is_string(secret)) {
 				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
 				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
@@ -1789,6 +1847,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			if(!janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
 				janus_refcount_decrease(&mp->ref);
+				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
@@ -2732,6 +2791,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->vrc = NULL;
 	live_rtp_source->audio_fd = audio_fd;
 	live_rtp_source->video_fd = video_fd;
+	live_rtp_source->last_received_audio = janus_get_monotonic_time();
+	live_rtp_source->last_received_video = janus_get_monotonic_time();
 	live_rtp_source->keyframe.enabled = bufferkf;
 	live_rtp_source->keyframe.latest_keyframe = NULL;
 	live_rtp_source->keyframe.temp_keyframe = NULL;
@@ -3495,6 +3556,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Got something audio (RTP) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
+					source->last_received_audio = janus_get_monotonic_time();
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
@@ -3542,6 +3604,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Got something video (RTP) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
+					source->last_received_video = janus_get_monotonic_time();
 					addrlen = sizeof(remote);
 					bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
