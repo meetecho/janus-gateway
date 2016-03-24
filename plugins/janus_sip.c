@@ -1758,11 +1758,11 @@ static void *janus_sip_handler(void *data) {
 			}
 			if(session->media.audio_pt > -1) {
 				session->media.audio_pt_name = janus_get_codec_from_pt(sdp, session->media.audio_pt);
-				JANUS_LOG(LOG_WARN, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+				JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
 			}
 			if(session->media.video_pt > -1) {
 				session->media.video_pt_name = janus_get_codec_from_pt(sdp, session->media.video_pt);
-				JANUS_LOG(LOG_WARN, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
+				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
 			/* Send 200 OK */
@@ -2451,11 +2451,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(session->media.audio_pt > -1) {
 				session->media.audio_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.audio_pt);
-				JANUS_LOG(LOG_WARN, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+				JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
 			}
 			if(session->media.video_pt > -1) {
 				session->media.video_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.video_pt);
-				JANUS_LOG(LOG_WARN, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
+				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
@@ -2641,12 +2641,10 @@ void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp, gbool
 				if(m->m_format) {
 					sdp_list_t *fmt = m->m_format;
 					pt = atoi(fmt->l_text);
-					JANUS_LOG(LOG_WARN, "pt --> %d (fmtp)\n", pt);
 				}
 			} else {
 				sdp_rtpmap_t *r = m->m_rtpmaps;
 				pt = r->rm_pt;
-				JANUS_LOG(LOG_WARN, "pt --> %d (rtmpap)\n", pt);
 			}
 			if(pt > -1) {
 				if(m->m_type == sdp_media_audio) {
@@ -2709,12 +2707,10 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp, g
 				if(m->m_format) {
 					sdp_list_t *fmt = m->m_format;
 					pt = atoi(fmt->l_text);
-					JANUS_LOG(LOG_WARN, "pt --> %d (fmtp)\n", pt);
 				}
 			} else {
 				sdp_rtpmap_t *r = m->m_rtpmaps;
 				pt = r->rm_pt;
-				JANUS_LOG(LOG_WARN, "pt --> %d (rtmpap)\n", pt);
 			}
 			if(pt > -1) {
 				if(m->m_type == sdp_media_audio) {
