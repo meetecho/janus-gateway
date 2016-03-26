@@ -1633,14 +1633,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
 		janus_mutex_unlock(&rooms_mutex);
 		if(videoroom == NULL) {
-			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 			goto error;
 		}
 		if(videoroom->destroyed) {
-			janus_mutex_unlock(&rooms_mutex)
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", videoroom->room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
@@ -1650,21 +1648,18 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			/* A secret is required for this action */
 			json_t *secret = json_object_get(root, "secret");
 			if(!secret) {
-				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 				g_snprintf(error_cause, 512, "Missing element (secret)");
 				goto error;
 			}
 			if(!json_is_string(secret)) {
-				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
 			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
@@ -1775,14 +1770,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
 		janus_mutex_unlock(&rooms_mutex);
 		if(videoroom == NULL) {
-			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 			goto error;
 		}
 		if(videoroom->destroyed) {
-			janus_mutex_unlock(&rooms_mutex)
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", videoroom->room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
@@ -1792,21 +1785,18 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			/* A secret is required for this action */
 			json_t *secret = json_object_get(root, "secret");
 			if(!secret) {
-				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
 				g_snprintf(error_cause, 512, "Missing element (secret)");
 				goto error;
 			}
 			if(!json_is_string(secret)) {
-				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
 				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
 				goto error;
 			}
 			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
 				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
 				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
