@@ -558,3 +558,76 @@ int janus_pidfile_remove(void) {
 	g_free(pidfile);
 	return 0;
 }
+
+void janus_validate_json_object(json_t *root, struct janus_json_parameter *params, unsigned int nparams, int *error_code, char *error_cause, int error_cause_size, int error_missing_element, int error_invalid_element) {
+	*error_code = 0;
+	unsigned int i;
+	for(i = 0; i < nparams; i++) {
+		json_t *val = json_object_get(root, params[i].name);
+		if(!val) {
+			if(params[i].required) {
+				JANUS_LOG(LOG_ERR, "Missing element (%s)\n", params[i].name);
+				*error_code = error_missing_element;
+				if(error_cause != NULL)
+					g_snprintf(error_cause, error_cause_size, "Missing element (%s)", params[i].name);
+				return;
+			}
+			continue;
+		}
+		/* Use JSON_TRUE instead of the non-existing JSON_BOOLEAN */
+		gboolean is_valid = (json_typeof(val) == params[i].jtype ||
+												 (params[i].jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
+		if(is_valid && params[i].positive_non_empty)
+			switch(params[i].jtype) {
+			case JSON_INTEGER:
+				is_valid = (json_integer_value(val) >= 0);
+				break;
+			case JSON_REAL:
+				is_valid = (json_real_value(val) >= 0);
+				break;
+			case JSON_STRING:
+				is_valid = (json_string_length(val) > 0);
+				break;
+			case JSON_ARRAY:
+				is_valid = (json_array_size(val) > 0);
+				break;
+			default:
+				break;
+			}
+		if(!is_valid) {
+			char type_name[20] = "";
+			if(params[i].positive_non_empty)
+				strcat(type_name,
+							 params[i].jtype == JSON_INTEGER || params[i].jtype == JSON_REAL ?
+							 "positive " : "non-empty ");
+			switch(params[i].jtype) {
+			case JSON_TRUE:
+				strcat(type_name, "boolean");
+				break;
+			case JSON_INTEGER:
+				strcat(type_name, "integer");
+				break;
+			case JSON_REAL:
+				strcat(type_name, "real");
+				break;
+			case JSON_STRING:
+				strcat(type_name, "string");
+				break;
+			case JSON_ARRAY:
+				strcat(type_name, "array");
+				break;
+			case JSON_OBJECT:
+				strcat(type_name, "object");
+				break;
+			default:
+				break;
+			}
+			gboolean is_vowel = (strchr("aeiou", type_name[0]) != NULL);
+			JANUS_LOG(LOG_ERR, "Invalid element (%s should be %s %s)\n", params[i].name, is_vowel ? "an" : "a", type_name);
+			*error_code = error_invalid_element;
+			if(error_cause != NULL)
+				g_snprintf(error_cause, 512, "Invalid element (%s should be %s %s)", params[i].name, is_vowel ? "an" : "a", type_name);
+			return;
+		}
+	}
+}

@@ -15,6 +15,14 @@
 #include <stdint.h>
 #include <glib.h>
 #include <netinet/in.h>
+#include <jansson.h>
+
+struct janus_json_parameter {
+	const gchar *name;
+	json_type jtype;
+	gboolean positive_non_empty;
+	gboolean required;
+};
 
 /*! \brief Helper to retrieve the system monotonic time, as Glib's
  * g_get_monotonic_time may not be available (only since 2.28)
@@ -139,4 +147,6 @@ int janus_pidfile_create(const char *file);
 /*! \brief Unlock and remove a previously created PID file
  * @returns 0 if successful, a negative integer otherwise */
 int janus_pidfile_remove(void);
+
+void janus_validate_json_object(json_t *root, struct janus_json_parameter *params, unsigned int nparams, int *error_code, char *error_cause, int error_cause_size, int error_missing_element, int error_invalid_element);
 #endif
