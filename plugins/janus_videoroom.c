@@ -1180,10 +1180,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	}
 	/* Get the request first */
 	janus_validate_json_object(root, request_parameters,
-														 sizeof(request_parameters) / sizeof(struct janus_json_parameter),
-														 &error_code, error_cause, sizeof(error_cause),
-														 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-														 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		sizeof(request_parameters) / sizeof(struct janus_json_parameter),
+		&error_code, error_cause, sizeof(error_cause),
+		JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+		JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 	if(error_code != 0)
 		goto error;
 	json_t *request = json_object_get(root, "request");
@@ -1193,10 +1193,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* Create a new videoroom */
 		JANUS_LOG(LOG_VERB, "Creating a new videoroom\n");
 		janus_validate_json_object(root, create_parameters,
-															 sizeof(create_parameters) / sizeof(struct janus_json_parameter),
-															 &error_code, error_cause, sizeof(error_cause),
-															 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-															 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			sizeof(create_parameters) / sizeof(struct janus_json_parameter),
+			&error_code, error_cause, sizeof(error_cause),
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+			JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
 		json_t *desc = json_object_get(root, "description");
@@ -1414,10 +1414,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing videoroom room\n");
 		janus_validate_json_object(root, destroy_parameters,
-															 sizeof(destroy_parameters) / sizeof(struct janus_json_parameter),
-															 &error_code, error_cause, sizeof(error_cause),
-															 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-															 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			sizeof(destroy_parameters) / sizeof(struct janus_json_parameter),
+			&error_code, error_cause, sizeof(error_cause),
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+			JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
 		json_t *room = json_object_get(root, "room");
@@ -1450,10 +1450,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		if(videoroom->room_secret) {
 			/* A secret is required for this action */
 			janus_validate_json_object(root, secret_parameters,
-																 sizeof(secret_parameters) / sizeof(struct janus_json_parameter),
-																 &error_code, error_cause, sizeof(error_cause),
-																 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				sizeof(secret_parameters) / sizeof(struct janus_json_parameter),
+				&error_code, error_cause, sizeof(error_cause),
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+				JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 			if(error_code != 0) {
 				janus_mutex_unlock(&rooms_mutex);
 				goto error;
@@ -1552,10 +1552,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "rtp_forward")) {
 		janus_validate_json_object(root, rtp_forward_parameters,
-															 sizeof(rtp_forward_parameters) / sizeof(struct janus_json_parameter),
-															 &error_code, error_cause, sizeof(error_cause),
-															 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-															 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			sizeof(rtp_forward_parameters) / sizeof(struct janus_json_parameter),
+			&error_code, error_cause, sizeof(error_cause),
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+			JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
 		json_t *room = json_object_get(root, "room");
@@ -1593,10 +1593,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		if(videoroom->room_secret) {
 			/* A secret is required for this action */
 			janus_validate_json_object(root, secret_parameters,
-																 sizeof(secret_parameters) / sizeof(struct janus_json_parameter),
-																 &error_code, error_cause, sizeof(error_cause),
-																 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				sizeof(secret_parameters) / sizeof(struct janus_json_parameter),
+				&error_code, error_cause, sizeof(error_cause),
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+				JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
 			json_t *secret = json_object_get(root, "secret");
@@ -1665,10 +1665,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "stop_rtp_forward")) {
 		janus_validate_json_object(root, stop_rtp_forward_parameters,
-															 sizeof(stop_rtp_forward_parameters) / sizeof(struct janus_json_parameter),
-															 &error_code, error_cause, sizeof(error_cause),
-															 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-															 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			sizeof(stop_rtp_forward_parameters) / sizeof(struct janus_json_parameter),
+			&error_code, error_cause, sizeof(error_cause),
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+			JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
 		json_t *room = json_object_get(root, "room");
@@ -1696,10 +1696,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		if(videoroom->room_secret) {
 			/* A secret is required for this action */
 			janus_validate_json_object(root, secret_parameters,
-																 sizeof(secret_parameters) / sizeof(struct janus_json_parameter),
-																 &error_code, error_cause, sizeof(error_cause),
-																 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				sizeof(secret_parameters) / sizeof(struct janus_json_parameter),
+				&error_code, error_cause, sizeof(error_cause),
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+				JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
 			json_t *secret = json_object_get(root, "secret");
@@ -1740,10 +1740,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "exists")) {
 		/* Check whether a given room exists or not, returns true/false */	
 		janus_validate_json_object(root, room_parameters,
-															 sizeof(room_parameters) / sizeof(struct janus_json_parameter),
-															 &error_code, error_cause, sizeof(error_cause),
-															 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-															 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			sizeof(room_parameters) / sizeof(struct janus_json_parameter),
+			&error_code, error_cause, sizeof(error_cause),
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+			JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
 		json_t *room = json_object_get(root, "room");
@@ -1759,10 +1759,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */	
 		janus_validate_json_object(root, room_parameters,
-															 sizeof(room_parameters) / sizeof(struct janus_json_parameter),
-															 &error_code, error_cause, sizeof(error_cause),
-															 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-															 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			sizeof(room_parameters) / sizeof(struct janus_json_parameter),
+			&error_code, error_cause, sizeof(error_cause),
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+			JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
 		json_t *room = json_object_get(root, "room");
@@ -2322,10 +2322,10 @@ static void *janus_videoroom_handler(void *data) {
 		root = msg->message;
 		/* Get the request first */
 		janus_validate_json_object(root, request_parameters,
-															 sizeof(request_parameters) / sizeof(struct janus_json_parameter),
-															 &error_code, error_cause, sizeof(error_cause),
-															 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-															 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			sizeof(request_parameters) / sizeof(struct janus_json_parameter),
+			&error_code, error_cause, sizeof(error_cause),
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+			JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
 		json_t *request = json_object_get(root, "request");
@@ -2342,10 +2342,10 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			janus_validate_json_object(root, join_parameters,
-																 sizeof(join_parameters) / sizeof(struct janus_json_parameter),
-																 &error_code, error_cause, sizeof(error_cause),
-																 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				sizeof(join_parameters) / sizeof(struct janus_json_parameter),
+				&error_code, error_cause, sizeof(error_cause),
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+				JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
 			json_t *room = json_object_get(root, "room");
@@ -2369,10 +2369,10 @@ static void *janus_videoroom_handler(void *data) {
 			if(videoroom->room_pin) {
 				/* A pin is required to join this room */
 				janus_validate_json_object(root, pin_parameters,
-																	 sizeof(pin_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(pin_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0) {
 					janus_mutex_unlock(&rooms_mutex);
 					goto error;
@@ -2392,10 +2392,10 @@ static void *janus_videoroom_handler(void *data) {
 			if(!strcasecmp(ptype_text, "publisher")) {
 				JANUS_LOG(LOG_VERB, "Configuring new publisher\n");
 				janus_validate_json_object(root, publisher_parameters,
-																	 sizeof(publisher_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(publisher_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *display = json_object_get(root, "display");
@@ -2562,10 +2562,10 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Configuring new listener\n");
 				/* This is a new listener */
 				janus_validate_json_object(root, listener_parameters,
-																	 sizeof(listener_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(listener_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *feed = json_object_get(root, "feed");
@@ -2654,10 +2654,10 @@ static void *janus_videoroom_handler(void *data) {
 				/* Any feed we want to attach to already? */
 				GList *list = NULL;
 				janus_validate_json_object(root, feeds_parameters,
-																	 sizeof(feeds_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(feeds_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *feeds = json_object_get(root, "feeds");
@@ -2767,10 +2767,10 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* Configure (or publish a new feed) audio/video/bitrate for this publisher */
 				janus_validate_json_object(root, publish_parameters,
-																	 sizeof(publish_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(publish_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *audio = json_object_get(root, "audio");
@@ -2985,10 +2985,10 @@ static void *janus_videoroom_handler(void *data) {
 				}
 			} else if(!strcasecmp(request_text, "configure")) {
 				janus_validate_json_object(root, configure_parameters,
-																	 sizeof(configure_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(configure_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *audio = json_object_get(root, "audio");
@@ -3018,10 +3018,10 @@ static void *janus_videoroom_handler(void *data) {
 			} else if(!strcasecmp(request_text, "switch")) {
 				/* This listener wants to switch to a different publisher */
 				janus_validate_json_object(root, listener_parameters,
-																	 sizeof(listener_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(listener_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *feed = json_object_get(root, "feed");
@@ -3131,10 +3131,10 @@ static void *janus_videoroom_handler(void *data) {
 				/* Add new streams to subscribe to */
 				GList *list = NULL;
 				janus_validate_json_object(root, feeds_parameters,
-																	 sizeof(feeds_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(feeds_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *feeds = json_object_get(root, "feeds");
@@ -3197,10 +3197,10 @@ static void *janus_videoroom_handler(void *data) {
 				/* Remove subscribed streams */
 				GList *list = NULL;
 				janus_validate_json_object(root, feeds_parameters,
-																	 sizeof(feeds_parameters) / sizeof(struct janus_json_parameter),
-																	 &error_code, error_cause, sizeof(error_cause),
-																	 JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
-																	 JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+					sizeof(feeds_parameters) / sizeof(struct janus_json_parameter),
+					&error_code, error_cause, sizeof(error_cause),
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT,
+					JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
 				json_t *feeds = json_object_get(root, "feeds");
