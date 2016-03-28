@@ -559,24 +559,25 @@ int janus_pidfile_remove(void) {
 	return 0;
 }
 
-void janus_validate_json_object(json_t *root, struct janus_json_parameter *params, unsigned int nparams, int *error_code, char *error_cause, int error_cause_size, int error_missing_element, int error_invalid_element) {
+void janus_validate_json_object(json_t *root, struct janus_json_parameter *params, unsigned int nparams, int *error_code, char *error_cause, int error_cause_size, gboolean log_error, int error_missing_element, int error_invalid_element) {
 	*error_code = 0;
 	unsigned int i;
 	for(i = 0; i < nparams; i++) {
 		json_t *val = json_object_get(root, params[i].name);
 		if(!val) {
 			if(params[i].required) {
-				JANUS_LOG(LOG_ERR, "Missing element (%s)\n", params[i].name);
 				*error_code = error_missing_element;
+				/* This message was "Missing element" in the videoroom plugin. */
+				if(log_error)
+					JANUS_LOG(LOG_ERR, "Missing mandatory element (%s)\n", params[i].name);
 				if(error_cause != NULL)
-					g_snprintf(error_cause, error_cause_size, "Missing element (%s)", params[i].name);
+					g_snprintf(error_cause, error_cause_size, "Missing mandatory element (%s)", params[i].name);
 				return;
 			}
 			continue;
 		}
 		/* Use JSON_TRUE instead of the non-existing JSON_BOOLEAN */
-		gboolean is_valid = (json_typeof(val) == params[i].jtype ||
-												 (params[i].jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
+		gboolean is_valid = (json_typeof(val) == params[i].jtype || (params[i].jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
 		if(is_valid && params[i].positive_non_empty)
 			switch(params[i].jtype) {
 			case JSON_INTEGER:
@@ -595,6 +596,7 @@ void janus_validate_json_object(json_t *root, struct janus_json_parameter *param
 				break;
 			}
 		if(!is_valid) {
+			*error_code = error_invalid_element;
 			char type_name[20] = "";
 			if(params[i].positive_non_empty)
 				strcat(type_name,
@@ -623,10 +625,11 @@ void janus_validate_json_object(json_t *root, struct janus_json_parameter *param
 				break;
 			}
 			gboolean is_vowel = (strchr("aeiou", type_name[0]) != NULL);
-			JANUS_LOG(LOG_ERR, "Invalid element (%s should be %s %s)\n", params[i].name, is_vowel ? "an" : "a", type_name);
-			*error_code = error_invalid_element;
+			/* This message was "Invalid element" in the videoroom plugin. */
+			if(log_error)
+				JANUS_LOG(LOG_ERR, "Invalid element type (%s should be %s %s)\n", params[i].name, is_vowel ? "an" : "a", type_name);
 			if(error_cause != NULL)
-				g_snprintf(error_cause, 512, "Invalid element (%s should be %s %s)", params[i].name, is_vowel ? "an" : "a", type_name);
+				g_snprintf(error_cause, error_cause_size, "Invalid element type (%s should be %s %s)", params[i].name, is_vowel ? "an" : "a", type_name);
 			return;
 		}
 	}

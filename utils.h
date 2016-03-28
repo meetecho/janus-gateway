@@ -148,5 +148,5 @@ int janus_pidfile_create(const char *file);
  * @returns 0 if successful, a negative integer otherwise */
 int janus_pidfile_remove(void);
 
-void janus_validate_json_object(json_t *root, struct janus_json_parameter *params, unsigned int nparams, int *error_code, char *error_cause, int error_cause_size, int error_missing_element, int error_invalid_element);
+void janus_validate_json_object(json_t *root, struct janus_json_parameter *params, unsigned int nparams, int *error_code, char *error_cause, int error_cause_size, gboolean log_error, int error_missing_element, int error_invalid_element);
 #endif
