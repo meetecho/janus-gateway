@@ -148,5 +148,56 @@ int janus_pidfile_create(const char *file);
  * @returns 0 if successful, a negative integer otherwise */
 int janus_pidfile_remove(void);
 
-void janus_validate_json_object(json_t *root, struct janus_json_parameter *params, unsigned int nparams, int *error_code, char *error_cause, int error_cause_size, gboolean log_error, int error_missing_element, int error_invalid_element);
+void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type_name);
+
+#define JANUS_VALIDATE_JSON_OBJECT_FORMAT(missing_format, invalid_format, root, params, error_code, error_cause, log_error, missing_code, invalid_code) \
+	do { \
+		unsigned int i; \
+		for(i = 0; i < sizeof(params) / sizeof(struct janus_json_parameter); i++) { \
+			json_t *val = json_object_get(root, params[i].name); \
+			if(!val) { \
+				if(params[i].required) { \
+					error_code = (missing_code); \
+					if(log_error) \
+						JANUS_LOG(LOG_ERR, missing_format "\n", params[i].name); \
+					if(error_cause != NULL) \
+						g_snprintf(error_cause, sizeof(error_cause), missing_format, params[i].name); \
+					break; \
+				} \
+				continue; \
+			} \
+			gboolean is_valid = (json_typeof(val) == params[i].jtype || (params[i].jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE)); \
+			if(is_valid && params[i].positive_non_empty) \
+				switch(params[i].jtype) { \
+				case JSON_INTEGER: \
+					is_valid = (json_integer_value(val) >= 0); \
+					break; \
+				case JSON_REAL: \
+					is_valid = (json_real_value(val) >= 0); \
+					break; \
+				case JSON_STRING: \
+					is_valid = (json_string_length(val) > 0); \
+					break; \
+				case JSON_ARRAY: \
+					is_valid = (json_array_size(val) > 0); \
+					break; \
+				default: \
+					break; \
+				} \
+			if(!is_valid) { \
+				error_code = (invalid_code); \
+				char type_name[20]; \
+				janus_get_json_type_name(params[i].jtype, params[i].positive_non_empty, type_name); \
+				if(log_error) \
+					JANUS_LOG(LOG_ERR, invalid_format "\n", params[i].name, type_name); \
+				if(error_cause != NULL) \
+					g_snprintf(error_cause, sizeof(error_cause), invalid_format, params[i].name, type_name); \
+				break; \
+			} \
+		} \
+	} while(0)
+
+#define JANUS_VALIDATE_JSON_OBJECT(root, params, error_code, error_size, log_error, missing_code, invalid_code) \
+	JANUS_VALIDATE_JSON_OBJECT_FORMAT("Missing mandatory element (%s)", "Invalid element type (%s should be %s)", root, params, error_code, error_cause, log_error, missing_code, invalid_code)
+
 #endif

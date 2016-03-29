@@ -90,6 +90,11 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, FALSE, TRUE}
 };
+static struct janus_json_parameter jsep_parameters[] = {
+	{"type", JSON_STRING, FALSE, TRUE},
+	{"trickle", JSON_TRUE, FALSE, FALSE},
+	{"sdp", JSON_STRING, FALSE, TRUE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -525,11 +530,9 @@ int janus_process_incoming_request(janus_request *request) {
 		handle_id = json_integer_value(h);
 
 	/* Get transaction and message request */
-	janus_validate_json_object(root, incoming_request_parameters,
-		sizeof(incoming_request_parameters) / sizeof(struct janus_json_parameter),
-		&error_code, error_cause, sizeof(error_cause), FALSE,
-		JANUS_ERROR_MISSING_MANDATORY_ELEMENT,
-		JANUS_ERROR_INVALID_ELEMENT_TYPE);
+	JANUS_VALIDATE_JSON_OBJECT(root, incoming_request_parameters,
+		error_code, error_cause, FALSE,
+		JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
 	if(error_code != 0) {
 		ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
 		goto jsondone;
@@ -691,11 +694,9 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-		janus_validate_json_object(root, attach_parameters,
-			sizeof(attach_parameters) / sizeof(struct janus_json_parameter),
-			&error_code, error_cause, sizeof(error_cause), FALSE,
-			JANUS_ERROR_MISSING_MANDATORY_ELEMENT,
-			JANUS_ERROR_INVALID_ELEMENT_TYPE);
+		JANUS_VALIDATE_JSON_OBJECT(root, attach_parameters,
+			error_code, error_cause, FALSE,
+			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
 		if(error_code != 0) {
 			ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
 			goto jsondone;
@@ -851,23 +852,19 @@ int janus_process_incoming_request(janus_request *request) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid jsep object");
 				goto jsondone;
 			}
+			JANUS_VALIDATE_JSON_OBJECT_FORMAT("JSEP error: missing mandatory element (%s)",
+				"JSEP error: invalid element type (%s should be %s)",
+				root, jsep_parameters, error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *type = json_object_get(jsep, "type");
-			if(!type) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (type)");
-				goto jsondone;
-			}
-			if(!json_is_string(type)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (type should be a string)");
-				goto jsondone;
-			}
 			jsep_type = g_strdup(json_string_value(type));
 			type = NULL;
 			gboolean do_trickle = TRUE;
 			json_t *jsep_trickle = json_object_get(jsep, "trickle");
-			if(jsep_trickle && !json_is_boolean(jsep_trickle)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (trickle should be a boolean)");
-				goto jsondone;
-			}
 			do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : TRUE;
 			/* Are we still cleaning up from a previous media session? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
@@ -902,20 +899,6 @@ int janus_process_incoming_request(janus_request *request) {
 				goto jsondone;
 			}
 			json_t *sdp = json_object_get(jsep, "sdp");
-			if(!sdp) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "JSEP error: missing mandatory element (sdp)");
-				g_free(jsep_type);
-				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
-				janus_mutex_unlock(&handle->mutex);
-				goto jsondone;
-			}
-			if(!json_is_string(sdp)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (sdp should be a string)");
-				g_free(jsep_type);
-				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
-				janus_mutex_unlock(&handle->mutex);
-				goto jsondone;
-			}
 			jsep_sdp = (char *)json_string_value(sdp);
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote SDP:\n%s", handle->handle_id, jsep_sdp);
 			/* Is this valid SDP? */
