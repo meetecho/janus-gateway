@@ -591,3 +591,25 @@ void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type
 		break;
 	}
 }
+
+gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non_empty) {
+	gboolean is_valid = (json_typeof(val) == jtype || (jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
+	if(is_valid && positive_non_empty)
+		switch(jtype) {
+		case JSON_INTEGER:
+			is_valid = (json_integer_value(val) >= 0);
+			break;
+		case JSON_REAL:
+			is_valid = (json_real_value(val) >= 0);
+			break;
+		case JSON_STRING:
+			is_valid = (json_string_length(val) > 0);
+			break;
+		case JSON_ARRAY:
+			is_valid = (json_array_size(val) > 0);
+			break;
+		default:
+			break;
+		}
+	return is_valid;
+}

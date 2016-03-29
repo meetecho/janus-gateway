@@ -149,6 +149,7 @@ int janus_pidfile_create(const char *file);
 int janus_pidfile_remove(void);
 
 void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type_name);
+gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non_empty);
 
 #define JANUS_VALIDATE_JSON_OBJECT_FORMAT(missing_format, invalid_format, root, params, error_code, error_cause, log_error, missing_code, invalid_code) \
 	do { \
@@ -166,25 +167,7 @@ void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type
 				} \
 				continue; \
 			} \
-			gboolean is_valid = (json_typeof(val) == params[i].jtype || (params[i].jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE)); \
-			if(is_valid && params[i].positive_non_empty) \
-				switch(params[i].jtype) { \
-				case JSON_INTEGER: \
-					is_valid = (json_integer_value(val) >= 0); \
-					break; \
-				case JSON_REAL: \
-					is_valid = (json_real_value(val) >= 0); \
-					break; \
-				case JSON_STRING: \
-					is_valid = (json_string_length(val) > 0); \
-					break; \
-				case JSON_ARRAY: \
-					is_valid = (json_array_size(val) > 0); \
-					break; \
-				default: \
-					break; \
-				} \
-			if(!is_valid) { \
+			if(!janus_json_is_valid(val, params[i].jtype, params[i].positive_non_empty)) { \
 				error_code = (invalid_code); \
 				char type_name[20]; \
 				janus_get_json_type_name(params[i].jtype, params[i].positive_non_empty, type_name); \
