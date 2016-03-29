@@ -758,9 +758,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			if(record && record->value) {
 				videoroom->record = janus_is_true(record->value);
-				if(rec_dir && rec_dir->value) {
-					videoroom->rec_dir = g_strdup(rec_dir->value);
-				}
+			}
+			if(rec_dir && rec_dir->value) {
+				videoroom->rec_dir = g_strdup(rec_dir->value);
 			}
 			videoroom->destroyed = 0;
 			janus_mutex_init(&videoroom->participants_mutex);
@@ -1341,9 +1341,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		if(record) {
 			videoroom->record = json_is_true(record);
-			if(videoroom->record && rec_dir) {
-				videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
-			}
+		}
+		if(rec_dir) {
+			videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
 		}
 		videoroom->destroyed = 0;
 		janus_mutex_init(&videoroom->participants_mutex);
@@ -1385,10 +1385,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
 				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
-			if(videoroom->rec_dir) {
+			if(videoroom->record)
 				janus_config_add_item(config, cat, "record", "yes");
+			if(videoroom->rec_dir)
 				janus_config_add_item(config, cat, "rec_dir", videoroom->rec_dir);
-			}
 			/* Save modified configuration */
 			janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE);
 			janus_mutex_unlock(&config_mutex);
