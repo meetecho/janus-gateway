@@ -854,7 +854,7 @@ int janus_process_incoming_request(janus_request *request) {
 			}
 			JANUS_VALIDATE_JSON_OBJECT_FORMAT("JSEP error: missing mandatory element (%s)",
 				"JSEP error: invalid element type (%s should be %s)",
-				root, jsep_parameters, error_code, error_cause, FALSE,
+				jsep, jsep_parameters, error_code, error_cause, FALSE,
 				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
 			if(error_code != 0) {
 				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
