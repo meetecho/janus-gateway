@@ -39,7 +39,14 @@ int janus_pp_h264_create(char *destination) {
 		return -1;
 	/* Setup FFmpeg */
 	av_register_all();
-	/* WebM output */
+	/* Adjust logging to match the postprocessor's */
+	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
+		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
+			(janus_log_level == LOG_ERR ? AV_LOG_ERROR :
+				(janus_log_level == LOG_WARN ? AV_LOG_WARNING :
+					(janus_log_level == LOG_INFO ? AV_LOG_INFO :
+						(janus_log_level == LOG_VERB ? AV_LOG_VERBOSE : AV_LOG_DEBUG))))));
+	/* MP4 output */
 	fctx = avformat_alloc_context();
 	if(fctx == NULL) {
 		JANUS_LOG(LOG_ERR, "Error allocating context\n");
@@ -315,7 +322,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			/* First we save to the file... */
 			packet.dts = tmp->ts-list->ts;
 			packet.pts = tmp->ts-list->ts;
-			JANUS_LOG(LOG_WARN, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
+			JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
 				tmp->ts, list->ts, packet.pts);
 			if(fctx) {
 				int res = av_write_frame(fctx, &packet);
