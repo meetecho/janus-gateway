@@ -48,6 +48,13 @@ int janus_pp_webm_create(char *destination) {
 		return -1;
 	/* Setup FFmpeg */
 	av_register_all();
+	/* Adjust logging to match the postprocessor's */
+	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
+		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
+			(janus_log_level == LOG_ERR ? AV_LOG_ERROR :
+				(janus_log_level == LOG_WARN ? AV_LOG_WARNING :
+					(janus_log_level == LOG_INFO ? AV_LOG_INFO :
+						(janus_log_level == LOG_VERB ? AV_LOG_VERBOSE : AV_LOG_DEBUG))))));
 	/* WebM output */
 	fctx = avformat_alloc_context();
 	if(fctx == NULL) {
