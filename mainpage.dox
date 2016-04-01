@@ -271,6 +271,14 @@ var janus = new Janus(
  * 		- \c consentDialog: this callback is triggered just before \c getUserMedia is called
  * (parameter=<b>true</b>) and after it is completed (parameter=<b>false</b>); this means it can
  * be used to modify the UI accordingly, e.g., to prompt the user about the need to accept the device access consent requests;
+ * 		- \c mediaState: this callback is triggered when Janus starts or stops
+ * receiving your media: for instance, a \c mediaState with type=<b>audio</b> and
+ * on=<b>true</b> means Janus started receiving your audio stream (or started
+ * getting them again after a pause of more than a second); a \c mediaState with
+ * type=<b>video</b> and on=<b>false</b> means Janus hasn't received any video
+ * from you in the last second, after a start was detected before; useful to
+ * figure out when Janus actually started handling your media, or to detect
+ * problems on the media path (e.g., media never started, or stopped at some time);
  * 		- \c onmessage: a message/event has been received from the plugin;
  * 		- \c onlocalstream: a local \c MediaStream is available and ready to be displayed;
  * 		- \c onremotestream: a remote \c MediaStream is available and ready to be displayed;

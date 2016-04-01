@@ -334,6 +334,19 @@ function Janus(gatewayCallbacks) {
 			}
 			pluginHandle.ondetached();
 			pluginHandle.detach();
+		} else if(json["janus"] === "media") {
+			// Media started/stopped flowing
+			var sender = json["sender"];
+			if(sender === undefined || sender === null) {
+				Janus.warn("Missing sender...");
+				return;
+			}
+			var pluginHandle = pluginHandles[sender];
+			if(pluginHandle === undefined || pluginHandle === null) {
+				Janus.warn("This handle is not attached to this session");
+				return;
+			}
+			pluginHandle.mediaState(json["type"], json["receiving"]);
 		} else if(json["janus"] === "error") {
 			// Oops, something wrong happened
 			Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
@@ -621,6 +634,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : jQuery.noop;
+		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : jQuery.noop;
 		callbacks.onmessage = (typeof callbacks.onmessage == "function") ? callbacks.onmessage : jQuery.noop;
 		callbacks.onlocalstream = (typeof callbacks.onlocalstream == "function") ? callbacks.onlocalstream : jQuery.noop;
 		callbacks.onremotestream = (typeof callbacks.onremotestream == "function") ? callbacks.onremotestream : jQuery.noop;
@@ -699,6 +713,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						mediaState : callbacks.mediaState,
 						onmessage : callbacks.onmessage,
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
@@ -778,6 +793,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						mediaState : callbacks.mediaState,
 						onmessage : callbacks.onmessage,
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },

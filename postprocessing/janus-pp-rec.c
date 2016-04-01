@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
 	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
 		int val = atoi(g_getenv("JANUS_PPREC_DEBUG"));
-		if(val > 0 && val < LOG_MAX)
+		if(val >= LOG_NONE && val <= LOG_MAX)
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 	}
