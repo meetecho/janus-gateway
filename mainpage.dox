@@ -1871,25 +1871,6 @@ location /janus {
 }
  \endverbatim
  *
- * Notice that with recent versions of HTTPD (>= 2.4.5) and the right
- * module (proxy_wstunnel), you can also proxy WebSockets requests the
- * same way you do with HTTP, which can be useful to do the same
- * WSS-to-WS proxying in a frontend. Here's a sample configuration:
- *
- \verbatim
-<IfModule mod_proxy_wstunnel.c>
-	ProxyPass /janus-ws ws://127.0.0.1:8188 retry=0
-	ProxyPassReverse /janus-ws ws://127.0.0.1:8188
-	ProxyPass /admin-ws ws://127.0.0.1:7188 retry=0
-	ProxyPassReverse /admin-ws ws://127.0.0.1:7188
-</IfModule>
- \endverbatim
- *
- * that will allow you to expose a <code>wss://myserver/janus-ws</code>
- * or <code>ws://myserver/janus-ws</code> address, and have all communication
- * forwarded to and from Janus at <code>ws://127.0.0.1:8188</code>.
- * Similar configurations are probably available for other systems as well.
- *
  * \section webserver A quick and easy web server
  * While opening WebRTC-powered web applications by just opening the
  * application HTML files from file system works with some browsers, it
@@ -1967,11 +1948,27 @@ var server = "ws://www.example.com:8188/";
  * for WebSockets, as it is ignored by the gateway.
  *
  * The considerations for deploying Janus behind a proxy/webserver, though,
- * differ if you use WebSockets. Instead, most webservers (e.g., Apache HTTPD)
- * don't provide an easy way to proxy WebSocket requests, and usually
- * require custom modifications for the purpose. If this is something
- * you're interested in, we recommend you follow the best practices related
- * to that made available by the web server developers.
+ * differ if you use WebSockets, as most webservers don't provide an easy
+ * way to proxy WebSocket requests, and usually require custom modifications
+ * for the purpose. Recent versions of HTTPD (>= 2.4.5), with the right
+ * module (proxy_wstunnel), do allow you to also proxy WebSockets requests the
+ * same way you do with HTTP, which can be useful to do the same
+ * WSS-to-WS proxying in a frontend. Here's a sample configuration:
+ *
+ \verbatim
+<IfModule mod_proxy_wstunnel.c>
+	ProxyPass /janus-ws ws://127.0.0.1:8188 retry=0
+	ProxyPassReverse /janus-ws ws://127.0.0.1:8188
+</IfModule>
+ \endverbatim
+ *
+ * that will allow you to expose a <code>wss://myserver/janus-ws</code>
+ * or <code>ws://myserver/janus-ws</code> address, and have all communication
+ * forwarded to and from Janus at <code>ws://127.0.0.1:8188</code>.
+ *
+ * Similar configurations are probably available for other systems as well,
+ * so in case this is something you're interested in, we recommend you
+ * follow the best practices related to that made available by the web server developers.
  *
  * \section both Using fallback addresses 
  * As anticipated in the \ref JS section, you can also pass an array of servers
