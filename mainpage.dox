@@ -1828,7 +1828,8 @@ else
  * \section apache Deploying Janus behind a web frontend
  *
  * To avoid most of the issues explained above, an easy approach can be
- * deploying Janus behind a frontend, that would act as a reverse proxy for it.
+ * deploying Janus behind a frontend (e.g., Apache HTTPD, nginx, lighttpd
+ * or others) that would act as a reverse proxy for incoming requests.
  * This would allow you to make the Janus API available as a relative path 
  * of your web application, rather than a service reachable at a different
  * port and/or domain.
@@ -1850,7 +1851,7 @@ var server = "/janus";
  \verbatim
 ProxyRequests Off
 ProxyVia Off
-ProxyPass /janus http://127.0.0.1:8088/janus
+ProxyPass /janus http://127.0.0.1:8088/janus retry=0
 ProxyPassReverse /janus http://127.0.0.1:8088/janus
  \endverbatim
  *
@@ -1859,6 +1860,35 @@ ProxyPassReverse /janus http://127.0.0.1:8088/janus
  * the webserver to act as a proxy for a local endpoint, in this case a
  * Janus instance colocated at the webserver and configured with the
  * default settings.
+ *
+ * A way to do the same with nginx, as explained by some Janus users
+ * <a href="https://groups.google.com/forum/#!topic/meetecho-janus/dIv-4s0HOdw">here</a>,
+ * is the following directive:
+ *
+ \verbatim
+location /janus {
+	proxy_pass http://127.0.0.1:8088/janus;
+}
+ \endverbatim
+ *
+ * Notice that with recent versions of HTTPD (>= 2.4.5) and the right
+ * module (proxy_wstunnel), you can also proxy WebSockets requests the
+ * same way you do with HTTP, which can be useful to do the same
+ * WSS-to-WS proxying in a frontend. Here's a sample configuration:
+ *
+ \verbatim
+<IfModule mod_proxy_wstunnel.c>
+	ProxyPass /janus-ws ws://127.0.0.1:8188 retry=0
+	ProxyPassReverse /janus-ws ws://127.0.0.1:8188
+	ProxyPass /admin-ws ws://127.0.0.1:7188 retry=0
+	ProxyPassReverse /admin-ws ws://127.0.0.1:7188
+</IfModule>
+ \endverbatim
+ *
+ * that will allow you to expose a <code>wss://myserver/janus-ws</code>
+ * or <code>ws://myserver/janus-ws</code> address, and have all communication
+ * forwarded to and from Janus at <code>ws://127.0.0.1:8188</code>.
+ * Similar configurations are probably available for other systems as well.
  *
  * \section webserver A quick and easy web server
  * While opening WebRTC-powered web applications by just opening the
