@@ -148,14 +148,35 @@ int janus_pidfile_create(const char *file);
  * @returns 0 if successful, a negative integer otherwise */
 int janus_pidfile_remove(void);
 
+/*! \brief Creates a string describing the JSON type and constraint
+ * @param jtype The JSON type, e.g., JSON_STRING
+ * @param positive_non_empty Indicates that the described type should be a positive number or a non-empty array
+ * @param[out] The type description, e.g., "a positive integer"; required size is 19 characters
+ * @returns 0 if successful, a negative integer otherwise */
 void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type_name);
+
+/*! \brief Checks whether the JSON value matches the type and constraint
+ * @param val The JSON value to be checked
+ * @param jtype The JSON type, e.g., JSON_STRING
+ * @param positive_non_empty Indicates that the required type should be a positive number or a non-empty array
+ * @returns TRUE if the value is valid */
 gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non_empty);
 
-#define JANUS_VALIDATE_JSON_OBJECT_FORMAT(missing_format, invalid_format, root, params, error_code, error_cause, log_error, missing_code, invalid_code) \
+/*! \brief Validates the JSON object against the description of its parameters
+ * @param missing_format printf format to indicate a missing required parameter; needs one %s for the parameter name
+ * @param invalid_format printf format to indicate an invalid parameter; needs two %s for parameter name and type description from janus_get_json_type_name
+ * @param obj The JSON object to be validated
+ * @param params Array of struct janus_json_parameter to describe the parameters; the array has to be a global or stack variable to make sizeof work
+ * @param[out] error_code Pointer to int to return error code
+ * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is the length of the format string plus the length of the longest parameter name plus 18 for the type description
+ * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
+ * @param missing_code The code to be returned in error_code if a parameter is missing
+ * @param invalid_code The code to be returned in error_code if a parameter is invalid */
+#define JANUS_VALIDATE_JSON_OBJECT_FORMAT(missing_format, invalid_format, obj, params, error_code, error_cause, log_error, missing_code, invalid_code) \
 	do { \
 		unsigned int i; \
 		for(i = 0; i < sizeof(params) / sizeof(struct janus_json_parameter); i++) { \
-			json_t *val = json_object_get(root, params[i].name); \
+			json_t *val = json_object_get(obj, params[i].name); \
 			if(!val) { \
 				if(params[i].required) { \
 					error_code = (missing_code); \
@@ -180,7 +201,15 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non
 		} \
 	} while(0)
 
-#define JANUS_VALIDATE_JSON_OBJECT(root, params, error_code, error_size, log_error, missing_code, invalid_code) \
-	JANUS_VALIDATE_JSON_OBJECT_FORMAT("Missing mandatory element (%s)", "Invalid element type (%s should be %s)", root, params, error_code, error_cause, log_error, missing_code, invalid_code)
+/*! \brief Validates the JSON object against the description of its parameters
+ * @param obj The JSON object to be validated
+ * @param params Array of struct janus_json_parameter to describe the parameters; the array has to be a global or stack variable to make sizeof work
+ * @param[out] error_code Pointer to int to return error code
+ * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is the length of the longest parameter name plus 53 for the format string and type description
+ * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
+ * @param missing_code The code to be returned in error_code if a parameter is missing
+ * @param invalid_code The code to be returned in error_code if a parameter is invalid */
+#define JANUS_VALIDATE_JSON_OBJECT(obj, params, error_code, error_size, log_error, missing_code, invalid_code) \
+	JANUS_VALIDATE_JSON_OBJECT_FORMAT("Missing mandatory element (%s)", "Invalid element type (%s should be %s)", obj, params, error_code, error_cause, log_error, missing_code, invalid_code)
 
 #endif

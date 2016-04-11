@@ -560,56 +560,61 @@ int janus_pidfile_remove(void) {
 }
 
 void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type_name) {
-	if(positive_non_empty)
-		strcpy(type_name,
+	gsize req_size = 19;
+	if(positive_non_empty) {
+		g_strlcpy(type_name,
 			jtype == JSON_INTEGER || jtype == JSON_REAL ?
-			"a positive " : "a non-empty ");
-	else if(jtype == JSON_INTEGER || jtype == JSON_ARRAY || jtype == JSON_OBJECT)
-		strcpy(type_name, "an ");
-	else
-		strcpy(type_name, "a ");
+			"a positive " : "a non-empty ", req_size);
+	}
+	else if(jtype == JSON_INTEGER || jtype == JSON_ARRAY || jtype == JSON_OBJECT) {
+		g_strlcpy(type_name, "an ", req_size);
+	}
+	else {
+		g_strlcpy(type_name, "a ", req_size);
+	}
 	switch(jtype) {
-	case JSON_TRUE:
-		strcat(type_name, "boolean");
-		break;
-	case JSON_INTEGER:
-		strcat(type_name, "integer");
-		break;
-	case JSON_REAL:
-		strcat(type_name, "real");
-		break;
-	case JSON_STRING:
-		strcat(type_name, "string");
-		break;
-	case JSON_ARRAY:
-		strcat(type_name, "array");
-		break;
-	case JSON_OBJECT:
-		strcat(type_name, "object");
-		break;
-	default:
-		break;
+		case JSON_TRUE:
+			g_strlcat(type_name, "boolean", req_size);
+			break;
+		case JSON_INTEGER:
+			g_strlcat(type_name, "integer", req_size);
+			break;
+		case JSON_REAL:
+			g_strlcat(type_name, "real", req_size);
+			break;
+		case JSON_STRING:
+			g_strlcat(type_name, "string", req_size);
+			break;
+		case JSON_ARRAY:
+			g_strlcat(type_name, "array", req_size);
+			break;
+		case JSON_OBJECT:
+			g_strlcat(type_name, "object", req_size);
+			break;
+		default:
+			break;
 	}
 }
 
 gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non_empty) {
 	gboolean is_valid = (json_typeof(val) == jtype || (jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
-	if(is_valid && positive_non_empty)
+	if(is_valid && positive_non_empty) {
 		switch(jtype) {
-		case JSON_INTEGER:
-			is_valid = (json_integer_value(val) >= 0);
-			break;
-		case JSON_REAL:
-			is_valid = (json_real_value(val) >= 0);
-			break;
-		case JSON_STRING:
-			is_valid = (json_string_length(val) > 0);
-			break;
-		case JSON_ARRAY:
-			is_valid = (json_array_size(val) > 0);
-			break;
-		default:
-			break;
+			case JSON_INTEGER:
+				is_valid = (json_integer_value(val) >= 0);
+				break;
+			case JSON_REAL:
+				is_valid = (json_real_value(val) >= 0);
+				break;
+			case JSON_STRING:
+				is_valid = (json_string_length(val) > 0);
+				break;
+			case JSON_ARRAY:
+				is_valid = (json_array_size(val) > 0);
+				break;
+			default:
+				break;
 		}
+	}
 	return is_valid;
 }
