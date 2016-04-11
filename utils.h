@@ -168,7 +168,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non
  * @param obj The JSON object to be validated
  * @param params Array of struct janus_json_parameter to describe the parameters; the array has to be a global or stack variable to make sizeof work
  * @param[out] error_code Pointer to int to return error code
- * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is the length of the format string plus the length of the longest parameter name plus 18 for the type description
+ * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is the length of the format string plus the length of the longest parameter name plus 19 for the type description
  * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
  * @param missing_code The code to be returned in error_code if a parameter is missing
  * @param invalid_code The code to be returned in error_code if a parameter is invalid */
@@ -205,7 +205,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non
  * @param obj The JSON object to be validated
  * @param params Array of struct janus_json_parameter to describe the parameters; the array has to be a global or stack variable to make sizeof work
  * @param[out] error_code Pointer to int to return error code
- * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is the length of the longest parameter name plus 53 for the format string and type description
+ * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is the length of the longest parameter name plus 54 for the format string and type description
  * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
  * @param missing_code The code to be returned in error_code if a parameter is missing
  * @param invalid_code The code to be returned in error_code if a parameter is invalid */
