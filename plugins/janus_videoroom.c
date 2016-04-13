@@ -195,6 +195,7 @@ janus_plugin *create(void) {
 	return &janus_videoroom_plugin;
 }
 
+/* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
 	{"request", JSON_STRING, FALSE, TRUE}
 };
@@ -248,12 +249,6 @@ static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, TRUE, TRUE},
 	{"publisher_id", JSON_INTEGER, TRUE, TRUE},
 	{"stream_id", JSON_INTEGER, TRUE, TRUE}
-};
-static struct janus_json_parameter secret_parameters[] = {
-	{"secret", JSON_STRING, FALSE, TRUE}
-};
-static struct janus_json_parameter pin_parameters[] = {
-	{"pin", JSON_STRING, FALSE, TRUE}
 };
 static struct janus_json_parameter publisher_parameters[] = {
 	{"id", JSON_INTEGER, TRUE, FALSE},
@@ -1441,23 +1436,13 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
 			goto error;
 		}
-		if(videoroom->room_secret) {
-			/* A secret is required for this action */
-			JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
-				error_code, error_cause, TRUE,
-				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-			if(error_code != 0) {
-				janus_mutex_unlock(&rooms_mutex);
-				goto error;
-			}
-			json_t *secret = json_object_get(root, "secret");
-			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
 		}
 		/* Notify all participants that the fun is over, and that they'll be kicked */
 		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
@@ -1580,21 +1565,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
 			goto error;
 		}
-		if(videoroom->room_secret) {
-			/* A secret is required for this action */
-			JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
-				error_code, error_cause, TRUE,
-				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-			if(error_code != 0)
-				goto error;
-			json_t *secret = json_object_get(root, "secret");
-			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
-		}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0)
+			goto error;
 		janus_mutex_lock(&videoroom->participants_mutex);
 		janus_videoroom_participant* publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
 		if(publisher == NULL) {
@@ -1679,21 +1655,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
 			goto error;
 		}
-		if(videoroom->room_secret) {
-			/* A secret is required for this action */
-			JANUS_VALIDATE_JSON_OBJECT(root, secret_parameters,
-				error_code, error_cause, TRUE,
-				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-			if(error_code != 0)
-				goto error;
-			json_t *secret = json_object_get(root, "secret");
-			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
-		}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0)
+			goto error;
 		janus_mutex_lock(&videoroom->participants_mutex);
 		janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
 		if(publisher == NULL) {
@@ -2338,23 +2305,13 @@ static void *janus_videoroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
 				goto error;
 			}
-			if(videoroom->room_pin) {
-				/* A pin is required to join this room */
-				JANUS_VALIDATE_JSON_OBJECT(root, pin_parameters,
-					error_code, error_cause, TRUE,
-					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-				if(error_code != 0) {
-					janus_mutex_unlock(&rooms_mutex);
-					goto error;
-				}
-				json_t *pin = json_object_get(root, "pin");
-				if(!janus_strcmp_const_time(videoroom->room_pin, json_string_value(pin))) {
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
-					goto error;
-				}
+			/* A pin may be required for this action */
+			JANUS_CHECK_PIN(videoroom->room_pin, root,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+			if(error_code != 0) {
+				janus_mutex_unlock(&rooms_mutex);
+				goto error;
 			}
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *ptype = json_object_get(root, "ptype");

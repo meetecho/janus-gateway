@@ -302,6 +302,20 @@ janus_plugin *create(void) {
 	return &janus_videocall_plugin;
 }
 
+/* Parameter validation */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, FALSE, TRUE}
+};
+static struct janus_json_parameter username_parameters[] = {
+	{"username", JSON_STRING, FALSE, TRUE}
+};
+static struct janus_json_parameter set_parameters[] = {
+	{"audio", JSON_TRUE, FALSE, FALSE},
+	{"video", JSON_TRUE, FALSE, FALSE},
+	{"bitrate", JSON_INTEGER, TRUE, FALSE},
+	{"record", JSON_TRUE, FALSE, FALSE},
+	{"filename", JSON_STRING, FALSE, FALSE}
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -844,11 +858,7 @@ static void *janus_videocall_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VideoCall handler thread\n");
 	janus_videocall_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(512);
-	if(error_cause == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	char error_cause[512];
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
@@ -894,19 +904,12 @@ static void *janus_videocall_handler(void *data) {
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
+		JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT, JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *request = json_object_get(root, "request");
-		if(!request) {
-			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-			error_code = JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
-		}
-		if(!json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-			error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-			goto error;
-		}
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
 		char *sdp_type = NULL, *sdp = NULL;
@@ -934,19 +937,12 @@ static void *janus_videocall_handler(void *data) {
 				g_snprintf(error_cause, 512, "Already registered (%s)", session->username);
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, username_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT, JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *username = json_object_get(root, "username");
-			if(!username) {
-				JANUS_LOG(LOG_ERR, "Missing element (username)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (username)");
-				goto error;
-			}
-			if(!json_is_string(username)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (username should be a string)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (username should be a string)");
-				goto error;
-			}
 			const char *username_text = json_string_value(username);
 			janus_mutex_lock(&sessions_mutex);
 			if(g_hash_table_lookup(sessions, username_text) != NULL) {
@@ -984,19 +980,12 @@ static void *janus_videocall_handler(void *data) {
 				g_snprintf(error_cause, 512, "Already in a call");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, username_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT, JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *username = json_object_get(root, "username");
-			if(!username) {
-				JANUS_LOG(LOG_ERR, "Missing element (username)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (username)");
-				goto error;
-			}
-			if(!json_is_string(username)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (username should be a string)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (username should be a string)");
-				goto error;
-			}
 			const char *username_text = json_string_value(username);
 			if(!strcmp(username_text, session->username)) {
 				JANUS_LOG(LOG_ERR, "You can't call yourself... use the EchoTest for that\n");
@@ -1112,41 +1101,16 @@ static void *janus_videocall_handler(void *data) {
 			json_object_set_new(result, "event", json_string("accepted"));
 		} else if(!strcasecmp(request_text, "set")) {
 			/* Update the local configuration (audio/video mute/unmute, bitrate cap or recording) */
+			JANUS_VALIDATE_JSON_OBJECT(root, set_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT, JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-				goto error;
-			}
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_boolean(video)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-				goto error;
-			}
 			json_t *bitrate = json_object_get(root, "bitrate");
-			if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
-				goto error;
-			}
 			json_t *record = json_object_get(root, "record");
-			if(record && !json_is_boolean(record)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (record should be a boolean)");
-				goto error;
-			}
 			json_t *recfile = json_object_get(root, "filename");
-			if(recfile && !json_is_string(recfile)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
-				error_code = JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
-				goto error;
-			}
 			if(audio) {
 				session->audio_active = json_is_true(audio);
 				JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
@@ -1334,7 +1298,6 @@ error:
 			janus_videocall_message_free(msg);
 		}
 	}
-	g_free(error_cause);
 	JANUS_LOG(LOG_VERB, "Leaving VideoCall handler thread\n");
 	return NULL;
 }

@@ -561,7 +561,7 @@ int janus_pidfile_remove(void) {
 
 void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type_name) {
 	/* Longest possible combination is "a non-empty boolean" plus one for null char */
-	gsize req_size = 20
+	gsize req_size = 20;
 	if(positive_non_empty) {
 		g_strlcpy(type_name,
 			jtype == JSON_INTEGER || jtype == JSON_REAL ?
