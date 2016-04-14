@@ -197,76 +197,75 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, FALSE, TRUE}
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, FALSE},
-	{"description", JSON_STRING, FALSE, FALSE},
-	/* Use JSON_TRUE instead of the non-existing JSON_BOOLEAN */
-	{"is_private", JSON_TRUE, FALSE, FALSE},
-	{"secrect", JSON_STRING, FALSE, FALSE},
-	{"pin", JSON_STRING, FALSE, FALSE},
-	{"bitrate", JSON_INTEGER, TRUE, FALSE},
-	{"fir_freq", JSON_INTEGER, TRUE, FALSE},
-	{"publishers", JSON_INTEGER, TRUE, FALSE},
-	{"audiocodec", JSON_STRING, FALSE, FALSE},
-	{"videocodec", JSON_STRING, FALSE, FALSE},
-	{"record", JSON_TRUE, FALSE, FALSE},
-	{"rec_dir", JSON_STRING, FALSE, FALSE},
-	{"permanent", JSON_TRUE, FALSE, FALSE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"secrect", JSON_STRING, 0},
+	{"pin", JSON_STRING, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audiocodec", JSON_STRING, 0},
+	{"videocodec", JSON_STRING, 0},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"rec_dir", JSON_STRING, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter room_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter destroy_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE},
-	{"permanent", JSON_TRUE, FALSE, FALSE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter join_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE},
-	{"ptype", JSON_STRING, FALSE, TRUE},
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE},
-	{"bitrate", JSON_INTEGER, TRUE, FALSE},
-	{"record", JSON_TRUE, FALSE, FALSE},
-	{"filename", JSON_STRING, FALSE, FALSE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter publish_parameters[] = {
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE},
-	{"bitrate", JSON_INTEGER, TRUE, FALSE},
-	{"record", JSON_TRUE, FALSE, FALSE},
-	{"filename", JSON_STRING, FALSE, FALSE}
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE},
-	{"publisher_id", JSON_INTEGER, TRUE, TRUE},
-	{"vid_port", JSON_INTEGER, TRUE, FALSE},
-	{"au_port", JSON_INTEGER, TRUE, FALSE},
-	{"host", JSON_STRING, FALSE, TRUE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"vid_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"au_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE},
-	{"publisher_id", JSON_INTEGER, TRUE, TRUE},
-	{"stream_id", JSON_INTEGER, TRUE, TRUE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter publisher_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, FALSE},
-	{"display", JSON_STRING, FALSE, FALSE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"display", JSON_STRING, 0}
 };
 static struct janus_json_parameter configure_parameters[] = {
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE},
-	{"data", JSON_TRUE, FALSE, FALSE}
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter listener_parameters[] = {
-	{"feed", JSON_INTEGER, TRUE, TRUE},
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE},
-	{"data", JSON_TRUE, FALSE, FALSE}
+	{"feed", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter feeds_parameters[] = {
-	{"feeds", JSON_ARRAY, TRUE, FALSE}
+	{"feeds", JSON_ARRAY, JANUS_JSON_PARAM_NONEMPTY}
 };
 
 /* Static configuration instance */

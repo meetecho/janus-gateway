@@ -17,11 +17,16 @@
 #include <netinet/in.h>
 #include <jansson.h>
 
+/* Use JANUS_JSON_BOOL instead of the non-existing JSON_BOOLEAN */
+#define JANUS_JSON_BOOL JSON_TRUE
+#define JANUS_JSON_PARAM_REQUIRED 1
+#define JANUS_JSON_PARAM_POSITIVE 2
+#define JANUS_JSON_PARAM_NONEMPTY 4
+
 struct janus_json_parameter {
 	const gchar *name;
 	json_type jtype;
-	gboolean positive_non_empty;
-	gboolean required;
+	unsigned int flags;
 };
 
 /*! \brief Helper to retrieve the system monotonic time, as Glib's
@@ -150,17 +155,17 @@ int janus_pidfile_remove(void);
 
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
- * @param positive_non_empty Indicates that the described type should be a positive number or a non-empty array
+ * @param flags Indicates constraints for the described type
  * @param[out] The type description, e.g., "a positive integer"; required size is 19 characters
  * @returns 0 if successful, a negative integer otherwise */
-void janus_get_json_type_name(int jtype, gboolean positive_non_empty, char *type_name);
+void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
 /*! \brief Checks whether the JSON value matches the type and constraint
  * @param val The JSON value to be checked
  * @param jtype The JSON type, e.g., JSON_STRING
- * @param positive_non_empty Indicates that the required type should be a positive number or a non-empty array
+ * @param flags Indicates constraints for the described type
  * @returns TRUE if the value is valid */
-gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non_empty);
+gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 
 /*! \brief Validates the JSON object against the description of its parameters
  * @param missing_format printf format to indicate a missing required parameter; needs one %s for the parameter name
@@ -179,7 +184,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non
 		for(i = 0; i < sizeof(params) / sizeof(struct janus_json_parameter); i++) { \
 			json_t *val = json_object_get(obj, params[i].name); \
 			if(!val) { \
-				if(params[i].required) { \
+				if((params[i].flags & JANUS_JSON_PARAM_REQUIRED) != 0) {	\
 					error_code = (missing_code); \
 					if(log_error) \
 						JANUS_LOG(LOG_ERR, missing_format "\n", params[i].name); \
@@ -189,10 +194,10 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non
 				} \
 				continue; \
 			} \
-			if(!janus_json_is_valid(val, params[i].jtype, params[i].positive_non_empty)) { \
+			if(!janus_json_is_valid(val, params[i].jtype, params[i].flags)) { \
 				error_code = (invalid_code); \
 				char type_name[20]; \
-				janus_get_json_type_name(params[i].jtype, params[i].positive_non_empty, type_name); \
+				janus_get_json_type_name(params[i].jtype, params[i].flags, type_name); \
 				if(log_error) \
 					JANUS_LOG(LOG_ERR, invalid_format "\n", params[i].name, type_name); \
 				if(error_cause != NULL) \
@@ -226,7 +231,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non
 	do { \
 		if (pin) { \
 			static struct janus_json_parameter pin_parameters[] = { \
-				{"pin", JSON_STRING, FALSE, TRUE} \
+				{"pin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED} \
 			}; \
 			JANUS_VALIDATE_JSON_OBJECT(obj, pin_parameters, error_code, error_cause, log_error, missing_code, invalid_code); \
 			if(!error_code && !janus_strcmp_const_time((pin), json_string_value(json_object_get(obj, "pin")))) { \
@@ -252,7 +257,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, gboolean positive_non
 	do { \
 		if (secret) { \
 			static struct janus_json_parameter secret_parameters[] = { \
-				{"secret", JSON_STRING, FALSE, TRUE} \
+				{"secret", JSON_STRING, JANUS_JSON_PARAM_REQUIRED} \
 			}; \
 			JANUS_VALIDATE_JSON_OBJECT(obj, secret_parameters, error_code, error_cause, log_error, missing_code, invalid_code); \
 			if(error_code == 0 && !janus_strcmp_const_time((secret), json_string_value(json_object_get(obj, "secret")))) { \

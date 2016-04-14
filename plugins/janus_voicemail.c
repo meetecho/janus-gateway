@@ -171,7 +171,7 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, FALSE, TRUE}
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 /* Useful stuff */

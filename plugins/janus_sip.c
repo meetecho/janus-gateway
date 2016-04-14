@@ -135,39 +135,39 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, FALSE, TRUE}
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter register_parameters[] = {
-	{"type", JSON_STRING, FALSE, FALSE},
-	{"send_register", JSON_TRUE, FALSE, FALSE},
-	{"sips", JSON_TRUE, FALSE, FALSE},
-	{"username", JSON_STRING, FALSE, FALSE},
-	{"secret", JSON_STRING, FALSE, FALSE},
-	{"ha1_secret", JSON_STRING, FALSE, FALSE},
-	{"authuser", JSON_STRING, FALSE, FALSE}
+	{"type", JSON_STRING, 0},
+	{"send_register", JANUS_JSON_BOOL, 0},
+	{"sips", JANUS_JSON_BOOL, 0},
+	{"username", JSON_STRING, 0},
+	{"secret", JSON_STRING, 0},
+	{"ha1_secret", JSON_STRING, 0},
+	{"authuser", JSON_STRING, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
-	{"proxy", JSON_STRING, FALSE, FALSE}
+	{"proxy", JSON_STRING, 0}
 };
 static struct janus_json_parameter call_parameters[] = {
-	{"uri", JSON_STRING, FALSE, TRUE},
-	{"headers", JSON_OBJECT, FALSE, FALSE},
-	{"srtp", JSON_STRING, FALSE, FALSE}
+	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"headers", JSON_OBJECT, 0},
+	{"srtp", JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
-	{"srtp", JSON_STRING, FALSE, FALSE}
+	{"srtp", JSON_STRING, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
-	{"action", JSON_STRING, FALSE, TRUE},
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE},
-	{"peer_audio", JSON_TRUE, FALSE, FALSE},
-	{"peer_video", JSON_TRUE, FALSE, FALSE},
-	{"filename", JSON_STRING, FALSE, FALSE}
+	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"peer_audio", JANUS_JSON_BOOL, 0},
+	{"peer_video", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter dtmf_info_parameters[] = {
-	{"digit", JSON_STRING, FALSE, TRUE},
-	{"duration", JSON_INTEGER, TRUE, FALSE}
+	{"digit", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"duration", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Useful stuff */

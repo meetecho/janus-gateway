@@ -304,17 +304,17 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, FALSE, TRUE}
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter username_parameters[] = {
-	{"username", JSON_STRING, FALSE, TRUE}
+	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter set_parameters[] = {
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE},
-	{"bitrate", JSON_INTEGER, TRUE, FALSE},
-	{"record", JSON_TRUE, FALSE, FALSE},
-	{"filename", JSON_STRING, FALSE, FALSE}
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0}
 };
 
 /* Useful stuff */

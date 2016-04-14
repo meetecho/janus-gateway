@@ -443,36 +443,36 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, FALSE, TRUE}
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"description", JSON_STRING, FALSE, FALSE},
-	{"secret", JSON_STRING, FALSE, FALSE},
-	{"pin", JSON_STRING, FALSE, FALSE},
-	{"is_private", JSON_TRUE, FALSE, FALSE},
-	{"sampling", JSON_INTEGER, TRUE, FALSE},
-	{"record", JSON_TRUE, FALSE, FALSE},
-	{"record_file", JSON_STRING, FALSE, FALSE},
-	{"permanent", JSON_TRUE, FALSE, FALSE},
-	{"room", JSON_INTEGER, TRUE, FALSE}
+	{"description", JSON_STRING, 0},
+	{"secret", JSON_STRING, 0},
+	{"pin", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"sampling", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"record_file", JSON_STRING, 0},
+	{"permanent", JANUS_JSON_BOOL, 0},
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter destroy_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE},
-	{"permanent", JSON_TRUE, FALSE, FALSE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter room_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter join_parameters[] = {
-	{"room", JSON_INTEGER, TRUE, TRUE},
-	{"display", JSON_STRING, FALSE, FALSE},
-	{"muted", JSON_TRUE, FALSE, FALSE},
-	{"quality", JSON_INTEGER, TRUE, FALSE},
-	{"id", JSON_INTEGER, TRUE, FALSE}
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"display", JSON_STRING, 0},
+	{"muted", JANUS_JSON_BOOL, 0},
+	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter configure_parameters[] = {
-	{"muted", JSON_TRUE, FALSE, FALSE},
-	{"quality", JSON_INTEGER, TRUE, FALSE}
+	{"muted", JANUS_JSON_BOOL, 0},
+	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Static configuration instance */

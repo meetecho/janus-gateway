@@ -191,82 +191,82 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, FALSE, TRUE}
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter id_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, TRUE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter create_parameters[] = {
-	{"type", JSON_STRING, FALSE, TRUE},
-	{"secret", JSON_STRING, FALSE, FALSE},
-	{"pin", JSON_STRING, FALSE, FALSE},
-	{"permanent", JSON_TRUE, FALSE, FALSE}
+	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"secret", JSON_STRING, 0},
+	{"pin", JSON_STRING, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, FALSE},
-	{"name", JSON_STRING, FALSE, FALSE},
-	{"description", JSON_STRING, FALSE, FALSE},
-	{"is_private", JSON_TRUE, FALSE, FALSE},
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter live_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, FALSE},
-	{"name", JSON_STRING, FALSE, FALSE},
-	{"description", JSON_STRING, FALSE, FALSE},
-	{"is_private", JSON_TRUE, FALSE, FALSE},
-	{"file", JSON_STRING, FALSE, FALSE},
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"file", JSON_STRING, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter ondemand_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, FALSE},
-	{"name", JSON_STRING, FALSE, FALSE},
-	{"description", JSON_STRING, FALSE, FALSE},
-	{"is_private", JSON_TRUE, FALSE, FALSE},
-	{"file", JSON_STRING, FALSE, FALSE},
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"file", JSON_STRING, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtsp_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, FALSE},
-	{"name", JSON_STRING, FALSE, FALSE},
-	{"description", JSON_STRING, FALSE, FALSE},
-	{"is_private", JSON_TRUE, FALSE, FALSE},
-	{"url", JSON_STRING, FALSE, FALSE},
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"url", JSON_STRING, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_audio_parameters[] = {
-	{"audiomcast", JSON_STRING, FALSE, FALSE},
-	{"audioport", JSON_INTEGER, TRUE, TRUE},
-	{"audioopt", JSON_INTEGER, TRUE, TRUE},
-	{"audiortpmap", JSON_STRING, FALSE, TRUE},
-	{"audiofmtp", JSON_STRING, FALSE, FALSE}
+	{"audiomcast", JSON_STRING, 0},
+	{"audioport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"audioopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"audiortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"audiofmtp", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_video_parameters[] = {
-	{"videomcast", JSON_STRING, FALSE, FALSE},
-	{"videoport", JSON_INTEGER, TRUE, TRUE},
-	{"videoopt", JSON_INTEGER, TRUE, TRUE},
-	{"videortpmap", JSON_STRING, FALSE, TRUE},
-	{"videofmtp", JSON_STRING, FALSE, FALSE},
-	{"videobufferkf", JSON_TRUE, FALSE, FALSE}
+	{"videomcast", JSON_STRING, 0},
+	{"videoport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"videoopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"videortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"videofmtp", JSON_STRING, 0},
+	{"videobufferkf", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter destroy_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, TRUE},
-	{"permanent", JSON_TRUE, FALSE, FALSE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter recording_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, TRUE},
-	{"action", JSON_STRING, FALSE, TRUE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter recording_start_parameters[] = {
-	{"audio", JSON_STRING, FALSE, FALSE},
-	{"video", JSON_STRING, FALSE, FALSE}
+	{"audio", JSON_STRING, 0},
+	{"video", JSON_STRING, 0}
 };
 static struct janus_json_parameter recording_stop_parameters[] = {
-	{"audio", JSON_TRUE, FALSE, FALSE},
-	{"video", JSON_TRUE, FALSE, FALSE}
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
 };
 
 /* Static configuration instance */

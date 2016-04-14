@@ -83,17 +83,17 @@ static char *api_secret = NULL, *admin_api_secret = NULL;
 static int janus_process_error_string(janus_request *request, uint64_t session_id, const char *transaction, gint error, gchar *error_string);
 
 static struct janus_json_parameter incoming_request_parameters[] = {
-	{"transaction", JSON_STRING, FALSE, TRUE},
-	{"janus", JSON_STRING, FALSE, TRUE},
-	{"id", JSON_INTEGER, TRUE, FALSE}
+	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter attach_parameters[] = {
-	{"plugin", JSON_STRING, FALSE, TRUE}
+	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter jsep_parameters[] = {
-	{"type", JSON_STRING, FALSE, TRUE},
-	{"trickle", JSON_TRUE, FALSE, FALSE},
-	{"sdp", JSON_STRING, FALSE, TRUE}
+	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"trickle", JANUS_JSON_BOOL, 0},
+	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 /* Admin/Monitor helpers */

@@ -325,18 +325,18 @@ janus_plugin *create(void) {
 
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
-	{"request", JSON_STRING, FALSE, TRUE}
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter configure_parameters[] = {
-	{"video-bitrate-max", JSON_INTEGER, TRUE, FALSE},
-	{"video-keyframe-interval", JSON_INTEGER, TRUE, FALSE}
+	{"video-bitrate-max", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video-keyframe-interval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter record_parameters[] = {
-	{"name", JSON_STRING, TRUE, TRUE},
-	{"filename", JSON_STRING, FALSE, FALSE}
+	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
+	{"filename", JSON_STRING, 0}
 };
 static struct janus_json_parameter play_parameters[] = {
-	{"id", JSON_INTEGER, TRUE, TRUE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Useful stuff */
