@@ -332,7 +332,8 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 				/* VP8 depay */
 					/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */
 				/* Read the first octet (VP8 Payload Descriptor) */
-				int skipped = 0;
+				int skipped = 1;
+				len--;
 				uint8_t vp8pd = *buffer;
 				uint8_t xbit = (vp8pd & 0x80);
 				uint8_t sbit = (vp8pd & 0x10);
