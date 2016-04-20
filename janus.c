@@ -3586,7 +3586,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 1024);
 		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
-		void *plugin = dlopen(pluginpath, RTLD_LAZY);
+		void *plugin = dlopen(pluginpath, RTLD_LOCAL | RTLD_LAZY);
 		if (!plugin) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
 		} else {
@@ -3710,7 +3710,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading transport plugin '%s'...\n", transportent->d_name);
 		memset(transportpath, 0, 1024);
 		g_snprintf(transportpath, 1024, "%s/%s", path, transportent->d_name);
-		void *transport = dlopen(transportpath, RTLD_LAZY);
+		void *transport = dlopen(transportpath, RTLD_LOCAL | RTLD_LAZY);
 		if (!transport) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
 		} else {
