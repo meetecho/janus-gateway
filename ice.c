@@ -1164,11 +1164,9 @@ void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 		g_free(stream->rpass);
 		stream->rpass = NULL;
 	}
-	if(stream->audio_rtcp_ctx != NULL)
-		g_free(stream->audio_rtcp_ctx);
+	g_free(stream->audio_rtcp_ctx);
 	stream->audio_rtcp_ctx = NULL;
-	if(stream->video_rtcp_ctx != NULL)
-		g_free(stream->video_rtcp_ctx);
+	g_free(stream->video_rtcp_ctx);
 	stream->video_rtcp_ctx = NULL;
 	stream->audio_last_ts = 0;
 	stream->video_last_ts = 0;
@@ -3214,31 +3212,31 @@ void *janus_ice_send_thread(void *data) {
 				}
 				/* FIXME Copy in a buffer and fix SSRC */
 				char sbuf[JANUS_BUFSIZE];
-				memcpy(&sbuf, pkt->data, pkt->length);
+				memcpy(sbuf, pkt->data, pkt->length);
 				/* Fix all SSRCs! */
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing SSRCs (local %u, peer %u)\n", handle->handle_id,
 						video ? stream->video_ssrc : stream->audio_ssrc,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
-					janus_rtcp_fix_ssrc(NULL, (char *)&sbuf, pkt->length, 1,
+					janus_rtcp_fix_ssrc(NULL, sbuf, pkt->length, 1,
 						video ? stream->video_ssrc : stream->audio_ssrc,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
 				} else {
 					/* Plan B involved, we trust the plugin to set the right 'local' SSRC and we don't mess with it */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Fixing peer SSRC (Plan B, peer %u)\n", handle->handle_id,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
-					janus_rtcp_fix_ssrc(NULL, (char *)&sbuf, pkt->length, 1, 0,
+					janus_rtcp_fix_ssrc(NULL, sbuf, pkt->length, 1, 0,
 						video ? stream->video_ssrc_peer : stream->audio_ssrc_peer);
 				}
 
 				int protected = pkt->length;
 				int res = 0;
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
-					res = srtp_protect_rtcp(component->dtls->srtp_out, &sbuf, &protected);
+					res = srtp_protect_rtcp(component->dtls->srtp_out, sbuf, &protected);
 				} else {
 					/* We need to make sure different sources don't use the SRTP context at the same time */
 					janus_mutex_lock(&component->dtls->srtp_mutex);
-					res = srtp_protect_rtcp(component->dtls->srtp_out, &sbuf, &protected);
+					res = srtp_protect_rtcp(component->dtls->srtp_out, sbuf, &protected);
 					janus_mutex_unlock(&component->dtls->srtp_mutex);
 				}
 				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTCP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
@@ -3248,7 +3246,7 @@ void *janus_ice_send_thread(void *data) {
 					/* Shoot! */
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... Sending SRTCP packet (pt=%u, seq=%u, ts=%u)...\n", handle->handle_id,
 						//~ header->paytype, ntohs(header->seq_number), ntohl(header->timestamp));
-					int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, (const gchar *)&sbuf);
+					int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, sbuf);
 					if(sent < protected) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
 					}
@@ -3313,17 +3311,17 @@ void *janus_ice_send_thread(void *data) {
 				} else {
 					/* FIXME Copy in a buffer and fix SSRC */
 					char sbuf[JANUS_BUFSIZE];
-					memcpy(&sbuf, pkt->data, pkt->length);
+					memcpy(sbuf, pkt->data, pkt->length);
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
 						/* Overwrite SSRC */
-						rtp_header *header = (rtp_header *)&sbuf;
+						rtp_header *header = (rtp_header *)sbuf;
 						header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
 					}
 					int protected = pkt->length;
-					int res = srtp_protect(component->dtls->srtp_out, &sbuf, &protected);
+					int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
 					if(res != err_status_ok) {
-						rtp_header *header = (rtp_header *)&sbuf;
+						rtp_header *header = (rtp_header *)sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected, timestamp, seq);
@@ -3331,13 +3329,13 @@ void *janus_ice_send_thread(void *data) {
 						/* Shoot! */
 						//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... Sending SRTP packet (pt=%u, ssrc=%u, seq=%u, ts=%u)...\n", handle->handle_id,
 							//~ header->type, ntohl(header->ssrc), ntohs(header->seq_number), ntohl(header->timestamp));
-						int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, (const gchar *)&sbuf);
+						int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, sbuf);
 						if(sent < protected) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
 						}
 						/* Update stats */
 						if(sent > 0) {
-							rtp_header *header = (rtp_header *)&sbuf;
+							rtp_header *header = (rtp_header *)sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
 								component->out_stats.audio_packets++;
@@ -3352,7 +3350,7 @@ void *janus_ice_send_thread(void *data) {
 						/* Save the packet for retransmissions that may be needed later */
 						janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
 						p->data = (char *)g_malloc0(protected);
-						memcpy(p->data, (char *)&sbuf, protected);
+						memcpy(p->data, sbuf, protected);
 						p->length = protected;
 						p->last_retransmit = 0;
 						janus_mutex_lock(&component->mutex);

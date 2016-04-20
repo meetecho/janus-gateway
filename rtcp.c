@@ -453,10 +453,10 @@ uint32_t janus_rtcp_context_get_lost(rtcp_context *ctx) {
 	if(ctx == NULL)
 		return 0;
 	uint32_t lost;
-	if(ctx->lost > 0x7fffff) {
-		lost = 0x7fffff;
+	if(ctx->lost > 0x7FFFFF) {
+		lost = 0x7FFFFF;
 	} else {
-		lost = 0x00FFFFFF & ctx->lost;
+		lost = ctx->lost;
 	}
 	return lost;
 }
