@@ -755,22 +755,9 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
 				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->peer->bitrate : session->bitrate);
 			/* ... and send a new REMB back */
-			char rtcpbuf[200];
-			memset(rtcpbuf, 0, 200);
-			/* FIXME First put a RR (fake)... */
-			int rrlen = 32;
-			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-			rr->header.version = 2;
-			rr->header.type = RTCP_RR;
-			rr->header.rc = 1;
-			rr->header.length = htons((rrlen/4)-1);
-			/* ... then put a SDES... */
-			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-			if(sdeslen > 0) {
-				/* ... and then finally a REMB */
-				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, uplink ? session->peer->bitrate : session->bitrate);
-				gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, rrlen+sdeslen+24);
-			}
+			char rtcpbuf[24];
+			janus_rtcp_remb((char *)(&rtcpbuf), 24, uplink ? session->peer->bitrate : session->bitrate);
+			gateway->relay_rtcp(uplink ? session->peer->handle : handle, 1, rtcpbuf, 24);
 			/* As a last thing, notify the affected user about this */
 			json_t *event = json_object();
 			json_object_set_new(event, "videocall", json_string("event"));
@@ -1046,14 +1033,23 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(call, "result", calling);
 				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(call);
-				/* Make sure we get rid of ULPfec, red, etc. */
+				/* Make also sure we get rid of ULPfec, red, etc. */
 				char *sdp = g_strdup(msg->sdp);
 				if(strstr(sdp, "ulpfec")) {
-					sdp = janus_string_replace(sdp, "100 116 117 96", "100");
+					/* FIXME This really needs some better code */
 					sdp = janus_string_replace(sdp, "a=rtpmap:116 red/90000\r\n", "");
 					sdp = janus_string_replace(sdp, "a=rtpmap:117 ulpfec/90000\r\n", "");
 					sdp = janus_string_replace(sdp, "a=rtpmap:96 rtx/90000\r\n", "");
 					sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
+					sdp = janus_string_replace(sdp, "a=rtpmap:97 rtx/90000\r\n", "");
+					sdp = janus_string_replace(sdp, "a=fmtp:97 apt=101\r\n", "");
+					sdp = janus_string_replace(sdp, "a=rtpmap:98 rtx/90000\r\n", "");
+					sdp = janus_string_replace(sdp, "a=fmtp:98 apt=116\r\n", "");
+					sdp = janus_string_replace(sdp, " 116", "");
+					sdp = janus_string_replace(sdp, " 117", "");
+					sdp = janus_string_replace(sdp, " 96", "");
+					sdp = janus_string_replace(sdp, " 97", "");
+					sdp = janus_string_replace(sdp, " 98", "");
 				}
 				g_atomic_int_set(&session->hangingup, 0);
 				JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);

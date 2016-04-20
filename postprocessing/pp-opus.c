@@ -88,6 +88,12 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			}
 			g_free(op);
 		}
+		if(tmp->drop) {
+			/* We marked this packet as one to drop, before */
+			JANUS_LOG(LOG_WARN, "Dropping previously marked audio packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/48000);
+			tmp = tmp->next;
+			continue;
+		}
 		guint16 diff = tmp->prev == NULL ? 1 : (tmp->seq - tmp->prev->seq);
 		len = 0;
 		/* RTP payload */
@@ -106,7 +112,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
 		pos = tmp->seq-list->seq+steps*65536;
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
-			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/90000);
+			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);
 		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 		ogg_stream_packetin(stream, op);
 		g_free(op);
@@ -143,7 +149,7 @@ void le16(unsigned char *p, int v) {
 	p[1] = (v >> 8) & 0xff;
 }
 
-/* ;anufacture a generic OpusHead packet */
+/* Manufacture a generic OpusHead packet */
 ogg_packet *op_opushead(void) {
 	int size = 19;
 	unsigned char *data = g_malloc0(size);

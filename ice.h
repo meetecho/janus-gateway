@@ -22,6 +22,7 @@
 
 #include "dtls.h"
 #include "sctp.h"
+#include "rtcp.h"
 #include "utils.h"
 #include "plugins/plugin.h"
 
@@ -289,6 +290,8 @@ struct janus_ice_handle {
 	janus_ice_stream *video_stream;
 	/*! \brief SCTP/DataChannel stream */
 	janus_ice_stream *data_stream;
+	/*! \brief RTP profile set by caller (so that we can match it) */
+	gchar *rtp_profile;
 	/*! \brief SDP generated locally (just for debugging purposes) */
 	gchar *local_sdp;
 	/*! \brief SDP received by the peer (just for debugging purposes) */
@@ -299,6 +302,8 @@ struct janus_ice_handle {
 	GAsyncQueue *queued_packets;
 	/*! \brief GLib thread for sending outgoing packets */
 	GThread *send_thread;
+	/*! \brief Atomic flag to make sure we only create the thread once */
+	volatile gint send_thread_created;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };
@@ -325,6 +330,14 @@ struct janus_ice_stream {
 	guint32 video_ssrc_peer_rtx;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
+	/*! \brief RTCP context for the audio stream (may be bundled) */
+	rtcp_context *audio_rtcp_ctx;
+	/*! \brief RTCP context for the video stream (may be bundled) */
+	rtcp_context *video_rtcp_ctx;
+	/*! \brief Last sent audio RTP timestamp */
+	guint32 audio_last_ts;
+	/*! \brief Last sent video RTP timestamp */
+	guint32 video_last_ts;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */

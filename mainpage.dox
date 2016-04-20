@@ -271,6 +271,14 @@ var janus = new Janus(
  * 		- \c consentDialog: this callback is triggered just before \c getUserMedia is called
  * (parameter=<b>true</b>) and after it is completed (parameter=<b>false</b>); this means it can
  * be used to modify the UI accordingly, e.g., to prompt the user about the need to accept the device access consent requests;
+ * 		- \c mediaState: this callback is triggered when Janus starts or stops
+ * receiving your media: for instance, a \c mediaState with type=<b>audio</b> and
+ * on=<b>true</b> means Janus started receiving your audio stream (or started
+ * getting them again after a pause of more than a second); a \c mediaState with
+ * type=<b>video</b> and on=<b>false</b> means Janus hasn't received any video
+ * from you in the last second, after a start was detected before; useful to
+ * figure out when Janus actually started handling your media, or to detect
+ * problems on the media path (e.g., media never started, or stopped at some time);
  * 		- \c onmessage: a message/event has been received from the plugin;
  * 		- \c onlocalstream: a local \c MediaStream is available and ready to be displayed;
  * 		- \c onremotestream: a remote \c MediaStream is available and ready to be displayed;
@@ -901,12 +909,19 @@ GET http://host:port/janus/<sessionid>?maxev=5
 }
 \endverbatim
  *
- * If you're going to \c trickle candidates rather than including them
- * all in an SDP OFFER or ANSWER, there is an ad-hoc message you can use
- * to do so which is called, unsurprisingly, \c trickle and which you
- * can use to send one or more trickle candidates to Janus. Since such
- * a message is related to a specific PeerConnection, it will need to be
- * addressed to the right Handle just as the \c message introduced
+ * Please notice that, if for any reason you don't want to use the
+ * trickling of ICE candidates from your application (which means you'll
+ * include them all in the SDP OFFER or ANSWER, which is usually not
+ * recommended), you'll have to add an additional <code>"trickle" : false</code>
+ * attribute to the "jsep" object, to explicitly tell Janus you won't
+ * send any \c trickle candidate (by default Janus will always assume
+ * support for trickle).
+ *
+ * If you're going to \c trickle candidates, instead, there is an ad-hoc
+ * message you can use to do so which is called, unsurprisingly, \c trickle
+ * and which you can use to send one or more trickle candidates to Janus.
+ * Since such a message is related to a specific PeerConnection, it will
+ * need to be addressed to the right Handle just as the \c message introduced
  * previously. A \c trickle message can contain three different kind of
  * information:
  *
@@ -1813,7 +1828,8 @@ else
  * \section apache Deploying Janus behind a web frontend
  *
  * To avoid most of the issues explained above, an easy approach can be
- * deploying Janus behind a frontend, that would act as a reverse proxy for it.
+ * deploying Janus behind a frontend (e.g., Apache HTTPD, nginx, lighttpd
+ * or others) that would act as a reverse proxy for incoming requests.
  * This would allow you to make the Janus API available as a relative path 
  * of your web application, rather than a service reachable at a different
  * port and/or domain.
@@ -1835,7 +1851,7 @@ var server = "/janus";
  \verbatim
 ProxyRequests Off
 ProxyVia Off
-ProxyPass /janus http://127.0.0.1:8088/janus
+ProxyPass /janus http://127.0.0.1:8088/janus retry=0
 ProxyPassReverse /janus http://127.0.0.1:8088/janus
  \endverbatim
  *
@@ -1844,6 +1860,16 @@ ProxyPassReverse /janus http://127.0.0.1:8088/janus
  * the webserver to act as a proxy for a local endpoint, in this case a
  * Janus instance colocated at the webserver and configured with the
  * default settings.
+ *
+ * A way to do the same with nginx, as explained by some Janus users
+ * <a href="https://groups.google.com/forum/#!topic/meetecho-janus/dIv-4s0HOdw">here</a>,
+ * is the following directive:
+ *
+ \verbatim
+location /janus {
+	proxy_pass http://127.0.0.1:8088/janus;
+}
+ \endverbatim
  *
  * \section webserver A quick and easy web server
  * While opening WebRTC-powered web applications by just opening the
@@ -1922,11 +1948,27 @@ var server = "ws://www.example.com:8188/";
  * for WebSockets, as it is ignored by the gateway.
  *
  * The considerations for deploying Janus behind a proxy/webserver, though,
- * differ if you use WebSockets. Instead, most webservers (e.g., Apache HTTPD)
- * don't provide an easy way to proxy WebSocket requests, and usually
- * require custom modifications for the purpose. If this is something
- * you're interested in, we recommend you follow the best practices related
- * to that made available by the web server developers.
+ * differ if you use WebSockets, as most webservers don't provide an easy
+ * way to proxy WebSocket requests, and usually require custom modifications
+ * for the purpose. Recent versions of HTTPD (>= 2.4.5), with the right
+ * module (proxy_wstunnel), do allow you to also proxy WebSockets requests the
+ * same way you do with HTTP, which can be useful to do the same
+ * WSS-to-WS proxying in a frontend. Here's a sample configuration:
+ *
+ \verbatim
+<IfModule mod_proxy_wstunnel.c>
+	ProxyPass /janus-ws ws://127.0.0.1:8188 retry=0
+	ProxyPassReverse /janus-ws ws://127.0.0.1:8188
+</IfModule>
+ \endverbatim
+ *
+ * that will allow you to expose a <code>wss://myserver/janus-ws</code>
+ * or <code>ws://myserver/janus-ws</code> address, and have all communication
+ * forwarded to and from Janus at <code>ws://127.0.0.1:8188</code>.
+ *
+ * Similar configurations are probably available for other systems as well,
+ * so in case this is something you're interested in, we recommend you
+ * follow the best practices related to that made available by the web server developers.
  *
  * \section both Using fallback addresses 
  * As anticipated in the \ref JS section, you can also pass an array of servers

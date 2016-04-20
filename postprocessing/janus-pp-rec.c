@@ -76,11 +76,12 @@ void janus_pp_handle_signal(int signum) {
 int main(int argc, char *argv[])
 {
 	janus_log_init(FALSE, TRUE, NULL);
+	atexit(janus_log_destroy);
 
 	/* Check the JANUS_PPREC_DEBUG environment variable for the debugging level */
 	if(g_getenv("JANUS_PPREC_DEBUG") != NULL) {
 		int val = atoi(g_getenv("JANUS_PPREC_DEBUG"));
-		if(val > 0 && val < LOG_MAX)
+		if(val >= LOG_NONE && val <= LOG_MAX)
 			janus_log_level = val;
 		JANUS_LOG(LOG_INFO, "Logging level: %d\n", janus_log_level);
 	}
@@ -351,10 +352,25 @@ int main(int argc, char *argv[])
 			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
 			p->ts = (times_resetted*max32)+ntohl(rtp->timestamp);
 		}
+		p->len = len;
+		p->drop = 0;
+		if(rtp->padding) {
+			/* There's padding data, let's check the last byte to see how much data we should skip */
+			fseek(file, offset + len - 1, SEEK_SET);
+			fread(prebuffer, sizeof(char), 1, file);
+			uint8_t padlen = (uint8_t)prebuffer[0];
+			JANUS_LOG(LOG_VERB, "Padding at sequence number %hu: %d/%d\n",
+				ntohs(rtp->seq_number), padlen, p->len);
+			p->len -= padlen;
+			if((p->len - skip - 12) <= 0) {
+				/* Only padding, take note that we should drop the packet later */
+				p->drop = 1;
+				JANUS_LOG(LOG_VERB, "  -- All padding, marking packet as dropped\n");
+			}
+		}
 		last_ts = ntohl(rtp->timestamp);
 		post_reset_pkts++;
 		/* Fill in the rest of the details */
-		p->len = len;
 		p->offset = offset;
 		p->skip = skip;
 		p->next = NULL;
@@ -474,7 +490,7 @@ int main(int argc, char *argv[])
 		}
 	} else {
 		if(janus_pp_webm_process(file, list, &working) < 0) {
-			JANUS_LOG(LOG_ERR, "Error processing Opus RTP frames...\n");
+			JANUS_LOG(LOG_ERR, "Error processing VP8 RTP frames...\n");
 		}
 	}
 
@@ -504,8 +520,5 @@ int main(int argc, char *argv[])
 	}
 
 	JANUS_LOG(LOG_INFO, "Bye!\n");
-
-	janus_log_destroy();
-
 	return 0;
 }

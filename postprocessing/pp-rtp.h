@@ -48,6 +48,7 @@ typedef struct janus_pp_frame_packet {
 	int len;		/* Length of the data */
 	long offset;	/* Offset of the data in the file */
 	int skip;		/* Bytes to skip, besides the RTP header */
+	uint8_t drop;	/* Whether this packet can be dropped (e.g., padding)*/
 	struct janus_pp_frame_packet *next;
 	struct janus_pp_frame_packet *prev;
 } janus_pp_frame_packet;

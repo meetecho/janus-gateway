@@ -482,7 +482,7 @@ static int janus_sip_parse_uri(janus_sip_uri_t *sip_uri, const char *data) {
 	return 0;
 }
 
-/* Similar to th above function, but it also accepts SIPS URIs */
+/* Similar to the above function, but it also accepts SIPS URIs */
 static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data) {
 	g_strlcpy(sip_uri->data, data, JANUS_SIP_URI_MAXLEN);
 	if (url_d(sip_uri->url, sip_uri->data) < 0 || (sip_uri->url->url_type != url_sip && sip_uri->url->url_type != url_sips))
@@ -1049,7 +1049,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 						/* Fix SSRCs as the gateway does */
 						JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 							session->media.video_ssrc, session->media.video_ssrc_peer);
-						janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+						janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 						/* Forward the message to the peer */
 						send(session->media.video_rtcp_fd, sbuf, protected, 0);
 					}
@@ -1057,7 +1057,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 					/* Fix SSRCs as the gateway does */
 					JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 						session->media.video_ssrc, session->media.video_ssrc_peer);
-					janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+					janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 					/* Forward the message to the peer */
 					send(session->media.video_rtcp_fd, buf, len, 0);
 				}
@@ -1077,7 +1077,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 						/* Fix SSRCs as the gateway does */
 						JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 							session->media.audio_ssrc, session->media.audio_ssrc_peer);
-						janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
+						janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 						/* Forward the message to the peer */
 						send(session->media.audio_rtcp_fd, sbuf, protected, 0);
 					}
@@ -1085,7 +1085,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 					/* Fix SSRCs as the gateway does */
 					JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 						session->media.audio_ssrc, session->media.audio_ssrc_peer);
-					janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
+					janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 					/* Forward the message to the peer */
 					send(session->media.audio_rtcp_fd, buf, len, 0);
 				}
@@ -1507,6 +1507,38 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid element (uri should be a string)");
 				goto error;
 			}
+			/* Check if the INVITE needs to be enriched with custom headers */
+			char custom_headers[2048];
+			custom_headers[0] = '\0';
+			json_t *headers = json_object_get(root, "headers");
+			if(headers) {
+				if(!json_is_object(headers)) {
+					JANUS_LOG(LOG_ERR, "Invalid element (headers should be an object)\n");
+					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element (headers should be an object)");
+					goto error;
+				}
+				if(json_object_size(headers) > 0) {
+					/* Parse custom headers */
+					const char *key = NULL;
+					json_t *value = NULL;
+					void *iter = json_object_iter(headers);
+					while(iter != NULL) {
+						key = json_object_iter_key(iter);
+						value = json_object_get(headers, key);
+						if(value == NULL || !json_is_string(value)) {
+							JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+							iter = json_object_iter_next(headers, iter);
+							continue;
+						}
+						char h[255];
+						g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+						JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+						g_strlcat(custom_headers, h, 2048);
+						iter = json_object_iter_next(headers, iter);
+					}
+				}
+			}
 			/* SDES-SRTP is disabled by default, let's see if we need to enable it */
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			json_t *srtp = json_object_get(root, "srtp");
@@ -1592,7 +1624,7 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
-			/* Send INVITE */
+			/* Prepare the stack */
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
 			session->stack->s_nh_i = nua_handle(session->stack->s_nua, session, TAG_END());
@@ -1606,12 +1638,15 @@ static void *janus_sip_handler(void *data) {
 			}
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_inviting;
+			/* Send INVITE */
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(session->account.identity),
 				SIPTAG_TO_STR(uri_text),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->account.proxy),
+				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
+				NUTAG_AUTOACK(0),
 				TAG_END());
 			g_free(sdp);
 			sdp_parser_free(parser);
@@ -2374,6 +2409,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sdp_parser_free(parser);
 				break;
 			}
+			/* Send an ACK */
+			char *route = sip->sip_record_route ? url_as_string(session->stack->s_home, sip->sip_record_route->r_url) : NULL;
+			JANUS_LOG(LOG_WARN, "Sending ACK (route=%s)\n", route ? route : "none");
+			nua_ack(nh,
+				TAG_IF(route, NTATAG_DEFAULT_PROXY(route)),
+				TAG_END());
+			/* Parse SDP */
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
 			session->status = janus_sip_call_status_incall;
 			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
@@ -2589,7 +2631,7 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp) {
 	if(sdp->sdp_connection && sdp->sdp_connection->c_address) {
 		sdp->sdp_connection->c_address = local_ip;
 	}
-	JANUS_LOG(LOG_WARN, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
+	JANUS_LOG(LOG_VERB, "Setting protocol to %s\n", session->media.require_srtp ? "RTP/SAVP" : "RTP/AVP");
 	sdp_media_t *m = sdp->sdp_media;
 	while(m) {
 		m->m_proto = session->media.require_srtp ? sdp_proto_srtp : sdp_proto_rtp;
@@ -2832,7 +2874,8 @@ static void *janus_sip_relay_thread(void *data) {
 	memset(buffer, 0, 1500);
 	/* Loop */
 	int num = 0;
-	while(session != NULL && !session->destroyed &&
+	gboolean goon = TRUE;
+	while(goon && session != NULL && !session->destroyed &&
 			session->status > janus_sip_call_status_idle &&
 			session->status < janus_sip_call_status_closing) {	/* FIXME We need a per-call watchdog as well */
 		/* Prepare poll */
@@ -2882,6 +2925,15 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
 					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
+				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
+				/* FIXME Simulate a "hangup" coming from the browser */
+				janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+				msg->handle = session->handle;
+				msg->message = g_strdup("{\"request\":\"hangup\"}");
+				msg->transaction = NULL;
+				msg->sdp_type = NULL;
+				msg->sdp = NULL;
+				g_async_queue_push(messages, msg);
 				break;
 			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP/RTCP packet */

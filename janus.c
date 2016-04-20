@@ -859,6 +859,13 @@ int janus_process_incoming_request(janus_request *request) {
 			}
 			jsep_type = g_strdup(json_string_value(type));
 			type = NULL;
+			gboolean do_trickle = TRUE;
+			json_t *jsep_trickle = json_object_get(jsep, "trickle");
+			if(jsep_trickle && !json_is_boolean(jsep_trickle)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "JSEP error: invalid element type (trickle should be a boolean)");
+				goto jsondone;
+			}
+			do_trickle = jsep_trickle ? json_is_true(jsep_trickle) : TRUE;
 			/* Are we still cleaning up from a previous media session? */
 			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Still cleaning up from a previous media session, let's wait a bit...\n", handle->handle_id);
@@ -911,6 +918,7 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Is this valid SDP? */
 			int audio = 0, video = 0, data = 0, bundle = 0, rtcpmux = 0, trickle = 0;
 			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
+			trickle = trickle && do_trickle;
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
@@ -2058,6 +2066,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		json_object_set_new(info, "created", json_integer(handle->created));
+		json_object_set_new(info, "send_thread_created", json_integer(g_atomic_int_get(&handle->send_thread_created)));
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
 		if(handle->app && handle->app_handle && janus_plugin_session_is_alive(handle->app_handle)) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
@@ -2104,6 +2113,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
 		}
 		json_t *sdps = json_object();
+		if(handle->rtp_profile)
+			json_object_set_new(sdps, "profile", json_string(handle->rtp_profile));
 		if(handle->local_sdp)
 			json_object_set_new(sdps, "local", json_string(handle->local_sdp));
 		if(handle->remote_sdp)
@@ -2221,6 +2232,28 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		if(c)
 			json_array_append_new(components, c);
 	}
+	json_t *rtcp_stats = NULL;
+	if(stream->audio_rtcp_ctx != NULL) {
+		rtcp_stats = json_object();
+		json_t *audio_rtcp_stats = json_object();
+		json_object_set_new(audio_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->audio_rtcp_ctx)));
+		json_object_set_new(audio_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->audio_rtcp_ctx)));
+		json_object_set_new(audio_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->audio_rtcp_ctx)));
+		json_object_set_new(audio_rtcp_stats, "jitter-ms", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx)));
+		json_object_set_new(rtcp_stats, "audio", audio_rtcp_stats);
+	}
+	if(stream->video_rtcp_ctx != NULL) {
+		if(rtcp_stats == NULL)
+			rtcp_stats = json_object();
+		json_t *video_rtcp_stats = json_object();
+		json_object_set_new(video_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx)));
+		json_object_set_new(video_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->video_rtcp_ctx)));
+		json_object_set_new(video_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->video_rtcp_ctx)));
+		json_object_set_new(video_rtcp_stats, "jitter-ms", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx)));
+		json_object_set_new(rtcp_stats, "video", video_rtcp_stats);
+	}
+	if(rtcp_stats != NULL)
+		json_object_set_new(s, "rtcp_stats", rtcp_stats);
 	json_object_set_new(s, "components", components);
 	return s;
 }
