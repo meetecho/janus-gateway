@@ -1646,6 +1646,7 @@ static void *janus_sip_handler(void *data) {
 				NUTAG_PROXY(session->account.proxy),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
+				NUTAG_AUTOACK(0),
 				TAG_END());
 			g_free(sdp);
 			sdp_parser_free(parser);
@@ -2408,6 +2409,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sdp_parser_free(parser);
 				break;
 			}
+			/* Send an ACK */
+			char *route = sip->sip_record_route ? url_as_string(session->stack->s_home, sip->sip_record_route->r_url) : NULL;
+			JANUS_LOG(LOG_WARN, "Sending ACK (route=%s)\n", route ? route : "none");
+			nua_ack(nh,
+				TAG_IF(route, NTATAG_DEFAULT_PROXY(route)),
+				TAG_END());
+			/* Parse SDP */
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
 			session->status = janus_sip_call_status_incall;
 			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
