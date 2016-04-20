@@ -1049,7 +1049,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 						/* Fix SSRCs as the gateway does */
 						JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 							session->media.video_ssrc, session->media.video_ssrc_peer);
-						janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+						janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 						/* Forward the message to the peer */
 						send(session->media.video_rtcp_fd, sbuf, protected, 0);
 					}
@@ -1057,7 +1057,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 					/* Fix SSRCs as the gateway does */
 					JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 						session->media.video_ssrc, session->media.video_ssrc_peer);
-					janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
+					janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 					/* Forward the message to the peer */
 					send(session->media.video_rtcp_fd, buf, len, 0);
 				}
@@ -1077,7 +1077,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 						/* Fix SSRCs as the gateway does */
 						JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 							session->media.audio_ssrc, session->media.audio_ssrc_peer);
-						janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
+						janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 						/* Forward the message to the peer */
 						send(session->media.audio_rtcp_fd, sbuf, protected, 0);
 					}
@@ -1085,7 +1085,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 					/* Fix SSRCs as the gateway does */
 					JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
 						session->media.audio_ssrc, session->media.audio_ssrc_peer);
-					janus_rtcp_fix_ssrc((char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
+					janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 					/* Forward the message to the peer */
 					send(session->media.audio_rtcp_fd, buf, len, 0);
 				}

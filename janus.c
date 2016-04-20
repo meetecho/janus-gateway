@@ -2232,6 +2232,28 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		if(c)
 			json_array_append_new(components, c);
 	}
+	json_t *rtcp_stats = NULL;
+	if(stream->audio_rtcp_ctx != NULL) {
+		rtcp_stats = json_object();
+		json_t *audio_rtcp_stats = json_object();
+		json_object_set_new(audio_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->audio_rtcp_ctx)));
+		json_object_set_new(audio_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->audio_rtcp_ctx)));
+		json_object_set_new(audio_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->audio_rtcp_ctx)));
+		json_object_set_new(audio_rtcp_stats, "jitter-ms", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx)));
+		json_object_set_new(rtcp_stats, "audio", audio_rtcp_stats);
+	}
+	if(stream->video_rtcp_ctx != NULL) {
+		if(rtcp_stats == NULL)
+			rtcp_stats = json_object();
+		json_t *video_rtcp_stats = json_object();
+		json_object_set_new(video_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx)));
+		json_object_set_new(video_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->video_rtcp_ctx)));
+		json_object_set_new(video_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->video_rtcp_ctx)));
+		json_object_set_new(video_rtcp_stats, "jitter-ms", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx)));
+		json_object_set_new(rtcp_stats, "video", video_rtcp_stats);
+	}
+	if(rtcp_stats != NULL)
+		json_object_set_new(s, "rtcp_stats", rtcp_stats);
 	json_object_set_new(s, "components", components);
 	return s;
 }

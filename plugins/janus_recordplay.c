@@ -929,7 +929,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		return;	/* We just do this for video, for now */
 
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
-	char rtcpbuf[200];
+	char rtcpbuf[24];
 
 	/* Send a RR+SDES+REMB every five seconds, or ASAP while we are still
 	 * ramping up (first 4 RTP packets) */
@@ -945,22 +945,11 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 			session->video_remb_startup--;
 		}
 
-		memset(rtcpbuf, 0, 200);
-		/* FIXME First put a RR (fake)... */
-		int rrlen = 32;
-		rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-		rr->header.version = 2;
-		rr->header.type = RTCP_RR;
-		rr->header.rc = 1;
-		rr->header.length = htons((rrlen/4)-1);
-		/* ... then put a SDES... */
-		int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-		if(sdeslen > 0) {
-			/* ... and then finally a REMB */
-			janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
-			gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
-		}
-		
+		/* Send a new REMB back */
+		char rtcpbuf[24];
+		janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
+		gateway->relay_rtcp(handle, video, rtcpbuf, 24);
+
 		session->video_remb_last = now;
 	}
 
