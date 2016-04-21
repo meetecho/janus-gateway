@@ -1440,7 +1440,7 @@ function Janus(gatewayCallbacks) {
 					function callbackUserMedia (error, stream) {
 						pluginHandle.consentDialog(false);
 						if(error) {
-							callbacks.error(error);
+							callbacks.error({code: error.code, name: error.name, message: error.message});
 						} else {
 							streamsDone(handleId, jsep, media, callbacks, stream);
 						}
