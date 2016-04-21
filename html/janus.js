@@ -95,7 +95,36 @@ Janus.init = function(options) {
 			}
 		}
 		Janus.log("Initializing library");
-		Janus.initDone = true;
+		// Helper method to enumerate devices
+		Janus.listDevices = function(callback) {
+			callback = (typeof callback == "function") ? callback : Janus.noop;
+			if(navigator.mediaDevices) {
+				getUserMedia({ audio: true, video: true }, function(stream) {
+					navigator.mediaDevices.enumerateDevices().then(function(devices) {
+						Janus.debug(devices);
+						callback(devices);
+						// Get rid of the now useless stream
+						try {
+							stream.stop();
+						} catch(e) {}
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst !== null && mst !== undefined)
+									mst.stop();
+							}
+						} catch(e) {}
+					});
+				}, function(err) {
+					Janus.error(err);
+					callback([]);
+				});
+			} else {
+				Janus.warn("navigator.mediaDevices unavailable");
+				callback([]);
+			}
+		}
 		// Detect tab close
 		window.onbeforeunload = function() {
 			Janus.log("Closing window");
@@ -149,7 +178,8 @@ Janus.init = function(options) {
 			}
 			oHead.appendChild(oScript);
 		}
-		addJsList(["adapter.js","jquery.min.js"]);
+		Janus.initDone = true;
+		addJsList(["adapter.js", "jquery.min.js"]);
 	}
 };
 
@@ -1262,6 +1292,12 @@ function Janus(gatewayCallbacks) {
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
+			var audioSupport = isAudioSendEnabled(media);
+			if(audioSupport === true && media != undefined && media != null) {
+				if(typeof media.audio === 'object') {
+					audioSupport = media.audio;
+				}
+			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
 				if(media.video && media.video != 'screen') {
@@ -1336,6 +1372,9 @@ function Janus(gatewayCallbacks) {
 						    'optional': []
 						};
 					}
+					if(typeof media.video === 'object') {
+						videoSupport = media.video;
+					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen') {
 					// Not a webcam, but screen capture
@@ -1352,7 +1391,7 @@ function Janus(gatewayCallbacks) {
 					function callbackUserMedia (error, stream) {
 						pluginHandle.consentDialog(false);
 						if(error) {
-							callbacks.error(error);
+							callbacks.error({code: error.code, name: error.name, message: error.message});
 						} else {
 							streamsDone(handleId, jsep, media, callbacks, stream);
 						}
@@ -1360,15 +1399,9 @@ function Janus(gatewayCallbacks) {
 					function getScreenMedia(constraints, gsmCallback) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
-						getUserMedia(constraints,
-							function(stream) {
-								gsmCallback(null, stream);
-							},
-							function(error) {
-								pluginHandle.consentDialog(false);
-								gsmCallback(error);
-							}
-						);
+						navigator.mediaDevices.getUserMedia(constraints)
+							.then(function(stream) { gsmCallback(null, stream); })
+							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
 					if(window.navigator.userAgent.match('Chrome')) {
 						var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
@@ -1460,16 +1493,17 @@ function Janus(gatewayCallbacks) {
 									audio: isAudioSendEnabled(media),
 									video: {
 										mandatory: {
-										chromeMediaSource: 'desktop',
-										maxWidth: window.screen.width,
-										maxHeight: window.screen.height,
-										maxFrameRate: 3
-									},
-									optional: [
-										{googLeakyBucket: true},
-										{googTemporalLayeredScreencast: true}
-									]
-								}};
+											chromeMediaSource: 'desktop',
+											maxWidth: window.screen.width,
+											maxHeight: window.screen.height,
+											maxFrameRate: 3
+										},
+										optional: [
+											{googLeakyBucket: true},
+											{googTemporalLayeredScreencast: true}
+										]
+									}
+								};
 								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
 								getScreenMedia(constraints, callback);
 							}
@@ -1482,13 +1516,12 @@ function Janus(gatewayCallbacks) {
 			// If we got here, we're not screensharing
 			if(media === null || media === undefined || media.video !== 'screen') {
 				// Check whether all media sources are actually available or not
-				// as per https://github.com/meetecho/janus-gateway/pull/114
-				MediaStreamTrack.getSources(function(sources) {
-					var audioExist = sources.some(function(source) {
-						return source.kind === 'audio';
+				navigator.mediaDevices.enumerateDevices().then(function(devices) {
+					var audioExist = devices.some(function(device) {
+						return device.kind === 'audioinput';
 					}),
-					videoExist = sources.some(function(source) {
-						return source.kind === 'video';
+					videoExist = devices.some(function(device) {
+						return device.kind === 'videoinput';
 					});
 
 					// Check whether a missing device is really a problem
@@ -1506,12 +1539,17 @@ function Janus(gatewayCallbacks) {
 						}
 					}
 
-					getUserMedia(
-						{audio: audioExist && audioSend, video: videoExist && videoSend ? videoSupport : false},
-						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-						function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+					navigator.mediaDevices.getUserMedia({
+						audio: audioExist ? audioSupport : false,
+						video: videoExist ? videoSupport : false
+					})
+					.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
+					.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+				})
+				.catch(function(error) {
+					pluginHandle.consentDialog(false);
+					callbacks.error('enumerateDevices error', error);
 				});
-
 			}
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away

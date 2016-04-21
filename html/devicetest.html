@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: Video Call Demo</title>
+<title>Janus WebRTC Gateway: Echo Test</title>
 <script type="text/javascript" src="jquery.min.js" ></script>
 <script type="text/javascript" src="jquery.blockUI.js" ></script>
 <script type="text/javascript" src="js/bootstrap.js"></script>
 <script type="text/javascript" src="js/bootbox.min.js"></script>
 <script type="text/javascript" src="js/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="videocalltest.js"></script>
+<script type="text/javascript" src="devicetest.js"></script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
@@ -39,7 +39,7 @@
 					<li class="divider"></li>
 					<li><a href="echotest.html">Echo Test</a></li>
 					<li><a href="streamingtest.html">Streaming</a></li>
-					<li class="active"><a href="videocalltest.html">Video Call</a></li>
+					<li><a href="videocalltest.html">Video Call</a></li>
 					<li><a href="siptest.html">SIP Gateway</a></li>
 					<li><a href="videoroomtest.html">Video Room</a></li>
 					<li><a href="audiobridgetest.html">Audio Room</a></li>
@@ -47,7 +47,7 @@
 					<li><a href="recordplaytest.html">Recorder/Playout</a></li>
 					<li><a href="screensharingtest.html">Screen Sharing</a></li>
 					<li class="divider"></li>
-					<li><a href="devicetest.html">Device Selection</a></li>
+					<li class="active"><a href="devicetest.html">Device Selection</a></li>
 					<li class="divider"></li>
 					<li><a href="admin.html">Admin/Monitor</a></li>
 				</ul>
@@ -69,7 +69,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Video Call
+				<h1>Device Selection
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -77,47 +77,42 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This Video Call demo is basically an example of how you can achieve a
-						scenario like the famous AppRTC demo but with media flowing through Janus. It
-						basically is an extension to the Echo Test demo, where in this case the media
-						packets and statistics are forwarded between the two involved peers.</p>
-						<p>Using the demo is simple. Just choose a simple username to register
-						at the plugin, and then either call another user (provided you know
-						which username was picked) or share your username with a friend and
-						wait for a call. At that point, you'll be in a video call with the
-						remote peer, and you'll have the same controls the Echo Test demo
-						provides to try and control the media: that is, a button to mute/unmute
-						your audio and video, and a knob to try and limit your bandwidth. If
-						the browser supports it, you'll also get a view of the bandwidth
-						currently used by your peer for the video stream.</p>
-						<p>A very simple chat based on Data Channels is available as well:
-						just use the text area under your local video to send messages
-						to your peer. Incoming messages will be displayed below the
-						remote video instead.</p>
+						<p>This is a variant of the Echo Test demo: everything is exactly
+						the same in term of available controls, features, and the like, with
+						the substantial difference that you can select which of the available
+						devices (microphones, webcams) you want to use for the media setup.</p>
+						<p>The demo will start by automatically selecting some default devices,
+						pretty much as the regular Echo Test demo already does. Once done,
+						you'll be able to individually change the capture audio and/or video
+						device: this will result in the Echo Test channel being reset and
+						recreated, in order to use the device(s) you selected instead.</p>
+						<p>The feature exploits a functionality made available in the
+						<code>janus.js</code> library, meaning you should be able to
+						easily adapt all the other demos to follow the same approach as
+						well, and that you'll be able to do the same in your Janus-based
+						web application too.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="videocall">
-				<div class="row">
-					<div class="col-md-12">
-						<div class="col-md-6 container hide" id="login">
-							<div class="input-group margin-bottom-sm">
-								<span class="input-group-addon"><i class="fa fa-user fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="Choose a username" autocomplete="off" id="username" onkeypress="return checkEnter(this, event);"></input>
-							</div>
-							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="register">Register</button> <span class="hide label label-info" id="youok"></span>
+			<div class="container">
+				<div class="row hide" id="devices">
+					<form class="form-inline">
+						<div class="form-group" style="margin-right: 20px;">
+							<label for="audio-device">Audio device:</label>
+							<select id="audio-device" class="form-control"></select>
 						</div>
-						<div class="col-md-6 container hide" id="phone">
-							<div class="input-group margin-bottom-sm">
-								<span class="input-group-addon"><i class="fa fa-phone fa-fw"></i></span>
-								<input class="form-control" type="text" placeholder="Who should we call?" autocomplete="off" id="peer" onkeypress="return checkEnter(this, event);"></input>
-							</div>
-							<button class="btn btn-success margin-bottom-sm" autocomplete="off" id="call">Call</button>
+						<div class="form-group" style="margin-right: 20px;">
+							<label for="video-device">Video device:</label>
+							<select id="video-device" class="form-control"></select>
 						</div>
-					</div>
-				<div/>
-				<div id="videos" class="hide">
+						<div class="form-group">
+							<div id="change-devices" class="form-control btn btn-primary">Change devices</div>
+						</div>
+					</form>
+					<hr>
+				</div>
+ 				<div class="row hide" id="videos">
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
@@ -126,7 +121,7 @@
 										<button class="btn btn-danger" autocomplete="off" id="toggleaudio">Disable audio</button>
 										<button class="btn btn-danger" autocomplete="off" id="togglevideo">Disable video</button>
 										<div class="btn-group btn-group-xs">
-											<button autocomplete="off" id="bitrateset" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
 												Bandwidth<span class="caret"></span>
 											</button>
 											<ul id="bitrate" class="dropdown-menu" role="menu">
@@ -146,13 +141,13 @@
 						</div>
 						<div class="input-group margin-bottom-sm">
 							<span class="input-group-addon"><i class="fa fa-cloud-upload fa-fw"></i></span>
-							<input class="form-control" type="text" placeholder="Write a DataChannel message to your peer" autocomplete="off" id="datasend" onkeypress="return checkEnter(this, event);" disabled></input>
+							<input class="form-control" type="text" placeholder="Write a DataChannel message" autocomplete="off" id="datasend" onkeypress="return checkEnter(event);" disabled></input>
 						</div>
 					</div>
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Stream <span class="label label-info hide" id="callee"></span> <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
+								<h3 class="panel-title">Remote Stream <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
 						</div>
