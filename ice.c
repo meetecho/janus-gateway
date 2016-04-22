@@ -484,6 +484,10 @@ janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *t
 }
 
 gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const char **error) {
+	const char *ignore_error = NULL;
+	if (error == NULL) {
+		error = &ignore_error;
+	}
 	if(handle == NULL) {
 		*error = "Invalid handle";
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
