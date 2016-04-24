@@ -17,6 +17,7 @@ LT_INIT
 
 case "$host_os" in
 darwin*)
+	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
