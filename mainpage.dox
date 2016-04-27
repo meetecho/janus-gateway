@@ -2314,6 +2314,12 @@ ldd janus | grep asan
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
  * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
+ * 		<td><a href="https://github.com/ndarilek/node-janus">node-janus</a></td>
+ *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway</td>
+ * </tr>
+ * <tr>
+ * 		<td>node-js</td>
  * 		<td><a href="https://github.com/DamonOehlman">Damon Oehlman</a></td>
  * 		<td><a href="https://github.com/rtc-io/rtc-janus">rtc-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway:
