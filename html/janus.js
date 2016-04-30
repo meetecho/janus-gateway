@@ -142,7 +142,7 @@ Janus.init = function(options) {
 			}
 			var count = 0;
 			addJs(srcArray[count],next);
-			
+
 			function next() {
 				count++;
 				if (count<srcArray.length) {
@@ -270,7 +270,7 @@ function Janus(gatewayCallbacks) {
 	this.getSessionId = function() { return sessionId; };
 	this.destroy = function(callbacks) { destroySession(callbacks); };
 	this.attach = function(callbacks) { createHandle(callbacks); };
-	
+
 	// Private method to create random identifiers (e.g., transaction)
 	function randomString(len) {
 		charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -318,7 +318,7 @@ function Janus(gatewayCallbacks) {
 			dataType: "json"
 		});
 	}
-	
+
 	// Private event handler: this will trigger plugin callbacks, if set
 	function handleEvent(json) {
 		retries = 0;
@@ -450,7 +450,7 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Unknown message '" + json["janus"] + "'");
 		}
 	}
-	
+
 	// Private helper to send keep-alive messages on WebSockets
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
@@ -484,7 +484,7 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		if(websockets) {
-			ws = new WebSocket(server, 'janus-protocol'); 
+			ws = new WebSocket(server, 'janus-protocol');
 			wsHandlers = {
 				'error': function() {
 					Janus.error("Error connecting to the Janus WebSockets server... " + server);
@@ -681,7 +681,7 @@ function Janus(gatewayCallbacks) {
 			dataType: "json"
 		});
 	}
-	
+
 	// Private method to create a plugin handle
 	function createHandle(callbacks) {
 		callbacks = callbacks || {};
@@ -1032,7 +1032,7 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Invalid text");
 			return;
 		}
-		Janus.log("Sending string on data channel: " + text); 
+		Janus.log("Sending string on data channel: " + text);
 		config.dataChannel.send(text);
 		callbacks.success();
 	}
@@ -1081,11 +1081,11 @@ function Janus(gatewayCallbacks) {
 		}
 		var duration = dtmf.duration;
 		if(duration === null || duration === undefined)
-			duration = 500;	// We choose 500ms as the default duration for a tone 
+			duration = 500;	// We choose 500ms as the default duration for a tone
 		var gap = dtmf.gap;
 		if(gap === null || gap === undefined)
 			gap = 50;	// We choose 50ms as the default gap between tones
-		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms"); 
+		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms");
 		config.dtmfSender.insertDTMF(tones, duration, gap);
 	}
 
@@ -1140,7 +1140,7 @@ function Janus(gatewayCallbacks) {
 			dataType: "json"
 		});
 	}
-	
+
 	// WebRTC stuff
 	function streamsDone(handleId, jsep, media, callbacks, stream) {
 		var pluginHandle = pluginHandles[handleId];
@@ -1160,7 +1160,7 @@ function Janus(gatewayCallbacks) {
 		};
 		if(ipv6Support === true) {
 			// FIXME This is only supported in Chrome right now
-			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262 
+			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
 			pc_constraints.optional.push({"googIPv6":true});
 		}
 		Janus.log("Creating PeerConnection");
@@ -1171,7 +1171,7 @@ function Janus(gatewayCallbacks) {
 			config.volume.value = 0;
 			config.bitrate.value = "0 kbits/sec";
 		}
-		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")"); 
+		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
 					(webrtcDetectedBrowser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
@@ -1181,7 +1181,7 @@ function Janus(gatewayCallbacks) {
 					// Notify end of candidates
 					sendTrickleCandidate(handleId, {"completed": true});
 				} else {
-					// No trickle, time to send the complete SDP (including all candidates) 
+					// No trickle, time to send the complete SDP (including all candidates)
 					sendSDP(handleId, callbacks);
 				}
 			} else {
@@ -1604,13 +1604,13 @@ function Janus(gatewayCallbacks) {
 		var mediaConstraints = null;
 		if(webrtcDetectedBrowser == "firefox" || webrtcDetectedBrowser == "edge") {
 			mediaConstraints = {
-				'offerToReceiveAudio':isAudioRecvEnabled(media), 
+				'offerToReceiveAudio':isAudioRecvEnabled(media),
 				'offerToReceiveVideo':isVideoRecvEnabled(media)
 			};
 		} else {
 			mediaConstraints = {
 				'mandatory': {
-					'OfferToReceiveAudio':isAudioRecvEnabled(media), 
+					'OfferToReceiveAudio':isAudioRecvEnabled(media),
 					'OfferToReceiveVideo':isVideoRecvEnabled(media)
 				}
 			};
@@ -1645,7 +1645,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success(jsep);
 			}, callbacks.error, mediaConstraints);
 	}
-	
+
 	function createAnswer(handleId, media, callbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
@@ -1662,13 +1662,13 @@ function Janus(gatewayCallbacks) {
 		var mediaConstraints = null;
 		if(webrtcDetectedBrowser == "firefox" || webrtcDetectedBrowser == "edge") {
 			mediaConstraints = {
-				'offerToReceiveAudio':isAudioRecvEnabled(media), 
+				'offerToReceiveAudio':isAudioRecvEnabled(media),
 				'offerToReceiveVideo':isVideoRecvEnabled(media)
 			};
 		} else {
 			mediaConstraints = {
 				'mandatory': {
-					'OfferToReceiveAudio':isAudioRecvEnabled(media), 
+					'OfferToReceiveAudio':isAudioRecvEnabled(media),
 					'OfferToReceiveVideo':isVideoRecvEnabled(media)
 				}
 			};
@@ -1845,7 +1845,7 @@ function Janus(gatewayCallbacks) {
 			return true;
 		}
 	}
-	
+
 	function getBitrate(handleId) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
@@ -1943,7 +1943,7 @@ function Janus(gatewayCallbacks) {
 			return "Feature unsupported by browser";
 		}
 	}
-	
+
 	function webrtcError(error) {
 		Janus.error("WebRTC error:", error);
 	}
