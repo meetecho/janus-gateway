@@ -232,10 +232,7 @@ Janus.init = function(options) {
 
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
-	if(RTCPeerConnection === null || getUserMedia === null) {
-		return false;
-	}
-	return true;
+	return window.RTCPeerConnection && window.getUserMedia;
 };
 
 
