@@ -169,6 +169,10 @@ janus_plugin *create(void) {
 	return &janus_voicemail_plugin;
 }
 
+/* Parameter validation */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -633,11 +637,7 @@ static void *janus_voicemail_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VoiceMail handler thread\n");
 	janus_voicemail_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(512);
-	if(error_cause == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	char error_cause[512];
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
@@ -689,19 +689,12 @@ static void *janus_voicemail_handler(void *data) {
 			goto error;
 		}
 		/* Get the request first */
+		JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VOICEMAIL_ERROR_MISSING_ELEMENT, JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *request = json_object_get(root, "request");
-		if(!request) {
-			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-			error_code = JANUS_VOICEMAIL_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
-		}
-		if(!json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-			error_code = JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-			goto error;
-		}
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
 		if(!strcasecmp(request_text, "record")) {
@@ -837,7 +830,6 @@ error:
 			janus_voicemail_message_free(msg);
 		}
 	}
-	g_free(error_cause);
 	JANUS_LOG(LOG_VERB, "Leaving VoiceMail handler thread\n");
 	return NULL;
 }
