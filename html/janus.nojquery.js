@@ -1451,7 +1451,7 @@ function Janus(gatewayCallbacks) {
 						navigator.mediaDevices.getUserMedia(constraints)
 							.then(function(stream) { gsmCallback(null, stream); })
 							.catch(function(error) {
-								if (error.name === 'NotFoundError' && constraints.video.mozMediaSource === 'window' && constraints.video.mediaSource === 'window') {
+								if (error.name === 'NotFoundError' && constraints.video && constraints.video.mozMediaSource === 'window' && constraints.video.mediaSource === 'window') {
 									constraints.video.mozMediaSource = 'screen'
 									constraints.video.mediaSource = 'screen'
 									getScreenMedia(constraints, gsmCallback)
