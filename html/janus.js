@@ -1297,7 +1297,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
-				if(media.video && media.video != 'screen') {
+				if(media.video && media.video != 'screen' && media.video != 'window') {
 					var width = 0;
 					var height = 0, maxHeight = 0;
 					if(media.video === 'lowres') {
@@ -1373,7 +1373,7 @@ function Janus(gatewayCallbacks) {
 						videoSupport = media.video;
 					}
 					Janus.debug(videoSupport);
-				} else if(media.video === 'screen') {
+				} else if(media.video === 'screen' || media.video === 'window') {
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
 						// Screen sharing mandates HTTPS
@@ -1438,8 +1438,8 @@ function Janus(gatewayCallbacks) {
 							// Firefox 33+ has experimental support for screen sharing
 							constraints = {
 								video: {
-									mozMediaSource: 'window',
-									mediaSource: 'window'
+									mozMediaSource: media.video,
+									mediaSource: media.video
 								},
 								audio: isAudioSendEnabled(media)
 							};
@@ -1508,6 +1508,7 @@ function Janus(gatewayCallbacks) {
 							window.clearTimeout(event.data.id);
 						}
 					});
+					return;
 				}
 			}
 			// If we got here, we're not screensharing
