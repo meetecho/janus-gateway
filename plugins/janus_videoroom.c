@@ -203,7 +203,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
-	{"secrect", JSON_STRING, 0},
+	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},

@@ -618,7 +618,7 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 	else if((flags & JANUS_JSON_PARAM_NONEMPTY) != 0) {
 		switch(jtype) {
 			case JSON_STRING:
-				is_valid = (json_string_length(val) > 0);
+				is_valid = (strlen(json_string_value(val)) > 0);
 				break;
 			case JSON_ARRAY:
 				is_valid = (json_array_size(val) > 0);
