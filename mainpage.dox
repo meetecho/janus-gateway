@@ -60,7 +60,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Gateway © 2014 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -2404,7 +2404,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Gateway © 2014 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -2436,7 +2436,7 @@ ldd janus | grep asan
  * If you're interested in a commercial license (e.g., because GPLv3 is
  * not suited for what you need, you're interested in technical support
  * or want to sponsor the development of new features), feel free to
- * <a href="http://www.meetecho.com">contact us</a>.
+ * <a href="https://janus.conf.meetecho.com/support">contact us</a>.
  *
  *  \verbinclude COPYING
  */

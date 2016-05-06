@@ -11,6 +11,10 @@
 	position: relative;
 }
 
+.navbar-brand {
+	margin-left: 0px !important;
+}
+
 .navbar-default {
 	-webkit-box-shadow: 0px 3px 5px rgba(100, 100, 100, 0.49);
 	-moz-box-shadow:    0px 3px 5px rgba(100, 100, 100, 0.49);
@@ -52,19 +56,19 @@
 }
 
 .fa-2 {
-	font-size: 2em;
+	font-size: 2em !important;
 }
 .fa-3 {
-	font-size: 4em;
+	font-size: 4em !important;
 }
 .fa-4 {
-	font-size: 7em;
+	font-size: 7em !important;
 }
 .fa-5 {
-	font-size: 12em;
+	font-size: 12em !important;
 }
 .fa-6 {
-	font-size: 20em;
+	font-size: 20em !important;
 }
 
 div.no-video-container {
@@ -84,4 +88,12 @@ div.no-video-container {
 	right: 0px;
 	left: 0px;
 	font-size: 24px;
+}
+
+.meetecho-logo {
+	padding: 12px !important;
+}
+
+.meetecho-logo > img {
+	height: 26px;
 }
