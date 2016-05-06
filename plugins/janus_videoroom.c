@@ -1631,7 +1631,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		const gchar* host = json_string_value(json_host);
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-		janus_mutex_unlock(&rooms_mutex);
 		if(videoroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
@@ -1671,6 +1670,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				goto error;
 			}
 		}
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->participants_mutex);
 		janus_videoroom_participant* publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
 		if(publisher == NULL) {
@@ -1773,7 +1773,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		guint32 stream_id = json_integer_value(id);
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-		janus_mutex_unlock(&rooms_mutex);
 		if(videoroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
@@ -1813,6 +1812,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				goto error;
 			}
 		}
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->participants_mutex);
 		janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
 		if(publisher == NULL) {
