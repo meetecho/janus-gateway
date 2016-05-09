@@ -76,8 +76,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			5
-#define JANUS_SIP_VERSION_STRING	"0.0.5"
+#define JANUS_SIP_VERSION			6
+#define JANUS_SIP_VERSION_STRING	"0.0.6"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -2195,11 +2195,26 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			tagi_t const *ti = tl_find(tags, nutag_callstate);
 			enum nua_callstate callstate = ti ? ti->t_value : -1;
-			/* There are several call states, but we only care about the terminated state
-			 * in order to send the 'hangup' event (assuming this is the right session, of course).
+			/* There are several call states, but we care about the terminated state in order to send the 'hangup' event
+			 * and the proceeding state in order to send the 'proceeding' event so the client can play a ringback tone for 
+			 * the user since we don't send early media. (assuming this is the right session, of course).
 			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
 			 */
-			if(callstate == nua_callstate_terminated &&
+			if (callstate == nua_callstate_proceeding && 
+				    (session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
+                json_t *call = json_object();
+				json_object_set_new(call, "sip", json_string("event"));
+				json_t *calling = json_object();
+				json_object_set_new(calling, "event", json_string("proceeding"));
+				json_object_set_new(calling, "code", json_integer(status));
+				json_object_set_new(call, "result", calling);
+				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_decref(call);
+				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+				g_free(call_text);
+            } else if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->status = janus_sip_call_status_idle;
 				session->stack->s_nh_i = NULL;
