@@ -41,6 +41,7 @@
 #define JANUS_AUTHOR			"Meetecho s.r.l."
 #define JANUS_VERSION			10
 #define JANUS_VERSION_STRING	"0.1.0"
+#define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
 #define SHLIB_EXT "0.dylib"
@@ -107,6 +108,10 @@ gint janus_is_stopping(void) {
 }
 
 
+/* Public instance name */
+static gchar *server_name = NULL;
+
+
 /* Information */
 json_t *janus_info(const char *transaction);
 json_t *janus_info(const char *transaction) {
@@ -128,6 +133,7 @@ json_t *janus_info(const char *transaction) {
 #else
 	json_object_set_new(info, "data_channels", json_string("false"));
 #endif
+	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
 		json_object_set_new(info, "public-ip", json_string(public_ip));
@@ -219,6 +225,8 @@ static void janus_handle_signal(int signum) {
 
 /*! \brief Termination handler (atexit) */
 static void janus_termination_handler(void) {
+	/* Free the instance name, if provided */
+	g_free(server_name);
 	/* Remove the PID file if we created it */
 	janus_pidfile_remove();
 	/* Close the logger */
@@ -3170,6 +3178,9 @@ gint main(int argc, char *argv[])
 	if(args_info.disable_colors_given) {
 		janus_config_add_item(config, "general", "debug_colors", "no");
 	}
+	if(args_info.server_name_given) {
+		janus_config_add_item(config, "general", "server_name", args_info.server_name_arg);
+	}
  	if(args_info.interface_given) {
 		janus_config_add_item(config, "general", "interface", args_info.interface_arg);
 	}
@@ -3335,6 +3346,12 @@ gint main(int argc, char *argv[])
 	if (!local_ip_set)
 		janus_detect_local_ip(local_ip, sizeof(local_ip));
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
+
+	/* Was a custom instance name provided? */
+	item = janus_config_get_item_drilldown(config, "general", "server_name");
+	if(item && item->value) {
+		server_name = g_strdup(item->value);
+	}
 
 	/* Is there any API secret to consider? */
 	api_secret = NULL;
