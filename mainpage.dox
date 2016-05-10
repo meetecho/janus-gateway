@@ -271,6 +271,12 @@ var janus = new Janus(
  * 		- \c consentDialog: this callback is triggered just before \c getUserMedia is called
  * (parameter=<b>true</b>) and after it is completed (parameter=<b>false</b>); this means it can
  * be used to modify the UI accordingly, e.g., to prompt the user about the need to accept the device access consent requests;
+ * 		- \c webrtcState: this callback is triggered with a <b>true</b> value
+ * when the PeerConnection associated to a handle becomes active (so ICE, DTLS and
+ * everything else succeeded) from the Janus perspective, while <b>false</b> is
+ * triggered when the PeerConnection goes down instead; useful to figure out
+ * when WebRTC is actually up and running between you and Janus (e.g., to notify
+ * a user they're actually now active in a conference);
  * 		- \c mediaState: this callback is triggered when Janus starts or stops
  * receiving your media: for instance, a \c mediaState with type=<b>audio</b> and
  * on=<b>true</b> means Janus started receiving your audio stream (or started

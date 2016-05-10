@@ -137,6 +137,11 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+									$("#screencapture").parent().unblock();
+									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
 									Janus.debug(JSON.stringify(msg));
@@ -220,7 +225,14 @@ $(document).ready(function() {
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 									}
 									attachMediaStream($('#screenvideo').get(0), stream);
-									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+									$("#screencapture").parent().block({
+										message: '<b>Publishing...</b>',
+										css: {
+											border: 'none',
+											backgroundColor: 'transparent',
+											color: 'white'
+										}
+									});
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -228,6 +240,7 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#screencapture').empty();
+									$("#screencapture").parent().unblock();
 									$('#room').hide();
 								}
 							});
