@@ -2380,56 +2380,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			
 			if(status < 200) {
-				if (status == 183 || status == 180){
-					/* SIP/SDP Offer/Answer can get very complex depending on your specific scenario
-					 * This fix for early media considers Use case #1 and #2. Refer to URL below.
-					 * http://sofia-sip.sourceforge.net/refdocs/soa/soa_sdp_oa_use_cases.html
-					 */
-
-					if(ssip == NULL) {
-						break;
-					}
-					sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
-					if(!sdp_session(parser)) {
-						sdp_parser_free(parser);
-						break;
-					}
-					
-					/* Parse SDP */
-					JANUS_LOG(LOG_VERB, "Sending early media:\n%s", sip->sip_payload->pl_data);
-					
-					char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
-					sdp_session_t *sdp = sdp_session(parser);
-					janus_sip_sdp_process(session, sdp);
-					/* If we asked for SRTP and are not getting it, fail */
-					if(session->media.require_srtp && !session->media.has_srtp_remote) {
-						JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply, ignoring until status 200.\n");
-						sdp_parser_free(parser);
-						g_free(fixed_sdp);
-						break;
-					}
-					session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
-					GError *error = NULL;
-					g_thread_try_new("Early media janus rtp handler", janus_sip_relay_thread, session, &error);
-					if(error != NULL) {
-						JANUS_LOG(LOG_ERR, "Early media got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
-					}
-					/* Send SDP to the browser */
-					json_t *call = json_object();
-					json_object_set_new(call, "sip", json_string("event"));
-					json_t *calling = json_object();
-					json_object_set_new(calling, "event", json_string("ringing"));
-					json_object_set_new(calling, "username", json_string(session->callee));
-					json_object_set_new(call, "result", calling);
-					char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-					json_decref(call);
-					JANUS_LOG(LOG_VERB, "Early media pushing event to peer: %s\n", call_text);
-					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "answer", fixed_sdp);
-					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-					g_free(call_text);
-					g_free(fixed_sdp);
-				}
-
+				/* Not ready yet (FIXME May this be pranswer?? we don't handle it yet...) */
 				break;
 			} else if(status == 401 || status == 407) {
 				char auth[256];
