@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief  Plugin-Gateway communication
  * \details  This header contains the definition of the callbacks both
- * the gateway and all the plugins need too implement to interact with
+ * the gateway and all the plugins need to implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
  * 
