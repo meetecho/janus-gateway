@@ -133,6 +133,42 @@ janus_plugin *create(void) {
 	return &janus_sip_plugin;
 }
 
+/* Parameter validation */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter register_parameters[] = {
+	{"type", JSON_STRING, 0},
+	{"send_register", JANUS_JSON_BOOL, 0},
+	{"sips", JANUS_JSON_BOOL, 0},
+	{"username", JSON_STRING, 0},
+	{"secret", JSON_STRING, 0},
+	{"ha1_secret", JSON_STRING, 0},
+	{"authuser", JSON_STRING, 0}
+};
+static struct janus_json_parameter proxy_parameters[] = {
+	{"proxy", JSON_STRING, 0}
+};
+static struct janus_json_parameter call_parameters[] = {
+	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"headers", JSON_OBJECT, 0},
+	{"srtp", JSON_STRING, 0}
+};
+static struct janus_json_parameter accept_parameters[] = {
+	{"srtp", JSON_STRING, 0}
+};
+static struct janus_json_parameter recording_parameters[] = {
+	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"peer_audio", JANUS_JSON_BOOL, 0},
+	{"peer_video", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0}
+};
+static struct janus_json_parameter dtmf_info_parameters[] = {
+	{"digit", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"duration", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -1151,7 +1187,7 @@ static void *janus_sip_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SIP handler thread\n");
 	janus_sip_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(512);
+	char error_cause[512];
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
@@ -1202,19 +1238,12 @@ static void *janus_sip_handler(void *data) {
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
+		JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *request = json_object_get(root, "request");
-		if(!request) {
-			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-			error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
-		}
-		if(!json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-			error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-			goto error;
-		}
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
 		char *sdp_type = NULL, *sdp = NULL;
@@ -1249,14 +1278,13 @@ static void *janus_sip_handler(void *data) {
 			session->account.registration_status = janus_sip_registration_status_unregistered;
 
 			gboolean guest = FALSE;
+			JANUS_VALIDATE_JSON_OBJECT(root, register_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *type = json_object_get(root, "type");
 			if(type != NULL) {
-				if(!json_is_string(type)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (type should be a string)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (type should be a string)");
-					goto error;
-				}
 				const char *type_text = json_string_value(type);
 				if(!strcmp(type_text, "guest")) {
 					JANUS_LOG(LOG_INFO, "Registering as a guest\n");
@@ -1269,12 +1297,6 @@ static void *janus_sip_handler(void *data) {
 			gboolean send_register = TRUE;
 			json_t *do_register = json_object_get(root, "send_register");
 			if(do_register != NULL) {
-				if(!json_is_boolean(do_register)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (send_register should be boolean)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (send_register should be boolean)");
-					goto error;
-				}
 				if(guest) {
 					JANUS_LOG(LOG_ERR, "Conflicting elements: send_register cannot be true if guest is true\n");
 					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
@@ -1287,12 +1309,6 @@ static void *janus_sip_handler(void *data) {
 			gboolean sips = TRUE;
 			json_t *do_sips = json_object_get(root, "sips");
 			if(do_sips != NULL) {
-				if(!json_is_boolean(do_sips)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (sips should be boolean)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (sips should be boolean)");
-					goto error;
-				}
 				sips = json_is_true(do_sips);
 			}
 
@@ -1301,12 +1317,12 @@ static void *janus_sip_handler(void *data) {
 			const char *proxy_text = NULL;
 
 			if (proxy && !json_is_null(proxy)) {
-				if(!json_is_string(proxy)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (proxy should be a string)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (proxy should be a string)");
+				/* Has to be validated separately because it could be null */
+				JANUS_VALIDATE_JSON_OBJECT(root, proxy_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
 					goto error;
-				}
 				proxy_text = json_string_value(proxy);
 				janus_sip_uri_t proxy_uri;
 				if (janus_sip_parse_proxy_uri(&proxy_uri, proxy_text) < 0) {
@@ -1338,12 +1354,6 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_uri_t username_uri;
 			char user_id[256];
 			if(username) {
-				if(!json_is_string(username)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (username should be a string)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (username should be a string)");
-					goto error;
-				}
 				/* Parse address */
 				username_text = json_string_value(username);
 				if (janus_sip_parse_uri(&username_uri, username_text) < 0) {
@@ -1378,34 +1388,16 @@ static void *janus_sip_handler(void *data) {
 				}
 				const char *secret_text;
 				if(secret) {
-					if(!json_is_string(secret)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-						goto error;
-					}
 					secret_text = json_string_value(secret);
 					session->account.secret = g_strdup(secret_text);
 					session->account.secret_type = janus_sip_secret_type_plaintext;
 				} else {
-					if(!json_is_string(ha1_secret)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (ha1_secret should be a string)\n");
-						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (ha1_secret should be a string)");
-						goto error;
-					}
 					secret_text = json_string_value(ha1_secret);
 					session->account.secret = g_strdup(secret_text);
 					session->account.secret_type = janus_sip_secret_type_hashed;
 				}
 				if (authuser) {
 					const char *authuser_text;
-					if (!json_is_string(authuser)) {
-						JANUS_LOG(LOG_ERR, "Invalid element (authentication username should be a string)\n");
-						error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (authentication username should be a string)");
-						goto error;
-					}
 					authuser_text = json_string_value(authuser);
 					session->account.authuser = g_strdup(authuser_text);
 				} else {
@@ -1495,30 +1487,17 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (already in a call? status=%s)", janus_sip_call_status_string(session->status));
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, call_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *uri = json_object_get(root, "uri");
-			if(!uri) {
-				JANUS_LOG(LOG_ERR, "Missing element (uri)\n");
-				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (uri)");
-				goto error;
-			}
-			if(!json_is_string(uri)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (uri should be a string)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (uri should be a string)");
-				goto error;
-			}
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
 			custom_headers[0] = '\0';
 			json_t *headers = json_object_get(root, "headers");
 			if(headers) {
-				if(!json_is_object(headers)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (headers should be an object)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (headers should be an object)");
-					goto error;
-				}
 				if(json_object_size(headers) > 0) {
 					/* Parse custom headers */
 					const char *key = NULL;
@@ -1544,12 +1523,6 @@ static void *janus_sip_handler(void *data) {
 			gboolean offer_srtp = FALSE, require_srtp = FALSE;
 			json_t *srtp = json_object_get(root, "srtp");
 			if(srtp) {
-				if(!json_is_string(srtp)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (srtp should be a string)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (srtp should be a string)");
-					goto error;
-				}
 				const char *srtp_text = json_string_value(srtp);
 				if(!strcasecmp(srtp_text, "sdes_optional")) {
 					/* Negotiate SDES, but make it optional */
@@ -1671,15 +1644,14 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no caller?)");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, accept_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *srtp = json_object_get(root, "srtp");
 			gboolean answer_srtp = FALSE;
 			if(srtp) {
-				if(!json_is_string(srtp)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (srtp should be a string)\n");
-					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (srtp should be a string)");
-					goto error;
-				}
 				const char *srtp_text = json_string_value(srtp);
 				if(!strcasecmp(srtp_text, "sdes_optional")) {
 					/* Negotiate SDES, but make it optional */
@@ -1847,19 +1819,12 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, recording_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *action = json_object_get(root, "action");
-			if(!action) {
-				JANUS_LOG(LOG_ERR, "Missing element (action)\n");
-				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (action)");
-				goto error;
-			}
-			if(!json_is_string(action)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (action should be a string)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (action should be a string)");
-				goto error;
-			}
 			const char *action_text = json_string_value(action);
 			if(strcasecmp(action_text, "start") && strcasecmp(action_text, "stop")) {
 				JANUS_LOG(LOG_ERR, "Invalid action (should be start|stop)\n");
@@ -1870,36 +1835,12 @@ static void *janus_sip_handler(void *data) {
 			gboolean record_audio = FALSE, record_video = FALSE,	/* No media is recorded by default */
 				record_peer_audio = FALSE, record_peer_video = FALSE;
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-				goto error;
-			}
 			record_audio = audio ? json_is_true(audio) : FALSE;
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_boolean(video)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-				goto error;
-			}
 			record_video = video ? json_is_true(video) : FALSE;
 			json_t *peer_audio = json_object_get(root, "peer_audio");
-			if(peer_audio && !json_is_boolean(peer_audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (peer_audio should be a boolean)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (peer_audio should be a boolean)");
-				goto error;
-			}
 			record_peer_audio = peer_audio ? json_is_true(peer_audio) : FALSE;
 			json_t *peer_video = json_object_get(root, "peer_video");
-			if(peer_video && !json_is_boolean(peer_video)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (peer_video should be a boolean)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (peer_video should be a boolean)");
-				goto error;
-			}
 			record_peer_video = peer_video ? json_is_true(peer_video) : FALSE;
 			if(!record_audio && !record_video && !record_peer_audio && !record_peer_video) {
 				JANUS_LOG(LOG_ERR, "Invalid request (at least one of audio, video, peer_audio and peer_video should be true)\n");
@@ -1908,12 +1849,6 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			json_t *recfile = json_object_get(root, "filename");
-			if(recfile && !json_is_string(recfile)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
-				goto error;
-			}
 			const char *recording_base = json_string_value(recfile);
 			if(!strcasecmp(action_text, "start")) {
 				/* Start recording something */
@@ -2083,19 +2018,12 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, dtmf_info_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *digit = json_object_get(root, "digit");
-			if(!digit) {
-				JANUS_LOG(LOG_ERR, "Missing element (digit)\n");
-				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (digit)");
-				goto error;
-			}
-			if(!json_is_string(digit)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (digit should be a string)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (digit should be a string)");
-				goto error;
-			}
 			const char *digit_text = json_string_value(digit);
 			if(strlen(digit_text) != 1) {
 				JANUS_LOG(LOG_ERR, "Invalid element (digit should be one character))\n");
@@ -2105,12 +2033,6 @@ static void *janus_sip_handler(void *data) {
 			}
 			int duration_ms = 0;
 			json_t *duration = json_object_get(root, "duration");
-			if(duration && !json_is_integer(duration)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (duration should be an integer)\n");
-				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (duration should be an integer)");
-				goto error;
-			}
 			duration_ms = duration ? json_integer_value(duration) : 0;
 			if (duration_ms <= 0 || duration_ms > 5000) {
 				duration_ms = 160; /* default value */
@@ -2164,7 +2086,6 @@ error:
 			janus_sip_message_free(msg);
 		}
 	}
-	g_free(error_cause);
 	JANUS_LOG(LOG_VERB, "Leaving SIP handler thread\n");
 	return NULL;
 }
