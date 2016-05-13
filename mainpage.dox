@@ -1338,8 +1338,8 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * RabbitMQ, so refer to the \ref WS documentation for details about that.
  *
  * Apart from that, the only configuration needed is related to the path
- * the client and server will be sharing. Notice that only the
- * \c SOCK_SEQPACKET mode is supported in the plugin.
+ * the client and server will be sharing, and the socket type. Notice that only the
+ * \c SOCK_SEQPACKET and \c SOCK_DGRAM types are supported in the plugin.
  *
  */
 
