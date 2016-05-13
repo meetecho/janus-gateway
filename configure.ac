@@ -64,6 +64,12 @@ AC_ARG_ENABLE([rabbitmq],
               [],
               [enable_rabbitmq=yes])
 
+AC_ARG_ENABLE([unix-sockets],
+              [AS_HELP_STRING([--disable-unix-sockets],
+                              [Disable Unix Sockets integration])],
+              [],
+              [enable_pfunix=yes])
+
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
                               [Use BoringSSL instead of OpenSSL])],
@@ -242,6 +248,28 @@ AC_CHECK_LIB([rabbitmq],
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 
+AC_TRY_COMPILE([
+               #include <stdlib.h>
+               #include <sys/socket.h>
+               #include <sys/un.h>
+               void test() {
+                 int pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
+                 if(pfd < 0)
+                   exit(1);
+               }],
+               [],
+               [
+                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                 [
+                    AC_DEFINE(HAVE_PFUNIX)
+                 ])
+               ],
+               [
+                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                       [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
+               ])
+AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_pfunix" = "xyes"])
+
 
 ##
 # Plugins
@@ -395,6 +423,9 @@ AM_COND_IF([ENABLE_WEBSOCKETS],
 AM_COND_IF([ENABLE_RABBITMQ],
 	[echo "    RabbitMQ:              yes"],
 	[echo "    RabbitMQ:              no"])
+AM_COND_IF([ENABLE_PFUNIX],
+	[echo "    Unix Sockets:          yes"],
+	[echo "    Unix Sockets:          no"])
 echo "Plugins:"
 AM_COND_IF([ENABLE_PLUGIN_ECHOTEST],
 	[echo "    Echo Test:             yes"],
