@@ -218,4 +218,56 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 #define JANUS_VALIDATE_JSON_OBJECT(obj, params, error_code, error_cause, log_error, missing_code, invalid_code) \
 	JANUS_VALIDATE_JSON_OBJECT_FORMAT("Missing mandatory element (%s)", "Invalid element type (%s should be %s)", obj, params, error_code, error_cause, log_error, missing_code, invalid_code)
 
+/*! \brief If the pin isn't NULL, check the pin after validating the "pin" parameter of the JSON object
+ * @param pin The pin to be checked; no check if the pin is NULL
+ * @param obj The JSON object to be validated
+ * @param[out] error_code int to return error code
+ * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is 57
+ * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
+ * @param missing_code The code to be returned in error_code if a parameter is missing
+ * @param invalid_code The code to be returned in error_code if a parameter is invalid
+ * @param unauthorized_code The code to be returned in error_code if the pin doesn't match */
+#define JANUS_CHECK_PIN(pin, obj, error_code, error_cause, log_error, missing_code, invalid_code, unauthorized_code) \
+	do { \
+		if (pin) { \
+			static struct janus_json_parameter pin_parameters[] = { \
+				{"pin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED} \
+			}; \
+			JANUS_VALIDATE_JSON_OBJECT(obj, pin_parameters, error_code, error_cause, log_error, missing_code, invalid_code); \
+			if(!error_code && !janus_strcmp_const_time((pin), json_string_value(json_object_get(obj, "pin")))) { \
+				error_code = (unauthorized_code); \
+				if(log_error) \
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n"); \
+				if(error_cause != NULL) \
+					g_snprintf(error_cause, sizeof(error_cause), "Unauthorized (wrong pin)"); \
+			} \
+		} \
+	} while(0)
+
+/*! \brief If the secret isn't NULL, check the secret after validating the "secret" parameter of the JSON object
+ * @param secret The secret to be checked; no check if the secret is NULL
+ * @param obj The JSON object to be validated
+ * @param[out] error_code int to return error code
+ * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is 60
+ * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
+ * @param missing_code The code to be returned in error_code if a parameter is missing
+ * @param invalid_code The code to be returned in error_code if a parameter is invalid
+ * @param unauthorized_code The code to be returned in error_code if the secret doesn't match */
+#define JANUS_CHECK_SECRET(secret, obj, error_code, error_cause, log_error, missing_code, invalid_code, unauthorized_code) \
+	do { \
+		if (secret) { \
+			static struct janus_json_parameter secret_parameters[] = { \
+				{"secret", JSON_STRING, JANUS_JSON_PARAM_REQUIRED} \
+			}; \
+			JANUS_VALIDATE_JSON_OBJECT(obj, secret_parameters, error_code, error_cause, log_error, missing_code, invalid_code); \
+			if(error_code == 0 && !janus_strcmp_const_time((secret), json_string_value(json_object_get(obj, "secret")))) { \
+				error_code = (unauthorized_code); \
+				if(log_error) \
+					JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n"); \
+				if(error_cause != NULL) \
+					g_snprintf(error_cause, sizeof(error_cause), "Unauthorized (wrong secret)"); \
+			} \
+		} \
+	} while(0)
+
 #endif
