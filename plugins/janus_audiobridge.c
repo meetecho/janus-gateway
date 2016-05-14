@@ -2551,6 +2551,11 @@ static void *janus_audiobridge_handler(void *data) {
 				/* If so, reject it */
 				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
 			}
+			/* Did the peer negotiate data channels? */
+			if(strstr(msg->sdp, "DTLS/SCTP") != NULL) {
+				/* If so, reject them */
+				g_strlcat(sdp, "m=application 0 DTLS/SCTP 0\r\n", 1024);
+			}
 			/* How long will the gateway take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();

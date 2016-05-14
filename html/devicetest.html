@@ -11,12 +11,12 @@
 <script type="text/javascript" src="js/bootbox.min.js"></script>
 <script type="text/javascript" src="js/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="echotest.js"></script>
+<script type="text/javascript" src="devicetest.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
 			$(".navbar-static-top li.dropdown").addClass("active");
-			$(".navbar-static-top a[href='echotest.html']").parent().addClass("active");
+			$(".navbar-static-top a[href='devicetest.html']").parent().addClass("active");
 		});
 		$(".footer").load("footer.html");
 	});
@@ -36,7 +36,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: Echo Test
+				<h1>Device Selection
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -44,31 +44,42 @@
 				<div class="row">
 					<div class="col-md-12">
 						<h3>Demo details</h3>
-						<p>This Echo Test demo just blindly sends you back whatever you
-						send to it. You're basically attached to yourself, and so your audio
-						and video you send to the gateway are echoed back to you. The same
-						is done for RTCP packets as well, with the information properly updated.</p>
-						<p>The demo also provides a few controls to manipulate the media
-						before you send them. You can mute audio and video, for instance,
-						which will tell the gateway to drop the frames and not echo them
-						back to you. You can also try and cap the bitrate: such control
-						will tell the gateway to manipulate the RTCP REMB packets passing
-						through, in order to simulate a bandwidth limitation.</p>
-						<p>Finally, this demo also includes Data Channels: whatever you
-						write in the text box under your local video, will be sent via
-						Data Channels to the plugins, modified by adding a fixed prefix,
-						and sent back to you in the text area below the remote video.</p>
-						<div class="alert alert-info">This demo, as all the others, for the
-						sake of simplicity accesses the default devices you have available on
-						your machine. If you're interested in a demo that shows you how you
-						can select specific devices with <code>janus.js</code>, open the
-						<a class="alert-link" href="devices.html">Devices</a> demo instead.</div>
+						<p>This is a variant of the Echo Test demo: everything is exactly
+						the same in term of available controls, features, and the like, with
+						the substantial difference that you can select which of the available
+						devices (microphones, webcams) you want to use for the media setup.</p>
+						<p>The demo will start by automatically selecting some default devices,
+						pretty much as the regular Echo Test demo already does. Once done,
+						you'll be able to individually change the capture audio and/or video
+						device: this will result in the Echo Test channel being reset and
+						recreated, in order to use the device(s) you selected instead.</p>
+						<p>The feature exploits a functionality made available in the
+						<code>janus.js</code> library, meaning you should be able to
+						easily adapt all the other demos to follow the same approach as
+						well, and that you'll be able to do the same in your Janus-based
+						web application too.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
 			</div>
-			<div class="container hide" id="videos">
-				<div class="row">
+			<div class="container">
+				<div class="row hide" id="devices">
+					<form class="form-inline">
+						<div class="form-group" style="margin-right: 20px;">
+							<label for="audio-device">Audio device:</label>
+							<select id="audio-device" class="form-control"></select>
+						</div>
+						<div class="form-group" style="margin-right: 20px;">
+							<label for="video-device">Video device:</label>
+							<select id="video-device" class="form-control"></select>
+						</div>
+						<div class="form-group">
+							<div id="change-devices" class="form-control btn btn-primary">Change devices</div>
+						</div>
+					</form>
+					<hr>
+				</div>
+ 				<div class="row hide" id="videos">
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">

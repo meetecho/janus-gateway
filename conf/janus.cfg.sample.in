@@ -36,6 +36,8 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;								  to be accepted/authorized by the admin/monitor.
 ;								  only needed if you enabled the admin API
 ;								  in any of the available transports.
+;server_name = MyJanusInstance	; Public name of this Janus instance
+;								  as it will appear in an info request
 
 
 ; Certificate and key to use for DTLS.

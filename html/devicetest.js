@@ -57,6 +57,76 @@ var spinner = null;
 var audioenabled = false;
 var videoenabled = false;
 
+// Helper method to prepare a UI selection of the available devices
+function initDevices(devices) {
+	$('#devices').removeClass('hide');
+	$('#devices').parent().removeClass('hide');
+	$('#choose-device').click(restartCapture);
+	var audio = $('#audio-device').val();
+	var video = $('#video-device').val();
+	$('#audio-device, #video-device').find('option').remove();
+
+	devices.forEach(function(device) {
+		var label = device.label;
+		if(label === null || label === undefined || label === "")
+			label = device.deviceId;
+		var option = $('<option value="' + device.deviceId + '">' + label + '</option>');
+		if(device.kind === 'audioinput') {
+			$('#audio-device').append(option);
+		} else if(device.kind === 'videoinput') {
+			$('#video-device').append(option);
+		}
+	});
+
+	$('#audio-device').val(audio);
+	$('#video-device').val(video);
+
+	$('#change-devices').click(function() {
+		// A different device has been selected: hangup the session, and set it up again
+		$('#audio-device, #video-device').attr('disabled', true);
+		$('#change-devices').attr('disabled', true);
+		echotest.hangup();
+		// Let's wait a couple of seconds before restarting
+		setTimeout(restartCapture, 1000);
+	});
+
+	//~ restartCapture();
+}
+
+function restartCapture() {
+	// Negotiate WebRTC
+	var body = { "audio": true, "video": true };
+	Janus.debug("Sending message (" + JSON.stringify(body) + ")");
+	echotest.send({"message": body});
+	Janus.debug("Trying a createOffer too (audio/video sendrecv)");
+	echotest.createOffer(
+		{
+			// No media provided: by default, it's sendrecv for audio and video
+			media: {
+				audio: {
+					deviceId: {
+						exact: $('#audio-device').val()
+					}
+				},
+				video: {
+					deviceId: {
+						exact: $('#video-device').val()
+					}
+				},
+				data: true	// Let's negotiate data channels as well
+			},
+			success: function(jsep) {
+				Janus.debug("Got SDP!");
+				Janus.debug(jsep);
+				echotest.send({"message": body, "jsep": jsep});
+			},
+			error: function(error) {
+				Janus.error("WebRTC error:", error);
+				bootbox.alert("WebRTC error... " + JSON.stringify(error));
+			}
+		});
+}
+
 $(document).ready(function() {
 	// Initialize the library (all console debuggers enabled)
 	Janus.init({debug: "all", callback: function() {
@@ -93,25 +163,9 @@ $(document).ready(function() {
 									$('#details').remove();
 									echotest = pluginHandle;
 									Janus.log("Plugin attached! (" + echotest.getPlugin() + ", id=" + echotest.getId() + ")");
-									// Negotiate WebRTC
-									var body = { "audio": true, "video": true };
-									Janus.debug("Sending message (" + JSON.stringify(body) + ")");
-									echotest.send({"message": body});
-									Janus.debug("Trying a createOffer too (audio/video sendrecv)");
-									echotest.createOffer(
-										{
-											// No media provided: by default, it's sendrecv for audio and video
-											media: { data: true },	// Let's negotiate data channels as well
-											success: function(jsep) {
-												Janus.debug("Got SDP!");
-												Janus.debug(jsep);
-												echotest.send({"message": body, "jsep": jsep});
-											},
-											error: function(error) {
-												Janus.error("WebRTC error:", error);
-												bootbox.alert("WebRTC error... " + JSON.stringify(error));
-											}
-										});
+									// Enumerate devices: that's what we're here for
+									Janus.listDevices(initDevices);
+									// We wait for the user to select the first device before making a move
 									$('#start').removeAttr('disabled').html("Stop")
 										.click(function() {
 											$(this).attr('disabled', true);
@@ -142,13 +196,6 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
-								mediaState: function(medium, on) {
-									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
-								},
-								webrtcState: function(on) {
-									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
-									$("#videoleft").parent().unblock();
-								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
 									Janus.debug(JSON.stringify(msg));
@@ -161,18 +208,25 @@ $(document).ready(function() {
 									if(result !== null && result !== undefined) {
 										if(result === "done") {
 											// The plugin closed the echo test
-											bootbox.alert("The Echo Test is over");
 											if(spinner !== null && spinner !== undefined)
 												spinner.stop();
 											spinner = null;
 											$('#myvideo').remove();
 											$('#waitingvideo').remove();
 											$('#peervideo').remove();
-											$('#toggleaudio').attr('disabled', true);
-											$('#togglevideo').attr('disabled', true);
+											audioenabled = true;
+											$('#toggleaudio').attr('disabled', true).html("Disable audio").removeClass("btn-success").addClass("btn-danger");
+											videoenabled = true;
+											$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 											$('#bitrate').attr('disabled', true);
+											$('#bitrateset').html('Bandwidth<span class="caret">');
 											$('#curbitrate').hide();
+											if(bitrateTimer !== null && bitrateTimer !== undefined)
+												clearInterval(bitrateTimer);
+											bitrateTimer = null;
 											$('#curres').hide();
+											$('#datasend').val('').attr('disabled', true);
+											$('#datarecv').val('');
 										}
 									}
 								},
@@ -185,14 +239,6 @@ $(document).ready(function() {
 									}
 									attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
-									$("#videoleft").parent().block({
-										message: '<b>Publishing...</b>',
-										css: {
-											border: 'none',
-											backgroundColor: 'transparent',
-											color: 'white'
-										}
-									});
 									// No remote video yet
 									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 									if(spinner == null) {
@@ -211,6 +257,9 @@ $(document).ready(function() {
 												'<span class="no-video-text">No webcam available</span>' +
 											'</div>');
 									}
+									// Reset devices controls
+									$('#audio-device, #video-device').removeAttr('disabled');
+									$('#change-devices').removeAttr('disabled');
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
@@ -252,7 +301,7 @@ $(document).ready(function() {
 									// Enable audio/video buttons and bitrate limiter
 									audioenabled = true;
 									videoenabled = true;
-									$('#toggleaudio').click(
+									$('#toggleaudio').removeAttr('disabled').click(
 										function() {
 											audioenabled = !audioenabled;
 											if(audioenabled)
@@ -261,7 +310,7 @@ $(document).ready(function() {
 												$('#toggleaudio').html("Enable audio").removeClass("btn-danger").addClass("btn-success");
 											echotest.send({"message": { "audio": audioenabled }});
 										});
-									$('#togglevideo').click(
+									$('#togglevideo').removeAttr('disabled').click(
 										function() {
 											videoenabled = !videoenabled;
 											if(videoenabled)
@@ -271,7 +320,7 @@ $(document).ready(function() {
 											echotest.send({"message": { "video": videoenabled }});
 										});
 									$('#toggleaudio').parent().removeClass('hide').show();
-									$('#bitrate a').click(function() {
+									$('#bitrate a').removeAttr('disabled').click(function() {
 										var id = $(this).attr("id");
 										var bitrate = parseInt(id)*1000;
 										if(bitrate === 0) {
@@ -309,14 +358,20 @@ $(document).ready(function() {
 									spinner = null;
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
-									$("#videoleft").parent().unblock();
 									$('#peervideo').remove();
-									$('#toggleaudio').attr('disabled', true);
-									$('#togglevideo').attr('disabled', true);
+									audioenabled = true;
+									$('#toggleaudio').attr('disabled', true).html("Disable audio").removeClass("btn-success").addClass("btn-danger");
+									videoenabled = true;
+									$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 									$('#bitrate').attr('disabled', true);
+									$('#bitrateset').html('Bandwidth<span class="caret">');
 									$('#curbitrate').hide();
+									if(bitrateTimer !== null && bitrateTimer !== undefined)
+										clearInterval(bitrateTimer);
+									bitrateTimer = null;
 									$('#curres').hide();
-									$('#datasend').attr('disabled', true);
+									$('#datasend').val('').attr('disabled', true);
+									$('#datarecv').val('');
 								}
 							});
 					},

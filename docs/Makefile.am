@@ -17,7 +17,7 @@ html-local:
 	mkdir -p html/js
 	cp ../html/js/bootstrap.min.js html/js/
 	cp ../html/favicon.ico html/
-	cp ../html/meetecho-logo-white.png html/
+	cp ../html/meetecho-logo.png html/
 
 install-data-local: html-local
 	$(MKDIR_P) $(DESTDIR)$(doxygendir)

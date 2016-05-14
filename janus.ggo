@@ -20,6 +20,7 @@ option "force-bundle" U "Whether to force BUNDLE or not (whether audio, video an
 option "force-rtcp-mux" u "Whether to force rtcp-mux or not (whether RTP and RTCP will always be muxed)" flag off
 option "max-nack-queue" q "Maximum size of the NACK queue per user for retransmissions" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
+option "server-name" n "Public name of this Janus instance (default=MyJanusInstance)" string typestr="name" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off

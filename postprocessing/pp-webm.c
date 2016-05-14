@@ -48,6 +48,13 @@ int janus_pp_webm_create(char *destination) {
 		return -1;
 	/* Setup FFmpeg */
 	av_register_all();
+	/* Adjust logging to match the postprocessor's */
+	av_log_set_level(janus_log_level <= LOG_NONE ? AV_LOG_QUIET :
+		(janus_log_level == LOG_FATAL ? AV_LOG_FATAL :
+			(janus_log_level == LOG_ERR ? AV_LOG_ERROR :
+				(janus_log_level == LOG_WARN ? AV_LOG_WARNING :
+					(janus_log_level == LOG_INFO ? AV_LOG_INFO :
+						(janus_log_level == LOG_VERB ? AV_LOG_VERBOSE : AV_LOG_DEBUG))))));
 	/* WebM output */
 	fctx = avformat_alloc_context();
 	if(fctx == NULL) {
@@ -195,6 +202,12 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
 				}
 			}
 		}
+		if(tmp->drop) {
+			/* We marked this packet as one to drop, before */
+			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/90000);
+			tmp = tmp->next;
+			continue;
+		}
 		tmp = tmp->next;
 	}
 	int mean_ts = min_ts_diff;	/* FIXME: was an actual mean, (max_ts_diff+min_ts_diff)/2; */
@@ -230,6 +243,13 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		frameLen = 0;
 		len = 0;
 		while(1) {
+			if(tmp->drop) {
+				/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
+				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
+					break;
+				tmp = tmp->next;
+				continue;
+			}
 			/* RTP payload */
 			buffer = start;
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);

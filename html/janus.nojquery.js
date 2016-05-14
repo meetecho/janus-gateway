@@ -1,3 +1,27 @@
+/*
+	The MIT License (MIT)
+
+	Copyright (c) 2016 Meetecho
+
+	Permission is hereby granted, free of charge, to any person obtaining
+	a copy of this software and associated documentation files (the "Software"),
+	to deal in the Software without restriction, including without limitation
+	the rights to use, copy, modify, merge, publish, distribute, sublicense,
+	and/or sell copies of the Software, and to permit persons to whom the
+	Software is furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included
+	in all copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+	OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+	THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+	ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+	OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 // List of sessions
 Janus.sessions = {};
 
@@ -71,7 +95,36 @@ Janus.init = function(options) {
 			}
 		}
 		Janus.log("Initializing library");
-		Janus.initDone = true;
+		// Helper method to enumerate devices
+		Janus.listDevices = function(callback) {
+			callback = (typeof callback == "function") ? callback : Janus.noop;
+			if(navigator.mediaDevices) {
+				getUserMedia({ audio: true, video: true }, function(stream) {
+					navigator.mediaDevices.enumerateDevices().then(function(devices) {
+						Janus.debug(devices);
+						callback(devices);
+						// Get rid of the now useless stream
+						try {
+							stream.stop();
+						} catch(e) {}
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst !== null && mst !== undefined)
+									mst.stop();
+							}
+						} catch(e) {}
+					});
+				}, function(err) {
+					Janus.error(err);
+					callback([]);
+				});
+			} else {
+				Janus.warn("navigator.mediaDevices unavailable");
+				callback([]);
+			}
+		}
 		// Prepare a helper method to send AJAX requests in a syntax similar to jQuery (at least for what we care)
 		Janus.ajax = function(params) {
 			// Check params
@@ -172,16 +225,14 @@ Janus.init = function(options) {
 			}
 			oHead.appendChild(oScript);
 		}
+		Janus.initDone = true;
 		addJsList(["adapter.js"]);	// We may need others in the future
 	}
 };
 
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
-	if(RTCPeerConnection === null || getUserMedia === null) {
-		return false;
-	}
-	return true;
+	return window.RTCPeerConnection && window.getUserMedia;
 };
 
 
@@ -265,7 +316,7 @@ function Janus(gatewayCallbacks) {
 	this.getSessionId = function() { return sessionId; };
 	this.destroy = function(callbacks) { destroySession(callbacks); };
 	this.attach = function(callbacks) { createHandle(callbacks); };
-	
+
 	// Private method to create random identifiers (e.g., transaction)
 	function randomString(len) {
 		charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -313,7 +364,7 @@ function Janus(gatewayCallbacks) {
 			dataType: "json"
 		});
 	}
-	
+
 	// Private event handler: this will trigger plugin callbacks, if set
 	function handleEvent(json) {
 		retries = 0;
@@ -354,7 +405,18 @@ function Janus(gatewayCallbacks) {
 			}
 			return;
 		} else if(json["janus"] === "webrtcup") {
-			// The PeerConnection with the gateway is up! FIXME Should we notify this?
+			// The PeerConnection with the gateway is up! Notify this
+			var sender = json["sender"];
+			if(sender === undefined || sender === null) {
+				Janus.warn("Missing sender...");
+				return;
+			}
+			var pluginHandle = pluginHandles[sender];
+			if(pluginHandle === undefined || pluginHandle === null) {
+				Janus.warn("This handle is not attached to this session");
+				return;
+			}
+			pluginHandle.webrtcState(true);
 			return;
 		} else if(json["janus"] === "hangup") {
 			// A plugin asked the core to hangup a PeerConnection on one of our handles
@@ -368,6 +430,7 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("This handle is not attached to this session");
 				return;
 			}
+			pluginHandle.webrtcState(false);
 			pluginHandle.hangup();
 		} else if(json["janus"] === "detached") {
 			// A plugin asked the core to detach one of our handles
@@ -383,6 +446,19 @@ function Janus(gatewayCallbacks) {
 			}
 			pluginHandle.ondetached();
 			pluginHandle.detach();
+		} else if(json["janus"] === "media") {
+			// Media started/stopped flowing
+			var sender = json["sender"];
+			if(sender === undefined || sender === null) {
+				Janus.warn("Missing sender...");
+				return;
+			}
+			var pluginHandle = pluginHandles[sender];
+			if(pluginHandle === undefined || pluginHandle === null) {
+				Janus.warn("This handle is not attached to this session");
+				return;
+			}
+			pluginHandle.mediaState(json["type"], json["receiving"]);
 		} else if(json["janus"] === "error") {
 			// Oops, something wrong happened
 			Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
@@ -432,7 +508,7 @@ function Janus(gatewayCallbacks) {
 			Janus.warn("Unknown message '" + json["janus"] + "'");
 		}
 	}
-	
+
 	// Private helper to send keep-alive messages on WebSockets
 	function keepAlive() {
 		if(server === null || !websockets || !connected)
@@ -466,7 +542,7 @@ function Janus(gatewayCallbacks) {
 			}
 		}
 		if(websockets) {
-			ws = new WebSocket(server, 'janus-protocol'); 
+			ws = new WebSocket(server, 'janus-protocol');
 			wsHandlers = {
 				'error': function() {
 					Janus.error("Error connecting to the Janus WebSockets server... " + server);
@@ -663,13 +739,15 @@ function Janus(gatewayCallbacks) {
 			dataType: "json"
 		});
 	}
-	
+
 	// Private method to create a plugin handle
 	function createHandle(callbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : Janus.noop;
+		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : Janus.noop;
+		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : Janus.noop;
 		callbacks.onmessage = (typeof callbacks.onmessage == "function") ? callbacks.onmessage : Janus.noop;
 		callbacks.onlocalstream = (typeof callbacks.onlocalstream == "function") ? callbacks.onlocalstream : Janus.noop;
 		callbacks.onremotestream = (typeof callbacks.onremotestream == "function") ? callbacks.onremotestream : Janus.noop;
@@ -748,6 +826,8 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						mediaState : callbacks.mediaState,
+						webrtcState : callbacks.webrtcState,
 						onmessage : callbacks.onmessage,
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
@@ -827,6 +907,8 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						mediaState : callbacks.mediaState,
+						webrtcState : callbacks.webrtcState,
 						onmessage : callbacks.onmessage,
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
@@ -1011,7 +1093,7 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Invalid text");
 			return;
 		}
-		Janus.log("Sending string on data channel: " + text); 
+		Janus.log("Sending string on data channel: " + text);
 		config.dataChannel.send(text);
 		callbacks.success();
 	}
@@ -1060,11 +1142,11 @@ function Janus(gatewayCallbacks) {
 		}
 		var duration = dtmf.duration;
 		if(duration === null || duration === undefined)
-			duration = 500;	// We choose 500ms as the default duration for a tone 
+			duration = 500;	// We choose 500ms as the default duration for a tone
 		var gap = dtmf.gap;
 		if(gap === null || gap === undefined)
 			gap = 50;	// We choose 50ms as the default gap between tones
-		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms"); 
+		Janus.debug("Sending DTMF string " + tones + " (duration " + duration + "ms, gap " + gap + "ms");
 		config.dtmfSender.insertDTMF(tones, duration, gap);
 	}
 
@@ -1119,7 +1201,7 @@ function Janus(gatewayCallbacks) {
 			dataType: "json"
 		});
 	}
-	
+
 	// WebRTC stuff
 	function streamsDone(handleId, jsep, media, callbacks, stream) {
 		var pluginHandle = pluginHandles[handleId];
@@ -1139,7 +1221,7 @@ function Janus(gatewayCallbacks) {
 		};
 		if(ipv6Support === true) {
 			// FIXME This is only supported in Chrome right now
-			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262 
+			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
 			pc_constraints.optional.push({"googIPv6":true});
 		}
 		Janus.log("Creating PeerConnection");
@@ -1150,7 +1232,7 @@ function Janus(gatewayCallbacks) {
 			config.volume.value = 0;
 			config.bitrate.value = "0 kbits/sec";
 		}
-		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")"); 
+		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
 					(webrtcDetectedBrowser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
@@ -1160,7 +1242,7 @@ function Janus(gatewayCallbacks) {
 					// Notify end of candidates
 					sendTrickleCandidate(handleId, {"completed": true});
 				} else {
-					// No trickle, time to send the complete SDP (including all candidates) 
+					// No trickle, time to send the complete SDP (including all candidates)
 					sendSDP(handleId, callbacks);
 				}
 			} else {
@@ -1271,9 +1353,15 @@ function Janus(gatewayCallbacks) {
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
+			var audioSupport = isAudioSendEnabled(media);
+			if(audioSupport === true && media != undefined && media != null) {
+				if(typeof media.audio === 'object') {
+					audioSupport = media.audio;
+				}
+			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
-				if(media.video && media.video != 'screen') {
+				if(media.video && media.video != 'screen' && media.video != 'window') {
 					var width = 0;
 					var height = 0, maxHeight = 0;
 					if(media.video === 'lowres') {
@@ -1345,8 +1433,11 @@ function Janus(gatewayCallbacks) {
 						    'optional': []
 						};
 					}
+					if(typeof media.video === 'object') {
+						videoSupport = media.video;
+					}
 					Janus.debug(videoSupport);
-				} else if(media.video === 'screen') {
+				} else if(media.video === 'screen' || media.video === 'window') {
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
 						// Screen sharing mandates HTTPS
@@ -1361,7 +1452,7 @@ function Janus(gatewayCallbacks) {
 					function callbackUserMedia (error, stream) {
 						pluginHandle.consentDialog(false);
 						if(error) {
-							callbacks.error(error);
+							callbacks.error({code: error.code, name: error.name, message: error.message});
 						} else {
 							streamsDone(handleId, jsep, media, callbacks, stream);
 						}
@@ -1369,15 +1460,9 @@ function Janus(gatewayCallbacks) {
 					function getScreenMedia(constraints, gsmCallback) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
-						getUserMedia(constraints,
-							function(stream) {
-								gsmCallback(null, stream);
-							},
-							function(error) {
-								pluginHandle.consentDialog(false);
-								gsmCallback(error);
-							}
-						);
+						navigator.mediaDevices.getUserMedia(constraints)
+							.then(function(stream) { gsmCallback(null, stream); })
+							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
 					if(window.navigator.userAgent.match('Chrome')) {
 						var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
@@ -1417,8 +1502,8 @@ function Janus(gatewayCallbacks) {
 							// Firefox 33+ has experimental support for screen sharing
 							constraints = {
 								video: {
-									mozMediaSource: 'window',
-									mediaSource: 'window'
+									mozMediaSource: media.video,
+									mediaSource: media.video
 								},
 								audio: isAudioSendEnabled(media)
 							};
@@ -1469,16 +1554,17 @@ function Janus(gatewayCallbacks) {
 									audio: isAudioSendEnabled(media),
 									video: {
 										mandatory: {
-										chromeMediaSource: 'desktop',
-										maxWidth: window.screen.width,
-										maxHeight: window.screen.height,
-										maxFrameRate: 3
-									},
-									optional: [
-										{googLeakyBucket: true},
-										{googTemporalLayeredScreencast: true}
-									]
-								}};
+											chromeMediaSource: 'desktop',
+											maxWidth: window.screen.width,
+											maxHeight: window.screen.height,
+											maxFrameRate: 3
+										},
+										optional: [
+											{googLeakyBucket: true},
+											{googTemporalLayeredScreencast: true}
+										]
+									}
+								};
 								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
 								getScreenMedia(constraints, callback);
 							}
@@ -1486,33 +1572,46 @@ function Janus(gatewayCallbacks) {
 							window.clearTimeout(event.data.id);
 						}
 					});
+					return;
 				}
 			}
 			// If we got here, we're not screensharing
 			if(media === null || media === undefined || media.video !== 'screen') {
 				// Check whether all media sources are actually available or not
-				// as per https://github.com/meetecho/janus-gateway/pull/114
-				MediaStreamTrack.getSources(function(sources) {
-					var audioExist = sources.some(function(source) {
-						return source.kind === 'audio';
+				navigator.mediaDevices.enumerateDevices().then(function(devices) {
+					var audioExist = devices.some(function(device) {
+						return device.kind === 'audioinput';
 					}),
-					videoExist = sources.some(function(source) {
-						return source.kind === 'video';
+					videoExist = devices.some(function(device) {
+						return device.kind === 'videoinput';
 					});
 
-					// FIXME Should we really give up, or just assume recvonly for both?
-					if(!audioExist && !videoExist) {
-						pluginHandle.consentDialog(false);
-						callbacks.error('No capture device found');
-						return false;
+					// Check whether a missing device is really a problem
+					var audioSend = isAudioSendEnabled(media);
+					var videoSend = isVideoSendEnabled(media);
+					if(audioSend || videoSend) {
+						// We need to send either audio or video
+						var haveAudioDevice = audioSend ? audioExist : false;
+						var haveVideoDevice = videoSend ? videoExist : false;
+						if(!haveAudioDevice && !haveVideoDevice) {
+							// FIXME Should we really give up, or just assume recvonly for both?
+							pluginHandle.consentDialog(false);
+							callbacks.error('No capture device found');
+							return false;
+						}
 					}
 
-					getUserMedia(
-						{audio: audioExist && isAudioSendEnabled(media), video: videoExist ? videoSupport : false},
-						function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); },
-						function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+					navigator.mediaDevices.getUserMedia({
+						audio: audioExist ? audioSupport : false,
+						video: videoExist ? videoSupport : false
+					})
+					.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
+					.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+				})
+				.catch(function(error) {
+					pluginHandle.consentDialog(false);
+					callbacks.error('enumerateDevices error', error);
 				});
-
 			}
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away
@@ -1567,13 +1666,13 @@ function Janus(gatewayCallbacks) {
 		var mediaConstraints = null;
 		if(webrtcDetectedBrowser == "firefox" || webrtcDetectedBrowser == "edge") {
 			mediaConstraints = {
-				'offerToReceiveAudio':isAudioRecvEnabled(media), 
+				'offerToReceiveAudio':isAudioRecvEnabled(media),
 				'offerToReceiveVideo':isVideoRecvEnabled(media)
 			};
 		} else {
 			mediaConstraints = {
 				'mandatory': {
-					'OfferToReceiveAudio':isAudioRecvEnabled(media), 
+					'OfferToReceiveAudio':isAudioRecvEnabled(media),
 					'OfferToReceiveVideo':isVideoRecvEnabled(media)
 				}
 			};
@@ -1608,7 +1707,7 @@ function Janus(gatewayCallbacks) {
 				callbacks.success(jsep);
 			}, callbacks.error, mediaConstraints);
 	}
-	
+
 	function createAnswer(handleId, media, callbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
@@ -1625,13 +1724,13 @@ function Janus(gatewayCallbacks) {
 		var mediaConstraints = null;
 		if(webrtcDetectedBrowser == "firefox" || webrtcDetectedBrowser == "edge") {
 			mediaConstraints = {
-				'offerToReceiveAudio':isAudioRecvEnabled(media), 
+				'offerToReceiveAudio':isAudioRecvEnabled(media),
 				'offerToReceiveVideo':isVideoRecvEnabled(media)
 			};
 		} else {
 			mediaConstraints = {
 				'mandatory': {
-					'OfferToReceiveAudio':isAudioRecvEnabled(media), 
+					'OfferToReceiveAudio':isAudioRecvEnabled(media),
 					'OfferToReceiveVideo':isVideoRecvEnabled(media)
 				}
 			};
@@ -1808,7 +1907,7 @@ function Janus(gatewayCallbacks) {
 			return true;
 		}
 	}
-	
+
 	function getBitrate(handleId) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
@@ -1906,7 +2005,7 @@ function Janus(gatewayCallbacks) {
 			return "Feature unsupported by browser";
 		}
 	}
-	
+
 	function webrtcError(error) {
 		Janus.error("WebRTC error:", error);
 	}

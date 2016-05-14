@@ -232,6 +232,134 @@ int janus_get_opus_pt(const char *sdp) {
 	return -3;
 }
 
+int janus_get_isac32_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "isac/32000") && !strstr(sdp, "ISAC/32000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "isac/32000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d isac/32000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "ISAC/32000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d ISAC/32000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
+int janus_get_isac16_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "isac/16000") && !strstr(sdp, "ISAC/16000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "isac/16000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d isac/16000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "ISAC/16000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d ISAC/16000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
+int janus_get_pcmu_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "pcmu/8000") && !strstr(sdp, "PCMU/8000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "pcmu/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d pcmu/8000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "PCMU/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d PCMU/8000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
+int janus_get_pcma_pt(const char *sdp) {
+	if(!sdp)
+		return -1;
+	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "pcma/8000") && !strstr(sdp, "PCMA/8000")))
+		return -2;
+	const char *line = strstr(sdp, "m=audio");
+	while(line) {
+		char *next = strchr(line, '\n');
+		if(next) {
+			*next = '\0';
+			if(strstr(line, "a=rtpmap") && strstr(line, "pcma/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d pcma/8000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			} else if(strstr(line, "a=rtpmap") && strstr(line, "PCMA/8000")) {
+				/* Gotcha! */
+				int pt = 0;
+				if(sscanf(line, "a=rtpmap:%d PCMA/8000", &pt) == 1) {
+					*next = '\n';
+					return pt;
+				}
+			}
+			*next = '\n';
+		}
+		line = next ? (next+1) : NULL;
+	}
+	return -3;
+}
+
 int janus_get_vp8_pt(const char *sdp) {
 	if(!sdp)
 		return -1;
@@ -429,4 +557,75 @@ int janus_pidfile_remove(void) {
 	unlink(pidfile);
 	g_free(pidfile);
 	return 0;
+}
+
+void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name) {
+	/* Longest possible combination is "a non-empty boolean" plus one for null char */
+	gsize req_size = 20;
+	/* Don't allow for both "positive" and "non-empty" because that needlessly increases the size. */
+	if((flags & JANUS_JSON_PARAM_POSITIVE) != 0) {
+		g_strlcpy(type_name, "a positive ", req_size);
+	}
+	else if((flags & JANUS_JSON_PARAM_NONEMPTY) != 0) {
+		g_strlcpy(type_name, "a non-empty ", req_size);
+	}
+	else if(jtype == JSON_INTEGER || jtype == JSON_ARRAY || jtype == JSON_OBJECT) {
+		g_strlcpy(type_name, "an ", req_size);
+	}
+	else {
+		g_strlcpy(type_name, "a ", req_size);
+	}
+	switch(jtype) {
+		case JSON_TRUE:
+			g_strlcat(type_name, "boolean", req_size);
+			break;
+		case JSON_INTEGER:
+			g_strlcat(type_name, "integer", req_size);
+			break;
+		case JSON_REAL:
+			g_strlcat(type_name, "real", req_size);
+			break;
+		case JSON_STRING:
+			g_strlcat(type_name, "string", req_size);
+			break;
+		case JSON_ARRAY:
+			g_strlcat(type_name, "array", req_size);
+			break;
+		case JSON_OBJECT:
+			g_strlcat(type_name, "object", req_size);
+			break;
+		default:
+			break;
+	}
+}
+
+gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
+	gboolean is_valid = (json_typeof(val) == jtype || (jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
+	if(!is_valid)
+		return FALSE;
+	if((flags & JANUS_JSON_PARAM_POSITIVE) != 0) {
+		switch(jtype) {
+			case JSON_INTEGER:
+				is_valid = (json_integer_value(val) >= 0);
+				break;
+			case JSON_REAL:
+				is_valid = (json_real_value(val) >= 0);
+				break;
+			default:
+				break;
+		}
+	}
+	else if((flags & JANUS_JSON_PARAM_NONEMPTY) != 0) {
+		switch(jtype) {
+			case JSON_STRING:
+				is_valid = (strlen(json_string_value(val)) > 0);
+				break;
+			case JSON_ARRAY:
+				is_valid = (json_array_size(val) > 0);
+				break;
+			default:
+				break;
+		}
+	}
+	return is_valid;
 }
