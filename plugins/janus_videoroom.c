@@ -986,6 +986,42 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
+static void janus_videoroom_notify_participants(janus_videoroom_participant *participant, char *msg) {
+	/* participant->room->participants_mutex has to be locked. */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, participant->room->participants);
+	while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_videoroom_participant *p = value;
+		if(p && p->session && p != participant) {
+			JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+			int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, msg, NULL, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+		}
+	}
+}
+
+static void janus_videoroom_leave_or_unpublish(janus_videoroom_participant *participant, gboolean is_leaving) {
+	json_t *event = json_object();
+	json_object_set_new(event, "videoroom", json_string("event"));
+	json_object_set_new(event, "room", json_integer(participant->room->room_id));
+	json_object_set_new(event, is_leaving ? "leaving" : "unpublished", json_integer(participant->user_id));
+	char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	json_decref(event);
+	/* we need to check if the room still exists, may have been destroyed already */
+	if(participant->room) {
+		if(!participant->room->destroyed) {
+			janus_mutex_lock(&participant->room->participants_mutex);
+			janus_videoroom_notify_participants(participant, leaving_text);
+			if (is_leaving) {
+				g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
+			}
+			janus_mutex_unlock(&participant->room->participants_mutex);
+		}
+	}
+	g_free(leaving_text);
+}
+
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1021,33 +1057,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			if(participant->recording_base)
 				g_free(participant->recording_base);
 			participant->recording_base = NULL;
-			json_t *event = json_object();
-			json_object_set_new(event, "videoroom", json_string("event"));
-			json_object_set_new(event, "room", json_integer(participant->room->room_id));
-			json_object_set_new(event, "leaving", json_integer(participant->user_id));
-			char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(event);
-			GHashTableIter iter;
-			gpointer value;
-			/* we need to check if the room still exists, may have been destroyed already */
-			if(participant->room) {
-				if(!participant->room->destroyed) {
-					janus_mutex_lock(&participant->room->participants_mutex);
-					g_hash_table_iter_init(&iter, participant->room->participants);
-					while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
-						janus_videoroom_participant *p = value;
-						if(p == participant) {
-							continue;	/* Skip the leaving publisher itself */
-						}
-						JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-						int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, leaving_text, NULL, NULL);
-						JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-					}
-					g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
-					janus_mutex_unlock(&participant->room->participants_mutex);
-				}
-			}
-			g_free(leaving_text);
+			janus_videoroom_leave_or_unpublish(participant, TRUE);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Detaching this listener from its publisher is already done by hangup_media */
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
@@ -1125,6 +1135,40 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 	json_decref(info);
 	return info_text;
+}
+
+static int janus_videoroom_access_room(json_t *root, gboolean check_secret, gboolean check_pin, janus_videoroom **videoroom) {
+	/* rooms_mutex has to be locked */
+	int error_code = 0;
+	char error_cause[512];
+	json_t *room = json_object_get(root, "room");
+	guint64 room_id = json_integer_value(room);
+	*videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+	if(*videoroom == NULL) {
+		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+		error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+		g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+		return error_code;
+	}
+	if((*videoroom)->destroyed) {
+		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+		error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+		g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+		return error_code;
+	}
+	if(check_secret) {
+		JANUS_CHECK_SECRET((*videoroom)->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0)
+			return error_code;
+	}
+	if(check_pin) {
+		JANUS_CHECK_SECRET((*videoroom)->room_pin, root, "pin", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0)
+			return error_code;
+	}
+	return 0;
 }
 
 struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
@@ -1419,26 +1463,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-		if(videoroom == NULL) {
-			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto error;
-		}
-		
-		if(videoroom->destroyed) {
-			janus_mutex_unlock(&rooms_mutex)
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", videoroom->room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
-			goto error;
-		}
-		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
-			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
-		if(error_code != 0) {
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom);
+		if (error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
 			goto error;
 		}
@@ -1549,29 +1576,11 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		guint64 publisher_id = json_integer_value(pub_id);
 		const gchar* host = json_string_value(json_host);
 		janus_mutex_lock(&rooms_mutex);
-		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-		if(videoroom == NULL) {
-			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto error;
-		}
-		if(videoroom->destroyed) {
-			janus_mutex_unlock(&rooms_mutex)
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", videoroom->room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
-			goto error;
-		}
-		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
-			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
-		if(error_code != 0) {
-			janus_mutex_unlock(&rooms_mutex);
-			goto error;
-		}
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom);
 		janus_mutex_unlock(&rooms_mutex);
+		if (error_code != 0)
+			goto error;
 		janus_mutex_lock(&videoroom->participants_mutex);
 		janus_videoroom_participant* publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
 		if(publisher == NULL) {
@@ -1642,30 +1651,11 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		guint64 publisher_id = json_integer_value(pub_id);
 		guint32 stream_id = json_integer_value(id);
 		janus_mutex_lock(&rooms_mutex);
-		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-		if(videoroom == NULL) {
-			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto error;
-		}
-		if(videoroom->destroyed) {
-			janus_mutex_unlock(&rooms_mutex)
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", videoroom->room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
-			goto error;
-		}
-		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
-			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
-		if(error_code != 0) {
-			janus_mutex_unlock(&rooms_mutex);
-			goto error;
-		}
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom);
 		janus_mutex_unlock(&rooms_mutex);
-
+		if (error_code != 0)
+			goto error;
 		janus_mutex_lock(&videoroom->participants_mutex);
 		janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
 		if(publisher == NULL) {
@@ -1720,20 +1710,11 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, FALSE, FALSE, &videoroom);
 		janus_mutex_unlock(&rooms_mutex);
-		if(videoroom == NULL) {
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+		if (error_code != 0)
 			goto error;
-		}
-		if(videoroom->destroyed) {
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
-			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-			goto error;
-		}
 		/* Return a list of all participants (whether they're publishing or not) */
 		json_t *list = json_array();
 		GHashTableIter iter;
@@ -2208,6 +2189,21 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 	}
 }
 
+static void janus_videoroom_recorder_close(janus_videoroom_participant *participant) {
+	if(participant->arc) {
+		janus_recorder_close(participant->arc);
+		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
+		janus_recorder_free(participant->arc);
+	}
+	participant->arc = NULL;
+	if(participant->vrc) {
+		janus_recorder_close(participant->vrc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
+		janus_recorder_free(participant->vrc);
+	}
+	participant->vrc = NULL;
+}
+
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
@@ -2226,7 +2222,6 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-		janus_mutex_lock(&participant->listeners_mutex);
 		if(participant->sdp)
 			g_free(participant->sdp);
 		participant->sdp = NULL;
@@ -2239,19 +2234,9 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->fir_seq = 0;
 		/* Get rid of the recorders, if available */
 		janus_mutex_lock(&participant->rec_mutex);
-		if(participant->arc) {
-			janus_recorder_close(participant->arc);
-			JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-			janus_recorder_free(participant->arc);
-		}
-		participant->arc = NULL;
-		if(participant->vrc) {
-			janus_recorder_close(participant->vrc);
-			JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
-			janus_recorder_free(participant->vrc);
-		}
-		participant->vrc = NULL;
+		janus_videoroom_recorder_close(participant);
 		janus_mutex_unlock(&participant->rec_mutex);
+		janus_mutex_lock(&participant->listeners_mutex);
 		while(participant->listeners) {
 			janus_videoroom_listener *l = (janus_videoroom_listener *)participant->listeners->data;
 			if(l) {
@@ -2260,30 +2245,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 			}
 		}
 		janus_mutex_unlock(&participant->listeners_mutex);
-		json_t *event = json_object();
-		json_object_set_new(event, "videoroom", json_string("event"));
-		json_object_set_new(event, "room", json_integer(participant->room->room_id));
-		json_object_set_new(event, "unpublished", json_integer(participant->user_id));
-		char *unpub_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(event);
-		GHashTableIter iter;
-		gpointer value;
-		if(participant && participant->room) {
-			if(!participant->room->destroyed) {
-				janus_mutex_lock(&participant->room->participants_mutex);
-				g_hash_table_iter_init(&iter, participant->room->participants);
-				while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
-					janus_videoroom_participant *p = value;
-					if(p && p->session && p != participant) {
-						JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-						int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, unpub_text, NULL, NULL);
-						JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-					}
-				}
-				janus_mutex_unlock(&participant->room->participants_mutex);
-			}
-		}
-		g_free(unpub_text);
+		janus_videoroom_leave_or_unpublish(participant, FALSE);
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of listener */
 		janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
@@ -2319,6 +2281,43 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		}
 		/* TODO Should we close the handle as well? */
 	}
+}
+
+static void janus_videoroom_sdp_v_format_vp8(char *mline, int mline_size, int pt, int b, const char *video_mode) {
+	g_snprintf(mline, mline_size, sdp_v_template_vp8,
+		pt,							/* payload type */
+		b,								/* Bandwidth */
+		video_mode,						/* The publisher gets a recvonly or inactive back */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt); 						/* payload type */
+}
+
+static void janus_videoroom_sdp_v_format_vp9(char *mline, int mline_size, int pt, int b, const char *video_mode) {
+	g_snprintf(mline, mline_size, sdp_v_template_vp9,
+		pt,							/* payload type */
+		b,								/* Bandwidth */
+		video_mode,						/* The publisher gets a recvonly or inactive back */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt); 						/* payload type */
+}
+
+static void janus_videoroom_sdp_v_format_h264(char *mline, int mline_size, int pt, int b, const char *video_mode) {
+	g_snprintf(mline, mline_size, sdp_v_template_h264,
+		pt,							/* payload type */
+		b,								/* Bandwidth */
+		video_mode,						/* The publisher gets a recvonly or inactive back */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt, 						/* payload type */
+		pt); 						/* payload type */
 }
 
 /* Thread to handle incoming messages */
@@ -2387,33 +2386,12 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
-			json_t *room = json_object_get(root, "room");
-			guint64 room_id = json_integer_value(room);
 			janus_mutex_lock(&rooms_mutex);
-			janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-			if(videoroom == NULL) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
-				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-				goto error;
-			}
-			if(videoroom->destroyed) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
-				error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
-				goto error;
-			}
-			/* A pin may be required for this action */
-			JANUS_CHECK_SECRET(videoroom->room_pin, root, "pin", error_code, error_cause,
-				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
-			if(error_code != 0) {
-				janus_mutex_unlock(&rooms_mutex);
-				goto error;
-			}
+			janus_videoroom *videoroom = NULL;
+			error_code = janus_videoroom_access_room(root, FALSE, TRUE, &videoroom);
 			janus_mutex_unlock(&rooms_mutex);
-
+			if (error_code != 0)
+				goto error;
 			json_t *ptype = json_object_get(root, "ptype");
 			const char *ptype_text = json_string_value(ptype);
 			if(!strcasecmp(ptype_text, "publisher")) {
@@ -2830,18 +2808,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Something changed */
 					if(!participant->recording_active) {
 						/* Not recording (anymore?) */
-						if(participant->arc) {
-							janus_recorder_close(participant->arc);
-							JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-							janus_recorder_free(participant->arc);
-						}
-						participant->arc = NULL;
-						if(participant->vrc) {
-							janus_recorder_close(participant->vrc);
-							JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
-							janus_recorder_free(participant->vrc);
-						}
-						participant->vrc = NULL;
+						janus_videoroom_recorder_close(participant);
 					} else if(participant->recording_active && participant->sdp) {
 						/* We've started recording, send a PLI/FIR and go on */
 						char filename[255];
@@ -2926,30 +2893,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "unpublished", json_string("ok"));
 			} else if(!strcasecmp(request_text, "leave")) {
 				/* This publisher is leaving, tell everybody */
-				event = json_object();
-				json_object_set_new(event, "videoroom", json_string("event"));
-				json_object_set_new(event, "room", json_integer(participant->room->room_id));
-				json_object_set_new(event, "leaving", json_integer(participant->user_id));
-				char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-				GHashTableIter iter;
-				gpointer value;
-				if(participant->room) {
-					if(!participant->room->destroyed) {
-						janus_mutex_lock(&participant->room->participants_mutex);
-						g_hash_table_iter_init(&iter, participant->room->participants);
-						while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
-							janus_videoroom_participant *p = value;
-							if(p == participant) {
-								continue;	/* Skip the new publisher itself */
-							}
-							JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-							int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, leaving_text, NULL, NULL);
-							JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-						}
-						janus_mutex_unlock(&participant->room->participants_mutex);
-					}
-				}
-				g_free(leaving_text);
+				janus_videoroom_leave_or_unpublish(participant, TRUE);
 				/* Done */
 				participant->audio_active = FALSE;
 				participant->video_active = FALSE;
@@ -3467,355 +3411,221 @@ static void *janus_videoroom_handler(void *data) {
 				if(participant->firefox)	/* Don't add any b=AS attribute for Chrome */
 					b = (int)(videoroom->bitrate/1000);
 				char sdp[1280], audio_mline[256], video_mline[512], data_mline[256];
-				if(audio) {
-					switch(videoroom->acodec) {
-						case JANUS_VIDEOROOM_OPUS:
-							if(opus_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing OPUS, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 111 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_opus,
-									opus_pt,						/* Opus payload type */
-									audio_mode,						/* The publisher gets a recvonly or inactive back */
-									opus_pt); 						/* Opus payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_ISAC_32K:
-							if(isac32_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 104 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_isac32,
-									isac32_pt,						/* ISAC 32K payload type */
-									audio_mode,						/* The publisher gets a recvonly or inactive back */
-									isac32_pt); 					/* ISAC 32K payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_ISAC_16K:
-							if(isac16_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 103 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_isac16,
-									isac16_pt,						/* ISAC 16K payload type */
-									audio_mode,						/* The publisher gets a recvonly or inactive back */
-									isac16_pt);						/* ISAC 16K payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_PCMU:
-							if(pcmu_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
-									pcmu_pt,						/* PCMU payload type */
-									audio_mode,						/* The publisher gets a recvonly or inactive back */
-									pcmu_pt);						/* PCMU payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_PCMA:
-							if(pcma_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_pcma,
-									pcma_pt,						/* PCMA payload type */
-									audio_mode,						/* The publisher gets a recvonly or inactive back */
-									pcma_pt);						/* PCMA payload type */
-							}
-							break;
-						default:
-							/* Shouldn't happen */
-							break;
+				char *newsdp = NULL;
+				int res;
+				int pass;
+				for(pass = 1; pass <= 2; pass++) {
+					if(pass == 2) {
+						/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
+						if(audio_mode && strcmp(audio_mode, "inactive"))
+							/* The publisher gets a recvonly or inactive back */
+							/* Subscribers gets a sendonly or inactive back */
+							audio_mode = "sendonly";
+						if(video_mode && strcmp(video_mode, "inactive"))
+							video_mode = "sendonly";
 					}
-				} else {
-					audio_mline[0] = '\0';
-				}
-				if(video) {
-					switch(videoroom->vcodec) {
-						case JANUS_VIDEOROOM_VP8:
-							if(vp8_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
-								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(video_mline, 512, sdp_v_template_vp8,
-									vp8_pt,							/* VP8 payload type */
-									b,								/* Bandwidth */
-									video_mode,						/* The publisher gets a recvonly or inactive back */
-									vp8_pt, 						/* VP8 payload type */
-									vp8_pt, 						/* VP8 payload type */
-									vp8_pt, 						/* VP8 payload type */
-									vp8_pt, 						/* VP8 payload type */
-									vp8_pt); 						/* VP8 payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_VP9:
-							if(vp9_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP9, but publisher didn't offer any... rejecting video\n");
-								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(video_mline, 512, sdp_v_template_vp9,
-									vp9_pt,							/* VP9 payload type */
-									b,								/* Bandwidth */
-									video_mode,						/* The publisher gets a recvonly or inactive back */
-									vp9_pt, 						/* VP9 payload type */
-									vp9_pt, 						/* VP9 payload type */
-									vp9_pt, 						/* VP9 payload type */
-									vp9_pt, 						/* VP9 payload type */
-									vp9_pt); 						/* VP9 payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_H264:
-							if(h264_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing H264, but publisher didn't offer any... rejecting video\n");
-								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(video_mline, 512, sdp_v_template_h264,
-									h264_pt,						/* H264 payload type */
-									b,								/* Bandwidth */
-									video_mode,						/* The publisher gets a recvonly or inactive back */
-									h264_pt, 						/* H264 payload type */
-									h264_pt, 						/* H264 payload type */
-									h264_pt, 						/* H264 payload type */
-									h264_pt, 						/* H264 payload type */
-									h264_pt, 						/* H264 payload type */
-									h264_pt); 						/* H264 payload type */
-							}
-							break;
-						default:
-							/* Shouldn't happen */
-							break;
-					}
-				} else {
-					video_mline[0] = '\0';
-				}
-				if(data) {
-					g_snprintf(data_mline, 256, sdp_d_template);
-				} else {
-					data_mline[0] = '\0';
-				}
-				g_snprintf(sdp, 1280, sdp_template,
-					janus_get_real_time(),			/* We need current time here */
-					janus_get_real_time(),			/* We need current time here */
-					participant->room->room_name,	/* Video room name */
-					audio_mline,					/* Audio m-line, if any */
-					video_mline,					/* Video m-line, if any */
-					data_mline);					/* Data channel m-line, if any */
-
-				char *newsdp = g_strdup(sdp);
-				if(video && b == 0) {
-					/* Remove useless bandwidth attribute */
-					newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
-				}
-				/* Lock listeners_mutex to protect recorders from race conditions. */
-				janus_mutex_lock(&participant->listeners_mutex);
-				/* Is this room recorded? */
-				if(videoroom->record || participant->recording_active) {
-					char filename[255];
-					gint64 now = janus_get_real_time();
 					if(audio) {
-						memset(filename, 0, 255);
-						if(participant->recording_base) {
-							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-							participant->arc = janus_recorder_create(videoroom->rec_dir,
-								janus_videoroom_audiocodec_name(participant->room->acodec), filename);
-							if(participant->arc == NULL) {
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
-							}
-						} else {
-							/* Build a filename */
-							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
-								videoroom->room_id, participant->user_id, now);
-							participant->arc = janus_recorder_create(videoroom->rec_dir,
-								janus_videoroom_audiocodec_name(participant->room->acodec), filename);
-							if(participant->arc == NULL) {
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
-							}
+						switch(videoroom->acodec) {
+							case JANUS_VIDEOROOM_OPUS:
+								if(opus_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing OPUS, but publisher didn't offer any... rejecting audio\n");
+									if (pass == 1) {
+										g_snprintf(audio_mline, 256, "m=audio 111 RTP/SAVPF 0\r\n");
+									} else {
+										audio_mline[0] = '\0';
+									}
+								} else {
+									int pt = (pass == 1 ? opus_pt : OPUS_PT);
+									g_snprintf(audio_mline, 256, sdp_a_template_opus,
+										pt,						/* Opus payload type */
+										audio_mode,
+										pt); 						/* Opus payload type */
+								}
+								break;
+							case JANUS_VIDEOROOM_ISAC_32K:
+								if(isac32_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
+									g_snprintf(audio_mline, 256, "m=audio 104 RTP/SAVPF 0\r\n");
+								} else {
+									int pt = (pass == 1 ? isac32_pt : ISAC32_PT);
+									g_snprintf(audio_mline, 256, sdp_a_template_isac32,
+										pt,						/* ISAC 32K payload type */
+										audio_mode,
+										pt); 					/* ISAC 32K payload type */
+								}
+								break;
+							case JANUS_VIDEOROOM_ISAC_16K:
+								if(isac16_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
+									g_snprintf(audio_mline, 256, "m=audio 103 RTP/SAVPF 0\r\n");
+								} else {
+									int pt = (pass == 1 ? isac16_pt : ISAC16_PT);
+									g_snprintf(audio_mline, 256, sdp_a_template_isac16,
+										pt,						/* ISAC 16K payload type */
+										audio_mode,
+										pt);						/* ISAC 16K payload type */
+								}
+								break;
+							case JANUS_VIDEOROOM_PCMU:
+								if(pcmu_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
+									g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
+								} else {
+									int pt = (pass == 1 ? pcmu_pt : PCMU_PT);
+									g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
+										pt,						/* PCMU payload type */
+										audio_mode,
+										pt);						/* PCMU payload type */
+								}
+								break;
+							case JANUS_VIDEOROOM_PCMA:
+								if(pcma_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
+									g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
+								} else {
+									int pt = (pass == 1 ? pcma_pt : PCMA_PT);
+									g_snprintf(audio_mline, 256, sdp_a_template_pcma,
+										pt,						/* PCMA payload type */
+										audio_mode,
+										pt);						/* PCMA payload type */
+								}
+								break;
+							default:
+								/* Shouldn't happen */
+								break;
 						}
+					} else {
+						audio_mline[0] = '\0';
 					}
 					if(video) {
-						memset(filename, 0, 255);
-						if(participant->recording_base) {
-							/* Use the filename and path we have been provided */
-							g_snprintf(filename, 255, "%s-video", participant->recording_base);
-							participant->vrc = janus_recorder_create(videoroom->rec_dir,
-								janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-							if(participant->vrc == NULL) {
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
+						switch(videoroom->vcodec) {
+							case JANUS_VIDEOROOM_VP8:
+								if(vp8_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
+									if (pass == 1) {
+										g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+									} else {
+										video_mline[0] = '\0';
+									}
+								} else {
+									int pt = (pass == 1 ? vp8_pt : VP8_PT);
+									janus_videoroom_sdp_v_format_vp8(video_mline, 512, pt, b, video_mode);
+								}
+								break;
+							case JANUS_VIDEOROOM_VP9:
+								if(vp9_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing VP9, but publisher didn't offer any... rejecting video\n");
+									g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+								} else {
+									int pt = (pass == 1 ? vp9_pt : VP9_PT);
+									janus_videoroom_sdp_v_format_vp9(video_mline, 512, pt, b, video_mode);
+								}
+								break;
+							case JANUS_VIDEOROOM_H264:
+								if(h264_pt < 0) {
+									if(pass == 1)
+										JANUS_LOG(LOG_WARN, "Videoroom is forcing H264, but publisher didn't offer any... rejecting video\n");
+									g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
+								} else {
+									int pt = (pass == 1 ? h264_pt : H264_PT);
+									janus_videoroom_sdp_v_format_h264(video_mline, 512, pt, b, video_mode);
+								}
+								break;
+							default:
+								/* Shouldn't happen */
+								break;
+						}
+					} else {
+						video_mline[0] = '\0';
+					}
+					if(data) {
+						g_snprintf(data_mline, 256, sdp_d_template);
+					} else {
+						data_mline[0] = '\0';
+					}
+					g_snprintf(sdp, 1280, sdp_template,
+						janus_get_real_time(),			/* We need current time here */
+						janus_get_real_time(),			/* We need current time here */
+						participant->room->room_name,	/* Video room name */
+						audio_mline,					/* Audio m-line, if any */
+						video_mline,					/* Video m-line, if any */
+						data_mline);					/* Data channel m-line, if any */
+					newsdp = g_strdup(sdp);
+					if(video && b == 0) {
+						/* Remove useless bandwidth attribute */
+						newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
+					}
+					if(pass == 2)
+						break;
+					/* Is this room recorded? */
+					janus_mutex_lock(&participant->rec_mutex);
+					if(videoroom->record || participant->recording_active) {
+						char filename[255];
+						gint64 now = janus_get_real_time();
+						if(audio) {
+							memset(filename, 0, 255);
+							if(participant->recording_base) {
+								/* Use the filename and path we have been provided */
+								g_snprintf(filename, 255, "%s-audio", participant->recording_base);
+								participant->arc = janus_recorder_create(videoroom->rec_dir,
+									janus_videoroom_audiocodec_name(participant->room->acodec), filename);
+								if(participant->arc == NULL) {
+									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
+								}
+							} else {
+								/* Build a filename */
+								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
+									videoroom->room_id, participant->user_id, now);
+								participant->arc = janus_recorder_create(videoroom->rec_dir,
+									janus_videoroom_audiocodec_name(participant->room->acodec), filename);
+								if(participant->arc == NULL) {
+									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
+								}
 							}
-						} else {
-							/* Build a filename */
-							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
-								videoroom->room_id, participant->user_id, now);
-							participant->vrc = janus_recorder_create(videoroom->rec_dir,
-								janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-							if(participant->vrc == NULL) {
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
+						}
+						if(video) {
+							memset(filename, 0, 255);
+							if(participant->recording_base) {
+								/* Use the filename and path we have been provided */
+								g_snprintf(filename, 255, "%s-video", participant->recording_base);
+								participant->vrc = janus_recorder_create(videoroom->rec_dir,
+									janus_videoroom_videocodec_name(participant->room->vcodec), filename);
+								if(participant->vrc == NULL) {
+									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
+								}
+							} else {
+								/* Build a filename */
+								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
+									videoroom->room_id, participant->user_id, now);
+								participant->vrc = janus_recorder_create(videoroom->rec_dir,
+									janus_videoroom_videocodec_name(participant->room->vcodec), filename);
+								if(participant->vrc == NULL) {
+									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
+								}
 							}
 						}
 					}
-				}
-				janus_mutex_unlock(&participant->listeners_mutex);
+					janus_mutex_unlock(&participant->rec_mutex);
 
-				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, newsdp);
-				/* How long will the gateway take to push the event? */
-				g_atomic_int_set(&session->hangingup, 0);
-				gint64 start = janus_get_monotonic_time();
-				int res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, newsdp);
-				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
-
-				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
-				if(audio) {
-					switch(videoroom->acodec) {
-						case JANUS_VIDEOROOM_OPUS:
-							if(opus_pt < 0) {
-								audio_mline[0] = '\0';
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_opus,
-									OPUS_PT,						/* Opus payload type */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-									OPUS_PT); 						/* Opus payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_ISAC_32K:
-							if(isac32_pt < 0 ) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 104 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_isac32,
-									ISAC32_PT,						/* ISAC 32K payload type */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-									ISAC32_PT);						/* ISAC 32K payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_ISAC_16K:
-							if(isac16_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 103 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_isac16,
-									ISAC16_PT,						/* ISAC 16K payload type */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-									ISAC16_PT);						/* ISAC 16K payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_PCMU:
-							if(pcmu_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_pcmu,
-									PCMU_PT,						/*PCMU payload type */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-									PCMU_PT); 						/*PCMU   payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_PCMA:
-							if(pcma_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
-								g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(audio_mline, 256, sdp_a_template_pcma,
-									PCMA_PT,						/*PCMA payload type */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(audio_mode, "inactive") ? "sendonly" : "inactive",
-									PCMA_PT); 						/*PCMA   payload type */
-							}
-							break;
-						default:
-							/* Shouldn't happen */
-							break;
-						}
-				} else {
-					audio_mline[0] = '\0';
+					JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, newsdp);
+					/* How long will the gateway take to push the event? */
+					g_atomic_int_set(&session->hangingup, 0);
+					gint64 start = janus_get_monotonic_time();
+					res = gateway->push_event(msg->handle, &janus_videoroom_plugin, msg->transaction, event_text, type, newsdp);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+					g_free(newsdp);
 				}
-				if(video) {
-					switch(videoroom->vcodec) {
-						case JANUS_VIDEOROOM_VP8:
-							if(vp8_pt < 0) {
-								video_mline[0] = '\0';
-							} else {
-								g_snprintf(video_mline, 512, sdp_v_template_vp8,
-									VP8_PT,							/* VP8 payload type */
-									b,								/* Bandwidth */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(video_mode, "inactive") ? "sendonly" : "inactive",
-									VP8_PT, 						/* VP8 payload type */
-									VP8_PT, 						/* VP8 payload type */
-									VP8_PT, 						/* VP8 payload type */
-									VP8_PT, 						/* VP8 payload type */
-									VP8_PT); 						/* VP8 payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_VP9:
-							if(vp9_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
-								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(video_mline, 512, sdp_v_template_vp9,
-									VP9_PT,							/* VP9 payload type */
-									b,								/* Bandwidth */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(video_mode, "inactive") ? "sendonly" : "inactive",
-									VP9_PT, 						/* VP9 payload type */
-									VP9_PT, 						/* VP9 payload type */
-									VP9_PT, 						/* VP9 payload type */
-									VP9_PT, 						/* VP9 payload type */
-									VP9_PT); 						/* VP9 payload type */
-							}
-							break;
-						case JANUS_VIDEOROOM_H264:
-							if(h264_pt < 0) {
-								JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
-								g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
-							} else {
-								g_snprintf(video_mline, 512, sdp_v_template_h264,
-									H264_PT,						/* H264 payload type */
-									b,								/* Bandwidth */
-									/* Subscribers gets a sendonly or inactive back */
-									strcmp(video_mode, "inactive") ? "sendonly" : "inactive",
-									H264_PT, 						/* H264 payload type */
-									H264_PT, 						/* H264 payload type */
-									H264_PT, 						/* H264 payload type */
-									H264_PT, 						/* H264 payload type */
-									H264_PT, 						/* H264 payload type */
-									H264_PT); 						/* H264 payload type */
-							}
-							break;
-						default:
-							/* Shouldn't happen */
-							break;
-					}
-				} else {
-					video_mline[0] = '\0';
-				}
-				if(data) {
-					g_snprintf(data_mline, 256, sdp_d_template);
-				} else {
-					data_mline[0] = '\0';
-				}
-				g_snprintf(sdp, 1280, sdp_template,
-					janus_get_real_time(),			/* We need current time here */
-					janus_get_real_time(),			/* We need current time here */
-					participant->room->room_name,	/* Video room name */
-					audio_mline,					/* Audio m-line, if any */
-					video_mline,					/* Video m-line, if any */
-					data_mline);					/* Data channel m-line, if any */
-				g_free(newsdp);
-				newsdp = g_strdup(sdp);
-				if(video && b == 0) {
-					/* Remove useless bandwidth attribute */
-					newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
-				}
-
 				/* Done */
 				if(res != JANUS_OK) {
 					/* TODO Failed to negotiate? We should remove this publisher */
+					g_free(newsdp);
 				} else {
 					/* Store the participant's SDP for interested listeners */
 					participant->sdp = newsdp;
@@ -4032,38 +3842,13 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 	}
 	switch(muxed_listener->room->vcodec) {
 		case JANUS_VIDEOROOM_VP8:
-			g_snprintf(video_mline, 512, sdp_v_template_vp8,
-				VP8_PT,							/* VP8 payload type */
-				0,								/* Bandwidth */
-				"sendonly",						/* The subscribers gets a sendonly back */
-				VP8_PT, 						/* VP8 payload type */
-				VP8_PT, 						/* VP8 payload type */
-				VP8_PT, 						/* VP8 payload type */
-				VP8_PT, 						/* VP8 payload type */
-				VP8_PT); 						/* VP8 payload type */
+			janus_videoroom_sdp_v_format_vp8(video_mline, 512, VP8_PT, 0, "sendonly");
 			break;
 		case JANUS_VIDEOROOM_VP9:
-			g_snprintf(video_mline, 512, sdp_v_template_vp9,
-				VP9_PT,							/* VP9 payload type */
-				0,								/* Bandwidth */
-				"sendonly",						/* The subscribers gets a sendonly back */
-				VP9_PT, 						/* VP9 payload type */
-				VP9_PT, 						/* VP9 payload type */
-				VP9_PT, 						/* VP9 payload type */
-				VP9_PT, 						/* VP9 payload type */
-				VP9_PT); 						/* VP9 payload type */
+			janus_videoroom_sdp_v_format_vp9(video_mline, 512, VP9_PT, 0, "sendonly");
 			break;
 		case JANUS_VIDEOROOM_H264:
-			g_snprintf(video_mline, 512, sdp_v_template_h264,
-				H264_PT,						/* H264 payload type */
-				0,								/* Bandwidth */
-				"sendonly",						/* The subscribers gets a sendonly back */
-				H264_PT, 						/* H264 payload type */
-				H264_PT, 						/* H264 payload type */
-				H264_PT, 						/* H264 payload type */
-				H264_PT, 						/* H264 payload type */
-				H264_PT, 						/* H264 payload type */
-				H264_PT); 						/* H264 payload type */
+			janus_videoroom_sdp_v_format_h264(video_mline, 512, H264_PT, 0, "sendonly");
 			break;
 		default:
 			/* Shouldn't happen */
