@@ -1436,8 +1436,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto error;
 		}
 		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(videoroom->room_secret, root,
-			error_code, error_cause, TRUE,
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
@@ -1566,8 +1565,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto error;
 		}
 		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(videoroom->room_secret, root,
-			error_code, error_cause, TRUE,
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
@@ -1660,8 +1658,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto error;
 		}
 		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(videoroom->room_secret, root,
-			error_code, error_cause, TRUE,
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
@@ -2301,8 +2298,7 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			/* A pin may be required for this action */
-			JANUS_CHECK_PIN(videoroom->room_pin, root,
-				error_code, error_cause, TRUE,
+			JANUS_CHECK_SECRET(videoroom->room_pin, root, "pin", error_code, error_cause,
 				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 			if(error_code != 0) {
 				janus_mutex_unlock(&rooms_mutex);

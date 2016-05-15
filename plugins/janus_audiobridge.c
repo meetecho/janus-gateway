@@ -1267,8 +1267,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			goto error;
 		}
 		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(audiobridge->room_secret, root,
-			error_code, error_cause, TRUE,
+		JANUS_CHECK_SECRET(audiobridge->room_secret, root, "secret", error_code, error_cause,
 			JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&rooms_mutex);
@@ -1777,8 +1776,7 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			}
 			/* A pin may be required for this action */
-			JANUS_CHECK_PIN(audiobridge->room_pin, root,
-				error_code, error_cause, TRUE,
+			JANUS_CHECK_SECRET(audiobridge->room_pin, root, "pin", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 			if(error_code != 0) {
 				janus_mutex_unlock(&rooms_mutex);
@@ -2087,8 +2085,7 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			}
 			/* A pin may be required for this action */
-			JANUS_CHECK_PIN(audiobridge->room_pin, root,
-				error_code, error_cause, TRUE,
+			JANUS_CHECK_SECRET(audiobridge->room_pin, root, "pin", error_code, error_cause,
 				JANUS_AUDIOBRIDGE_ERROR_MISSING_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT, JANUS_AUDIOBRIDGE_ERROR_UNAUTHORIZED);
 			if(error_code != 0) {
 				janus_mutex_unlock(&rooms_mutex);

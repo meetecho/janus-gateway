@@ -1522,8 +1522,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			goto error;
 		}
 		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(mp->secret, root,
-			error_code, error_cause, TRUE,
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&mountpoints_mutex);
@@ -1615,8 +1614,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			goto error;
 		}
 		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(mp->secret, root,
-			error_code, error_cause, TRUE,
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&mountpoints_mutex);
@@ -1730,8 +1728,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			goto error;
 		}
 		/* A secret may be required for this action */
-		JANUS_CHECK_SECRET(mp->secret, root,
-			error_code, error_cause, TRUE,
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
 			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&mountpoints_mutex);
@@ -2016,8 +2013,7 @@ static void *janus_streaming_handler(void *data) {
 				goto error;
 			}
 			/* A secret may be required for this action */
-			JANUS_CHECK_SECRET(mp->pin, root,
-				error_code, error_cause, TRUE,
+			JANUS_CHECK_SECRET(mp->pin, root, "pin", error_code, error_cause,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
 			if(error_code != 0) {
 				janus_mutex_unlock(&mountpoints_mutex);
