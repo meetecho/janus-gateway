@@ -1755,6 +1755,79 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "participants", list);
 		goto plugin_response;
+	} else if(!strcasecmp(request_text, "listforwarders")) {
+		/* List all forwarders in a room */	
+		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+		if(videoroom == NULL) {
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto error;
+		}
+		if(videoroom->destroyed) {
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto error;
+		}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
+		}
+		janus_mutex_unlock(&rooms_mutex);
+		/* Return a list of all forwarders */
+		json_t *list = json_array();
+		GHashTableIter iter;
+		gpointer value;
+		janus_mutex_lock(&videoroom->participants_mutex);
+		g_hash_table_iter_init(&iter, videoroom->participants);
+		while (!videoroom->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_videoroom_participant *p = value;
+			if(g_hash_table_size(p->rtp_forwarders) == 0)
+				continue;
+			json_t *pl = json_object();
+			json_object_set_new(pl, "id", json_integer(p->user_id));
+			if(p->display)
+				json_object_set_new(pl, "display", json_string(p->display));
+			json_t *flist = json_array();
+			GHashTableIter iter_f;
+			gpointer key_f, value_f;			
+			g_hash_table_iter_init(&iter_f, p->rtp_forwarders);
+			janus_mutex_lock(&p->rtp_forwarders_mutex);
+			while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {				
+				json_t *fl = json_object();
+				rtp_forwarder *rpk = key_f;				
+				rtp_forwarder *rpv = value_f;
+				json_object_set_new(fl, "ip" , json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
+				if(rpv->is_video > 0) {
+					json_object_set_new(fl, "video" , json_integer(rpk));
+					json_object_set_new(fl, "vport" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+                		} else {
+					json_object_set_new(fl, "audio" , json_integer(rpk));
+					json_object_set_new(fl, "aport" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+				}
+			json_array_append_new(flist, fl);
+			}		
+			janus_mutex_unlock(&p->rtp_forwarders_mutex);
+			json_object_set_new(pl, "forward", flist);
+			json_array_append_new(list, pl);
+		}
+		janus_mutex_unlock(&videoroom->participants_mutex);
+		response = json_object();
+		json_object_set_new(response, "room", json_integer(room_id));
+		json_object_set_new(response, "forwarders", list);
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "switch") || !strcasecmp(request_text, "stop")
