@@ -218,4 +218,30 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 #define JANUS_VALIDATE_JSON_OBJECT(obj, params, error_code, error_cause, log_error, missing_code, invalid_code) \
 	JANUS_VALIDATE_JSON_OBJECT_FORMAT("Missing mandatory element (%s)", "Invalid element type (%s should be %s)", obj, params, error_code, error_cause, log_error, missing_code, invalid_code)
 
+/*! \brief If the secret isn't NULL, check the secret after validating the specified member of the JSON object
+ * @param secret The secret to be checked; no check if the secret is NULL
+ * @param obj The JSON object to be validated
+ * @param member The JSON member with the secret, usually "secret" or "pin"
+ * @param[out] error_code int to return error code
+ * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is 60
+ * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
+ * @param missing_code The code to be returned in error_code if a parameter is missing
+ * @param invalid_code The code to be returned in error_code if a parameter is invalid
+ * @param unauthorized_code The code to be returned in error_code if the secret doesn't match */
+#define JANUS_CHECK_SECRET(secret, obj, member, error_code, error_cause, missing_code, invalid_code, unauthorized_code) \
+	do { \
+		if (secret) { \
+			static struct janus_json_parameter secret_parameters[] = { \
+				{member, JSON_STRING, JANUS_JSON_PARAM_REQUIRED} \
+			}; \
+			JANUS_VALIDATE_JSON_OBJECT(obj, secret_parameters, error_code, error_cause, TRUE, missing_code, invalid_code); \
+			if(error_code == 0 && !janus_strcmp_const_time((secret), json_string_value(json_object_get(obj, member)))) { \
+				error_code = (unauthorized_code); \
+				JANUS_LOG(LOG_ERR, "Unauthorized (wrong %s)\n", member); \
+				if(error_cause != NULL) \
+					g_snprintf(error_cause, sizeof(error_cause), "Unauthorized (wrong %s)", member); \
+			} \
+		} \
+	} while(0)
+
 #endif

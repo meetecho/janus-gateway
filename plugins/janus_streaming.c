@@ -189,6 +189,85 @@ janus_plugin *create(void) {
 	return &janus_streaming_plugin;
 }
 
+/* Parameter validation */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter id_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter create_parameters[] = {
+	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"secret", JSON_STRING, 0},
+	{"pin", JSON_STRING, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter rtp_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter live_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"file", JSON_STRING, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter ondemand_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"file", JSON_STRING, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter rtsp_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"name", JSON_STRING, 0},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"url", JSON_STRING, 0},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter rtp_audio_parameters[] = {
+	{"audiomcast", JSON_STRING, 0},
+	{"audioport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"audioopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"audiortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"audiofmtp", JSON_STRING, 0}
+};
+static struct janus_json_parameter rtp_video_parameters[] = {
+	{"videomcast", JSON_STRING, 0},
+	{"videoport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"videoopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"videortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"videofmtp", JSON_STRING, 0},
+	{"videobufferkf", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter destroy_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"permanent", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter recording_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter recording_start_parameters[] = {
+	{"audio", JSON_STRING, 0},
+	{"video", JSON_STRING, 0}
+};
+static struct janus_json_parameter recording_stop_parameters[] = {
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0}
+};
 
 /* Static configuration instance */
 static janus_config *config = NULL;
@@ -983,19 +1062,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		goto error;
 	}
 	/* Get the request first */
+	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto error;
 	json_t *request = json_object_get(root, "request");
-	if(!request) {
-		JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-		error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-		g_snprintf(error_cause, 512, "Missing element (request)");
-		goto error;
-	}
-	if(!json_is_string(request)) {
-		JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-		error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-		g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-		goto error;
-	}
 	/* Some requests ('create' and 'destroy') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "list")) {
@@ -1036,19 +1108,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "info")) {
 		JANUS_LOG(LOG_VERB, "Request info on a specific mountpoint\n");
 		/* Return info on a specific mountpoint */
+		JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *id = json_object_get(root, "id");
-		if(!id) {
-			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (id)");
-			goto error;
-		}
-		if(!json_is_integer(id) || json_integer_value(id) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-			goto error;
-		}
 		gint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
@@ -1079,41 +1144,16 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "create")) {
 		/* Create a new stream */
+		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *type = json_object_get(root, "type");
-		if(!type) {
-			JANUS_LOG(LOG_ERR, "Missing element (type)\n");
-			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (type)");
-			goto error;
-		}
-		if(!json_is_string(type)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (type should be a string)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (type should be a string)");
-			goto error;
-		}
 		const char *type_text = json_string_value(type);
 		json_t *secret = json_object_get(root, "secret");
-		if(secret && !json_is_string(secret)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-			goto error;
-		}
 		json_t *pin = json_object_get(root, "pin");
-		if(pin && !json_is_string(pin)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
-			goto error;
-		}
 		json_t *permanent = json_object_get(root, "permanent");
-		if(permanent && !json_is_boolean(permanent)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
-			goto error;
-		}
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent mountpoint\n");
@@ -1124,48 +1164,17 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		janus_streaming_mountpoint *mp = NULL;
 		if(!strcasecmp(type_text, "rtp")) {
 			/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
+			JANUS_VALIDATE_JSON_OBJECT(root, rtp_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *id = json_object_get(root, "id");
-			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-				goto error;
-			}
 			json_t *name = json_object_get(root, "name");
-			if(name && !json_is_string(name)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
-				goto error;
-			}
 			json_t *desc = json_object_get(root, "description");
-			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
-				goto error;
-			}
 			json_t *is_private = json_object_get(root, "is_private");
-			if(is_private && !json_is_boolean(is_private)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
-				goto error;
-			}
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-				goto error;
-			}
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_boolean(video)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-				goto error;
-			}
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			if(!doaudio && !dovideo) {
@@ -1178,64 +1187,20 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			uint8_t acodec = 0;
 			char *artpmap = NULL, *afmtp = NULL, *amcast = NULL;
 			if(doaudio) {
+				JANUS_VALIDATE_JSON_OBJECT(root, rtp_audio_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
 				json_t *audiomcast = json_object_get(root, "audiomcast");
-				if(audiomcast && !json_is_string(audiomcast)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audiomcast should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (audiomcast should be a string)");
-					goto error;
-				} else {
-					amcast = (char *)json_string_value(audiomcast);
-				}
+				amcast = (char *)json_string_value(audiomcast);
 				json_t *audioport = json_object_get(root, "audioport");
-				if(!audioport) {
-					JANUS_LOG(LOG_ERR, "Missing element (audioport)\n");
-					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (audioport)");
-					goto error;
-				}
-				if(!json_is_integer(audioport) || json_integer_value(audioport) < 0) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audioport should be a positive integer)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (audioport should be a positive integer)");
-					goto error;
-				}
 				aport = json_integer_value(audioport);
 				json_t *audiopt = json_object_get(root, "audiopt");
-				if(!audiopt) {
-					JANUS_LOG(LOG_ERR, "Missing element (audiopt)\n");
-					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (audiopt)");
-					goto error;
-				}
-				if(!json_is_integer(audiopt) || json_integer_value(audiopt) < 0) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audiopt should be a positive integer)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (audiopt should be a positive integer)");
-					goto error;
-				}
 				acodec = json_integer_value(audiopt);
 				json_t *audiortpmap = json_object_get(root, "audiortpmap");
-				if(!audiortpmap) {
-					JANUS_LOG(LOG_ERR, "Missing element (audiortpmap)\n");
-					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (audiortpmap)");
-					goto error;
-				}
-				if(!json_is_string(audiortpmap)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audiortpmap should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (audiortpmap should be a string)");
-					goto error;
-				}
 				artpmap = (char *)json_string_value(audiortpmap);
 				json_t *audiofmtp = json_object_get(root, "audiofmtp");
-				if(audiofmtp && !json_is_string(audiofmtp)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audiofmtp should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (audiofmtp should be a string)");
-					goto error;
-				}
 				afmtp = (char *)json_string_value(audiofmtp);
 			}
 			uint16_t vport = 0;
@@ -1243,72 +1208,22 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			char *vrtpmap = NULL, *vfmtp = NULL, *vmcast = NULL;
 			gboolean bufferkf = FALSE;
 			if(dovideo) {
+				JANUS_VALIDATE_JSON_OBJECT(root, rtp_video_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
 				json_t *videomcast = json_object_get(root, "videomcast");
-				if(videomcast && !json_is_string(videomcast)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videomcast should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (videomcast should be a string)");
-					goto error;
-				} else {
-					vmcast = (char *)json_string_value(videomcast);
-				}
+				vmcast = (char *)json_string_value(videomcast);
 				json_t *videoport = json_object_get(root, "videoport");
-				if(!videoport) {
-					JANUS_LOG(LOG_ERR, "Missing element (videoport)\n");
-					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (videoport)");
-					goto error;
-				}
-				if(!json_is_integer(videoport) || json_integer_value(videoport) < 0) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videoport should be a positive integer)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (videoport should be a positive integer)");
-					goto error;
-				}
 				vport = json_integer_value(videoport);
 				json_t *videopt = json_object_get(root, "videopt");
-				if(!videopt) {
-					JANUS_LOG(LOG_ERR, "Missing element (videopt)\n");
-					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (videopt)");
-					goto error;
-				}
-				if(!json_is_integer(videopt) || json_integer_value(videopt) < 0) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videopt should be a positive integer)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (videopt should be a positive integer)");
-					goto error;
-				}
 				vcodec = json_integer_value(videopt);
 				json_t *videortpmap = json_object_get(root, "videortpmap");
-				if(!videortpmap) {
-					JANUS_LOG(LOG_ERR, "Missing element (videortpmap)\n");
-					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (videortpmap)");
-					goto error;
-				}
-				if(!json_is_string(videortpmap)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videortpmap should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (videortpmap should be a string)");
-					goto error;
-				}
 				vrtpmap = (char *)json_string_value(videortpmap);
 				json_t *videofmtp = json_object_get(root, "videofmtp");
-				if(videofmtp && !json_is_string(videofmtp)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videofmtp should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (videofmtp should be a string)");
-					goto error;
-				}
 				vfmtp = (char *)json_string_value(videofmtp);
 				json_t *vkf = json_object_get(root, "videobufferkf");
-				if(vkf && !json_is_boolean(vkf)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (videobufferkf should be a boolean)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (videobufferkf should be a boolean)");
-					goto error;
-				}
 				bufferkf = vkf ? json_is_true(vkf) : FALSE;
 			}
 			if(id == NULL) {
@@ -1340,55 +1255,18 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
 		} else if(!strcasecmp(type_text, "live")) {
 			/* File live source */
+			JANUS_VALIDATE_JSON_OBJECT(root, live_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *id = json_object_get(root, "id");
-			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-				goto error;
-			}
 			json_t *name = json_object_get(root, "name");
-			if(name && !json_is_string(name)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
-				goto error;
-			}
 			json_t *desc = json_object_get(root, "description");
-			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
-				goto error;
-			}
 			json_t *is_private = json_object_get(root, "is_private");
-			if(is_private && !json_is_boolean(is_private)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
-				goto error;
-			}
 			json_t *file = json_object_get(root, "file");
-			if(file && !json_is_string(file)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (file should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (file should be a string)");
-				goto error;
-			}
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-				goto error;
-			}
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_boolean(video)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-				goto error;
-			}
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			/* TODO We should support something more than raw a-Law and mu-Law streams... */
@@ -1433,55 +1311,18 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			mp->is_private = is_private ? json_is_true(is_private) : FALSE;
 		} else if(!strcasecmp(type_text, "ondemand")) {
 			/* mu-Law file on demand source */
+			JANUS_VALIDATE_JSON_OBJECT(root, ondemand_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *id = json_object_get(root, "id");
-			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-				goto error;
-			}
 			json_t *name = json_object_get(root, "name");
-			if(name && !json_is_string(name)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
-				goto error;
-			}
 			json_t *desc = json_object_get(root, "description");
-			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
-				goto error;
-			}
 			json_t *is_private = json_object_get(root, "is_private");
-			if(is_private && !json_is_boolean(is_private)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
-				goto error;
-			}
 			json_t *file = json_object_get(root, "file");
-			if(file && !json_is_string(file)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (file should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (file should be a string)");
-				goto error;
-			}
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-				goto error;
-			}
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_boolean(video)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-				goto error;
-			}
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			/* TODO We should support something more than raw a-Law and mu-Law streams... */
@@ -1531,56 +1372,19 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Can't create 'rtsp' mountpoint, libcurl support not compiled...\n");
 			goto error;
 #else
+			JANUS_VALIDATE_JSON_OBJECT(root, rtsp_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			/* RTSP source*/
 			json_t *id = json_object_get(root, "id");
-			if(id && (!json_is_integer(id) || json_integer_value(id) < 0)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-				goto error;
-			}
 			json_t *name = json_object_get(root, "name");
-			if(name && !json_is_string(name)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
-				goto error;
-			}
 			json_t *desc = json_object_get(root, "description");
-			if(desc && !json_is_string(desc)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (desc should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (desc should be a string)");
-				goto error;
-			}
 			json_t *is_private = json_object_get(root, "is_private");
-			if(is_private && !json_is_boolean(is_private)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
-				goto error;
-			}
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-				goto error;
-			}
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_boolean(video)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-				goto error;
-			}
 			json_t *url = json_object_get(root, "url");
-			if(url && !json_is_string(url)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (url should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (file should be a string)");
-				goto error;
-			}			
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			if(!doaudio && !dovideo) {
@@ -1693,26 +1497,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
+		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *id = json_object_get(root, "id");
-		if(!id) {
-			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (id)");
-			goto error;
-		}
-		if(!json_is_integer(id) || json_integer_value(id) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-			goto error;
-		}
 		json_t *permanent = json_object_get(root, "permanent");
-		if(permanent && !json_is_boolean(permanent)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
-			goto error;
-		}
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't destroy mountpoint permanently\n");
@@ -1730,30 +1521,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
 			goto error;
 		}
-		if(mp->secret) {
-			/* This action requires an authorized user */
-			json_t *secret = json_object_get(root, "secret");
-			if(!secret) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
-				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (secret)");
-				goto error;
-			}
-			if(!json_is_string(secret)) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-				goto error;
-			}
-			if(!janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			goto error;
 		}
 		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
 		/* FIXME Should we kick the current viewers as well? */
@@ -1809,19 +1582,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "recording")) {
 		/* We can start/stop recording a live, RTP-based stream */
+		JANUS_VALIDATE_JSON_OBJECT(root, recording_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *action = json_object_get(root, "action");
-		if(!action) {
-			JANUS_LOG(LOG_ERR, "Missing element (action)\n");
-			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (action)");
-			goto error;
-		}
-		if(!json_is_string(action)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (action should be a string)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (action should be a string)");
-			goto error;
-		}
 		const char *action_text = json_string_value(action);
 		if(strcasecmp(action_text, "start") && strcasecmp(action_text, "stop")) {
 			JANUS_LOG(LOG_ERR, "Invalid action (should be start|stop)\n");
@@ -1830,18 +1596,6 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			goto error;
 		}
 		json_t *id = json_object_get(root, "id");
-		if(!id) {
-			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (id)");
-			goto error;
-		}
-		if(!json_is_integer(id) || json_integer_value(id) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-			goto error;
-		}
 		gint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
@@ -1859,47 +1613,25 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Recording is only available on RTP-based live streams");
 			goto error;
 		}
-		if(mp->secret) {
-			/* This action requires an authorized user */
-			json_t *secret = json_object_get(root, "secret");
-			if(!secret) {
-				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
-				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (secret)");
-				goto error;
-			}
-			if(!json_is_string(secret)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-				goto error;
-			}
-			if(!janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			goto error;
 		}
 		janus_streaming_rtp_source *source = mp->source;
 		if(!strcasecmp(action_text, "start")) {
 			/* Start a recording for audio and/or video */
+			JANUS_VALIDATE_JSON_OBJECT(root, recording_start_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				goto error;
+			}
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_string(audio)) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a string)");
-				goto error;
-			}
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_string(video)) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a string)");
-				goto error;
-			}
 			if((audio && source->arc) || (video && source->vrc)) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Recording for audio and/or video already started for this stream\n");
@@ -1939,22 +1671,15 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			goto plugin_response;
 		} else if(!strcasecmp(action_text, "stop")) {
 			/* Stop the recording */
+			JANUS_VALIDATE_JSON_OBJECT(root, recording_stop_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				goto error;
+			}
 			json_t *audio = json_object_get(root, "audio");
-			if(audio && !json_is_boolean(audio)) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-				goto error;
-			}
 			json_t *video = json_object_get(root, "video");
-			if(video && !json_is_boolean(video)) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-				goto error;
-			}
 			if(!audio && !video) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Missing audio and/or video\n");
@@ -1986,19 +1711,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 	} else if(!strcasecmp(request_text, "enable") || !strcasecmp(request_text, "disable")) {
 		/* A request to enable/disable a mountpoint */
+		JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *id = json_object_get(root, "id");
-		if(!id) {
-			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (id)");
-			goto error;
-		}
-		if(!json_is_integer(id) || json_integer_value(id) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-			goto error;
-		}
 		gint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
@@ -2009,30 +1727,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
 			goto error;
 		}
-		if(mp->secret) {
-			/* This action requires an authorized user */
-			json_t *secret = json_object_get(root, "secret");
-			if(!secret) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
-				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (secret)");
-				goto error;
-			}
-			if(!json_is_string(secret)) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-				goto error;
-			}
-			if(!janus_strcmp_const_time(mp->secret, json_string_value(secret))) {
-				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(mp->secret, root, "secret", error_code, error_cause,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			goto error;
 		}
 		if(!strcasecmp(request_text, "enable")) {
 			/* Enable a previously disabled mountpoint */
@@ -2246,11 +1946,7 @@ static void *janus_streaming_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining Streaming handler thread\n");
 	janus_streaming_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(1024);
-	if(error_cause == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	char error_cause[512];
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
@@ -2288,38 +1984,24 @@ static void *janus_streaming_handler(void *data) {
 		}
 		root = msg->message;
 		/* Get the request first */
+		JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *request = json_object_get(root, "request");
-		if(!request) {
-			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-			error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
-		}
-		if(!json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-			error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-			goto error;
-		}
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
 		const char *sdp_type = NULL;
 		char *sdp = NULL;
 		/* All these requests can only be handled asynchronously */
 		if(!strcasecmp(request_text, "watch")) {
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *id = json_object_get(root, "id");
-			if(!id) {
-				JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (id)");
-				goto error;
-			}
-			if(!json_is_integer(id) || json_integer_value(id) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-				goto error;
-			}
 			gint64 id_value = json_integer_value(id);
 			janus_mutex_lock(&mountpoints_mutex);
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
@@ -2330,30 +2012,12 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "No such mountpoint/stream %"SCNu64"", id_value);
 				goto error;
 			}
-			if(mp->pin) {
-				/* This mountpoint is protected by a PIN */
-				json_t *pin = json_object_get(root, "pin");
-				if(!pin) {
-					janus_mutex_unlock(&mountpoints_mutex);
-					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
-					error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (pin)");
-					goto error;
-				}
-				if(!json_is_string(pin)) {
-					janus_mutex_unlock(&mountpoints_mutex);
-					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
-					error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
-					goto error;
-				}
-				if(!janus_strcmp_const_time(mp->pin, json_string_value(pin))) {
-					janus_mutex_unlock(&mountpoints_mutex);
-					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
-					error_code = JANUS_STREAMING_ERROR_UNAUTHORIZED;
-					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
-					goto error;
-				}
+			/* A secret may be required for this action */
+			JANUS_CHECK_SECRET(mp->pin, root, "pin", error_code, error_cause,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT, JANUS_STREAMING_ERROR_UNAUTHORIZED);
+			if(error_code != 0) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				goto error;
 			}
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %"SCNu64"\n", id_value);
@@ -2481,19 +2145,12 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(error_cause, 512, "Can't switch: not on a live RTP mountpoint");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *id = json_object_get(root, "id");
-			if(!id) {
-				JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-				error_code = JANUS_STREAMING_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (id)");
-				goto error;
-			}
-			if(!json_is_integer(id) || json_integer_value(id) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-				error_code = JANUS_STREAMING_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-				goto error;
-			}
 			gint64 id_value = json_integer_value(id);
 			janus_mutex_lock(&mountpoints_mutex);
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
@@ -2598,7 +2255,6 @@ error:
 			janus_streaming_message_free(msg);
 		}
 	}
-	g_free(error_cause);
 	JANUS_LOG(LOG_VERB, "Leaving Streaming handler thread\n");
 	return NULL;
 }
