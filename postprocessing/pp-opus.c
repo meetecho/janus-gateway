@@ -72,16 +72,18 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint64_t pos = 0;
 	uint8_t *buffer = g_malloc0(1500);
 	while(*working && tmp != NULL) {
-		if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {
+		if(tmp->prev != NULL && ((tmp->ts - tmp->prev->ts)/48/20 > 1)) {
 			JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 				tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/48000);
 			/* FIXME Write the silence packet N times to fill in the gaps */
 			ogg_packet *op = op_from_pkt((const unsigned char *)opus_silence, sizeof(opus_silence));
+			/* use ts differ to insert silence packet */
+			int silence_count = (tmp->ts - tmp->prev->ts)/48/20 - 1;
+			pos = (tmp->prev->ts - list->ts) / 48 / 20 + 1;
+			JANUS_LOG(LOG_WARN, "[FILL] pos: %06"SCNu64", writing silences (count=%d)\n", pos, silence_count);
 			int i=0;
-			for(i=0; i<(tmp->seq-tmp->prev->seq-1); i++) {
-				pos = tmp->prev->seq-list->seq+steps*65536+i+1;
-				JANUS_LOG(LOG_WARN, "[FILL] pos: %06"SCNu64", writing silence (seq=%"SCNu16", index=%"SCNu16")\n",
-					pos, tmp->prev->seq+i+1, i+1);
+			for(i=0; i<silence_count; i++) {
+				pos = (tmp->prev->ts - list->ts) / 48 / 20 + i + 1;
 				op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
 				ogg_stream_packetin(stream, op);
 				ogg_write();
@@ -110,7 +112,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			steps++;
 		}
 		ogg_packet *op = op_from_pkt((const unsigned char *)buffer, bytes);
-		pos = tmp->seq-list->seq+steps*65536;
+		pos = (tmp->ts - list->ts) / 48 / 20;
 		JANUS_LOG(LOG_VERB, "pos: %06"SCNu64", writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			pos, bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/48000);
 		op->granulepos = 960*(pos); /* FIXME: get this from the toc byte */
