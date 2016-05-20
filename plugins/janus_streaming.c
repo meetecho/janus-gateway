@@ -247,7 +247,7 @@ static struct janus_json_parameter rtp_audio_parameters[] = {
 static struct janus_json_parameter rtp_video_parameters[] = {
 	{"videomcast", JSON_STRING, 0},
 	{"videoport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"videoopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"videopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"videortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"videofmtp", JSON_STRING, 0},
 	{"videobufferkf", JANUS_JSON_BOOL, 0}
