@@ -2120,6 +2120,9 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+		/* Lock listeners_mutex to protect recorders from race conditions. */
+		/* This mutex doesn't have an appropriate name but it is less coarse than participant->room->participants_mutex. */
+		janus_mutex_lock(&participant->listeners_mutex);
 		if(participant->sdp)
 			g_free(participant->sdp);
 		participant->sdp = NULL;
@@ -2143,7 +2146,6 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 			janus_recorder_free(participant->vrc);
 		}
 		participant->vrc = NULL;
-		janus_mutex_lock(&participant->listeners_mutex);
 		while(participant->listeners) {
 			janus_videoroom_listener *l = (janus_videoroom_listener *)participant->listeners->data;
 			if(l) {
@@ -2689,6 +2691,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *bitrate = json_object_get(root, "bitrate");
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
+				/* Lock listeners_mutex to protect recorders from race conditions. */
+				janus_mutex_lock(&participant->listeners_mutex);
 				if(audio) {
 					participant->audio_active = json_is_true(audio);
 					JANUS_LOG(LOG_VERB, "Setting audio property: %s (room %"SCNu64", user %"SCNu64")\n", participant->audio_active ? "true" : "false", participant->room->room_id, participant->user_id);
@@ -2789,6 +2793,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 					}
 				}
+				janus_mutex_unlock(&participant->listeners_mutex);
 				/* Done */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
@@ -3490,6 +3495,8 @@ static void *janus_videoroom_handler(void *data) {
 					/* Remove useless bandwidth attribute */
 					newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
 				}
+				/* Lock listeners_mutex to protect recorders from race conditions. */
+				janus_mutex_lock(&participant->listeners_mutex);
 				/* Is this room recorded? */
 				if(videoroom->record || participant->recording_active) {
 					char filename[255];
@@ -3533,6 +3540,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 					}
 				}
+				janus_mutex_unlock(&participant->listeners_mutex);
 
 				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, newsdp);
 				/* How long will the gateway take to push the event? */
