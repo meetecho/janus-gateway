@@ -3079,7 +3079,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 		if(now-video_rtcp_last_sr >= 500000) {
 			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
-			if(stream && stream->rtp_component && stream->rtp_component->out_stats.audio_packets > 0) {
+			if(stream && stream->rtp_component && stream->rtp_component->out_stats.video_packets > 0) {
 				/* Create a SR/SDES compound */
 				int srlen = 28;
 				int sdeslen = 20;
