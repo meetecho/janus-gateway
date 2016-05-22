@@ -1770,12 +1770,14 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			janus_mutex_unlock(&rooms_mutex);
 			goto error;
 		}
 		if(videoroom->destroyed) {
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			janus_mutex_unlock(&rooms_mutex);
 			goto error;
 		}
 		/* A secret may be required for this action */
@@ -1785,7 +1787,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_mutex_unlock(&rooms_mutex);
 			goto error;
 		}
-		janus_mutex_unlock(&rooms_mutex);
 		/* Return a list of all forwarders */
 		json_t *list = json_array();
 		GHashTableIter iter;
@@ -1797,7 +1798,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			if(g_hash_table_size(p->rtp_forwarders) == 0)
 				continue;
 			json_t *pl = json_object();
-			json_object_set_new(pl, "id", json_integer(p->user_id));
+			json_object_set_new(pl, "publisher_id", json_integer(p->user_id));
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
 			json_t *flist = json_array();
@@ -1811,22 +1812,23 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				rtp_forwarder *rpv = value_f;
 				json_object_set_new(fl, "ip" , json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
 				if(rpv->is_video > 0) {
-					json_object_set_new(fl, "video" , json_integer(rpk));
-					json_object_set_new(fl, "vport" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+					json_object_set_new(fl, "video_stream_id" , json_integer(rpk));
+					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
                 		} else {
-					json_object_set_new(fl, "audio" , json_integer(rpk));
+					json_object_set_new(fl, "audio_stream_id" , json_integer(rpk));
 					json_object_set_new(fl, "aport" , json_integer(ntohs(rpv->serv_addr.sin_port)));
 				}
 			json_array_append_new(flist, fl);
 			}		
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
-			json_object_set_new(pl, "forward", flist);
+			json_object_set_new(pl, "rtp_forwarder", flist);
 			json_array_append_new(list, pl);
 		}
 		janus_mutex_unlock(&videoroom->participants_mutex);
+		janus_mutex_unlock(&rooms_mutex);
 		response = json_object();
 		json_object_set_new(response, "room", json_integer(room_id));
-		json_object_set_new(response, "forwarders", list);
+		json_object_set_new(response, "rtp_forwarders", list);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
