@@ -1816,7 +1816,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
                 		} else {
 					json_object_set_new(fl, "audio_stream_id" , json_integer(rpk));
-					json_object_set_new(fl, "aport" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
 				}
 			json_array_append_new(flist, fl);
 			}		
