@@ -1808,7 +1808,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_mutex_lock(&p->rtp_forwarders_mutex);
 			while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {				
 				json_t *fl = json_object();
-				rtp_forwarder *rpk = key_f;				
+				guint32 rpk = GPOINTER_TO_UINT(key_f);
 				rtp_forwarder *rpv = value_f;
 				json_object_set_new(fl, "ip" , json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
 				if(rpv->is_video > 0) {
