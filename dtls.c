@@ -16,6 +16,7 @@
 #include "debug.h"
 #include "dtls.h"
 #include "rtcp.h"
+#include "events.h"
 
 
 /* SRTP stuff (http://tools.ietf.org/html/rfc3711) */
@@ -83,6 +84,29 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 	return NULL;
 }
 
+
+/* Helper to notify DTLS state changes to the event handlers */
+static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
+	if(dtls == NULL)
+		return;
+	janus_ice_component *component = (janus_ice_component *)dtls->component;
+	if(component == NULL)
+		return;
+	janus_ice_stream *stream = component->stream;
+	if(stream == NULL)
+		return;
+	janus_ice_handle *handle = stream->handle;
+	if(handle == NULL)
+		return;
+	janus_session *session = (janus_session *)handle->session;
+	if(session == NULL)
+		return;
+	json_t *info = json_object();
+	json_object_set_new(info, "dtls", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
+	json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
+	json_object_set_new(info, "component_id", json_integer(component->component_id));
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+}
 
 
 /* DTLS stuff */
@@ -336,6 +360,9 @@ void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls) {
 		dtls->dtls_state = JANUS_DTLS_STATE_TRYING;
 	SSL_do_handshake(dtls->ssl);
 	janus_dtls_fd_bridge(dtls);
+
+	/* Notify event handlers */
+	janus_dtls_notify_state_change(dtls);
 }
 
 void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len) {
@@ -446,10 +473,14 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]  Fingerprint is a match!\n", handle->handle_id);
 				dtls->dtls_state = JANUS_DTLS_STATE_CONNECTED;
 				dtls->dtls_connected = janus_get_monotonic_time();
+				/* Notify event handlers */
+				janus_dtls_notify_state_change(dtls);
 			} else {
 				/* FIXME NOT a match! MITM? */
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]  Fingerprint is NOT a match! got %s, expected %s\n", handle->handle_id, remote_fingerprint, stream->remote_fingerprint);
 				dtls->dtls_state = JANUS_DTLS_STATE_FAILED;
+				/* Notify event handlers */
+				janus_dtls_notify_state_change(dtls);
 				goto done;
 			}
 			if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {

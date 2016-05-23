@@ -154,6 +154,8 @@ janus_plugin *create(void) {
 #include <unistd.h>
 #include <inttypes.h>
 
+#include <jansson.h>
+
 
 /*! \brief Version of the API, to match the one plugins were compiled against
  * 
@@ -361,6 +363,12 @@ struct janus_callbacks {
 	 * callback on this plugin when done
 	 * @param[in] handle The plugin/gateway session to get rid of */
 	void (* const end_session)(janus_plugin_session *handle);
+
+	/*! \brief Callback to notify an event to the registered and subscribed event handlers
+	 * \note Don't unref the event object, the core will do that for you
+	 * @param[in] handle The plugin/gateway session originating the event
+	 * @param[in] event The event to notify as a Jansson json_t object */
+	void (* const notify_event)(janus_plugin_session *handle, json_t *event);
 
 };
 

@@ -70,6 +70,12 @@ AC_ARG_ENABLE([unix-sockets],
               [],
               [enable_pfunix=yes])
 
+AC_ARG_ENABLE([sample-event-handler],
+              [AS_HELP_STRING([--disable-sample-event-handler],
+                              [Disable sample event handler (HTTP POST) ])],
+              [],
+              [enable_sampleevh=yes])
+
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
                               [Use BoringSSL instead of OpenSSL])],
@@ -157,12 +163,18 @@ PKG_CHECK_MODULES([LIBCURL],
                       [
                         enable_turn_rest_api=no
                       ])
+                      AS_IF([test "x$enable_sampleevh" = "xyes"],
+                      [
+                         AC_DEFINE(HAVE_SAMPLEEVH)
+                      ])
                   ],
                   [
-                    AC_MSG_NOTICE(libcurl not found. The TURN REST API client will not be built.)
+                    AC_MSG_NOTICE(libcurl not found. The TURN REST API client and the sample event handler plugin will not be built.)
                     enable_turn_rest_api=no
+                    enable_sampleevh=no
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
+AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sampleevh" = "xyes"])
 
 AC_CHECK_PROG([DOXYGEN],
               [doxygen],
@@ -355,6 +367,18 @@ AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 
+
+##
+# Event handlers
+##
+
+PKG_CHECK_MODULES([EVENTS],
+                  [
+                    glib-2.0 >= $glib_version
+                    jansson
+                  ])
+
+
 ##
 # Post-processing
 ##
@@ -451,6 +475,10 @@ AM_COND_IF([ENABLE_PLUGIN_VOICEMAIL],
 AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 	[echo "    Record&Play:           yes"],
 	[echo "    Record&Play:           no"])
+echo "Event handlers:"
+AM_COND_IF([ENABLE_SAMPLEEVH],
+	[echo "    Sample event handler:  yes"],
+	[echo "    Sample event handler:  no"])
 
 echo
 echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."

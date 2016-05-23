@@ -31,6 +31,7 @@
 #include "rtp.h"
 #include "rtcp.h"
 #include "apierror.h"
+#include "events.h"
 
 /* STUN server/port, if any */
 static char *janus_stun_server = NULL;
@@ -430,8 +431,7 @@ static gpointer janus_ice_handles_watchdog(gpointer user_data) {
 }
 
 
-void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up);
-void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
+static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
 	if(handle == NULL)
 		return;
 	/* Prepare JSON event to notify user/application */
@@ -449,6 +449,11 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
+	/* Notify event handlers as well */
+	json_t *info = json_object();
+	json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
+	json_object_set_new(info, "receiving", json_string(up ? "true" : "false"));
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, info);
 }
 
 void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
@@ -468,6 +473,10 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
+	/* Notify event handlers as well */
+	json_t *info = json_object();
+	json_object_set_new(info, "connection", json_string("hangup"));
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
 }
 
 
@@ -955,6 +964,8 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	g_hash_table_remove(old_plugin_sessions, session_handle);
 	janus_mutex_unlock(&old_plugin_sessions_mutex);
 	janus_mutex_unlock(&session->mutex);
+	/* Notify event handlers */
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "attached");
 	return 0;
 }
 
@@ -1007,6 +1018,8 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_mutex_lock(&old_handles_mutex);
 	g_hash_table_insert(old_handles, GUINT_TO_POINTER(handle_id), handle);
 	janus_mutex_unlock(&old_handles_mutex);
+	/* Notify event handlers as well */
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "detached");
 	return error;
 }
 
@@ -1324,6 +1337,14 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		return;
 	}
 	component->state = state;
+	/* Notify event handlers */
+	janus_session *session = (janus_session *)handle->session;
+	json_t *info = json_object();
+	json_object_set_new(info, "ice", json_string(janus_get_ice_state_name(state)));
+	json_object_set_new(info, "stream_id", json_integer(stream_id));
+	json_object_set_new(info, "component_id", json_integer(component_id));
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+	/* Handle new state */
 	if((state == NICE_COMPONENT_STATE_CONNECTED || state == NICE_COMPONENT_STATE_READY)
 			&& handle->send_thread == NULL) {
 		/* Make sure we're not trying to start the thread more than once */
@@ -1447,6 +1468,13 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 		raddress, rport, rtype, remote->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp");
 #endif
 	component->selected_pair = g_strdup(sp);
+	/* Notify event handlers */
+	janus_session *session = (janus_session *)handle->session;
+	json_t *info = json_object();
+	json_object_set_new(info, "selected-pair", json_string(sp));
+	json_object_set_new(info, "stream_id", json_integer(stream_id));
+	json_object_set_new(info, "component_id", json_integer(component_id));
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
 	/* Now we can start the DTLS handshake (FIXME This was on the 'connected' state notification, before) */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Component is ready enough, starting DTLS handshake...\n", handle->handle_id);
 	/* Have we been here before? (might happen, when trickling) */
@@ -3577,4 +3605,8 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
+	/* Notify event handlers as well */
+	json_t *info = json_object();
+	json_object_set_new(info, "connection", json_string("webrtcup"));
+	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
 }

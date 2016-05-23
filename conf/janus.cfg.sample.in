@@ -160,3 +160,11 @@ ice_ignore_list = vmnet
 ; transports are enabled and loaded at startup.
 [transports]
 ; disable = libjanus_rabbitmq.so
+
+; You can choose which of the available event handlers should be loaded or
+; not. Use the 'disable' directive to prevent Janus from loading one
+; or more event handlers: use a comma separated list of file names
+; to identify the event handlers to disable. By default all available
+; event handlers are enabled and loaded at startup.
+[events]
+; disable = libjanus_sampleevh.so
