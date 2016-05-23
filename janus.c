@@ -3365,7 +3365,7 @@ gint main(int argc, char *argv[])
 	char *stun_server = NULL, *turn_server = NULL;
 	uint16_t stun_port = 0, turn_port = 0;
 	char *turn_type = NULL, *turn_user = NULL, *turn_pwd = NULL;
-	char *turn_rest_api = NULL, *turn_rest_api_key = NULL;
+	char *turn_rest_api = NULL, *turn_rest_api_key = NULL, *turn_rest_api_method = NULL;
 	const char *nat_1_1_mapping = NULL;
 	uint16_t rtp_min_port = 0, rtp_max_port = 0;
 	gboolean ice_lite = FALSE, ice_tcp = FALSE, ipv6 = FALSE;
@@ -3436,6 +3436,9 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "turn_rest_api_key");
 	if(item && item->value)
 		turn_rest_api_key = (char *)item->value;
+	item = janus_config_get_item_drilldown(config, "nat", "turn_rest_api_method");
+	if(item && item->value)
+		turn_rest_api_method = (char *)item->value;
 	/* Initialize the ICE stack now */
 	janus_ice_init(ice_lite, ice_tcp, ipv6, rtp_min_port, rtp_max_port);
 	if(janus_ice_set_stun_server(stun_server, stun_port) < 0) {
@@ -3451,8 +3454,8 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_WARN, "A TURN REST API backend specified in the settings, but libcurl support has not been built\n");
 	}
 #else
-	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key) < 0) {
-		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s)\n", turn_rest_api, turn_rest_api_key);
+	if(janus_ice_set_turn_rest_api(turn_rest_api, turn_rest_api_key, turn_rest_api_method) < 0) {
+		JANUS_LOG(LOG_FATAL, "Invalid TURN REST API configuration: %s (%s, %s)\n", turn_rest_api, turn_rest_api_key, turn_rest_api_method);
 		exit(1);
 	}
 #endif

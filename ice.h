@@ -54,8 +54,9 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
  * @note Requires libcurl to be available, and a working TURN REST API backend (see turnrest.h)
  * @param[in] api_server TURN REST API backend (NULL to disable the API)
  * @param[in] api_key API key to use, if required
+ * @param[in] api_method HTTP method to use (POST by default)
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key);
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);

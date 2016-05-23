@@ -29,6 +29,7 @@
 
 static const char *api_server = NULL;
 static const char *api_key = NULL;
+static gboolean api_http_get = FALSE;
 static janus_mutex api_mutex;
 
 
@@ -39,7 +40,6 @@ typedef struct janus_turnrest_buffer {
 } janus_turnrest_buffer;
  
 /* Callback we use to progressively receive the whole response via libcurl in the buffer */
-static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, void *data);
 static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, void *data) {
 	size_t realsize = size * nmemb;
 	janus_turnrest_buffer *buf = (struct janus_turnrest_buffer *)data;
@@ -76,7 +76,7 @@ void janus_turnrest_deinit(void) {
 	janus_mutex_unlock(&api_mutex);
 }
 
-void janus_turnrest_set_backend(const char *server, const char *key) {
+void janus_turnrest_set_backend(const char *server, const char *key, const char *method) {
 	janus_mutex_lock(&api_mutex);
 	
 	/* Get rid of the old values first */
@@ -92,6 +92,16 @@ void janus_turnrest_set_backend(const char *server, const char *key) {
 		api_server = g_strdup(server);
 		if(key != NULL)
 			api_key = g_strdup(key);
+		if(method != NULL) {
+			if(!strcasecmp(method, "get")) {
+				api_http_get = TRUE;
+			} else if(!strcasecmp(method, "post")) {
+				api_http_get = FALSE;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unknown method '%s' for TURN REST API, assuming POST\n", method);
+				api_http_get = FALSE;
+			}
+		}
 	}
 	janus_mutex_unlock(&api_mutex);
 }
@@ -100,8 +110,7 @@ const char *janus_turnrest_get_backend(void) {
 	return api_server;
 }
 
-void janus_turnrest_instance_destroy(gpointer data);
-void janus_turnrest_instance_destroy(gpointer data) {
+static void janus_turnrest_instance_destroy(gpointer data) {
 	janus_turnrest_instance *instance = (janus_turnrest_instance *)data;
 	if(instance == NULL)
 		return;
@@ -143,9 +152,11 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		return NULL;
 	}
 	curl_easy_setopt(curl, CURLOPT_URL, request_uri);
-	curl_easy_setopt(curl, CURLOPT_POST, 1);
-	/* FIXME Some servers don't like a POST with no data */
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
+	curl_easy_setopt(curl, api_http_get ? CURLOPT_HTTPGET : CURLOPT_POST, 1);
+	if(!api_http_get) {
+		/* FIXME Some servers don't like a POST with no data */
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
+	}
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);	/* FIXME Max 10 seconds */
 	/* For getting data, we use an helper struct and the libcurl callback */
 	janus_turnrest_buffer data;

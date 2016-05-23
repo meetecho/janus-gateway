@@ -106,10 +106,12 @@ nice_debug = false
 ; TURN services dynamically. This makes use of the proposed standard of
 ; such an API (https://tools.ietf.org/html/draft-uberti-behave-turn-rest-00)
 ; which is currently available in both rfc5766-turn-server and coturn.
-; You enable this by specifying the address of your TURN REST API backend
-; and, if required, the API key Janus must provide.
+; You enable this by specifying the address of your TURN REST API backend,
+; the HTTP method to use (GET or POST) and, if required, the API key Janus
+; must provide.
 ;turn_rest_api = http://yourbackend.com/path/to/api
 ;turn_rest_api_key = anyapikeyyoumayhaveset
+;turn_rest_api_method = GET
 
 ; You can also choose which interfaces should be explicitly used by the
 ; gateway for the purpose of ICE candidates gathering, thus excluding
