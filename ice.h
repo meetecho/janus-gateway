@@ -329,6 +329,10 @@ struct janus_ice_stream {
 	guint32 video_ssrc_peer;
 	/*! \brief Video retransmissions SSRC of the peer for this stream (may be bundled) */
 	guint32 video_ssrc_peer_rtx;
+	/*! \brief List of payload types we can expect for audio */
+	GList *audio_payload_types;
+	/*! \brief List of payload types we can expect for video */
+	GList *video_payload_types;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
 	/*! \brief RTCP context for the audio stream (may be bundled) */
