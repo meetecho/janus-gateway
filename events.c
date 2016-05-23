@@ -101,9 +101,10 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 	json_incref(event);
 	while(g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_eventhandler *e = value;
-		if(e == NULL) {
+		if(e == NULL)
 			continue;
-		}
+		if(!janus_flags_is_set(&e->events_mask, type))
+			continue;
 		e->incoming_event(event);
 	}
 	json_decref(event);
