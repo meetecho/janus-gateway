@@ -283,6 +283,7 @@ typedef struct janus_sip_account {
 	char *identity;
 	gboolean sips;
 	char *username;
+	char *display_name;		/* Used for outgoing calls in the From header */
 	char *authuser;			/**< username to use for authentication */
 	char *secret;
 	janus_sip_secret_type secret_type;
@@ -584,6 +585,10 @@ void *janus_sip_watchdog(void *data) {
 					    g_free(session->account.username);
 					    session->account.username = NULL;
 					}
+					if (session->account.display_name) {
+					    g_free(session->account.display_name);
+					    session->account.display_name = NULL;
+					}
 					if (session->account.authuser) {
 					    g_free(session->account.authuser);
 					    session->account.authuser = NULL;
@@ -831,6 +836,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.identity = NULL;
 	session->account.sips = TRUE;
 	session->account.username = NULL;
+	session->account.display_name = NULL;
 	session->account.authuser = NULL;
 	session->account.secret = NULL;
 	session->account.secret_type = janus_sip_secret_type_unknown;
@@ -921,6 +927,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
+	json_object_set_new(info, "display_name", session->account.display_name ? json_string(session->account.display_name) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
 	json_object_set_new(info, "registration_status", json_string(janus_sip_registration_status_string(session->account.registration_status)));
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
@@ -1265,6 +1272,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.username != NULL)
 				g_free(session->account.username);
 			session->account.username = NULL;
+			if(session->account.display_name != NULL)
+				g_free(session->account.display_name);
+			session->account.display_name = NULL;
 			if(session->account.authuser != NULL)
 				g_free(session->account.authuser);
 			session->account.authuser = NULL;
@@ -1341,6 +1351,12 @@ static void *janus_sip_handler(void *data) {
 			if (ttl <= 0)
 				ttl = JANUS_DEFAULT_REGISTER_TTL;
 
+			/* Parse display name */
+			const char* display_name_text = NULL;
+			json_t *display_name = json_object_get(root, "display_name");
+			if (display_name && json_is_string(display_name))
+				display_name_text = json_string_value(display_name);
+
 			/* Now the user part, if needed */
 			json_t *username = json_object_get(root, "username");
 			if(!guest && !username) {
@@ -1411,6 +1427,9 @@ static void *janus_sip_handler(void *data) {
 			session->account.identity = g_strdup(username_text);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
+			if (display_name_text) {
+				session->account.display_name = g_strdup(display_name_text);
+			}
 			if (proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
 			}
@@ -1598,6 +1617,13 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
+			/* Prepare the From header */
+			char from_hdr[1024];
+			if (session->account.display_name) {
+				g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
+			} else {
+				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
+			}
 			/* Prepare the stack */
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
@@ -1614,7 +1640,7 @@ static void *janus_sip_handler(void *data) {
 			session->status = janus_sip_call_status_inviting;
 			/* Send INVITE */
 			nua_invite(session->stack->s_nh_i,
-				SIPTAG_FROM_STR(session->account.identity),
+				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->account.proxy),
