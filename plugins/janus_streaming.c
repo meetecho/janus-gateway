@@ -240,7 +240,7 @@ static struct janus_json_parameter rtsp_parameters[] = {
 static struct janus_json_parameter rtp_audio_parameters[] = {
 	{"audiomcast", JSON_STRING, 0},
 	{"audioport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"audioopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"audiopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"audiortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audiofmtp", JSON_STRING, 0}
 };
