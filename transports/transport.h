@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief  Modular Janus API transports
  * \details  This header contains the definition of the callbacks both
- * the gateway and all the transports need too implement to interact with
+ * the gateway and all the transports need to implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
  * 

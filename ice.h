@@ -22,6 +22,7 @@
 
 #include "dtls.h"
 #include "sctp.h"
+#include "rtcp.h"
 #include "utils.h"
 #include "plugins/plugin.h"
 
@@ -53,8 +54,9 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
  * @note Requires libcurl to be available, and a working TURN REST API backend (see turnrest.h)
  * @param[in] api_server TURN REST API backend (NULL to disable the API)
  * @param[in] api_key API key to use, if required
+ * @param[in] api_method HTTP method to use (POST by default)
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key);
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);
@@ -329,6 +331,14 @@ struct janus_ice_stream {
 	guint32 video_ssrc_peer_rtx;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
+	/*! \brief RTCP context for the audio stream (may be bundled) */
+	rtcp_context *audio_rtcp_ctx;
+	/*! \brief RTCP context for the video stream (may be bundled) */
+	rtcp_context *video_rtcp_ctx;
+	/*! \brief Last sent audio RTP timestamp */
+	guint32 audio_last_ts;
+	/*! \brief Last sent video RTP timestamp */
+	guint32 video_last_ts;
 	/*! \brief DTLS role of the gateway for this stream */
 	janus_dtls_role dtls_role;
 	/*! \brief Hashing algorhitm used by the peer for the DTLS certificate (e.g., "SHA-256") */

@@ -122,6 +122,13 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								mediaState: function(medium, on) {
+									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+									$("#videoleft").parent().unblock();
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
 									Janus.debug(JSON.stringify(msg));
@@ -244,6 +251,14 @@ $(document).ready(function() {
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
 									attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
+									$("#videoleft").parent().block({
+										message: '<b>Publishing...</b>',
+										css: {
+											border: 'none',
+											backgroundColor: 'transparent',
+											color: 'white'
+										}
+									});
 									// No remote video yet
 									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
 									if(spinner == null) {
@@ -358,6 +373,7 @@ $(document).ready(function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#myvideo').remove();
 									$('#remotevideo').remove();
+									$("#videoleft").parent().unblock();
 									$('#callee').empty().hide();
 									yourusername = null;
 									$('#curbitrate').hide();

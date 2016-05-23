@@ -12,55 +12,24 @@
 <script type="text/javascript" src="js/spin.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="videoroomtest.js"></script>
+<script>
+	$(function() {
+		$(".navbar-static-top").load("navbar.html", function() {
+			$(".navbar-static-top li.dropdown").addClass("active");
+			$(".navbar-static-top a[href='videoroomtest.html']").parent().addClass("active");
+		});
+		$(".footer").load("footer.html");
+	});
+</script>
 <link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
-<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css"/>
+<link rel="stylesheet" href="css/font-awesome.css"/>
 </head>
 <body>
 
 <a href="https://github.com/meetecho/janus-gateway"><img style="position: absolute; top: 0; left: 0; border: 0; z-index: 1001;" src="https://s3.amazonaws.com/github/ribbons/forkme_left_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
 <nav class="navbar navbar-default navbar-static-top">
-<div class="container">
-	<div class="navbar-header">
-		<a class="navbar-brand" href="index.html">Janus</a>
-		<button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
-			<span class="icon-bar"></span>
-			<span class="icon-bar"></span>
-			<span class="icon-bar"></span>
-		</button>
-	</div>
-	<div class="navbar-collapse collapse">
-		<ul class="nav navbar-nav">
-			<li><a href="index.html">Home</a></li>
-			<li class="dropdown active"><a href="#" class="dropdown-toggle" data-toggle="dropdown">Demos <b class="caret"></b></a>
-				<ul class="dropdown-menu">
-					<li><a href="demos.html">Index</a></li>
-					<li class="divider"></li>
-					<li><a href="echotest.html">Echo Test</a></li>
-					<li><a href="streamingtest.html">Streaming</a></li>
-					<li><a href="videocalltest.html">Video Call</a></li>
-					<li><a href="siptest.html">SIP Gateway</a></li>
-					<li class="active"><a href="videoroomtest.html">Video Room</a></li>
-					<li><a href="audiobridgetest.html">Audio Room</a></li>
-					<li><a href="voicemailtest.html">Voice Mail</a></li>
-					<li><a href="recordplaytest.html">Recorder/Playout</a></li>
-					<li><a href="screensharingtest.html">Screen Sharing</a></li>
-					<li class="divider"></li>
-					<li><a href="admin.html">Admin/Monitor</a></li>
-				</ul>
-			</li>
-			<li><a href="docs">Documentation</a></li>
-			<li><a href="citeus.html">Cite us!</a></li>
-		</ul>
-		<div class="navbar-header navbar-right">
-			<ul class="nav navbar-nav">
-				<li><a href="http://groups.google.com/d/forum/meetecho-janus" class="navbar-link"><b>Discuss Janus</b></a></li>
-				<li><a href="http://www.meetecho.com" class="navbar-link"><img src="meetecho-logo-white.png"/> <b>Meetecho</b></a></li>
-			</ul>
-		</div>
-	</div>
-</div>
 </nav>
 
 <div class="container">
@@ -165,7 +134,6 @@
 
 	<hr>
 	<div class="footer">
-	<p>Janus WebRTC Gateway &copy; <a href="http://www.meetecho.com">Meetecho</a> 2015</p>
 	</div>
 </div>
 

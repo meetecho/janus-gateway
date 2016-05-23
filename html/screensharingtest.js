@@ -56,6 +56,7 @@ var started = false;
 var myusername = null;
 var myid = null;
 
+var capture = null;
 var role = null;
 var room = null;
 var source = null;
@@ -105,7 +106,7 @@ $(document).ready(function() {
 									// Prepare the username registration
 									$('#screenmenu').removeClass('hide').show();
 									$('#createnow').removeClass('hide').show();
-									$('#create').click(shareScreen);
+									$('#create').click(preShareScreen);
 									$('#joinnow').removeClass('hide').show();
 									$('#join').click(joinScreen);
 									$('#desc').focus();
@@ -136,6 +137,11 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+									$("#screencapture").parent().unblock();
+									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
 									Janus.debug(JSON.stringify(msg));
@@ -149,10 +155,10 @@ $(document).ready(function() {
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											if(role === "publisher") {
 												// This is our session, publish our stream
-												Janus.debug("Negotiating WebRTC stream for our screen");
+												Janus.debug("Negotiating WebRTC stream for our screen (capture " + capture + ")");
 												screentest.createOffer(
 													{
-														media: { video: "screen", audio: false, videoRecv: false},	// Screen sharing doesn't work with audio, and Publishers are sendonly
+														media: { video: capture, audio: false, videoRecv: false},	// Screen sharing doesn't work with audio, and Publishers are sendonly
 														success: function(jsep) {
 															Janus.debug("Got publisher SDP!");
 															Janus.debug(jsep);
@@ -219,7 +225,14 @@ $(document).ready(function() {
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 									}
 									attachMediaStream($('#screenvideo').get(0), stream);
-									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+									$("#screencapture").parent().block({
+										message: '<b>Publishing...</b>',
+										css: {
+											border: 'none',
+											backgroundColor: 'transparent',
+											color: 'white'
+										}
+									});
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -227,6 +240,7 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#screencapture').empty();
+									$("#screencapture").parent().unblock();
 									$('#room').hide();
 								}
 							});
@@ -248,7 +262,7 @@ $(document).ready(function() {
 function checkEnterShare(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
-		shareScreen();
+		preShareScreen();
 		return false;
 	} else {
 		return true;
@@ -260,7 +274,7 @@ function switchToHttps() {
 	return false;
 }
 
-function shareScreen() {
+function preShareScreen() {
 	// Make sure HTTPS is being used
 	if(window.location.protocol !== 'https:') {
 		bootbox.alert('Sharing your screen only works on HTTPS: click <b><a href="#" onclick="return switchToHttps();">here</a></b> to try the https:// version of this page');
@@ -278,15 +292,53 @@ function shareScreen() {
 	$('#create').attr('disabled', true).unbind('click');
 	$('#roomid').attr('disabled', true);
 	$('#join').attr('disabled', true).unbind('click');
-	var desc = $('#desc').val();
-	if(desc === "") {
+	if($('#desc').val() === "") {
 		bootbox.alert("Please insert a description for the room");
 		$('#desc').removeAttr('disabled', true);
-		$('#create').removeAttr('disabled', true).click(shareScreen);
+		$('#create').removeAttr('disabled', true).click(preShareScreen);
 		$('#roomid').removeAttr('disabled', true);
 		$('#join').removeAttr('disabled', true).click(joinScreen);
 		return;
 	}
+	capture = "screen";
+	if(navigator.mozGetUserMedia) {
+		// Firefox needs a different constraint for screen and window sharing
+		bootbox.dialog({
+			title: "Share whole screen or a window?",
+			message: "Firefox handles screensharing in a different way: are you going to share the whole screen, or would you rather pick a single window/application to share instead?",
+			buttons: {
+				screen: {
+					label: "Share screen",
+					className: "btn-primary",
+					callback: function() {
+						capture = "screen";
+						shareScreen();
+					}
+				},
+				window: {
+					label: "Pick a window",
+					className: "btn-success",
+					callback: function() {
+						capture = "window";
+						shareScreen();
+					}
+				}
+			},
+			onEscape: function() {
+				$('#desc').removeAttr('disabled', true);
+				$('#create').removeAttr('disabled', true).click(preShareScreen);
+				$('#roomid').removeAttr('disabled', true);
+				$('#join').removeAttr('disabled', true).click(joinScreen);
+			}
+		});
+	} else {
+		shareScreen();
+	}
+}
+
+function shareScreen() {
+	// Create a new room
+	var desc = $('#desc').val();
 	role = "publisher";
 	var create = { "request": "create", "description": desc, "bitrate": 0, "publishers": 1 };
 	screentest.send({"message": create, success: function(result) {
@@ -323,7 +375,7 @@ function joinScreen() {
 	if(isNaN(roomid)) {
 		bootbox.alert("Session identifiers are numeric only");
 		$('#desc').removeAttr('disabled', true);
-		$('#create').removeAttr('disabled', true).click(shareScreen);
+		$('#create').removeAttr('disabled', true).click(preShareScreen);
 		$('#roomid').removeAttr('disabled', true);
 		$('#join').removeAttr('disabled', true).click(joinScreen);
 		return;

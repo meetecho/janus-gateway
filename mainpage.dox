@@ -36,11 +36,12 @@
  * reference should you be interested in writing a new plugin from
  * scratch (and you're definitely welcome to!). A \ref pluginapi to
  * create new plugins, or understand how they're conceived, is documented
- * as well. A documentation on the available HTTP/WebSocket/RabbitMQ 
- * tranports and the HTTP/WebSocket JavaScript API to use the
- * gateway and the plugins it makes available in your web application
- * can be found in the \ref JS and \ref rest pages. If you're interested
- * in monitoring Janus resources, you can refer to the \ref admin page.
+ * as well. A documentation on the available API tranports and the
+ * HTTP/WebSocket JavaScript API to use the gateway and the plugins it
+ * makes available in your web application can be found in the \ref JS
+ * and \ref rest pages. New API transports can be created referring to
+ * the \transportapi page. If you're interested in monitoring Janus
+ * resources, you can refer to the \ref admin page.
  *
  * Finally, some information on how to deploy Janus and your web
  * applications that want to make use of it are provided in the \ref deploy
@@ -60,7 +61,7 @@
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Gateway © 2014 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -97,10 +98,10 @@
 
 /*! \page JS JavaScript API
  * The gateway exposes, assuming the HTTP transport has been compiled, a
- * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ interfaces
+ * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ/UnixSockets interfaces
  * as well, all of which based on JSON messages. These
  * interfaces are described in more detail in the \ref plainhttp \ref WS
- * and \ref rabbit documentation respectively, and all allow clients to
+ * \ref rabbit and \ref unix documentation respectively, and all allow clients to
  * take advantage of the features provided by Janus and the functionality
  * made available by its plugins. Considering most clients will be web browsers,
  * a common choice will be to rely on either the REST or the WebSockets
@@ -271,6 +272,12 @@ var janus = new Janus(
  * 		- \c consentDialog: this callback is triggered just before \c getUserMedia is called
  * (parameter=<b>true</b>) and after it is completed (parameter=<b>false</b>); this means it can
  * be used to modify the UI accordingly, e.g., to prompt the user about the need to accept the device access consent requests;
+ * 		- \c webrtcState: this callback is triggered with a <b>true</b> value
+ * when the PeerConnection associated to a handle becomes active (so ICE, DTLS and
+ * everything else succeeded) from the Janus perspective, while <b>false</b> is
+ * triggered when the PeerConnection goes down instead; useful to figure out
+ * when WebRTC is actually up and running between you and Janus (e.g., to notify
+ * a user they're actually now active in a conference);
  * 		- \c mediaState: this callback is triggered when Janus starts or stops
  * receiving your media: for instance, a \c mediaState with type=<b>audio</b> and
  * on=<b>true</b> means Janus started receiving your audio stream (or started
@@ -528,14 +535,14 @@ janus.attach(
  *
  */
 
-/*! \page rest RESTful, WebSockets and RabbitMQ API
+/*! \page rest RESTful, WebSockets, RabbitMQ and UnixSockets API
  *
  * Since version \c 0.0.6, there are three different ways to interact with a
- * Janus instance: a \ref plainhttp (the default), a \ref WS and a \ref rabbit
+ * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit and a \ref unix
  * (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
  * and notifications), so almost all the concepts described in the
- * \ref plainhttp section apply to the WebSocket/RabbitMQ interfaces as well.
+ * \ref plainhttp section apply to the WebSocket/RabbitMQ/UnixSockets interfaces as well.
  * Besides, since version \c 0.1.0 the transport mechanism for the Janus API
  * has been made modular, which means other protocols for transporting
  * Janus API messages might become available in the future: considering the
@@ -543,10 +550,10 @@ janus.attach(
  * transported on, the concepts explained in the following sections should
  * apply to those as well.
  *
- * As it will be explained later in the \ref WS and \ref rabbit sections
+ * As it will be explained later in the \ref WS, \ref rabbit and \ref unix sections
  * below, the only differences come when addressing specific sessions/handles
  * and in part in how you handle notifications using something different than
- * the REST interface: in fact, since with WebSockets and RabbitMQ (and, as
+ * the REST interface: in fact, since with WebSockets, RabbitMQ and UnixSockets (and, as
  * anticipated, with other protocols that may be added in the future too)
  * there's no REST-based path involved, you'll need a couple of additional
  * identifiers to bridge the gap.
@@ -1058,7 +1065,7 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * As anticipated in the previous sections, Janus can send events and
  * notifications at any time through the long poll channel (or, as it
  * will be explained later, through the related push mechanisms made
- * available by the \ref WS and \ref rabbit ). While this channel is
+ * available by the \ref WS, \ref rabbit and \ref unix ). While this channel is
  * mostly used to convey asynchronous notifications originated by
  * plugins as part of the messaging they may have with the application
  * using it, the same channel is actually used by Janus to trigger
@@ -1324,6 +1331,15 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * to match a notification to a request, if the involved plugin was
  * implemented to do so, by looking at the Janus-level \c transaction
  * identifier.
+ *
+ * \section unix UnixSockets interface
+ * The semantics of how the requests have to be built, when compared to
+ * the usage of plain HTTP, is exactly the same as for WebSockets and
+ * RabbitMQ, so refer to the \ref WS documentation for details about that.
+ *
+ * Apart from that, the only configuration needed is related to the path
+ * the client and server will be sharing, and the socket type. Notice that only the
+ * \c SOCK_SEQPACKET and \c SOCK_DGRAM types are supported in the plugin.
  *
  */
 
@@ -2314,6 +2330,12 @@ ldd janus | grep asan
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
  * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
+ * 		<td><a href="https://github.com/ndarilek/node-janus">node-janus</a></td>
+ *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway</td>
+ * </tr>
+ * <tr>
+ * 		<td>node-js</td>
  * 		<td><a href="https://github.com/DamonOehlman">Damon Oehlman</a></td>
  * 		<td><a href="https://github.com/rtc-io/rtc-janus">rtc-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway:
@@ -2398,7 +2420,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Gateway © 2014 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
@@ -2430,7 +2452,7 @@ ldd janus | grep asan
  * If you're interested in a commercial license (e.g., because GPLv3 is
  * not suited for what you need, you're interested in technical support
  * or want to sponsor the development of new features), feel free to
- * <a href="http://www.meetecho.com">contact us</a>.
+ * <a href="https://janus.conf.meetecho.com/support">contact us</a>.
  *
  *  \verbinclude COPYING
  */
@@ -2816,6 +2838,22 @@ ldd janus | grep asan
  * implement and make available in order to be used by the gateway and
  * exposed to browsers. 
  * \ingroup plugins
+ */
+
+/*! \defgroup transports Transports
+ * \brief Transport plugins available out of the box
+ * \details In order to showcase how different transport plugins can implement
+ * support for the Janus API over different transport protocols, a few
+ * plugin implementations are provided out of the box. The API for
+ * writing a new plugin is specified in the \ref transportapi section.
+ */
+
+/*! \defgroup transportapi Transport API
+ * \brief Transport API (aka, how to write your own transport plugin)
+ * \details The transport.h header specifies the API a plugin needs to
+ * implement and make available in order to expose a new transport protocol
+ * that can be used by the gateway for talking the Janus API.
+ * \ingroup transports
  */
 
 /*! \defgroup tools Tools and utilities
