@@ -1233,6 +1233,12 @@ int janus_process_incoming_request(janus_request *request) {
 				janus_plugin_result_destroy(result);
 				goto jsondone;
 			}
+			if(!json_is_object(result->content)) {
+				/* Not a JSON object */
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
+				janus_plugin_result_destroy(result);
+				goto jsondone;
+			}
 			/* Reference the content, as destroying the result instance will decref it */
 			json_incref(result->content);
 			/* Prepare JSON response */
