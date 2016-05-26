@@ -1227,15 +1227,12 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		if(result->type == JANUS_PLUGIN_OK) {
 			/* The plugin gave a result already (synchronous request/response) */
-			if(result->content == NULL) {
-				/* Missing content... */
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't provide any content for this synchronous response");
-				janus_plugin_result_destroy(result);
-				goto jsondone;
-			}
-			if(!json_is_object(result->content)) {
-				/* Not a JSON object */
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
+			if(result->content == NULL || !json_is_object(result->content)) {
+				/* Missing content, or not a JSON object */
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE,
+					result->content == NULL ?
+						"Plugin didn't provide any content for this synchronous response" :
+						"Plugin returned an invalid JSON response");
 				janus_plugin_result_destroy(result);
 				goto jsondone;
 			}
