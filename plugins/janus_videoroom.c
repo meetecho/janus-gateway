@@ -3159,6 +3159,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Error subscribing!");
 					goto error;
 				}
+				janus_videoroom_message_free(msg);
 				continue;
 			} else if(!strcasecmp(request_text, "remove")) {
 				/* Remove subscribed streams */
@@ -3199,6 +3200,7 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Error unsubscribing!");
 					goto error;
 				}
+				janus_videoroom_message_free(msg);
 				continue;
 			} else if(!strcasecmp(request_text, "start")) {
 				/* Start/restart receiving the publishers streams */
