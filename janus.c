@@ -39,8 +39,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			10
-#define JANUS_VERSION_STRING	"0.1.0"
+#define JANUS_VERSION			20
+#define JANUS_VERSION_STRING	"0.2.0"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -291,7 +291,7 @@ void janus_transport_task(gpointer data, gpointer user_data);
  * gateway is handled here.
  */
 ///@{
-int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
+int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp);
 void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
@@ -1215,9 +1215,11 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 
-		/* Send the message to the plugin (which must eventually free transaction_text, body_text, jsep_type and sdp) */
-		char *body_text = json_dumps(body, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle, g_strdup((char *)transaction_text), body_text, jsep_type, jsep_sdp_stripped);
+		/* Send the message to the plugin (which must eventually free transaction_text and unref the two objects, body and jsep) */
+		json_incref(body);
+		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
+			g_strdup((char *)transaction_text), body,
+			jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL);
 		if(result == NULL) {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
@@ -1231,21 +1233,8 @@ int janus_process_incoming_request(janus_request *request) {
 				janus_plugin_result_destroy(result);
 				goto jsondone;
 			}
-			json_error_t error;
-			json_t *event = json_loads(result->content, 0, &error);
-			if(!event) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: on line %d: %s)\n", handle->handle_id, error.line, error.text);
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
-				janus_plugin_result_destroy(result);
-				goto jsondone;
-			}
-			if(!json_is_object(event)) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: not an object)\n", handle->handle_id);
-				json_decref(event);
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
-				janus_plugin_result_destroy(result);
-				goto jsondone;
-			}
+			/* Reference the content, as destroying the result instance will decref it */
+			json_incref(result->content);
 			/* Prepare JSON response */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
@@ -1254,7 +1243,7 @@ int janus_process_incoming_request(janus_request *request) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
-			json_object_set_new(plugin_data, "data", event);
+			json_object_set_new(plugin_data, "data", result->content);
 			json_object_set_new(reply, "plugindata", plugin_data);
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1263,14 +1252,15 @@ int janus_process_incoming_request(janus_request *request) {
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("ack"));
 			json_object_set_new(reply, "session_id", json_integer(session_id));
-			if(result->content)
-				json_object_set_new(reply, "hint", json_string(result->content));
+			if(result->text)
+				json_object_set_new(reply, "hint", json_string(result->text));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 		} else {
 			/* Something went horribly wrong! */
-			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", result->content ? g_strdup(result->content) : "Plugin returned a severe (unknown) error");
+			const char *error_text = result->text ? result->text : "Plugin returned a severe (unknown) error";
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", error_text);
 			janus_plugin_result_destroy(result);
 			goto jsondone;
 		}			
@@ -2067,17 +2057,15 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "plugin", json_string(plugin->get_package()));
 			if(plugin->query_session) {
 				/* FIXME This check will NOT work with legacy plugins that were compiled BEFORE the method was specified in plugin.h */
-				char *query = plugin->query_session(handle->app_handle);
+				json_t *query = plugin->query_session(handle->app_handle);
 				if(query != NULL) {
-					/* Make sure this is JSON */
-					json_error_t error;
-					json_t *query_info = json_loads(query, 0, &error);
-					if(!query_info || !json_is_object(query_info)) {
-						JANUS_LOG(LOG_WARN, "Ignoring invalid query response from the plugin\n");
+					/* Make sure this is a JSON object */
+					if(!json_is_object(query)) {
+						JANUS_LOG(LOG_WARN, "Ignoring invalid query response from the plugin (not an object)\n");
+						json_decref(query);
 					} else {
-						json_object_set_new(info, "plugin_specific", query_info);
+						json_object_set_new(info, "plugin_specific", query);
 					}
-					g_free(query);
 					query = NULL;
 				}
 			}
@@ -2467,7 +2455,7 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
+int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep) {
 	if(!plugin || !message)
 		return -1;
 	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
@@ -2479,22 +2467,18 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	janus_session *session = ice_handle->session;
 	if(!session || session->destroy)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
-	/* Make sure this is JSON */
-	json_error_t error;
-	json_t *plugin_event = json_loads(message, 0, &error);
-	if(!plugin_event) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: on line %d: %s)\n", ice_handle->handle_id, error.line, error.text);
-		return JANUS_ERROR_INVALID_JSON;
-	}
-	if(!json_is_object(plugin_event)) {
+	/* Make sure this is a JSON object */
+	if(!json_is_object(message)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: not an object)\n", ice_handle->handle_id);
 		return JANUS_ERROR_INVALID_JSON_OBJECT;
 	}
 	/* Attach JSEP if possible? */
-	json_t *jsep = NULL;
+	const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
+	const char *sdp = json_string_value(json_object_get(jsep, "sdp"));
+	json_t *merged_jsep = NULL;
 	if(sdp_type != NULL && sdp != NULL) {
-		jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp);
-		if(jsep == NULL) {
+		merged_jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp);
+		if(merged_jsep == NULL) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (handle not available anymore or negotiation stopped)\n", ice_handle->handle_id);
@@ -2505,6 +2489,8 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 			}
 		}
 	}
+	/* Reference the payload, as the plugin may still need it and will do a decref itself */
+	json_incref(message);
 	/* Prepare JSON event */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("event"));
@@ -2514,14 +2500,14 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 		json_object_set_new(event, "transaction", json_string(transaction));
 	json_t *plugin_data = json_object();
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
-	json_object_set_new(plugin_data, "data", plugin_event);
+	json_object_set_new(plugin_data, "data", message);
 	json_object_set_new(event, "plugindata", plugin_data);
-	if(jsep != NULL)
-		json_object_set_new(event, "jsep", jsep);
+	if(merged_jsep != NULL)
+		json_object_set_new(event, "jsep", merged_jsep);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
-	
+
 	return JANUS_OK;
 }
 

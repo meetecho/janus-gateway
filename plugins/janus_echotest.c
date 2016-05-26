@@ -116,7 +116,7 @@ const char *janus_echotest_get_name(void);
 const char *janus_echotest_get_author(void);
 const char *janus_echotest_get_package(void);
 void janus_echotest_create_session(janus_plugin_session *handle, int *error);
-struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_echotest_setup_media(janus_plugin_session *handle);
 void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
@@ -124,7 +124,7 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int video);
 void janus_echotest_hangup_media(janus_plugin_session *handle);
 void janus_echotest_destroy_session(janus_plugin_session *handle, int *error);
-char *janus_echotest_query_session(janus_plugin_session *handle);
+json_t *janus_echotest_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_echotest_plugin =
@@ -169,9 +169,8 @@ static void *janus_echotest_handler(void *data);
 typedef struct janus_echotest_message {
 	janus_plugin_session *handle;
 	char *transaction;
-	char *message;
-	char *sdp_type;
-	char *sdp;
+	json_t *message;
+	json_t *jsep;
 } janus_echotest_message;
 static GAsyncQueue *messages = NULL;
 static janus_echotest_message exit_message;
@@ -201,12 +200,12 @@ static void janus_echotest_message_free(janus_echotest_message *msg) {
 
 	g_free(msg->transaction);
 	msg->transaction = NULL;
-	g_free(msg->message);
+	if(msg->message)
+		json_decref(msg->message);
 	msg->message = NULL;
-	g_free(msg->sdp_type);
-	msg->sdp_type = NULL;
-	g_free(msg->sdp);
-	msg->sdp = NULL;
+	if(msg->jsep)
+		json_decref(msg->jsep);
+	msg->jsep = NULL;
 
 	g_free(msg);
 }
@@ -369,11 +368,6 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}	
 	janus_echotest_session *session = (janus_echotest_session *)g_malloc0(sizeof(janus_echotest_session));
-	if(session == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		*error = -2;
-		return;
-	}
 	session->handle = handle;
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -413,7 +407,7 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
-char *janus_echotest_query_session(janus_plugin_session *handle) {
+json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}	
@@ -437,28 +431,24 @@ char *janus_echotest_query_session(janus_plugin_session *handle) {
 	}
 	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
-	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(info);
-	return info_text;
+	return info;
 }
 
-struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+struct janus_plugin_result *janus_echotest_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
+
 	janus_echotest_message *msg = g_malloc0(sizeof(janus_echotest_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-	}
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
-	msg->sdp_type = sdp_type;
-	msg->sdp = sdp;
+	msg->jsep = jsep;
 	g_async_queue_push(messages, msg);
 
-	/* All the requests to this plugin are handled asynchronously */
-	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, "I'm taking my time!");
+	/* All the requests to this plugin are handled asynchronously: we add a comment
+	 * (a JSON object with a "hint" string in it, that's what the core expects),
+	 * but we don't have to: other plugins don't put anything in there */
+	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, "I'm taking my time!", NULL);
 }
 
 void janus_echotest_setup_media(janus_plugin_session *handle) {
@@ -586,12 +576,9 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 			json_object_set_new(result, "status", json_string("slow_link"));
 			json_object_set_new(result, "bitrate", json_integer(session->bitrate));
 			json_object_set_new(event, "result", result);
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+			/* We don't need the event anymore */
 			json_decref(event);
-			json_decref(result);
-			event = NULL;
-			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event_text, NULL, NULL);
-			g_free(event_text);
 		}
 	}
 }
@@ -613,12 +600,9 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	json_t *event = json_object();
 	json_object_set_new(event, "echotest", json_string("event"));
 	json_object_set_new(event, "result", json_string("done"));
-	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	int ret = gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
-	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-	int ret = gateway->push_event(handle, &janus_echotest_plugin, NULL, event_text, NULL, NULL);
-	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-	g_free(event_text);
 	/* Get rid of the recorders, if available */
 	if(session->arc) {
 		janus_recorder_close(session->arc);
@@ -646,10 +630,6 @@ static void *janus_echotest_handler(void *data) {
 	janus_echotest_message *msg = NULL;
 	int error_code = 0;
 	char *error_cause = g_malloc0(512);
-	if(error_cause == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
@@ -678,20 +658,11 @@ static void *janus_echotest_handler(void *data) {
 		}
 		/* Handle request */
 		error_code = 0;
-		root = NULL;
-		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
+		root = msg->message;
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_ECHOTEST_ERROR_NO_MESSAGE;
 			g_snprintf(error_cause, 512, "%s", "No message??");
-			goto error;
-		}
-		json_error_t error;
-		root = json_loads(msg->message, 0, &error);
-		if(!root) {
-			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
-			error_code = JANUS_ECHOTEST_ERROR_INVALID_JSON;
-			g_snprintf(error_cause, 512, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
@@ -701,6 +672,8 @@ static void *janus_echotest_handler(void *data) {
 			goto error;
 		}
 		/* Parse request */
+		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
@@ -767,9 +740,9 @@ static void *janus_echotest_handler(void *data) {
 			}
 		}
 		if(record) {
-			if(msg->sdp) {
-				session->has_audio = (strstr(msg->sdp, "m=audio") != NULL);
-				session->has_video = (strstr(msg->sdp, "m=video") != NULL);
+			if(msg_sdp) {
+				session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
+				session->has_video = (strstr(msg_sdp, "m=video") != NULL);
 			}
 			gboolean recording = json_is_true(record);
 			const char *recording_base = json_string_value(recfile);
@@ -841,39 +814,36 @@ static void *janus_echotest_handler(void *data) {
 			}
 		}
 		/* Any SDP to handle? */
-		if(msg->sdp) {
-			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
-			session->has_audio = (strstr(msg->sdp, "m=audio") != NULL);
-			session->has_video = (strstr(msg->sdp, "m=video") != NULL);
+		if(msg_sdp) {
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
+			session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
+			session->has_video = (strstr(msg_sdp, "m=video") != NULL);
 		}
 
-		if(!audio && !video && !bitrate && !record && !msg->sdp) {
+		if(!audio && !video && !bitrate && !record && !msg_sdp) {
 			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, record, jsep) found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, record, jsep) found");
 			goto error;
 		}
 
-		json_decref(root);
 		/* Prepare JSON event */
 		json_t *event = json_object();
 		json_object_set_new(event, "echotest", json_string("event"));
 		json_object_set_new(event, "result", json_string("ok"));
-		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(event);
-		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-		if(!msg->sdp) {
-			int ret = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, NULL, NULL);
+		if(!msg_sdp) {
+			int ret = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(event);
 		} else {
 			/* Forward the same offer to the gateway, to start the echo test */
 			const char *type = NULL;
-			if(!strcasecmp(msg->sdp_type, "offer"))
+			if(!strcasecmp(msg_sdp_type, "offer"))
 				type = "answer";
-			if(!strcasecmp(msg->sdp_type, "answer"))
+			if(!strcasecmp(msg_sdp_type, "answer"))
 				type = "offer";
 			/* Any media direction that needs to be fixed? */
-			char *sdp = g_strdup(msg->sdp);
+			char *sdp = g_strdup(msg_sdp);
 			if(strstr(sdp, "a=recvonly")) {
 				/* Turn recvonly to inactive, as we simply bounce media back */
 				sdp = janus_string_replace(sdp, "a=recvonly", "a=inactive");
@@ -899,34 +869,33 @@ static void *janus_echotest_handler(void *data) {
 				sdp = janus_string_replace(sdp, " 97", "");
 				sdp = janus_string_replace(sdp, " 98", "");
 			}
+			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
 			/* How long will the gateway take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
-			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, type, sdp);
+			int res = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event, jsep);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n",
 				res, janus_get_monotonic_time()-start);
 			g_free(sdp);
+			/* We don't need the event and jsep anymore */
+			json_decref(event);
+			json_decref(jsep);
 		}
-		g_free(event_text);
 		janus_echotest_message_free(msg);
 		continue;
 		
 error:
 		{
-			if(root != NULL)
-				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(event);
-			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-			int ret = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event_text, NULL, NULL);
+			int ret = gateway->push_event(msg->handle, &janus_echotest_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(event_text);
 			janus_echotest_message_free(msg);
+			/* We don't need the event anymore */
+			json_decref(event);
 		}
 	}
 	g_free(error_cause);
