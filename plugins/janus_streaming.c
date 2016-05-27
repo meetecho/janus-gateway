@@ -315,6 +315,7 @@ typedef struct janus_streaming_rtp_source {
 	in_addr_t video_mcast;
 	janus_recorder *arc;	/* The Janus recorder instance for this streams's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
+	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	int audio_fd;
 	int video_fd;
 	gint64 last_received_video;
@@ -1699,6 +1700,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Missing audio and/or video");
 				goto error;
 			}
+			janus_mutex_lock(&source->rec_mutex);
 			if(audio && json_is_true(audio) && source->arc) {
 				/* Close the audio recording */
 				janus_recorder_close(source->arc);
@@ -1715,6 +1717,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				source->vrc = NULL;
 				janus_recorder_free(tmp);
 			}
+			janus_mutex_unlock(&source->rec_mutex);
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Send a success response back */
 			response = json_object();
@@ -1757,6 +1760,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			mp->enabled = FALSE;
 			/* Any recording to close? */
 			janus_streaming_rtp_source *source = mp->source;
+			janus_mutex_lock(&source->rec_mutex);
 			if(source->arc) {
 				janus_recorder_close(source->arc);
 				JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mp->name, source->arc->filename ? source->arc->filename : "??");
@@ -1771,6 +1775,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				source->vrc = NULL;
 				janus_recorder_free(tmp);
 			}
+			janus_mutex_unlock(&source->rec_mutex);
 			/* FIXME: Should we notify the listeners, or is this up to the controller application? */
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
@@ -2483,6 +2488,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->video_port = dovideo ? vport : -1;
 	live_rtp_source->arc = NULL;
 	live_rtp_source->vrc = NULL;
+	janus_mutex_init(&live_rtp_source->rec_mutex);
 	live_rtp_source->audio_fd = audio_fd;
 	live_rtp_source->video_fd = video_fd;
 	live_rtp_source->last_received_audio = janus_get_monotonic_time();
@@ -3280,10 +3286,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					packet.data->type = mountpoint->codecs.audio_pt;
 					/* Is there a recorder? */
-					if(source->arc) {
-						JANUS_LOG(LOG_HUGE, "[%s] Saving audio frame (%d bytes)\n", name, bytes);
-						janus_recorder_save_frame(source->arc, buffer, bytes);
-					}
+					janus_recorder_save_frame(source->arc, buffer, bytes);
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
@@ -3383,10 +3386,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					packet.data->type = mountpoint->codecs.video_pt;
 					/* Is there a recorder? */
-					if(source->vrc) {
-						JANUS_LOG(LOG_HUGE, "[%s] Saving video frame (%d bytes)\n", name, bytes);
-						janus_recorder_save_frame(source->vrc, buffer, bytes);
-					}
+					janus_recorder_save_frame(source->vrc, buffer, bytes);
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
