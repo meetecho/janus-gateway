@@ -781,7 +781,7 @@ static void *janus_voicemail_handler(void *data) {
 			/* Fill the SDP template and use that as our answer */
 			char sdp[1024];
 			/* What is the Opus payload type? */
-			int opus_pt = janus_get_opus_pt(msg->sdp);
+			int opus_pt = janus_get_codec_pt(msg->sdp, "opus");
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 			g_snprintf(sdp, 1024, sdp_template,
 				janus_get_real_time(),			/* We need current time here */

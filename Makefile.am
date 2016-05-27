@@ -305,6 +305,10 @@ if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
 
 janus_pp_rec_SOURCES = \
+	postprocessing/pp-g711.c \
+	postprocessing/pp-g711.h \
+	postprocessing/pp-h264.c \
+	postprocessing/pp-h264.h \
 	postprocessing/pp-opus.c \
 	postprocessing/pp-opus.h \
 	postprocessing/pp-opus-silence.h \

@@ -4,15 +4,17 @@
  * \brief    Simple utility to post-process .mjr files saved by Janus
  * \details  Our Janus WebRTC gateway provides a simple helper (janus_recorder)
  * to allow plugins to record audio and video frames sent by users. At the time
- * of writing, this helper has been already integrated in the Video MCU
- * plugin in Janus, thus allowing video conferences and webinars to be
- * recorded. To keep things simple on the Janus side, though, no processing
+ * of writing, this helper has been integrated in several plugins in Janus.
+ * To keep things simple on the Janus side, though, no processing
  * at all is done in the recording step: this means that the recorder
  * actually only dumps the RTP frames it receives to a file in a structured way,
  * so that they can be post-processed later on to extract playable media
  * files. This utility allows you to process those files, in order to
- * get a working .webm (if the recording includes VP8 frames) or .opus
- * (if the recording includes Opus frames) file.
+ * get a working media file you can playout with an external player.
+ * The tool will generate a .webm if the recording includes VP8 frames,
+ * an .opus if the recording includes Opus frames, an .mp4 if the recording
+ * includes H.264 frames, and a .wav file if the recording includes
+ * G.711 (mu-law or a-law) frames.
  * 
  * Using the utility is quite simple. Just pass, as arguments to the tool,
  * the path to the .mjr source file you want to post-process, and the
@@ -20,9 +22,13 @@
  * .opus otherwise), e.g.:
  * 
 \verbatim
-./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|webm] 
+./janus-pp-rec /path/to/source.mjr /path/to/destination.[opus|wav|webm|h264]
 \endverbatim 
  * 
+ * An attempt to specify an output format that is not compliant with the
+ * recording content (e.g., a .webm for H.264 frames) will result in an
+ * error since, again, no transcoding is involved.
+ *
  * You can also just print the internal header of the recording, or parse
  * it without processing it (e.g., for debugging), by invoking the tool
  * in a different way:
@@ -55,7 +61,9 @@
 #include "../debug.h"
 #include "pp-rtp.h"
 #include "pp-webm.h"
+#include "pp-h264.h"
 #include "pp-opus.h"
+#include "pp-g711.h"
 
 int janus_log_level = 4;
 gboolean janus_log_timestamps = FALSE;
@@ -88,7 +96,7 @@ int main(int argc, char *argv[])
 	
 	/* Evaluate arguments */
 	if(argc != 3) {
-		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|webm]\n", argv[0]);
+		JANUS_LOG(LOG_INFO, "Usage: %s source.mjr destination.[opus|wav|webm|mp4]\n", argv[0]);
 		JANUS_LOG(LOG_INFO, "       %s --header source.mjr (only parse header)\n", argv[0]);
 		JANUS_LOG(LOG_INFO, "       %s --parse source.mjr (only parse and re-order packets)\n", argv[0]);
 		return -1;
@@ -115,10 +123,15 @@ int main(int argc, char *argv[])
 	fseek(file, 0L, SEEK_SET);
 	JANUS_LOG(LOG_INFO, "File is %zu bytes\n", fsize);
 
+	/* Handle SIGINT */
+	working = 1;
+	signal(SIGINT, janus_pp_handle_signal);
+
 	/* Pre-parse */
 	JANUS_LOG(LOG_INFO, "Pre-parsing file to generate ordered index...\n");
 	gboolean parsed_header = FALSE;
 	int video = 0;
+	int opus = 0, g711 = 0, vp8 = 0, vp9 = 0, h264 = 0;
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
 	long offset = 0;
@@ -129,7 +142,7 @@ int main(int argc, char *argv[])
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
-	while(offset < fsize) {
+	while(working && offset < fsize) {
 		if(header_only && parsed_header) {
 			/* We only needed to parse the header */
 			exit(0);
@@ -157,9 +170,11 @@ int main(int argc, char *argv[])
 				if(prebuffer[0] == 'v') {
 					JANUS_LOG(LOG_INFO, "This is a video recording, assuming VP8\n");
 					video = 1;
+					vp8 = 1;
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_INFO, "This is an audio recording, assuming Opus\n");
 					video = 0;
+					opus = 1;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
 					exit(1);
@@ -213,12 +228,26 @@ int main(int argc, char *argv[])
 					exit(1);
 				}
 				const char *c = json_string_value(codec);
-				if(video && strcasecmp(c, "vp8")) {
-					JANUS_LOG(LOG_WARN, "The post-processor only suupports VP8 video for now (was '%s')...\n", c);
-					exit(1);
-				} else if(!video && strcasecmp(c, "opus")) {
-					JANUS_LOG(LOG_WARN, "The post-processor only suupports Opus audio for now (was '%s')...\n", c);
-					exit(1);
+				if(video) {
+					if(!strcasecmp(c, "vp8")) {
+						vp8 = 1;
+					} else if(!strcasecmp(c, "vp9")) {
+						vp9 = 1;
+					} else if(!strcasecmp(c, "h264")) {
+						h264 = 1;
+					} else {
+						JANUS_LOG(LOG_WARN, "The post-processor only supports VP8, VP9 and H.264 video for now (was '%s')...\n", c);
+						exit(1);
+					}
+				} else if(!video) {
+					if(!strcasecmp(c, "opus")) {
+						opus = 1;
+					} else if(!strcasecmp(c, "g711")) {
+						g711 = 1;
+					} else {
+						JANUS_LOG(LOG_WARN, "The post-processor only suupports Opus and G.711 audio for now (was '%s')...\n", c);
+						exit(1);
+					}
 				}
 				/* When was the file created? */
 				json_t *created = json_object_get(info, "s");
@@ -271,6 +300,8 @@ int main(int argc, char *argv[])
 		/* Skip data for now */
 		offset += len;
 	}
+	if(!working)
+		exit(0);
 	JANUS_LOG(LOG_WARN, "Counted %d timestamp resets\n", times_resetted);
 	/* Now let's parse the frames and order them */
 	offset = 0;
@@ -281,7 +312,7 @@ int main(int argc, char *argv[])
 	post_reset_pkts = 0;
 	uint64_t max32 = UINT32_MAX;
 	/* Start loop */
-	while(offset < fsize) {
+	while(working && offset < fsize) {
 		/* Read frame header */
 		skip = 0;
 		fseek(file, offset, SEEK_SET);
@@ -327,6 +358,7 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 		p->seq = ntohs(rtp->seq_number);
+		p->pt = rtp->type;
 		/* Due to resets, we need to mess a bit with the original timestamps */
 		if(last_ts == 0) {
 			/* Simple enough... */
@@ -444,6 +476,8 @@ int main(int argc, char *argv[])
 		offset += len;
 		count++;
 	}
+	if(!working)
+		exit(0);
 	
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
@@ -455,50 +489,89 @@ int main(int argc, char *argv[])
 	}
 	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" frame packets\n", count);
 
+	if(video) {
+		/* Look for maximum width and height, if possible, and for the average framerate */
+		if(vp8 || vp9) {
+			if(janus_pp_webm_preprocess(file, list, vp8) < 0) {
+				JANUS_LOG(LOG_ERR, "Error pre-processing %s RTP frames...\n", vp8 ? "VP8" : "VP9");
+				exit(1);
+			}
+		} else if(h264) {
+			if(janus_pp_h264_preprocess(file, list) < 0) {
+				JANUS_LOG(LOG_ERR, "Error pre-processing H.264 RTP frames...\n");
+				exit(1);
+			}
+		}
+	}
+
 	if(parse_only) {
 		/* We only needed to parse and re-order the packets, we're done here */
+		JANUS_LOG(LOG_INFO, "Parsing and reordering completed, bye!\n");
 		exit(0);
 	}
 
 	if(!video) {
-		/* We don't need any pre-parsing for audio */
-		if(janus_pp_opus_create(destination) < 0) {
-			JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
-			exit(1);
+		if(opus) {
+			if(janus_pp_opus_create(destination) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .opus file...\n");
+				exit(1);
+			}
+		} else if(g711) {
+			if(janus_pp_g711_create(destination) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .wav file...\n");
+				exit(1);
+			}
 		}
 	} else {
-		/* Look for maximum width and height, and for the mean framerate */
-		if(janus_pp_webm_preprocess(file, list) < 0) {
-			JANUS_LOG(LOG_ERR, "Error pre-processing VP8 RTP frames...\n");
-			exit(1);
-		}
-		/* Now we can write the WebM file */
-		if(janus_pp_webm_create(destination) < 0) {
-			JANUS_LOG(LOG_ERR, "Error creating .webm file...\n");
-			exit(1);
+		if(vp8 || vp9) {
+			if(janus_pp_webm_create(destination, vp8) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .webm file...\n");
+				exit(1);
+			}
+		} else if(h264) {
+			if(janus_pp_h264_create(destination) < 0) {
+				JANUS_LOG(LOG_ERR, "Error creating .mp4 file...\n");
+				exit(1);
+			}
 		}
 	}
 	
-	/* Handle SIGINT */
-	signal(SIGINT, janus_pp_handle_signal);
-
 	/* Loop */
-	working = 1;
 	if(!video) {
-		if(janus_pp_opus_process(file, list, &working) < 0) {
-			JANUS_LOG(LOG_ERR, "Error processing Opus RTP frames...\n");
+		if(opus) {
+			if(janus_pp_opus_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing Opus RTP frames...\n");
+			}
+		} else if(g711) {
+			if(janus_pp_g711_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing G.711 RTP frames...\n");
+			}
 		}
 	} else {
-		if(janus_pp_webm_process(file, list, &working) < 0) {
-			JANUS_LOG(LOG_ERR, "Error processing VP8 RTP frames...\n");
+		if(vp8 || vp9) {
+			if(janus_pp_webm_process(file, list, vp8, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing %s RTP frames...\n", vp8 ? "VP8" : "VP9");
+			}
+		} else {
+			if(janus_pp_h264_process(file, list, &working) < 0) {
+				JANUS_LOG(LOG_ERR, "Error processing H.264 RTP frames...\n");
+			}
 		}
 	}
 
 	/* Clean up */
 	if(video) {
-		janus_pp_webm_close();
+		if(vp8 || vp9) {
+			janus_pp_webm_close();
+		} else {
+			janus_pp_h264_close();
+		}
 	} else {
-		janus_pp_opus_close();
+		if(opus) {
+			janus_pp_opus_close();
+		} else if(g711) {
+			janus_pp_g711_close();
+		}
 	}
 	fclose(file);
 	

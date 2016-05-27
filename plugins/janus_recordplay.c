@@ -1165,7 +1165,8 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
 				}
 				rec->arc_file = g_strdup(filename);
-				session->arc = janus_recorder_create(recordings_path, 0, rec->arc_file);
+				/* FIXME Assuming Opus */
+				session->arc = janus_recorder_create(recordings_path, "opus", rec->arc_file);
 			}
 			if(strstr(msg->sdp, "m=video")) {
 				char filename[256];
@@ -1175,7 +1176,8 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
 				}
 				rec->vrc_file = g_strdup(filename);
-				session->vrc = janus_recorder_create(recordings_path, 1, rec->vrc_file);
+				/* FIXME Assuming VP8 */
+				session->vrc = janus_recorder_create(recordings_path, "vp8", rec->vrc_file);
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
@@ -1184,9 +1186,9 @@ static void *janus_recordplay_handler(void *data) {
 			janus_mutex_unlock(&recordings_mutex);
 			/* We need to prepare an answer */
 			int opus_pt = 0, vp8_pt = 0;
-			opus_pt = janus_get_opus_pt(msg->sdp);
+			opus_pt = janus_get_codec_pt(msg->sdp, "opus");
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
-			vp8_pt = janus_get_vp8_pt(msg->sdp);
+			vp8_pt = janus_get_codec_pt(msg->sdp, "vp8");
 			JANUS_LOG(LOG_VERB, "VP8 payload type is %d\n", vp8_pt);
 			char sdptemp[1024], audio_mline[256], video_mline[512];
 			if(opus_pt > 0) {

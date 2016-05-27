@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    Post-processing to generate .webm files (headers)
  * \details  Implementation of the post-processing code (based on FFmpeg)
- * needed to generate .webm files out of VP8 RTP frames.
+ * needed to generate .webm files out of VP8/VP9 RTP frames.
  * 
  * \ingroup postprocessing
  * \ref postprocessing
@@ -17,9 +17,9 @@
 #include "pp-rtp.h"
 
 /* WebM stuff */
-int janus_pp_webm_create(char *destination);
-int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list);
-int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working);
+int janus_pp_webm_create(char *destination, int vp8);
+int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8);
+int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int *working);
 void janus_pp_webm_close(void);
 
 
