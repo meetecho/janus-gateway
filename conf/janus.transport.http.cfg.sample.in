@@ -12,8 +12,10 @@ base_path = /janus			; Base path to bind to in the web server (plain HTTP only)
 threads = unlimited			; unlimited=thread per connection, number=thread pool
 http = yes					; Whether to enable the plain HTTP interface
 port = 8088					; Web server HTTP port
+;interface = eth0			; Whether we should bind this server to a specific interface only
 https = no					; Whether to enable HTTPS (default=no)
 ;secure_port = 8889			; Web server HTTPS port, if enabled
+;secure_interface = eth0	; Whether we should bind this server to a specific interface only
 ;acl = 127.,192.168.0.		; Only allow requests coming from this comma separated list of addresses
 
 ; Janus can also expose an admin/monitor endpoint, to allow you to check
@@ -32,8 +34,10 @@ admin_base_path = /admin		; Base path to bind to in the admin/monitor web server
 admin_threads = unlimited		; unlimited=thread per connection, number=thread pool
 admin_http = no					; Whether to enable the plain HTTP interface
 admin_port = 7088				; Admin/monitor web server HTTP port
+;admin_interface = eth0			; Whether we should bind this server to a specific interface only
 admin_https = no				; Whether to enable HTTPS (default=no)
 ;admin_secure_port = 7889		; Admin/monitor web server HTTPS port, if enabled
+;admin_secure_interface = eth0	; Whether we should bind this server to a specific interface only
 ;admin_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
 
 
