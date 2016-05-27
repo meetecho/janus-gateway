@@ -441,7 +441,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				// Don't warn here because destroyHandle causes this situation.
 				return;
 			}
 			pluginHandle.ondetached();

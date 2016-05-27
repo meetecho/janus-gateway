@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <arpa/inet.h>
 #include <sys/file.h>
 #include <sys/types.h>
@@ -200,27 +201,77 @@ int janus_mkdir(const char *dir, mode_t mode) {
 	return 0;
 }
 
-int janus_get_opus_pt(const char *sdp) {
-	if(!sdp)
+int janus_get_codec_pt(const char *sdp, const char *codec) {
+	if(!sdp || !codec)
 		return -1;
-	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "opus/48000") && !strstr(sdp, "OPUS/48000")))
-		return -2;
-	const char *line = strstr(sdp, "m=audio");
+	int video = 0;
+	const char *format = NULL, *format2 = NULL;
+	if(!strcasecmp(codec, "opus")) {
+		video = 0;
+		format = "opus/48000/2";
+		format2 = "OPUS/48000/2";
+	} else if(!strcasecmp(codec, "pcmu")) {
+		/* We know the payload type is 0: we just need to make sure it's there */
+		video = 0;
+		format = "pcmu/8000";
+		format2 = "PCMU/8000";
+	} else if(!strcasecmp(codec, "pcma")) {
+		/* We know the payload type is 8: we just need to make sure it's there */
+		video = 0;
+		format = "pcma/8000";
+		format2 = "PCMA/8000";
+	} else if(!strcasecmp(codec, "isac16")) {
+		video = 0;
+		format = "isac/16000";
+		format2 = "ISAC/16000";
+	} else if(!strcasecmp(codec, "isac32")) {
+		video = 0;
+		format = "isac/32000";
+		format2 = "ISAC/32000";
+	} else if(!strcasecmp(codec, "vp8")) {
+		video = 1;
+		format = "vp8/90000";
+		format2 = "VP8/90000";
+	} else if(!strcasecmp(codec, "vp9")) {
+		video = 1;
+		format = "vp9/90000";
+		format2 = "VP9/90000";
+	} else if(!strcasecmp(codec, "h264")) {
+		video = 1;
+		format = "h264/90000";
+		format2 = "H264/90000";
+	} else {
+		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
+		return -1;
+	}
+	/* First of all, let's check if the codec is there */
+	if(!video) {
+		if(!strstr(sdp, "m=audio") || (!strstr(sdp, format) && !strstr(sdp, format2)))
+			return -2;
+	} else {
+		if(!strstr(sdp, "m=video") || (!strstr(sdp, format) && !strstr(sdp, format2)))
+			return -2;
+	}
+	char rtpmap[50], rtpmap2[50];
+	g_snprintf(rtpmap, 50, "a=rtpmap:%%d %s", format);
+	g_snprintf(rtpmap2, 50, "a=rtpmap:%%d %s", format2);
+	/* Look for the mapping */
+	const char *line = strstr(sdp, video ? "m=video" : "m=audio");
 	while(line) {
 		char *next = strchr(line, '\n');
 		if(next) {
 			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "opus/48000")) {
+			if(strstr(line, "a=rtpmap") && strstr(line, format)) {
 				/* Gotcha! */
 				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d opus/48000/2", &pt) == 1) {
+				if(sscanf(line, rtpmap, &pt) == 1) {
 					*next = '\n';
 					return pt;
 				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "OPUS/48000")) {
+			} else if(strstr(line, "a=rtpmap") && strstr(line, format2)) {
 				/* Gotcha! */
 				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d OPUS/48000/2", &pt) == 1) {
+				if(sscanf(line, rtpmap2, &pt) == 1) {
 					*next = '\n';
 					return pt;
 				}
@@ -232,228 +283,51 @@ int janus_get_opus_pt(const char *sdp) {
 	return -3;
 }
 
-int janus_get_isac32_pt(const char *sdp) {
-	if(!sdp)
-		return -1;
-	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "isac/32000") && !strstr(sdp, "ISAC/32000")))
-		return -2;
-	const char *line = strstr(sdp, "m=audio");
+const char *janus_get_codec_from_pt(const char *sdp, int pt) {
+	if(!sdp || pt < 0)
+		return NULL;
+	if(pt == 0)
+		return "pcmu";
+	if(pt == 8)
+		return "pcma";
+	/* Look for the mapping */
+	char rtpmap[50];
+	g_snprintf(rtpmap, 50, "a=rtpmap:%d ", pt);
+	const char *line = strstr(sdp, "m=");
 	while(line) {
 		char *next = strchr(line, '\n');
 		if(next) {
 			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "isac/32000")) {
+			if(strstr(line, rtpmap)) {
 				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d isac/32000", &pt) == 1) {
+				char name[100];
+				if(sscanf(line, "a=rtpmap:%d %s", &pt, name) == 2) {
 					*next = '\n';
-					return pt;
-				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "ISAC/32000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d ISAC/32000", &pt) == 1) {
-					*next = '\n';
-					return pt;
+					if(strstr(name, "vp8") || strstr(name, "VP8"))
+						return "vp8";
+					if(strstr(name, "vp9") || strstr(name, "VP9"))
+						return "vp9";
+					if(strstr(name, "h264") || strstr(name, "H264"))
+						return "h264";
+					if(strstr(name, "opus") || strstr(name, "OPUS"))
+						return "opus";
+					if(strstr(name, "pcmu") || strstr(name, "PMCU"))
+						return "pcmu";
+					if(strstr(name, "pcma") || strstr(name, "PMCA"))
+						return "pcma";
+					if(strstr(name, "isac/16") || strstr(name, "ISAC/16"))
+						return "isac16";
+					if(strstr(name, "isac/32") || strstr(name, "ISAC/32"))
+						return "isac32";
+					JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", name);
+					return NULL;
 				}
 			}
 			*next = '\n';
 		}
 		line = next ? (next+1) : NULL;
 	}
-	return -3;
-}
-
-int janus_get_isac16_pt(const char *sdp) {
-	if(!sdp)
-		return -1;
-	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "isac/16000") && !strstr(sdp, "ISAC/16000")))
-		return -2;
-	const char *line = strstr(sdp, "m=audio");
-	while(line) {
-		char *next = strchr(line, '\n');
-		if(next) {
-			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "isac/16000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d isac/16000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "ISAC/16000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d ISAC/16000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			}
-			*next = '\n';
-		}
-		line = next ? (next+1) : NULL;
-	}
-	return -3;
-}
-
-int janus_get_pcmu_pt(const char *sdp) {
-	if(!sdp)
-		return -1;
-	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "pcmu/8000") && !strstr(sdp, "PCMU/8000")))
-		return -2;
-	const char *line = strstr(sdp, "m=audio");
-	while(line) {
-		char *next = strchr(line, '\n');
-		if(next) {
-			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "pcmu/8000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d pcmu/8000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "PCMU/8000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d PCMU/8000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			}
-			*next = '\n';
-		}
-		line = next ? (next+1) : NULL;
-	}
-	return -3;
-}
-
-int janus_get_pcma_pt(const char *sdp) {
-	if(!sdp)
-		return -1;
-	if(!strstr(sdp, "m=audio") || (!strstr(sdp, "pcma/8000") && !strstr(sdp, "PCMA/8000")))
-		return -2;
-	const char *line = strstr(sdp, "m=audio");
-	while(line) {
-		char *next = strchr(line, '\n');
-		if(next) {
-			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "pcma/8000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d pcma/8000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "PCMA/8000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d PCMA/8000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			}
-			*next = '\n';
-		}
-		line = next ? (next+1) : NULL;
-	}
-	return -3;
-}
-
-int janus_get_vp8_pt(const char *sdp) {
-	if(!sdp)
-		return -1;
-	if(!strstr(sdp, "m=video") || (!strstr(sdp, "VP8/90000") && !strstr(sdp, "vp8/90000")))
-		return -2;
-	const char *line = strstr(sdp, "m=video");
-	while(line) {
-		char *next = strchr(line, '\n');
-		if(next) {
-			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "VP8/90000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d VP8/90000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "vp8/90000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d vp8/90000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			}
-			*next = '\n';
-		}
-		line = next ? (next+1) : NULL;
-	}
-	return -3;
-}
-
-int janus_get_vp9_pt(const char *sdp) {
-	if(!sdp)
-		return -1;
-	if(!strstr(sdp, "m=video") || (!strstr(sdp, "VP9/90000") && !strstr(sdp, "vp9/90000")))
-		return -2;
-	const char *line = strstr(sdp, "m=video");
-	while(line) {
-		char *next = strchr(line, '\n');
-		if(next) {
-			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "VP9/90000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d VP9/90000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "vp9/90000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d vp9/90000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			}
-			*next = '\n';
-		}
-		line = next ? (next+1) : NULL;
-	}
-	return -3;
-}
-
-int janus_get_h264_pt(const char *sdp) {
-	if(!sdp)
-		return -1;
-	if(!strstr(sdp, "m=video") || (!strstr(sdp, "h264/90000") && !strstr(sdp, "H264/90000")))
-		return -2;
-	const char *line = strstr(sdp, "m=video");
-	while(line) {
-		char *next = strchr(line, '\n');
-		if(next) {
-			*next = '\0';
-			if(strstr(line, "a=rtpmap") && strstr(line, "H264/90000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d H264/90000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			} else if(strstr(line, "a=rtpmap") && strstr(line, "h264/90000")) {
-				/* Gotcha! */
-				int pt = 0;
-				if(sscanf(line, "a=rtpmap:%d h264/90000", &pt) == 1) {
-					*next = '\n';
-					return pt;
-				}
-			}
-			*next = '\n';
-		}
-		line = next ? (next+1) : NULL;
-	}
-	return -3;
+	return NULL;
 }
 
 gboolean janus_is_ip_valid(const char *ip, int *family) {

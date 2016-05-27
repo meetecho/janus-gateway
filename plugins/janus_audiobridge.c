@@ -2357,7 +2357,7 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 			char sdp[1024];
 			/* What is the Opus payload type? */
-			participant->opus_pt = janus_get_opus_pt(msg->sdp);
+			participant->opus_pt = janus_get_codec_pt(msg->sdp, "opus");
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", participant->opus_pt);
 			g_snprintf(sdp, 1024, sdp_template,
 				janus_get_real_time(),			/* We need current time here */

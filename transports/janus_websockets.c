@@ -418,11 +418,15 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			item = janus_config_get_item_drilldown(config, "general", "ws_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
+			char *interface = NULL;
+			item = janus_config_get_item_drilldown(config, "general", "ws_interface");
+			if(item && item->value)
+				interface = (char *)item->value;
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
 			info.port = wsport;
-			info.iface = NULL;
+			info.iface = interface;
 			info.protocols = wss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			info.extensions = lws_get_internal_extensions();
@@ -454,6 +458,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			item = janus_config_get_item_drilldown(config, "general", "wss_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
+			char *interface = NULL;
+			item = janus_config_get_item_drilldown(config, "general", "ws_interface");
+			if(item && item->value)
+				interface = (char *)item->value;
 			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -468,7 +476,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				struct lws_context_creation_info info;
 				memset(&info, 0, sizeof info);
 				info.port = wsport;
-				info.iface = NULL;
+				info.iface = interface;
 				info.protocols = swss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 				info.extensions = lws_get_internal_extensions();
@@ -502,11 +510,15 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
+			char *interface = NULL;
+			item = janus_config_get_item_drilldown(config, "general", "ws_interface");
+			if(item && item->value)
+				interface = (char *)item->value;
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
 			info.port = wsport;
-			info.iface = NULL;
+			info.iface = interface;
 			info.protocols = admin_wss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			info.extensions = lws_get_internal_extensions();
@@ -538,6 +550,10 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			item = janus_config_get_item_drilldown(config, "admin", "admin_wss_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
+			char *interface = NULL;
+			item = janus_config_get_item_drilldown(config, "general", "ws_interface");
+			if(item && item->value)
+				interface = (char *)item->value;
 			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -552,7 +568,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				struct lws_context_creation_info info;
 				memset(&info, 0, sizeof info);
 				info.port = wsport;
-				info.iface = NULL;
+				info.iface = interface;
 				info.protocols = admin_swss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 				info.extensions = lws_get_internal_extensions();
