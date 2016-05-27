@@ -170,6 +170,7 @@ json_t *janus_info(const char *transaction) {
 	}
 	json_object_set_new(info, "api_secret", json_string(api_secret != NULL ? "true" : "false"));
 	json_object_set_new(info, "auth_token", json_string(janus_auth_is_enabled() ? "true" : "false"));
+	json_object_set_new(info, "event_handlers", json_string(janus_events_is_enabled() ? "true" : "false"));
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
@@ -331,6 +332,7 @@ static janus_callbacks janus_handler_plugin =
 		.relay_data = janus_plugin_relay_data,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
+		.events_is_enabled = janus_events_is_enabled,
 		.notify_event = janus_plugin_notify_event,
 	}; 
 ///@}
@@ -380,7 +382,8 @@ static gboolean janus_check_sessions(gpointer user_data) {
 					session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
 				}
 				/* Notify event handlers as well */
-				janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session->session_id, "timeout");
+				if(janus_events_is_enabled())
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session->session_id, "timeout");
 
 				/* Mark the session as over, we'll deal with it later */
 				session->timeout = 1;
@@ -444,7 +447,8 @@ janus_session *janus_session_create(guint64 session_id) {
 	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 	/* Notify event handlers */
-	janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created");
+	if(janus_events_is_enabled())
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created");
 	return session;
 }
 
@@ -815,7 +819,8 @@ int janus_process_incoming_request(janus_request *request) {
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 		/* Notify event handlers as well */
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed");
+		if(janus_events_is_enabled())
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed");
 	} else if(!strcasecmp(message_text, "detach")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
@@ -954,8 +959,10 @@ int janus_process_incoming_request(janus_request *request) {
 				goto jsondone;
 			}
 			/* Notify event handlers */
-			janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
-				session_id, handle_id, "remote", jsep_type, jsep_sdp);
+			if(janus_events_is_enabled()) {
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
+					session_id, handle_id, "remote", jsep_type, jsep_sdp);
+			}
 			/* FIXME We're only handling single audio/video lines for now... */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated, Video %s been negotiated, SCTP/DataChannels %s been negotiated\n",
 			                    handle->handle_id,
@@ -2573,7 +2580,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
 
-	if(jsep != NULL) {
+	if(jsep != NULL && janus_events_is_enabled()) {
 		/* Notify event handlers as well */
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
 			session->session_id, ice_handle->handle_id, "local", sdp_type, sdp);
@@ -2982,27 +2989,30 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 
 void janus_plugin_notify_event(janus_plugin_session *plugin_session, json_t *event) {
 	/* A plugin asked to notify an event to the handlers */
+	if(!event || !json_is_object(event))
+		return;
 	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
-			if(event)
-			json_decref(event);
+		json_decref(event);
 		return;
 	}
 	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
 	if(!ice_handle) {
-		if(event)
-			json_decref(event);
+		json_decref(event);
 		return;
 	}
 	janus_session *session = (janus_session *)ice_handle->session;
 	if(!session) {
-		if(event)
-			json_decref(event);
+		json_decref(event);
 		return;
 	}
 	janus_plugin *plugin_t = (janus_plugin *)ice_handle->app;
 	/* Notify event handlers */
-	janus_events_notify_handlers(JANUS_EVENT_TYPE_PLUGIN,
-		session->session_id, ice_handle->handle_id, plugin_t->get_package(), event);
+	if(janus_events_is_enabled()) {
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_PLUGIN,
+			session->session_id, ice_handle->handle_id, plugin_t->get_package(), event);
+	} else {
+		json_decref(event);
+	}
 }
 
 
@@ -3642,107 +3652,115 @@ gint main(int argc, char *argv[])
 	} else {
 		/* Any event handlers to ignore? */
 		gchar **disabled_eventhandlers = NULL;
-		item = janus_config_get_item_drilldown(config, "events", "disable");
+		item = janus_config_get_item_drilldown(config, "events", "broadcast");
+		gboolean enable_events = TRUE;
 		if(item && item->value)
-			disabled_eventhandlers = g_strsplit(item->value, ",", -1);
-		/* Open the shared objects */
-		struct dirent *eventent = NULL;
-		char eventpath[1024];
-		while((eventent = readdir(dir))) {
-			int len = strlen(eventent->d_name);
-			if (len < 4) {
-				continue;
-			}
-			if (strcasecmp(eventent->d_name+len-strlen(SHLIB_EXT), SHLIB_EXT)) {
-				continue;
-			}
-			/* Check if this event handler has been disabled in the configuration file */
-			if(disabled_eventhandlers != NULL) {
-				gchar *index = disabled_eventhandlers[0];
-				if(index != NULL) {
-					int i=0;
-					gboolean skip = FALSE;
-					while(index != NULL) {
-						while(isspace(*index))
-							index++;
-						if(strlen(index) && !strcmp(index, eventent->d_name)) {
-							JANUS_LOG(LOG_WARN, "Event handler plugin '%s' has been disabled, skipping...\n", eventent->d_name);
-							skip = TRUE;
-							break;
+			enable_events = janus_is_true(item->value);
+		if(!enable_events) {
+			JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+		} else {
+			item = janus_config_get_item_drilldown(config, "events", "disable");
+			if(item && item->value)
+				disabled_eventhandlers = g_strsplit(item->value, ",", -1);
+			/* Open the shared objects */
+			struct dirent *eventent = NULL;
+			char eventpath[1024];
+			while((eventent = readdir(dir))) {
+				int len = strlen(eventent->d_name);
+				if (len < 4) {
+					continue;
+				}
+				if (strcasecmp(eventent->d_name+len-strlen(SHLIB_EXT), SHLIB_EXT)) {
+					continue;
+				}
+				/* Check if this event handler has been disabled in the configuration file */
+				if(disabled_eventhandlers != NULL) {
+					gchar *index = disabled_eventhandlers[0];
+					if(index != NULL) {
+						int i=0;
+						gboolean skip = FALSE;
+						while(index != NULL) {
+							while(isspace(*index))
+								index++;
+							if(strlen(index) && !strcmp(index, eventent->d_name)) {
+								JANUS_LOG(LOG_WARN, "Event handler plugin '%s' has been disabled, skipping...\n", eventent->d_name);
+								skip = TRUE;
+								break;
+							}
+							i++;
+							index = disabled_eventhandlers[i];
 						}
-						i++;
-						index = disabled_eventhandlers[i];
+						if(skip)
+							continue;
 					}
-					if(skip)
-						continue;
 				}
-			}
-			JANUS_LOG(LOG_INFO, "Loading event handler plugin '%s'...\n", eventent->d_name);
-			memset(eventpath, 0, 1024);
-			g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
-			void *event = dlopen(eventpath, RTLD_LAZY);
-			if (!event) {
-				JANUS_LOG(LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
-			} else {
-				create_e *create = (create_e*) dlsym(event, "create");
-				const char *dlsym_error = dlerror();
-				if (dlsym_error) {
-					JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
-					continue;
-				}
-				janus_eventhandler *janus_eventhandler = create();
-				if(!janus_eventhandler) {
-					JANUS_LOG(LOG_ERR, "\tCouldn't use function 'create'...\n");
-					continue;
-				}
-				/* Are all the mandatory methods and callbacks implemented? */
-				if(!janus_eventhandler->init || !janus_eventhandler->destroy ||
-						!janus_eventhandler->get_api_compatibility ||
-						!janus_eventhandler->get_version ||
-						!janus_eventhandler->get_version_string ||
-						!janus_eventhandler->get_description ||
-						!janus_eventhandler->get_package ||
-						!janus_eventhandler->get_name ||
-						!janus_eventhandler->incoming_event) {
-					JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this event handler plugin...\n");
-					continue;
-				}
-				if(janus_eventhandler->get_api_compatibility() < JANUS_EVENTHANDLER_API_VERSION) {
-					JANUS_LOG(LOG_ERR, "The '%s' event handler plugin was compiled against an older version of the API (%d < %d), skipping it: update it to enable it again\n",
-						janus_eventhandler->get_package(), janus_eventhandler->get_api_compatibility(), JANUS_EVENTHANDLER_API_VERSION);
-					continue;
-				}
-				janus_eventhandler->init(configs_folder);
-				JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_eventhandler->get_version(), janus_eventhandler->get_version_string());
-				JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_eventhandler->get_package(), janus_eventhandler->get_name());
-				JANUS_LOG(LOG_VERB, "\t   %s\n", janus_eventhandler->get_description());
-				JANUS_LOG(LOG_VERB, "\t   Plugin API version: %d\n", janus_eventhandler->get_api_compatibility());
-				JANUS_LOG(LOG_VERB, "\t   Subscriptions:");
-				if(janus_eventhandler->events_mask == 0) {
-					JANUS_LOG(LOG_VERB, " none");
+				JANUS_LOG(LOG_INFO, "Loading event handler plugin '%s'...\n", eventent->d_name);
+				memset(eventpath, 0, 1024);
+				g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
+				void *event = dlopen(eventpath, RTLD_LAZY);
+				if (!event) {
+					JANUS_LOG(LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
 				} else {
-					if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_SESSION))
-						JANUS_LOG(LOG_VERB, " sessions");
-					if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_HANDLE))
-						JANUS_LOG(LOG_VERB, " handles");
-					if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_JSEP))
-						JANUS_LOG(LOG_VERB, " jsep");
-					if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_WEBRTC))
-						JANUS_LOG(LOG_VERB, " webrtc");
-					if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_MEDIA))
-						JANUS_LOG(LOG_VERB, " media");
-					if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_PLUGIN))
-						JANUS_LOG(LOG_VERB, " plugins");
-					if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_TRANSPORT))
-						JANUS_LOG(LOG_VERB, " transports");
+					create_e *create = (create_e*) dlsym(event, "create");
+					const char *dlsym_error = dlerror();
+					if (dlsym_error) {
+						JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+						continue;
+					}
+					janus_eventhandler *janus_eventhandler = create();
+					if(!janus_eventhandler) {
+						JANUS_LOG(LOG_ERR, "\tCouldn't use function 'create'...\n");
+						continue;
+					}
+					/* Are all the mandatory methods and callbacks implemented? */
+					if(!janus_eventhandler->init || !janus_eventhandler->destroy ||
+							!janus_eventhandler->get_api_compatibility ||
+							!janus_eventhandler->get_version ||
+							!janus_eventhandler->get_version_string ||
+							!janus_eventhandler->get_description ||
+							!janus_eventhandler->get_package ||
+							!janus_eventhandler->get_name ||
+							!janus_eventhandler->incoming_event) {
+						JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this event handler plugin...\n");
+						continue;
+					}
+					if(janus_eventhandler->get_api_compatibility() < JANUS_EVENTHANDLER_API_VERSION) {
+						JANUS_LOG(LOG_ERR, "The '%s' event handler plugin was compiled against an older version of the API (%d < %d), skipping it: update it to enable it again\n",
+							janus_eventhandler->get_package(), janus_eventhandler->get_api_compatibility(), JANUS_EVENTHANDLER_API_VERSION);
+						continue;
+					}
+					janus_eventhandler->init(configs_folder);
+					JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_eventhandler->get_version(), janus_eventhandler->get_version_string());
+					JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_eventhandler->get_package(), janus_eventhandler->get_name());
+					JANUS_LOG(LOG_VERB, "\t   %s\n", janus_eventhandler->get_description());
+					JANUS_LOG(LOG_VERB, "\t   Plugin API version: %d\n", janus_eventhandler->get_api_compatibility());
+					JANUS_LOG(LOG_VERB, "\t   Subscriptions:");
+					if(janus_eventhandler->events_mask == 0) {
+						JANUS_LOG(LOG_VERB, " none");
+					} else {
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_SESSION))
+							JANUS_LOG(LOG_VERB, " sessions");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_HANDLE))
+							JANUS_LOG(LOG_VERB, " handles");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_JSEP))
+							JANUS_LOG(LOG_VERB, " jsep");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_WEBRTC))
+							JANUS_LOG(LOG_VERB, " webrtc");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_MEDIA))
+							JANUS_LOG(LOG_VERB, " media");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_PLUGIN))
+							JANUS_LOG(LOG_VERB, " plugins");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_TRANSPORT))
+							JANUS_LOG(LOG_VERB, " transports");
+					}
+					JANUS_LOG(LOG_VERB, "\n");
+					if(eventhandlers == NULL)
+						eventhandlers = g_hash_table_new(g_str_hash, g_str_equal);
+					g_hash_table_insert(eventhandlers, (gpointer)janus_eventhandler->get_package(), janus_eventhandler);
+					if(eventhandlers_so == NULL)
+						eventhandlers_so = g_hash_table_new(g_str_hash, g_str_equal);
+					g_hash_table_insert(eventhandlers_so, (gpointer)janus_eventhandler->get_package(), event);
 				}
-				JANUS_LOG(LOG_VERB, "\n");
-				if(eventhandlers == NULL)
-					eventhandlers = g_hash_table_new(g_str_hash, g_str_equal);
-				g_hash_table_insert(eventhandlers, (gpointer)janus_eventhandler->get_package(), janus_eventhandler);
-				if(eventhandlers_so == NULL)
-					eventhandlers_so = g_hash_table_new(g_str_hash, g_str_equal);
-				g_hash_table_insert(eventhandlers_so, (gpointer)janus_eventhandler->get_package(), event);
 			}
 		}
 		closedir(dir);
@@ -3750,7 +3768,7 @@ gint main(int argc, char *argv[])
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;
 		/* Initialize the event broadcaster */
-		janus_events_init(eventhandlers);
+		janus_events_init(enable_events, eventhandlers);
 	}
 
 	/* Load plugins */

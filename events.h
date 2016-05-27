@@ -17,8 +17,13 @@
 #include "events/eventhandler.h"
 
 /*! \brief Initialize the event handlers broadcaster
- * @param[in] eventhandlers Map of all registered event handlers */
-void janus_events_init(GHashTable *eventhandlers);
+ * @param[in] enabled Whether broadcasting events should be supported at all
+ * @param[in] handlers Map of all registered event handlers */
+void janus_events_init(gboolean enabled, GHashTable *handlers);
+
+/*! \brief Quick method to check whether event handlers are enabled at all or not
+ * @returns TRUE if they're enabled, FALSE if not */
+gboolean janus_events_is_enabled(void);
 
 /*! \brief Notify an event to all interested handlers
  * @note According to the type of event to notify, different arguments may

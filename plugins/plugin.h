@@ -154,6 +154,7 @@ janus_plugin *create(void) {
 #include <unistd.h>
 #include <inttypes.h>
 
+#include <glib.h>
 #include <jansson.h>
 
 
@@ -364,6 +365,9 @@ struct janus_callbacks {
 	 * @param[in] handle The plugin/gateway session to get rid of */
 	void (* const end_session)(janus_plugin_session *handle);
 
+	/*! \brief Callback to check whether the event handlers mechanism is enabled
+	 * @returns TRUE if it is, FALSE if it isn't (which means notify_event should NOT be called) */
+	gboolean (* const events_is_enabled)(void);
 	/*! \brief Callback to notify an event to the registered and subscribed event handlers
 	 * \note Don't unref the event object, the core will do that for you
 	 * @param[in] handle The plugin/gateway session originating the event

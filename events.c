@@ -15,13 +15,19 @@
 #include "events.h"
 #include "utils.h"
 
+static gboolean eventsenabled = FALSE;
 static GHashTable *eventhandlers = NULL;
-void janus_events_init(GHashTable *handlers) {
+void janus_events_init(gboolean enabled, GHashTable *handlers) {
+	eventsenabled = enabled;
 	eventhandlers = handlers;
 }
 
+gboolean janus_events_is_enabled(void) {
+	return eventsenabled;
+}
+
 void janus_events_notify_handlers(int type, guint64 session_id, ...) {
-	if(eventhandlers == NULL || g_hash_table_size(eventhandlers) == 0)
+	if(!eventsenabled || eventhandlers == NULL || g_hash_table_size(eventhandlers) == 0)
 		return;
 
 	/* Prepare the event to notify as a Jansson json_t object */

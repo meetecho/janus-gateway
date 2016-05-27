@@ -165,6 +165,9 @@ ice_ignore_list = vmnet
 ; not. Use the 'disable' directive to prevent Janus from loading one
 ; or more event handlers: use a comma separated list of file names
 ; to identify the event handlers to disable. By default all available
-; event handlers are enabled and loaded at startup.
+; event handlers are enabled and loaded at startup. If you want to
+; completely disable the broadcasting of events to any event handler,
+; set broadcast to no.
 [events]
+; broadcast = no
 ; disable = libjanus_sampleevh.so
