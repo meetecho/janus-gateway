@@ -280,15 +280,15 @@ typedef struct janus_ice_queued_packet {
 static janus_ice_queued_packet janus_ice_dtls_alert;
 
 
-/* Maximum values for the NACK queue/retransmissions */
-#define DEFAULT_MAX_NACK_QUEUE	300
+/* Maximum value, in seconds, for the NACK queue/retransmissions (default=1s) */
+#define DEFAULT_MAX_NACK_QUEUE	1
 /* Maximum ignore count after retransmission (100ms) */
 #define MAX_NACK_IGNORE			100000
 
 static uint max_nack_queue = DEFAULT_MAX_NACK_QUEUE;
 void janus_set_max_nack_queue(uint mnq) {
 	max_nack_queue = mnq;
-	JANUS_LOG(LOG_VERB, "Setting max NACK queue to %d\n", max_nack_queue);
+	JANUS_LOG(LOG_VERB, "Setting max NACK queue to %ds\n", max_nack_queue);
 }
 uint janus_get_max_nack_queue(void) {
 	return max_nack_queue;
@@ -1793,18 +1793,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 
 				/* Update the RTCP context as well */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
-				if(rtcp_ctx == NULL) {
-					/* We still need an RTCP context here, create it now */
-					rtcp_ctx = g_malloc0(sizeof(rtcp_context));
-					if(video) {
-						rtcp_ctx->tb = 90000;	/* FIXME */
-						stream->video_rtcp_ctx = rtcp_ctx;
-					} else {
-						rtcp_ctx->tb = 48000;	/* FIXME */
-						stream->audio_rtcp_ctx = rtcp_ctx;
-					}
-				}
-				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen, janus_get_max_nack_queue());
+				janus_rtcp_process_incoming_rtp(rtcp_ctx, buf, buflen);
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
@@ -1963,17 +1952,6 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
-				if(rtcp_ctx == NULL) {
-					/* We still need an RTCP context here, create it now */
-					rtcp_ctx = g_malloc0(sizeof(rtcp_context));
-					if(video) {
-						rtcp_ctx->tb = 90000;	/* FIXME */
-						stream->video_rtcp_ctx = rtcp_ctx;
-					} else {
-						rtcp_ctx->tb = 48000;	/* FIXME */
-						stream->audio_rtcp_ctx = rtcp_ctx;
-					}
-				}
 				janus_rtcp_parse(rtcp_ctx, buf, buflen);
 
 				/* Now let's see if there are any NACKs to handle */
@@ -2612,6 +2590,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		}
 		audio_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		audio_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
+		audio_stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+		audio_stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
+		audio_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+		audio_stream->video_rtcp_ctx->tb = 90000;
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->audio_id), audio_stream);
@@ -2768,6 +2750,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
 		video_stream->audio_ssrc = 0;
 		video_stream->audio_ssrc_peer = 0;
+		video_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+		video_stream->video_rtcp_ctx->tb = 90000;
 		video_stream->components = g_hash_table_new(NULL, NULL);
 		janus_mutex_init(&video_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->video_id), video_stream);
@@ -3005,7 +2989,8 @@ void *janus_ice_send_thread(void *data) {
 	janus_ice_queued_packet *pkt = NULL;
 	gint64 before = janus_get_monotonic_time(),
 		audio_rtcp_last_rr = before, audio_rtcp_last_sr = before,
-		video_rtcp_last_rr = before, video_rtcp_last_sr = before;
+		video_rtcp_last_rr = before, video_rtcp_last_sr = before,
+		last_nack_cleanup = before;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		if(handle->queued_packets != NULL) {
 			pkt = g_async_queue_timeout_pop(handle->queued_packets, 500000);
@@ -3052,7 +3037,7 @@ void *janus_ice_send_thread(void *data) {
 		/* Let's check if it's time to send a RTCP RR as well */
 		if(now-audio_rtcp_last_rr >= 5*G_USEC_PER_SEC) {
 			janus_ice_stream *stream = handle->audio_stream;
-			if(handle->audio_stream && stream->audio_rtcp_ctx && stream->audio_rtcp_ctx->enabled) {
+			if(handle->audio_stream && stream->audio_rtcp_ctx && stream->audio_rtcp_ctx->rtp_recvd) {
 				/* Create a RR */
 				int rrlen = 32;
 				char rtcpbuf[32];
@@ -3070,7 +3055,7 @@ void *janus_ice_send_thread(void *data) {
 		if(now-video_rtcp_last_rr >= 5*G_USEC_PER_SEC) {
 			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
 			if(stream) {
-				if(stream->video_rtcp_ctx && stream->video_rtcp_ctx->enabled) {
+				if(stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd) {
 					/* Create a RR */
 					int rrlen = 32;
 					char rtcpbuf[32];
@@ -3106,7 +3091,17 @@ void *janus_ice_send_thread(void *data) {
 				uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
 				sr->si.ntp_ts_msw = htonl(s);
 				sr->si.ntp_ts_lsw = htonl(f);
-				sr->si.rtp_ts = htonl(stream->audio_last_ts);
+				/* Compute an RTP timestamp coherent with the NTP one */
+				rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
+				if(rtcp_ctx == NULL) {
+					sr->si.rtp_ts = htonl(stream->audio_last_ts);	/* FIXME */
+				} else {
+					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+					if(rtcp_ctx->fsr_ts == 0)
+						rtcp_ctx->fsr_ts = ntp;
+					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000);
+					sr->si.rtp_ts = htonl(rtp_ts);
+				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.audio_packets);
 				sr->si.s_octets = htonl(stream->rtp_component->out_stats.audio_bytes);
 				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
@@ -3135,7 +3130,17 @@ void *janus_ice_send_thread(void *data) {
 				uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
 				sr->si.ntp_ts_msw = htonl(s);
 				sr->si.ntp_ts_lsw = htonl(f);
-				sr->si.rtp_ts = htonl(stream->video_last_ts);
+				/* Compute an RTP timestamp coherent with the NTP one */
+				rtcp_context *rtcp_ctx = stream->video_rtcp_ctx;
+				if(rtcp_ctx == NULL) {
+					sr->si.rtp_ts = htonl(stream->video_last_ts);	/* FIXME */
+				} else {
+					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+					if(rtcp_ctx->fsr_ts == 0)
+						rtcp_ctx->fsr_ts = ntp;
+					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000);
+					sr->si.rtp_ts = htonl(rtp_ts);
+				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.video_packets);
 				sr->si.s_octets = htonl(stream->rtp_component->out_stats.video_bytes);
 				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
@@ -3144,6 +3149,48 @@ void *janus_ice_send_thread(void *data) {
 				janus_ice_relay_rtcp(handle, 1, rtcpbuf, srlen+sdeslen);
 			}
 			video_rtcp_last_sr = now;
+		}
+		/* Should we clean up old NACK buffers? */
+		if(now-last_nack_cleanup >= 500000) {
+			if(handle->audio_stream && handle->audio_stream->rtp_component) {
+				janus_ice_component *component = handle->audio_stream->rtp_component;
+				janus_mutex_lock(&component->mutex);
+				if(component->retransmit_buffer) {
+					GList *first = g_list_first(component->retransmit_buffer);
+					janus_rtp_packet *p = (janus_rtp_packet *)first->data;
+					while(p && (now - p->created >= max_nack_queue*G_USEC_PER_SEC)) {
+						/* Packet is too old, get rid of it */
+						first->data = NULL;
+						component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+						g_free(p->data);
+						p->data = NULL;
+						g_free(p);
+						first = g_list_first(component->retransmit_buffer);
+						p = (janus_rtp_packet *)(first ? first->data : NULL);
+					}
+				}
+				janus_mutex_unlock(&component->mutex);
+			}
+			if(handle->video_stream && handle->video_stream->rtp_component) {
+				janus_ice_component *component = handle->video_stream->rtp_component;
+				janus_mutex_lock(&component->mutex);
+				if(component->retransmit_buffer) {
+					GList *first = g_list_first(component->retransmit_buffer);
+					janus_rtp_packet *p = (janus_rtp_packet *)first->data;
+					while(p && (now - p->created >= max_nack_queue*G_USEC_PER_SEC)) {
+						/* Packet is too old, get rid of it */
+						first->data = NULL;
+						component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+						g_free(p->data);
+						p->data = NULL;
+						g_free(p);
+						first = g_list_first(component->retransmit_buffer);
+						p = (janus_rtp_packet *)(first ? first->data : NULL);
+					}
+				}
+				janus_mutex_unlock(&component->mutex);
+			}
+			last_nack_cleanup = now;
 		}
 
 		/* Now let's get on with the packets */
@@ -3244,7 +3291,7 @@ void *janus_ice_send_thread(void *data) {
 					rr->header.rc = 1;
 					rr->header.length = htons((rrlen/4)-1);
 					janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
-					if(stream && stream->video_rtcp_ctx && stream->video_rtcp_ctx->enabled)
+					if(stream && stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd)
 						janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
 					/* Append REMB */
 					memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
@@ -3378,12 +3425,18 @@ void *janus_ice_send_thread(void *data) {
 						}
 						/* Update stats */
 						if(sent > 0) {
+							/* Update the RTCP context as well */
 							rtp_header *header = (rtp_header *)sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
 								component->out_stats.audio_packets++;
 								component->out_stats.audio_bytes += sent;
 								stream->audio_last_ts = timestamp;
+								/* Let's check if this was G.711: in case we may need to change the timestamp base */
+								rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
+								int pt = header->type;
+								if((pt == 0 || pt == 8) && (rtcp_ctx->tb == 48000))
+									rtcp_ctx->tb = 8000;
 							} else if(pkt->type == JANUS_ICE_PACKET_VIDEO) {
 								component->out_stats.video_packets++;
 								component->out_stats.video_bytes += sent;
@@ -3395,19 +3448,10 @@ void *janus_ice_send_thread(void *data) {
 						p->data = (char *)g_malloc0(protected);
 						memcpy(p->data, sbuf, protected);
 						p->length = protected;
+						p->created = janus_get_monotonic_time();
 						p->last_retransmit = 0;
 						janus_mutex_lock(&component->mutex);
 						component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
-						if(g_list_length(component->retransmit_buffer) > max_nack_queue) {
-							/* We only keep a limited window of packets, get rid of the oldest one */
-							GList *first = g_list_first(component->retransmit_buffer);
-							p = (janus_rtp_packet *)first->data;
-							first->data = NULL;
-							component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
-							g_free(p->data);
-							p->data = NULL;
-							g_free(p);
-						}
 						janus_mutex_unlock(&component->mutex);
 					}
 				}
