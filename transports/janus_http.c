@@ -39,8 +39,8 @@
 
 
 /* Transport plugin information */
-#define JANUS_REST_VERSION			1
-#define JANUS_REST_VERSION_STRING	"0.0.1"
+#define JANUS_REST_VERSION			2
+#define JANUS_REST_VERSION_STRING	"0.0.2"
 #define JANUS_REST_DESCRIPTION		"This transport plugin adds REST (HTTP/HTTPS) support to the Janus API via libmicrohttpd."
 #define JANUS_REST_NAME				"JANUS REST (HTTP/HTTPS) transport plugin"
 #define JANUS_REST_AUTHOR			"Meetecho s.r.l."
@@ -211,6 +211,105 @@ static void janus_http_random_string(int length, char *buffer) {
 }
 
 
+/* Helper to create a MHD daemon */
+static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, const char *interface,
+		int port, gint64 threads, const char *server_pem, const char *server_key) {
+	struct MHD_Daemon *daemon = NULL;
+	gboolean secure = server_pem && server_key;
+	if(!secure) {
+		/* HTTP web server */
+		if(threads == 0) {
+			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
+				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
+			daemon = MHD_start_daemon(
+				MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_END);
+		} else {
+			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the %s API %s webserver\n", threads,
+				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
+			daemon = MHD_start_daemon(
+				MHD_USE_SELECT_INTERNALLY,
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_THREAD_POOL_SIZE, threads,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_END);
+		}
+	} else {
+		/* HTTPS web server, read certificate and key */
+		FILE *pem = fopen(server_pem, "rb");
+		if(pem) {
+			fseek(pem, 0L, SEEK_END);
+			size_t size = ftell(pem);
+			fseek(pem, 0L, SEEK_SET);
+			cert_pem_bytes = g_malloc0(size);
+			char *index = cert_pem_bytes;
+			int read = 0, tot = size;
+			while((read = fread(index, sizeof(char), tot, pem)) > 0) {
+				tot -= read;
+				index += read;
+			}
+			fclose(pem);
+		}
+		FILE *key = fopen(server_key, "rb");
+		if(key) {
+			fseek(key, 0L, SEEK_END);
+			size_t size = ftell(key);
+			fseek(key, 0L, SEEK_SET);
+			cert_key_bytes = g_malloc0(size);
+			char *index = cert_key_bytes;
+			int read = 0, tot = size;
+			while((read = fread(index, sizeof(char), tot, key)) > 0) {
+				tot -= read;
+				index += read;
+			}
+			fclose(key);
+		}
+		/* Start webserver */
+		if(threads == 0) {
+			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
+				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
+			daemon = MHD_start_daemon(
+				MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
+				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_END);
+		} else {
+			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the %s API %s webserver\n", threads,
+				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
+			daemon = MHD_start_daemon(
+				MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY,
+				port,
+				admin ? janus_http_admin_client_connect : janus_http_client_connect,
+				NULL,
+				admin ? &janus_http_admin_handler : &janus_http_handler,
+				path,
+				MHD_OPTION_THREAD_POOL_SIZE, threads,
+				MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
+				MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
+				MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
+				MHD_OPTION_END);
+		}
+	}
+	return daemon;
+}
+
+
 /* HTTP/Janus sessions watchdog/garbage collector (sort of) */
 static void *janus_http_sessions_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "HTTP/Janus sessions watchdog started\n");
@@ -372,30 +471,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "general", "port");
 			if(item && item->value)
 				wsport = atoi(item->value);
-			if(threads == 0) {
-				JANUS_LOG(LOG_VERB, "Using a thread per connection for the HTTP webserver\n");
-				ws = MHD_start_daemon(
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
-					wsport,
-					janus_http_client_connect,
-					NULL,
-					&janus_http_handler,
-					ws_path,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_END);
-			} else {
-				JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the HTTP webserver\n", threads);
-				ws = MHD_start_daemon(
-					MHD_USE_SELECT_INTERNALLY,
-					wsport,
-					janus_http_client_connect,
-					NULL,
-					&janus_http_handler,
-					ws_path,
-					MHD_OPTION_THREAD_POOL_SIZE, threads,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_END);
-			}
+			ws = janus_http_create_daemon(FALSE, ws_path, NULL, wsport, threads, NULL, NULL);
 			if(ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			} else {
@@ -424,66 +500,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "general", "secure_port");
 				if(item && item->value)
 					swsport = atoi(item->value);
-				/* Read certificate and key */
-				FILE *pem = fopen(server_pem, "rb");
-				if(pem) {
-					fseek(pem, 0L, SEEK_END);
-					size_t size = ftell(pem);
-					fseek(pem, 0L, SEEK_SET);
-					cert_pem_bytes = g_malloc0(size);
-					char *index = cert_pem_bytes;
-					int read = 0, tot = size;
-					while((read = fread(index, sizeof(char), tot, pem)) > 0) {
-						tot -= read;
-						index += read;
-					}
-					fclose(pem);
-				}
-				FILE *key = fopen(server_key, "rb");
-				if(key) {
-					fseek(key, 0L, SEEK_END);
-					size_t size = ftell(key);
-					fseek(key, 0L, SEEK_SET);
-					cert_key_bytes = g_malloc0(size);
-					char *index = cert_key_bytes;
-					int read = 0, tot = size;
-					while((read = fread(index, sizeof(char), tot, key)) > 0) {
-						tot -= read;
-						index += read;
-					}
-					fclose(key);
-				}
-				/* Start webserver */
-				if(threads == 0) {
-					JANUS_LOG(LOG_VERB, "Using a thread per connection for the HTTPS webserver\n");
-					sws = MHD_start_daemon(
-						MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
-						swsport,
-						janus_http_client_connect,
-						NULL,
-						&janus_http_handler,
-						ws_path,
-						MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-							/* FIXME We're using the same certificates as those for DTLS */
-							MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-							MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-						MHD_OPTION_END);
-				} else {
-					JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the HTTPS webserver\n", threads);
-					sws = MHD_start_daemon(
-						MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY,
-						swsport,
-						janus_http_client_connect,
-						NULL,
-						&janus_http_handler,
-						ws_path,
-						MHD_OPTION_THREAD_POOL_SIZE, threads,
-						MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-							/* FIXME We're using the same certificates as those for DTLS */
-							MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-							MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-						MHD_OPTION_END);
-				}
+				sws = janus_http_create_daemon(FALSE, ws_path, NULL, swsport, threads, server_pem, server_key);
 				if(sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 				} else {
@@ -517,30 +534,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "admin", "admin_port");
 			if(item && item->value)
 				wsport = atoi(item->value);
-			if(threads == 0) {
-				JANUS_LOG(LOG_VERB, "Using a thread per connection for the admin/monitor HTTP webserver\n");
-				admin_ws = MHD_start_daemon(
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
-					wsport,
-					janus_http_admin_client_connect,
-					NULL,
-					&janus_http_admin_handler,
-					admin_ws_path,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_END);
-			} else {
-				JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the admin/monitor HTTP webserver\n", threads);
-				admin_ws = MHD_start_daemon(
-					MHD_USE_SELECT_INTERNALLY,
-					wsport,
-					janus_http_admin_client_connect,
-					NULL,
-					&janus_http_admin_handler,
-					admin_ws_path,
-					MHD_OPTION_THREAD_POOL_SIZE, threads,
-					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_END);
-			}
+			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, NULL, wsport, threads, NULL, NULL);
 			if(admin_ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start admin/monitor webserver on port %d...\n", wsport);
 			} else {
@@ -559,70 +553,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_port");
 				if(item && item->value)
 					swsport = atoi(item->value);
-				/* Read certificate and key */
-				if(cert_pem_bytes == NULL) {
-					FILE *pem = fopen(server_pem, "rb");
-					if(pem) {
-						fseek(pem, 0L, SEEK_END);
-						size_t size = ftell(pem);
-						fseek(pem, 0L, SEEK_SET);
-						cert_pem_bytes = g_malloc0(size);
-						char *index = cert_pem_bytes;
-						int read = 0, tot = size;
-						while((read = fread(index, sizeof(char), tot, pem)) > 0) {
-							tot -= read;
-							index += read;
-						}
-						fclose(pem);
-					}
-				}
-				if(cert_key_bytes == NULL) {
-					FILE *key = fopen(server_key, "rb");
-					if(key) {
-						fseek(key, 0L, SEEK_END);
-						size_t size = ftell(key);
-						fseek(key, 0L, SEEK_SET);
-						cert_key_bytes = g_malloc0(size);
-						char *index = cert_key_bytes;
-						int read = 0, tot = size;
-						while((read = fread(index, sizeof(char), tot, key)) > 0) {
-							tot -= read;
-							index += read;
-						}
-						fclose(key);
-					}
-				}
-				/* Start webserver */
-				if(threads == 0) {
-					JANUS_LOG(LOG_VERB, "Using a thread per connection for the admin/monitor HTTPS webserver\n");
-					admin_sws = MHD_start_daemon(
-						MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
-						swsport,
-						janus_http_admin_client_connect,
-						NULL,
-						&janus_http_admin_handler,
-						admin_ws_path,
-						MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-							/* FIXME We're using the same certificates as those for DTLS */
-							MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-							MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-						MHD_OPTION_END);
-				} else {
-					JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the admin/monitor HTTPS webserver\n", threads);
-					admin_sws = MHD_start_daemon(
-						MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY,
-						swsport,
-						janus_http_admin_client_connect,
-						NULL,
-						&janus_http_admin_handler,
-						admin_ws_path,
-						MHD_OPTION_THREAD_POOL_SIZE, threads,
-						MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-							/* FIXME We're using the same certificates as those for DTLS */
-							MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
-							MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-						MHD_OPTION_END);
-				}
+				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, NULL, swsport, threads, server_pem, server_key);
 				if(admin_sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 				} else {
