@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <arpa/inet.h>
 #include <sys/file.h>
 #include <sys/types.h>

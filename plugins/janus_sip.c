@@ -283,6 +283,7 @@ typedef struct janus_sip_account {
 	char *identity;
 	gboolean sips;
 	char *username;
+	char *display_name;		/* Used for outgoing calls in the From header */
 	char *authuser;			/**< username to use for authentication */
 	char *secret;
 	janus_sip_secret_type secret_type;
@@ -588,6 +589,10 @@ void *janus_sip_watchdog(void *data) {
 					    g_free(session->account.username);
 					    session->account.username = NULL;
 					}
+					if (session->account.display_name) {
+					    g_free(session->account.display_name);
+					    session->account.display_name = NULL;
+					}
 					if (session->account.authuser) {
 					    g_free(session->account.authuser);
 					    session->account.authuser = NULL;
@@ -835,6 +840,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.identity = NULL;
 	session->account.sips = TRUE;
 	session->account.username = NULL;
+	session->account.display_name = NULL;
 	session->account.authuser = NULL;
 	session->account.secret = NULL;
 	session->account.secret_type = janus_sip_secret_type_unknown;
@@ -929,6 +935,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
+	json_object_set_new(info, "display_name", session->account.display_name ? json_string(session->account.display_name) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
 	json_object_set_new(info, "registration_status", json_string(janus_sip_registration_status_string(session->account.registration_status)));
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
@@ -1008,8 +1015,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			}
 			if(session->media.has_video && session->media.video_rtp_fd) {
 				/* Save the frame if we're recording */
-				if(session->vrc)
-					janus_recorder_save_frame(session->vrc, buf, len);
+				janus_recorder_save_frame(session->vrc, buf, len);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1039,8 +1045,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			}
 			if(session->media.has_audio && session->media.audio_rtp_fd) {
 				/* Save the frame if we're recording */
-				if(session->arc)
-					janus_recorder_save_frame(session->arc, buf, len);
+				janus_recorder_save_frame(session->arc, buf, len);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1156,6 +1161,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		 session->status == janus_sip_call_status_incall))
 		return;
 	/* Get rid of the recorders, if available */
+	janus_mutex_lock(&session->mutex);
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
@@ -1180,6 +1186,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		janus_recorder_free(session->vrc_peer);
 	}
 	session->vrc_peer = NULL;
+	janus_mutex_unlock(&session->mutex);
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
@@ -1273,6 +1280,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.username != NULL)
 				g_free(session->account.username);
 			session->account.username = NULL;
+			if(session->account.display_name != NULL)
+				g_free(session->account.display_name);
+			session->account.display_name = NULL;
 			if(session->account.authuser != NULL)
 				g_free(session->account.authuser);
 			session->account.authuser = NULL;
@@ -1349,6 +1359,12 @@ static void *janus_sip_handler(void *data) {
 			if (ttl <= 0)
 				ttl = JANUS_DEFAULT_REGISTER_TTL;
 
+			/* Parse display name */
+			const char* display_name_text = NULL;
+			json_t *display_name = json_object_get(root, "display_name");
+			if (display_name && json_is_string(display_name))
+				display_name_text = json_string_value(display_name);
+
 			/* Now the user part, if needed */
 			json_t *username = json_object_get(root, "username");
 			if(!guest && !username) {
@@ -1419,6 +1435,9 @@ static void *janus_sip_handler(void *data) {
 			session->account.identity = g_strdup(username_text);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
+			if (display_name_text) {
+				session->account.display_name = g_strdup(display_name_text);
+			}
 			if (proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
 			}
@@ -1606,6 +1625,13 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
+			/* Prepare the From header */
+			char from_hdr[1024];
+			if (session->account.display_name) {
+				g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
+			} else {
+				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
+			}
 			/* Prepare the stack */
 			if(session->stack->s_nh_i != NULL)
 				nua_handle_destroy(session->stack->s_nh_i);
@@ -1622,7 +1648,7 @@ static void *janus_sip_handler(void *data) {
 			session->status = janus_sip_call_status_inviting;
 			/* Send INVITE */
 			nua_invite(session->stack->s_nh_i,
-				SIPTAG_FROM_STR(session->account.identity),
+				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->account.proxy),
@@ -1866,6 +1892,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			json_t *recfile = json_object_get(root, "filename");
 			const char *recording_base = json_string_value(recfile);
+			janus_mutex_lock(&session->mutex);
 			if(!strcasecmp(action_text, "start")) {
 				/* Start recording something */
 				char filename[255];
@@ -2024,6 +2051,7 @@ static void *janus_sip_handler(void *data) {
 					session->vrc_peer = NULL;
 				}
 			}
+			janus_mutex_unlock(&session->mutex);
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
@@ -2977,8 +3005,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Save the frame if we're recording */
-					if(session->arc_peer)
-						janus_recorder_save_frame(session->arc_peer, buffer, bytes);
+					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
 					/* Relay to browser */
 					gateway->relay_rtp(session->handle, 0, buffer, bytes);
 					continue;
@@ -3029,8 +3056,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Save the frame if we're recording */
-					if(session->vrc_peer)
-						janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
+					janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 					/* Relay to browser */
 					gateway->relay_rtp(session->handle, 1, buffer, bytes);
 					continue;

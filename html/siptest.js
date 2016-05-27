@@ -152,6 +152,7 @@ $(document).ready(function() {
 										if(!registered) {
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
 											$('#registerset').removeAttr('disabled');
@@ -166,6 +167,7 @@ $(document).ready(function() {
 											Janus.warn("Registration failed: " + result["code"] + " " + result["reason"]);
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
 											$('#registerset').removeAttr('disabled');
@@ -383,7 +385,7 @@ $(document).ready(function() {
 function checkEnter(field, event) {
 	var theCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
 	if(theCode == 13) {
-		if(field.id == 'server' || field.id == 'username' || field.id == 'password')
+		if(field.id == 'server' || field.id == 'username' || field.id == 'password' || field.id == 'displayname')
 			registerUsername();
 		else if(field.id == 'peer')
 			doCall();
@@ -401,6 +403,7 @@ function registerUsername() {
 	// Try a registration
 	$('#server').attr('disabled', true);
 	$('#username').attr('disabled', true);
+	$('#displayname').attr('disabled', true);
 	$('#password').attr('disabled', true);
 	$('#register').attr('disabled', true).unbind('click');
 	$('#registerset').attr('disabled', true);
@@ -409,6 +412,7 @@ function registerUsername() {
 		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
 		$('#registerset').removeAttr('disabled');
@@ -428,11 +432,16 @@ function registerUsername() {
 				bootbox.alert('Usernames are optional for guests: if you want to specify one anyway, though, please insert a valid SIP address (e.g., sip:goofy@example.com)');
 				$('#server').removeAttr('disabled');
 				$('#username').removeAttr('disabled');
+				$('#displayname').removeAttr('disabled');
 				$('#register').removeAttr('disabled').click(registerUsername);
 				$('#registerset').removeAttr('disabled');
 				return;
 			}
 			register.username = username;
+		}
+		var displayname = $('#displayname').val();
+		if (displayname) {
+			register.display_name = displayname;
 		}
 		if(sipserver === "") {
 			bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
@@ -442,6 +451,7 @@ function registerUsername() {
 					} else {
 						$('#server').removeAttr('disabled');
 						$('#username').removeAttr('disabled');
+						$('#displayname').removeAttr('disabled');
 						$('#register').removeAttr('disabled').click(registerUsername);
 						$('#registerset').removeAttr('disabled');
 					}
@@ -456,6 +466,7 @@ function registerUsername() {
 		bootbox.alert('Please insert a valid SIP identity address (e.g., sip:goofy@example.com)');
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
 		$('#registerset').removeAttr('disabled');
@@ -466,6 +477,7 @@ function registerUsername() {
 		bootbox.alert("Insert the username secret (e.g., mypassword)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
 		$('#registerset').removeAttr('disabled');
@@ -475,6 +487,10 @@ function registerUsername() {
 		"request" : "register",
 		"username" : username
 	};
+	var displayname = $('#displayname').val();
+	if (displayname) {
+		register.display_name = displayname;
+	}
 	if(selectedApproach === "secret") {
 		// Use the plain secret
 		register["secret"] = password;
@@ -491,6 +507,7 @@ function registerUsername() {
 				} else {
 					$('#server').removeAttr('disabled');
 					$('#username').removeAttr('disabled');
+					$('#displayname').removeAttr('disabled');
 					$('#password').removeAttr('disabled');
 					$('#register').removeAttr('disabled').click(registerUsername);
 					$('#registerset').removeAttr('disabled');

@@ -1168,6 +1168,10 @@ void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 		g_free(stream->rpass);
 		stream->rpass = NULL;
 	}
+	g_list_free(stream->audio_payload_types);
+	stream->audio_payload_types = NULL;
+	g_list_free(stream->video_payload_types);
+	stream->video_payload_types = NULL;
 	g_free(stream->audio_rtcp_ctx);
 	stream->audio_rtcp_ctx = NULL;
 	g_free(stream->video_rtcp_ctx);
@@ -1671,8 +1675,43 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				video = ((stream->video_ssrc_peer == packet_ssrc || stream->video_ssrc_peer_rtx == packet_ssrc) ? 1 : 0);
 				if(!video && stream->audio_ssrc_peer != packet_ssrc) {
 					/* FIXME In case it happens, we should check what it is */
-					JANUS_LOG(LOG_WARN, "Not video and not audio? dropping (SSRC %"SCNu32")...\n", packet_ssrc);
-					return;
+					if(stream->audio_ssrc_peer == 0 || stream->video_ssrc_peer == 0) {
+						/* Apparently we were not told the peer SSRCs, try to guess from the payload type */
+						gboolean found = FALSE;
+						guint16 pt = header->type;
+						if(stream->audio_ssrc_peer == 0 && stream->audio_payload_types) {
+							GList *pts = stream->audio_payload_types;
+							while(pts) {
+								guint16 audio_pt = GPOINTER_TO_UINT(pts->data);
+								if(pt == audio_pt) {
+									JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is audio! (payload type %"SCNu16")\n", handle->handle_id, packet_ssrc, pt);
+									video = 0;
+									stream->audio_ssrc_peer = packet_ssrc;
+									found = TRUE;
+									break;
+								}
+								pts = pts->next;
+							}
+						}
+						if(!found && stream->video_ssrc_peer == 0 && stream->video_payload_types) {
+							GList *pts = stream->video_payload_types;
+							while(pts) {
+								guint16 video_pt = GPOINTER_TO_UINT(pts->data);
+								if(pt == video_pt) {
+									JANUS_LOG(LOG_VERB, "[%"SCNu64"] Unadvertized SSRC (%"SCNu32") is video! (payload type %"SCNu16")\n", handle->handle_id, packet_ssrc, pt);
+									video = 1;
+									stream->video_ssrc_peer = packet_ssrc;
+									found = TRUE;
+									break;
+								}
+								pts = pts->next;
+							}
+						}
+					}
+					if(!video && stream->audio_ssrc_peer != packet_ssrc) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Not video and not audio? dropping (SSRC %"SCNu32")...\n", handle->handle_id, packet_ssrc);
+						return;
+					}
 				}
 				if(stream->video_ssrc_peer_rtx == packet_ssrc) {
 					/* FIXME This is a video retransmission: set the regular peer SSRC so

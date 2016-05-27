@@ -1053,6 +1053,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					while(fmt) {
 						g_snprintf(buffer, 512, " %s", fmt->l_text);
 						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+						guint16 pt = atoi(fmt->l_text);
+						if(m->m_type == sdp_media_audio) {
+							stream->audio_payload_types = g_list_append(stream->audio_payload_types, GUINT_TO_POINTER(pt));
+						} else if(m->m_type == sdp_media_video) {
+							stream->video_payload_types = g_list_append(stream->video_payload_types, GUINT_TO_POINTER(pt));
+						}
 						fmt = fmt->l_next;
 					}
 				}
@@ -1061,6 +1067,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				while(r) {
 					g_snprintf(buffer, 512, " %d", r->rm_pt);
 					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					guint16 pt = r->rm_pt;
+					if(m->m_type == sdp_media_audio) {
+						stream->audio_payload_types = g_list_append(stream->audio_payload_types, GUINT_TO_POINTER(pt));
+					} else if(m->m_type == sdp_media_video) {
+						stream->video_payload_types = g_list_append(stream->video_payload_types, GUINT_TO_POINTER(pt));
+					}
 					r = r->rm_next;
 				}
 			}
