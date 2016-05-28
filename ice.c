@@ -3433,16 +3433,18 @@ void *janus_ice_send_thread(void *data) {
 								stream->video_last_ts = timestamp;
 							}
 						}
-						/* Save the packet for retransmissions that may be needed later */
-						janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
-						p->data = (char *)g_malloc0(protected);
-						memcpy(p->data, sbuf, protected);
-						p->length = protected;
-						p->created = janus_get_monotonic_time();
-						p->last_retransmit = 0;
-						janus_mutex_lock(&component->mutex);
-						component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
-						janus_mutex_unlock(&component->mutex);
+						if(max_nack_queue > 0) {
+							/* Save the packet for retransmissions that may be needed later */
+							janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
+							p->data = (char *)g_malloc0(protected);
+							memcpy(p->data, sbuf, protected);
+							p->length = protected;
+							p->created = janus_get_monotonic_time();
+							p->last_retransmit = 0;
+							janus_mutex_lock(&component->mutex);
+							component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
+							janus_mutex_unlock(&component->mutex);
+						}
 					}
 				}
 			} else {
