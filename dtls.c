@@ -87,7 +87,7 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 
 /* Helper to notify DTLS state changes to the event handlers */
 static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
-	if(janus_events_is_enabled())
+	if(!janus_events_is_enabled())
 		return;
 	if(dtls == NULL)
 		return;
