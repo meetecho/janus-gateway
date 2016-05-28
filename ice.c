@@ -280,18 +280,43 @@ typedef struct janus_ice_queued_packet {
 static janus_ice_queued_packet janus_ice_dtls_alert;
 
 
-/* Maximum value, in seconds, for the NACK queue/retransmissions (default=1s) */
-#define DEFAULT_MAX_NACK_QUEUE	1
+/* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=1000ms=1s) */
+#define DEFAULT_MAX_NACK_QUEUE	1000
 /* Maximum ignore count after retransmission (100ms) */
 #define MAX_NACK_IGNORE			100000
 
 static uint max_nack_queue = DEFAULT_MAX_NACK_QUEUE;
 void janus_set_max_nack_queue(uint mnq) {
 	max_nack_queue = mnq;
-	JANUS_LOG(LOG_VERB, "Setting max NACK queue to %ds\n", max_nack_queue);
+	if(max_nack_queue == 0)
+		JANUS_LOG(LOG_VERB, "Disabling NACK queue\n");
+	else
+		JANUS_LOG(LOG_VERB, "Setting max NACK queue to %ds\n", max_nack_queue);
 }
 uint janus_get_max_nack_queue(void) {
 	return max_nack_queue;
+}
+/* Helper to clean old NACK packets in the buffer when they exceed the queue time limit */
+static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream) {
+	if(stream && stream->rtp_component) {
+		janus_ice_component *component = stream->rtp_component;
+		janus_mutex_lock(&component->mutex);
+		if(component->retransmit_buffer) {
+			GList *first = g_list_first(component->retransmit_buffer);
+			janus_rtp_packet *p = (janus_rtp_packet *)first->data;
+			while(p && (now - p->created >= max_nack_queue*1000)) {
+				/* Packet is too old, get rid of it */
+				first->data = NULL;
+				component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
+				g_free(p->data);
+				p->data = NULL;
+				g_free(p);
+				first = g_list_first(component->retransmit_buffer);
+				p = (janus_rtp_packet *)(first ? first->data : NULL);
+			}
+		}
+		janus_mutex_unlock(&component->mutex);
+	}
 }
 
 
@@ -3151,45 +3176,10 @@ void *janus_ice_send_thread(void *data) {
 			video_rtcp_last_sr = now;
 		}
 		/* Should we clean up old NACK buffers? */
-		if(now-last_nack_cleanup >= 500000) {
-			if(handle->audio_stream && handle->audio_stream->rtp_component) {
-				janus_ice_component *component = handle->audio_stream->rtp_component;
-				janus_mutex_lock(&component->mutex);
-				if(component->retransmit_buffer) {
-					GList *first = g_list_first(component->retransmit_buffer);
-					janus_rtp_packet *p = (janus_rtp_packet *)first->data;
-					while(p && (now - p->created >= max_nack_queue*G_USEC_PER_SEC)) {
-						/* Packet is too old, get rid of it */
-						first->data = NULL;
-						component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
-						g_free(p->data);
-						p->data = NULL;
-						g_free(p);
-						first = g_list_first(component->retransmit_buffer);
-						p = (janus_rtp_packet *)(first ? first->data : NULL);
-					}
-				}
-				janus_mutex_unlock(&component->mutex);
-			}
-			if(handle->video_stream && handle->video_stream->rtp_component) {
-				janus_ice_component *component = handle->video_stream->rtp_component;
-				janus_mutex_lock(&component->mutex);
-				if(component->retransmit_buffer) {
-					GList *first = g_list_first(component->retransmit_buffer);
-					janus_rtp_packet *p = (janus_rtp_packet *)first->data;
-					while(p && (now - p->created >= max_nack_queue*G_USEC_PER_SEC)) {
-						/* Packet is too old, get rid of it */
-						first->data = NULL;
-						component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
-						g_free(p->data);
-						p->data = NULL;
-						g_free(p);
-						first = g_list_first(component->retransmit_buffer);
-						p = (janus_rtp_packet *)(first ? first->data : NULL);
-					}
-				}
-				janus_mutex_unlock(&component->mutex);
-			}
+		if(max_nack_queue > 0 && (now-last_nack_cleanup >= (max_nack_queue/4))) {
+			/* Check if we do for both streams */
+			janus_cleanup_nack_buffer(now, handle->audio_stream);
+			janus_cleanup_nack_buffer(now, handle->video_stream);
 			last_nack_cleanup = now;
 		}
 

@@ -1593,8 +1593,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				goto jsondone;
 			}
 			int mnq_num = json_integer_value(mnq);
-			if(mnq_num < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be a positive integer)");
+			if(mnq_num < 0 || (mnq_num > 0 || mnq_num < 200)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue, if provided, should be greater than 200)");
 				goto jsondone;
 			}
 			janus_set_max_nack_queue(mnq_num);
@@ -3527,6 +3527,8 @@ gint main(int argc, char *argv[])
 		int mnq = atoi(item->value);
 		if(mnq < 0) {
 			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's not a positive integer\n");
+		} else if(mnq > 0 && mnq < 200) {
+			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's less than 200\n");
 		} else {
 			janus_set_max_nack_queue(mnq);
 		}
