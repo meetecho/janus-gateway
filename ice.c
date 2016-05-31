@@ -470,7 +470,7 @@ void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean u
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
-	json_object_set_new(event, "receiving", json_string(up ? "true" : "false"));
+	json_object_set_new(event, "receiving", up ? json_true() : json_false());
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
