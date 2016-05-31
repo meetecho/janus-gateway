@@ -5,6 +5,7 @@
   "main": "html/janus.js",
   "files": [
     "html/janus.js",
+    "html/janus.nojquery.js",
     "html/adapter.js"
   ],
   "repository": {
