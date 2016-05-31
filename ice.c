@@ -3175,8 +3175,8 @@ void *janus_ice_send_thread(void *data) {
 			}
 			video_rtcp_last_sr = now;
 		}
-		/* Should we clean up old NACK buffers? */
-		if(max_nack_queue > 0 && (now-last_nack_cleanup >= (max_nack_queue/4))) {
+		/* Should we clean up old NACK buffers? (we check each 1/4 of the max_nack_queue time) */
+		if(max_nack_queue > 0 && (now-last_nack_cleanup >= (max_nack_queue*250))) {
 			/* Check if we do for both streams */
 			janus_cleanup_nack_buffer(now, handle->audio_stream);
 			janus_cleanup_nack_buffer(now, handle->video_stream);
