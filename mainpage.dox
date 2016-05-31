@@ -2405,7 +2405,7 @@ ldd janus | grep asan
  * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
  * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
- * 		<td><a href="https://github.com/nowylie/janus-ud-transport">janus-gateway-rtpbroadcast</a></td>
+ * 		<td><a href="https://github.com/nowylie/janus-ud-transport">janus-ud-transport</a></td>
  * 		<td>Janus transport plugin that adds support for Datagram messages over Unix Domain Sockets</td>
  * </tr>
  * </table>
