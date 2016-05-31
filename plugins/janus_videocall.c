@@ -597,8 +597,8 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "username", session->username ? json_string(session->username) : NULL);
 	if(session->peer) {
 		json_object_set_new(info, "peer", session->peer->username ? json_string(session->peer->username) : NULL);
-		json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
-		json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
+		json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
+		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
 		json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 		json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
 	}

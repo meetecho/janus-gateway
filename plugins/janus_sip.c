@@ -1484,7 +1484,7 @@ static void *janus_sip_handler(void *data) {
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registered"));
 				json_object_set_new(result, "username", json_string(session->account.username));
-				json_object_set_new(result, "register_sent", json_string("false"));
+				json_object_set_new(result, "register_sent", json_false());
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
@@ -2431,7 +2431,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *calling = json_object();
 				json_object_set_new(calling, "event", json_string("registered"));
 				json_object_set_new(calling, "username", json_string(session->account.username));
-				json_object_set_new(calling, "register_sent", json_string("true"));
+				json_object_set_new(calling, "register_sent", json_true());
 				json_object_set_new(call, "result", calling);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));

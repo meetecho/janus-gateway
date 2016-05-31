@@ -975,9 +975,9 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "id", json_integer(participant->user_id));
 		if(participant->display)
 			json_object_set_new(info, "display", json_string(participant->display));
-		json_object_set_new(info, "muted", json_string(participant->muted ? "true" : "false"));
-		json_object_set_new(info, "active", json_string(participant->active ? "true" : "false"));
-		json_object_set_new(info, "pre-buffering", json_string(participant->prebuffering ? "true" : "false"));
+		json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
+		json_object_set_new(info, "active", participant->active ? json_true() : json_false());
+		json_object_set_new(info, "pre-buffering", participant->prebuffering ? json_true() : json_false());
 		if(participant->inbuf) {
 			janus_mutex_lock(&participant->qmutex);
 			json_object_set_new(info, "queue-in", json_integer(g_list_length(participant->inbuf)));
@@ -986,7 +986,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		if(participant->outbuf)
 			json_object_set_new(info, "queue-out", json_integer(g_async_queue_length(participant->outbuf)));
 	}
-	json_object_set_new(info, "started", json_string(session->started ? "true" : "false"));
+	json_object_set_new(info, "started", session->started ? json_true() : json_false());
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	return info;
 }
@@ -1308,7 +1308,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_object_set_new(rl, "room", json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "sampling_rate", json_integer(room->sampling_rate));
-			json_object_set_new(rl, "record", json_string(room->record ? "true" : "false"));
+			json_object_set_new(rl, "record", room->record ? json_true() : json_false());
 			/* TODO: Possibly list participant details... or make it a separate API call for a specific room */
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 			json_array_append_new(list, rl);
@@ -1333,7 +1333,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		response = json_object();
 		json_object_set_new(response, "audiobridge", json_string("success"));
 		json_object_set_new(response, "room", json_integer(room_id));
-		json_object_set_new(response, "exists", json_string(room_exists ? "true" : "false"));
+		json_object_set_new(response, "exists", room_exists ? json_true() : json_false());
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room */	
@@ -1371,7 +1371,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_object_set_new(pl, "id", json_integer(p->user_id));
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
-			json_object_set_new(pl, "muted", json_string(p->muted ? "true" : "false"));
+			json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 			json_array_append_new(list, pl);
 		}
 		janus_mutex_unlock(&audiobridge->mutex);
@@ -1856,7 +1856,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_object_set_new(pl, "id", json_integer(participant->user_id));
 			if(participant->display)
 				json_object_set_new(pl, "display", json_string(participant->display));
-			json_object_set_new(pl, "muted", json_string(participant->muted ? "true" : "false"));
+			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
 			GHashTableIter iter;
@@ -1884,7 +1884,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "id", json_integer(p->user_id));
 				if(p->display)
 					json_object_set_new(pl, "display", json_string(p->display));
-				json_object_set_new(pl, "muted", json_string(p->muted ? "true" : "false"));
+				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 				json_array_append_new(list, pl);
 			}
 			event = json_object();
@@ -1951,7 +1951,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "id", json_integer(participant->user_id));
 				if(participant->display)
 					json_object_set_new(pl, "display", json_string(participant->display));
-				json_object_set_new(pl, "muted", json_string(participant->muted ? "true" : "false"));
+				json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 				json_array_append_new(list, pl);
 				json_t *pub = json_object();
 				json_object_set_new(pub, "audiobridge", json_string("event"));
@@ -2158,7 +2158,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_object_set_new(pl, "id", json_integer(participant->user_id));
 			if(participant->display)
 				json_object_set_new(pl, "display", json_string(participant->display));
-			json_object_set_new(pl, "muted", json_string(participant->muted ? "true" : "false"));
+			json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 			json_array_append_new(newuserlist, pl);
 			json_object_set_new(newuser, "participants", newuserlist);
 			g_hash_table_iter_init(&iter, audiobridge->participants);
@@ -2184,7 +2184,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "id", json_integer(p->user_id));
 				if(p->display)
 					json_object_set_new(pl, "display", json_string(p->display));
-				json_object_set_new(pl, "muted", json_string(p->muted ? "true" : "false"));
+				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
 				json_array_append_new(list, pl);
 			}
 			event = json_object();
@@ -2311,7 +2311,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(pl, "id", json_integer(participant->user_id));
 				if(participant->display)
 					json_object_set_new(pl, "display", json_string(participant->display));
-				json_object_set_new(pl, "muted", json_string(participant->muted ? "true" : "false"));
+				json_object_set_new(pl, "muted", participant->muted ? json_true() : json_false());
 				json_array_append_new(list, pl);
 				json_t *pub = json_object();
 				json_object_set_new(pub, "audiobridge", json_string("event"));

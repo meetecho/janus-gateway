@@ -1469,7 +1469,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_object_set_new(rl, "fir_freq", json_integer(room->fir_freq));
 				json_object_set_new(rl, "audiocodec", json_string(janus_videoroom_audiocodec_name(room->acodec)));
 				json_object_set_new(rl, "videocodec", json_string(janus_videoroom_videocodec_name(room->vcodec)));
-				json_object_set_new(rl, "record", json_string(room->record ? "true" : "false"));
+				json_object_set_new(rl, "record", room->record ? json_true() : json_false());
 				json_object_set_new(rl, "rec_dir", json_string(room->rec_dir));
 				/* TODO: Should we list participants as well? or should there be a separate API call on a specific room for this? */
 				json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
@@ -1664,7 +1664,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", json_integer(room_id));
-		json_object_set_new(response, "exists", json_string(room_exists ? "true" : "false"));
+		json_object_set_new(response, "exists", room_exists ? json_true() : json_false());
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */	
@@ -1702,7 +1702,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			json_object_set_new(pl, "id", json_integer(p->user_id));
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
-			json_object_set_new(pl, "publisher", json_string(p->sdp ? "true" : "false"));
+			json_object_set_new(pl, "publisher", (p->sdp && p->session->started) ? json_true() : json_false());
 			json_array_append_new(list, pl);
 		}
 		janus_mutex_unlock(&videoroom->participants_mutex);

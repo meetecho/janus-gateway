@@ -420,8 +420,8 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	}
 	/* In the echo test, every session is the same: we just provide some configure info */
 	json_t *info = json_object();
-	json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
-	json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
+	json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
+	json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 	if(session->arc || session->vrc) {
 		json_t *recording = json_object();

@@ -778,8 +778,8 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 			json_object_set_new(ml, "id", json_integer(rec->id));
 			json_object_set_new(ml, "name", json_string(rec->name));
 			json_object_set_new(ml, "date", json_string(rec->date));
-			json_object_set_new(ml, "audio", json_string(rec->arc_file ? "false" : "true"));
-			json_object_set_new(ml, "video", json_string(rec->vrc_file ? "false" : "true"));
+			json_object_set_new(ml, "audio", rec->arc_file ? json_true() : json_false());
+			json_object_set_new(ml, "video", rec->vrc_file ? json_true() : json_false());
 			json_array_append_new(list, ml);
 		}
 		janus_mutex_unlock(&recordings_mutex);
