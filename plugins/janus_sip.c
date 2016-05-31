@@ -300,6 +300,8 @@ typedef struct janus_sip_media {
 	int local_audio_rtp_port, remote_audio_rtp_port;
 	int local_audio_rtcp_port, remote_audio_rtcp_port;
 	guint32 audio_ssrc, audio_ssrc_peer;
+	int audio_pt;
+	const char *audio_pt_name;
 	srtp_t audio_srtp_in, audio_srtp_out;
 	srtp_policy_t audio_remote_policy, audio_local_policy;
 	int audio_srtp_suite_in, audio_srtp_suite_out;
@@ -308,6 +310,8 @@ typedef struct janus_sip_media {
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
 	guint32 video_ssrc, video_ssrc_peer;
+	int video_pt;
+	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
 	srtp_policy_t video_remote_policy, video_local_policy;
 	int video_srtp_suite_in, video_srtp_suite_out;
@@ -325,6 +329,7 @@ typedef struct janus_sip_session {
 	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
 	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
+	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 	janus_mutex mutex;
@@ -495,8 +500,8 @@ gpointer janus_sip_sofia_thread(gpointer user_data);
 /* Sofia callbacks */
 void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase, nua_t *nua, nua_magic_t *magic, nua_handle_t *nh, nua_hmagic_t *hmagic, sip_t const *sip, tagi_t tags[]);
 /* SDP parsing and manipulation */
-void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp);
-char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp);
+void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp, gboolean answer);
+char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp, gboolean answer);
 /* Media */
 static int janus_sip_allocate_local_ports(janus_sip_session *session);
 static void *janus_sip_relay_thread(void *data);
@@ -860,6 +865,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_audio_rtcp_port = 0;
 	session->media.audio_ssrc = 0;
 	session->media.audio_ssrc_peer = 0;
+	session->media.audio_pt = -1;
+	session->media.audio_pt_name = NULL;
 	session->media.audio_srtp_suite_in = 0;
 	session->media.audio_srtp_suite_out = 0;
 	session->media.has_video = 0;
@@ -871,8 +878,11 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
+	session->media.video_pt = -1;
+	session->media.video_pt_name = NULL;
 	session->media.video_srtp_suite_in = 0;
 	session->media.video_srtp_suite_out = 0;
+	janus_mutex_init(&session->rec_mutex);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_init(&session->mutex);
@@ -1002,8 +1012,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			}
 			if(session->media.has_video && session->media.video_rtp_fd) {
 				/* Save the frame if we're recording */
-				if(session->vrc)
-					janus_recorder_save_frame(session->vrc, buf, len);
+				janus_recorder_save_frame(session->vrc, buf, len);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1033,8 +1042,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			}
 			if(session->media.has_audio && session->media.audio_rtp_fd) {
 				/* Save the frame if we're recording */
-				if(session->arc)
-					janus_recorder_save_frame(session->arc, buf, len);
+				janus_recorder_save_frame(session->arc, buf, len);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1150,6 +1158,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		 session->status == janus_sip_call_status_incall))
 		return;
 	/* Get rid of the recorders, if available */
+	janus_mutex_lock(&session->rec_mutex);
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
@@ -1174,6 +1183,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		janus_recorder_free(session->vrc_peer);
 	}
 	session->vrc_peer = NULL;
+	janus_mutex_unlock(&session->rec_mutex);
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
@@ -1579,11 +1589,11 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Allocate RTP ports and merge them with the anonymized SDP */
-			if(strstr(msg_sdp, "m=audio")) {
+			if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
 				session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
-			if(strstr(msg_sdp, "m=video")) {
+			if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
@@ -1594,7 +1604,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
 			}
-			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp);
+			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, FALSE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				sdp_parser_free(parser);
@@ -1713,11 +1723,11 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Allocate RTP ports and merge them with the anonymized SDP */
-			if(strstr(msg_sdp, "m=audio")) {
+			if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
 				session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
-			if(strstr(msg_sdp, "m=video")) {
+			if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
@@ -1728,13 +1738,21 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
 			}
-			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp);
+			char *sdp = janus_sip_sdp_manipulate(session, parsed_sdp, TRUE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
 				sdp_parser_free(parser);
 				error_code = JANUS_SIP_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
+			}
+			if(session->media.audio_pt > -1) {
+				session->media.audio_pt_name = janus_get_codec_from_pt(sdp, session->media.audio_pt);
+				JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+			}
+			if(session->media.video_pt > -1) {
+				session->media.video_pt_name = janus_get_codec_from_pt(sdp, session->media.video_pt);
+				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
 			/* Send 200 OK */
@@ -1862,6 +1880,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			json_t *recfile = json_object_get(root, "filename");
 			const char *recording_base = json_string_value(recfile);
+			janus_mutex_lock(&session->rec_mutex);
 			if(!strcasecmp(action_text, "start")) {
 				/* Start recording something */
 				char filename[255];
@@ -1876,7 +1895,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-peer-audio", recording_base);
-							session->arc_peer = janus_recorder_create(NULL, 0, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->arc_peer = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 							if(session->arc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -1887,7 +1907,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->arc_peer = janus_recorder_create(NULL, 0, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->arc_peer = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 							if(session->arc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -1899,7 +1920,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-peer-video", recording_base);
-							session->vrc_peer = janus_recorder_create(NULL, 1, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->vrc_peer = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 							if(session->vrc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
@@ -1910,7 +1932,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->vrc_peer = janus_recorder_create(NULL, 1, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->vrc_peer = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 							if(session->vrc_peer == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this peer!\n");
@@ -1929,7 +1952,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-user-audio", recording_base);
-							session->arc = janus_recorder_create(NULL, 0, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->arc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -1940,7 +1964,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->arc = janus_recorder_create(NULL, 0, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->arc = janus_recorder_create(NULL, session->media.audio_pt_name, filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this peer!\n");
@@ -1952,7 +1977,8 @@ static void *janus_sip_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-user-video", recording_base);
-							session->vrc = janus_recorder_create(NULL, 1, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->vrc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
@@ -1963,7 +1989,8 @@ static void *janus_sip_handler(void *data) {
 								session->account.username ? session->account.username : "unknown",
 								session->transaction ? session->transaction : "unknown",
 								now);
-							session->vrc = janus_recorder_create(NULL, 1, filename);
+							/* FIXME This only works if offer/answer happened */
+							session->vrc = janus_recorder_create(NULL, session->media.video_pt_name, filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this user!\n");
@@ -2012,6 +2039,7 @@ static void *janus_sip_handler(void *data) {
 					session->vrc_peer = NULL;
 				}
 			}
+			janus_mutex_unlock(&session->rec_mutex);
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
@@ -2223,7 +2251,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
 			JANUS_LOG(LOG_VERB, "Someone is inviting us in a call:\n%s", sip->sip_payload->pl_data);
 			sdp_session_t *sdp = sdp_session(parser);
-			janus_sip_sdp_process(session, sdp);
+			janus_sip_sdp_process(session, sdp, FALSE);
 			/* Send SDP to the browser */
 			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", fixed_sdp);
 			json_t *call = json_object();
@@ -2349,7 +2377,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			session->status = janus_sip_call_status_incall;
 			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
 			sdp_session_t *sdp = sdp_session(parser);
-			janus_sip_sdp_process(session, sdp);
+			janus_sip_sdp_process(session, sdp, TRUE);
 			/* If we asked for SRTP and are not getting it, fail */
 			if(session->media.require_srtp && !session->media.has_srtp_remote) {
 				JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
@@ -2361,6 +2389,14 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				g_free(session->callee);
 				session->callee = NULL;
 				break;
+			}
+			if(session->media.audio_pt > -1) {
+				session->media.audio_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.audio_pt);
+				JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+			}
+			if(session->media.video_pt > -1) {
+				session->media.video_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.video_pt);
+				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
@@ -2443,7 +2479,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 	}
 }
 
-void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp) {
+void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp, gboolean answer) {
 	if(!session || !sdp)
 		return;
 	/* c= */
@@ -2531,11 +2567,32 @@ void janus_sip_sdp_process(janus_sip_session *session, sdp_session_t *sdp) {
 			}
 			a = a->a_next;
 		}
+		if(answer && (m->m_type == sdp_media_audio || m->m_type == sdp_media_video)) {
+			/* Check which codec was negotiated eventually */
+			int pt = -1;
+			if(!m->m_rtpmaps) {
+				JANUS_LOG(LOG_VERB, "No RTP maps?? trying formats...\n");
+				if(m->m_format) {
+					sdp_list_t *fmt = m->m_format;
+					pt = atoi(fmt->l_text);
+				}
+			} else {
+				sdp_rtpmap_t *r = m->m_rtpmaps;
+				pt = r->rm_pt;
+			}
+			if(pt > -1) {
+				if(m->m_type == sdp_media_audio) {
+					session->media.audio_pt = pt;
+				} else {
+					session->media.video_pt = pt;
+				}
+			}
+		}
 		m = m->m_next;
 	}
 }
 
-char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp) {
+char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp, gboolean answer) {
 	if(!session || !session->stack || !sdp)
 		return NULL;
 	/* Placeholders for later */
@@ -2574,6 +2631,27 @@ char *janus_sip_sdp_manipulate(janus_sip_session *session, sdp_session_t *sdp) {
 			while(c) {
 				c->c_address = local_ip;
 				c = c->c_next;
+			}
+		}
+		if(answer && (m->m_type == sdp_media_audio || m->m_type == sdp_media_video)) {
+			/* Check which codec was negotiated eventually */
+			int pt = -1;
+			if(!m->m_rtpmaps) {
+				JANUS_LOG(LOG_VERB, "No RTP maps?? trying formats...\n");
+				if(m->m_format) {
+					sdp_list_t *fmt = m->m_format;
+					pt = atoi(fmt->l_text);
+				}
+			} else {
+				sdp_rtpmap_t *r = m->m_rtpmaps;
+				pt = r->rm_pt;
+			}
+			if(pt > -1) {
+				if(m->m_type == sdp_media_audio) {
+					session->media.audio_pt = pt;
+				} else {
+					session->media.video_pt = pt;
+				}
 			}
 		}
 		m = m->m_next;
@@ -2886,8 +2964,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Save the frame if we're recording */
-					if(session->arc_peer)
-						janus_recorder_save_frame(session->arc_peer, buffer, bytes);
+					janus_recorder_save_frame(session->arc_peer, buffer, bytes);
 					/* Relay to browser */
 					gateway->relay_rtp(session->handle, 0, buffer, bytes);
 					continue;
@@ -2938,8 +3015,7 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Save the frame if we're recording */
-					if(session->vrc_peer)
-						janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
+					janus_recorder_save_frame(session->vrc_peer, buffer, bytes);
 					/* Relay to browser */
 					gateway->relay_rtp(session->handle, 1, buffer, bytes);
 					continue;

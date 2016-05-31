@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief    Post-processing to generate .webm files
  * \details  Implementation of the post-processing code (based on FFmpeg)
- * needed to generate .webm files out of VP8 RTP frames.
+ * needed to generate .webm files out of VP8/VP9 RTP frames.
  * 
  * \ingroup postprocessing
  * \ref postprocessing
@@ -22,7 +22,7 @@
 #include "../debug.h"
 
 
-/* WebRTC stuff (VP8) */
+/* WebRTC stuff (VP8/VP9) */
 #if defined(__ppc__) || defined(__ppc64__)
 	# define swap2(d)  \
 	((d&0x000000ff)<<8) |  \
@@ -38,14 +38,19 @@
 
 
 /* WebM output */
-AVFormatContext *fctx;
-AVStream *vStream;
-int max_width = 0, max_height = 0, fps = 0;
+static AVFormatContext *fctx;
+static AVStream *vStream;
+static int max_width = 0, max_height = 0, fps = 0;
 
-
-int janus_pp_webm_create(char *destination) {
+int janus_pp_webm_create(char *destination, int vp8) {
 	if(destination == NULL)
 		return -1;
+#if LIBAVCODEC_VERSION_MAJOR < 55
+	if(!vp8) {
+		JANUS_LOG(LOG_FATAL, "Your FFmpeg version does not support VP9\n");
+		return -1;
+	}
+#endif
 	/* Setup FFmpeg */
 	av_register_all();
 	/* Adjust logging to match the postprocessor's */
@@ -81,7 +86,11 @@ int janus_pp_webm_create(char *destination) {
 	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
 #endif
 #if LIBAVCODEC_VER_AT_LEAST(54, 25)
+	#if LIBAVCODEC_VERSION_MAJOR >= 55
+	vStream->codec->codec_id = vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9;
+	#else
 	vStream->codec->codec_id = AV_CODEC_ID_VP8;
+	#endif
 #else
 	vStream->codec->codec_id = CODEC_ID_VP8;
 #endif
@@ -111,7 +120,7 @@ int janus_pp_webm_create(char *destination) {
 	return 0;
 }
 
-int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
+int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 	if(!file || !list)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -131,7 +140,15 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
 				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
 					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
 			}
-			/* http://tools.ietf.org/html/draft-ietf-payload-vp8-04 */
+		}
+		if(tmp->drop) {
+			/* We marked this packet as one to drop, before */
+			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/90000);
+			tmp = tmp->next;
+			continue;
+		}
+		if(vp8) {
+			/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */
 			/* Read the first bytes of the payload, and get the first octet (VP8 Payload Descriptor) */
 			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
 			bytes = fread(prebuffer, sizeof(char), 16, file);
@@ -201,12 +218,77 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
 					}
 				}
 			}
-		}
-		if(tmp->drop) {
-			/* We marked this packet as one to drop, before */
-			JANUS_LOG(LOG_WARN, "Dropping previously marked video packet (time ~%"SCNu64"s)\n", (tmp->ts-list->ts)/90000);
-			tmp = tmp->next;
-			continue;
+		} else {
+			/* https://tools.ietf.org/html/draft-ietf-payload-vp9 */
+			/* Read the first bytes of the payload, and get the first octet (VP9 Payload Descriptor) */
+			fseek(file, tmp->offset+12+tmp->skip, SEEK_SET);
+			bytes = fread(prebuffer, sizeof(char), 16, file);
+			if(bytes != 16)
+				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < 16)...\n", bytes);
+			char *buffer = (char *)&prebuffer;
+			uint8_t vp9pd = *buffer;
+			uint8_t ibit = (vp9pd & 0x80);
+			uint8_t pbit = (vp9pd & 0x40);
+			uint8_t lbit = (vp9pd & 0x20);
+			uint8_t fbit = (vp9pd & 0x10);
+			uint8_t vbit = (vp9pd & 0x02);
+			buffer++;
+			if(ibit) {
+				/* Read the PictureID octet */
+				vp9pd = *buffer;
+				uint16_t picid = vp9pd, wholepicid = picid;
+				uint8_t mbit = (vp9pd & 0x80);
+				if(!mbit) {
+					buffer++;
+				} else {
+					memcpy(&picid, buffer, sizeof(uint16_t));
+					wholepicid = ntohs(picid);
+					picid = (wholepicid & 0x7FFF);
+					buffer += 2;
+				}
+			}
+			if(lbit) {
+				buffer++;
+				if(!fbit) {
+					/* Non-flexible mode, skip TL0PICIDX */
+					buffer++;
+				}
+			}
+			if(fbit && pbit) {
+				/* Skip reference indices */
+				uint8_t nbit = 1;
+				while(nbit) {
+					vp9pd = *buffer;
+					nbit = (vp9pd & 0x01);
+					buffer++;
+				}
+			}
+			if(vbit) {
+				/* Parse and skip SS */
+				vp9pd = *buffer;
+				uint n_s = (vp9pd & 0xE0) >> 5;
+				n_s++;
+				uint8_t ybit = (vp9pd & 0x10);
+				if(ybit) {
+					/* Iterate on all spatial layers and get resolution */
+					buffer++;
+					uint i=0;
+					for(i=0; i<n_s; i++) {
+						/* Width */
+						uint16_t *w = (uint16_t *)buffer;
+						int width = ntohs(*w);
+						buffer += 2;
+						/* Height */
+						uint16_t *h = (uint16_t *)buffer;
+						int height = ntohs(*h);
+						buffer += 2;
+						if(width > max_width)
+							max_width = width;
+						if(height > max_height)
+							max_height = height;
+					}
+				}
+			}
 		}
 		tmp = tmp->next;
 	}
@@ -219,13 +301,13 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		max_height = 480;
 	}
 	if(fps == 0) {
-		JANUS_LOG(LOG_INFO, "No fps?? assuming 1...\n");
+		JANUS_LOG(LOG_WARN, "No fps?? assuming 1...\n");
 		fps = 1;	/* Prevent divide by zero error */
 	}
 	return 0;
 }
 
-int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working) {
+int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int *working) {
 	if(!file || !list || !working)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
@@ -234,7 +316,6 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	uint8_t *received_frame = g_malloc0(numBytes);
 	uint8_t *buffer = g_malloc0(10000), *start = buffer;
 	int len = 0, frameLen = 0;
-	//~ int vp8gotFirstKey = 0;	/* FIXME Ugly check to wait for the first key frame, before starting decoding */
 	int keyFrame = 0;
 	uint32_t keyframe_ts = 0;
 
@@ -257,82 +338,195 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			bytes = fread(buffer, sizeof(char), len, file);
 			if(bytes != len)
 				JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
-			/* VP8 depay */
-				/* http://tools.ietf.org/html/draft-ietf-payload-vp8-04 */
-			/* Read the first octet (VP8 Payload Descriptor) */
-			int skipped = 1;
-			len--;
-			uint8_t vp8pd = *buffer;
-			uint8_t xbit = (vp8pd & 0x80);
-			uint8_t sbit = (vp8pd & 0x10);
-			if(!xbit) {
-				/* Just skip the first byte */
-				buffer++;
-			} else {
-				/* Read the Extended control bits octet */
-				buffer++;
+			if(vp8) {
+				/* VP8 depay */
+					/* https://tools.ietf.org/html/draft-ietf-payload-vp8 */
+				/* Read the first octet (VP8 Payload Descriptor) */
+				int skipped = 1;
 				len--;
-				skipped++;
-				vp8pd = *buffer;
-				uint8_t ibit = (vp8pd & 0x80);
-				uint8_t lbit = (vp8pd & 0x40);
-				uint8_t tbit = (vp8pd & 0x20);
-				uint8_t kbit = (vp8pd & 0x10);
-				if(ibit) {
-					/* Read the PictureID octet */
+				uint8_t vp8pd = *buffer;
+				uint8_t xbit = (vp8pd & 0x80);
+				uint8_t sbit = (vp8pd & 0x10);
+				if(!xbit) {
+					/* Just skip the first byte */
+					buffer++;
+					skipped++;
+					len--;
+				} else {
+					/* Read the Extended control bits octet */
 					buffer++;
 					len--;
 					skipped++;
 					vp8pd = *buffer;
-					uint16_t picid = vp8pd, wholepicid = picid;
-					uint8_t mbit = (vp8pd & 0x80);
-					if(mbit) {
+					uint8_t ibit = (vp8pd & 0x80);
+					uint8_t lbit = (vp8pd & 0x40);
+					uint8_t tbit = (vp8pd & 0x20);
+					uint8_t kbit = (vp8pd & 0x10);
+					if(ibit) {
+						/* Read the PictureID octet */
+						buffer++;
+						len--;
+						skipped++;
+						vp8pd = *buffer;
+						uint16_t picid = vp8pd, wholepicid = picid;
+						uint8_t mbit = (vp8pd & 0x80);
+						if(mbit) {
+							memcpy(&picid, buffer, sizeof(uint16_t));
+							wholepicid = ntohs(picid);
+							picid = (wholepicid & 0x7FFF);
+							buffer++;
+							len--;
+							skipped++;
+						}
+					}
+					if(lbit) {
+						/* Read the TL0PICIDX octet */
+						buffer++;
+						len--;
+						skipped++;
+						vp8pd = *buffer;
+					}
+					if(tbit || kbit) {
+						/* Read the TID/KEYIDX octet */
+						buffer++;
+						len--;
+						skipped++;
+						vp8pd = *buffer;
+					}
+					buffer++;	/* Now we're in the payload */
+					if(sbit) {
+						unsigned long int vp8ph = 0;
+						memcpy(&vp8ph, buffer, 4);
+						vp8ph = ntohl(vp8ph);
+						uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
+						if(!pbit) {
+							keyFrame = 1;
+							/* Get resolution */
+							unsigned char *c = buffer+3;
+							/* vet via sync code */
+							if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
+								JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
+							} else {
+								int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
+								int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
+								int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
+								int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
+								JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
+								/* Is this the first keyframe we find? */
+								if(keyframe_ts == 0) {
+									keyframe_ts = tmp->ts;
+									JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
+								}
+							}
+						}
+					}
+				}
+			} else {
+				/* VP9 depay */
+					/* https://tools.ietf.org/html/draft-ietf-payload-vp9-02 */
+				/* Read the first octet (VP9 Payload Descriptor) */
+				int skipped = 0;
+				uint8_t vp9pd = *buffer;
+				uint8_t ibit = (vp9pd & 0x80);
+				uint8_t pbit = (vp9pd & 0x40);
+				uint8_t lbit = (vp9pd & 0x20);
+				uint8_t fbit = (vp9pd & 0x10);
+				uint8_t vbit = (vp9pd & 0x02);
+				/* Move to the next octet and see what's there */
+				buffer++;
+				len--;
+				skipped++;
+				if(ibit) {
+					/* Read the PictureID octet */
+					vp9pd = *buffer;
+					uint16_t picid = vp9pd, wholepicid = picid;
+					uint8_t mbit = (vp9pd & 0x80);
+					if(!mbit) {
+						buffer++;
+						len--;
+						skipped++;
+					} else {
 						memcpy(&picid, buffer, sizeof(uint16_t));
 						wholepicid = ntohs(picid);
 						picid = (wholepicid & 0x7FFF);
+						buffer += 2;
+						len -= 2;
+						skipped += 2;
+					}
+				}
+				if(lbit) {
+					buffer++;
+					len--;
+					skipped++;
+					if(!fbit) {
+						/* Non-flexible mode, skip TL0PICIDX */
 						buffer++;
 						len--;
 						skipped++;
 					}
 				}
-				if(lbit) {
-					/* Read the TL0PICIDX octet */
-					buffer++;
-					len--;
-					skipped++;
-					vp8pd = *buffer;
+				if(fbit && pbit) {
+					/* Skip reference indices */
+					uint8_t nbit = 1;
+					while(nbit) {
+						vp9pd = *buffer;
+						nbit = (vp9pd & 0x01);
+						buffer++;
+						len--;
+						skipped++;
+					}
 				}
-				if(tbit || kbit) {
-					/* Read the TID/KEYIDX octet */
-					buffer++;
-					len--;
-					skipped++;
-					vp8pd = *buffer;
-				}
-				buffer++;	/* Now we're in the payload */
-				if(sbit) {
-					unsigned long int vp8ph = 0;
-					memcpy(&vp8ph, buffer, 4);
-					vp8ph = ntohl(vp8ph);
-					uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
-					if(!pbit) {
-						//~ vp8gotFirstKey = 1;
-						keyFrame = 1;
-						/* Get resolution */
-						unsigned char *c = buffer+3;
-						/* vet via sync code */
-						if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-							JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
-						} else {
-							int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
-							int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
-							int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
-							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
-							JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-							/* Is this the first keyframe we find? */
-							if(keyframe_ts == 0) {
-								keyframe_ts = tmp->ts;
-								JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
+				if(vbit) {
+					/* Parse and skip SS */
+					vp9pd = *buffer;
+					int n_s = (vp9pd & 0xE0) >> 5;
+					n_s++;
+					uint8_t ybit = (vp9pd & 0x10);
+					uint8_t gbit = (vp9pd & 0x08);
+					if(ybit) {
+						/* Iterate on all spatial layers and get resolution */
+						buffer++;
+						len--;
+						skipped++;
+						int i=0;
+						for(i=0; i<n_s; i++) {
+							/* Been there, done that: skip skip skip */
+							buffer += 4;
+							len -= 4;
+							skipped += 4;
+						}
+						/* Is this the first keyframe we find? 
+						 * (FIXME assuming this really means "keyframe...) */
+						if(keyframe_ts == 0) {
+							keyframe_ts = tmp->ts;
+							JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
+						}
+					}
+					if(gbit) {
+						if(!ybit) {
+							buffer++;
+							len--;
+							skipped++;
+						}
+						uint8_t n_g = *buffer;
+						buffer++;
+						len--;
+						skipped++;
+						if(n_g > 0) {
+							int i=0;
+							for(i=0; i<n_g; i++) {
+								/* Read the R bits */
+								vp9pd = *buffer;
+								int r = (vp9pd & 0x0C) >> 2;
+								if(r > 0) {
+									/* Skip reference indices */
+									buffer += r;
+									len -= r;
+									skipped += r;
+								}
+								buffer++;
+								len--;
+								skipped++;
 							}
 						}
 					}
@@ -348,7 +542,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				break;
 			tmp = tmp->next;
 		}
-		if(frameLen > 0) {// && vp8gotFirstKey) {
+		if(frameLen > 0) {
 			memset(received_frame + frameLen, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
 			AVPacket packet;
@@ -382,9 +576,9 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int *working)
 void janus_pp_webm_close(void) {
 	if(fctx != NULL)
 		av_write_trailer(fctx);
-	if(vStream->codec != NULL)
+	if(vStream != NULL && vStream->codec != NULL)
 		avcodec_close(vStream->codec);
-	if(fctx->streams[0] != NULL) {
+	if(fctx != NULL && fctx->streams[0] != NULL) {
 		av_free(fctx->streams[0]->codec);
 		av_free(fctx->streams[0]);
 	}

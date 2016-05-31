@@ -34,7 +34,27 @@ static const char *header = "MJR00001";
 static const char *frame_header = "MEETECHO";
 
 
-janus_recorder *janus_recorder_create(const char *dir, int video, const char *filename) {
+janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename) {
+	int video = 0;
+	if(codec == NULL) {
+		JANUS_LOG(LOG_ERR, "Missing codec information\n");
+		return NULL;
+	}
+	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
+		video = 1;
+		if(!strcasecmp(codec, "vp9")) {
+			JANUS_LOG(LOG_WARN, "The post-processor currently doesn't support VP9: recording anyway for the future\n");
+		}
+	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")) {
+		video = 0;
+		if(!strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma"))
+			codec = "g711";
+	} else {
+		/* We don't recognize the codec: while we might go on anyway, we'd rather fail instead */
+		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
+		return NULL;
+	}
+	/* Create the recorder */
 	janus_recorder *rc = g_malloc0(sizeof(janus_recorder));
 	if(rc == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -43,6 +63,7 @@ janus_recorder *janus_recorder_create(const char *dir, int video, const char *fi
 	rc->dir = NULL;
 	rc->filename = NULL;
 	rc->file = NULL;
+	rc->codec = g_strdup(codec);
 	rc->created = janus_get_real_time();
 	if(dir != NULL) {
 		/* Check if this directory exists, and create it if needed */
@@ -126,7 +147,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length
 		json_t *info = json_object();
 		/* FIXME Codecs should be configurable in the future */
 		json_object_set_new(info, "t", json_string(recorder->video ? "v" : "a"));		/* Audio/Video */
-		json_object_set_new(info, "c", json_string(recorder->video ? "vp8" : "opus"));	/* Media codec */
+		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
 		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
@@ -177,15 +198,14 @@ int janus_recorder_free(janus_recorder *recorder) {
 		return -1;
 	janus_recorder_close(recorder);
 	janus_mutex_lock_nodebug(&recorder->mutex);
-	if(recorder->dir)
-		g_free(recorder->dir);
+	g_free(recorder->dir);
 	recorder->dir = NULL;
-	if(recorder->filename)
-		g_free(recorder->filename);
+	g_free(recorder->filename);
 	recorder->filename = NULL;
-	if(recorder->file)
-		fclose(recorder->file);
+	fclose(recorder->file);
 	recorder->file = NULL;
+	g_free(recorder->codec);
+	recorder->codec = NULL;
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	g_free(recorder);
 	return 0;

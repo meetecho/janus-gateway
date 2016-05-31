@@ -92,45 +92,17 @@ gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag);
  * @note A failure may indicate that creating any of the subdirectories failed: some may still have been created */
 int janus_mkdir(const char *dir, mode_t mode);
 
-/*! \brief Ugly and dirty helper to quickly get the Opus payload type in an SDP
+/*! \brief Ugly and dirty helper to quickly get the payload type associated with a codec in an SDP
  * @param sdp The SDP to parse
- * @returns The Opus payload type, if found, -1 otherwise */
-int janus_get_opus_pt(const char *sdp);
+ * @param codec The codec to look for
+ * @returns The payload type, if found, -1 otherwise */
+int janus_get_codec_pt(const char *sdp, const char *codec);
 
-/*! \brief Ugly and dirty helper to quickly get the ISAC 32K payload type in an SDP
+/*! \brief Ugly and dirty helper to quickly get the codec associated with a payload type in an SDP
  * @param sdp The SDP to parse
- * @returns The ISAC 32K payload type, if found, -1 otherwise */
-int janus_get_isac32_pt(const char *sdp);
-
-/*! \brief Ugly and dirty helper to quickly get the ISAC 16K payload type in an SDP
- * @param sdp The SDP to parse
- * @returns The ISAC 16K payload type, if found, -1 otherwise */
-int janus_get_isac16_pt(const char *sdp);
-
-/*! \brief Ugly and dirty helper to quickly get the PCMU payload type in an SDP
- * @param sdp The SDP to parse
- * @returns The PCMU payload type, if found, -1 otherwise */
-int janus_get_pcmu_pt(const char *sdp);
-
-/*! \brief Ugly and dirty helper to quickly get the PCMU payload type in an SDP
- * @param sdp The SDP to parse
- * @returns The PCMA payload type, if found, -1 otherwise */
-int janus_get_pcma_pt(const char *sdp);
-
-/*! \brief Ugly and dirty helper to quickly get the VP8 payload type in an SDP
- * @param sdp The SDP to parse
- * @returns The VP8 payload type, if found, -1 otherwise */
-int janus_get_vp8_pt(const char *sdp);
-
-/*! \brief Ugly and dirty helper to quickly get the VP9 payload type in an SDP
- * @param sdp The SDP to parse
- * @returns The VP9 payload type, if found, -1 otherwise */
-int janus_get_vp9_pt(const char *sdp);
-
-/*! \brief Ugly and dirty helper to quickly get the H.264 payload type in an SDP
- * @param sdp The SDP to parse
- * @returns The H.264 payload type, if found, -1 otherwise */
-int janus_get_h264_pt(const char *sdp);
+ * @param pt The payload type to look for
+ * @returns The codec name, if found, NULL otherwise */
+const char *janus_get_codec_from_pt(const char *sdp, int pt);
 
 /*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
  * @param ip The IP address to check
