@@ -48,14 +48,14 @@ cert_key = @certdir@/mycert.key
 
 ; Media-related stuff: you can configure whether if you want
 ; to enable IPv6 support (still WIP, so handle with care), the maximum size
-; of the NACK queue for retransmissions per handle the range of ports to
-; use for RTP and RTCP (by default, no range is envisaged), the
+; of the NACK queue (in milliseconds, defaults to 1000ms=1s) for retransmissions, the
+; range of ports to use for RTP and RTCP (by default, no range is envisaged), the
 ; starting MTU for DTLS (1472 by default, it adapts automatically),
 ; if BUNDLE should be forced (defaults to false) and if RTCP muxing should
 ; be forced (defaults to false).
 [media]
 ;ipv6 = true
-;max_nack_queue = 300
+;max_nack_queue = 1000
 ;rtp_port_range = 20000-40000
 ;dtls_mtu = 1200
 ;force-bundle = true

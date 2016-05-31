@@ -143,10 +143,9 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 				/* SR, sender report */
 				JANUS_LOG(LOG_HUGE, "     #%d SR (200)\n", pno);
 				rtcp_sr *sr = (rtcp_sr*)rtcp;
-				if(ctx != NULL) {
-					/* RTCP context provided, update it with info on this SR */
-					janus_rtcp_incoming_sr(ctx, sr);
-				}
+				/* RTCP context provided, update it with info on this SR */
+				janus_rtcp_incoming_sr(ctx, sr);
+				//~ JANUS_LOG(LOG_HUGE, "       -- %d Report Blocks\n", sr->header.rc);
 				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u (%u in RB)\n", ntohl(sr->ssrc), report_block_get_ssrc(&sr->rb[0]));
 				//~ JANUS_LOG(LOG_HUGE, "       -- Lost: %u/%u\n", report_block_get_fraction_lost(&sr->rb[0]), report_block_get_cum_packet_loss(&sr->rb[0]));
 				if(fixssrc && newssrcl) {
@@ -161,6 +160,7 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 				/* RR, receiver report */
 				JANUS_LOG(LOG_HUGE, "     #%d RR (201)\n", pno);
 				rtcp_rr *rr = (rtcp_rr*)rtcp;
+				//~ JANUS_LOG(LOG_HUGE, "       -- %d Report Blocks\n", rr->header.rc);
 				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u (%u in RB)\n", ntohl(rr->ssrc), report_block_get_ssrc(&rr->rb[0]));
 				//~ JANUS_LOG(LOG_HUGE, "       -- Lost: %u/%u\n", report_block_get_fraction_lost(&rr->rb[0]), report_block_get_cum_packet_loss(&rr->rb[0]));
 				if(fixssrc && newssrcl) {
@@ -406,19 +406,21 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 }
 
 
-int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len, int max_nack_queue) {
+int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
 
-	/* RTP packet received: it means we can start sending RR */
-	ctx->enabled = 1;
-	/* Parse this RTP packet header and update the rtcp_context instance */
+	/* First of all, let's check if this is G.711: in case we may need to change the timestamp base */
 	rtp_header *rtp = (rtp_header *)packet;
+	int pt = rtp->type;
+	if((pt == 0 || pt == 8) && (ctx->tb == 48000))
+		ctx->tb = 8000;
+	/* Now parse this RTP packet header and update the rtcp_context instance */
 	uint16_t seq_number = ntohs(rtp->seq_number);
 	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)
 		ctx->base_seq = seq_number;
 
-	if(max_nack_queue + seq_number < ctx->last_seq_nr)
+	if(seq_number < ctx->last_seq_nr)
 		ctx->seq_cycle++;
 	ctx->last_seq_nr = seq_number;
 	ctx->received++;
@@ -436,6 +438,9 @@ int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len, in
 	uint64_t d = abs(transit - ctx->transit);
 	ctx->transit = transit;
 	ctx->jitter += (1./16.) * ((double)d  - ctx->jitter);
+
+	/* RTP packet received: it means we can start sending RR */
+	ctx->rtp_recvd = 1;
 
 	return 0;
 }
@@ -499,6 +504,7 @@ uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx) {
 int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {
 	if(ctx == NULL || rb == NULL)
 		return -1;
+	gint64 now = janus_get_monotonic_time();
 	rb->jitter = htonl((uint32_t) ctx->jitter);
 	rb->ehsnr = htonl((((uint32_t) 0x0 + ctx->seq_cycle) << 16) + ctx->last_seq_nr);
 	uint32_t lost = janus_rtcp_context_get_lost(ctx);
@@ -507,8 +513,8 @@ int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {
 	ctx->received_prior = ctx->received;
 	rb->flcnpl = htonl(lost | fraction);
 	rb->lsr = htonl(ctx->lsr);
-	rb->delay = htonl(((janus_get_monotonic_time() - ctx->lsr_ts) << 16) / 1000000);
-	ctx->last_sent = janus_get_monotonic_time();
+	rb->delay = htonl(((now - ctx->lsr_ts) << 16) / 1000000);
+	ctx->last_sent = now;
 	return 0;
 }
 
