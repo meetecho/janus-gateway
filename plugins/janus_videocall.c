@@ -364,6 +364,7 @@ typedef struct janus_videocall_session {
 	struct janus_videocall_session *peer;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
+	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_videocall_session;
@@ -552,6 +553,7 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->bitrate = 0;	/* No limit */
 	session->peer = NULL;
 	session->username = NULL;
+	janus_mutex_init(&session->rec_mutex);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
@@ -672,10 +674,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			return;
 		if((!video && session->audio_active) || (video && session->video_active)) {
 			/* Save the frame if we're recording */
-			if(video && session->vrc)
-				janus_recorder_save_frame(session->vrc, buf, len);
-			else if(!video && session->arc)
-				janus_recorder_save_frame(session->arc, buf, len);
+			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 			/* Forward the packet to the peer */
 			gateway->relay_rtp(session->peer->handle, video, buf, len);
 		}
@@ -803,6 +802,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
 	/* Get rid of the recorders, if available */
+	janus_mutex_lock(&session->rec_mutex);
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
@@ -815,6 +815,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		janus_recorder_free(session->vrc);
 	}
 	session->vrc = NULL;
+	janus_mutex_unlock(&session->rec_mutex);
 	if(session->peer) {
 		/* Send event to our peer too */
 		json_t *call = json_object();
@@ -1168,6 +1169,7 @@ static void *janus_videocall_handler(void *data) {
 				gboolean recording = json_is_true(record);
 				const char *recording_base = json_string_value(recfile);
 				JANUS_LOG(LOG_VERB, "Recording %s (base filename: %s)\n", recording ? "enabled" : "disabled", recording_base ? recording_base : "not provided");
+				janus_mutex_lock(&session->rec_mutex);
 				if(!recording) {
 					/* Not recording (anymore?) */
 					if(session->arc) {
@@ -1241,6 +1243,7 @@ static void *janus_videocall_handler(void *data) {
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 					}
 				}
+				janus_mutex_unlock(&session->rec_mutex);
 			}
 			/* Also notify event handlers */
 			if(gateway->events_is_enabled()) {

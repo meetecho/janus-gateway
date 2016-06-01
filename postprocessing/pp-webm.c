@@ -45,6 +45,12 @@ static int max_width = 0, max_height = 0, fps = 0;
 int janus_pp_webm_create(char *destination, int vp8) {
 	if(destination == NULL)
 		return -1;
+#if LIBAVCODEC_VERSION_MAJOR < 55
+	if(!vp8) {
+		JANUS_LOG(LOG_FATAL, "Your FFmpeg version does not support VP9\n");
+		return -1;
+	}
+#endif
 	/* Setup FFmpeg */
 	av_register_all();
 	/* Adjust logging to match the postprocessor's */
@@ -80,9 +86,13 @@ int janus_pp_webm_create(char *destination, int vp8) {
 	avcodec_get_context_defaults2(vStream->codec, AVMEDIA_TYPE_VIDEO);
 #endif
 #if LIBAVCODEC_VER_AT_LEAST(54, 25)
+	#if LIBAVCODEC_VERSION_MAJOR >= 55
 	vStream->codec->codec_id = vp8 ? AV_CODEC_ID_VP8 : AV_CODEC_ID_VP9;
+	#else
+	vStream->codec->codec_id = AV_CODEC_ID_VP8;
+	#endif
 #else
-	vStream->codec->codec_id = vp8 ? CODEC_ID_VP8 : CODEC_ID_VP9;
+	vStream->codec->codec_id = CODEC_ID_VP8;
 #endif
 	//~ vStream->codec->codec_type = CODEC_TYPE_VIDEO;
 	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;

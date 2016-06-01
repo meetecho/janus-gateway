@@ -186,7 +186,7 @@ typedef struct rtcp_fb
 typedef struct rtcp_context
 {
 	/* Whether we received any RTP packet at all (don't send RR otherwise) */
-	uint8_t enabled:1;
+	uint8_t rtp_recvd:1;
 
 	uint16_t last_seq_nr;
 	uint16_t seq_cycle;
@@ -204,6 +204,8 @@ typedef struct rtcp_context
 	uint32_t lsr;
 	/* Monotonic time of last SR received */
 	int64_t lsr_ts;
+	/* Monotonic time of first SR sent */
+	int64_t fsr_ts;
 
 	/* Last RR/SR we sent */
 	int64_t last_sent;
@@ -281,9 +283,8 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen);
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The RTP packet
  * @param[in] len The packet data length in bytes
- * @param[in] max_nack_queue Current value of the max NACK value in the handle stack
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len, int max_nack_queue);
+int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report

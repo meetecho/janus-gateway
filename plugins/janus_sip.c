@@ -331,6 +331,7 @@ typedef struct janus_sip_session {
 	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
 	janus_recorder *vrc;		/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *vrc_peer;	/* The Janus recorder instance for the peer's video, if enabled */
+	janus_mutex rec_mutex;		/* Mutex to protect the recorders from race conditions */
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 	janus_mutex mutex;
@@ -903,6 +904,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt_name = NULL;
 	session->media.video_srtp_suite_in = 0;
 	session->media.video_srtp_suite_out = 0;
+	janus_mutex_init(&session->rec_mutex);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
 	janus_mutex_init(&session->mutex);
@@ -1182,7 +1184,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		 session->status == janus_sip_call_status_incall))
 		return;
 	/* Get rid of the recorders, if available */
-	janus_mutex_lock(&session->mutex);
+	janus_mutex_lock(&session->rec_mutex);
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
@@ -1207,7 +1209,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		janus_recorder_free(session->vrc_peer);
 	}
 	session->vrc_peer = NULL;
-	janus_mutex_unlock(&session->mutex);
+	janus_mutex_unlock(&session->rec_mutex);
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
@@ -1954,7 +1956,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			json_t *recfile = json_object_get(root, "filename");
 			const char *recording_base = json_string_value(recfile);
-			janus_mutex_lock(&session->mutex);
+			janus_mutex_lock(&session->rec_mutex);
 			if(!strcasecmp(action_text, "start")) {
 				/* Start recording something */
 				char filename[255];
@@ -2113,7 +2115,7 @@ static void *janus_sip_handler(void *data) {
 					session->vrc_peer = NULL;
 				}
 			}
-			janus_mutex_unlock(&session->mutex);
+			janus_mutex_unlock(&session->rec_mutex);
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));

@@ -94,10 +94,43 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter body_parameters[] = {
+	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
+};
 static struct janus_json_parameter jsep_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"trickle", JANUS_JSON_BOOL, 0},
 	{"sdp", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter allow_token_parameters[] = {
+	{"token", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"plugins", JSON_ARRAY, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY}
+};
+static struct janus_json_parameter add_token_parameters[] = {
+	{"token", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"plugins", JSON_ARRAY, 0}
+};
+static struct janus_json_parameter token_parameters[] = {
+	{"token", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter admin_parameters[] = {
+	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter debug_parameters[] = {
+	{"debug", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter level_parameters[] = {
+	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter timestamps_parameters[] = {
+	{"timestamps", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter colors_parameters[] = {
+	{"colors", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter mnq_parameters[] = {
+	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Admin/Monitor helpers */
@@ -879,15 +912,14 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		janus_plugin *plugin_t = (janus_plugin *)handle->app;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] There's a message for %s\n", handle->handle_id, plugin_t->get_name());
+		JANUS_VALIDATE_JSON_OBJECT(root, body_parameters,
+			error_code, error_cause, FALSE,
+			JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+		if(error_code != 0) {
+			ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+			goto jsondone;
+		}
 		json_t *body = json_object_get(root, "body");
-		if(body == NULL) {
-			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (body)");
-			goto jsondone;
-		}
-		if(!json_is_object(body)) {
-			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_JSON_OBJECT, "Invalid body object");
-			goto jsondone;
-		}
 		/* Is there an SDP attached? */
 		json_t *jsep = json_object_get(root, "jsep");
 		char *jsep_type = NULL;
@@ -1054,6 +1086,12 @@ int janus_process_incoming_request(janus_request *request) {
 							}
 							handle->data_stream = NULL;
 							handle->data_id = 0;
+							if(!video) {
+								handle->audio_stream->video_ssrc = 0;
+								handle->audio_stream->video_ssrc_peer = 0;
+								g_free(handle->audio_stream->video_rtcp_ctx);
+								handle->audio_stream->video_rtcp_ctx = NULL;
+							}
 						} else if(video) {
 							/* Get rid of data, if present */
 							if(handle->streams && handle->data_stream) {
@@ -1420,6 +1458,8 @@ jsondone:
 /* Admin/monitor WebServer requests handler */
 int janus_process_incoming_admin_request(janus_request *request) {
 	int ret = -1;
+	int error_code = 0;
+	char error_cause[100];
 	if(request == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing request or payload to process, giving up...\n");
 		return ret;
@@ -1435,15 +1475,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		handle_id = json_integer_value(h);
 
 	/* Get transaction and message request */
+	JANUS_VALIDATE_JSON_OBJECT(root, admin_parameters,
+		error_code, error_cause, FALSE,
+		JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+	if(error_code != 0) {
+		ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
+		goto jsondone;
+	}
 	json_t *transaction = json_object_get(root, "transaction");
-	if(!transaction) {
-		ret = janus_process_error(request, session_id, NULL, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (transaction)");
-		goto jsondone;
-	}
-	if(!json_is_string(transaction)) {
-		ret = janus_process_error(request, session_id, NULL, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (transaction should be a string)");
-		goto jsondone;
-	}
 	const gchar *transaction_text = json_string_value(transaction);
 	json_t *message = json_object_get(root, "janus");
 	if(!message) {
@@ -1490,15 +1529,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_level")) {
 			/* Change the debug logging level */
+			JANUS_VALIDATE_JSON_OBJECT(root, level_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *level = json_object_get(root, "level");
-			if(!level) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (level)");
-				goto jsondone;
-			}
-			if(!json_is_integer(level) || json_integer_value(level) < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be a positive integer)");
-				goto jsondone;
-			}
 			int level_num = json_integer_value(level);
 			if(level_num < LOG_NONE || level_num > LOG_MAX) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (level should be between %d and %d)", LOG_NONE, LOG_MAX);
@@ -1515,15 +1553,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_locking_debug")) {
 			/* Enable/disable the locking debug (would show a message on the console for every lock attempt) */
+			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *debug = json_object_get(root, "debug");
-			if(!debug) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (debug)");
-				goto jsondone;
-			}
-			if(!json_is_integer(debug) || json_integer_value(debug) < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be a positive integer)");
-				goto jsondone;
-			}
 			int debug_num = json_integer_value(debug);
 			if(debug_num < 0 || debug_num > 1) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be either 0 or 1)");
@@ -1540,15 +1577,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_timestamps")) {
 			/* Enable/disable the log timestamps */
+			JANUS_VALIDATE_JSON_OBJECT(root, timestamps_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *timestamps = json_object_get(root, "timestamps");
-			if(!timestamps) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (timestamps)");
-				goto jsondone;
-			}
-			if(!json_is_integer(timestamps) || json_integer_value(timestamps) < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timestamps should be a positive integer)");
-				goto jsondone;
-			}
 			int timestamps_num = json_integer_value(timestamps);
 			if(timestamps_num < 0 || timestamps_num > 1) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timestamps should be either 0 or 1)");
@@ -1565,15 +1601,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_colors")) {
 			/* Enable/disable the log colors */
+			JANUS_VALIDATE_JSON_OBJECT(root, colors_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *colors = json_object_get(root, "colors");
-			if(!colors) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (colors)");
-				goto jsondone;
-			}
-			if(!json_is_integer(colors) || json_integer_value(colors) < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (colors should be a positive integer)");
-				goto jsondone;
-			}
 			int colors_num = json_integer_value(colors);
 			if(colors_num < 0 || colors_num > 1) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (colors should be either 0 or 1)");
@@ -1590,15 +1625,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
 			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
+			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *debug = json_object_get(root, "debug");
-			if(!debug) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (debug)");
-				goto jsondone;
-			}
-			if(!json_is_integer(debug) || json_integer_value(debug) < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be a positive integer)");
-				goto jsondone;
-			}
 			int debug_num = json_integer_value(debug);
 			if(debug_num < 0 || debug_num > 1) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be either 0 or 1)");
@@ -1619,18 +1653,17 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_max_nack_queue")) {
 			/* Change the current value for the max NACK queue */
+			JANUS_VALIDATE_JSON_OBJECT(root, mnq_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *mnq = json_object_get(root, "max_nack_queue");
-			if(!mnq) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (max_nack_queue)");
-				goto jsondone;
-			}
-			if(!json_is_integer(mnq) || json_integer_value(mnq) < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be a positive integer)");
-				goto jsondone;
-			}
 			int mnq_num = json_integer_value(mnq);
-			if(mnq_num < 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue should be a positive integer)");
+			if(mnq_num < 0 || (mnq_num > 0 || mnq_num < 200)) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue, if provided, should be greater than 200)");
 				goto jsondone;
 			}
 			janus_set_max_nack_queue(mnq_num);
@@ -1674,22 +1707,17 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
 				goto jsondone;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, add_token_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *token = json_object_get(root, "token");
-			if(!token) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
-				goto jsondone;
-			}
-			if(!json_is_string(token)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
-				goto jsondone;
-			}
 			const char *token_value = json_string_value(token);
 			/* Any plugin this token should be limited to? */
 			json_t *allowed = json_object_get(root, "plugins");
-			if(allowed && !json_is_array(allowed)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugins should be an array)");
-				goto jsondone;
-			}
 			/* First of all, add the new token */
 			if(!janus_auth_add_token(token_value)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error adding token");
@@ -1810,15 +1838,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
 				goto jsondone;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, allow_token_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *token = json_object_get(root, "token");
-			if(!token) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
-				goto jsondone;
-			}
-			if(!json_is_string(token)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
-				goto jsondone;
-			}
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
 			if(!janus_auth_check_token(token_value)) {
@@ -1827,14 +1854,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			/* Any plugin this token should be limited to? */
 			json_t *allowed = json_object_get(root, "plugins");
-			if(!allowed) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugins)");
-				goto jsondone;
-			}
-			if(!json_is_array(allowed) || json_array_size(allowed) == 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugins should be an array)");
-				goto jsondone;
-			}
 			/* Check the list first */
 			size_t i = 0;
 			gboolean ok = TRUE;
@@ -1900,15 +1919,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
 				goto jsondone;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, allow_token_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *token = json_object_get(root, "token");
-			if(!token) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
-				goto jsondone;
-			}
-			if(!json_is_string(token)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
-				goto jsondone;
-			}
 			const char *token_value = json_string_value(token);
 			/* Check if the token is valid, first */
 			if(!janus_auth_check_token(token_value)) {
@@ -1917,14 +1935,6 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			/* Any plugin this token should be prevented access to? */
 			json_t *allowed = json_object_get(root, "plugins");
-			if(!allowed) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (plugins)");
-				goto jsondone;
-			}
-			if(!json_is_array(allowed) || json_array_size(allowed) == 0) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (plugins should be an array)");
-				goto jsondone;
-			}
 			/* Check the list first */
 			size_t i = 0;
 			gboolean ok = TRUE;
@@ -1990,15 +2000,14 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Token based authentication disabled");
 				goto jsondone;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, token_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
 			json_t *token = json_object_get(root, "token");
-			if(!token) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_MISSING_MANDATORY_ELEMENT, "Missing mandatory element (token)");
-				goto jsondone;
-			}
-			if(!json_is_string(token)) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (token should be a string)");
-				goto jsondone;
-			}
 			const char *token_value = json_string_value(token);
 			if(!janus_auth_remove_token(token_value)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error removing token");
@@ -2278,6 +2287,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	if(stream->audio_rtcp_ctx != NULL) {
 		rtcp_stats = json_object();
 		json_t *audio_rtcp_stats = json_object();
+		json_object_set_new(audio_rtcp_stats, "base", json_integer(stream->audio_rtcp_ctx->tb));
 		json_object_set_new(audio_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->audio_rtcp_ctx)));
 		json_object_set_new(audio_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->audio_rtcp_ctx)));
 		json_object_set_new(audio_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->audio_rtcp_ctx)));
@@ -2288,6 +2298,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		if(rtcp_stats == NULL)
 			rtcp_stats = json_object();
 		json_t *video_rtcp_stats = json_object();
+		json_object_set_new(video_rtcp_stats, "base", json_integer(stream->video_rtcp_ctx->tb));
 		json_object_set_new(video_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx)));
 		json_object_set_new(video_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->video_rtcp_ctx)));
 		json_object_set_new(video_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->video_rtcp_ctx)));
@@ -2303,6 +2314,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 json_t *janus_admin_component_summary(janus_ice_component *component) {
 	if(component == NULL)
 		return NULL;
+	janus_ice_handle *handle = component->stream ? component->stream->handle : NULL;
 	json_t *c = json_object();
 	json_object_set_new(c, "id", json_integer(component->component_id));
 	json_object_set_new(c, "state", json_string(janus_get_ice_state_name(component->state)));
@@ -2345,46 +2357,56 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "ready", json_integer(dtls->ready));
 		if(dtls->dtls_connected > 0)
 			json_object_set_new(d, "connected", json_integer(dtls->dtls_connected));
-		json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio_packets));
-		json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
-		json_object_set_new(in_stats, "video_packets", json_integer(component->in_stats.video_packets));
-		json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
+		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio_packets));
+			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
+			json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
+			/* Compute the last second stuff too */
+			gint64 now = janus_get_monotonic_time();
+			guint64 bytes = 0;
+			if(component->in_stats.audio_bytes_lastsec) {
+				GList *lastsec = component->in_stats.audio_bytes_lastsec;
+				while(lastsec) {
+					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
+					if(s && now-s->when < G_USEC_PER_SEC)
+						bytes += s->bytes;
+					lastsec = lastsec->next;
+				}
+			}
+			json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(bytes));
+		}
+		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+			json_object_set_new(in_stats, "video_packets", json_integer(component->in_stats.video_packets));
+			json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
+			json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
+			/* Compute the last second stuff too */
+			gint64 now = janus_get_monotonic_time();
+			guint64 bytes = 0;
+			if(component->in_stats.video_bytes_lastsec) {
+				GList *lastsec = component->in_stats.video_bytes_lastsec;
+				while(lastsec) {
+					janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
+					if(s && now-s->when < G_USEC_PER_SEC)
+						bytes += s->bytes;
+					lastsec = lastsec->next;
+				}
+			}
+			json_object_set_new(in_stats, "video_bytes_lastsec", json_integer(bytes));
+		}
 		json_object_set_new(in_stats, "data_packets", json_integer(component->in_stats.data_packets));
 		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data_bytes));
-		json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
-		json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
-		json_object_set_new(out_stats, "audio_packets", json_integer(component->out_stats.audio_packets));
-		json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
-		json_object_set_new(out_stats, "video_packets", json_integer(component->out_stats.video_packets));
-		json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
+		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+			json_object_set_new(out_stats, "audio_packets", json_integer(component->out_stats.audio_packets));
+			json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
+			json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio_nacks));
+		}
+		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+			json_object_set_new(out_stats, "video_packets", json_integer(component->out_stats.video_packets));
+			json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
+			json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video_nacks));
+		}
 		json_object_set_new(out_stats, "data_packets", json_integer(component->out_stats.data_packets));
 		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data_bytes));
-		json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio_nacks));
-		json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video_nacks));
-		/* Compute the last second stuff too */
-		gint64 now = janus_get_monotonic_time();
-		guint64 bytes = 0;
-		if(component->in_stats.audio_bytes_lastsec) {
-			GList *lastsec = component->in_stats.audio_bytes_lastsec;
-			while(lastsec) {
-				janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
-				if(s && now-s->when < G_USEC_PER_SEC)
-					bytes += s->bytes;
-				lastsec = lastsec->next;
-			}
-		}
-		json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(bytes));
-		bytes = 0;
-		if(component->in_stats.video_bytes_lastsec) {
-			GList *lastsec = component->in_stats.video_bytes_lastsec;
-			while(lastsec) {
-				janus_ice_stats_item *s = (janus_ice_stats_item *)lastsec->data;
-				if(s && now-s->when < G_USEC_PER_SEC)
-					bytes += s->bytes;
-				lastsec = lastsec->next;
-			}
-		}
-		json_object_set_new(in_stats, "video_bytes_lastsec", json_integer(bytes));
 #ifdef HAVE_SCTP
 		if(dtls->sctp)	/* FIXME */
 			json_object_set_new(d, "sctp-association", json_integer(1));
@@ -2750,7 +2772,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_flags_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		} else {
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Done! Ready to setup remote candidates and send connectivity checks...\n", ice_handle->handle_id);
-			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) && audio && video) {
+			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", ice_handle->handle_id);
 				if(audio) {
 					/* Get rid of video and data, if present */
@@ -2773,6 +2795,12 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					}
 					ice_handle->data_stream = NULL;
 					ice_handle->data_id = 0;
+					if(!video) {
+						ice_handle->audio_stream->video_ssrc = 0;
+						ice_handle->audio_stream->video_ssrc_peer = 0;
+						g_free(ice_handle->audio_stream->video_rtcp_ctx);
+						ice_handle->audio_stream->video_rtcp_ctx = NULL;
+					}
 				} else if(video) {
 					/* Get rid of data, if present */
 					if(ice_handle->streams && ice_handle->data_stream) {
@@ -3594,6 +3622,8 @@ gint main(int argc, char *argv[])
 		int mnq = atoi(item->value);
 		if(mnq < 0) {
 			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's not a positive integer\n");
+		} else if(mnq > 0 && mnq < 200) {
+			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's less than 200\n");
 		} else {
 			janus_set_max_nack_queue(mnq);
 		}

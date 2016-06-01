@@ -392,6 +392,7 @@ typedef struct janus_recordplay_session {
 	janus_recordplay_recording *recording;
 	janus_recorder *arc;	/* Audio recorder */
 	janus_recorder *vrc;	/* Video recorder */
+	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	janus_recordplay_frame_packet *aframes;	/* Audio frames (for playout) */
 	janus_recordplay_frame_packet *vframes;	/* Video frames (for playout) */
 	guint video_remb_startup;
@@ -657,6 +658,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->firefox = FALSE;
 	session->arc = NULL;
 	session->vrc = NULL;
+	janus_mutex_init(&session->rec_mutex);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
 	session->video_remb_startup = 4;
@@ -983,10 +985,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			return;
 		/* Are we recording? */
 		if(session->recorder) {
-			if(video && session->vrc)
-				janus_recorder_save_frame(session->vrc, buf, len);
-			else if(!video && session->arc)
-				janus_recorder_save_frame(session->arc, buf, len);
+			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 		}
 
 		janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
@@ -1349,6 +1348,7 @@ static void *janus_recordplay_handler(void *data) {
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording/playout */
 			session->active = FALSE;
+			janus_mutex_lock(&session->rec_mutex);
 			if(session->arc) {
 				janus_recorder_close(session->arc);
 				JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
@@ -1361,6 +1361,7 @@ static void *janus_recordplay_handler(void *data) {
 				janus_recorder_free(session->vrc);
 			}
 			session->vrc = NULL;
+			janus_mutex_unlock(&session->rec_mutex);
 			if(session->recorder) {
 				/* Create a .nfo file for this recording */
 				char nfofile[1024], nfo[1024];
