@@ -2212,6 +2212,21 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 {
 	janus_sip_session *session = (janus_sip_session *)magic;
 	ssip_t *ssip = session->stack;
+
+	/* Notify event handlers about the content of the whole incoming SIP message, if any */
+	if(gateway->events_is_enabled() && ssip) {
+		/* Print the incoming message */
+		size_t msg_size = 0;
+		msg_t* msg = nua_current_request(nua);
+		if(msg) {
+			char *msg_str = msg_as_string(ssip->s_home, msg, NULL, 0, &msg_size);
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("sip-in"));
+			json_object_set_new(info, "sip", json_string(msg_str));
+			gateway->notify_event(session->handle, info);
+		}
+	}
+
 	switch (event) {
 	/* Status or Error Indications */
 		case nua_i_active:
@@ -2406,7 +2421,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(info, "username", json_string(session->callee));
 				if(sip->sip_from && sip->sip_from->a_display)
 					json_object_set_new(info, "displayname", json_string(sip->sip_from->a_display));
-				json_object_set_new(info, "sdp", json_string(fixed_sdp));
 				gateway->notify_event(session->handle, info);
 			}
 			g_free(fixed_sdp);
