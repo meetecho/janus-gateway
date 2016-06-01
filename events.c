@@ -50,11 +50,14 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			break;
 		}
 		case JANUS_EVENT_TYPE_HANDLE: {
-			/* For handles, there's the handle ID and a generic event name (what happened) */
+			/* For handles, there's the handle ID, a generic event name (what happened)
+			 * and the plugin package name this handle is (or was) attached to */
 			guint64 handle_id = va_arg(args, guint64);
 			json_object_set_new(event, "handle_id", json_integer(handle_id));
 			char *name = va_arg(args, char *);
 			json_object_set_new(body, "name", json_string(name));
+			char *plugin = va_arg(args, char *);
+			json_object_set_new(body, "plugin", json_string(plugin));
 			break;
 		}
 		case JANUS_EVENT_TYPE_JSEP: {

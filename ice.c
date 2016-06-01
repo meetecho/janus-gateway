@@ -453,7 +453,7 @@ static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gbo
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
-		json_object_set_new(info, "receiving", json_string(up ? "true" : "false"));
+		json_object_set_new(info, "receiving", up ? json_true() : json_false());
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, info);
 	}
 }
@@ -970,7 +970,7 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	janus_mutex_unlock(&session->mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "attached");
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "attached", plugin->get_package());
 	return 0;
 }
 
@@ -1025,7 +1025,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_mutex_unlock(&old_handles_mutex);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "detached");
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "detached", plugin_t->get_package());
 	return error;
 }
 
@@ -1300,13 +1300,22 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 	}
 	component->sl_nack_recent_cnt += nacks;
 	if(component->sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC
-	   && now - component->last_slowlink_time > 1 * G_USEC_PER_SEC) {
+			&& now - component->last_slowlink_time > 1 * G_USEC_PER_SEC) {
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->slow_link(handle->app_handle, uplink, video);
 		component->last_slowlink_time = now;
 		component->sl_nack_period_ts = now;
 		component->sl_nack_recent_cnt = 0;
+		/* Also notify event handlers */
+		if(janus_events_is_enabled()) {
+			janus_session *session = (janus_session *)handle->session;
+			json_t *info = json_object();
+			json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
+			json_object_set_new(info, "slow_link", json_string(uplink ? "uplink" : "downlink"));
+			json_object_set_new(info, "nacks_lastsec", json_integer(component->sl_nack_recent_cnt));
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, info);
+		}
 	}
 }
 

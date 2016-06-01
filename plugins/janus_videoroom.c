@@ -1022,13 +1022,14 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			participant->recording_base = NULL;
 			json_t *event = json_object();
 			json_object_set_new(event, "videoroom", json_string("event"));
-			json_object_set_new(event, "room", json_integer(participant->room->room_id));
+			if(participant->room)
+				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 			json_object_set_new(event, "leaving", json_integer(participant->user_id));
 			char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
 			GHashTableIter iter;
 			gpointer value;
-			/* we need to check if the room still exists, may have been destroyed already */
+			/* We need to check if the room still exists, may have been destroyed already */
 			if(participant->room) {
 				if(!participant->room->destroyed) {
 					janus_mutex_lock(&participant->room->participants_mutex);
@@ -1044,6 +1045,14 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 					}
 					g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
 					janus_mutex_unlock(&participant->room->participants_mutex);
+				}
+				/* Also notify event handlers */
+				if(gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("left"));
+					json_object_set_new(info, "room", json_integer(participant->room->room_id));
+					json_object_set_new(info, "id", json_integer(participant->user_id));
+					gateway->notify_event(session->handle, info);
 				}
 			}
 			g_free(leaving_text);
@@ -1399,6 +1408,13 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("created"));
 		json_object_set_new(response, "room", json_integer(videoroom->room_id));
+		/* Also notify event handlers */
+		if(gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("created"));
+			json_object_set_new(info, "room", json_integer(videoroom->room_id));
+			gateway->notify_event(session->handle, info);
+		}
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing videoroom room\n");
@@ -1467,6 +1483,13 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_decref(destroyed);
 		g_free(destroyed_text);
 		janus_mutex_unlock(&videoroom->participants_mutex);
+		/* Also notify event handlers */
+		if(gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("destroyed"));
+			json_object_set_new(info, "room", json_integer(room_id));
+			gateway->notify_event(session->handle, info);
+		}
 		janus_mutex_unlock(&rooms_mutex);
 		if(save) {
 			/* This change is permanent: save to the configuration file too
@@ -1919,7 +1942,17 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	session->started = TRUE;
 	/* If this is a listener, ask the publisher a FIR */
 	if(session->participant) {
-		if(session->participant_type == janus_videoroom_p_type_subscriber) {
+		if(session->participant_type == janus_videoroom_p_type_publisher) {
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("published"));
+				json_object_set_new(info, "room", json_integer(participant->room->room_id));
+				json_object_set_new(info, "id", json_integer(participant->user_id));
+				gateway->notify_event(session->handle, info);
+			}
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
 			if(l && l->feed) {
 				janus_videoroom_participant *p = l->feed;
@@ -1935,6 +1968,14 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 					janus_rtcp_pli((char *)&buf, 12);
 					JANUS_LOG(LOG_VERB, "New listener available, sending PLI to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, buf, 12);
+					/* Also notify event handlers */
+					if(gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("subscribed"));
+						json_object_set_new(info, "room", json_integer(p->room->room_id));
+						json_object_set_new(info, "feed", json_integer(p->user_id));
+						gateway->notify_event(session->handle, info);
+					}
 				}
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber_muxed) {
@@ -2252,6 +2293,14 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 			}
 		}
 		g_free(unpub_text);
+		/* Also notify event handlers */
+		if(gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("unpublished"));
+			json_object_set_new(info, "room", json_integer(participant->room->room_id));
+			json_object_set_new(info, "id", json_integer(participant->user_id));
+			gateway->notify_event(session->handle, info);
+		}
 	} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* Get rid of listener */
 		janus_videoroom_listener *listener = (janus_videoroom_listener *)session->participant;
@@ -2263,6 +2312,14 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 				publisher->listeners = g_slist_remove(publisher->listeners, listener);
 				janus_mutex_unlock(&publisher->listeners_mutex);
 				listener->feed = NULL;
+				/* Also notify event handlers */
+				if(gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("unsubscribed"));
+					json_object_set_new(info, "room", json_integer(publisher->room->room_id));
+					json_object_set_new(info, "feed", json_integer(publisher->user_id));
+					gateway->notify_event(session->handle, info);
+				}
 			}
 		}
 		/* TODO Should we close the handle as well? */
@@ -2551,6 +2608,14 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "description", json_string(videoroom->room_name));
 				json_object_set_new(event, "id", json_integer(user_id));
 				json_object_set_new(event, "publishers", list);
+				/* Also notify event handlers */
+				if(gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("joined"));
+					json_object_set_new(info, "room", json_integer(videoroom->room_id));
+					json_object_set_new(info, "id", json_integer(user_id));
+					gateway->notify_event(session->handle, info);
+				}
 			} else if(!strcasecmp(ptype_text, "listener")) {
 				JANUS_LOG(LOG_VERB, "Configuring new listener\n");
 				/* This is a new listener */
@@ -2635,6 +2700,14 @@ static void *janus_videoroom_handler(void *data) {
 						g_free(event_text);
 						root = NULL;
 						janus_videoroom_message_free(msg);
+						/* Also notify event handlers */
+						if(gateway->events_is_enabled()) {
+							json_t *info = json_object();
+							json_object_set_new(info, "event", json_string("subscribing"));
+							json_object_set_new(info, "room", json_integer(videoroom->room_id));
+							json_object_set_new(info, "feed", json_integer(feed_id));
+							gateway->notify_event(session->handle, info);
+						}
 						continue;
 					}
 					g_free(event_text);
@@ -2877,6 +2950,25 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "configured", json_string("ok"));
+				/* Also notify event handlers */
+				if(gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("configured"));
+					json_object_set_new(info, "room", json_integer(participant->room->room_id));
+					json_object_set_new(info, "id", json_integer(participant->user_id));
+					json_object_set_new(info, "audio_active", participant->audio_active ? json_true() : json_false());
+					json_object_set_new(info, "video_active", participant->video_active ? json_true() : json_false());
+					json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
+					if(participant->arc || participant->vrc) {
+						json_t *recording = json_object();
+						if(participant->arc && participant->arc->filename)
+							json_object_set_new(recording, "audio", json_string(participant->arc->filename));
+						if(participant->vrc && participant->vrc->filename)
+							json_object_set_new(recording, "video", json_string(participant->vrc->filename));
+						json_object_set_new(info, "recording", recording);
+					}
+					gateway->notify_event(session->handle, info);
+				}
 			} else if(!strcasecmp(request_text, "unpublish")) {
 				/* This participant wants to unpublish */
 				if(!participant->sdp) {
@@ -3071,6 +3163,14 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "id", json_integer(feed_id));
 				if(publisher->display)
 					json_object_set_new(event, "display", json_string(publisher->display));
+				/* Also notify event handlers */
+				if(gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("switched"));
+					json_object_set_new(info, "room", json_integer(publisher->room->room_id));
+					json_object_set_new(info, "feed", json_integer(publisher->user_id));
+					gateway->notify_event(session->handle, info);
+				}
 			} else if(!strcasecmp(request_text, "leave")) {
 				janus_videoroom_participant *publisher = listener->feed;
 				if(publisher != NULL) {

@@ -1223,6 +1223,15 @@ static void *janus_recordplay_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "status", json_string("recording"));
 			json_object_set_new(result, "id", json_integer(id));
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("recording"));
+				json_object_set_new(info, "id", json_integer(id));
+				json_object_set_new(info, "audio", session->arc ? json_true() : json_false());
+				json_object_set_new(info, "video", session->vrc ? json_true() : json_false());
+				gateway->notify_event(session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "play")) {
 			if(msg->sdp) {
 				JANUS_LOG(LOG_ERR, "A play request can't contain an SDP\n");
@@ -1304,6 +1313,15 @@ static void *janus_recordplay_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "status", json_string("preparing"));
 			json_object_set_new(result, "id", json_integer(id_value));
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("playout"));
+				json_object_set_new(info, "id", json_integer(id_value));
+				json_object_set_new(info, "audio", rec->arc_file ? json_true() : json_false());
+				json_object_set_new(info, "video", rec->vrc_file ? json_true() : json_false());
+				gateway->notify_event(session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "start")) {
 			if(!session->aframes && !session->vframes) {
 				JANUS_LOG(LOG_ERR, "Not a playout session, can't start\n");
@@ -1321,6 +1339,13 @@ static void *janus_recordplay_handler(void *data) {
 			/* Done! */
 			result = json_object();
 			json_object_set_new(result, "status", json_string("playing"));
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("playing"));
+				json_object_set_new(info, "id", json_integer(session->recording->id));
+				gateway->notify_event(session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording/playout */
 			session->active = FALSE;
@@ -1380,6 +1405,14 @@ static void *janus_recordplay_handler(void *data) {
 			json_object_set_new(result, "status", json_string("stopped"));
 			if(session->recording)
 				json_object_set_new(result, "id", json_integer(session->recording->id));
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("stopped"));
+				if(session->recording)
+					json_object_set_new(info, "id", json_integer(session->recording->id));
+				gateway->notify_event(session->handle, info);
+			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;

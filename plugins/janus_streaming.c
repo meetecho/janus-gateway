@@ -1494,6 +1494,14 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
 		json_object_set_new(ml, "is_private", json_string(mp->is_private ? "true" : "false"));
 		json_object_set_new(response, "stream", ml);
+		/* Also notify event handlers */
+		if(gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("created"));
+			json_object_set_new(info, "id", json_integer(mp->id));
+			json_object_set_new(info, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
+			gateway->notify_event(session->handle, info);
+		}
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		/* Get rid of an existing stream (notice this doesn't remove it from the config file, though) */
@@ -1573,6 +1581,13 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
 			/* Cleaning up and removing the mountpoint is done in a lazy way */
 			old_mountpoints = g_list_append(old_mountpoints, mp);
+		}
+		/* Also notify event handlers */
+		if(gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("destroyed"));
+			json_object_set_new(info, "id", json_integer(id_value));
+			gateway->notify_event(session->handle, info);
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
@@ -2127,6 +2142,13 @@ static void *janus_streaming_handler(void *data) {
 			result = json_object();
 			/* We wait for the setup_media event to start: on the other hand, it may have already arrived */
 			json_object_set_new(result, "status", json_string(session->started ? "started" : "starting"));
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "status", json_string("starting"));
+				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
+				gateway->notify_event(session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "pause")) {
 			if(session->mountpoint == NULL) {
 				JANUS_LOG(LOG_VERB, "Can't pause: no mountpoint set\n");
@@ -2138,6 +2160,13 @@ static void *janus_streaming_handler(void *data) {
 			session->paused = TRUE;
 			result = json_object();
 			json_object_set_new(result, "status", json_string("pausing"));
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "status", json_string("pausing"));
+				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
+				gateway->notify_event(session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "switch")) {
 			/* This listener wants to switch to a different mountpoint
 			 * NOTE: this only works for live RTP streams as of now: you
@@ -2199,6 +2228,13 @@ static void *janus_streaming_handler(void *data) {
 			json_object_set_new(result, "streaming", json_string("event"));
 			json_object_set_new(result, "switched", json_string("ok"));
 			json_object_set_new(result, "id", json_integer(id_value));
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "status", json_string("switching"));
+				json_object_set_new(info, "id", json_integer(id_value));
+				gateway->notify_event(session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "stop")) {
 			if(session->stopping || !session->started) {
 				/* Been there, done that: ignore */
@@ -2219,6 +2255,13 @@ static void *janus_streaming_handler(void *data) {
 				}
 				session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
 				janus_mutex_unlock(&session->mountpoint->mutex);
+			}
+			/* Also notify event handlers */
+			if(gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "status", json_string("stopping"));
+				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
+				gateway->notify_event(session->handle, info);
 			}
 			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
