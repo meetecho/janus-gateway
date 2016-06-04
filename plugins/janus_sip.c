@@ -61,6 +61,7 @@
 #include <sofia-sip/sip_status.h>
 #include <sofia-sip/url.h>
 #include <sofia-sip/tport_tag.h>
+#include <sofia-sip/su_log.h>
 
 #include <srtp/srtp.h>
 #include <srtp/crypto_kernel.h>
@@ -338,6 +339,8 @@ typedef struct janus_sip_session {
 } janus_sip_session;
 static GHashTable *sessions;
 static GList *old_sessions;
+static GHashTable *identities;
+static GHashTable *callids;
 static janus_mutex sessions_mutex;
 
 
@@ -575,6 +578,7 @@ void *janus_sip_watchdog(void *data) {
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
 					if (session->account.identity) {
+					    g_hash_table_remove(identities, session->account.identity);
 					    g_free(session->account.identity);
 					    session->account.identity = NULL;
 					}
@@ -604,6 +608,7 @@ void *janus_sip_watchdog(void *data) {
 					    session->callee = NULL;
 					}
 					if (session->callid) {
+					    g_hash_table_remove(callids, session->callid);
 					    g_free(session->callid);
 					    session->callid = NULL;
 					}
@@ -674,6 +679,111 @@ static void janus_sip_random_string(int length, char *buffer) {
 			buffer[i] = charset[key];
 		}
 		buffer[length-1] = '\0';
+	}
+}
+
+
+/* Sofia SIP logger function: when the Event Handlers mechanism is enabled,
+ * we use this to intercept SIP messages sent by the stack (received
+ * messages are more easily recoverable in janus_sip_sofia_callback) */
+char sofia_log[2048];
+char call_id[255];
+gboolean skip = FALSE, started = FALSE, append = FALSE;
+static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
+	if(!fmt)
+		return;
+	char line[255];
+	g_vsnprintf(line, sizeof(line), fmt, ap);
+	if(skip) {
+		/* This is a message we're not interested in: just check when it ends */
+		if(line[3] == '-') {
+			skip = FALSE;
+			append = FALSE;
+		}
+		return;
+	}
+	if(append) {
+		/* We're copying a message in our buffer: check if this is the end */
+		if(line[3] == '-') {
+			if(!started) {
+				/* Ok, start appending from now on */
+				started = TRUE;
+				sofia_log[0] = '\0';
+				call_id[0] = '\0';
+			} else {
+				/* Message ended, handle it */
+				skip = FALSE;
+				append = FALSE;
+				/* Look for the session this message belongs to */
+				janus_sip_session *session = NULL;
+				if(strlen(call_id))
+					session = g_hash_table_lookup(callids, call_id);
+				if(!session) {
+					/* Couldn't find any SIP session with that Call-ID, check the request */
+					if(strstr(sofia_log, "REGISTER") == sofia_log || strstr(sofia_log, "SIP/2.0 ") == sofia_log) {
+						/* FIXME This is a REGISTER or a response code:
+						 * check the To header and get the identity from there */
+						char *from = strstr(sofia_log, "To: ");
+						if(from) {
+							from = from+4;
+							char *start = strstr(from, "<");
+							if(start) {
+								start++;
+								char *end = strstr(from, ">");
+								if(end) {
+									*end = '\0';
+									g_snprintf(call_id, sizeof(call_id), "%s", start);
+									*end = '>';
+									session = g_hash_table_lookup(identities, call_id);
+								}
+							}
+						}
+					}
+				}
+				if(session) {
+					/* Notify event handlers about the content of the whole outgoing SIP message */
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("sip-out"));
+					json_object_set_new(info, "sip", json_string(sofia_log));
+					gateway->notify_event(session->handle, info);
+				} else {
+					JANUS_LOG(LOG_WARN, "Couldn't find a session associated to this message, dropping it...\n%s", sofia_log);
+				}
+				/* Done, reset the buffers */
+				sofia_log[0] = '\0';
+				call_id[0] = '\0';
+			}
+			return;
+		}
+		if(strlen(line) == 1) {
+			/* Append a carriage and return */
+			g_strlcat(sofia_log, "\r\n", sizeof(sofia_log));
+		} else {
+			/* If this is an OPTIONS, we don't care: drop it */
+			char *header = &line[3];
+			if(strstr(header, "OPTIONS") == header) {
+				skip = TRUE;
+				return;
+			}
+			/* Is this a Call-ID header? Keep note of it */
+			if(strstr(header, "Call-ID") == header) {
+				g_snprintf(call_id, sizeof(call_id), "%s", header+9);
+			}
+			/* Append the line to our buffer, skipping the indent */
+			g_strlcat(sofia_log, &line[3], sizeof(sofia_log));
+		}
+		return;
+	}
+	/* Still waiting to decide if this is a message we need */
+	if(line[0] == 's' && line[1] == 'e' && line[2] == 'n' && line[3] == 'd' && line[4] == ' ') {
+		/* An outgoing message is going to be logged, prepare for that */
+		skip = FALSE;
+		started = FALSE;
+		append = TRUE;
+		int length = atoi(&line[5]);
+		JANUS_LOG(LOG_HUGE, "Intercepting message (%d bytes)\n", length);
+		if(strstr(line, "-----"))
+			started = TRUE;
 	}
 }
 
@@ -768,8 +878,15 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Setup sofia */
 	su_init();
+	if(callback->events_is_enabled()) {
+		/* Enable the transport logging, as we want to have access to the SIP messages */
+		setenv("TPORT_LOG", "1", 1);
+		su_log_redirect(NULL, janus_sip_sofia_logger, NULL);
+	}
 
 	sessions = g_hash_table_new(NULL, NULL);
+	callids = g_hash_table_new(g_str_hash, g_str_equal);
+	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
@@ -813,10 +930,14 @@ void janus_sip_destroy(void) {
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	g_hash_table_destroy(callids);
+	g_hash_table_destroy(identities);
+	sessions = NULL;
+	callids = NULL;
+	identities = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
-	sessions = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIP_NAME);
@@ -1296,8 +1417,10 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			/* Cleanup old values */
-			if(session->account.identity != NULL)
+			if(session->account.identity != NULL) {
+				g_hash_table_remove(identities, session->account.identity);
 				g_free(session->account.identity);
+			}
 			session->account.identity = NULL;
 			session->account.sips = TRUE;
 			if(session->account.username != NULL)
@@ -1456,6 +1579,7 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			session->account.identity = g_strdup(username_text);
+			g_hash_table_insert(identities, session->account.identity, session);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
 			if (display_name_text) {
@@ -1692,6 +1816,7 @@ static void *janus_sip_handler(void *data) {
 			/* Send INVITE */
 			session->callee = g_strdup(uri_text);
 			session->callid = g_strdup(callid);
+			g_hash_table_insert(callids, session->callid, session);
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
@@ -1816,7 +1941,6 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(info, "event", json_string("accepted"));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
-				json_object_set_new(info, "sdp", json_string(sdp));
 				gateway->notify_event(session->handle, info);
 			}
 			/* Send 200 OK */
@@ -2305,6 +2429,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					gateway->notify_event(session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
+				if(session->callid)
+					g_hash_table_remove(callids, session->callid);
 				g_free(session->callid);
 				session->callid = NULL;
 				g_free(session->transaction);
@@ -2384,6 +2510,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* New incoming call */
 			session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
 			session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
+			if(session->callid)
+				g_hash_table_insert(callids, session->callid, session);
 			session->status = janus_sip_call_status_invited;
 			/* Clean up SRTP stuff from before first, in case it's still needed */
 			janus_sip_srtp_cleanup(session);
@@ -2576,7 +2704,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				json_object_set_new(info, "username", json_string(session->callee));
-				json_object_set_new(info, "sdp", json_string(fixed_sdp));
 				gateway->notify_event(session->handle, info);
 			}
 			g_free(fixed_sdp);
