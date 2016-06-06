@@ -3800,7 +3800,10 @@ gint main(int argc, char *argv[])
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;
 		/* Initialize the event broadcaster */
-		janus_events_init(enable_events, eventhandlers);
+		if(janus_events_init(enable_events, eventhandlers) < 0) {
+			JANUS_LOG(LOG_FATAL, "Error initializing the Event handlers mechanism...\n");
+			exit(1);
+		}
 	}
 
 	/* Load plugins */
@@ -4125,6 +4128,7 @@ gint main(int argc, char *argv[])
 	}
 
 	JANUS_LOG(LOG_INFO, "Closing event handlers:\n");
+	janus_events_deinit();
 	if(eventhandlers != NULL) {
 		g_hash_table_foreach(eventhandlers, janus_eventhandler_close, NULL);
 		g_hash_table_destroy(eventhandlers);

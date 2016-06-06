@@ -17,9 +17,35 @@
 
 static gboolean eventsenabled = FALSE;
 static GHashTable *eventhandlers = NULL;
-void janus_events_init(gboolean enabled, GHashTable *handlers) {
-	eventsenabled = enabled;
+
+static GAsyncQueue *events = NULL;
+static json_t exit_event;
+
+static GThread *events_thread;
+void *janus_events_thread(void *data);
+
+int janus_events_init(gboolean enabled, GHashTable *handlers) {
+	/* We setup a thread for passing events to the handlers */
+	GError *error = NULL;
+	events_thread = g_thread_try_new("janus events thread", janus_events_thread, NULL, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
+		return -1;
+	}
+	events = g_async_queue_new();
 	eventhandlers = handlers;
+	eventsenabled = enabled;
+	return 0;
+}
+
+void janus_events_deinit(void) {
+	eventsenabled = FALSE;
+
+	g_async_queue_push(events, &exit_event);
+	if(events_thread != NULL) {
+		g_thread_join(events_thread);
+		events_thread = NULL;
+	}
 }
 
 gboolean janus_events_is_enabled(void) {
@@ -103,20 +129,42 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 	json_object_set_new(event, "event", body);
 	va_end(args);
 
-	/* Notify all interested handlers, increasing the event reference to make sure it's not lost because of errors */
-	GHashTableIter iter;
-	gpointer value;
-	g_hash_table_iter_init(&iter, eventhandlers);
-	json_incref(event);
-	while(g_hash_table_iter_next(&iter, NULL, &value)) {
-		janus_eventhandler *e = value;
-		if(e == NULL)
+	/* Enqueue the event */
+	g_async_queue_push(events, event);
+}
+
+void *janus_events_thread(void *data) {
+	JANUS_LOG(LOG_VERB, "Joining Events handler thread\n");
+	json_t *event = NULL;
+
+	while(eventsenabled) {
+		/* Any event in queue? */
+		event = g_async_queue_pop(events);
+		if(event == NULL)
 			continue;
-		if(!janus_flags_is_set(&e->events_mask, type))
-			continue;
-		e->incoming_event(event);
+		if(event == &exit_event)
+			break;
+
+		/* Notify all interested handlers, increasing the event reference to make sure it's not lost because of errors */
+		int type = json_integer_value(json_object_get(event, "type"));
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, eventhandlers);
+		json_incref(event);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_eventhandler *e = value;
+			if(e == NULL)
+				continue;
+			if(!janus_flags_is_set(&e->events_mask, type))
+				continue;
+			e->incoming_event(event);
+		}
+		json_decref(event);
+
+		/* Unref the final event reference, interested handlers will have their own reference */
+		json_decref(event);
 	}
-	json_decref(event);
-	/* Unref the final event reference, interested handlers will have their own reference */
-	json_decref(event);
+
+	JANUS_LOG(LOG_VERB, "Leaving EchoTest handler thread\n");
+	return NULL;
 }
