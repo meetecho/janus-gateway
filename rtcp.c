@@ -127,6 +127,21 @@ static void janus_rtcp_incoming_sr(rtcp_context *ctx, rtcp_sr *sr) {
 	ctx->lsr = (ntp >> 16);
 }
 
+/* Helper to handle an incoming RR: triggered by a call to janus_rtcp_fix_ssrc with fixssrc=0 */
+static void janus_rtcp_incoming_rr(rtcp_context *ctx, rtcp_rr *rr) {
+	if(ctx == NULL)
+		return;
+	/* FIXME Check the Record Blocks */
+	if(rr->header.rc > 0) {
+		double jitter = (double)ntohl(rr->rb[0].jitter);
+		uint32_t fraction = ntohl(rr->rb[0].flcnpl) >> 24;
+		uint32_t total = ntohl(rr->rb[0].flcnpl) & 0x00FFFFFF;
+		JANUS_LOG(LOG_HUGE, "jitter=%f, fraction=%"SCNu32", loss=%"SCNu32"\n", jitter, fraction, total);
+		ctx->lost_remote = total;
+		ctx->jitter_remote = jitter;
+	}
+}
+
 int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr) {
 	if(packet == NULL || len <= 0)
 		return -1;
@@ -145,9 +160,6 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 				rtcp_sr *sr = (rtcp_sr*)rtcp;
 				/* RTCP context provided, update it with info on this SR */
 				janus_rtcp_incoming_sr(ctx, sr);
-				//~ JANUS_LOG(LOG_HUGE, "       -- %d Report Blocks\n", sr->header.rc);
-				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u (%u in RB)\n", ntohl(sr->ssrc), report_block_get_ssrc(&sr->rb[0]));
-				//~ JANUS_LOG(LOG_HUGE, "       -- Lost: %u/%u\n", report_block_get_fraction_lost(&sr->rb[0]), report_block_get_cum_packet_loss(&sr->rb[0]));
 				if(fixssrc && newssrcl) {
 					sr->ssrc = htonl(newssrcl);
 				}
@@ -160,9 +172,10 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 				/* RR, receiver report */
 				JANUS_LOG(LOG_HUGE, "     #%d RR (201)\n", pno);
 				rtcp_rr *rr = (rtcp_rr*)rtcp;
-				//~ JANUS_LOG(LOG_HUGE, "       -- %d Report Blocks\n", rr->header.rc);
-				//~ JANUS_LOG(LOG_HUGE, "       -- SSRC: %u (%u in RB)\n", ntohl(rr->ssrc), report_block_get_ssrc(&rr->rb[0]));
-				//~ JANUS_LOG(LOG_HUGE, "       -- Lost: %u/%u\n", report_block_get_fraction_lost(&rr->rb[0]), report_block_get_cum_packet_loss(&rr->rb[0]));
+				if(ctx != NULL) {
+					/* RTCP context provided, update it with info on this SR */
+					janus_rtcp_incoming_rr(ctx, rr);
+				}
 				if(fixssrc && newssrcl) {
 					rr->ssrc = htonl(newssrcl);
 				}
@@ -450,11 +463,13 @@ uint32_t janus_rtcp_context_get_lsr(rtcp_context *ctx) {
 	return ctx ? ctx->lsr : 0;
 }
 
-uint32_t janus_rtcp_context_get_received(rtcp_context *ctx) {
-	return ctx ? ctx->received : 0;
+uint32_t janus_rtcp_context_get_lost_all(rtcp_context *ctx, gboolean remote) {
+	if(ctx == NULL)
+		return 0;
+	return remote ? ctx->lost_remote : ctx->lost;
 }
 
-uint32_t janus_rtcp_context_get_lost(rtcp_context *ctx) {
+static uint32_t janus_rtcp_context_get_lost(rtcp_context *ctx) {
 	if(ctx == NULL)
 		return 0;
 	uint32_t lost;
@@ -466,7 +481,7 @@ uint32_t janus_rtcp_context_get_lost(rtcp_context *ctx) {
 	return lost;
 }
 
-uint32_t janus_rtcp_context_get_lost_fraction(rtcp_context *ctx) {
+static uint32_t janus_rtcp_context_get_lost_fraction(rtcp_context *ctx) {
 	if(ctx == NULL)
 		return 0;
 	uint32_t expected_interval = ctx->expected - ctx->expected_prior;
@@ -480,25 +495,10 @@ uint32_t janus_rtcp_context_get_lost_fraction(rtcp_context *ctx) {
 	return fraction << 24;
 }
 
-uint32_t janus_rtcp_context_get_lost_promille(rtcp_context *ctx) {
-	if(ctx == NULL)
-		return 0;
-	uint32_t expected_interval = ctx->expected - ctx->expected_prior;
-	uint32_t received_interval = ctx->received - ctx->received_prior;
-	int32_t lost_interval = expected_interval - received_interval;
-	uint32_t fraction;
-	if(expected_interval == 0 || lost_interval <=0)
-		fraction = 0;
-	else
-		fraction = (lost_interval << 8) / expected_interval;
-	fraction = fraction << 24;
-	return ((fraction>>24) * 1000) >> 8;
-}
-
-uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx) {
+uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx, gboolean remote) {
 	if(ctx == NULL || ctx->tb == 0)
 		return 0;
-	return (uint32_t) floor(ctx->jitter * 1000.0 / ctx->tb);
+	return (uint32_t) floor((remote ? ctx->jitter_remote : ctx->jitter) * 1000.0 / ctx->tb);
 }
 
 int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {

@@ -538,6 +538,7 @@ typedef struct janus_audiobridge_room {
 } janus_audiobridge_room;
 static GHashTable *rooms;
 static janus_mutex rooms_mutex;
+static GList *old_rooms;
 
 typedef struct janus_audiobridge_session {
 	janus_plugin_session *handle;
@@ -699,6 +700,38 @@ void *janus_audiobridge_watchdog(void *data) {
 			}
 		}
 		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_lock(&rooms_mutex);
+		if(old_rooms != NULL) {
+			GList *rl = old_rooms;
+			now = janus_get_monotonic_time();
+			while(rl) {
+				janus_audiobridge_room *audiobridge = (janus_audiobridge_room*)rl->data;
+				if(!initialized || stopping){
+					break;
+				}
+				if(!audiobridge) {
+					rl = rl->next;
+					continue;
+				}
+				if(now - audiobridge->destroyed >= 5*G_USEC_PER_SEC) {
+					/* Free resources */
+					JANUS_LOG(LOG_VERB, "Freeing old AudioBridge room %"SCNu64"\n", audiobridge->room_id);
+					g_free(audiobridge->room_name);
+					g_free(audiobridge->room_secret);
+					g_free(audiobridge->room_pin);
+					g_free(audiobridge->record_file);
+					g_hash_table_destroy(audiobridge->participants);
+					g_free(audiobridge);
+					/* Move on */
+					GList *rm = rl->next;
+					old_rooms = g_list_delete_link(old_rooms, rl);
+					rl = rm;
+					continue;
+				}
+				rl = rl->next;
+			}
+		}
+		janus_mutex_unlock(&rooms_mutex);
 		g_usleep(500000);
 	}
 	JANUS_LOG(LOG_INFO, "AudioBridge watchdog stopped\n");
@@ -2703,13 +2736,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		fclose(audiobridge->recording);
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %"SCNu64" (%s)...\n", audiobridge->room_id, audiobridge->room_name);
 
-	/* Free resources */
-	g_free(audiobridge->room_name);
-	g_free(audiobridge->room_secret);
-	g_free(audiobridge->room_pin);
-	g_free(audiobridge->record_file);
-	g_hash_table_destroy(audiobridge->participants);
-	g_free(audiobridge);
+	/* We'll let the watchdog worry about free resources */
+	old_rooms = g_list_append(old_rooms, audiobridge);
 
 	return NULL;
 }
