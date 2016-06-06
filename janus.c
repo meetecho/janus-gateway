@@ -2247,9 +2247,10 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_t *audio_rtcp_stats = json_object();
 		json_object_set_new(audio_rtcp_stats, "base", json_integer(stream->audio_rtcp_ctx->tb));
 		json_object_set_new(audio_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->audio_rtcp_ctx)));
-		json_object_set_new(audio_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->audio_rtcp_ctx)));
-		json_object_set_new(audio_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->audio_rtcp_ctx)));
-		json_object_set_new(audio_rtcp_stats, "jitter-ms", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx)));
+		json_object_set_new(audio_rtcp_stats, "lost-local", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE)));
+		json_object_set_new(audio_rtcp_stats, "lost-remote", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, TRUE)));
+		json_object_set_new(audio_rtcp_stats, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, FALSE)));
+		json_object_set_new(audio_rtcp_stats, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, TRUE)));
 		json_object_set_new(rtcp_stats, "audio", audio_rtcp_stats);
 	}
 	if(stream->video_rtcp_ctx != NULL) {
@@ -2258,9 +2259,10 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_t *video_rtcp_stats = json_object();
 		json_object_set_new(video_rtcp_stats, "base", json_integer(stream->video_rtcp_ctx->tb));
 		json_object_set_new(video_rtcp_stats, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx)));
-		json_object_set_new(video_rtcp_stats, "lost", json_integer(janus_rtcp_context_get_lost(stream->video_rtcp_ctx)));
-		json_object_set_new(video_rtcp_stats, "lost-promille", json_integer(janus_rtcp_context_get_lost_promille(stream->video_rtcp_ctx)));
-		json_object_set_new(video_rtcp_stats, "jitter-ms", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx)));
+		json_object_set_new(video_rtcp_stats, "lost-local", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx, FALSE)));
+		json_object_set_new(video_rtcp_stats, "lost-remote", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx, TRUE)));
+		json_object_set_new(video_rtcp_stats, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx, FALSE)));
+		json_object_set_new(video_rtcp_stats, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx, TRUE)));
 		json_object_set_new(rtcp_stats, "video", video_rtcp_stats);
 	}
 	if(rtcp_stats != NULL)
