@@ -290,6 +290,7 @@ or on the command line:
                                   default)
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
+	-e, --event-handlers          Enable event handlers  (default=off)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:

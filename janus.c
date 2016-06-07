@@ -3364,6 +3364,9 @@ gint main(int argc, char *argv[])
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
+	if(args_info.event_handlers_given) {
+		janus_config_add_item(config, "events", "broadcast", "yes");
+	}
 	janus_config_print(config);
 
 	/* Logging/debugging */
@@ -3685,7 +3688,8 @@ gint main(int argc, char *argv[])
 		/* Any event handlers to ignore? */
 		gchar **disabled_eventhandlers = NULL;
 		item = janus_config_get_item_drilldown(config, "events", "broadcast");
-		gboolean enable_events = TRUE;
+		/* Event handlers are disabled by default: they need to be enabled in the configuration */
+		gboolean enable_events = FALSE;
 		if(item && item->value)
 			enable_events = janus_is_true(item->value);
 		if(!enable_events) {

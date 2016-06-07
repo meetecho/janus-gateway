@@ -26,3 +26,4 @@ option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
 option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional
 option "token-auth" A "Enable token-based authentication for all requests" flag off
+option "event-handlers" e "Enable event handlers" flag off
