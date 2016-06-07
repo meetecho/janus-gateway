@@ -58,8 +58,7 @@ record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
 \endverbatim
  *
- * Note that, due to current limitations in our recording and postprocessing
- * code, recording will only work when using VP8 for video in the room.
+ * Note that recording will work with all codecs except iSAC.
  *
  * \section sfuapi Video Room API
  * 
@@ -183,6 +182,75 @@ janus_plugin *create(void) {
 	return &janus_videoroom_plugin;
 }
 
+/* Parameter validation */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter create_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"description", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0},
+	{"secret", JSON_STRING, 0},
+	{"pin", JSON_STRING, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audiocodec", JSON_STRING, 0},
+	{"videocodec", JSON_STRING, 0},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"rec_dir", JSON_STRING, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter room_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter destroy_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"permanent", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter join_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0}
+};
+static struct janus_json_parameter publish_parameters[] = {
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"record", JANUS_JSON_BOOL, 0},
+	{"filename", JSON_STRING, 0}
+};
+static struct janus_json_parameter rtp_forward_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"vid_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"au_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter stop_rtp_forward_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"stream_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter publisher_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"display", JSON_STRING, 0}
+};
+static struct janus_json_parameter configure_parameters[] = {
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter subscriber_parameters[] = {
+	{"feed", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"audio", JANUS_JSON_BOOL, 0},
+	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0}
+};
 
 /* Static configuration instance */
 static janus_config *config = NULL;
@@ -323,6 +391,7 @@ typedef struct janus_videoroom_publisher {
 	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr */
 	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this publisher's video, if enabled */
+	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	GSList *subscribers;
 	janus_mutex subscribers_mutex;
 	GHashTable *rtp_forwarders;
@@ -372,7 +441,6 @@ static void janus_videoroom_subscriber_destroy(janus_videoroom_subscriber *s) {
 
 static void janus_videoroom_subscriber_free(const janus_refcount *s_ref) {
 	janus_videoroom_subscriber *s = janus_refcount_containerof(s_ref, janus_videoroom_subscriber, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom subscriber: %p\n", s_ref);
 	/* This subscriber can be destroyed, free all the resources */
 	g_free(s);
 }
@@ -387,7 +455,6 @@ static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 
 static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	janus_videoroom_publisher *p = janus_refcount_containerof(p_ref, janus_videoroom_publisher, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom participant/publisher: %p\n", p_ref);
 	g_free(p->display);
 	g_free(p->sdp);
 
@@ -416,7 +483,6 @@ static void janus_videoroom_session_destroy(janus_videoroom_session *session) {
 
 static void janus_videoroom_session_free(const janus_refcount *session_ref) {
 	janus_videoroom_session *session = janus_refcount_containerof(session_ref, janus_videoroom_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom session: %p\n", session_ref);
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
@@ -434,7 +500,6 @@ static void janus_videoroom_room_destroy(janus_videoroom *room) {
 
 static void janus_videoroom_room_free(const janus_refcount *room_ref) {
 	janus_videoroom *room = janus_refcount_containerof(room_ref, janus_videoroom, ref);
-	JANUS_LOG(LOG_WARN, "Freeing videoroom room: %p\n", room_ref);
 	/* This room can be destroyed, free all the resources */
 	g_free(room->room_name);
 	g_free(room->room_secret);
@@ -721,9 +786,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			}
 			if(record && record->value) {
 				videoroom->record = janus_is_true(record->value);
-				if(rec_dir && rec_dir->value) {
-					videoroom->rec_dir = g_strdup(rec_dir->value);
-				}
+			}
+			if(rec_dir && rec_dir->value) {
+				videoroom->rec_dir = g_strdup(rec_dir->value);
 			}
 			g_atomic_int_set(&videoroom->destroyed, 0);
 			janus_mutex_init(&videoroom->mutex);
@@ -1017,81 +1082,31 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto error;
 	}
 	/* Get the request first */
+	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto error;
 	json_t *request = json_object_get(root, "request");
-	if(!request) {
-		JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-		error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-		g_snprintf(error_cause, 512, "Missing element (request)");
-		goto error;
-	}
-	if(!json_is_string(request)) {
-		JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-		error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-		g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-		goto error;
-	}
 	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "create")) {
 		/* Create a new videoroom */
 		JANUS_LOG(LOG_VERB, "Creating a new videoroom\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *desc = json_object_get(root, "description");
-		if(desc && !json_is_string(desc)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (description should be a string)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (description should be a string)");
-			goto error;
-		}
 		json_t *is_private = json_object_get(root, "is_private");
-		if(is_private && !json_is_boolean(is_private)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
-			goto error;
-		}
 		json_t *secret = json_object_get(root, "secret");
-		if(secret && !json_is_string(secret)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-			goto error;
-		}
 		json_t *pin = json_object_get(root, "pin");
-		if(pin && !json_is_string(pin)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
-			goto error;
-		}
 		json_t *bitrate = json_object_get(root, "bitrate");
-		if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (bitrate should be a positive integer)");
-			goto error;
-		}
 		json_t *fir_freq = json_object_get(root, "fir_freq");
-		if(fir_freq && (!json_is_integer(fir_freq) || json_integer_value(fir_freq) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (fir_freq should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (fir_freq should be a positive integer)");
-			goto error;
-		}
 		json_t *publishers = json_object_get(root, "publishers");
-		if(publishers && (!json_is_integer(publishers) || json_integer_value(publishers) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (publishers should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (publishers should be a positive integer)");
-			goto error;
-		}
 		json_t *audiocodec = json_object_get(root, "audiocodec");
 		if(audiocodec) {
-			if(!json_is_string(audiocodec)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (audiocodec should be a string)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (audiocodec should be a string)");
-				goto error;
-			}
 			const char *audiocodec_value = json_string_value(audiocodec);
 			if(!strcasecmp(audiocodec_value, "opus") && !strcasecmp(audiocodec_value, "isac32") && !strcasecmp(audiocodec_value, "isac16") && !strcasecmp(audiocodec_value, "pcmu") && !strcasecmp(audiocodec_value, "pcma")) {
 				JANUS_LOG(LOG_ERR, "Invalid element (audiocodec can only be opus, isac32, isac16, pcmu, or pcma)\n");
@@ -1102,12 +1117,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		json_t *videocodec = json_object_get(root, "videocodec");
 		if(videocodec) {
-			if(!json_is_string(videocodec)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (videocodec should be a string)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (videocodec should be a string)");
-				goto error;
-			}
 			const char *videocodec_value = json_string_value(videocodec);
 			if(!strcasecmp(videocodec_value, "vp8") && !strcasecmp(videocodec_value, "vp9") && !strcasecmp(videocodec_value, "h264")) {
 				JANUS_LOG(LOG_ERR, "Invalid element (videocodec can only be vp8, vp9 or h264)\n");
@@ -1117,26 +1126,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		json_t *record = json_object_get(root, "record");
-		if(record && !json_is_boolean(record)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (record should be a boolean)");
-			goto error;
-		}
 		json_t *rec_dir = json_object_get(root, "rec_dir");
-		if(rec_dir && !json_is_string(rec_dir)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (rec_dir should be a string)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (rec_dir should be a string)");
-			goto error;
-		}
 		json_t *permanent = json_object_get(root, "permanent");
-		if(permanent && !json_is_boolean(permanent)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
-			goto error;
-		}
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent room\n");
@@ -1146,12 +1137,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		guint64 room_id = 0;
 		json_t *room = json_object_get(root, "room");
-		if(room && (!json_is_integer(room) || json_integer_value(room) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
-			goto error;
-		} else {
+		if(room) {
 			room_id = json_integer_value(room);
 			if(room_id == 0) {
 				JANUS_LOG(LOG_WARN, "Desired room ID is 0, which is not allowed... picking random ID instead\n");
@@ -1257,9 +1243,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		if(record) {
 			videoroom->record = json_is_true(record);
-			if(videoroom->record && rec_dir) {
-				videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
-			}
+		}
+		if(rec_dir) {
+			videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
 		}
 		g_atomic_int_set(&videoroom->destroyed, 0);
 		janus_mutex_init(&videoroom->mutex);
@@ -1302,10 +1288,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
 			if(videoroom->room_pin)
 				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
-			if(videoroom->rec_dir) {
+			if(videoroom->record)
 				janus_config_add_item(config, cat, "record", "yes");
+			if(videoroom->rec_dir)
 				janus_config_add_item(config, cat, "rec_dir", videoroom->rec_dir);
-			}
 			/* Save modified configuration */
 			janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE);
 			janus_mutex_unlock(&config_mutex);
@@ -1327,26 +1313,13 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing videoroom room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *room = json_object_get(root, "room");
-		if(!room) {
-			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
-			goto error;
-		}
-		if(!json_is_integer(room) || json_integer_value(room) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
-			goto error;
-		}
 		json_t *permanent = json_object_get(root, "permanent");
-		if(permanent && !json_is_boolean(permanent)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (permanent should be a boolean)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (permanent should be a boolean)");
-			goto error;
-		}
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't destroy room permanently\n");
@@ -1372,30 +1345,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
 			goto error;
 		}
-		if(videoroom->room_secret) {
-			/* A secret is required for this action */
-			json_t *secret = json_object_get(root, "secret");
-			if(!secret) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (secret)");
-				goto error;
-			}
-			if(!json_is_string(secret)) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-				goto error;
-			}
-			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
 		}
 		/* Remove room */
 		g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
@@ -1483,74 +1438,30 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(response, "list", list);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "rtp_forward")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, rtp_forward_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *room = json_object_get(root, "room");
-		if(!room) {
-			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
-			goto error;
-		}
-		if(!json_is_integer(room) || json_integer_value(room) < 0 ) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
-			goto error;
-		}
 		json_t *pub_id = json_object_get(root, "publisher_id");
-		if(!pub_id) {
-			JANUS_LOG(LOG_ERR, "Missing element (publisher_id)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (publisher_id)");
-			goto error;
-		}
-		if(!json_is_integer(pub_id) || json_integer_value(pub_id) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (publisher_id should be a postive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (publisher_id should be a positive integer)");
-			goto error;
-		}
 		int video_port = -1;
 		int audio_port = -1;
 		json_t *vid_port = json_object_get(root, "video_port");
-		if(vid_port && (!json_is_integer(vid_port) || json_integer_value(vid_port) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (video_port should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (video_port should be a positive integer)");
-			goto error;
-		}
 		if(vid_port) {
 			video_port = json_integer_value(vid_port);
 		}
 		json_t *au_port = json_object_get(root, "audio_port");
-		if(au_port && (!json_is_integer(au_port) || json_integer_value(au_port) <0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (audio_port should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (audio_port should be a positive integer)");
-			goto error;
-		}
 		if(au_port) {
 			audio_port = json_integer_value(au_port);
 		}
 		json_t *json_host = json_object_get(root, "host");
-		if(!json_host) {
-			JANUS_LOG(LOG_ERR, "Missing element (host)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (host)");
-			goto error;
-		}
-		if(!json_is_string(json_host)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (host should be a string)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (host should be a string)");
-			goto error;
-		}
 		
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
 		const gchar* host = json_string_value(json_host);
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-		janus_mutex_unlock(&rooms_mutex);
 		if(videoroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
@@ -1567,37 +1478,18 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
 			goto error;
 		}
-		if(videoroom->room_secret) {
-			/* A secret is required for this action */
-			json_t *secret = json_object_get(root, "secret");
-			if(!secret) {
-				janus_refcount_decrease(&videoroom->ref);
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (secret)");
-				goto error;
-			}
-			if(!json_is_string(secret)) {
-				janus_refcount_decrease(&videoroom->ref);
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-				goto error;
-			}
-			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				janus_refcount_decrease(&videoroom->ref);
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_refcount_decrease(&videoroom->ref);
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
 		}
+		janus_mutex_unlock(&rooms_mutex);
 		janus_mutex_lock(&videoroom->mutex);
 		janus_videoroom_publisher* publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
-		if(publisher == NULL || g_atomic_int_get(&publisher->destroyed)) {
+		if(publisher == NULL) {
 			janus_refcount_decrease(&videoroom->ref);
 			janus_mutex_unlock(&videoroom->mutex);
 			JANUS_LOG(LOG_ERR, "No such publisher (%"SCNu64")\n", publisher_id);
@@ -1660,52 +1552,20 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(response, "videoroom", json_string("rtp_forward"));
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "stop_rtp_forward")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, stop_rtp_forward_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *room = json_object_get(root, "room");
-		if(!room) {
-			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
-			goto error;
-		}
-		if(!json_is_integer(room) || json_integer_value(room) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
-			goto error;
-		}
 		json_t *pub_id = json_object_get(root, "publisher_id");
-		if(!pub_id) {
-			JANUS_LOG(LOG_ERR, "Missing element (publisher_id)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (publisher_id)");
-			goto error;
-		}
-		if(!json_is_integer(pub_id) || json_integer_value(pub_id) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (publisher_id should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (publisher_id should be a positive integer)");
-			goto error;
-		}
 		json_t *id = json_object_get(root, "stream_id");
-		if(!id) {
-			JANUS_LOG(LOG_ERR, "Missing element (stream_id)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (stream_id)");
-			goto error;
-		}
-		if(!json_is_integer(id) || json_integer_value(id) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (stream_id should be a positive integer)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (stream_id should be a positive integer)");
-			goto error;
-		}
 
 		guint64 room_id = json_integer_value(room);
 		guint64 publisher_id = json_integer_value(pub_id);
 		guint32 stream_id = json_integer_value(id);
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
-		janus_mutex_unlock(&rooms_mutex);
 		if(videoroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
@@ -1722,39 +1582,21 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "Videoroom (%"SCNu64")", videoroom->room_id);
 			goto error;
 		}
-		if(videoroom->room_secret) {
-			/* A secret is required for this action */
-			json_t *secret = json_object_get(root, "secret");
-			if(!secret) {
-				janus_refcount_decrease(&videoroom->ref);
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (secret)");
-				goto error;
-			}
-			if(!json_is_string(secret)) {
-				janus_refcount_decrease(&videoroom->ref);
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-				goto error;
-			}
-			if(!janus_strcmp_const_time(videoroom->room_secret, json_string_value(secret))) {
-				janus_refcount_decrease(&videoroom->ref);
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_refcount_decrease(&videoroom->ref);
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
 		}
+		janus_mutex_unlock(&rooms_mutex);
+
 		janus_mutex_lock(&videoroom->mutex);
 		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
-		if(publisher == NULL || g_atomic_int_get(&publisher->destroyed)) {
-			janus_refcount_decrease(&videoroom->ref);
+		if(publisher == NULL) {
 			janus_mutex_unlock(&videoroom->mutex);
+			janus_refcount_decrease(&videoroom->ref);
 			JANUS_LOG(LOG_ERR, "No such publisher (%"SCNu64")\n", publisher_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 			g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", publisher_id);
@@ -1787,13 +1629,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "exists")) {
 		/* Check whether a given room exists or not, returns true/false */	
-		json_t *room = json_object_get(root, "room");
-		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
+		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
 			goto error;
-		}
+		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
 		gboolean room_exists = g_hash_table_contains(rooms, GUINT_TO_POINTER(room_id));
@@ -1805,13 +1646,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */	
-		json_t *room = json_object_get(root, "room");
-		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
+		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
 			goto error;
-		}
+		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
 		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
@@ -1851,6 +1691,81 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(response, "videoroom", json_string("participants"));
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "participants", list);
+		goto plugin_response;
+	} else if(!strcasecmp(request_text, "listforwarders")) {
+		/* List all forwarders in a room */	
+		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+		if(videoroom == NULL) {
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
+		}
+		if(videoroom->destroyed) {
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
+		}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto error;
+		}
+		/* Return a list of all forwarders */
+		json_t *list = json_array();
+		GHashTableIter iter;
+		gpointer value;
+		janus_mutex_lock(&videoroom->mutex);
+		g_hash_table_iter_init(&iter, videoroom->participants);
+		while (!videoroom->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_videoroom_publisher *p = value;
+			if(g_hash_table_size(p->rtp_forwarders) == 0)
+				continue;
+			json_t *pl = json_object();
+			json_object_set_new(pl, "publisher_id", json_integer(p->user_id));
+			if(p->display)
+				json_object_set_new(pl, "display", json_string(p->display));
+			json_t *flist = json_array();
+			GHashTableIter iter_f;
+			gpointer key_f, value_f;			
+			g_hash_table_iter_init(&iter_f, p->rtp_forwarders);
+			janus_mutex_lock(&p->rtp_forwarders_mutex);
+			while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {				
+				json_t *fl = json_object();
+				guint32 rpk = GPOINTER_TO_UINT(key_f);
+				rtp_forwarder *rpv = value_f;
+				json_object_set_new(fl, "ip" , json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
+				if(rpv->is_video > 0) {
+					json_object_set_new(fl, "video_stream_id" , json_integer(rpk));
+					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+                		} else {
+					json_object_set_new(fl, "audio_stream_id" , json_integer(rpk));
+					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+				}
+			json_array_append_new(flist, fl);
+			}		
+			janus_mutex_unlock(&p->rtp_forwarders_mutex);
+			json_object_set_new(pl, "rtp_forwarder", flist);
+			json_array_append_new(list, pl);
+		}
+		janus_mutex_unlock(&videoroom->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+		response = json_object();
+		json_object_set_new(response, "room", json_integer(room_id));
+		json_object_set_new(response, "rtp_forwarders", list);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
@@ -1940,11 +1855,44 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&session->destroyed))
 		return;
 	g_atomic_int_set(&session->hangingup, 0);
+
 	/* Media relaying can start now */
 	session->started = TRUE;
-	/* If this is a subscriber, ask the publisher a FIR */
 	if(session->participant) {
-		if(session->participant_type == janus_videoroom_p_type_subscriber) {
+		/* If this is a publisher, notify all listeners about the fact they can
+		 * now subscribe; if this is a listener, instead, ask the publisher a FIR */
+		if(session->participant_type == janus_videoroom_p_type_publisher) {
+			janus_videoroom_publisher *participant = (janus_videoroom_publisher *)session->participant;
+			/* Notify all other participants that there's a new boy in town */
+			json_t *list = json_array();
+			json_t *pl = json_object();
+			json_object_set_new(pl, "id", json_integer(participant->user_id));
+			if(participant->display)
+				json_object_set_new(pl, "display", json_string(participant->display));
+			json_array_append_new(list, pl);
+			json_t *pub = json_object();
+			json_object_set_new(pub, "videoroom", json_string("event"));
+			json_object_set_new(pub, "room", json_integer(participant->room->room_id));
+			json_object_set_new(pub, "publishers", list);
+			char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(pub);
+			GHashTableIter iter;
+			gpointer value;
+			janus_videoroom *videoroom = participant->room;
+			janus_mutex_lock(&videoroom->mutex);
+			g_hash_table_iter_init(&iter, videoroom->participants);
+			while (!videoroom->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+				janus_videoroom_publisher *p = value;
+				if(p == participant) {
+					continue;	/* Skip the new publisher itself */
+				}
+				JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+				int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, pub_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			}
+			g_free(pub_text);
+			janus_mutex_unlock(&videoroom->mutex);
+		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)session->participant;
 			if(s && s->feed) {
 				janus_videoroom_publisher *p = s->feed;
@@ -1996,10 +1944,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		}
 		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
 		/* Save the frame if we're recording */
-		if(video && participant->vrc)
-			janus_recorder_save_frame(participant->vrc, buf, len);
-		else if(!video && participant->arc)
-			janus_recorder_save_frame(participant->arc, buf, len);
+		janus_recorder_save_frame(video ? participant->vrc : participant->arc, buf, len);
 		/* Done, relay it */
 		janus_videoroom_rtp_relay_packet packet;
 		packet.data = rtp;
@@ -2029,23 +1974,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					bitrate = bitrate/participant->remb_startup;
 					participant->remb_startup--;
 				}
-				char rtcpbuf[200];
-				memset(rtcpbuf, 0, 200);
-				/* FIXME First put a RR (fake)... */
-				int rrlen = 32;
-				rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-				rr->header.version = 2;
-				rr->header.type = RTCP_RR;
-				rr->header.rc = 1;
-				rr->header.length = htons((rrlen/4)-1);
-				/* ... then put a SDES... */
-				int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-				if(sdeslen > 0) {
-					/* ... and then finally a REMB */
-					janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
-					gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
-				}
 				JANUS_LOG(LOG_VERB, "Sending REMB\n");
+				char rtcpbuf[24];
+				janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
+				gateway->relay_rtcp(handle, video, rtcpbuf, 24);
 				if(participant->remb_startup == 0)
 					participant->remb_latest = janus_get_monotonic_time();
 			}
@@ -2210,10 +2142,6 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_publisher *participant = (janus_videoroom_publisher *)session->participant;
-		if(participant == NULL || g_atomic_int_get(&participant->destroyed))
-			return;
-		janus_mutex_lock(&participant->subscribers_mutex);
-		g_free(participant->sdp);
 		participant->sdp = NULL;
 		participant->firefox = FALSE;
 		participant->audio_active = FALSE;
@@ -2224,6 +2152,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->fir_seq = 0;
 		/* Get rid of the recorders, if available */
 		g_free(participant->recording_base);
+		janus_mutex_lock(&participant->rec_mutex);
 		if(participant->arc) {
 			janus_recorder_close(participant->arc);
 			JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
@@ -2236,6 +2165,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 			janus_recorder_free(participant->vrc);
 		}
 		participant->vrc = NULL;
+		janus_mutex_unlock(&participant->rec_mutex);
 		while(participant->subscribers) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)participant->subscribers->data;
 			if(s) {
@@ -2293,11 +2223,7 @@ static void *janus_videoroom_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VideoRoom handler thread\n");
 	janus_videoroom_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(512);
-	if(error_cause == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	char error_cause[512];
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
@@ -2335,19 +2261,12 @@ static void *janus_videoroom_handler(void *data) {
 		}
 		root = msg->message;
 		/* Get the request first */
+		JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *request = json_object_get(root, "request");
-		if(!request) {
-			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
-		}
-		if(!json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-			goto error;
-		}
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
 		/* 'create' and 'destroy' are handled synchronously: what kind of participant is this session referring to? */
@@ -2360,18 +2279,12 @@ static void *janus_videoroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Invalid request on unconfigured participant");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, join_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *room = json_object_get(root, "room");
-			if(!room) {
-				JANUS_LOG(LOG_ERR, "Missing element (room)\n");
-				g_snprintf(error_cause, 512, "Missing element (room)");
-				goto error;
-			}
-			if(!json_is_integer(room) || json_integer_value(room) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
-				goto error;
-			}
 			guint64 room_id = json_integer_value(room);
 			janus_mutex_lock(&rooms_mutex);
 			janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
@@ -2390,72 +2303,30 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			}
 			janus_refcount_increase(&videoroom->ref);
-			if(videoroom->room_pin) {
-				/* A pin is required to join this room */
-				json_t *pin = json_object_get(root, "pin");
-				if(!pin) {
-					janus_refcount_decrease(&videoroom->ref);
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (pin)");
-					goto error;
-				}
-				if(!json_is_string(pin)) {
-					janus_refcount_decrease(&videoroom->ref);
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
-					goto error;
-				}
-				if(!janus_strcmp_const_time(videoroom->room_pin, json_string_value(pin))) {
-					janus_refcount_decrease(&videoroom->ref);
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
-					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
-					goto error;
-				}
+			/* A pin may be required for this action */
+			JANUS_CHECK_SECRET(videoroom->room_pin, root, "pin", error_code, error_cause,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+			if(error_code != 0) {
+				janus_refcount_decrease(&videoroom->ref);
+				janus_mutex_unlock(&rooms_mutex);
+				goto error;
 			}
 			janus_mutex_unlock(&rooms_mutex);
+
 			json_t *ptype = json_object_get(root, "ptype");
-			if(!ptype) {
-				janus_refcount_decrease(&videoroom->ref);
-				JANUS_LOG(LOG_ERR, "Missing element (ptype)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (ptype)");
-				goto error;
-			}
-			if(!json_is_string(ptype)) {
-				janus_refcount_decrease(&videoroom->ref);
-				JANUS_LOG(LOG_ERR, "Invalid element (ptype should be a string)\n");
-				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (ptype should be a string)");
-				goto error;
-			}
 			const char *ptype_text = json_string_value(ptype);
 			if(!strcasecmp(ptype_text, "publisher")) {
 				JANUS_LOG(LOG_VERB, "Configuring new publisher\n");
-				json_t *display = json_object_get(root, "display");
-				if(display && !json_is_string(display)) {
-					janus_refcount_decrease(&videoroom->ref);
-					JANUS_LOG(LOG_ERR, "Invalid element (display should be a string)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (display should be a string)");
+				JANUS_VALIDATE_JSON_OBJECT(root, publisher_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
 					goto error;
-				}
+				json_t *display = json_object_get(root, "display");
 				const char *display_text = display ? json_string_value(display) : NULL;
 				guint64 user_id = 0;
 				json_t *id = json_object_get(root, "id");
 				if(id) {
-					if(!json_is_integer(id) || json_integer_value(id) < 0) {
-						janus_refcount_decrease(&videoroom->ref);
-						JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-						goto error;
-					}
 					user_id = json_integer_value(id);
 					janus_mutex_lock(&videoroom->mutex);
 					if(g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(user_id)) != NULL) {
@@ -2485,46 +2356,12 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *audio = NULL, *video = NULL, *bitrate = NULL, *record = NULL, *recfile = NULL;
 				if(!strcasecmp(request_text, "joinandconfigure")) {
 					/* Also configure (or publish a new feed) audio/video/bitrate for this new publisher */
+					/* join_parameters were validated earlier. */
 					audio = json_object_get(root, "audio");
-					if(audio && !json_is_boolean(audio)) {
-						janus_refcount_decrease(&videoroom->ref);
-						JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-						goto error;
-					}
 					video = json_object_get(root, "video");
-					if(video && !json_is_boolean(video)) {
-						janus_refcount_decrease(&videoroom->ref);
-						JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-						goto error;
-					}
 					bitrate = json_object_get(root, "bitrate");
-					if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
-						janus_refcount_decrease(&videoroom->ref);
-						JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
-						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
-						goto error;
-					}
 					record = json_object_get(root, "record");
-					if(record && !json_is_boolean(record)) {
-						janus_refcount_decrease(&videoroom->ref);
-						JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
-						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value (record should be a boolean)");
-						goto error;
-					}
 					recfile = json_object_get(root, "filename");
-					if(recfile && !json_is_string(recfile)) {
-						janus_refcount_decrease(&videoroom->ref);
-						JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
-						error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-						g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
-						goto error;
-					}
 				}
 				janus_videoroom_publisher *publisher = g_malloc0(sizeof(janus_videoroom_publisher));
 				if(publisher == NULL) {
@@ -2548,6 +2385,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->recording_base = NULL;
 				publisher->arc = NULL;
 				publisher->vrc = NULL;
+				janus_mutex_init(&publisher->rec_mutex);
 				publisher->firefox = FALSE;
 				publisher->bitrate = videoroom->bitrate;
 				publisher->subscribers = NULL;
@@ -2633,7 +2471,7 @@ static void *janus_videoroom_handler(void *data) {
 				g_hash_table_iter_init(&iter, videoroom->participants);
 				while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_videoroom_publisher *p = value;
-					if(p == publisher || !p->sdp) {
+					if(p == publisher || !p->sdp || !p->session->started) {
 						continue;
 					}
 					json_t *pl = json_object();
@@ -2652,46 +2490,18 @@ static void *janus_videoroom_handler(void *data) {
 			} else if(!strcasecmp(ptype_text, "subscriber") || !strcasecmp(ptype_text, "listener")) {
 				JANUS_LOG(LOG_VERB, "Configuring new subscriber\n");
 				/* This is a new subscriber */
+				JANUS_VALIDATE_JSON_OBJECT(root, subscriber_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				if(error_code != 0) {
+					janus_refcount_decrease(&videoroom->ref);
+					goto error;
+				}
 				json_t *feed = json_object_get(root, "feed");
-				if(!feed) {
-					janus_refcount_decrease(&videoroom->ref);
-					JANUS_LOG(LOG_ERR, "Missing element (feed)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (feed)");
-					goto error;
-				}
-				if(!json_is_integer(feed) || json_integer_value(feed) < 0) {
-					janus_refcount_decrease(&videoroom->ref);
-					JANUS_LOG(LOG_ERR, "Invalid element (feed should be a positive integer)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (feed should be a positive integer)");
-					goto error;
-				}
 				guint64 feed_id = json_integer_value(feed);
 				json_t *audio = json_object_get(root, "audio");
-				if(audio && !json_is_boolean(audio)) {
-					janus_refcount_decrease(&videoroom->ref);
-					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-					goto error;
-				}
 				json_t *video = json_object_get(root, "video");
-				if(video && !json_is_boolean(video)) {
-					janus_refcount_decrease(&videoroom->ref);
-					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-					goto error;
-				}
 				json_t *data = json_object_get(root, "data");
-				if(data && !json_is_boolean(data)) {
-					janus_refcount_decrease(&videoroom->ref);
-					JANUS_LOG(LOG_ERR, "Invalid element (data should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (data should be a boolean)");
-					goto error;
-				}
 				janus_mutex_lock(&videoroom->mutex);
 				janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(feed_id));
 				janus_mutex_unlock(&videoroom->mutex);
@@ -2804,41 +2614,16 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				/* Configure (or publish a new feed) audio/video/bitrate for this publisher */
+				JANUS_VALIDATE_JSON_OBJECT(root, publish_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
 				json_t *audio = json_object_get(root, "audio");
-				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-					goto error;
-				}
 				json_t *video = json_object_get(root, "video");
-				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-					goto error;
-				}
 				json_t *bitrate = json_object_get(root, "bitrate");
-				if(bitrate && (!json_is_integer(bitrate) || json_integer_value(bitrate) < 0)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (bitrate should be a positive integer)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
-					goto error;
-				}
 				json_t *record = json_object_get(root, "record");
-				if(record && !json_is_boolean(record)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (record should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (record should be a boolean)");
-					goto error;
-				}
 				json_t *recfile = json_object_get(root, "filename");
-				if(recfile && !json_is_string(recfile)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (filename should be a string)");
-					goto error;
-				}
 				if(audio) {
 					participant->audio_active = json_is_true(audio);
 					JANUS_LOG(LOG_VERB, "Setting audio property: %s (room %"SCNu64", user %"SCNu64")\n", participant->audio_active ? "true" : "false", participant->room->room_id, participant->user_id);
@@ -2852,23 +2637,11 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64" (room %"SCNu64", user %"SCNu64")\n", participant->bitrate, participant->room->room_id, participant->user_id);
 					/* Send a new REMB */
 					participant->remb_latest = janus_get_monotonic_time();
-					char rtcpbuf[200];
-					memset(rtcpbuf, 0, 200);
-					/* FIXME First put a RR (fake)... */
-					int rrlen = 32;
-					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-					rr->header.version = 2;
-					rr->header.type = RTCP_RR;
-					rr->header.rc = 1;
-					rr->header.length = htons((rrlen/4)-1);
-					/* ... then put a SDES... */
-					int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-					if(sdeslen > 0) {
-						/* ... and then finally a REMB */
-						janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, participant->bitrate ? participant->bitrate : 256*1024);
-						gateway->relay_rtcp(msg->handle, 1, rtcpbuf, rrlen+sdeslen+24);
-					}
+					char rtcpbuf[24];
+					janus_rtcp_remb((char *)(&rtcpbuf), 24, participant->bitrate ? participant->bitrate : 256*1024);
+					gateway->relay_rtcp(msg->handle, 1, rtcpbuf, 24);
 				}
+				janus_mutex_lock(&participant->rec_mutex);
 				gboolean prev_recording_active = participant->recording_active;
 				if(record) {
 					participant->recording_active = json_is_true(record);
@@ -2904,7 +2677,8 @@ static void *janus_videoroom_handler(void *data) {
 							if(participant->recording_base) {
 								/* Use the filename and path we have been provided */
 								g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-								participant->arc = janus_recorder_create(participant->room->rec_dir, 0, filename);
+								participant->arc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 								if(participant->arc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 								}
@@ -2912,7 +2686,8 @@ static void *janus_videoroom_handler(void *data) {
 								/* Build a filename */
 								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
 									participant->room->room_id, participant->user_id, now);
-								participant->arc = janus_recorder_create(participant->room->rec_dir, 0, filename);
+								participant->arc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 								if(participant->arc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 								}
@@ -2923,7 +2698,8 @@ static void *janus_videoroom_handler(void *data) {
 							if(participant->recording_base) {
 								/* Use the filename and path we have been provided */
 								g_snprintf(filename, 255, "%s-video", participant->recording_base);
-								participant->vrc = janus_recorder_create(participant->room->rec_dir, 1, filename);
+								participant->vrc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 								if(participant->vrc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 								}
@@ -2931,7 +2707,8 @@ static void *janus_videoroom_handler(void *data) {
 								/* Build a filename */
 								g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
 									participant->room->room_id, participant->user_id, now);
-								participant->vrc = janus_recorder_create(participant->room->rec_dir, 1, filename);
+								participant->vrc = janus_recorder_create(participant->room->rec_dir,
+									janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 								if(participant->vrc == NULL) {
 									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 								}
@@ -2952,6 +2729,7 @@ static void *janus_videoroom_handler(void *data) {
 						}
 					}
 				}
+				janus_mutex_unlock(&participant->rec_mutex);
 				/* Done */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
@@ -3046,27 +2824,14 @@ static void *janus_videoroom_handler(void *data) {
 					gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
 				}
 			} else if(!strcasecmp(request_text, "configure")) {
+				JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
 				json_t *audio = json_object_get(root, "audio");
-				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-					goto error;
-				}
 				json_t *video = json_object_get(root, "video");
-				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-					goto error;
-				}
 				json_t *data = json_object_get(root, "data");
-				if(data && !json_is_boolean(data)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (data should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (data should be a boolean)");
-					goto error;
-				}
 				/* Update the audio/video/data flags, if set */
 				janus_videoroom_publisher *publisher = subscriber->feed;
 				if(publisher) {
@@ -3090,41 +2855,16 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "paused", json_string("ok"));
 			} else if(!strcasecmp(request_text, "switch")) {
 				/* This subscriber wants to switch to a different publisher */
+				JANUS_VALIDATE_JSON_OBJECT(root, subscriber_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
 				json_t *feed = json_object_get(root, "feed");
-				if(!feed) {
-					JANUS_LOG(LOG_ERR, "Missing element (feed)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (feed)");
-					goto error;
-				}
-				if(!json_is_integer(feed) || json_integer_value(feed) < 0) {
-					JANUS_LOG(LOG_ERR, "Invalid element (feed should be a positive integer)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (feed should be a positive integer)");
-					goto error;
-				}
 				guint64 feed_id = json_integer_value(feed);
 				json_t *audio = json_object_get(root, "audio");
-				if(audio && !json_is_boolean(audio)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (audio should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (audio should be a boolean)");
-					goto error;
-				}
 				json_t *video = json_object_get(root, "video");
-				if(video && !json_is_boolean(video)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (video should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (video should be a boolean)");
-					goto error;
-				}
 				json_t *data = json_object_get(root, "data");
-				if(data && !json_is_boolean(data)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (data should be a boolean)\n");
-					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid value (data should be a boolean)");
-					goto error;
-				}
 				if(!subscriber->room) {
 					JANUS_LOG(LOG_ERR, "Room Destroyed \n");
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
@@ -3355,23 +3095,23 @@ static void *janus_videoroom_handler(void *data) {
 					vp8_pt = 0, vp9_pt = 0, h264_pt = 0;
 				if(audio) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", audio_mode);
-					opus_pt = janus_get_opus_pt(msg->sdp);
+					opus_pt = janus_get_codec_pt(msg->sdp, "opus");
 					if(opus_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- Opus payload type is %d\n", opus_pt);
 					}
-					isac32_pt = janus_get_isac32_pt(msg->sdp);
+					isac32_pt = janus_get_codec_pt(msg->sdp, "isac32");
 					if(isac32_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- ISAC 32K payload type is %d\n", isac32_pt);
 					}
-					isac16_pt = janus_get_isac16_pt(msg->sdp);
+					isac16_pt = janus_get_codec_pt(msg->sdp, "isac16");
 					if(isac16_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- ISAC 16K payload type is %d\n", isac16_pt);
 					}
-					pcmu_pt = janus_get_pcmu_pt(msg->sdp);
+					pcmu_pt = janus_get_codec_pt(msg->sdp, "pcmu");
 					if(pcmu_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMU payload type is %d\n", pcmu_pt);
 					}
-					pcma_pt = janus_get_pcma_pt(msg->sdp);
+					pcma_pt = janus_get_codec_pt(msg->sdp, "pcma");
 					if(pcma_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- PCMA payload type is %d\n", pcma_pt);
 					}
@@ -3379,15 +3119,15 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send a video stream\n", video ? "is" : "is NOT");
 				if(video) {
 					JANUS_LOG(LOG_VERB, "  -- Will answer with media direction '%s'\n", video_mode);
-					vp8_pt = janus_get_vp8_pt(msg->sdp);
+					vp8_pt = janus_get_codec_pt(msg->sdp, "vp8");
 					if(vp8_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- VP8 payload type is %d\n", vp8_pt);
 					}
-					vp9_pt = janus_get_vp9_pt(msg->sdp);
+					vp9_pt = janus_get_codec_pt(msg->sdp, "vp9");
 					if(vp9_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- VP9 payload type is %d\n", vp9_pt);
 					}
-					h264_pt = janus_get_h264_pt(msg->sdp);
+					h264_pt = janus_get_codec_pt(msg->sdp, "h264");
 					if(h264_pt > 0) {
 						JANUS_LOG(LOG_VERB, "  -- -- H264 payload type is %d\n", h264_pt);
 					}
@@ -3538,6 +3278,8 @@ static void *janus_videoroom_handler(void *data) {
 					/* Remove useless bandwidth attribute */
 					newsdp = janus_string_replace(newsdp, "b=AS:0\r\n", "");
 				}
+				/* Lock rec_mutex to protect recorders from race conditions. */
+				janus_mutex_lock(&participant->rec_mutex);
 				/* Is this room recorded? */
 				if(videoroom->record || participant->recording_active) {
 					char filename[255];
@@ -3547,7 +3289,8 @@ static void *janus_videoroom_handler(void *data) {
 						if(participant->recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-							participant->arc = janus_recorder_create(videoroom->rec_dir, 0, filename);
+							participant->arc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 							if(participant->arc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 							}
@@ -3555,7 +3298,8 @@ static void *janus_videoroom_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
 								videoroom->room_id, participant->user_id, now);
-							participant->arc = janus_recorder_create(videoroom->rec_dir, 0, filename);
+							participant->arc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_audiocodec_name(participant->room->acodec), filename);
 							if(participant->arc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 							}
@@ -3566,7 +3310,8 @@ static void *janus_videoroom_handler(void *data) {
 						if(participant->recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-video", participant->recording_base);
-							participant->vrc = janus_recorder_create(videoroom->rec_dir, 1, filename);
+							participant->vrc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 							if(participant->vrc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 							}
@@ -3574,13 +3319,15 @@ static void *janus_videoroom_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
 								videoroom->room_id, participant->user_id, now);
-							participant->vrc = janus_recorder_create(videoroom->rec_dir, 1, filename);
+							participant->vrc = janus_recorder_create(videoroom->rec_dir,
+								janus_videoroom_videocodec_name(participant->room->vcodec), filename);
 							if(participant->vrc == NULL) {
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 							}
 						}
 					}
 				}
+				janus_mutex_unlock(&participant->rec_mutex);
 
 				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, newsdp);
 				/* How long will the gateway take to push the event? */
@@ -3743,35 +3490,7 @@ static void *janus_videoroom_handler(void *data) {
 				} else {
 					/* Store the participant's SDP for interested subscribers */
 					participant->sdp = newsdp;
-					/* Notify all other participants that there's a new boy in town */
-					json_t *list = json_array();
-					json_t *pl = json_object();
-					json_object_set_new(pl, "id", json_integer(participant->user_id));
-					if(participant->display)
-						json_object_set_new(pl, "display", json_string(participant->display));
-					json_array_append_new(list, pl);
-					json_t *pub = json_object();
-					json_object_set_new(pub, "videoroom", json_string("event"));
-					json_object_set_new(pub, "room", json_integer(participant->room->room_id));
-					json_object_set_new(pub, "publishers", list);
-					char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-					json_decref(pub);
-					GHashTableIter iter;
-					gpointer value;
-					janus_mutex_lock(&videoroom->mutex);
-					g_hash_table_iter_init(&iter, videoroom->participants);
-					while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
-						janus_videoroom_publisher *p = value;
-						if(p == participant) {
-							continue;	/* Skip the new publisher itself */
-						}
-						JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-						int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, pub_text, NULL, NULL);
-						JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-					}
-					g_free(pub_text);
-					janus_mutex_unlock(&videoroom->mutex);
-					/* Let's wait for the setup_media event */
+					/* We'll wait for the setup_media event before actually telling listeners */
 				}
 			}
 		}
@@ -3796,7 +3515,6 @@ error:
 			janus_videoroom_message_free(msg);
 		}
 	}
-	g_free(error_cause);
 	JANUS_LOG(LOG_VERB, "Leaving VideoRoom handler thread\n");
 	return NULL;
 }

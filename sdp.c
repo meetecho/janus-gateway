@@ -600,6 +600,8 @@ char *janus_sdp_anonymize(const char *sdp) {
 			sdp_attribute_remove(&anon->sdp_attributes, "group");
 		while(sdp_attribute_find(anon->sdp_attributes, "msid-semantic"))
 			sdp_attribute_remove(&anon->sdp_attributes, "msid-semantic");
+		while(sdp_attribute_find(anon->sdp_attributes, "rtcp-rsize"))
+			sdp_attribute_remove(&anon->sdp_attributes, "rtcp-rsize");
 	}
 		/* m= */
 	if(anon->sdp_media) {
@@ -666,6 +668,8 @@ char *janus_sdp_anonymize(const char *sdp) {
 					sdp_attribute_remove(&m->m_attributes, "rtcp");
 				while(sdp_attribute_find(m->m_attributes, "rtcp-mux"))
 					sdp_attribute_remove(&m->m_attributes, "rtcp-mux");
+				while(sdp_attribute_find(m->m_attributes, "rtcp-rsize"))
+					sdp_attribute_remove(&m->m_attributes, "rtcp-rsize");
 				while(sdp_attribute_find(m->m_attributes, "candidate"))
 					sdp_attribute_remove(&m->m_attributes, "candidate");
 				while(sdp_attribute_find(m->m_attributes, "ssrc"))
@@ -676,6 +680,61 @@ char *janus_sdp_anonymize(const char *sdp) {
 					sdp_attribute_remove(&m->m_attributes, "extmap");
 				while(sdp_attribute_find(m->m_attributes, "sctpmap"))
 					sdp_attribute_remove(&m->m_attributes, "sctpmap");
+				/* Also remove attributes/formats we know we don't support now */
+				GList *ptypes = NULL;
+				sdp_attribute_t *a = m->m_attributes;
+				while(a) {
+					if(strstr(a->a_value, "red/90000") || strstr(a->a_value, "ulpfec/90000") || strstr(a->a_value, "rtx/90000")) {
+						int ptype = atoi(a->a_value);
+						ptypes = g_list_append(ptypes, GINT_TO_POINTER(ptype));
+						JANUS_LOG(LOG_VERB, "Will remove payload type %d\n", ptype);
+					}
+					a = a->a_next;
+				}
+				if(ptypes) {
+					GList *p = ptypes;
+					while(p) {
+						int ptype = GPOINTER_TO_INT(p->data);
+						if(m->m_format) {
+							sdp_list_t *fmt = m->m_format, *old = NULL;
+							while(fmt) {
+								int fmt_pt = atoi(fmt->l_text);
+								if(fmt_pt == ptype) {
+									if(!old) {
+										m->m_format = fmt->l_next;
+										fmt = m->m_format;
+										continue;
+									} else {
+										old->l_next = fmt->l_next;
+										fmt = fmt->l_next;
+										continue;
+									}
+								}
+								old = fmt;
+								fmt = fmt->l_next;
+							}
+						}
+						a = m->m_attributes;
+						sdp_attribute_t *old = NULL;
+						while(a) {
+							int a_pt = atoi(a->a_value);
+							if(a_pt == ptype) {
+								if(!old) {
+									m->m_attributes = a->a_next;
+									a = m->m_attributes;
+									continue;
+								} else {
+									old->a_next = a->a_next;
+									a = a->a_next;
+									continue;
+								}
+							}
+							old = a;
+							a = a->a_next;
+						}
+						p = g_list_remove(p, p->data);
+					}
+				}
 			}
 			if(m->m_type != sdp_media_application && m->m_mode == sdp_sendrecv) {
 				/* FIXME sendrecv hack: sofia-sdp doesn't print sendrecv, but we want it to */
@@ -975,6 +1034,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 					while(fmt) {
 						g_snprintf(buffer, 512, " %s", fmt->l_text);
 						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+						guint16 pt = atoi(fmt->l_text);
+						if(m->m_type == sdp_media_audio) {
+							stream->audio_payload_types = g_list_append(stream->audio_payload_types, GUINT_TO_POINTER(pt));
+						} else if(m->m_type == sdp_media_video) {
+							stream->video_payload_types = g_list_append(stream->video_payload_types, GUINT_TO_POINTER(pt));
+						}
 						fmt = fmt->l_next;
 					}
 				}
@@ -983,6 +1048,12 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 				while(r) {
 					g_snprintf(buffer, 512, " %d", r->rm_pt);
 					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					guint16 pt = r->rm_pt;
+					if(m->m_type == sdp_media_audio) {
+						stream->audio_payload_types = g_list_append(stream->audio_payload_types, GUINT_TO_POINTER(pt));
+					} else if(m->m_type == sdp_media_video) {
+						stream->video_payload_types = g_list_append(stream->video_payload_types, GUINT_TO_POINTER(pt));
+					}
 					r = r->rm_next;
 				}
 			}

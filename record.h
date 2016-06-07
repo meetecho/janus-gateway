@@ -35,6 +35,8 @@ typedef struct janus_recorder {
 	char *filename;
 	/*! \brief Recording file */
 	FILE *file;
+	/*! \brief Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9") */
+	char *codec;
 	/*! \brief When the recording file has been created */
 	gint64 created;
 	/*! \brief Whether this recorder instance is going to record video or audio */ 
@@ -52,10 +54,10 @@ typedef struct janus_recorder {
  * \note If no target directory is provided, the current directory will be used. If no filename
  * is passed, a random filename will be used.
  * @param[in] dir Path of the directory to save the recording into (will try to create it if it doesn't exist)
- * @param[in] video If this recorder is for video or audio
+ * @param[in] codec Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9")
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
-janus_recorder *janus_recorder_create(const char *dir, int video, const char *filename);
+janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save

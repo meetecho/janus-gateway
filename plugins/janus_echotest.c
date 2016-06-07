@@ -184,6 +184,7 @@ typedef struct janus_echotest_session {
 	uint64_t bitrate;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
+	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	guint16 slowlink_count;
 	volatile gint hangingup;
 	volatile gint destroyed;
@@ -202,7 +203,6 @@ static void janus_echotest_session_destroy(janus_echotest_session *session) {
 
 static void janus_echotest_session_free(const janus_refcount *session_ref) {
 	janus_echotest_session *session = janus_refcount_containerof(session_ref, janus_echotest_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing EchoTest session: %p\n", session_ref);
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
@@ -348,6 +348,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->has_video = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
+	janus_mutex_init(&session->rec_mutex);
 	session->bitrate = 0;	/* No limit */
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
@@ -465,10 +466,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			return;
 		if((!video && session->audio_active) || (video && session->video_active)) {
 			/* Save the frame if we're recording */
-			if(video && session->vrc)
-				janus_recorder_save_frame(session->vrc, buf, len);
-			else if(!video && session->arc)
-				janus_recorder_save_frame(session->arc, buf, len);
+			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 			/* Send the frame back */
 			gateway->relay_rtp(handle, video, buf, len);
 		}
@@ -550,22 +548,9 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
 				uplink ? "uplink" : "downlink", video ? "video" : "audio", session->bitrate);
 			/* ... and send a new REMB back */
-			char rtcpbuf[200];
-			memset(rtcpbuf, 0, 200);
-			/* FIXME First put a RR (fake)... */
-			int rrlen = 32;
-			rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-			rr->header.version = 2;
-			rr->header.type = RTCP_RR;
-			rr->header.rc = 1;
-			rr->header.length = htons((rrlen/4)-1);
-			/* ... then put a SDES... */
-			int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-			if(sdeslen > 0) {
-				/* ... and then finally a REMB */
-				janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, session->bitrate);
-				gateway->relay_rtcp(handle, 1, rtcpbuf, rrlen+sdeslen+24);
-			}
+			char rtcpbuf[24];
+			janus_rtcp_remb((char *)(&rtcpbuf), 24, session->bitrate);
+			gateway->relay_rtcp(handle, 1, rtcpbuf, 24);
 			/* As a last thing, notify the user about this */
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
@@ -607,6 +592,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 	g_free(event_text);
 	/* Get rid of the recorders, if available */
+	janus_mutex_lock(&session->rec_mutex);
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
@@ -619,6 +605,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		janus_recorder_free(session->vrc);
 	}
 	session->vrc = NULL;
+	janus_mutex_unlock(&session->rec_mutex);
 	/* Reset controls */
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -761,6 +748,7 @@ static void *janus_echotest_handler(void *data) {
 			gboolean recording = json_is_true(record);
 			const char *recording_base = json_string_value(recfile);
 			JANUS_LOG(LOG_VERB, "Recording %s (base filename: %s)\n", recording ? "enabled" : "disabled", recording_base ? recording_base : "not provided");
+			janus_mutex_lock(&session->rec_mutex);
 			if(!recording) {
 				/* Not recording (anymore?) */
 				if(session->arc) {
@@ -780,11 +768,12 @@ static void *janus_echotest_handler(void *data) {
 				char filename[255];
 				gint64 now = janus_get_real_time();
 				if(session->has_audio) {
+					/* FIXME We assume we're recording Opus, here */
 					memset(filename, 0, 255);
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-audio", recording_base);
-						session->arc = janus_recorder_create(NULL, 0, filename);
+						session->arc = janus_recorder_create(NULL, "opus", filename);
 						if(session->arc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
@@ -792,7 +781,7 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-audio", session, now);
-						session->arc = janus_recorder_create(NULL, 0, filename);
+						session->arc = janus_recorder_create(NULL, "opus", filename);
 						if(session->arc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this EchoTest user!\n");
@@ -800,11 +789,12 @@ static void *janus_echotest_handler(void *data) {
 					}
 				}
 				if(session->has_video) {
+					/* FIXME We assume we're recording VP8, here */
 					memset(filename, 0, 255);
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-video", recording_base);
-						session->vrc = janus_recorder_create(NULL, 1, filename);
+						session->vrc = janus_recorder_create(NULL, "vp8", filename);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
@@ -812,7 +802,7 @@ static void *janus_echotest_handler(void *data) {
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
-						session->vrc = janus_recorder_create(NULL, 1, filename);
+						session->vrc = janus_recorder_create(NULL, "vp8", filename);
 						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
@@ -826,6 +816,7 @@ static void *janus_echotest_handler(void *data) {
 					gateway->relay_rtcp(session->handle, 1, buf, 12);
 				}
 			}
+			janus_mutex_unlock(&session->rec_mutex);
 		}
 		/* Any SDP to handle? */
 		if(msg->sdp) {

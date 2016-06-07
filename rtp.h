@@ -52,6 +52,7 @@ typedef struct rtp_header
 typedef struct janus_rtp_packet {
 	char *data;
 	gint length;
+	gint64 created;
 	gint64 last_retransmit;
 } janus_rtp_packet;
 

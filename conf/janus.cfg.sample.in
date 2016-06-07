@@ -36,6 +36,8 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;								  to be accepted/authorized by the admin/monitor.
 ;								  only needed if you enabled the admin API
 ;								  in any of the available transports.
+;server_name = MyJanusInstance	; Public name of this Janus instance
+;								  as it will appear in an info request
 
 
 ; Certificate and key to use for DTLS.
@@ -46,14 +48,14 @@ cert_key = @certdir@/mycert.key
 
 ; Media-related stuff: you can configure whether if you want
 ; to enable IPv6 support (still WIP, so handle with care), the maximum size
-; of the NACK queue for retransmissions per handle the range of ports to
-; use for RTP and RTCP (by default, no range is envisaged), the
+; of the NACK queue (in milliseconds, defaults to 1000ms=1s) for retransmissions, the
+; range of ports to use for RTP and RTCP (by default, no range is envisaged), the
 ; starting MTU for DTLS (1472 by default, it adapts automatically),
 ; if BUNDLE should be forced (defaults to false) and if RTCP muxing should
 ; be forced (defaults to false).
 [media]
 ;ipv6 = true
-;max_nack_queue = 300
+;max_nack_queue = 1000
 ;rtp_port_range = 20000-40000
 ;dtls_mtu = 1200
 ;force-bundle = true
@@ -104,10 +106,12 @@ nice_debug = false
 ; TURN services dynamically. This makes use of the proposed standard of
 ; such an API (https://tools.ietf.org/html/draft-uberti-behave-turn-rest-00)
 ; which is currently available in both rfc5766-turn-server and coturn.
-; You enable this by specifying the address of your TURN REST API backend
-; and, if required, the API key Janus must provide.
+; You enable this by specifying the address of your TURN REST API backend,
+; the HTTP method to use (GET or POST) and, if required, the API key Janus
+; must provide.
 ;turn_rest_api = http://yourbackend.com/path/to/api
 ;turn_rest_api_key = anyapikeyyoumayhaveset
+;turn_rest_api_method = GET
 
 ; You can also choose which interfaces should be explicitly used by the
 ; gateway for the purpose of ICE candidates gathering, thus excluding

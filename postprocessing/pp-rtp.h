@@ -46,6 +46,7 @@ typedef struct janus_pp_frame_packet {
 	uint16_t seq;	/* RTP Sequence number */
 	uint64_t ts;	/* RTP Timestamp */
 	int len;		/* Length of the data */
+	int pt;			/* Payload type of the data */
 	long offset;	/* Offset of the data in the file */
 	int skip;		/* Bytes to skip, besides the RTP header */
 	uint8_t drop;	/* Whether this packet can be dropped (e.g., padding)*/

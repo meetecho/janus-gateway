@@ -323,6 +323,21 @@ janus_plugin *create(void) {
 	return &janus_recordplay_plugin;
 }
 
+/* Parameter validation */
+static struct janus_json_parameter request_parameters[] = {
+	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter configure_parameters[] = {
+	{"video-bitrate-max", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video-keyframe-interval", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter record_parameters[] = {
+	{"name", JSON_STRING, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_NONEMPTY},
+	{"filename", JSON_STRING, 0}
+};
+static struct janus_json_parameter play_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -377,6 +392,7 @@ typedef struct janus_recordplay_session {
 	janus_recordplay_recording *recording;
 	janus_recorder *arc;	/* Audio recorder */
 	janus_recorder *vrc;	/* Video recorder */
+	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	janus_recordplay_frame_packet *aframes;	/* Audio frames (for playout) */
 	janus_recordplay_frame_packet *vframes;	/* Video frames (for playout) */
 	guint video_remb_startup;
@@ -402,7 +418,6 @@ static void janus_recordplay_session_destroy(janus_recordplay_session *session) 
 
 static void janus_recordplay_session_free(const janus_refcount *session_ref) {
 	janus_recordplay_session *session = janus_refcount_containerof(session_ref, janus_recordplay_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing recordplay session: %p\n", session_ref);
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
@@ -420,7 +435,6 @@ static void janus_recordplay_recording_destroy(janus_recordplay_recording *recor
 
 static void janus_recordplay_recording_free(const janus_refcount *recording_ref) {
 	janus_recordplay_recording *recording = janus_refcount_containerof(recording_ref, janus_recordplay_recording, ref);
-	JANUS_LOG(LOG_WARN, "Freeing recordplay recording: %p\n", recording_ref);
 	/* This recording can be destroyed, free all the resources */
 	g_free(recording->name);
 	g_free(recording->date);
@@ -633,6 +647,7 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 	session->firefox = FALSE;
 	session->arc = NULL;
 	session->vrc = NULL;
+	janus_mutex_init(&session->rec_mutex);
 	g_atomic_int_set(&session->hangingup, 0);
 	g_atomic_int_set(&session->destroyed, 0);
 	session->video_remb_startup = 4;
@@ -742,19 +757,12 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		goto error;
 	}
 	/* Get the request first */
+	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+		error_code, error_cause, TRUE,
+		JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+	if(error_code != 0)
+		goto error;
 	json_t *request = json_object_get(root, "request");
-	if(!request) {
-		JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-		error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
-		g_snprintf(error_cause, 512, "Missing element (request)");
-		goto error;
-	}
-	if(!json_is_string(request)) {
-		JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-		error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-		g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-		goto error;
-	}
 	/* Some requests ('create' and 'destroy') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "update")) {
@@ -791,25 +799,18 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		json_object_set_new(response, "list", list);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "configure")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *video_bitrate_max = json_object_get(root, "video-bitrate-max");
 		if(video_bitrate_max) {
-			if(!json_is_integer(video_bitrate_max) || json_integer_value(video_bitrate_max) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video-bitrate-max should be a positive integer)\n");
-				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (video-bitrate-max should be a positive integer)");
-				goto error;
-			}
 			session->video_bitrate = json_integer_value(video_bitrate_max);
 			JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu64"\n", session->video_bitrate);
 		}
 		json_t *video_keyframe_interval= json_object_get(root, "video-keyframe-interval");
 		if(video_keyframe_interval) {
-			if(!json_is_integer(video_keyframe_interval) || json_integer_value(video_keyframe_interval) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (video-keyframe-interval should be a positive integer)\n");
-				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (video-keyframe-interval should be a positive integer)");
-				goto error;
-			}
 			session->video_keyframe_interval = json_integer_value(video_keyframe_interval);
 			JANUS_LOG(LOG_VERB, "Video keyframe interval has been set to %u\n", session->video_keyframe_interval);
 		}
@@ -928,7 +929,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 		return;	/* We just do this for video, for now */
 
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;
-	char rtcpbuf[200];
+	char rtcpbuf[24];
 
 	/* Send a RR+SDES+REMB every five seconds, or ASAP while we are still
 	 * ramping up (first 4 RTP packets) */
@@ -944,22 +945,11 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 			session->video_remb_startup--;
 		}
 
-		memset(rtcpbuf, 0, 200);
-		/* FIXME First put a RR (fake)... */
-		int rrlen = 32;
-		rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
-		rr->header.version = 2;
-		rr->header.type = RTCP_RR;
-		rr->header.rc = 1;
-		rr->header.length = htons((rrlen/4)-1);
-		/* ... then put a SDES... */
-		int sdeslen = janus_rtcp_sdes((char *)(&rtcpbuf)+rrlen, 200-rrlen, "janusvideo", 10);
-		if(sdeslen > 0) {
-			/* ... and then finally a REMB */
-			janus_rtcp_remb((char *)(&rtcpbuf)+rrlen+sdeslen, 24, bitrate);
-			gateway->relay_rtcp(handle, video, rtcpbuf, rrlen+sdeslen+24);
-		}
-		
+		/* Send a new REMB back */
+		char rtcpbuf[24];
+		janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
+		gateway->relay_rtcp(handle, video, rtcpbuf, 24);
+
 		session->video_remb_last = now;
 	}
 
@@ -992,10 +982,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			return;
 		/* Are we recording? */
 		if(session->recorder) {
-			if(video && session->vrc)
-				janus_recorder_save_frame(session->vrc, buf, len);
-			else if(!video && session->arc)
-				janus_recorder_save_frame(session->arc, buf, len);
+			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 		}
 
 		janus_recordplay_send_rtcp_feedback(handle, video, buf, len);
@@ -1079,11 +1066,7 @@ static void *janus_recordplay_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining Record&Play handler thread\n");
 	janus_recordplay_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(512);
-	if(error_cause == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return NULL;
-	}
+	char error_cause[512];
 	json_t *root = NULL;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		msg = g_async_queue_pop(messages);
@@ -1121,19 +1104,12 @@ static void *janus_recordplay_handler(void *data) {
 		}
 		root = msg->message;
 		/* Get the request first */
+		JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
 		json_t *request = json_object_get(root, "request");
-		if(!request) {
-			JANUS_LOG(LOG_ERR, "Missing element (request)\n");
-			error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (request)");
-			goto error;
-		}
-		if(!json_is_string(request)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (request should be a string)\n");
-			error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
-			goto error;
-		}
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
 		json_t *result = NULL;
@@ -1146,34 +1122,15 @@ static void *janus_recordplay_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing SDP offer");
 				goto error;
 			}
+			JANUS_VALIDATE_JSON_OBJECT(root, record_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *name = json_object_get(root, "name");
-			if(!name) {
-				JANUS_LOG(LOG_ERR, "Missing element (name)\n");
-				error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (name)");
-				goto error;
-			}
-			if(!json_is_string(name)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name should be a string)\n");
-				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name should be a string)");
-				goto error;
-			}
 			const char *name_text = json_string_value(name);
-			if(strlen(name_text) == 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (name is an empty string)\n");
-				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (name is an empty string)");
-				goto error;
-			}
 			json_t *filename = json_object_get(root, "filename");
 			if(filename) {
-				if(!json_is_string(name)) {
-					JANUS_LOG(LOG_ERR, "Invalid element (filename should be a string)\n");
-					error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (filename should be a string)");
-					goto error;
-				}
 				filename_text = json_string_value(filename);
 			}
 			guint64 id = 0;
@@ -1207,7 +1164,8 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
 				}
 				rec->arc_file = g_strdup(filename);
-				session->arc = janus_recorder_create(recordings_path, 0, rec->arc_file);
+				/* FIXME Assuming Opus */
+				session->arc = janus_recorder_create(recordings_path, "opus", rec->arc_file);
 			}
 			if(strstr(msg->sdp, "m=video")) {
 				char filename[256];
@@ -1217,7 +1175,8 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
 				}
 				rec->vrc_file = g_strdup(filename);
-				session->vrc = janus_recorder_create(recordings_path, 1, rec->vrc_file);
+				/* FIXME Assuming VP8 */
+				session->vrc = janus_recorder_create(recordings_path, "vp8", rec->vrc_file);
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
@@ -1226,9 +1185,9 @@ static void *janus_recordplay_handler(void *data) {
 			janus_mutex_unlock(&recordings_mutex);
 			/* We need to prepare an answer */
 			int opus_pt = 0, vp8_pt = 0;
-			opus_pt = janus_get_opus_pt(msg->sdp);
+			opus_pt = janus_get_codec_pt(msg->sdp, "opus");
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
-			vp8_pt = janus_get_vp8_pt(msg->sdp);
+			vp8_pt = janus_get_codec_pt(msg->sdp, "vp8");
 			JANUS_LOG(LOG_VERB, "VP8 payload type is %d\n", vp8_pt);
 			char sdptemp[1024], audio_mline[256], video_mline[512];
 			if(opus_pt > 0) {
@@ -1271,19 +1230,12 @@ static void *janus_recordplay_handler(void *data) {
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "Replaying a recording\n");
+			JANUS_VALIDATE_JSON_OBJECT(root, play_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
 			json_t *id = json_object_get(root, "id");
-			if(!id) {
-				JANUS_LOG(LOG_ERR, "Missing element (id)\n");
-				error_code = JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (id)");
-				goto error;
-			}
-			if(!json_is_integer(id) || json_integer_value(id) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (id should be a positive integer)\n");
-				error_code = JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (id should be a positive integer)");
-				goto error;
-			}
 			guint64 id_value = json_integer_value(id);
 			/* Look for this recording */
 			janus_mutex_lock(&recordings_mutex);
@@ -1375,6 +1327,7 @@ static void *janus_recordplay_handler(void *data) {
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording/playout */
 			session->active = FALSE;
+			janus_mutex_lock(&session->rec_mutex);
 			if(session->arc) {
 				janus_recorder_close(session->arc);
 				JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
@@ -1387,6 +1340,7 @@ static void *janus_recordplay_handler(void *data) {
 				janus_recorder_free(session->vrc);
 			}
 			session->vrc = NULL;
+			janus_mutex_unlock(&session->rec_mutex);
 			if(session->recorder) {
 				if(session->recording) {
 					/* Create a .nfo file for this recording */
@@ -1492,7 +1446,6 @@ error:
 			janus_recordplay_message_free(msg);
 		}
 	}
-	g_free(error_cause);
 	JANUS_LOG(LOG_VERB, "LeavingRecord&Play handler thread\n");
 	return NULL;
 }

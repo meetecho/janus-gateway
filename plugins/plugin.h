@@ -3,7 +3,7 @@
  * \copyright GNU General Public License v3
  * \brief  Plugin-Gateway communication
  * \details  This header contains the definition of the callbacks both
- * the gateway and all the plugins need too implement to interact with
+ * the gateway and all the plugins need to implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
  * 
@@ -166,7 +166,7 @@ janus_plugin *create(void) {
  * gateway or it will crash.
  * 
  */
-#define JANUS_PLUGIN_API_VERSION	5
+#define JANUS_PLUGIN_API_VERSION	6
 
 /*! \brief Initialization of all plugin properties to NULL
  * 
