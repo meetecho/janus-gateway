@@ -2359,7 +2359,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "ready", json_integer(dtls->ready));
 		if(dtls->dtls_connected > 0)
 			json_object_set_new(d, "connected", json_integer(dtls->dtls_connected));
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio_packets));
 			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
 			json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
@@ -2377,7 +2377,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			}
 			json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(bytes));
 		}
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			json_object_set_new(in_stats, "video_packets", json_integer(component->in_stats.video_packets));
 			json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
 			json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
@@ -2397,12 +2397,12 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		}
 		json_object_set_new(in_stats, "data_packets", json_integer(component->in_stats.data_packets));
 		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data_bytes));
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(out_stats, "audio_packets", json_integer(component->out_stats.audio_packets));
 			json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
 			json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio_nacks));
 		}
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			json_object_set_new(out_stats, "video_packets", json_integer(component->out_stats.video_packets));
 			json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
 			json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video_nacks));

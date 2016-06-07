@@ -3057,11 +3057,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
+	janus_session *session = (janus_session *)handle->session;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
 	janus_ice_queued_packet *pkt = NULL;
 	gint64 before = janus_get_monotonic_time(),
-		audio_rtcp_last_rr = before, audio_rtcp_last_sr = before,
-		video_rtcp_last_rr = before, video_rtcp_last_sr = before,
+		audio_rtcp_last_rr = before, audio_rtcp_last_sr = before, audio_last_event = before,
+		video_rtcp_last_rr = before, video_rtcp_last_sr = before, video_last_event = before,
 		last_nack_cleanup = before;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		if(handle->queued_packets != NULL) {
@@ -3221,6 +3222,58 @@ void *janus_ice_send_thread(void *data) {
 				janus_ice_relay_rtcp(handle, 1, rtcpbuf, srlen+sdeslen);
 			}
 			video_rtcp_last_sr = now;
+		}
+		/* We tell event handlers once per second about RTCP-related stuff
+		 * FIXME Should we really do this here? Would this slow down this thread and add delay? */
+		if(now-audio_last_event >= G_USEC_PER_SEC) {
+			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+				janus_ice_stream *stream = handle->audio_stream;
+				if(stream && stream->audio_rtcp_ctx) {
+					json_t *info = json_object();
+					json_object_set_new(info, "media", json_string("audio"));
+					json_object_set_new(info, "base", json_integer(stream->audio_rtcp_ctx->tb));
+					json_object_set_new(info, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->audio_rtcp_ctx)));
+					json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, FALSE)));
+					json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->audio_rtcp_ctx, TRUE)));
+					json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, FALSE)));
+					json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->audio_rtcp_ctx, TRUE)));
+					if(stream->rtp_component) {
+						json_object_set_new(info, "packets-received", json_integer(stream->rtp_component->in_stats.audio_packets));
+						json_object_set_new(info, "packets-sent", json_integer(stream->rtp_component->out_stats.audio_packets));
+						json_object_set_new(info, "bytes-received", json_integer(stream->rtp_component->in_stats.audio_bytes));
+						json_object_set_new(info, "bytes-sent", json_integer(stream->rtp_component->out_stats.audio_bytes));
+						json_object_set_new(info, "nacks-received", json_integer(stream->rtp_component->in_stats.audio_nacks));
+						json_object_set_new(info, "nacks-sent", json_integer(stream->rtp_component->out_stats.audio_nacks));
+					}
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, info);
+				}
+			}
+			audio_last_event = now;
+		}
+		if(now-video_last_event >= G_USEC_PER_SEC) {
+			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+				if(stream && stream->video_rtcp_ctx) {
+					json_t *info = json_object();
+					json_object_set_new(info, "media", json_string("video"));
+					json_object_set_new(info, "base", json_integer(stream->video_rtcp_ctx->tb));
+					json_object_set_new(info, "lsr", json_integer(janus_rtcp_context_get_lsr(stream->video_rtcp_ctx)));
+					json_object_set_new(info, "lost", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx, FALSE)));
+					json_object_set_new(info, "lost-by-remote", json_integer(janus_rtcp_context_get_lost_all(stream->video_rtcp_ctx, TRUE)));
+					json_object_set_new(info, "jitter-local", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx, FALSE)));
+					json_object_set_new(info, "jitter-remote", json_integer(janus_rtcp_context_get_jitter(stream->video_rtcp_ctx, TRUE)));
+					if(stream->rtp_component) {
+						json_object_set_new(info, "packets-received", json_integer(stream->rtp_component->in_stats.video_packets));
+						json_object_set_new(info, "packets-sent", json_integer(stream->rtp_component->out_stats.video_packets));
+						json_object_set_new(info, "bytes-received", json_integer(stream->rtp_component->in_stats.video_bytes));
+						json_object_set_new(info, "bytes-sent", json_integer(stream->rtp_component->out_stats.video_bytes));
+						json_object_set_new(info, "nacks-received", json_integer(stream->rtp_component->in_stats.video_nacks));
+						json_object_set_new(info, "nacks-sent", json_integer(stream->rtp_component->out_stats.video_nacks));
+					}
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, info);
+				}
+			}
+			video_last_event = now;
 		}
 		/* Should we clean up old NACK buffers? (we check each 1/4 of the max_nack_queue time) */
 		if(max_nack_queue > 0 && (now-last_nack_cleanup >= (max_nack_queue*250))) {
