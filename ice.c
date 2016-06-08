@@ -371,6 +371,10 @@ static int janus_seq_in_range(guint16 seqn, guint16 start, guint16 len) {
 }
 
 
+/* Internal method for relaying RTCP messages, optionally filtering them in case they come from plugins */
+void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp);
+
+
 /* Map of old plugin sessions that have been closed */
 static GHashTable *old_plugin_sessions;
 static janus_mutex old_plugin_sessions_mutex;
@@ -1943,7 +1947,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					char nackbuf[120];
 					int res = janus_rtcp_nacks(nackbuf, sizeof(nackbuf), nacks);
 					if(res > 0)
-						janus_ice_relay_rtcp(handle, video, nackbuf, res);
+						janus_ice_relay_rtcp_internal(handle, video, nackbuf, res, FALSE);
 					/* Update stats */
 					component->nack_sent_recent_cnt += nacks_count;
 					if(video) {
@@ -3121,7 +3125,7 @@ void *janus_ice_send_thread(void *data) {
 				rr->header.length = htons((rrlen/4)-1);
 				janus_rtcp_report_block(stream->audio_rtcp_ctx, &rr->rb[0]);
 				/* Enqueue it, we'll send it later */
-				janus_ice_relay_rtcp(handle, 0, rtcpbuf, 32);
+				janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, 32, FALSE);
 			}
 			audio_rtcp_last_rr = now;
 		}
@@ -3139,7 +3143,7 @@ void *janus_ice_send_thread(void *data) {
 					rr->header.length = htons((rrlen/4)-1);
 					janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
 					/* Enqueue it, we'll send it later */
-					janus_ice_relay_rtcp(handle, 1, rtcpbuf, 32);
+					janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, 32, FALSE);
 				}
 			}
 			video_rtcp_last_rr = now;
@@ -3180,7 +3184,7 @@ void *janus_ice_send_thread(void *data) {
 				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
 				janus_rtcp_sdes((char *)sdes, sdeslen, "janusaudio", 10);
 				/* Enqueue it, we'll send it later */
-				janus_ice_relay_rtcp(handle, 0, rtcpbuf, srlen+sdeslen);
+				janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
 			}
 			audio_rtcp_last_sr = now;
 		}
@@ -3219,7 +3223,7 @@ void *janus_ice_send_thread(void *data) {
 				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
 				janus_rtcp_sdes((char *)sdes, sdeslen, "janusvideo", 10);
 				/* Enqueue it, we'll send it later */
-				janus_ice_relay_rtcp(handle, 1, rtcpbuf, srlen+sdeslen);
+				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
 			}
 			video_rtcp_last_sr = now;
 		}
@@ -3630,7 +3634,7 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 		g_async_queue_push(handle->queued_packets, pkt);
 }
 
-static void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp) {
+void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *buf, int len, gboolean filter_rtcp) {
 	if(!handle || buf == NULL || len < 1)
 		return;
 	/* We use this internal method to check whether we need to filter RTCP (e.g., to make
