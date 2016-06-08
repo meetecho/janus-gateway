@@ -16,7 +16,6 @@
 
 static void janus_transport_session_free(const janus_refcount *transport_ref) {
 	janus_transport_session *session = janus_refcount_containerof(transport_ref, janus_transport_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing transport session: %p\n", session);
 	/* This session can be destroyed, free all the resources */
 	if(session->p_free)
 		session->p_free(session->transport_p);

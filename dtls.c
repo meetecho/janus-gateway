@@ -242,7 +242,6 @@ void janus_dtls_srtp_deinit(void) {
 
 static void janus_dtls_srtp_free(const janus_refcount *dtls_ref) {
 	janus_dtls_srtp *dtls = janus_refcount_containerof(dtls_ref, janus_dtls_srtp, ref);
-	JANUS_LOG(LOG_WARN, "Freeing DTLS stack: %p\n", dtls_ref);
 	/* This stack can be destroyed, free all the resources */
 	dtls->component = NULL;
 	if(dtls->ssl != NULL) {

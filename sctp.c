@@ -114,7 +114,6 @@ void janus_sctp_deinit(void) {
 
 static void janus_sctp_association_free(const janus_refcount *sctp_ref) {
 	janus_sctp_association *sctp = janus_refcount_containerof(sctp_ref, janus_sctp_association, ref);
-	JANUS_LOG(LOG_WARN, "Freeing SCTP association: %p\n", sctp_ref);
 	/* This association can be destroyed, free all the resources */
 	if(sctp->dtls != NULL) {
 		janus_dtls_srtp *dtls = (janus_dtls_srtp *)sctp->dtls;

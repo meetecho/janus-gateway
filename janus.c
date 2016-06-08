@@ -363,7 +363,6 @@ static GMainContext *sessions_watchdog_context = NULL;
 
 static void janus_session_free(const janus_refcount *session_ref) {
 	janus_session *session = janus_refcount_containerof(session_ref, janus_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing Janus session: %p\n", session_ref);
 	/* This session can be destroyed, free all the resources */
 	if(session->ice_handles != NULL) {
 		g_hash_table_destroy(session->ice_handles);

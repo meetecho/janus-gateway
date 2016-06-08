@@ -1029,7 +1029,6 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 
 void janus_ice_free(const janus_refcount *handle_ref) {
 	janus_ice_handle *handle = janus_refcount_containerof(handle_ref, janus_ice_handle, ref);
-	JANUS_LOG(LOG_WARN, "Freeing ICE handle: %p\n", handle_ref);
 	/* This stack can be destroyed, free all the resources */
 	janus_mutex_lock(&handle->mutex);
 	if(handle->app_handle != NULL)
@@ -1047,7 +1046,6 @@ void janus_ice_free(const janus_refcount *handle_ref) {
 
 void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref) {
 	janus_plugin_session *app_handle = janus_refcount_containerof(app_handle_ref, janus_plugin_session, ref);
-	JANUS_LOG(LOG_WARN, "Freeing ICE plugin session: %p\n", app_handle_ref);
 	/* This app handle can be destroyed, free all the resources */
 	g_free(app_handle);
 }
@@ -1177,7 +1175,6 @@ void janus_ice_stream_destroy(GHashTable *container, janus_ice_stream *stream) {
 
 void janus_ice_stream_free(const janus_refcount *stream_ref) {
 	janus_ice_stream *stream = janus_refcount_containerof(stream_ref, janus_ice_stream, ref);
-	JANUS_LOG(LOG_WARN, "Freeing ICE stream: %p\n", stream_ref);
 	/* This stream can be destroyed, free all the resources */
 	stream->handle = NULL;
 	g_free(stream->remote_hashing);
@@ -1219,7 +1216,6 @@ void janus_ice_component_destroy(GHashTable *container, janus_ice_component *com
 
 void janus_ice_component_free(const janus_refcount *component_ref) {
 	janus_ice_component *component = janus_refcount_containerof(component_ref, janus_ice_component, ref);
-	JANUS_LOG(LOG_WARN, "Freeing ICE component: %p\n", component_ref);
 	if(component->source != NULL) {
 		g_source_destroy(component->source);
 		g_source_unref(component->source);

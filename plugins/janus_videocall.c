@@ -967,6 +967,7 @@ static void *janus_videocall_handler(void *data) {
 				JANUS_VIDEOCALL_ERROR_MISSING_ELEMENT, JANUS_VIDEOCALL_ERROR_INVALID_ELEMENT);
 			if(error_code != 0) {
 				/* Hangup the call attempt of the user */
+				g_atomic_int_set(&session->incall, 0);
 				gateway->close_pc(session->handle);
 				goto error;
 			}
