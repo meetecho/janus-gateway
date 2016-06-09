@@ -3487,47 +3487,31 @@ static void *janus_videoroom_handler(void *data) {
 						int pt = -1;
 						switch(videoroom->acodec) {
 							case JANUS_VIDEOROOM_OPUS:
-								if(opus_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing OPUS, but publisher didn't offer any... rejecting audio\n");
-								} else
+								if(opus_pt >= 0)
 									pt = (pass == 1 ? opus_pt : OPUS_PT);
 								break;
 							case JANUS_VIDEOROOM_ISAC_32K:
-								if(isac32_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 32K, but publisher didn't offer any... rejecting audio\n");
-								} else
+								if(isac32_pt >= 0)
 									pt = (pass == 1 ? isac32_pt : ISAC32_PT);
 								break;
 							case JANUS_VIDEOROOM_ISAC_16K:
-								if(isac16_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing ISAC 16K, but publisher didn't offer any... rejecting audio\n");
-								} else
+								if(isac16_pt >= 0)
 									pt = (pass == 1 ? isac16_pt : ISAC16_PT);
 								break;
 							case JANUS_VIDEOROOM_PCMU:
-								if(pcmu_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMU, but publisher didn't offer any... rejecting audio\n");
-								} else
+								if(pcmu_pt >= 0)
 									pt = (pass == 1 ? pcmu_pt : PCMU_PT);
 								break;
 							case JANUS_VIDEOROOM_PCMA:
-								if(pcma_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing PCMA, but publisher didn't offer any... rejecting audio\n");
-								} else
+								if(pcma_pt >= 0)
 									pt = (pass == 1 ? pcma_pt : PCMA_PT);
 								break;
 							default:
 								/* Shouldn't happen */
 								break;
 						}
-						/* Log messages could be combined as follows (produces lowercase codec names): */
-						/* if(pass == 1 && pt<0) */
-						/* 	JANUS_LOG(LOG_WARN, "Videoroom is forcing %s, but publisher didn't offer any... rejecting audio\n", janus_videoroom_audiocodec_name(videoroom->acodec)); */
+						if(pass == 1 && pt < 0)
+							JANUS_LOG(LOG_WARN, "Videoroom is forcing %s, but publisher didn't offer any... rejecting audio\n", janus_videoroom_audiocodec_name(videoroom->acodec));
 						if(pt >= 0)
 							janus_videoroom_sdp_a_format(audio_mline, 256, videoroom->acodec, pt, audio_mode);
 						if(audio_mline[0] == '\0' && pass == 1) {
@@ -3540,30 +3524,23 @@ static void *janus_videoroom_handler(void *data) {
 						int pt = -1;
 						switch(videoroom->vcodec) {
 							case JANUS_VIDEOROOM_VP8:
-								if(vp8_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing VP8, but publisher didn't offer any... rejecting video\n");
-								} else
+								if(vp8_pt >= 0)
 									pt = (pass == 1 ? vp8_pt : VP8_PT);
 								break;
 							case JANUS_VIDEOROOM_VP9:
-								if(vp9_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing VP9, but publisher didn't offer any... rejecting video\n");
-								} else
+								if(vp9_pt >= 0)
 									pt = (pass == 1 ? vp9_pt : VP9_PT);
 								break;
 							case JANUS_VIDEOROOM_H264:
-								if(h264_pt < 0) {
-									if(pass == 1)
-										JANUS_LOG(LOG_WARN, "Videoroom is forcing H264, but publisher didn't offer any... rejecting video\n");
-								} else
+								if(h264_pt >= 0)
 									pt = (pass == 1 ? h264_pt : H264_PT);
 								break;
 							default:
 								/* Shouldn't happen */
 								break;
 						}
+						if(pass == 1 && pt < 0)
+							JANUS_LOG(LOG_WARN, "Videoroom is forcing %s, but publisher didn't offer any... rejecting video\n", janus_videoroom_videocodec_name(videoroom->vcodec));
 						if(pt >= 0)
 							janus_videoroom_sdp_v_format(video_mline, 512, videoroom->vcodec, pt, b, video_mode);
 						if(video_mline[0] == '\0' && pass == 1) {
