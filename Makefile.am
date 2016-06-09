@@ -313,6 +313,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-opus.h \
 	postprocessing/pp-opus-silence.h \
 	postprocessing/pp-rtp.h \
+	postprocessing/pp-srt.c \
+	postprocessing/pp-srt.h \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
