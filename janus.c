@@ -66,17 +66,6 @@ static gboolean daemonize = FALSE;
 static int pipefd[2];
 
 
-/* Certificates */
-static char *server_pem = NULL;
-gchar *janus_get_server_pem(void) {
-	return server_pem;
-}
-static char *server_key = NULL;
-gchar *janus_get_server_key(void) {
-	return server_key;
-}
-
-
 /* API secrets */
 static char *api_secret = NULL, *admin_api_secret = NULL;
 
@@ -3545,13 +3534,13 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
 		exit(1);
 	}
-	server_pem = (char *)item->value;
+	const char* server_pem = item->value;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(!item || !item->value) {
 		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
 		exit(1);
 	}
-	server_key = (char *)item->value;
+	const char* server_key = item->value;
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
 	SSL_library_init();
 	SSL_load_error_strings();
@@ -3878,7 +3867,7 @@ gint main(int argc, char *argv[])
 	if(old_sessions != NULL)
 		g_hash_table_destroy(old_sessions);
 	JANUS_LOG(LOG_INFO, "Freeing crypto resources...\n");
-	SSL_CTX_free(janus_dtls_get_ssl_ctx());
+	janus_dtls_srtp_cleanup();
 	EVP_cleanup();
 	ERR_free_strings();
 	JANUS_LOG(LOG_INFO, "Cleaning SDP structures...\n");

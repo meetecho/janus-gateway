@@ -95,9 +95,7 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 
 
 static SSL_CTX *ssl_ctx = NULL;
-SSL_CTX *janus_dtls_get_ssl_ctx(void) {
-	return ssl_ctx;
-}
+
 static gchar local_fingerprint[160];
 gchar *janus_dtls_get_local_fingerprint(void) {
 	return (gchar *)local_fingerprint;
@@ -159,7 +157,7 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 
 
 /* DTLS-SRTP initialization */
-gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
+gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	/* FIXME First of all make OpenSSL thread safe (see note above on issue #316) */
 	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
 	int l=0;
@@ -235,6 +233,14 @@ gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key) {
 }
 
 
+void janus_dtls_srtp_cleanup(void) {
+	if (ssl_ctx != NULL) {
+		SSL_CTX_free(ssl_ctx);
+		ssl_ctx = NULL;
+	}
+}
+
+
 janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role role) {
 	janus_ice_component *component = (janus_ice_component *)ice_component;
 	if(component == NULL) {
@@ -258,7 +264,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	}
 	/* Create SSL context, at last */
 	dtls->srtp_valid = 0;
-	dtls->ssl = SSL_new(janus_dtls_get_ssl_ctx());
+	dtls->ssl = SSL_new(ssl_ctx);
 	if(!dtls->ssl) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     Error creating DTLS session! (%s)\n",
 			handle->handle_id, ERR_reason_error_string(ERR_get_error()));

@@ -26,9 +26,9 @@
  * @param[in] server_pem Path to the certificate to use
  * @param[in] server_key Path to the key to use
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key);
-/*! \brief Method to return the shared SSL_CTX instance */
-SSL_CTX *janus_dtls_get_ssl_ctx(void);
+gint janus_dtls_srtp_init(const char* server_pem, const char* server_key);
+/*! \brief Method to cleanup DTLS stuff before exiting */
+void janus_dtls_srtp_cleanup(void);
 /*! \brief Method to return a string representation (SHA-256) of the certificate fingerprint */
 gchar *janus_dtls_get_local_fingerprint(void);
 
