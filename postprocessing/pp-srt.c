@@ -47,12 +47,13 @@ int janus_pp_srt_create(char *destination) {
 }
 
 int janus_pp_srt_process(FILE *file, janus_pp_frame_packet *list, int *working) {
-	if(!file || !list || !working)
+	if(!file || !list || !working || !srt_file)
 		return -1;
 	janus_pp_frame_packet *tmp = list;
-	int seq = 0;
-	int bytes = 0;
-	uint8_t *buffer = g_malloc0(1500);
+	uint seq = 0;
+	uint bytes = 0;
+	uint16_t bufsize = 1500;
+	uint8_t *buffer = g_malloc0(bufsize);
 	char srt_buffer[2048], from[20], to[20];
 	size_t buflen = 0;
 
@@ -63,11 +64,6 @@ int janus_pp_srt_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			tmp = tmp->next;
 			continue;
 		}
-		fseek(file, tmp->offset, SEEK_SET);
-		bytes = fread(buffer, sizeof(char), tmp->len, file);
-		if(bytes != tmp->len)
-			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, tmp->len);
-		*(buffer+bytes) = '\0';
 		/* Increase sequence number */
 		seq++;
 		/* Compute from/to times */
@@ -76,15 +72,36 @@ int janus_pp_srt_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 			janus_pp_srt_format_time(to, sizeof(from), tmp->next->ts-1000);
 		else
 			janus_pp_srt_format_time(to, sizeof(from), tmp->ts + 5*G_USEC_PER_SEC);
-		/* Write the lines */
-		g_snprintf(srt_buffer, 2048, "%d\n%s --> %s\n%s\n\n", seq, from, to, buffer);
-		if(srt_file != NULL) {
-			buflen = strlen(srt_buffer);
-			if(fwrite(srt_buffer, sizeof(char), buflen, srt_file) != buflen) {
-				JANUS_LOG(LOG_ERR, "Couldn't write text...\n");
-			}
-			fflush(srt_file);
+		/* Write the header lines */
+		g_snprintf(srt_buffer, 2048, "%d\n%s --> %s\n", seq, from, to);
+		buflen = strlen(srt_buffer);
+		if(fwrite(srt_buffer, sizeof(char), buflen, srt_file) != buflen) {
+			JANUS_LOG(LOG_ERR, "Couldn't write header text...\n");
 		}
+		/* Now let's read the content and write it to the file */
+		fseek(file, tmp->offset, SEEK_SET);
+		JANUS_LOG(LOG_VERB, "Reading %d bytes...\n", tmp->len);
+		uint16_t total = tmp->len;
+		while(total > 0) {
+			bytes = fread(buffer, sizeof(char), total > bufsize ? bufsize : total, file);
+			if(bytes == 0) {
+				JANUS_LOG(LOG_ERR, "Error reading from file...\n");
+				break;
+			}
+			JANUS_LOG(LOG_WARN, "Read %d bytes...\n", bytes);
+			if(fwrite(buffer, sizeof(char), bytes, srt_file) != bytes) {
+				JANUS_LOG(LOG_ERR, "Couldn't write all the buffer...\n");
+			}
+			total -= bytes;
+		}
+		/* Write the trailer line returns */
+		g_snprintf(srt_buffer, 2048, "\n\n");
+		buflen = strlen(srt_buffer);
+		if(fwrite(srt_buffer, sizeof(char), buflen, srt_file) != buflen) {
+			JANUS_LOG(LOG_ERR, "Couldn't write trailer text...\n");
+		}
+		fflush(srt_file);
+		/* Next? */
 		tmp = tmp->next;
 	}
 	g_free(buffer);
