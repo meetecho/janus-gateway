@@ -310,6 +310,10 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 				} else if(fmt == 15) {
 					//~ JANUS_LOG(LOG_HUGE, "       -- This is a AFB!\n");
 					rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
+					if(fixssrc && newssrcr) {
+						rtcpfb->ssrc = htonl(newssrcr);
+						rtcpfb->media = 0;
+					}
 					rtcp_remb *remb = (rtcp_remb *)rtcpfb->fci;
 					if(remb->id[0] == 'R' && remb->id[1] == 'E' && remb->id[2] == 'M' && remb->id[3] == 'B') {
 						JANUS_LOG(LOG_HUGE, "     #%d REMB -- PSFB (206)\n", pno);
@@ -813,6 +817,7 @@ int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen) {
 int janus_rtcp_remb(char *packet, int len, uint64_t bitrate) {
 	if(packet == NULL || len != 24)
 		return -1;
+	memset(packet, 0, len);
 	rtcp_header *rtcp = (rtcp_header *)packet;
 	/* Set header */
 	rtcp->version = 2;
@@ -852,6 +857,7 @@ int janus_rtcp_remb(char *packet, int len, uint64_t bitrate) {
 int janus_rtcp_fir(char *packet, int len, int *seqnr) {
 	if(packet == NULL || len != 20 || seqnr == NULL)
 		return -1;
+	memset(packet, 0, len);
 	rtcp_header *rtcp = (rtcp_header *)packet;
 	*seqnr = *seqnr + 1;
 	if(*seqnr < 0 || *seqnr >= 256)
@@ -874,6 +880,7 @@ int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr) {
 	/* FIXME Right now, this is identical to the new FIR, with the difference that we use 192 as PT */
 	if(packet == NULL || len != 20 || seqnr == NULL)
 		return -1;
+	memset(packet, 0, len);
 	rtcp_header *rtcp = (rtcp_header *)packet;
 	*seqnr = *seqnr + 1;
 	if(*seqnr < 0 || *seqnr >= 256)
@@ -895,6 +902,7 @@ int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr) {
 int janus_rtcp_pli(char *packet, int len) {
 	if(packet == NULL || len != 12)
 		return -1;
+	memset(packet, 0, len);
 	rtcp_header *rtcp = (rtcp_header *)packet;
 	/* Set header */
 	rtcp->version = 2;
