@@ -7,11 +7,11 @@
  * the gateway, and sets the proper SRTP and SRTCP context up accordingly.
  * A DTLS alert from a peer is notified to the plugin handling him/her
  * by means of the hangup_media callback.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_DTLS_H
 #define _JANUS_DTLS_H
 

@@ -7,11 +7,11 @@
  * the gateway, and sets the proper SRTP and SRTCP context up accordingly.
  * A DTLS alert from a peer is notified to the plugin handling him/her
  * by means of the hangup_media callback.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include "janus.h"
 #include "debug.h"
 #include "dtls.h"
@@ -309,7 +309,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting accept state (DTLS server)\n", handle->handle_id);
 		SSL_set_accept_state(dtls->ssl);
 	}
-	/* https://code.google.com/p/chromium/issues/detail?id=406458 
+	/* https://code.google.com/p/chromium/issues/detail?id=406458
 	 * Specify an ECDH group for ECDHE ciphers, otherwise they cannot be
 	 * negotiated when acting as the server. Use NIST's P-256 which is
 	 * commonly supported.
