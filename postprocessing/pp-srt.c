@@ -88,7 +88,7 @@ int janus_pp_srt_process(FILE *file, janus_pp_frame_packet *list, int *working) 
 				JANUS_LOG(LOG_ERR, "Error reading from file...\n");
 				break;
 			}
-			JANUS_LOG(LOG_WARN, "Read %d bytes...\n", bytes);
+			JANUS_LOG(LOG_VERB, "Read %d bytes...\n", bytes);
 			if(fwrite(buffer, sizeof(char), bytes, srt_file) != bytes) {
 				JANUS_LOG(LOG_ERR, "Couldn't write all the buffer...\n");
 			}
