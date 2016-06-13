@@ -95,6 +95,8 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 
 
 static SSL_CTX *ssl_ctx = NULL;
+static X509* ssl_cert = NULL;
+static EVP_PKEY* ssl_key = NULL;
 
 static gchar local_fingerprint[160];
 gchar *janus_dtls_get_local_fingerprint(void) {
@@ -156,6 +158,48 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 }
 
 
+static int janus_dtls_load_keys(const char* server_pem, const char* server_key, X509** certificate, EVP_PKEY** private_key) {
+	FILE* f = NULL;
+
+	f = fopen(server_pem, "r");
+	if (!f) {
+		JANUS_LOG(LOG_FATAL, "Error opening certificate file\n");
+		goto error;
+	}
+	*certificate = PEM_read_X509(f, NULL, NULL, NULL);
+	if (!*certificate) {
+		JANUS_LOG(LOG_FATAL, "PEM_read_X509 failed\n");
+		goto error;
+	}
+	fclose(f);
+
+	f = fopen(server_key, "r");
+	if (!f) {
+		JANUS_LOG(LOG_FATAL, "Error opening key file\n");
+		goto error;
+	}
+	*private_key = PEM_read_PrivateKey(f, NULL, NULL, NULL);
+	if (!*private_key) {
+		JANUS_LOG(LOG_FATAL, "PEM_read_PrivateKey failed\n");
+		goto error;
+	}
+	fclose(f);
+
+	return 0;
+
+error:
+	if (*certificate) {
+		X509_free(*certificate);
+		*certificate = NULL;
+	}
+	if (*private_key) {
+		EVP_PKEY_free(*private_key);
+		*private_key = NULL;
+	}
+	return -1;
+}
+
+
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	/* FIXME First of all make OpenSSL thread safe (see note above on issue #316) */
@@ -175,41 +219,33 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	}
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, janus_dtls_verify_callback);
 	SSL_CTX_set_tlsext_use_srtp(ssl_ctx, "SRTP_AES128_CM_SHA1_80");	/* FIXME Should we support something else as well? */
-	if(!server_pem || !SSL_CTX_use_certificate_file(ssl_ctx, server_pem, SSL_FILETYPE_PEM)) {
-		JANUS_LOG(LOG_FATAL, "Certificate error (%s)\n", ERR_reason_error_string(ERR_get_error()));
+
+	/* Load the key and cert from the files */
+	if (!server_pem || !server_key) {
+		JANUS_LOG(LOG_FATAL, "DTLS certificate and key must be specified");
 		return -2;
 	}
-	if(!server_key || !SSL_CTX_use_PrivateKey_file(ssl_ctx, server_key, SSL_FILETYPE_PEM)) {
-		JANUS_LOG(LOG_FATAL, "Certificate key error (%s)\n", ERR_reason_error_string(ERR_get_error()));
+	if (janus_dtls_load_keys(server_pem, server_key, &ssl_cert, &ssl_key) != 0) {
 		return -3;
+	}
+	if(!SSL_CTX_use_certificate(ssl_ctx, ssl_cert)) {
+		JANUS_LOG(LOG_FATAL, "Certificate error (%s)\n", ERR_reason_error_string(ERR_get_error()));
+		return -4;
+	}
+	if(!SSL_CTX_use_PrivateKey(ssl_ctx, ssl_key)) {
+		JANUS_LOG(LOG_FATAL, "Certificate key error (%s)\n", ERR_reason_error_string(ERR_get_error()));
+		return -5;
 	}
 	if(!SSL_CTX_check_private_key(ssl_ctx)) {
 		JANUS_LOG(LOG_FATAL, "Certificate check error (%s)\n", ERR_reason_error_string(ERR_get_error()));
-		return -4;
-	}
-	SSL_CTX_set_read_ahead(ssl_ctx,1);
-	BIO *certbio = BIO_new(BIO_s_file());
-	if(certbio == NULL) {
-		JANUS_LOG(LOG_FATAL, "Certificate BIO error...\n");
-		return -5;
-	}
-	if(BIO_read_filename(certbio, server_pem) == 0) {
-		JANUS_LOG(LOG_FATAL, "Error reading certificate (%s)\n", ERR_reason_error_string(ERR_get_error()));
-		BIO_free_all(certbio);
 		return -6;
 	}
-	X509 *cert = PEM_read_bio_X509(certbio, NULL, 0, NULL);
-	if(cert == NULL) {
-		JANUS_LOG(LOG_FATAL, "Error reading certificate (%s)\n", ERR_reason_error_string(ERR_get_error()));
-		BIO_free_all(certbio);
-		return -7;
-	}
+	SSL_CTX_set_read_ahead(ssl_ctx,1);
+
 	unsigned int size;
 	unsigned char fingerprint[EVP_MAX_MD_SIZE];
-	if(X509_digest(cert, EVP_sha256(), (unsigned char *)fingerprint, &size) == 0) {
+	if(X509_digest(ssl_cert, EVP_sha256(), (unsigned char *)fingerprint, &size) == 0) {
 		JANUS_LOG(LOG_FATAL, "Error converting X509 structure (%s)\n", ERR_reason_error_string(ERR_get_error()));
-		X509_free(cert);
-		BIO_free_all(certbio);
 		return -7;
 	}
 	char *lfp = (char *)&local_fingerprint;
@@ -220,8 +256,6 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	}
 	*(lfp-1) = 0;
 	JANUS_LOG(LOG_INFO, "Fingerprint of our certificate: %s\n", local_fingerprint);
-	X509_free(cert);
-	BIO_free_all(certbio);
 	SSL_CTX_set_cipher_list(ssl_ctx, DTLS_CIPHERS);
 
 	/* Initialize libsrtp */
@@ -234,6 +268,14 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 
 
 void janus_dtls_srtp_cleanup(void) {
+	if (ssl_cert != NULL) {
+		X509_free(ssl_cert);
+		ssl_cert = NULL;
+	}
+	if (ssl_key != NULL) {
+		EVP_PKEY_free(ssl_key);
+		ssl_key = NULL;
+	}
 	if (ssl_ctx != NULL) {
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
