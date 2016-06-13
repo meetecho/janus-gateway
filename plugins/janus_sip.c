@@ -281,6 +281,7 @@ typedef enum {
 
 typedef struct janus_sip_account {
 	char *identity;
+	char *user_agent;		/* Used to override the general UA string */
 	gboolean sips;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
@@ -594,6 +595,10 @@ void *janus_sip_watchdog(void *data) {
 					    g_free(session->account.display_name);
 					    session->account.display_name = NULL;
 					}
+					if (session->account.user_agent) {
+					    g_free(session->account.user_agent);
+					    session->account.user_agent = NULL;
+					}
 					if (session->account.authuser) {
 					    g_free(session->account.authuser);
 					    session->account.authuser = NULL;
@@ -842,6 +847,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.sips = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
+	session->account.user_agent = NULL;
 	session->account.authuser = NULL;
 	session->account.secret = NULL;
 	session->account.secret_type = janus_sip_secret_type_unknown;
@@ -938,6 +944,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
 	json_object_set_new(info, "display_name", session->account.display_name ? json_string(session->account.display_name) : NULL);
+	json_object_set_new(info, "user_agent", session->account.user_agent ? json_string(session->account.user_agent) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
 	json_object_set_new(info, "registration_status", json_string(janus_sip_registration_status_string(session->account.registration_status)));
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
@@ -1295,6 +1302,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.proxy != NULL)
 				g_free(session->account.proxy);
 			session->account.proxy = NULL;
+			if(session->account.user_agent != NULL)
+				g_free(session->account.user_agent);
+			session->account.user_agent = NULL;
 			session->account.registration_status = janus_sip_registration_status_unregistered;
 
 			gboolean guest = FALSE;
@@ -1366,6 +1376,12 @@ static void *janus_sip_handler(void *data) {
 			json_t *display_name = json_object_get(root, "display_name");
 			if (display_name && json_is_string(display_name))
 				display_name_text = json_string_value(display_name);
+
+			/* Parse user agent */
+			const char* user_agent_text = NULL;
+			json_t *user_agent = json_object_get(root, "user_agent");
+			if (user_agent && json_is_string(user_agent))
+				user_agent_text = json_string_value(user_agent);
 
 			/* Now the user part, if needed */
 			json_t *username = json_object_get(root, "username");
@@ -1439,6 +1455,9 @@ static void *janus_sip_handler(void *data) {
 			session->account.username = g_strdup(user_id);
 			if (display_name_text) {
 				session->account.display_name = g_strdup(display_name_text);
+			}
+			if (user_agent_text) {
+				session->account.user_agent = g_strdup(user_agent_text);
 			}
 			if (proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
@@ -3150,7 +3169,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL(sip_url),
 				TAG_IF(session->account.sips, NUTAG_SIPS_URL(sips_url)),
-				SIPTAG_USER_AGENT_STR(user_agent),
+				SIPTAG_USER_AGENT_STR(session->account.user_agent ? session->account.user_agent : user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				SIPTAG_SUPPORTED(NULL),
