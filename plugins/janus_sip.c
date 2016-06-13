@@ -2191,11 +2191,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			tagi_t const *ti = tl_find(tags, nutag_callstate);
 			enum nua_callstate callstate = ti ? ti->t_value : -1;
 			/* There are several call states, but we care about the terminated state in order to send the 'hangup' event
-			 * and the proceeding state in order to send the 'proceeding' event so the client can play a ringback tone for 
+			 * and the proceeding state in order to send the 'proceeding' event so the client can play a ringback tone for
 			 * the user since we don't send early media. (assuming this is the right session, of course).
 			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
 			 */
-			if (callstate == nua_callstate_proceeding && 
+			if (callstate == nua_callstate_proceeding &&
 				    (session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
@@ -2372,7 +2372,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			
+
 			if(status < 200) {
 				/* Not ready yet (FIXME May this be pranswer?? we don't handle it yet...) */
 				break;
