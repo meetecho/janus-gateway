@@ -316,7 +316,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				/* Bind to all interfaces */
 				daemon = MHD_start_daemon(
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | MHD_USE_DUAL_STACK,
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -348,7 +348,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_SELECT_INTERNALLY | MHD_USE_DUAL_STACK,
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -414,7 +414,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | MHD_USE_DUAL_STACK,
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -450,7 +450,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
 					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY | MHD_USE_DUAL_STACK,
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
