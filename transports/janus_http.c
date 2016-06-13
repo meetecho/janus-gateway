@@ -217,13 +217,20 @@ static void janus_http_random_string(int length, char *buffer) {
 
 
 /* Helper to create a MHD daemon */
-static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, const char *interface,
-		int port, gint64 threads, const char *server_pem, const char *server_key) {
+static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
+		const char *interface, const char *ip, int port,
+		gint64 threads, const char *server_pem, const char *server_key) {
 	struct MHD_Daemon *daemon = NULL;
 	gboolean secure = server_pem && server_key;
-	/* Any interface we need to limit ourselves to? */
+	/* Any interface or IP address we need to limit ourselves to?
+	 * NOTE WELL: specifying an interface does NOT bind to all IPs associated
+	 * with that interface, but only to the first one that's detected */
 	static struct sockaddr_in addr;
-	if(interface) {
+	struct sockaddr_in6 addr6;
+	gboolean ipv6 = FALSE;
+	if(ip && strstr(ip, ":"))
+		ipv6 = TRUE;
+	if(ip || interface) {
 		gboolean found = FALSE;
 		struct ifaddrs *ifaddr = NULL, *ifa = NULL;
 		int family = 0, s = 0, n = 0;
@@ -235,21 +242,35 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 		} else {
 			for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
 				family = ifa->ifa_addr->sa_family;
-				if(strcasecmp(ifa->ifa_name, interface))
+				if(interface && strcasecmp(ifa->ifa_name, interface))
 					continue;
 				if(ifa->ifa_addr == NULL)
 					continue;
 				/* Skip interfaces which are not up and running */
 				if(!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
 					continue;
-				/* FIXME When being explicit about the interface, we only bind IPv4 for now */
-				if(family == AF_INET) {
+				/* FIXME When being explicit about the interface only, we only bind IPv4 for now:
+				 * specifying or adding a precise IPv6 address gets you an IPv6 binding instead */
+				if(!ipv6 && family == AF_INET) {
 					s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 					if(s != 0) {
 						JANUS_LOG(LOG_ERR, "Error doing a getnameinfo() to bind %s API %s webserver to '%s'...\n",
-							admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP", interface);
+							admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP", ip ? ip : interface);
 						return NULL;
 					}
+					if(ip && strcmp(host, ip))
+						continue;
+					found = TRUE;
+					break;
+				} else if(ipv6 && family == AF_INET6) {
+					s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in6), host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+					if(s != 0) {
+						JANUS_LOG(LOG_ERR, "Error doing a getnameinfo() to bind %s API %s webserver to '%s'...\n",
+							admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP", ip ? ip : interface);
+						return NULL;
+					}
+					if(ip && strcmp(host, ip))
+						continue;
 					found = TRUE;
 					break;
 				}
@@ -257,16 +278,32 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 			freeifaddrs(ifaddr);
 		}
 		if(!found) {
-			JANUS_LOG(LOG_ERR, "Error binding to interface '%s' for %s API %s webserver...\n",
-				interface, admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
+			JANUS_LOG(LOG_ERR, "Error binding to %s '%s' for %s API %s webserver...\n",
+				ip ? "IP" : "interface", ip ? ip : interface,
+				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 			return NULL;
 		}
-		JANUS_LOG(LOG_VERB, "Going to bind the %s API %s webserver to %s (%s)\n",
-			admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP", host, interface);
-		memset(&addr, 0, sizeof (struct sockaddr_in));
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(port);
-		inet_pton(AF_INET, host, &addr.sin_addr);
+		JANUS_LOG(LOG_VERB, "Going to bind the %s API %s webserver to %s (asked for %s)\n",
+			admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP", host, ip ? ip : interface);
+		if(!ipv6) {
+			memset(&addr, 0, sizeof (struct sockaddr_in));
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(port);
+			int res = inet_pton(AF_INET, host, &addr.sin_addr);
+			if(res != 1) {
+				JANUS_LOG(LOG_ERR, "Failed to convert address '%s' (%d)\n", host, res);
+				return NULL;
+			}
+		} else {
+			memset(&addr6, 0, sizeof (struct sockaddr_in6));
+			addr6.sin6_family = AF_INET6;
+			addr6.sin6_port = htons(port);
+			int res = inet_pton(AF_INET6, host, &addr6.sin6_addr);
+			if(res != 1) {
+				JANUS_LOG(LOG_ERR, "Failed to convert address '%s' (%d)\n", host, res);
+				return NULL;
+			}
+		}
 	}
 
 	if(!secure) {
@@ -274,10 +311,12 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 		if(threads == 0) {
 			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface) {
+			if(!interface && !ip) {
+				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				/* Bind to all interfaces */
 				daemon = MHD_start_daemon(
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -287,24 +326,29 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 					MHD_OPTION_END);
 			} else {
 				/* Bind to the interface that was specified */
+				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
+					ip ? "IP" : "interface", ip ? ip : interface,
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
 					admin ? &janus_http_admin_handler : &janus_http_handler,
 					path,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_SOCK_ADDR, &addr,
+					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 					MHD_OPTION_END);
 			}
 		} else {
 			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the %s API %s webserver\n", threads,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface) {
+			if(!interface && !ip) {
 				/* Bind to all interfaces */
+				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SELECT_INTERNALLY,
+					MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -315,8 +359,11 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 					MHD_OPTION_END);
 			} else {
 				/* Bind to the interface that was specified */
+				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
+					ip ? "IP" : "interface", ip ? ip : interface,
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SELECT_INTERNALLY,
+					MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -324,7 +371,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 					path,
 					MHD_OPTION_THREAD_POOL_SIZE, threads,
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
-					MHD_OPTION_SOCK_ADDR, &addr,
+					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 					MHD_OPTION_END);
 			}
 		}
@@ -362,10 +409,12 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 		if(threads == 0) {
 			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface) {
+			if(!interface && !ip) {
 				/* Bind to all interfaces */
+				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -377,8 +426,11 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 					MHD_OPTION_END);
 			} else {
 				/* Bind to the interface that was specified */
+				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
+					ip ? "IP" : "interface", ip ? ip : interface,
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL,
+					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -387,16 +439,18 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-					MHD_OPTION_SOCK_ADDR, &addr,
+					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 					MHD_OPTION_END);
 			}
 		} else {
 			JANUS_LOG(LOG_VERB, "Using a thread pool of size %"SCNi64" the %s API %s webserver\n", threads,
 				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
-			if(!interface) {
+			if(!interface && !ip) {
 				/* Bind to all interfaces */
+				JANUS_LOG(LOG_VERB, "Binding to all interfaces for the %s API %s webserver\n",
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY,
+					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -409,8 +463,11 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 					MHD_OPTION_END);
 			} else {
 				/* Bind to the interface that was specified */
+				JANUS_LOG(LOG_VERB, "Binding to %s '%s' for the %s API %s webserver\n",
+					ip ? "IP" : "interface", ip ? ip : interface,
+					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
-					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY,
+					MHD_USE_SSL | MHD_USE_SELECT_INTERNALLY | (ipv6 ? MHD_USE_IPv6 : 0),
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
 					NULL,
@@ -420,7 +477,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path, c
 					MHD_OPTION_NOTIFY_COMPLETED, &janus_http_request_completed, NULL,
 					MHD_OPTION_HTTPS_MEM_CERT, cert_pem_bytes,
 					MHD_OPTION_HTTPS_MEM_KEY, cert_key_bytes,
-					MHD_OPTION_SOCK_ADDR, &addr,
+					MHD_OPTION_SOCK_ADDR, ipv6 ? (struct sockaddr *)&addr6 : (struct sockaddr *)&addr,
 					MHD_OPTION_END);
 			}
 		}
@@ -594,7 +651,11 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "general", "interface");
 			if(item && item->value)
 				interface = item->value;
-			ws = janus_http_create_daemon(FALSE, ws_path, interface, wsport, threads, NULL, NULL);
+			const char *ip = NULL;
+			item = janus_config_get_item_drilldown(config, "general", "ip");
+			if(item && item->value)
+				ip = item->value;
+			ws = janus_http_create_daemon(FALSE, ws_path, interface, ip, wsport, threads, NULL, NULL);
 			if(ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start webserver on port %d...\n", wsport);
 			} else {
@@ -627,7 +688,11 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "general", "secure_interface");
 				if(item && item->value)
 					interface = item->value;
-				sws = janus_http_create_daemon(FALSE, ws_path, interface, swsport, threads, server_pem, server_key);
+				const char *ip = NULL;
+				item = janus_config_get_item_drilldown(config, "general", "secure_ip");
+				if(item && item->value)
+					ip = item->value;
+				sws = janus_http_create_daemon(FALSE, ws_path, interface, ip, swsport, threads, server_pem, server_key);
 				if(sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure webserver on port %d...\n", swsport);
 				} else {
@@ -665,7 +730,11 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			item = janus_config_get_item_drilldown(config, "admin", "admin_interface");
 			if(item && item->value)
 				interface = item->value;
-			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, wsport, threads, NULL, NULL);
+			const char *ip = NULL;
+			item = janus_config_get_item_drilldown(config, "admin", "admin_ip");
+			if(item && item->value)
+				ip = item->value;
+			admin_ws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, wsport, threads, NULL, NULL);
 			if(admin_ws == NULL) {
 				JANUS_LOG(LOG_FATAL, "Couldn't start admin/monitor webserver on port %d...\n", wsport);
 			} else {
@@ -688,7 +757,11 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_interface");
 				if(item && item->value)
 					interface = item->value;
-				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, swsport, threads, server_pem, server_key);
+				const char *ip = NULL;
+				item = janus_config_get_item_drilldown(config, "admin", "admin_secure_ip");
+				if(item && item->value)
+					ip = item->value;
+				admin_sws = janus_http_create_daemon(TRUE, admin_ws_path, interface, ip, swsport, threads, server_pem, server_key);
 				if(admin_sws == NULL) {
 					JANUS_LOG(LOG_FATAL, "Couldn't start secure admin/monitor webserver on port %d...\n", swsport);
 				} else {
