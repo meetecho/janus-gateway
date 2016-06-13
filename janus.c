@@ -1300,8 +1300,8 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_success(request, reply);
 		} else {
 			/* Something went horribly wrong! */
-			const char *error_text = result->text ? result->text : "Plugin returned a severe (unknown) error";
-			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", error_text);
+			ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE,
+				(char *)(result->text ? result->text : "Plugin returned a severe (unknown) error"));
 			janus_plugin_result_destroy(result);
 			goto jsondone;
 		}			
