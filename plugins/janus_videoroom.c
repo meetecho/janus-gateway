@@ -3472,8 +3472,8 @@ static void *janus_videoroom_handler(void *data) {
 					b = (int)(videoroom->bitrate/1000);
 				char sdp[1280], audio_mline[256], video_mline[512], data_mline[256];
 				char *newsdp = NULL;
-				int res;
-				int pass;
+				int res = 0;
+				int pass = 0;
 				for(pass = 1; pass <= 2; pass++) {
 					if(pass == 2) {
 						/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
