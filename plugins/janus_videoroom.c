@@ -1098,6 +1098,7 @@ char *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(media, "video", json_integer(participant->video));
 				json_object_set_new(media, "data", json_integer(participant->data));
 				json_object_set_new(info, "media", media);
+				json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
 				if(participant->arc || participant->vrc) {
 					json_t *recording = json_object();
 					if(participant->arc && participant->arc->filename)
@@ -2099,7 +2100,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					bitrate = bitrate/participant->remb_startup;
 					participant->remb_startup--;
 				}
-				JANUS_LOG(LOG_VERB, "Sending REMB\n");
+				JANUS_LOG(LOG_VERB, "Sending REMB (%s, %"SCNu64")\n", participant->display, bitrate);
 				char rtcpbuf[24];
 				janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
 				gateway->relay_rtcp(handle, video, rtcpbuf, 24);
@@ -2881,7 +2882,8 @@ static void *janus_videoroom_handler(void *data) {
 					participant->bitrate = json_integer_value(bitrate);
 					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64" (room %"SCNu64", user %"SCNu64")\n", participant->bitrate, participant->room->room_id, participant->user_id);
 					/* Send a new REMB */
-					participant->remb_latest = janus_get_monotonic_time();
+					if(session->started)
+						participant->remb_latest = janus_get_monotonic_time();
 					char rtcpbuf[24];
 					janus_rtcp_remb((char *)(&rtcpbuf), 24, participant->bitrate ? participant->bitrate : 256*1024);
 					gateway->relay_rtcp(msg->handle, 1, rtcpbuf, 24);
