@@ -17,6 +17,12 @@
 #include "dtls.h"
 #include "rtcp.h"
 
+#include <openssl/err.h>
+#include <openssl/bn.h>
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+#include <openssl/asn1.h>
+
 
 /* SRTP stuff (http://tools.ietf.org/html/rfc3711) */
 static const char *janus_srtp_error[] =
@@ -87,6 +93,8 @@ const gchar *janus_get_dtls_srtp_role(janus_dtls_role role) {
 
 /* DTLS stuff */
 #define DTLS_CIPHERS	"ALL:NULL:eNULL:aNULL"
+/* Duration for the self-generated certs: 1 year */
+#define DTLS_AUTOCERT_DURATION	60*60*24*365
 
 /* SRTP stuff (http://tools.ietf.org/html/rfc3711) */
 #define SRTP_MASTER_KEY_LENGTH	16
@@ -158,6 +166,114 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 }
 
 
+static int janus_dtls_generate_keys(X509** certificate, EVP_PKEY** private_key) {
+	static const int num_bits = 2048;
+	BIGNUM* bne = NULL;
+	RSA* rsa_key = NULL;
+	X509_NAME* cert_name = NULL;
+
+	JANUS_LOG(LOG_VERB, "Generating DTLS key / cert\n");
+
+	/* Create a big number object. */
+	bne = BN_new();
+	if (!bne) {
+		JANUS_LOG(LOG_FATAL, "BN_new() failed\n");
+		goto error;
+	}
+
+	if (!BN_set_word(bne, RSA_F4)) {  /* RSA_F4 == 65537 */
+		JANUS_LOG(LOG_FATAL, "BN_set_word() failed\n");
+		goto error;
+	}
+
+	/* Generate a RSA key. */
+	rsa_key = RSA_new();
+	if (!rsa_key) {
+		JANUS_LOG(LOG_FATAL, "RSA_new() failed\n");
+		goto error;
+	}
+
+	/* This takes some time. */
+	if (!RSA_generate_key_ex(rsa_key, num_bits, bne, NULL)) {
+		JANUS_LOG(LOG_FATAL, "RSA_generate_key_ex() failed\n");
+		goto error;
+	}
+
+	/* Create a private key object (needed to hold the RSA key). */
+	*private_key = EVP_PKEY_new();
+	if (!*private_key) {
+		JANUS_LOG(LOG_FATAL, "EVP_PKEY_new() failed\n");
+		goto error;
+	}
+
+	if (!EVP_PKEY_assign_RSA(*private_key, rsa_key)) {
+		JANUS_LOG(LOG_FATAL, "EVP_PKEY_assign_RSA() failed\n");
+		goto error;
+	}
+	/* The RSA key now belongs to the private key, so don't clean it up separately. */
+	rsa_key = NULL;
+
+	/* Create the X509 certificate. */
+	*certificate = X509_new();
+	if (!*certificate) {
+		JANUS_LOG(LOG_FATAL, "X509_new() failed\n");
+		goto error;
+	}
+
+	/* Set version 3 (note that 0 means version 1). */
+	X509_set_version(*certificate, 2);
+
+	/* Set serial number. */
+	ASN1_INTEGER_set(X509_get_serialNumber(*certificate), (long)g_random_int());
+
+	/* Set valid period. */
+	X509_gmtime_adj(X509_get_notBefore(*certificate), -1 * DTLS_AUTOCERT_DURATION);  /* -1 year */
+	X509_gmtime_adj(X509_get_notAfter(*certificate), DTLS_AUTOCERT_DURATION);  /* 1 year */
+
+	/* Set the public key for the certificate using the key. */
+	if (!X509_set_pubkey(*certificate, *private_key)) {
+		JANUS_LOG(LOG_FATAL, "X509_set_pubkey() failed\n");
+		goto error;
+	}
+
+	/* Set certificate fields. */
+	cert_name = X509_get_subject_name(*certificate);
+	if (!cert_name) {
+		JANUS_LOG(LOG_FATAL, "X509_get_subject_name() failed\n");
+		goto error;
+	}
+	X509_NAME_add_entry_by_txt(cert_name, "O", MBSTRING_ASC, (const unsigned char*)"Janus", -1, -1, 0);
+	X509_NAME_add_entry_by_txt(cert_name, "CN", MBSTRING_ASC, (const unsigned char*)"Janus", -1, -1, 0);
+
+	/* It is self-signed so set the issuer name to be the same as the subject. */
+	if (!X509_set_issuer_name(*certificate, cert_name)) {
+		JANUS_LOG(LOG_FATAL, "X509_set_issuer_name() failed\n");
+		goto error;
+	}
+
+	/* Sign the certificate with the private key. */
+	if (!X509_sign(*certificate, *private_key, EVP_sha1())) {
+		JANUS_LOG(LOG_FATAL, "X509_sign() failed\n");
+		goto error;
+	}
+
+	/* Free stuff and resurn. */
+	BN_free(bne);
+	return 0;
+
+error:
+	if (bne)
+		BN_free(bne);
+	if (rsa_key && !*private_key)
+		RSA_free(rsa_key);
+	if (*private_key)
+		EVP_PKEY_free(*private_key);  /* This also frees the RSA key. */
+	if (*certificate)
+		X509_free(*certificate);
+	return -1;
+}
+
+
 static int janus_dtls_load_keys(const char* server_pem, const char* server_key, X509** certificate, EVP_PKEY** private_key) {
 	FILE* f = NULL;
 
@@ -220,14 +336,18 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, janus_dtls_verify_callback);
 	SSL_CTX_set_tlsext_use_srtp(ssl_ctx, "SRTP_AES128_CM_SHA1_80");	/* FIXME Should we support something else as well? */
 
-	/* Load the key and cert from the files */
-	if (!server_pem || !server_key) {
-		JANUS_LOG(LOG_FATAL, "DTLS certificate and key must be specified");
+	if (!server_pem && !server_key) {
+		if (janus_dtls_generate_keys(&ssl_cert, &ssl_key) != 0) {
+			JANUS_LOG(LOG_FATAL, "Error generating DTLS key/certificate\n");
+			return -2;
+		}
+	} else if (!server_pem || !server_key) {
+		JANUS_LOG(LOG_FATAL, "DTLS certificate and key must be specified\n");
 		return -2;
-	}
-	if (janus_dtls_load_keys(server_pem, server_key, &ssl_cert, &ssl_key) != 0) {
+	} else if (janus_dtls_load_keys(server_pem, server_key, &ssl_cert, &ssl_key) != 0) {
 		return -3;
 	}
+
 	if(!SSL_CTX_use_certificate(ssl_ctx, ssl_cert)) {
 		JANUS_LOG(LOG_FATAL, "Certificate error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 		return -4;

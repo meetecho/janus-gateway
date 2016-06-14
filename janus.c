@@ -3529,19 +3529,23 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Setup OpenSSL stuff */
+	const char* server_pem;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
-		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
-		exit(1);
+		server_pem = NULL;
+	} else {
+		server_pem = item->value;
 	}
-	const char* server_pem = item->value;
+
+	const char* server_key;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(!item || !item->value) {
-		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
-		exit(1);
+		server_key = NULL;
+	} else {
+		server_key = item->value;
 	}
-	const char* server_key = item->value;
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+
 	SSL_library_init();
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
