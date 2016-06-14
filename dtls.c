@@ -337,6 +337,7 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	SSL_CTX_set_tlsext_use_srtp(ssl_ctx, "SRTP_AES128_CM_SHA1_80");	/* FIXME Should we support something else as well? */
 
 	if (!server_pem && !server_key) {
+		JANUS_LOG(LOG_WARN, "No cert/key specified, autogenerating some...\n");
 		if (janus_dtls_generate_keys(&ssl_cert, &ssl_key) != 0) {
 			JANUS_LOG(LOG_FATAL, "Error generating DTLS key/certificate\n");
 			return -2;
