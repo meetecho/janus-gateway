@@ -246,8 +246,8 @@ or on the command line:
 	-P, --plugins-folder=path     Plugins folder (default=./plugins)
 	-C, --config=filename         Configuration file to use
 	-F, --configs-folder=path     Configuration files folder (default=./conf)
-	-c, --cert-pem=filename       HTTPS/DTLS certificate
-	-k, --cert-key=filename       HTTPS/DTLS certificate key
+	-c, --cert-pem=filename       DTLS certificate
+	-k, --cert-key=filename       DTLS certificate key
 	-S, --stun-server=filename    STUN server(:port) to use, if needed (e.g.,
 								  gateway behind NAT, default=none)
 	-1, --nat-1-1=ip              Public IP to put in all host candidates,
