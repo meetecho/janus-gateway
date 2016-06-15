@@ -280,6 +280,7 @@ typedef enum {
 
 typedef struct janus_sip_account {
 	char *identity;
+	char *user_agent;		/* Used to override the general UA string */
 	gboolean sips;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
@@ -593,6 +594,10 @@ void *janus_sip_watchdog(void *data) {
 					    g_free(session->account.display_name);
 					    session->account.display_name = NULL;
 					}
+					if (session->account.user_agent) {
+					    g_free(session->account.user_agent);
+					    session->account.user_agent = NULL;
+					}
 					if (session->account.authuser) {
 					    g_free(session->account.authuser);
 					    session->account.authuser = NULL;
@@ -841,6 +846,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.sips = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
+	session->account.user_agent = NULL;
 	session->account.authuser = NULL;
 	session->account.secret = NULL;
 	session->account.secret_type = janus_sip_secret_type_unknown;
@@ -937,6 +943,7 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
 	json_object_set_new(info, "display_name", session->account.display_name ? json_string(session->account.display_name) : NULL);
+	json_object_set_new(info, "user_agent", session->account.user_agent ? json_string(session->account.user_agent) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
 	json_object_set_new(info, "registration_status", json_string(janus_sip_registration_status_string(session->account.registration_status)));
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
@@ -1279,6 +1286,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.proxy != NULL)
 				g_free(session->account.proxy);
 			session->account.proxy = NULL;
+			if(session->account.user_agent != NULL)
+				g_free(session->account.user_agent);
+			session->account.user_agent = NULL;
 			session->account.registration_status = janus_sip_registration_status_unregistered;
 
 			gboolean guest = FALSE;
@@ -1350,6 +1360,12 @@ static void *janus_sip_handler(void *data) {
 			json_t *display_name = json_object_get(root, "display_name");
 			if (display_name && json_is_string(display_name))
 				display_name_text = json_string_value(display_name);
+
+			/* Parse user agent */
+			const char* user_agent_text = NULL;
+			json_t *user_agent = json_object_get(root, "user_agent");
+			if (user_agent && json_is_string(user_agent))
+				user_agent_text = json_string_value(user_agent);
 
 			/* Now the user part, if needed */
 			json_t *username = json_object_get(root, "username");
@@ -1423,6 +1439,9 @@ static void *janus_sip_handler(void *data) {
 			session->account.username = g_strdup(user_id);
 			if (display_name_text) {
 				session->account.display_name = g_strdup(display_name_text);
+			}
+			if (user_agent_text) {
+				session->account.user_agent = g_strdup(user_agent_text);
 			}
 			if (proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
@@ -2147,11 +2166,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			tagi_t const *ti = tl_find(tags, nutag_callstate);
 			enum nua_callstate callstate = ti ? ti->t_value : -1;
 			/* There are several call states, but we care about the terminated state in order to send the 'hangup' event
-			 * and the proceeding state in order to send the 'proceeding' event so the client can play a ringback tone for 
+			 * and the proceeding state in order to send the 'proceeding' event so the client can play a ringback tone for
 			 * the user since we don't send early media. (assuming this is the right session, of course).
 			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
 			 */
-			if (callstate == nua_callstate_proceeding && 
+			if (callstate == nua_callstate_proceeding &&
 				    (session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
@@ -2318,7 +2337,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			
+
 			if(status < 200) {
 				/* Not ready yet (FIXME May this be pranswer?? we don't handle it yet...) */
 				break;
@@ -3107,7 +3126,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL(sip_url),
 				TAG_IF(session->account.sips, NUTAG_SIPS_URL(sips_url)),
-				SIPTAG_USER_AGENT_STR(user_agent),
+				SIPTAG_USER_AGENT_STR(session->account.user_agent ? session->account.user_agent : user_agent),
 				NUTAG_KEEPALIVE(keepalive_interval * 1000),	/* Sofia expects it in milliseconds */
 				NUTAG_OUTBOUND(outbound_options),
 				SIPTAG_SUPPORTED(NULL),

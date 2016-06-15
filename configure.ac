@@ -330,6 +330,12 @@ AC_ARG_ENABLE([plugin-voicemail],
               [],
               [enable_plugin_voicemail=yes])
 
+AC_ARG_ENABLE([plugin-textroom],
+              [AS_HELP_STRING([--disable-plugin-textroom],
+                              [Disable textroom plugin])],
+              [],
+              [enable_plugin_textroom=yes])
+
 PKG_CHECK_MODULES([OPUS],
                   [opus],
                   [],
@@ -354,6 +360,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
 
 ##
 # Post-processing
@@ -451,6 +458,9 @@ AM_COND_IF([ENABLE_PLUGIN_VOICEMAIL],
 AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 	[echo "    Record&Play:           yes"],
 	[echo "    Record&Play:           no"])
+AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
+	[echo "    Text Room:             yes"],
+	[echo "    Text Room:             no"])
 
 echo
 echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."

@@ -297,6 +297,16 @@ conf_DATA += conf/janus.plugin.voicemail.cfg.sample
 EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample
 endif
 
+if ENABLE_PLUGIN_TEXTROOM
+plugin_LTLIBRARIES += plugins/libjanus_textroom.la
+plugins_libjanus_textroom_la_SOURCES = plugins/janus_textroom.c
+plugins_libjanus_textroom_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_textroom_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_textroom_la_LIBADD = $(plugins_libadd)
+conf_DATA += conf/janus.plugin.textroom.cfg.sample
+EXTRA_DIST += conf/janus.plugin.textroom.cfg.sample
+endif
+
 ##
 # Post-processing
 ##
@@ -313,6 +323,8 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-opus.h \
 	postprocessing/pp-opus-silence.h \
 	postprocessing/pp-rtp.h \
+	postprocessing/pp-srt.c \
+	postprocessing/pp-srt.h \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
