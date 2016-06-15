@@ -12,7 +12,6 @@
  */
 
 #include "transport.h"
-#include "debug.h"
 
 static void janus_transport_session_free(const janus_refcount *transport_ref) {
 	janus_transport_session *session = janus_refcount_containerof(transport_ref, janus_transport_session, ref);

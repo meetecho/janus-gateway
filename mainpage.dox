@@ -1763,7 +1763,10 @@ POST /admin
  * of HTTP to interact with the Admin API. The same considerations already
  * made for the Janus API as to the usage of different transports (WebSockets,
  * RabbitMQ or others) apply here as well, particularly with respect to
- * the explicit \c session_id and \c handle_id in the JSON payload.  
+ * the explicit \c session_id and \c handle_id in the JSON payload. Besides,
+ * to use the Admin API over WebSockets you'll have to use <code>janus-admin-protocol</code>
+ * as the subprotocol, instead of the <code>janus-protocol</code> of the
+ * regular Janus API.
  *
  */
 
