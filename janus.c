@@ -765,7 +765,7 @@ int janus_process_incoming_request(janus_request *request) {
 			janus_mutex_lock(&session->mutex);
 			g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
 			janus_mutex_unlock(&session->mutex);
-
+			JANUS_LOG(LOG_ERR, "Couldn't attach to plugin '%s', error '%d'\n", plugin_text, error);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
 			goto jsondone;
 		}
