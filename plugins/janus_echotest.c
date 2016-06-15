@@ -180,11 +180,13 @@ typedef struct janus_echotest_session {
 	janus_plugin_session *handle;
 	gboolean has_audio;
 	gboolean has_video;
+	gboolean has_data;
 	gboolean audio_active;
 	gboolean video_active;
 	uint64_t bitrate;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
+	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	guint16 slowlink_count;
 	volatile gint hangingup;
@@ -378,6 +380,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->handle = handle;
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
+	session->has_data = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	janus_mutex_init(&session->rec_mutex);
@@ -429,12 +432,14 @@ char *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "audio_active", json_string(session->audio_active ? "true" : "false"));
 	json_object_set_new(info, "video_active", json_string(session->video_active ? "true" : "false"));
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
-	if(session->arc || session->vrc) {
+	if(session->arc || session->vrc || session->drc) {
 		json_t *recording = json_object();
 		if(session->arc && session->arc->filename)
 			json_object_set_new(recording, "audio", json_string(session->arc->filename));
 		if(session->vrc && session->vrc->filename)
 			json_object_set_new(recording, "video", json_string(session->vrc->filename));
+		if(session->drc && session->drc->filename)
+			json_object_set_new(recording, "data", json_string(session->drc->filename));
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
@@ -536,6 +541,8 @@ void janus_echotest_incoming_data(janus_plugin_session *handle, char *buf, int l
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to bounce back: %s\n", strlen(text), text);
+		/* Save the frame if we're recording */
+		janus_recorder_save_frame(session->drc, text, strlen(text));
 		/* We send back the same text with a custom prefix */
 		const char *prefix = "Janus EchoTest here! You wrote: ";
 		char *reply = g_malloc0(strlen(prefix)+len+1);
@@ -632,10 +639,17 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		janus_recorder_free(session->vrc);
 	}
 	session->vrc = NULL;
+	if(session->drc) {
+		janus_recorder_close(session->drc);
+		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
+		janus_recorder_free(session->drc);
+	}
+	session->drc = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
 	/* Reset controls */
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
+	session->has_data = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;
@@ -771,6 +785,7 @@ static void *janus_echotest_handler(void *data) {
 			if(msg->sdp) {
 				session->has_audio = (strstr(msg->sdp, "m=audio") != NULL);
 				session->has_video = (strstr(msg->sdp, "m=video") != NULL);
+				session->has_data = (strstr(msg->sdp, "DTLS/SCTP") != NULL);
 			}
 			gboolean recording = json_is_true(record);
 			const char *recording_base = json_string_value(recfile);
@@ -790,6 +805,12 @@ static void *janus_echotest_handler(void *data) {
 					janus_recorder_free(session->vrc);
 				}
 				session->vrc = NULL;
+				if(session->drc) {
+					janus_recorder_close(session->drc);
+					JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
+					janus_recorder_free(session->drc);
+				}
+				session->drc = NULL;
 			} else {
 				/* We've started recording, send a PLI and go on */
 				char filename[255];
@@ -842,6 +863,26 @@ static void *janus_echotest_handler(void *data) {
 					janus_rtcp_pli((char *)&buf, 12);
 					gateway->relay_rtcp(session->handle, 1, buf, 12);
 				}
+				if(session->has_data) {
+					memset(filename, 0, 255);
+					if(recording_base) {
+						/* Use the filename and path we have been provided */
+						g_snprintf(filename, 255, "%s-data", recording_base);
+						session->drc = janus_recorder_create(NULL, "text", filename);
+						if(session->drc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
+						}
+					} else {
+						/* Build a filename */
+						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-data", session, now);
+						session->drc = janus_recorder_create(NULL, "text", filename);
+						if(session->drc == NULL) {
+							/* FIXME We should notify the fact the recorder could not be created */
+							JANUS_LOG(LOG_ERR, "Couldn't open a text data recording file for this EchoTest user!\n");
+						}
+					}
+				}
 			}
 			janus_mutex_unlock(&session->rec_mutex);
 		}
@@ -850,6 +891,7 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
 			session->has_audio = (strstr(msg->sdp, "m=audio") != NULL);
 			session->has_video = (strstr(msg->sdp, "m=video") != NULL);
+			session->has_data = (strstr(msg->sdp, "DTLS/SCTP") != NULL);
 		}
 
 		if(!audio && !video && !bitrate && !record && !msg->sdp) {

@@ -27,6 +27,9 @@
 #include "debug.h"
 #include "utils.h"
 
+#define htonll(x) ((1==htonl(1)) ? (x) : ((gint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
+#define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
+
 
 /* Info header in the structured recording */
 static const char *header = "MJR00001";
@@ -35,20 +38,23 @@ static const char *frame_header = "MEETECHO";
 
 
 janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename) {
-	int video = 0;
+	janus_recorder_medium type = JANUS_RECORDER_AUDIO;
 	if(codec == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing codec information\n");
 		return NULL;
 	}
 	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
-		video = 1;
+		type = JANUS_RECORDER_VIDEO;
 		if(!strcasecmp(codec, "vp9")) {
 			JANUS_LOG(LOG_WARN, "The post-processor currently doesn't support VP9: recording anyway for the future\n");
 		}
 	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")) {
-		video = 0;
+		type = JANUS_RECORDER_AUDIO;
 		if(!strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma"))
 			codec = "g711";
+	} else if(!strcasecmp(codec, "text")) {
+		/* FIXME We only handle text on data channels, so that's the only thing we can save too */
+		type = JANUS_RECORDER_DATA;
 	} else {
 		/* We don't recognize the codec: while we might go on anyway, we'd rather fail instead */
 		JANUS_LOG(LOG_ERR, "Unsupported codec '%s'\n", codec);
@@ -116,7 +122,7 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	if(dir)
 		rc->dir = g_strdup(dir);
 	rc->filename = g_strdup(newname);
-	rc->video = video;
+	rc->type = type;
 	/* Write the first part of the header */
 	fwrite(header, sizeof(char), strlen(header), rc->file);
 	rc->writable = 1;
@@ -126,7 +132,7 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	return rc;
 }
 
-int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length) {
+int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length) {
 	if(!recorder)
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
@@ -146,7 +152,14 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length
 		/* Write info header as a JSON formatted info */
 		json_t *info = json_object();
 		/* FIXME Codecs should be configurable in the future */
-		json_object_set_new(info, "t", json_string(recorder->video ? "v" : "a"));		/* Audio/Video */
+		const char *type = NULL;
+		if(recorder->type == JANUS_RECORDER_AUDIO)
+			type = "a";
+		else if(recorder->type == JANUS_RECORDER_VIDEO)
+			type = "v";
+		else if(recorder->type == JANUS_RECORDER_DATA)
+			type = "d";
+		json_object_set_new(info, "t", json_string(type));								/* Audio/Video/Data */
 		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
 		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
@@ -160,8 +173,13 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length
 	}
 	/* Write frame header */
 	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
-	uint16_t header_bytes = htons(length);
+	uint16_t header_bytes = htons(recorder->type == JANUS_RECORDER_DATA ? (length+sizeof(gint64)) : length);
 	fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
+	if(recorder->type == JANUS_RECORDER_DATA) {
+		/* If it's data, then we need to prepend timing related info, as it's not there by itself */
+		gint64 now = htonll(janus_get_real_time());
+		fwrite(&now, sizeof(gint64), 1, recorder->file);
+	}
 	/* Save packet on file */
 	int temp = 0, tot = length;
 	while(tot > 0) {
