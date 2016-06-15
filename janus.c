@@ -9,12 +9,12 @@
  * protocol) to interact with the applications, whether they're web based
  * or not. The core also takes care of bridging peers and plugins
  * accordingly, in terms of both messaging and real-time media transfer
- * via WebRTC. 
- * 
+ * via WebRTC.
+ *
  * \ingroup core
  * \ref core
  */
- 
+
 #include <dlfcn.h>
 #include <dirent.h>
 #include <net/if.h>
@@ -39,8 +39,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			11
-#define JANUS_VERSION_STRING	"0.1.1"
+#define JANUS_VERSION			12
+#define JANUS_VERSION_STRING	"0.1.2"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -67,17 +67,6 @@ static GHashTable *plugins_so = NULL;
 /* Daemonization */
 static gboolean daemonize = FALSE;
 static int pipefd[2];
-
-
-/* Certificates */
-static char *server_pem = NULL;
-gchar *janus_get_server_pem(void) {
-	return server_pem;
-}
-static char *server_key = NULL;
-gchar *janus_get_server_key(void) {
-	return server_key;
-}
 
 
 /* API secrets */
@@ -267,7 +256,7 @@ json_t *janus_info(const char *transaction) {
 		}
 	}
 	json_object_set_new(info, "plugins", p_data);
-	
+
 	return info;
 }
 
@@ -337,7 +326,7 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
-	}; 
+	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
 ///@}
@@ -616,7 +605,7 @@ int janus_process_incoming_request(janus_request *request) {
 	const gchar *transaction_text = json_string_value(transaction);
 	json_t *message = json_object_get(root, "janus");
 	const gchar *message_text = json_string_value(message);
-	
+
 	if(session_id == 0 && handle_id == 0) {
 		/* Can only be a 'Create new session', a 'Get info' or a 'Ping/Pong' request */
 		if(!strcasecmp(message_text, "info")) {
@@ -810,7 +799,7 @@ int janus_process_incoming_request(janus_request *request) {
 			janus_mutex_lock(&session->mutex);
 			g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
 			janus_mutex_unlock(&session->mutex);
-
+			JANUS_LOG(LOG_ERR, "Couldn't attach to plugin '%s', error '%d'\n", plugin_text, error);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
 			goto jsondone;
 		}
@@ -1353,7 +1342,7 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", result->content ? g_strdup(result->content) : "Plugin returned a severe (unknown) error");
 			janus_plugin_result_destroy(result);
 			goto jsondone;
-		}			
+		}
 		janus_plugin_result_destroy(result);
 	} else if(!strcasecmp(message_text, "trickle")) {
 		if(handle == NULL) {
@@ -1494,7 +1483,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		goto jsondone;
 	}
 	const gchar *message_text = json_string_value(message);
-	
+
 	if(session_id == 0 && handle_id == 0) {
 		/* Can only be a 'Get all sessions' or some general setting manipulation request */
 		if(!strcasecmp(message_text, "info")) {
@@ -2936,7 +2925,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			janus_mutex_unlock(&ice_handle->mutex);
 		}
 	}
-	
+
 	/* Prepare JSON event */
 	json_t *jsep = json_object();
 	json_object_set_new(jsep, "type", json_string(sdp_type));
@@ -2994,7 +2983,7 @@ void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
 	janus_session *session = (janus_session *)ice_handle->session;
 	if(!session)
 		return;
-		
+
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Plugin asked to hangup PeerConnection: sending alert\n", ice_handle->handle_id);
 	/* Send an alert on all the DTLS connections */
 	janus_ice_webrtc_hangup(ice_handle);
@@ -3087,7 +3076,7 @@ gint main(int argc, char *argv[])
 	/* Let's call our cmdline parser */
 	if(cmdline_parser(argc, argv, &args_info) != 0)
 		exit(1);
-	
+
 	/* Any configuration to open? */
 	if(args_info.config_given) {
 		config_file = g_strdup(args_info.config_arg);
@@ -3635,19 +3624,23 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Setup OpenSSL stuff */
+	const char* server_pem;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 	if(!item || !item->value) {
-		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
-		exit(1);
+		server_pem = NULL;
+	} else {
+		server_pem = item->value;
 	}
-	server_pem = (char *)item->value;
+
+	const char* server_key;
 	item = janus_config_get_item_drilldown(config, "certificates", "cert_key");
 	if(!item || !item->value) {
-		JANUS_LOG(LOG_FATAL, "Missing certificate/key path, use the command line or the configuration to provide one\n");
-		exit(1);
+		server_key = NULL;
+	} else {
+		server_key = item->value;
 	}
-	server_key = (char *)item->value;
 	JANUS_LOG(LOG_VERB, "Using certificates:\n\t%s\n\t%s\n", server_pem, server_key);
+
 	SSL_library_init();
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
@@ -4109,7 +4102,7 @@ gint main(int argc, char *argv[])
 	if(old_sessions != NULL)
 		g_hash_table_destroy(old_sessions);
 	JANUS_LOG(LOG_INFO, "Freeing crypto resources...\n");
-	SSL_CTX_free(janus_dtls_get_ssl_ctx());
+	janus_dtls_srtp_cleanup();
 	EVP_cleanup();
 	ERR_free_strings();
 	JANUS_LOG(LOG_INFO, "Cleaning SDP structures...\n");

@@ -27,6 +27,13 @@
 #include "mutex.h"
 
 
+/*! \brief Media types we can record */
+typedef enum janus_recorder_medium {
+	JANUS_RECORDER_AUDIO,
+	JANUS_RECORDER_VIDEO,
+	JANUS_RECORDER_DATA
+} janus_recorder_medium;
+
 /*! \brief Structure that represents a recorder */
 typedef struct janus_recorder {
 	/*! \brief Absolute path to the directory where the recorder file is stored */ 
@@ -39,8 +46,8 @@ typedef struct janus_recorder {
 	char *codec;
 	/*! \brief When the recording file has been created */
 	gint64 created;
-	/*! \brief Whether this recorder instance is going to record video or audio */ 
-	int video:1;
+	/*! \brief Media this instance is recording */
+	janus_recorder_medium type;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
 	int header:1;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
@@ -63,7 +70,7 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
  * @param[in] buffer The frame data to save
  * @param[in] length The frame data length
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length);
+int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length);
 /*! \brief Close the recorder
  * @param[in] recorder The janus_recorder instance to close
  * @returns 0 in case of success, a negative integer otherwise */
