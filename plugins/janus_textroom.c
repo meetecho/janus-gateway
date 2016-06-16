@@ -694,6 +694,12 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		json_object_set_new(msg, "textroom", json_string("message"));
 		json_object_set_new(msg, "room", json_integer(room_id));
 		json_object_set_new(msg, "from", json_string(participant->username));
+		time_t timer;
+		time(&timer);
+		struct tm *tm_info = localtime(&timer);
+		char msgTime[64];
+		strftime(msgTime, sizeof(msgTime), "%FT%T%z", tm_info);
+		json_object_set_new(msg, "date", json_string(msgTime));
 		json_object_set_new(msg, "text", json_string(message));
 		if(username || usernames)
 			json_object_set_new(msg, "whisper", json_true());

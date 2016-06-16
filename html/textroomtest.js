@@ -154,14 +154,15 @@ $(document).ready(function() {
 										msg = msg.replace(new RegExp('<', 'g'), '&lt');
 										msg = msg.replace(new RegExp('>', 'g'), '&gt');
 										var from = json["from"];
+										var dateString = getDateString(json["date"]);
 										var whisper = json["whisper"];
 										if(whisper === true) {
 											// Private message
-											$('#chatroom').append('<p style="color: purple;"><b>[whisper from ' + participants[from] + ']</b> ' + msg);
+											$('#chatroom').append('<p style="color: purple;">[' + dateString + '] <b>[whisper from ' + participants[from] + ']</b> ' + msg);
 											$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
 										} else {
 											// Public message
-											$('#chatroom').append('<p><b>' + participants[from] + ':</b> ' + msg);
+											$('#chatroom').append('<p>[' + dateString + '] <b>' + participants[from] + ':</b> ' + msg);
 											$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
 										}
 									} else if(what === "join") {
@@ -177,13 +178,14 @@ $(document).ready(function() {
 												sendPrivateMsg(username);
 											});
 										}
-										$('#chatroom').append('<p style="color: green;"><i>' + participants[username] + ' joined</i></p>');
+										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' joined</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
 									} else if(what === "leave") {
 										// Somebody left
 										var username = json["username"];
+										var when = new Date();
 										$('#rp' + username).remove();
-										$('#chatroom').append('<p><i style="color: green;">' + participants[username] + ' left</i></p>');
+										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' left</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
 										delete participants[username];
 									} else if(what === "destroyed") {
@@ -291,7 +293,7 @@ function registerUsername() {
 							sendPrivateMsg(username);
 						});
 					}
-					$('#chatroom').append('<p><i style="color: green;">' + participants[p.username] + ' joined</i></p>');
+					$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[p.username] + ' joined</i></p>');
 					$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
 				}
 			}
@@ -324,7 +326,7 @@ function sendPrivateMsg(username) {
 				text: JSON.stringify(message),
 				error: function(reason) { bootbox.alert(reason); },
 				success: function() {
-					$('#chatroom').append('<p style="color: purple;"><b>[whisper to ' + display + ']</b> ' + result);
+					$('#chatroom').append('<p style="color: purple;">[' + getDateString() + '] <b>[whisper to ' + display + ']</b> ' + result);
 					$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
 				}
 			});
@@ -350,6 +352,19 @@ function sendData() {
 		error: function(reason) { bootbox.alert(reason); },
 		success: function() { $('#datasend').val(''); }
 	});
+}
+
+// Helper to format times
+function getDateString(jsonDate) {
+	var when = new Date();
+	if(jsonDate) {
+		when = new Date(Date.parse(jsonDate));
+	}
+	var dateString =
+			("0" + when.getUTCHours()).slice(-2) + ":" +
+			("0" + when.getUTCMinutes()).slice(-2) + ":" +
+			("0" + when.getUTCSeconds()).slice(-2);
+	return dateString;
 }
 
 // Just an helper to generate random usernames
