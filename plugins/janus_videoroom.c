@@ -2714,6 +2714,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "event", json_string("joined"));
 					json_object_set_new(info, "room", json_integer(videoroom->room_id));
 					json_object_set_new(info, "id", json_integer(user_id));
+					if(display_text != NULL)
+						json_object_set_new(info, "display", json_string(display_text));
 					gateway->notify_event(session->handle, info);
 				}
 			} else if(!strcasecmp(ptype_text, "listener")) {
