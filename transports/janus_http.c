@@ -973,26 +973,28 @@ void janus_http_session_over(void *transport, guint64 session_id, gboolean timeo
 
 /* Connection notifiers */
 int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
-	char *ip = inet_ntoa(sin->sin_addr);
+	char *ip = janus_address_to_ip((struct sockaddr *)addr);
 	JANUS_LOG(LOG_HUGE, "New connection on REST API: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_http_is_allowed(ip, FALSE)) {
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the Janus API interface\n", ip);
+		g_free(ip);
 		return MHD_NO;
 	}
+	g_free(ip);
 	return MHD_YES;
 }
 
 int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
-	char *ip = inet_ntoa(sin->sin_addr);
+	char *ip = janus_address_to_ip((struct sockaddr *)addr);
 	JANUS_LOG(LOG_HUGE, "New connection on admin/monitor: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_http_is_allowed(ip, TRUE)) {
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the admin/monitor interface\n", ip);
+		g_free(ip);
 		return MHD_NO;
 	}
+	g_free(ip);
 	return MHD_YES;
 }
 
