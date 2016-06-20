@@ -2430,7 +2430,6 @@ static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_vide
 				pt); 						/* payload type */
 			break;
 		case JANUS_VIDEOROOM_H264:
-			break;
 			g_snprintf(mline, mline_size, sdp_v_template_h264,
 				pt,							/* payload type */
 				b,								/* Bandwidth */
@@ -2441,6 +2440,7 @@ static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_vide
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt); 						/* payload type */
+			break;
 		default:
 			/* Shouldn't happen */
 			mline[0] = '\0';
