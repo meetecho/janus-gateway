@@ -215,7 +215,7 @@ static struct janus_json_parameter live_parameters[] = {
 	{"name", JSON_STRING, 0},
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
-	{"file", JSON_STRING, 0},
+	{"filename", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0}
 };
@@ -224,7 +224,7 @@ static struct janus_json_parameter ondemand_parameters[] = {
 	{"name", JSON_STRING, 0},
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
-	{"file", JSON_STRING, 0},
+	{"filename", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0}
 };
@@ -679,6 +679,13 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 				}
+				FILE *audiofile = fopen(file->value, "rb");
+				if(!audiofile) {
+					JANUS_LOG(LOG_ERR, "Can't add 'live' stream, no such file '%s'...\n", file->value);
+					cl = cl->next;
+					continue;
+				}
+				fclose(audiofile);
 				if(id == NULL || id->value == NULL) {
 					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
 				} else {
@@ -736,6 +743,13 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 				}
+				FILE *audiofile = fopen(file->value, "rb");
+				if(!audiofile) {
+					JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, no such file '%s'...\n", file->value);
+					cl = cl->next;
+					continue;
+				}
+				fclose(audiofile);
 				if(id == NULL || id->value == NULL) {
 					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
 				} else {
@@ -1265,7 +1279,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
 			json_t *is_private = json_object_get(root, "is_private");
-			json_t *file = json_object_get(root, "file");
+			json_t *file = json_object_get(root, "filename");
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
@@ -1284,6 +1298,14 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
 				goto error;
 			}
+			FILE *audiofile = fopen(filename, "rb");
+			if(!audiofile) {
+				JANUS_LOG(LOG_ERR, "Can't add 'live' stream, no such file '%s'...\n", filename);
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				g_snprintf(error_cause, 512, "Can't add 'live' stream, no such file '%s'\n", filename);
+				goto error;
+			}
+			fclose(audiofile);
 			if(id == NULL) {
 				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 			} else {
@@ -1321,7 +1343,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *name = json_object_get(root, "name");
 			json_t *desc = json_object_get(root, "description");
 			json_t *is_private = json_object_get(root, "is_private");
-			json_t *file = json_object_get(root, "file");
+			json_t *file = json_object_get(root, "filename");
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
@@ -1340,6 +1362,14 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
 				goto error;
 			}
+			FILE *audiofile = fopen(filename, "rb");
+			if(!audiofile) {
+				JANUS_LOG(LOG_ERR, "Can't add 'ondemand' stream, no such file '%s'...\n", filename);
+				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, no such file '%s'\n", filename);
+				goto error;
+			}
+			fclose(audiofile);
 			if(id == NULL) {
 				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 			} else {
