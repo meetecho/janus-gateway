@@ -437,8 +437,13 @@ int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len) {
 	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)
 		ctx->base_seq = seq_number;
 
-	if(seq_number < ctx->last_seq_nr)
+	if(seq_number < ctx->last_seq_nr) {
+		if(ctx->last_seq_nr - seq_number < 1000) {
+			/* FIXME Just a retransmission, not a reset, ignore */
+			return 0;
+		}
 		ctx->seq_cycle++;
+	}
 	ctx->last_seq_nr = seq_number;
 	ctx->received++;
 	uint32_t rtp_expected = 0x0;

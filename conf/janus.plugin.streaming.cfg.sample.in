@@ -37,6 +37,10 @@
 ; automatically downloads a couple of files (radio.alaw, music.mulaw)
 ; to the plugins/streams folder. 
 
+[general]
+;admin_key = supersecret		; If set, mountpoints can be created via API
+								; only if this key is provided in the request
+
 [gstreamer-sample]
 type = rtp
 id = 1

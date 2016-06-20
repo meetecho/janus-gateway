@@ -33,6 +33,12 @@
  * infrastructure than Janus, and yet you also want to have text-based
  * communication (e.g., to add a chatroom to an audio or video conference).
  * 
+ * Notice that, in general, all users can create rooms. If you want to
+ * limit this functionality, you can configure an admin \c admin_key in
+ * the plugin settings. When configured, only "create" requests that
+ * include the correct \c admin_key value in an "admin_key" property
+ * will succeed, and will be rejected otherwise.
+ * 
  * \section textroomapi Text Room API
  * TBD.
  * 
@@ -56,8 +62,8 @@
 
 
 /* Plugin information */
-#define JANUS_TEXTROOM_VERSION			1
-#define JANUS_TEXTROOM_VERSION_STRING	"0.0.1"
+#define JANUS_TEXTROOM_VERSION			2
+#define JANUS_TEXTROOM_VERSION_STRING	"0.0.2"
 #define JANUS_TEXTROOM_DESCRIPTION		"This is a plugin implementing a text-only room for Janus, using DataChannels."
 #define JANUS_TEXTROOM_NAME				"JANUS TextRoom plugin"
 #define JANUS_TEXTROOM_AUTHOR			"Meetecho s.r.l."
@@ -128,6 +134,9 @@ static struct janus_json_parameter transaction_parameters[] = {
 };
 static struct janus_json_parameter room_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter adminkey_parameters[] = {
+	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
 	{"description", JSON_STRING, 0},
@@ -203,6 +212,7 @@ typedef struct janus_textroom_room {
 static GHashTable *rooms;
 static janus_mutex rooms_mutex;
 static GList *old_rooms;
+static char *admin_key = NULL;
 
 typedef struct janus_textroom_session {
 	janus_plugin_session *handle;
@@ -362,10 +372,15 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
+		/* Any admin key to limit who can "create"? */
+		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
+		if(key != NULL && key->value != NULL)
+			admin_key = g_strdup(key->value);
+		/* Iterate on all rooms */
 		GList *cl = janus_config_get_categories(config);
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
-			if(cat->name == NULL) {
+			if(cat->name == NULL || !strcasecmp(cat->name, "general")) {
 				cl = cl->next;
 				continue;
 			}
@@ -474,6 +489,9 @@ void janus_textroom_destroy(void) {
 #ifdef HAVE_LIBCURL	
 	curl_global_cleanup();
 #endif
+
+	janus_config_destroy(config);
+	g_free(admin_key);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -694,6 +712,12 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		json_object_set_new(msg, "textroom", json_string("message"));
 		json_object_set_new(msg, "room", json_integer(room_id));
 		json_object_set_new(msg, "from", json_string(participant->username));
+		time_t timer;
+		time(&timer);
+		struct tm *tm_info = localtime(&timer);
+		char msgTime[64];
+		strftime(msgTime, sizeof(msgTime), "%FT%T%z", tm_info);
+		json_object_set_new(msg, "date", json_string(msgTime));
 		json_object_set_new(msg, "text", json_string(message));
 		if(username || usernames)
 			json_object_set_new(msg, "whisper", json_true());
@@ -1018,6 +1042,18 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
+		if(admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto error;
+		}
 		json_t *room = json_object_get(root, "room");
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");

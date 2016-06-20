@@ -152,6 +152,7 @@ static struct janus_json_parameter proxy_parameters[] = {
 };
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"autoack", JANUS_JSON_BOOL, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"srtp", JSON_STRING, 0}
 };
@@ -297,6 +298,7 @@ typedef struct janus_sip_account {
 typedef struct janus_sip_media {
 	char *remote_ip;
 	int ready:1;
+	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
 	int has_audio:1;
 	int audio_rtp_fd, audio_rtcp_fd;
@@ -469,6 +471,7 @@ static int janus_sip_srtp_set_remote(janus_sip_session *session, gboolean video,
 static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	if(session == NULL)
 		return;
+	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -1002,6 +1005,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->callid = NULL;
 	session->media.remote_ip = NULL;
 	session->media.ready = 0;
+	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -1092,6 +1096,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
 	if(session->callee) {
 		json_object_set_new(info, "callee", json_string(session->callee ? session->callee : "??"));
+		json_object_set_new(info, "auto-ack", json_string(session->media.autoack ? "yes" : "no"));
 		json_object_set_new(info, "srtp-required", json_string(session->media.require_srtp ? "yes" : "no"));
 		json_object_set_new(info, "sdes-local", json_string(session->media.has_srtp_local ? "yes" : "no"));
 		json_object_set_new(info, "sdes-remote", json_string(session->media.has_srtp_remote ? "yes" : "no"));
@@ -1694,6 +1699,9 @@ static void *janus_sip_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			json_t *uri = json_object_get(root, "uri");
+			/* Check if we need to ACK manually (e.g., for the Record-Route hack) */
+			json_t *autoack = json_object_get(root, "autoack");
+			gboolean do_autoack = autoack ? json_is_true(autoack) : TRUE;
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
 			custom_headers[0] = '\0';
@@ -1836,6 +1844,7 @@ static void *janus_sip_handler(void *data) {
 			session->callee = g_strdup(uri_text);
 			session->callid = g_strdup(callid);
 			g_hash_table_insert(callids, session->callid, session);
+			session->media.autoack = do_autoack;
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
@@ -1844,7 +1853,7 @@ static void *janus_sip_handler(void *data) {
 				NUTAG_PROXY(session->account.proxy),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
-				NUTAG_AUTOACK(0),
+				NUTAG_AUTOACK(do_autoack),
 				TAG_END());
 			g_free(sdp);
 			sdp_parser_free(parser);
@@ -2665,12 +2674,14 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sdp_parser_free(parser);
 				break;
 			}
-			/* Send an ACK */
-			char *route = sip->sip_record_route ? url_as_string(session->stack->s_home, sip->sip_record_route->r_url) : NULL;
-			JANUS_LOG(LOG_WARN, "Sending ACK (route=%s)\n", route ? route : "none");
-			nua_ack(nh,
-				TAG_IF(route, NTATAG_DEFAULT_PROXY(route)),
-				TAG_END());
+			/* Send an ACK, if needed */
+			if(!session->media.autoack) {
+				char *route = sip->sip_record_route ? url_as_string(session->stack->s_home, sip->sip_record_route->r_url) : NULL;
+				JANUS_LOG(LOG_INFO, "Sending ACK (route=%s)\n", route ? route : "none");
+				nua_ack(nh,
+					TAG_IF(route, NTATAG_DEFAULT_PROXY(route)),
+					TAG_END());
+			}
 			/* Parse SDP */
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
 			session->status = janus_sip_call_status_incall;

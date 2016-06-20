@@ -7,6 +7,10 @@
 ; record = true|false (whether this room should be recorded, default=false)
 ; record_file = /path/to/recording.wav (where to save the recording)
 
+[general]
+;admin_key = supersecret		; If set, rooms can be created via API only
+								; if this key is provided in the request
+
 [1234]
 description = Demo Room
 secret = adminpwd
