@@ -109,6 +109,12 @@ rec_dir = <folder where recordings should be stored, when enabled>
  * publishers to be muxed in the single viewer PeerConnection; finally,
  * \c leave allows you to leave a video room for good.
  * 
+ * Notice that, in general, all users can create rooms. If you want to
+ * limit this functionality, you can configure an admin \c admin_key in
+ * the plugin settings. When configured, only "create" requests that
+ * include the correct \c admin_key value in an "admin_key" property
+ * will succeed, and will be rejected otherwise.
+ * 
  * Actual API docs: TBD.
  * 
  * \ingroup plugins
@@ -133,8 +139,8 @@ rec_dir = <folder where recordings should be stored, when enabled>
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			6
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.6"
+#define JANUS_VIDEOROOM_VERSION			7
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.7"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -197,6 +203,9 @@ janus_plugin *create(void) {
 /* Parameter validation */
 static struct janus_json_parameter request_parameters[] = {
 	{"request", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter adminkey_parameters[] = {
+	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -382,6 +391,7 @@ typedef struct janus_videoroom {
 static GHashTable *rooms;
 static janus_mutex rooms_mutex;
 static GList *old_rooms;
+static char *admin_key = NULL;
 static void janus_videoroom_free(janus_videoroom *room);
 
 typedef struct janus_videoroom_session {
@@ -742,10 +752,15 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
+		/* Any admin key to limit who can "create"? */
+		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
+		if(key != NULL && key->value != NULL)
+			admin_key = g_strdup(key->value);
+		/* Iterate on all rooms */
 		GList *cl = janus_config_get_categories(config);
 		while(cl != NULL) {
 			janus_config_category *cat = (janus_config_category *)cl->data;
-			if(cat->name == NULL) {
+			if(cat->name == NULL || !strcasecmp(cat->name, "general")) {
 				cl = cl->next;
 				continue;
 			}
@@ -927,6 +942,7 @@ void janus_videoroom_destroy(void) {
 	messages = NULL;
 
 	janus_config_destroy(config);
+	g_free(admin_key);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -1241,6 +1257,18 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto error;
+		if(admin_key != NULL) {
+			/* An admin key was specified: make sure it was provided, and that it's valid */
+			JANUS_VALIDATE_JSON_OBJECT(root, adminkey_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			JANUS_CHECK_SECRET(admin_key, root, "admin_key", error_code, error_cause,
+				JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+			if(error_code != 0)
+				goto error;
+		}
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
 		json_t *secret = json_object_get(root, "secret");
