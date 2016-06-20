@@ -228,6 +228,7 @@ static struct janus_json_parameter ondemand_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0}
 };
+#ifdef HAVE_LIBCURL
 static struct janus_json_parameter rtsp_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"name", JSON_STRING, 0},
@@ -237,6 +238,7 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0}
 };
+#endif
 static struct janus_json_parameter rtp_audio_parameters[] = {
 	{"audiomcast", JSON_STRING, 0},
 	{"audioport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
