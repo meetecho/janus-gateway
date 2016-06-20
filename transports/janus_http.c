@@ -946,26 +946,28 @@ void janus_http_session_over(janus_transport_session *transport, guint64 session
 
 /* Connection notifiers */
 int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
-	char *ip = inet_ntoa(sin->sin_addr);
+	char *ip = janus_address_to_ip((struct sockaddr *)addr);
 	JANUS_LOG(LOG_HUGE, "New connection on REST API: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_http_is_allowed(ip, FALSE)) {
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the Janus API interface\n", ip);
+		g_free(ip);
 		return MHD_NO;
 	}
+	g_free(ip);
 	return MHD_YES;
 }
 
 int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
-	char *ip = inet_ntoa(sin->sin_addr);
+	char *ip = janus_address_to_ip((struct sockaddr *)addr);
 	JANUS_LOG(LOG_HUGE, "New connection on admin/monitor: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_http_is_allowed(ip, TRUE)) {
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the admin/monitor interface\n", ip);
+		g_free(ip);
 		return MHD_NO;
 	}
+	g_free(ip);
 	return MHD_YES;
 }
 
@@ -1023,7 +1025,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		goto done;
 	}
 	if (!strcasecmp(method, "OPTIONS")) {
-		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO); 
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1044,7 +1046,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		}
 		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1060,7 +1062,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		path = g_strsplit(basepath[1], "/", -1);
 		if(path == NULL || path[1] == NULL) {
 			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1095,7 +1097,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	}
 	if(session_path != NULL && handle_path != NULL && path[3] != NULL && strlen(path[3]) > 0) {
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
-		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1141,7 +1143,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	if(session_path != NULL && !strcmp(session_path, "info")) {
 		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
 		if(strcasecmp(method, "GET")) {
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1166,7 +1168,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		session_id = session_path ? g_ascii_strtoll(session_path, NULL, 10) : 0;
 		if(session_id < 1) {
 			JANUS_LOG(LOG_ERR, "Invalid session %s\n", session_path);
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1201,7 +1203,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			}
 			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
 			if(!secret_authorized && !token_authorized) {
-				response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+				response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 				if(msg->acrm)
 					MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1229,7 +1231,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			char *location = (char *)g_malloc0(strlen(ws_path) + strlen(session_path) + 2);
 			g_sprintf(location, "%s/%s", ws_path, session_path);
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Location", location);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
@@ -1246,7 +1248,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		janus_mutex_unlock(&sessions_mutex);
 		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1408,7 +1410,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	/* Parse request */
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
 		JANUS_LOG(LOG_ERR, "Unsupported method...\n");
-		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1419,7 +1421,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		return ret;
 	}
 	if (!strcasecmp(method, "OPTIONS")) {
-		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO); 
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1440,7 +1442,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		}
 		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1456,7 +1458,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		path = g_strsplit(basepath[1], "/", -1);
 		if(path == NULL || path[1] == NULL) {
 			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
-			response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1491,7 +1493,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	}
 	if(session_path != NULL && handle_path != NULL && path[3] != NULL && strlen(path[3]) > 0) {
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
-		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
@@ -1718,11 +1720,10 @@ int janus_http_return_success(janus_transport_session *ts, char *payload) {
 		g_free(payload);
 		return MHD_NO;
 	}
-	struct MHD_Response *response = MHD_create_response_from_data(
+	struct MHD_Response *response = MHD_create_response_from_buffer(
 		strlen(payload),
 		(void*)payload,
-		MHD_YES,
-		MHD_NO);
+		MHD_RESPMEM_MUST_FREE);
 	MHD_add_response_header(response, "Content-Type", "application/json");
 	MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 	if(msg->acrm)
