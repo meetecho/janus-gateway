@@ -24,6 +24,7 @@
 #include "sctp.h"
 #include "rtcp.h"
 #include "utils.h"
+#include "refcount.h"
 #include "plugins/plugin.h"
 
 
