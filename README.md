@@ -82,13 +82,11 @@ script if you're installing on a x86_64 distribution.
 
 If you want to make use of BoringSSL instead of OpenSSL for any reason
 (read [here](https://github.com/meetecho/janus-gateway/issues/136) for
-some background on this), you'll have to manually install a specific
-version of the library to a specific location. Use the following steps:
+some background on this), you'll have to manually install it to a
+specific location. Use the following steps:
 
 	git clone https://boringssl.googlesource.com/boringssl
 	cd boringssl
-	# We need a specific revision
-	git checkout 12fe1b25ead258858309d22ffa9e1f9a316358d7
 	# Don't barf on errors
 	sed -i s/" -Werror"//g CMakeLists.txt
 	# Build
