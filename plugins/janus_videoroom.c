@@ -815,7 +815,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->fir_freq = atol(firfreq->value);
 			videoroom->acodec = JANUS_VIDEOROOM_OPUS;
 			if(audiocodec && audiocodec->value) {
-				if(!strcasecmp(audiocodec->value, ""))
+				if(!strcasecmp(audiocodec->value, "opus"))
 					videoroom->acodec = JANUS_VIDEOROOM_OPUS;
 				else if(!strcasecmp(audiocodec->value, "isac32"))
 					videoroom->acodec = JANUS_VIDEOROOM_ISAC_32K;
@@ -823,6 +823,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 					videoroom->acodec = JANUS_VIDEOROOM_ISAC_16K;
 				else if(!strcasecmp(audiocodec->value, "pcmu"))
 					videoroom->acodec = JANUS_VIDEOROOM_PCMU;
+				else if(!strcasecmp(audiocodec->value, "pcma"))
+					videoroom->acodec = JANUS_VIDEOROOM_PCMA;
 				else if(!strcasecmp(audiocodec->value, "pcma"))
 					videoroom->acodec = JANUS_VIDEOROOM_PCMA;
 				else {
