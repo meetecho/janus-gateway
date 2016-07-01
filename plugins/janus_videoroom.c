@@ -825,8 +825,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 					videoroom->acodec = JANUS_VIDEOROOM_PCMU;
 				else if(!strcasecmp(audiocodec->value, "pcma"))
 					videoroom->acodec = JANUS_VIDEOROOM_PCMA;
-				else if(!strcasecmp(audiocodec->value, "pcma"))
-					videoroom->acodec = JANUS_VIDEOROOM_PCMA;
 				else {
 					JANUS_LOG(LOG_WARN, "Unsupported audio codec '%s', falling back to OPUS\n", audiocodec->value);
 					videoroom->acodec = JANUS_VIDEOROOM_OPUS;
