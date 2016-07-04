@@ -158,7 +158,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			uint8_t vp8pd = *buffer;
 			uint8_t xbit = (vp8pd & 0x80);
 			uint8_t sbit = (vp8pd & 0x10);
-            /* Read the Extended control bits octet */
+			/* Read the Extended control bits octet */
 			if (xbit) {
 				buffer++;
 				vp8pd = *buffer;
@@ -167,7 +167,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 				uint8_t tbit = (vp8pd & 0x20);
 				uint8_t kbit = (vp8pd & 0x10);
 				if(ibit) {
-                    /* Read the PictureID octet */
+					/* Read the PictureID octet */
 					buffer++;
 					vp8pd = *buffer;
 					uint16_t picid = vp8pd, wholepicid = picid;
@@ -180,12 +180,12 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 					}
 				}
 				if(lbit) {
-                    /* Read the TL0PICIDX octet */
+					/* Read the TL0PICIDX octet */
 					buffer++;
 					vp8pd = *buffer;
 				}
 				if(tbit || kbit) {
-                    /* Read the TID/KEYIDX octet */
+					/* Read the TID/KEYIDX octet */
 					buffer++;
 					vp8pd = *buffer;
 				}
@@ -197,9 +197,9 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 				vp8ph = ntohl(vp8ph);
 				uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
 				if(!pbit) {
-                    /* Get resolution */
+					/* Get resolution */
 					unsigned char *c = (unsigned char *)buffer+3;
-                    /* vet via sync code */
+					/* vet via sync code */
 					if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
 						JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
 					} else {
@@ -357,7 +357,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 					uint8_t tbit = (vp8pd & 0x20);
 					uint8_t kbit = (vp8pd & 0x10);
 					if(ibit) {
-                        /* Read the PictureID octet */
+						/* Read the PictureID octet */
 						buffer++;
 						len--;
 						skipped++;
@@ -374,14 +374,14 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 						}
 					}
 					if(lbit) {
-                        /* Read the TL0PICIDX octet */
+						/* Read the TL0PICIDX octet */
 						buffer++;
 						len--;
 						skipped++;
 						vp8pd = *buffer;
 					}
 					if(tbit || kbit) {
-                        /* Read the TID/KEYIDX octet */
+						/* Read the TID/KEYIDX octet */
 						buffer++;
 						len--;
 						skipped++;
@@ -396,9 +396,9 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 					uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
 					if(!pbit) {
 						keyFrame = 1;
-                        /* Get resolution */
+						/* Get resolution */
 						unsigned char *c = buffer+3;
-                        /* vet via sync code */
+						/* vet via sync code */
 						if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
 							JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
 						} else {
