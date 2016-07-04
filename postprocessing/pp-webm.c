@@ -190,7 +190,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 					vp8pd = *buffer;
 				}
 			}
-            buffer++;	/* Now we're in the payload */
+			buffer++;	/* Now we're in the payload */
 			if(sbit) {
 				unsigned long int vp8ph = 0;
 				memcpy(&vp8ph, buffer, 4);
@@ -388,7 +388,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 						vp8pd = *buffer;
 					}
 				}
-                buffer++;	/* Now we're in the payload */
+				buffer++;	/* Now we're in the payload */
 				if(sbit) {
 					unsigned long int vp8ph = 0;
 					memcpy(&vp8ph, buffer, 4);
@@ -407,7 +407,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 							int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
 							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
 							JANUS_LOG(LOG_INFO, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-                            /* Is this the first keyframe we find? */
+							/* Is this the first keyframe we find? */
 							if(keyframe_ts == 0) {
 								keyframe_ts = tmp->ts;
 								JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
