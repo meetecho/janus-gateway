@@ -1302,9 +1302,7 @@ static void
 janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 		guint nacks, int video, int uplink, gint64 now) {
 	/* We keep the counters in different janus_ice_stats objects, depending on the direction */
-	gint64 last_slowlink_time = uplink ? component->in_stats.last_slowlink_time : component->out_stats.last_slowlink_time;
 	gint64 sl_nack_period_ts = uplink ? component->in_stats.sl_nack_period_ts : component->out_stats.sl_nack_period_ts;
-	guint sl_nack_recent_cnt = uplink ? component->in_stats.sl_nack_recent_cnt : component->out_stats.sl_nack_recent_cnt;
 	/* Is the NACK too old? */
 	if(now-sl_nack_period_ts > 2*G_USEC_PER_SEC) {
 		/* Old nacks too old, don't count them */
@@ -1316,6 +1314,8 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 			component->out_stats.sl_nack_recent_cnt = 0;
 		}
 	}
+	gint64 last_slowlink_time = uplink ? component->in_stats.last_slowlink_time : component->out_stats.last_slowlink_time;
+	guint sl_nack_recent_cnt = uplink ? component->in_stats.sl_nack_recent_cnt : component->out_stats.sl_nack_recent_cnt;
 	if(uplink) {
 		component->in_stats.sl_nack_recent_cnt += nacks;
 	} else {
