@@ -90,9 +90,9 @@ guint64 janus_random_uint64(void) {
 }
 
 guint64 *janus_uint64_dup(guint64 num) {
-	guint64 *dup = g_malloc0(sizeof(guint64));
-	memcpy(dup, &num, sizeof(num));
-	return dup;
+	guint64 *numdup = g_malloc0(sizeof(guint64));
+	memcpy(numdup, &num, sizeof(num));
+	return numdup;
 }
 
 void janus_flags_reset(janus_flags *flags) {
