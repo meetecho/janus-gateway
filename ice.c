@@ -248,19 +248,16 @@ uint16_t rtp_range_max = 0;
 
 
 /* Helpers to demultiplex protocols */
-gboolean janus_is_dtls(gchar *buf);
-gboolean janus_is_dtls(gchar *buf) {
+static gboolean janus_is_dtls(gchar *buf) {
 	return ((*buf >= 20) && (*buf <= 64));
 }
 
-gboolean janus_is_rtp(gchar *buf);
-gboolean janus_is_rtp(gchar *buf) {
+static gboolean janus_is_rtp(gchar *buf) {
 	rtp_header *header = (rtp_header *)buf;
 	return ((header->type < 64) || (header->type >= 96));
 }
 
-gboolean janus_is_rtcp(gchar *buf);
-gboolean janus_is_rtcp(gchar *buf) {
+static gboolean janus_is_rtcp(gchar *buf) {
 	rtp_header *header = (rtp_header *)buf;
 	return ((header->type >= 64) && (header->type < 96));
 }
@@ -885,8 +882,7 @@ const gchar *janus_get_ice_state_name(gint state) {
 }
 
 /* Stats */
-void janus_ice_stats_queue_free(gpointer data);
-void janus_ice_stats_queue_free(gpointer data) {
+static void janus_ice_stats_queue_free(gpointer data) {
 	janus_ice_stats_item *s = (janus_ice_stats_item *)data;
 	g_free(s);
 }
@@ -910,6 +906,9 @@ void janus_ice_stats_reset(janus_ice_stats *stats) {
 	stats->video_nacks = 0;
 	stats->data_packets = 0;
 	stats->data_bytes = 0;
+	stats->last_slowlink_time = 0;
+	stats->sl_nack_period_ts = 0;
+	stats->sl_nack_recent_cnt = 0;
 }
 
 
@@ -1321,29 +1320,62 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 #define SLOW_LINK_NACKS_PER_SEC 8
 static void
 janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
-                       guint nacks, int video, int uplink, gint64 now           ) {
-	if(now - component->sl_nack_period_ts > 2 * G_USEC_PER_SEC) {
-		/* old nacks too old, don't count them */
-		component->sl_nack_period_ts = now;
-		component->sl_nack_recent_cnt = 0;
+		guint nacks, int video, int uplink, gint64 now) {
+	/* We keep the counters in different janus_ice_stats objects, depending on the direction */
+	gint64 sl_nack_period_ts = uplink ? component->in_stats.sl_nack_period_ts : component->out_stats.sl_nack_period_ts;
+	/* Is the NACK too old? */
+	if(now-sl_nack_period_ts > 2*G_USEC_PER_SEC) {
+		/* Old nacks too old, don't count them */
+		if(uplink) {
+			component->in_stats.sl_nack_period_ts = now;
+			component->in_stats.sl_nack_recent_cnt = 0;
+		} else {
+			component->out_stats.sl_nack_period_ts = now;
+			component->out_stats.sl_nack_recent_cnt = 0;
+		}
 	}
-	component->sl_nack_recent_cnt += nacks;
-	if(component->sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC
-			&& now - component->last_slowlink_time > 1 * G_USEC_PER_SEC) {
+	if(uplink) {
+		component->in_stats.sl_nack_recent_cnt += nacks;
+	} else {
+		component->out_stats.sl_nack_recent_cnt += nacks;
+	}
+	gint64 last_slowlink_time = uplink ? component->in_stats.last_slowlink_time : component->out_stats.last_slowlink_time;
+	guint sl_nack_recent_cnt = uplink ? component->in_stats.sl_nack_recent_cnt : component->out_stats.sl_nack_recent_cnt;
+	if((sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC) && (now-last_slowlink_time > 1*G_USEC_PER_SEC)) {
+		/* Tell the plugin */
 		janus_plugin *plugin = (janus_plugin *)handle->app;
 		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle))
 			plugin->slow_link(handle->app_handle, uplink, video);
-		component->last_slowlink_time = now;
-		component->sl_nack_period_ts = now;
-		component->sl_nack_recent_cnt = 0;
-		/* Also notify event handlers */
-		if(janus_events_is_enabled()) {
-			janus_session *session = (janus_session *)handle->session;
-			json_t *info = json_object();
-			json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
-			json_object_set_new(info, "slow_link", json_string(uplink ? "uplink" : "downlink"));
-			json_object_set_new(info, "nacks_lastsec", json_integer(component->sl_nack_recent_cnt));
-			janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, info);
+		/* Notify the user/application too */
+		janus_session *session = (janus_session *)handle->session;
+		if(session != NULL) {
+			json_t *event = json_object();
+			json_object_set_new(event, "janus", json_string("slowlink"));
+			json_object_set_new(event, "session_id", json_integer(session->session_id));
+			json_object_set_new(event, "sender", json_integer(handle->handle_id));
+			json_object_set_new(event, "uplink", uplink ? json_true() : json_false());
+			json_object_set_new(event, "nacks", json_integer(sl_nack_recent_cnt));
+			/* Send the event */
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+			janus_session_notify_event(session->session_id, event);
+			/* Finally, notify event handlers */
+			if(janus_events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "media", json_string(video ? "video" : "audio"));
+				json_object_set_new(info, "slow_link", json_string(uplink ? "uplink" : "downlink"));
+				json_object_set_new(info, "nacks_lastsec", json_integer(sl_nack_recent_cnt));
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_MEDIA, session->session_id, handle->handle_id, info);
+			}
+		}
+		/* Update the counters */
+		if(uplink) {
+			component->in_stats.last_slowlink_time = now;
+			component->in_stats.sl_nack_period_ts = now;
+			component->in_stats.sl_nack_recent_cnt = 0;
+		} else {
+			component->out_stats.last_slowlink_time = now;
+			component->out_stats.sl_nack_period_ts = now;
+			component->out_stats.sl_nack_recent_cnt = 0;
 		}
 	}
 }
@@ -2725,9 +2757,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->nack_sent_recent_cnt = 0;
 		audio_rtp->last_seqs_audio = NULL;
 		audio_rtp->last_seqs_video = NULL;
-		audio_rtp->last_slowlink_time = 0;
-		audio_rtp->sl_nack_period_ts = 0;
-		audio_rtp->sl_nack_recent_cnt = 0;
 		janus_ice_stats_reset(&audio_rtp->in_stats);
 		janus_ice_stats_reset(&audio_rtp->out_stats);
 		janus_mutex_init(&audio_rtp->mutex);
@@ -2786,9 +2815,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->retransmit_buffer = NULL;
 			audio_rtcp->retransmit_log_ts = 0;
 			audio_rtcp->retransmit_recent_cnt = 0;
-			audio_rtcp->last_slowlink_time = 0;
-			audio_rtcp->sl_nack_period_ts = 0;
-			audio_rtcp->sl_nack_recent_cnt = 0;
 			janus_ice_stats_reset(&audio_rtcp->in_stats);
 			janus_ice_stats_reset(&audio_rtcp->out_stats);
 			janus_mutex_init(&audio_rtcp->mutex);
@@ -2883,9 +2909,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->nack_sent_recent_cnt = 0;
 		video_rtp->last_seqs_audio = NULL;
 		video_rtp->last_seqs_video = NULL;
-		video_rtp->last_slowlink_time = 0;
-		video_rtp->sl_nack_period_ts = 0;
-		video_rtp->sl_nack_recent_cnt = 0;
 		janus_ice_stats_reset(&video_rtp->in_stats);
 		janus_ice_stats_reset(&video_rtp->out_stats);
 		janus_mutex_init(&video_rtp->mutex);
@@ -2944,9 +2967,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->retransmit_buffer = NULL;
 			video_rtcp->retransmit_log_ts = 0;
 			video_rtcp->retransmit_recent_cnt = 0;
-			video_rtcp->last_slowlink_time = 0;
-			video_rtcp->sl_nack_period_ts = 0;
-			video_rtcp->sl_nack_recent_cnt = 0;
 			janus_ice_stats_reset(&video_rtcp->in_stats);
 			janus_ice_stats_reset(&video_rtcp->out_stats);
 			janus_mutex_init(&video_rtcp->mutex);
@@ -3034,9 +3054,6 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->retransmit_buffer = NULL;
 		data_component->retransmit_log_ts = 0;
 		data_component->retransmit_recent_cnt = 0;
-		data_component->last_slowlink_time = 0;
-		data_component->sl_nack_period_ts = 0;
-		data_component->sl_nack_recent_cnt = 0;
 		janus_ice_stats_reset(&data_component->in_stats);
 		janus_ice_stats_reset(&data_component->out_stats);
 		janus_mutex_init(&data_component->mutex);

@@ -18,7 +18,7 @@ LT_INIT
 case "$host_os" in
 darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include"
-	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib"
+	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
 ;;
@@ -82,6 +82,12 @@ AC_ARG_ENABLE([boringssl],
               [],
               [enable_boringssl=no])
 
+AC_ARG_ENABLE([dtls-settimeout],
+              [AS_HELP_STRING([--enable-dtls-settimeout],
+                              [Use DTLSv1_set_initial_timeout_duration (only available in recent BoringSSL versions)])],
+              [],
+              [enable_dtls_settimeout=no])
+
 AC_ARG_ENABLE([turn-rest-api],
               [AS_HELP_STRING([--disable-turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
@@ -107,11 +113,17 @@ AS_IF([test "x$enable_boringssl" = "xyes"],
        AC_SUBST(BORINGSSL_CFLAGS)
 	   BORINGSSL_LIBS=" -L/opt/boringssl/lib";
        AC_SUBST(BORINGSSL_LIBS)
-	   AC_CHECK_HEADERS([openssl/opensslfeatures.h],
+	   AC_CHECK_HEADERS([openssl/opensslconf.h],
 	                    [],
 	                    [AC_MSG_ERROR([BoringSSL headers not found in /opt/boringssl, use --disable-boringssl if you want to use OpenSSL instead])])
       ])
 AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x$enable_boringssl" = "xyes"])
+
+AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
+      [
+      AC_DEFINE(HAVE_DTLS_SETTIMEOUT)
+      AC_MSG_NOTICE([Assuming DTLSv1_set_initial_timeout_duration is available])
+      ])
 
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
