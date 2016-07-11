@@ -487,6 +487,11 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
+#ifdef HAVE_DTLS_SETTIMEOUT
+	guint ms = 100;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %u\n", handle->handle_id, ms);
+	DTLSv1_set_initial_timeout_duration(dtls->ssl, ms);
+#endif
 	dtls->ready = 0;
 #ifdef HAVE_SCTP
 	dtls->sctp = NULL;

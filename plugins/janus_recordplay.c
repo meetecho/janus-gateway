@@ -376,6 +376,7 @@ typedef struct janus_recordplay_recording {
 	char *date;			/* Time of the recording */
 	char *arc_file;		/* Audio file name */
 	char *vrc_file;		/* Video file name */
+	gboolean completed;	/* Whether this recording was completed or still going on */
 	GList *viewers;		/* List of users watching this recording */
 	gint64 destroyed;	/* Lazy timestamp to mark recordings as destroyed */
 	janus_mutex mutex;	/* Mutex for this recording */
@@ -774,6 +775,8 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		g_hash_table_iter_init(&iter, recordings);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_recordplay_recording *rec = value;
+			if(!rec->completed)	/* Ongoing recording, skip */
+				continue;
 			json_t *ml = json_object();
 			json_object_set_new(ml, "id", json_integer(rec->id));
 			json_object_set_new(ml, "name", json_string(rec->name));
@@ -1108,6 +1111,7 @@ static void *janus_recordplay_handler(void *data) {
 			rec->name = g_strdup(name_text);
 			rec->viewers = NULL;
 			rec->destroyed = 0;
+			rec->completed = FALSE;
 			janus_mutex_init(&rec->mutex);
 			/* Create a date string */
 			time_t t = time(NULL);
@@ -1333,6 +1337,7 @@ static void *janus_recordplay_handler(void *data) {
 					/* Write to the file now */
 					fwrite(nfo, strlen(nfo), sizeof(char), file);
 					fclose(file);
+					session->recording->completed = TRUE;
 				}
 			}
 			/* Done! */
@@ -1491,6 +1496,7 @@ void janus_recordplay_update_recordings_list(void) {
 		}
 		rec->viewers = NULL;
 		rec->destroyed = 0;
+		rec->completed = TRUE;
 		janus_mutex_init(&rec->mutex);
 		
 		janus_config_destroy(nfo);
