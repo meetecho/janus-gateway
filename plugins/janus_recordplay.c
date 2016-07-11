@@ -377,6 +377,7 @@ typedef struct janus_recordplay_recording {
 	char *arc_file;				/* Audio file name */
 	char *vrc_file;				/* Video file name */
 	GList *viewers;				/* List of users watching this recording */
+	volatile gint completed;	/* Whether this recording was completed or still going on */
 	volatile gint destroyed;	/* Whether this recording has been marked as destroyed */
 	janus_refcount ref;			/* Reference counter */
 	janus_mutex mutex;			/* Mutex for this recording */
@@ -782,6 +783,8 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		g_hash_table_iter_init(&iter, recordings);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_recordplay_recording *rec = value;
+			if(!g_atomic_int_get(&rec->completed))	/* Ongoing recording, skip */
+				continue;
 			janus_refcount_increase(&rec->ref);
 			json_t *ml = json_object();
 			json_object_set_new(ml, "id", json_integer(rec->id));
@@ -1147,6 +1150,7 @@ static void *janus_recordplay_handler(void *data) {
 			rec->name = g_strdup(name_text);
 			rec->viewers = NULL;
 			g_atomic_int_set(&rec->destroyed, 0);
+			g_atomic_int_set(&rec->completed, 0);
 			janus_refcount_init(&rec->ref, janus_recordplay_recording_free);
 			janus_refcount_increase(&rec->ref);	/* This is for the user writing the recording */
 			janus_mutex_init(&rec->mutex);
@@ -1379,6 +1383,7 @@ static void *janus_recordplay_handler(void *data) {
 						/* Write to the file now */
 						fwrite(nfo, strlen(nfo), sizeof(char), file);
 						fclose(file);
+						g_atomic_int_set(&session->recording->completed, 1);
 					}
 				} else {
 					JANUS_LOG(LOG_WARN, "Got a stop but missing recorder/recording! No .nfo file generated...\n");
@@ -1549,6 +1554,7 @@ void janus_recordplay_update_recordings_list(void) {
 		}
 		rec->viewers = NULL;
 		g_atomic_int_set(&rec->destroyed, 0);
+		g_atomic_int_set(&rec->completed, 1);
 		janus_refcount_init(&rec->ref, janus_recordplay_recording_free);
 		janus_mutex_init(&rec->mutex);
 		
