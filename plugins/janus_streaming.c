@@ -2966,8 +2966,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	g_free(data.buffer);
 	data.buffer = g_malloc0(1);
 	data.size = 0;		
-	sprintf(uri, "%s/", url);
-	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
+	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, url);
 	curl_easy_setopt(curl, CURLOPT_RANGE, "0.000-");
 	curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_PLAY);		
 	res = curl_easy_perform(curl);
