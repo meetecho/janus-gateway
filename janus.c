@@ -3086,7 +3086,7 @@ gint main(int argc, char *argv[])
 				if(pollfds.revents & POLLERR || pollfds.revents & POLLHUP)
 					break;
 				if(pollfds.revents & POLLIN) {
-					read(pipefd[0], &code, sizeof(int));
+					res = read(pipefd[0], &code, sizeof(int));
 					break;
 				}
 			}
