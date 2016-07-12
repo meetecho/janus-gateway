@@ -58,6 +58,24 @@ gboolean janus_is_true(const char *value);
  * @returns true if the strings are the same, false otherwise */
 gboolean janus_strcmp_const_time(const void *str1, const void *str2);
 
+/*! \brief Helper to generate random 32-bit unsigned integers (useful for SSRCs, etc.)
+ * @note Currently just wraps g_random_int()
+ * @returns A random 32-bit unsigned integer */
+guint32 janus_random_uint32(void);
+
+/*! \brief Helper to generate random 64-bit unsigned integers (useful for Janus IDs)
+ * @returns A random 64-bit unsigned integer */
+guint64 janus_random_uint64(void);
+
+/*! \brief Helper to generate an allocated copy of a guint64 number
+ * @note While apparently silly, this is needed in order to make sure guint64 values
+ * used as keys in GHashTable operations are not lost: using temporary guint64 numbers
+ * in a g_hash_table_insert, for instance, will cause the key to contain garbage as
+ * soon as the temporary variable is lost, and all opererations on the key to fail
+ * @param num The guint64 number to duplicate
+ * @returns A pointer to a guint64 number, if successful, NULL otherwise */
+guint64 *janus_uint64_dup(guint64 num);
+
 /** @name Flags helper methods
  */
 ///@{

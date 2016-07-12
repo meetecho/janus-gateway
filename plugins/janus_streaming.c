@@ -356,7 +356,7 @@ typedef struct janus_streaming_codecs {
 } janus_streaming_codecs;
 
 typedef struct janus_streaming_mountpoint {
-	gint64 id;
+	guint64 id;
 	char *name;
 	char *description;
 	gboolean is_private;
@@ -558,7 +558,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 	janus_mutex_init(&config_mutex);
 	
-	mountpoints = g_hash_table_new(NULL, NULL);
+	mountpoints = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	janus_mutex_init(&mountpoints_mutex);
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
@@ -630,7 +630,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
 				} else {
 					janus_mutex_lock(&mountpoints_mutex);
-					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					guint64 mpid = g_ascii_strtoull(id->value, 0, 10);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &mpid);
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
@@ -641,7 +642,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				JANUS_LOG(LOG_VERB, "Audio %s, Video %s\n", doaudio ? "enabled" : "NOT enabled", dovideo ? "enabled" : "NOT enabled");
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_rtp_source(
-						(id && id->value) ? atol(id->value) : 0,
+						(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						doaudio,
@@ -706,7 +707,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
 				} else {
 					janus_mutex_lock(&mountpoints_mutex);
-					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					guint64 mpid = g_ascii_strtoull(id->value, 0, 10);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &mpid);
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
@@ -716,7 +718,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_file_source(
-						(id && id->value) ? atol(id->value) : 0,
+						(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value,
@@ -770,7 +772,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
 				} else {
 					janus_mutex_lock(&mountpoints_mutex);
-					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					guint64 mpid = g_ascii_strtoull(id->value, 0, 10);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &mpid);
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
@@ -780,7 +783,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_file_source(
-						(id && id->value) ? atol(id->value) : 0,
+						(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value,
@@ -820,7 +823,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					JANUS_LOG(LOG_VERB, "Missing id for stream '%s', will generate a random one...\n", cat->name);
 				} else {
 					janus_mutex_lock(&mountpoints_mutex);
-					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(atol(id->value)));
+					guint64 mpid = g_ascii_strtoull(id->value, 0, 10);
+					janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &mpid);
 					janus_mutex_unlock(&mountpoints_mutex);
 					if(mp != NULL) {
 						JANUS_LOG(LOG_ERR, "A stream with the provided ID %s already exists, skipping '%s'\n", id->value, cat->name);
@@ -830,7 +834,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				}
 				janus_streaming_mountpoint *mp = NULL;
 				if((mp = janus_streaming_create_rtsp_source(
-						(id && id->value) ? atol(id->value) : 0,
+						(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
 						(char *)file->value, doaudio, dovideo)) == NULL) {
@@ -1130,9 +1134,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(error_code != 0)
 			goto error;
 		json_t *id = json_object_get(root, "id");
-		gint64 id_value = json_integer_value(id);
+		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
-		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
@@ -1258,7 +1262,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 			} else {
 				janus_mutex_lock(&mountpoints_mutex);
-				mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+				guint64 mpid = json_integer_value(id);
+				mp = g_hash_table_lookup(mountpoints, &mpid);
 				janus_mutex_unlock(&mountpoints_mutex);
 				if(mp != NULL) {
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
@@ -1323,7 +1328,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 			} else {
 				janus_mutex_lock(&mountpoints_mutex);
-				mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+				guint64 mpid = json_integer_value(id);
+				mp = g_hash_table_lookup(mountpoints, &mpid);
 				janus_mutex_unlock(&mountpoints_mutex);
 				if(mp != NULL) {
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
@@ -1387,7 +1393,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 			} else {
 				janus_mutex_lock(&mountpoints_mutex);
-				mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(json_integer_value(id)));
+				guint64 mpid = json_integer_value(id);
+				mp = g_hash_table_lookup(mountpoints, &mpid);
 				janus_mutex_unlock(&mountpoints_mutex);
 				if(mp != NULL) {
 					JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
@@ -1555,9 +1562,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No configuration file, can't destroy mountpoint permanently");
 			goto error;
 		}
-		gint64 id_value = json_integer_value(id);
+		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
-		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
@@ -1612,7 +1619,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		/* Remove mountpoint from the hashtable: this will get it destroyed */
 		if(!mp->destroyed) {
 			mp->destroyed = janus_get_monotonic_time();
-			g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
+			g_hash_table_remove(mountpoints, &id_value);
 			/* Cleaning up and removing the mountpoint is done in a lazy way */
 			old_mountpoints = g_list_append(old_mountpoints, mp);
 		}
@@ -1638,9 +1645,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			goto error;
 		}
 		json_t *id = json_object_get(root, "id");
-		gint64 id_value = json_integer_value(id);
+		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
-		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
@@ -1773,9 +1780,9 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(error_code != 0)
 			goto error;
 		json_t *id = json_object_get(root, "id");
-		gint64 id_value = json_integer_value(id);
+		guint64 id_value = json_integer_value(id);
 		janus_mutex_lock(&mountpoints_mutex);
-		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
@@ -2039,9 +2046,9 @@ static void *janus_streaming_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			json_t *id = json_object_get(root, "id");
-			gint64 id_value = json_integer_value(id);
+			guint64 id_value = json_integer_value(id);
 			janus_mutex_lock(&mountpoints_mutex);
-			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 			if(mp == NULL) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
@@ -2188,9 +2195,9 @@ static void *janus_streaming_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			json_t *id = json_object_get(root, "id");
-			gint64 id_value = json_integer_value(id);
+			guint64 id_value = json_integer_value(id);
 			janus_mutex_lock(&mountpoints_mutex);
-			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id_value));
+			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 			if(mp == NULL) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %"SCNu64"\n", id_value);
@@ -2415,8 +2422,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	if(id == 0) {
 		JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 		while(id == 0) {
-			id = g_random_int();
-			if(g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id)) != NULL) {
+			id = janus_random_uint64();
+			if(g_hash_table_lookup(mountpoints, &id) != NULL) {
 				/* ID already in use, try another one */
 				id = 0;
 			}
@@ -2518,7 +2525,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->listeners = NULL;
 	live_rtp->destroyed = 0;
 	janus_mutex_init(&live_rtp->mutex);
-	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtp->id), live_rtp);
+	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtp->id), live_rtp);
 	janus_mutex_unlock(&mountpoints_mutex);
 	GError *error = NULL;
 	g_thread_try_new(live_rtp->name, &janus_streaming_relay_thread, live_rtp, &error);
@@ -2552,8 +2559,8 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	if(id == 0) {
 		JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 		while(id == 0) {
-			id = g_random_int();
-			if(g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id)) != NULL) {
+			id = janus_random_uint64();
+			if(g_hash_table_lookup(mountpoints, &id) != NULL) {
 				/* ID already in use, try another one */
 				id = 0;
 			}
@@ -2605,7 +2612,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->listeners = NULL;
 	file_source->destroyed = 0;
 	janus_mutex_init(&file_source->mutex);
-	g_hash_table_insert(mountpoints, GINT_TO_POINTER(file_source->id), file_source);
+	g_hash_table_insert(mountpoints, janus_uint64_dup(file_source->id), file_source);
 	janus_mutex_unlock(&mountpoints_mutex);
 	if(live) {
 		GError *error = NULL;
@@ -2797,8 +2804,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	if(id == 0) {
 		JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
 		while(id == 0) {
-			id = g_random_int();
-			if(g_hash_table_lookup(mountpoints, GINT_TO_POINTER(id)) != NULL) {
+			id = janus_random_uint64();
+			if(g_hash_table_lookup(mountpoints, &id) != NULL) {
 				/* ID already in use, try another one */
 				id = 0;
 			}
@@ -2818,7 +2825,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		description = g_strdup(name ? name : tempname);
 	}
 	janus_streaming_mountpoint *live_rtsp = g_malloc0(sizeof(janus_streaming_mountpoint));
-	live_rtsp->id = id ? id : g_random_int();
+	live_rtsp->id = id ? id : janus_random_uint64();
 	live_rtsp->name = sourcename;
 	live_rtsp->description = description;
 	live_rtsp->enabled = TRUE;
@@ -2842,7 +2849,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp->listeners = NULL;
 	live_rtsp->destroyed = 0;
 	janus_mutex_init(&live_rtsp->mutex);
-	g_hash_table_insert(mountpoints, GINT_TO_POINTER(live_rtsp->id), live_rtsp);
+	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtsp->id), live_rtsp);
 	janus_mutex_unlock(&mountpoints_mutex);	
 	GError *error = NULL;
 	g_thread_try_new(live_rtsp->name, &janus_streaming_relay_thread, live_rtsp, &error);	

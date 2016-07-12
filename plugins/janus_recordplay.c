@@ -554,7 +554,7 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 			return -1;	/* No point going on... */
 		}
 	}
-	recordings = g_hash_table_new(NULL, NULL);
+	recordings = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	janus_mutex_init(&recordings_mutex);
 	janus_recordplay_update_recordings_list();
 	
@@ -1099,8 +1099,8 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			guint64 id = 0;
 			while(id == 0) {
-				id = g_random_int();
-				if(g_hash_table_lookup(recordings, GUINT_TO_POINTER(id)) != NULL) {
+				id = janus_random_uint64();
+				if(g_hash_table_lookup(recordings, &id) != NULL) {
 					/* Room ID already taken, try another one */
 					id = 0;
 				}
@@ -1144,7 +1144,7 @@ static void *janus_recordplay_handler(void *data) {
 			session->recorder = TRUE;
 			session->recording = rec;
 			janus_mutex_lock(&recordings_mutex);
-			g_hash_table_insert(recordings, GINT_TO_POINTER(rec->id), rec);
+			g_hash_table_insert(recordings, janus_uint64_dup(rec->id), rec);
 			janus_mutex_unlock(&recordings_mutex);
 			/* We need to prepare an answer */
 			int opus_pt = 0, vp8_pt = 0;
@@ -1202,7 +1202,7 @@ static void *janus_recordplay_handler(void *data) {
 			guint64 id_value = json_integer_value(id);
 			/* Look for this recording */
 			janus_mutex_lock(&recordings_mutex);
-			janus_recordplay_recording *rec = g_hash_table_lookup(recordings, GINT_TO_POINTER(id_value));
+			janus_recordplay_recording *rec = g_hash_table_lookup(recordings, &id_value);
 			janus_mutex_unlock(&recordings_mutex);
 			if(rec == NULL || rec->destroyed) {
 				JANUS_LOG(LOG_ERR, "No such recording\n");
@@ -1414,7 +1414,7 @@ void janus_recordplay_update_recordings_list(void) {
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_recordplay_recording *rec = value;
 			if(rec) {
-				old_recordings = g_list_append(old_recordings, GUINT_TO_POINTER(rec->id));
+				old_recordings = g_list_append(old_recordings, &rec->id);
 			}
 		}
 		janus_mutex_unlock(&recordings_mutex);
@@ -1455,11 +1455,12 @@ void janus_recordplay_update_recordings_list(void) {
 			janus_config_destroy(nfo);
 			continue;
 		}
-		if(g_hash_table_lookup(recordings, GUINT_TO_POINTER(id)) != NULL) {
+		janus_recordplay_recording *rec = g_hash_table_lookup(recordings, &id);
+		if(rec != NULL) {
 			JANUS_LOG(LOG_VERB, "Skipping recording with ID %"SCNu64", it's already in the list...\n", id);
 			janus_config_destroy(nfo);
 			/* Mark that we updated this recording */
-			old_recordings = g_list_remove(old_recordings, GUINT_TO_POINTER(id));
+			old_recordings = g_list_remove(old_recordings, &rec->id);
 			continue;
 		}
 		janus_config_item *name = janus_config_get_item(cat, "name");
@@ -1476,7 +1477,7 @@ void janus_recordplay_update_recordings_list(void) {
 			janus_config_destroy(nfo);
 			continue;
 		}
-		janus_recordplay_recording *rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
+		rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
 		rec->id = id;
 		rec->name = g_strdup(name->value);
 		rec->date = g_strdup(date->value);
@@ -1502,18 +1503,18 @@ void janus_recordplay_update_recordings_list(void) {
 		janus_config_destroy(nfo);
 
 		/* Add to the list of recordings */
-		g_hash_table_insert(recordings, GUINT_TO_POINTER(id), rec);
+		g_hash_table_insert(recordings, janus_uint64_dup(rec->id), rec);
 	}
 	closedir(dir);
 	/* Now let's check if any of the previously existing recordings was removed */
 	if(old_recordings != NULL) {
 		while(old_recordings != NULL) {
-			guint64 id = GPOINTER_TO_UINT(old_recordings->data);
+			guint64 id = *((guint64 *)old_recordings->data);
 			JANUS_LOG(LOG_VERB, "Recording %"SCNu64" is not available anymore, removing...\n", id);
-			janus_recordplay_recording *old_rec = g_hash_table_lookup(recordings, GUINT_TO_POINTER(id));
+			janus_recordplay_recording *old_rec = g_hash_table_lookup(recordings, &id);
 			if(old_rec != NULL) {
 				/* Remove it */
-				g_hash_table_remove(recordings, GUINT_TO_POINTER(id));
+				g_hash_table_remove(recordings, &id);
 				/* Only destroy the object if no one's watching, though */
 				janus_mutex_lock(&old_rec->mutex);
 				old_rec->destroyed = janus_get_monotonic_time();
@@ -1627,6 +1628,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *type = json_object_get(info, "t");
 				if(!type || !json_is_string(type)) {
 					JANUS_LOG(LOG_WARN, "Missing/invalid recording type in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1639,6 +1641,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 					video = 0;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1646,16 +1649,19 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *codec = json_object_get(info, "c");
 				if(!codec || !json_is_string(codec)) {
 					JANUS_LOG(LOG_WARN, "Missing recording codec in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
 				const char *c = json_string_value(codec);
 				if(video && strcasecmp(c, "vp8")) {
-					JANUS_LOG(LOG_WARN, "The post-processor only suupports VP8 video for now (was '%s')...\n", c);
+					JANUS_LOG(LOG_WARN, "The Record&Play plugin only supports VP8 video for now (was '%s')...\n", c);
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				} else if(!video && strcasecmp(c, "opus")) {
-					JANUS_LOG(LOG_WARN, "The post-processor only suupports Opus audio for now (was '%s')...\n", c);
+					JANUS_LOG(LOG_WARN, "The Record&Play plugin only supports Opus audio for now (was '%s')...\n", c);
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1663,6 +1669,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *created = json_object_get(info, "s");
 				if(!created || !json_is_integer(created)) {
 					JANUS_LOG(LOG_WARN, "Missing recording created time in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1671,6 +1678,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *written = json_object_get(info, "u");
 				if(!written || !json_is_integer(written)) {
 					JANUS_LOG(LOG_WARN, "Missing recording written time in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1680,6 +1688,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				JANUS_LOG(LOG_VERB, "  -- Codec:   %s\n", c);
 				JANUS_LOG(LOG_VERB, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_VERB, "  -- Written: %"SCNi64"\n", w_time);
+				json_decref(info);
 			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Invalid header...\n");
