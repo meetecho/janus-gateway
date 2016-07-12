@@ -447,7 +447,7 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	session->handle = handle;
-	session->recording_id = g_random_int();
+	session->recording_id = janus_random_uint64();
 	session->start_time = 0;
 	session->stream = NULL;
 	char f[255];
