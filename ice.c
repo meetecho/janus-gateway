@@ -659,7 +659,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 
 	/* Start the handles watchdog */
 	janus_mutex_init(&old_handles_mutex);
-	old_handles = g_hash_table_new(NULL, NULL);
+	old_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	handles_watchdog_context = g_main_context_new();
 	handles_watchdog_loop = g_main_loop_new(handles_watchdog_context, FALSE);
 	GError *error = NULL;
@@ -905,7 +905,7 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 	janus_session *session = (janus_session *)gateway_session;
 	guint64 handle_id = 0;
 	while(handle_id == 0) {
-		handle_id = g_random_int();
+		handle_id = janus_random_uint64();
 		if(janus_ice_handle_find(gateway_session, handle_id) != NULL) {
 			/* Handle ID already taken, try another one */
 			handle_id = 0;
@@ -927,8 +927,8 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 	/* Set up other stuff. */
 	janus_mutex_lock(&session->mutex);
 	if(session->ice_handles == NULL)
-		session->ice_handles = g_hash_table_new(NULL, NULL);
-	g_hash_table_insert(session->ice_handles, GUINT_TO_POINTER(handle_id), handle);
+		session->ice_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+	g_hash_table_insert(session->ice_handles, janus_uint64_dup(handle->handle_id), handle);
 	janus_mutex_unlock(&session->mutex);
 
 	return handle;
@@ -939,7 +939,7 @@ janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id
 		return NULL;
 	janus_session *session = (janus_session *)gateway_session;
 	janus_mutex_lock(&session->mutex);
-	janus_ice_handle *handle = session->ice_handles ? g_hash_table_lookup(session->ice_handles, GUINT_TO_POINTER(handle_id)) : NULL;
+	janus_ice_handle *handle = session->ice_handles ? g_hash_table_lookup(session->ice_handles, &handle_id) : NULL;
 	janus_mutex_unlock(&session->mutex);
 	return handle;
 }
@@ -1032,7 +1032,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
 	janus_mutex_lock(&old_handles_mutex);
-	g_hash_table_insert(old_handles, GUINT_TO_POINTER(handle_id), handle);
+	g_hash_table_insert(old_handles, janus_uint64_dup(handle->handle_id), handle);
 	janus_mutex_unlock(&old_handles_mutex);
 	return error;
 }
@@ -2642,12 +2642,12 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->disabled = FALSE;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		audio_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		audio_stream->audio_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+		audio_stream->audio_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		audio_stream->audio_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		audio_stream->video_ssrc = 0;
 		if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 			/* If we're bundling, this stream is going to be used for video as well */
-			audio_stream->video_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+			audio_stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		}
 		audio_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		audio_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
@@ -2800,7 +2800,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->disabled = FALSE;
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		video_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
-		video_stream->video_ssrc = g_random_int();	/* FIXME Should we look for conflicts? */
+		video_stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		video_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		video_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
 		video_stream->audio_ssrc = 0;

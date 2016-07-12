@@ -567,7 +567,7 @@ int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int vi
 	janus_ice_handle *handle = stream->handle;
 	if(handle == NULL)
 		return -2;
-	gint64 ssrc = atoll(ssrc_attr);
+	guint32 ssrc = atol(ssrc_attr);
 	if(ssrc == 0)
 		return -3;
 	if(video) {
