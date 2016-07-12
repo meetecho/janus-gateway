@@ -774,7 +774,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 
 	messages = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_transport_session_destroy);
 	janus_mutex_init(&messages_mutex);
-	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_http_session_destroy);
+	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_http_session_destroy);
 	janus_mutex_init(&sessions_mutex);
 	
 	/* Done */
@@ -869,7 +869,7 @@ int janus_http_send_message(janus_transport_session *transport, void *request_id
 		}
 		guint64 session_id = json_integer_value(s);
 		janus_mutex_lock(&sessions_mutex);
-		janus_http_session *session = g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
+		janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
 		if(session == NULL || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "Can't notify event, no session object...\n");
 			janus_mutex_unlock(&sessions_mutex);
@@ -921,7 +921,7 @@ void janus_http_session_created(janus_transport_session *transport, guint64 sess
 	JANUS_LOG(LOG_VERB, "Session created (%"SCNu64"), create a queue for the long poll\n", session_id);
 	/* Create a queue of events for this session */
 	janus_mutex_lock(&sessions_mutex);
-	if(g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id)) != NULL) {
+	if(g_hash_table_lookup(sessions, &session_id) != NULL) {
 		JANUS_LOG(LOG_WARN, "Ignoring created session, apparently we're already handling it?\n");
 		janus_mutex_unlock(&sessions_mutex);
 		return;
@@ -931,7 +931,7 @@ void janus_http_session_created(janus_transport_session *transport, guint64 sess
 	session->events = g_async_queue_new();
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_http_session_free);
-	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
+	g_hash_table_insert(sessions, janus_uint64_dup(session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 }
 
@@ -940,7 +940,7 @@ void janus_http_session_over(janus_transport_session *transport, guint64 session
 		timeout ? "has timed out" : "is over", session_id);
 	/* Get rid of the session's queue of events */
 	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, GUINT_TO_POINTER(session_id));
+	g_hash_table_remove(sessions, &session_id);
 	janus_mutex_unlock(&sessions_mutex);
 }
 
@@ -989,7 +989,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	janus_http_msg *msg = NULL;
 	if(ts == NULL) {
 		firstround = 1;
-		JANUS_LOG(LOG_VERB, "Got a HTTP %s request on %s...\n", method, url);
+		JANUS_LOG(LOG_DBG, "Got a HTTP %s request on %s...\n", method, url);
 		JANUS_LOG(LOG_DBG, " ... Just parsing headers for now...\n");
 		msg = g_malloc0(sizeof(janus_http_msg));
 		if(msg == NULL) {
@@ -1165,7 +1165,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	
 	/* Or maybe a long poll */
 	if(!strcasecmp(method, "GET") || !payload) {
-		session_id = session_path ? g_ascii_strtoll(session_path, NULL, 10) : 0;
+		session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
 		if(session_id < 1) {
 			JANUS_LOG(LOG_ERR, "Invalid session %s\n", session_path);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
@@ -1244,7 +1244,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			goto done;
 		}
 		janus_mutex_lock(&sessions_mutex);
-		janus_http_session *session = g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
+		janus_http_session *session = g_hash_table_lookup(sessions, &session_id);
 		janus_mutex_unlock(&sessions_mutex);
 		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
@@ -1320,8 +1320,8 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 
 parsingdone:
 	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoll(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoll(handle_path, NULL, 10) : 0;
+	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
 	if(session_id > 0)
 		json_object_set_new(root, "session_id", json_integer(session_id));
 	if(handle_id > 0)
@@ -1572,8 +1572,8 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 
 parsingdone:
 	/* Check if we have session and handle identifiers */
-	session_id = session_path ? g_ascii_strtoll(session_path, NULL, 10) : 0;
-	handle_id = handle_path ? g_ascii_strtoll(handle_path, NULL, 10) : 0;
+	session_id = session_path ? g_ascii_strtoull(session_path, NULL, 10) : 0;
+	handle_id = handle_path ? g_ascii_strtoull(handle_path, NULL, 10) : 0;
 	if(session_id > 0)
 		json_object_set_new(root, "session_id", json_integer(session_id));
 	if(handle_id > 0)

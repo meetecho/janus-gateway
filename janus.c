@@ -427,7 +427,7 @@ janus_session *janus_session_create(guint64 session_id) {
 	janus_session *session = NULL;
 	if(session_id == 0) {
 		while(session_id == 0) {
-			session_id = g_random_int();
+			session_id = janus_random_uint64();
 			session = janus_session_find(session_id);
 			if(session != NULL) {
 				/* Session ID already taken, try another one */
@@ -450,14 +450,14 @@ janus_session *janus_session_create(guint64 session_id) {
 	session->last_activity = janus_get_monotonic_time();
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_insert(sessions, GUINT_TO_POINTER(session_id), session);
+	g_hash_table_insert(sessions, janus_uint64_dup(session->session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
 	return session;
 }
 
 janus_session *janus_session_find(guint64 session_id) {
 	janus_mutex_lock(&sessions_mutex);
-	janus_session *session = g_hash_table_lookup(sessions, GUINT_TO_POINTER(session_id));
+	janus_session *session = g_hash_table_lookup(sessions, &session_id);
 	if(session != NULL) {
 		/* A successful find automatically increases the reference counter:
 		 * it's up to the caller to decrease it again when done */
@@ -762,7 +762,7 @@ int janus_process_incoming_request(janus_request *request) {
 			/* TODO Make error struct to pass verbose information */
 			janus_ice_handle_destroy(session, handle_id);
 			janus_mutex_lock(&session->mutex);
-			g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+			g_hash_table_remove(session->ice_handles, &handle_id);
 			janus_mutex_unlock(&session->mutex);
 			janus_refcount_decrease(&handle->ref);
 			JANUS_LOG(LOG_ERR, "Couldn't attach to plugin '%s', error '%d'\n", plugin_text, error);
@@ -786,7 +786,7 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		janus_mutex_lock(&sessions_mutex);
-		g_hash_table_remove(sessions, GUINT_TO_POINTER(session->session_id));
+		g_hash_table_remove(sessions, &session->session_id);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
 		if(session->source && session->source->transport) {
@@ -814,7 +814,7 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		int error = janus_ice_handle_destroy(session, handle_id);
 		janus_mutex_lock(&session->mutex);
-		g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(handle_id));
+		g_hash_table_remove(session->ice_handles, &handle_id);
 		janus_mutex_unlock(&session->mutex);
 		janus_refcount_decrease(&handle->ref);
 
@@ -2970,7 +2970,7 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	/* Destroy the handle */
 	janus_ice_handle_destroy(session, ice_handle->handle_id);
 	janus_mutex_lock(&session->mutex);
-	g_hash_table_remove(session->ice_handles, GUINT_TO_POINTER(ice_handle->handle_id));
+	g_hash_table_remove(session->ice_handles, &ice_handle->handle_id);
 	janus_mutex_unlock(&session->mutex);
 	janus_refcount_decrease(&ice_handle->ref);
 }
@@ -3853,7 +3853,7 @@ gint main(int argc, char *argv[])
 	}
 
 	/* Sessions */
-	sessions = g_hash_table_new(NULL, NULL);
+	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	janus_mutex_init(&sessions_mutex);
 	/* Start the sessions timeout watchdog */
 	sessions_watchdog_context = g_main_context_new();

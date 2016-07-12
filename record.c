@@ -101,7 +101,7 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	memset(newname, 0, 1024);
 	if(filename == NULL) {
 		/* Choose a random username */
-		g_snprintf(newname, 1024, "janus-recording-%"SCNu32".mjr", g_random_int());
+		g_snprintf(newname, 1024, "janus-recording-%"SCNu32".mjr", janus_random_uint32());
 	} else {
 		/* Just append the extension */
 		g_snprintf(newname, 1024, "%s.mjr", filename);

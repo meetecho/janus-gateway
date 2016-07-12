@@ -650,9 +650,9 @@ static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_publisher *p, cons
 	inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
 	forward->serv_addr.sin_port = htons(port);
 	janus_mutex_lock(&p->rtp_forwarders_mutex);
-	guint32 stream_id = g_random_int();
+	guint32 stream_id = janus_random_uint32();
 	while(g_hash_table_lookup(p->rtp_forwarders, GUINT_TO_POINTER(stream_id)) != NULL) {
-		stream_id = g_random_int();
+		stream_id = janus_random_uint32();
 	}
 	g_hash_table_insert(p->rtp_forwarders, GUINT_TO_POINTER(stream_id), forward);
 	janus_mutex_unlock(&p->rtp_forwarders_mutex);
@@ -695,8 +695,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 	janus_mutex_init(&config_mutex);
 
-	rooms = g_hash_table_new_full(NULL, NULL, NULL,
-	                              (GDestroyNotify) janus_videoroom_room_destroy);
+	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify) janus_videoroom_room_destroy);
 	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_session_destroy);
 	janus_mutex_init(&sessions_mutex);
@@ -808,9 +808,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			g_atomic_int_set(&videoroom->destroyed, 0);
 			janus_mutex_init(&videoroom->mutex);
 			janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
-			videoroom->participants = g_hash_table_new(NULL, NULL);
+			videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 			janus_mutex_lock(&rooms_mutex);
-			g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
+			g_hash_table_insert(rooms, janus_uint64_dup(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s)\n",
 				videoroom->room_id, videoroom->room_name,
@@ -972,7 +972,7 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 			janus_mutex_lock(&participant->room->mutex);
 			janus_videoroom_notify_participants(participant, leaving_text);
 			if(is_leaving) {
-				g_hash_table_remove(participant->room->participants, GUINT_TO_POINTER(participant->user_id));
+				g_hash_table_remove(participant->room->participants, &participant->user_id);
 			}
 			janus_mutex_unlock(&participant->room->mutex);
 		}
@@ -1097,7 +1097,7 @@ static int janus_videoroom_access_room(json_t *root, gboolean check_secret, gboo
 	int error_code = 0;
 	json_t *room = json_object_get(root, "room");
 	guint64 room_id = json_integer_value(room);
-	*videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+	*videoroom = g_hash_table_lookup(rooms, &room_id);
 	if(*videoroom == NULL) {
 		JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 		error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
@@ -1254,7 +1254,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_mutex_lock(&rooms_mutex);
 		if(room_id > 0) {
 			/* Let's make sure the room doesn't exist already */
-			if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
+			if(g_hash_table_lookup(rooms, &room_id) != NULL) {
 				/* It does... */
 				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "Room %"SCNu64" already exists!\n", room_id);
@@ -1275,8 +1275,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* Generate a random ID */
 		if(room_id == 0) {
 			while(room_id == 0) {
-				room_id = g_random_int();
-				if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
+				room_id = janus_random_uint64();
+				if(g_hash_table_lookup(rooms, &room_id) != NULL) {
 					/* Room ID already taken, try another one */
 					room_id = 0;
 				}
@@ -1358,7 +1358,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		g_atomic_int_set(&videoroom->destroyed, 0);
 		janus_mutex_init(&videoroom->mutex);
 		janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
-		videoroom->participants = g_hash_table_new(NULL, NULL);
+		videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s)\n",
 			videoroom->room_id, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
@@ -1407,7 +1407,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* Show updated rooms list */
 		GHashTableIter iter;
 		gpointer value;
-		g_hash_table_insert(rooms, GUINT_TO_POINTER(videoroom->room_id), videoroom);
+		g_hash_table_insert(rooms, janus_uint64_dup(videoroom->room_id), videoroom);
 		g_hash_table_iter_init(&iter, rooms);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom *vr = value;
@@ -1559,7 +1559,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto error;
 		janus_refcount_increase(&videoroom->ref);
 		janus_mutex_lock(&videoroom->mutex);
-		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
+		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, &publisher_id);
 		if(publisher == NULL) {
 			janus_refcount_decrease(&videoroom->ref);
 			janus_mutex_unlock(&videoroom->mutex);
@@ -1643,7 +1643,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto error;
 		janus_mutex_lock(&videoroom->mutex);
 		janus_refcount_increase(&videoroom->ref);
-		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(publisher_id));
+		janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, &publisher_id);
 		if(publisher == NULL) {
 			janus_mutex_unlock(&videoroom->mutex);
 			janus_refcount_decrease(&videoroom->ref);
@@ -1687,7 +1687,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		gboolean room_exists = g_hash_table_contains(rooms, GUINT_TO_POINTER(room_id));
+		gboolean room_exists = g_hash_table_contains(rooms, &room_id);
 		janus_mutex_unlock(&rooms_mutex);
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
@@ -1742,7 +1742,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *room = json_object_get(root, "room");
 		guint64 room_id = json_integer_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		janus_videoroom *videoroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+		janus_videoroom *videoroom = g_hash_table_lookup(rooms, &room_id);
 		if(videoroom == NULL) {
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
@@ -2465,7 +2465,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(id) {
 					user_id = json_integer_value(id);
 					janus_mutex_lock(&videoroom->mutex);
-					if(g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(user_id)) != NULL) {
+					if(g_hash_table_lookup(videoroom->participants, &user_id) != NULL) {
 						janus_refcount_decrease(&videoroom->ref);
 						janus_mutex_unlock(&videoroom->mutex);
 						/* User ID already taken */
@@ -2480,8 +2480,8 @@ static void *janus_videoroom_handler(void *data) {
 					/* Generate a random ID */
 					janus_mutex_lock(&videoroom->mutex);
 					while(user_id == 0) {
-						user_id = g_random_int();
-						if(g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(user_id)) != NULL) {
+						user_id = janus_random_uint64();
+						if(g_hash_table_lookup(videoroom->participants, &user_id) != NULL) {
 							/* User ID already taken, try another one */
 							user_id = 0;
 						}
@@ -2563,8 +2563,8 @@ static void *janus_videoroom_handler(void *data) {
 						publisher->video_pt = VP8_PT;
 						break;
 				}
-				publisher->audio_ssrc = g_random_int();
-				publisher->video_ssrc = g_random_int();
+				publisher->audio_ssrc = janus_random_uint32();
+				publisher->video_ssrc = janus_random_uint32();
 				publisher->remb_startup = 4;
 				publisher->remb_latest = 0;
 				publisher->fir_latest = 0;
@@ -2603,7 +2603,7 @@ static void *janus_videoroom_handler(void *data) {
 				GHashTableIter iter;
 				gpointer value;
 				janus_mutex_lock(&videoroom->mutex);
-				g_hash_table_insert(videoroom->participants, GUINT_TO_POINTER(user_id), publisher);
+				g_hash_table_insert(videoroom->participants, janus_uint64_dup(publisher->user_id), publisher);
 				g_hash_table_iter_init(&iter, videoroom->participants);
 				while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 					janus_videoroom_publisher *p = value;
@@ -2639,7 +2639,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
 				janus_mutex_lock(&videoroom->mutex);
-				janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, GUINT_TO_POINTER(feed_id));
+				janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, &feed_id);
 				janus_mutex_unlock(&videoroom->mutex);
 				if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) || publisher->sdp == NULL) {
 					janus_refcount_decrease(&videoroom->ref);
@@ -2940,7 +2940,7 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				}
 				janus_mutex_lock(&subscriber->room->mutex);
-				janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants, GUINT_TO_POINTER(feed_id));
+				janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants, &feed_id);
 				janus_mutex_unlock(&subscriber->room->mutex);
 				if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) || publisher->sdp == NULL) {
 					JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
