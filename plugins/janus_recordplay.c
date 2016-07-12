@@ -1672,6 +1672,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *type = json_object_get(info, "t");
 				if(!type || !json_is_string(type)) {
 					JANUS_LOG(LOG_WARN, "Missing/invalid recording type in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1684,6 +1685,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 					video = 0;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording type '%s' in info header...\n", t);
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1691,16 +1693,19 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *codec = json_object_get(info, "c");
 				if(!codec || !json_is_string(codec)) {
 					JANUS_LOG(LOG_WARN, "Missing recording codec in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
 				const char *c = json_string_value(codec);
 				if(video && strcasecmp(c, "vp8")) {
-					JANUS_LOG(LOG_WARN, "The post-processor only suupports VP8 video for now (was '%s')...\n", c);
+					JANUS_LOG(LOG_WARN, "The Record&Play plugin only supports VP8 video for now (was '%s')...\n", c);
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				} else if(!video && strcasecmp(c, "opus")) {
-					JANUS_LOG(LOG_WARN, "The post-processor only suupports Opus audio for now (was '%s')...\n", c);
+					JANUS_LOG(LOG_WARN, "The Record&Play plugin only supports Opus audio for now (was '%s')...\n", c);
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1708,6 +1713,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *created = json_object_get(info, "s");
 				if(!created || !json_is_integer(created)) {
 					JANUS_LOG(LOG_WARN, "Missing recording created time in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1716,6 +1722,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				json_t *written = json_object_get(info, "u");
 				if(!written || !json_is_integer(written)) {
 					JANUS_LOG(LOG_WARN, "Missing recording written time in info header...\n");
+					json_decref(info);
 					fclose(file);
 					return NULL;
 				}
@@ -1725,6 +1732,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				JANUS_LOG(LOG_VERB, "  -- Codec:   %s\n", c);
 				JANUS_LOG(LOG_VERB, "  -- Created: %"SCNi64"\n", c_time);
 				JANUS_LOG(LOG_VERB, "  -- Written: %"SCNi64"\n", w_time);
+				json_decref(info);
 			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Invalid header...\n");
