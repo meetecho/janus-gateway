@@ -444,7 +444,7 @@ int main(int argc, char *argv[])
 		if(rtp->padding) {
 			/* There's padding data, let's check the last byte to see how much data we should skip */
 			fseek(file, offset + len - 1, SEEK_SET);
-			fread(prebuffer, sizeof(char), 1, file);
+			bytes = fread(prebuffer, sizeof(char), 1, file);
 			uint8_t padlen = (uint8_t)prebuffer[0];
 			JANUS_LOG(LOG_VERB, "Padding at sequence number %hu: %d/%d\n",
 				ntohs(rtp->seq_number), padlen, p->len);
