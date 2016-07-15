@@ -433,7 +433,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.iface = ip ? ip : interface;
 			info.protocols = wss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			info.extensions = lws_get_internal_extensions();
+			info.extensions = NULL;
 #else
 			info.extensions = libwebsocket_get_internal_extensions();
 #endif
@@ -487,7 +487,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.iface = ip ? ip : interface;
 				info.protocols = swss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-				info.extensions = lws_get_internal_extensions();
+				info.extensions = NULL;
 #else
 				info.extensions = libwebsocket_get_internal_extensions();
 #endif
@@ -533,7 +533,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.iface = ip ? ip : interface;
 			info.protocols = admin_wss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			info.extensions = lws_get_internal_extensions();
+			info.extensions = NULL;
 #else
 			info.extensions = libwebsocket_get_internal_extensions();
 #endif
@@ -587,7 +587,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.iface = ip ? ip : interface;
 				info.protocols = admin_swss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-				info.extensions = lws_get_internal_extensions();
+				info.extensions = NULL;
 #else
 				info.extensions = libwebsocket_get_internal_extensions();
 #endif
