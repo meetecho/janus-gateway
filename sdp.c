@@ -567,7 +567,7 @@ int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int vi
 	janus_ice_handle *handle = stream->handle;
 	if(handle == NULL)
 		return -2;
-	gint64 ssrc = atoll(ssrc_attr);
+	guint32 ssrc = atol(ssrc_attr);
 	if(ssrc == 0)
 		return -3;
 	if(video) {
@@ -1182,9 +1182,25 @@ char *janus_sdp_merge(janus_ice_handle *handle, const char *origsdp) {
 							"a=%s\r\n", a->a_name);
 						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 					} else {
-						g_snprintf(buffer, 512,
-							"a=%s:%s\r\n", a->a_name, a->a_value);
-						g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+						/* Make sure this attribute is related to a payload type we know of */
+						if(m->m_type == sdp_media_application) {
+							g_snprintf(buffer, 512,
+								"a=%s:%s\r\n", a->a_name, a->a_value);
+							g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+						} else {
+							int pt = atoi(a->a_value);
+							GList *pts = m->m_type == sdp_media_audio ? stream->audio_payload_types : stream->video_payload_types;
+							while(pts) {
+								guint16 media_pt = GPOINTER_TO_UINT(pts->data);
+								if(pt == media_pt) {
+									g_snprintf(buffer, 512,
+										"a=%s:%s\r\n", a->a_name, a->a_value);
+									g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+									break;
+								}
+								pts = pts->next;
+							}
+						}
 					}
 					a = a->a_next;
 				}

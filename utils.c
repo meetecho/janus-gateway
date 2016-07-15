@@ -69,6 +69,32 @@ gboolean janus_strcmp_const_time(const void *str1, const void *str2) {
 	return result == 0;
 }
 
+guint32 janus_random_uint32(void) {
+	return g_random_int();
+}
+
+guint64 janus_random_uint64(void) {
+	/*
+	 * FIXME This needs to be improved, and use something that generates
+	 * more strongly random stuff... using /dev/urandom is probably not
+	 * a good idea, as we don't want to make it harder to cross compile Janus
+	 *
+	 * TODO Look into what libssl and/or libcrypto provide in that respect
+	 *
+	 * PS: JavaScript only supports integer up to 2^53, so we need to
+	 * make sure the number is below 9007199254740992 for safety
+	 */
+	guint64 num = g_random_int() & 0x1FFFFF;
+	num = (num << 32) | g_random_int();
+	return num;
+}
+
+guint64 *janus_uint64_dup(guint64 num) {
+	guint64 *numdup = g_malloc0(sizeof(guint64));
+	memcpy(numdup, &num, sizeof(num));
+	return numdup;
+}
+
 void janus_flags_reset(janus_flags *flags) {
 	if(flags != NULL)
 		*flags = 0;
@@ -264,6 +290,7 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 			if(strstr(line, "a=rtpmap") && strstr(line, format)) {
 				/* Gotcha! */
 				int pt = 0;
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 				if(sscanf(line, rtpmap, &pt) == 1) {
 					*next = '\n';
 					return pt;
@@ -272,6 +299,7 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 				/* Gotcha! */
 				int pt = 0;
 				if(sscanf(line, rtpmap2, &pt) == 1) {
+#pragma GCC diagnostic warning "-Wformat-nonliteral"
 					*next = '\n';
 					return pt;
 				}

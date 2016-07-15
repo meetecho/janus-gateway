@@ -894,6 +894,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt_name = NULL;
 	session->media.video_srtp_suite_in = 0;
 	session->media.video_srtp_suite_out = 0;
+	session->raw_media = NULL;
 	janus_mutex_init(&session->rec_mutex);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
@@ -1202,6 +1203,10 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
+	if (session->raw_media != NULL) {
+		sdp_parser_free(session->raw_media);
+		session->raw_media = NULL;
+	}
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
@@ -1415,7 +1420,7 @@ static void *janus_sip_handler(void *data) {
 			if(guest) {
 				/* Not needed, we can stop here: just pick a random username if it wasn't provided and say we're registered */
 				if(!username)
-					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", g_random_int());
+					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", janus_random_uint32());
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
 				send_register = FALSE;
 			} else {
@@ -2341,6 +2346,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			g_free(fixed_sdp);
+			sdp_parser_free(parser);
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 			session->stack->s_nh_i = nh;
@@ -2470,6 +2476,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
+			if (session->raw_media != NULL) {
+				sdp_parser_free(session->raw_media)
+			}
 			session->raw_media = parser;
 			GError *error = NULL;
 			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);

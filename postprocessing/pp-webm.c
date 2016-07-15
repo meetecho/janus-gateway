@@ -4,7 +4,7 @@
  * \brief    Post-processing to generate .webm files
  * \details  Implementation of the post-processing code (based on FFmpeg)
  * needed to generate .webm files out of VP8/VP9 RTP frames.
- * 
+ *
  * \ingroup postprocessing
  * \ref postprocessing
  */
@@ -138,7 +138,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			}
 			if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {
 				JANUS_LOG(LOG_WARN, "Lost a packet here? (got seq %"SCNu16" after %"SCNu16", time ~%"SCNu64"s)\n",
-					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000); 
+					tmp->seq, tmp->prev->seq, (tmp->ts-list->ts)/90000);
 			}
 		}
 		if(tmp->drop) {
@@ -158,11 +158,8 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			uint8_t vp8pd = *buffer;
 			uint8_t xbit = (vp8pd & 0x80);
 			uint8_t sbit = (vp8pd & 0x10);
-			if(!xbit) {
-				/* Just skip the first byte */
-				buffer++;
-			} else {
-				/* Read the Extended control bits octet */
+			/* Read the Extended control bits octet */
+			if (xbit) {
 				buffer++;
 				vp8pd = *buffer;
 				uint8_t ibit = (vp8pd & 0x80);
@@ -192,32 +189,33 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 					buffer++;
 					vp8pd = *buffer;
 				}
-				buffer++;	/* Now we're in the payload */
-				if(sbit) {
-					unsigned long int vp8ph = 0;
-					memcpy(&vp8ph, buffer, 4);
-					vp8ph = ntohl(vp8ph);
-					uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
-					if(!pbit) {
-						/* Get resolution */
-						unsigned char *c = (unsigned char *)buffer+3;
-						/* vet via sync code */
-						if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-							JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
-						} else {
-							int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
-							int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
-							int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
-							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
-							JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-							if(vp8w > max_width)
-								max_width = vp8w;
-							if(vp8h > max_height)
-								max_height = vp8h;
-						}
+			}
+			buffer++;	/* Now we're in the payload */
+			if(sbit) {
+				unsigned long int vp8ph = 0;
+				memcpy(&vp8ph, buffer, 4);
+				vp8ph = ntohl(vp8ph);
+				uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
+				if(!pbit) {
+					/* Get resolution */
+					unsigned char *c = (unsigned char *)buffer+3;
+					/* vet via sync code */
+					if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
+						JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
+					} else {
+						int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
+						int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
+						int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
+						int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
+						JANUS_LOG(LOG_INFO, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
+						if(vp8w > max_width)
+							max_width = vp8w;
+						if(vp8h > max_height)
+							max_height = vp8h;
 					}
 				}
 			}
+
 		} else {
 			/* https://tools.ietf.org/html/draft-ietf-payload-vp9 */
 			/* Read the first bytes of the payload, and get the first octet (VP9 Payload Descriptor) */
@@ -347,16 +345,12 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 				uint8_t vp8pd = *buffer;
 				uint8_t xbit = (vp8pd & 0x80);
 				uint8_t sbit = (vp8pd & 0x10);
-				if(!xbit) {
-					/* Just skip the first byte */
+
+				if (xbit) {
 					buffer++;
 					skipped++;
 					len--;
-				} else {
-					/* Read the Extended control bits octet */
-					buffer++;
-					len--;
-					skipped++;
+
 					vp8pd = *buffer;
 					uint8_t ibit = (vp8pd & 0x80);
 					uint8_t lbit = (vp8pd & 0x40);
@@ -393,34 +387,35 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 						skipped++;
 						vp8pd = *buffer;
 					}
-					buffer++;	/* Now we're in the payload */
-					if(sbit) {
-						unsigned long int vp8ph = 0;
-						memcpy(&vp8ph, buffer, 4);
-						vp8ph = ntohl(vp8ph);
-						uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
-						if(!pbit) {
-							keyFrame = 1;
-							/* Get resolution */
-							unsigned char *c = buffer+3;
-							/* vet via sync code */
-							if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
-								JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
-							} else {
-								int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
-								int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
-								int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
-								int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
-								JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
-								/* Is this the first keyframe we find? */
-								if(keyframe_ts == 0) {
-									keyframe_ts = tmp->ts;
-									JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
-								}
+				}
+				buffer++;	/* Now we're in the payload */
+				if(sbit) {
+					unsigned long int vp8ph = 0;
+					memcpy(&vp8ph, buffer, 4);
+					vp8ph = ntohl(vp8ph);
+					uint8_t pbit = ((vp8ph & 0x01000000) >> 24);
+					if(!pbit) {
+						keyFrame = 1;
+						/* Get resolution */
+						unsigned char *c = buffer+3;
+						/* vet via sync code */
+						if(c[0]!=0x9d||c[1]!=0x01||c[2]!=0x2a) {
+							JANUS_LOG(LOG_WARN, "First 3-bytes after header not what they're supposed to be?\n");
+						} else {
+							int vp8w = swap2(*(unsigned short*)(c+3))&0x3fff;
+							int vp8ws = swap2(*(unsigned short*)(c+3))>>14;
+							int vp8h = swap2(*(unsigned short*)(c+5))&0x3fff;
+							int vp8hs = swap2(*(unsigned short*)(c+5))>>14;
+							JANUS_LOG(LOG_INFO, "(seq=%"SCNu16", ts=%"SCNu64") Key frame: %dx%d (scale=%dx%d)\n", tmp->seq, tmp->ts, vp8w, vp8h, vp8ws, vp8hs);
+							/* Is this the first keyframe we find? */
+							if(keyframe_ts == 0) {
+								keyframe_ts = tmp->ts;
+								JANUS_LOG(LOG_INFO, "First keyframe: %"SCNu64"\n", tmp->ts-list->ts);
 							}
 						}
 					}
 				}
+
 			} else {
 				/* VP9 depay */
 					/* https://tools.ietf.org/html/draft-ietf-payload-vp9-02 */
@@ -495,7 +490,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 							len -= 4;
 							skipped += 4;
 						}
-						/* Is this the first keyframe we find? 
+						/* Is this the first keyframe we find?
 						 * (FIXME assuming this really means "keyframe...) */
 						if(keyframe_ts == 0) {
 							keyframe_ts = tmp->ts;
