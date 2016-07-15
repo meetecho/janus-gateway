@@ -1415,7 +1415,7 @@ static void *janus_sip_handler(void *data) {
 			if(guest) {
 				/* Not needed, we can stop here: just pick a random username if it wasn't provided and say we're registered */
 				if(!username)
-					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", g_random_int());
+					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", janus_random_uint32());
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
 				send_register = FALSE;
 			} else {
@@ -2341,6 +2341,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			g_free(fixed_sdp);
+			sdp_parser_free(parser);
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 			session->stack->s_nh_i = nh;
@@ -2490,6 +2491,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			g_free(fixed_sdp);
+			sdp_parser_free(parser);
 			break;
 		}
 		case nua_r_register: {
