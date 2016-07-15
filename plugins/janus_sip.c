@@ -2300,6 +2300,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_decref(call);
 			json_decref(jsep);
 			g_free(fixed_sdp);
+			sdp_parser_free(parser);
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 			session->stack->s_nh_i = nh;
@@ -2447,6 +2448,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_decref(call);
 			json_decref(jsep);
 			g_free(fixed_sdp);
+			sdp_parser_free(parser);
 			break;
 		}
 		case nua_r_register: {

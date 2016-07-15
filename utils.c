@@ -290,6 +290,7 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 			if(strstr(line, "a=rtpmap") && strstr(line, format)) {
 				/* Gotcha! */
 				int pt = 0;
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 				if(sscanf(line, rtpmap, &pt) == 1) {
 					*next = '\n';
 					return pt;
@@ -298,6 +299,7 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 				/* Gotcha! */
 				int pt = 0;
 				if(sscanf(line, rtpmap2, &pt) == 1) {
+#pragma GCC diagnostic warning "-Wformat-nonliteral"
 					*next = '\n';
 					return pt;
 				}
