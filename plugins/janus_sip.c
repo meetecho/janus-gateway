@@ -807,6 +807,10 @@ void janus_sip_destroy(void) {
 	sessions = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
+
+	/* Deinitialize sofia */
+	su_deinit();
+
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIP_NAME);
 }
 
@@ -3194,7 +3198,6 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_root = NULL;
 	su_home_deinit(session->stack->s_home);
 	su_home_unref(session->stack->s_home);
-	su_deinit();
 	if (session->stack) {
 		g_free(session->stack);
 		session->stack = NULL;

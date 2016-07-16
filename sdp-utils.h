@@ -1,0 +1,113 @@
+/*! \file    sdp-utils.h
+ * \author   Lorenzo Miniero <lorenzo@meetecho.com>
+ * \copyright GNU General Public License v3
+ * \brief    SDP utilities (headers)
+ * \details  Implementation of an internal SDP representation. Allows
+ * to parse SDP strings to an internal janus_sdp object, the manipulation
+ * of such object by playing with its properties, and a serialization
+ * to an SDP string that can be passed around. Since they don't have any
+ * core dependencies, these utilities can be used by plugins as well.
+ * 
+ * \ingroup core
+ * \ref core
+ */
+ 
+#ifndef _JANUS_SDP_UTILS_H
+#define _JANUS_SDP_UTILS_H
+
+
+#include <inttypes.h>
+#include <glib.h>
+
+/*! \brief Janus SDP internal object representation */
+typedef struct janus_sdp {
+	/*! \brief v= */
+	int version;
+	/*! \brief o= name */
+	char *o_name;
+	/*! \brief o= session ID */
+	guint64 o_sessid;
+	/*! \brief o= version */
+	guint64 o_version;
+	/*! \brief o= protocol */
+	gboolean o_ipv4;
+	/*! \brief o= address */
+	char *o_addr;
+	/*! \brief s= */
+	char *s_name;
+	/*! \brief t= start */
+	guint64 t_start;
+	/*! \brief t= stop */
+	guint64 t_stop;
+	/*! \brief List of global a= attributes */
+	GList *attributes;
+	/*! \brief List of m= m-lines */
+	GList *m_lines;
+} janus_sdp;
+
+/*! \brief Helper enumeration to quickly identify m-line media types */
+typedef enum janus_sdp_mtype {
+	/*! \brief m=audio */
+	JANUS_SDP_AUDIO,
+	/*! \brief m=video */
+	JANUS_SDP_VIDEO,
+	/*! \brief m=application */
+	JANUS_SDP_APPLICATION,
+	/*! \brief m=whatever (we don't care, unsupported) */
+	JANUS_SDP_OTHER
+} janus_sdp_mtype;
+
+/*! \brief SDP m-line representation */
+typedef struct janus_sdp_mline {
+	/*! \brief Media type as a janus_sdp_mtype enumerator */
+	janus_sdp_mtype type;
+	/*! \brief Media type (string) */
+	char *type_str;
+	/*! \brief Media port */
+	guint16 port;
+	/*! \brief Media protocol */
+	char *proto;
+	/*! \brief List of payload types */
+	GList *ptypes;
+	/*! \brief Media c= protocol */
+	gboolean c_ipv4;
+	/*! \brief Media c= address */
+	char *c_addr;
+	/*! \brief Media b= type */
+	char *b_name;
+	/*! \brief Media b= value */
+	int b_value;
+	/*! \brief Media direction */
+	char *direction;
+	/*! \brief List of m-line attributes */
+	GList *attributes;
+} janus_sdp_mline;
+
+/*! \brief SDP a= attribute representation */
+typedef struct janus_sdp_attribute {
+	/*! \brief Attribute name */
+	char *name;
+	/*! \brief Attribute value */
+	char *value;
+} janus_sdp_attribute;
+/*! \brief Helper method to quickly create a janus_sdp_attribute instance
+ * @param[in] name Name of the attribute
+ * @param[in] value Value of the attribute, as a printf compliant string (variable arguments)
+ * @returns A pointer to a valid janus_sdp_attribute instance, if successfull, NULL otherwise */
+janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *value, ...) G_GNUC_PRINTF(2, 3);
+
+/*! \brief Method to parse an SDP string to a janus_sdp object
+ * @param[in] sdp The SDP string to parse
+ * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
+janus_sdp *janus_sdp_import(const char *sdp);
+
+/*! \brief Method to serialize a janus_sdp object to an SDP string
+ * @param[in] sdp The janus_sdp object to serialize
+ * @returns A pointer to a string with the serialized SDP, if successful, NULL otherwise */
+char *janus_sdp_export(janus_sdp *sdp);
+
+/*! \brief Method to free a Janus SDP object
+ * @param[in] sdp The Janus SDP object to free */
+void janus_sdp_free(janus_sdp *sdp);
+
+#endif

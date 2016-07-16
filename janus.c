@@ -1609,7 +1609,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			json_t *mnq = json_object_get(root, "max_nack_queue");
 			int mnq_num = json_integer_value(mnq);
-			if(mnq_num < 0 || (mnq_num > 0 || mnq_num < 200)) {
+			if(mnq_num < 0 || (mnq_num > 0 && mnq_num < 200)) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (max_nack_queue, if provided, should be greater than 200)");
 				goto jsondone;
 			}
@@ -2867,7 +2867,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	json_object_set_new(jsep, "type", json_string(sdp_type));
 	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
 	g_free(sdp_stripped);
-	//~ g_free(sdp_merged);
 	ice_handle->local_sdp = sdp_merged;
 	return jsep;
 }

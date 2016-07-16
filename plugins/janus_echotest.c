@@ -594,7 +594,6 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 			json_object_set_new(event, "result", result);
 			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(event);
-			json_decref(result);
 			event = NULL;
 			gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event_text, NULL, NULL);
 			g_free(event_text);

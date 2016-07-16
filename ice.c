@@ -2181,9 +2181,9 @@ void *janus_ice_thread(void *data) {
 }
 
 /* Helper: candidates */
-void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id)
+void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id)
 {
-	if(!handle || !handle->agent || !sdp)
+	if(!handle || !handle->agent || !mline)
 		return;
 	janus_ice_stream *stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(stream_id));
 	if(!stream) {
@@ -2220,12 +2220,12 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Priority:   %d\n", handle->handle_id, c->priority);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Foundation: %s\n", handle->handle_id, c->foundation);
 		/* SDP time */
-		gchar buffer[100];
+		gchar buffer[200];
 		if(c->type == NICE_CANDIDATE_TYPE_HOST) {
 			/* 'host' candidate */
 			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-				g_snprintf(buffer, 100,
-					"a=candidate:%s %d %s %d %s %d typ host\r\n", 
+				g_snprintf(buffer, sizeof(buffer),
+					"%s %d %s %d %s %d typ host",
 						c->foundation,
 						c->component_id,
 						"udp",
@@ -2265,8 +2265,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 					nice_candidate_free(c);
 					continue;
 				} else {
-					g_snprintf(buffer, 100,
-						"a=candidate:%s %d %s %d %s %d typ host tcptype %s\r\n", 
+					g_snprintf(buffer, sizeof(buffer),
+						"%s %d %s %d %s %d typ host tcptype %s",
 							c->foundation,
 							c->component_id,
 							"tcp",
@@ -2282,8 +2282,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
 				nice_address_to_string(&(c->base_addr), (gchar *)&base_address);
 				gint base_port = nice_address_get_port(&(c->base_addr));
-				g_snprintf(buffer, 100,
-					"a=candidate:%s %d %s %d %s %d typ srflx raddr %s rport %d\r\n", 
+				g_snprintf(buffer, sizeof(buffer),
+					"%s %d %s %d %s %d typ srflx raddr %s rport %d",
 						c->foundation,
 						c->component_id,
 						"udp",
@@ -2325,8 +2325,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 					nice_candidate_free(c);
 					continue;
 				} else {
-					g_snprintf(buffer, 100,
-						"a=candidate:%s %d %s %d %s %d typ srflx raddr %s rport %d tcptype %s\r\n", 
+					g_snprintf(buffer, sizeof(buffer),
+						"%s %d %s %d %s %d typ srflx raddr %s rport %d tcptype %s",
 							c->foundation,
 							c->component_id,
 							"tcp",
@@ -2347,8 +2347,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 		} else if(c->type == NICE_CANDIDATE_TYPE_RELAYED) {
 			/* 'relay' candidate */
 			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
-				g_snprintf(buffer, 100,
-					"a=candidate:%s %d %s %d %s %d typ relay raddr %s rport %d\r\n", 
+				g_snprintf(buffer, sizeof(buffer),
+					"%s %d %s %d %s %d typ relay raddr %s rport %d",
 						c->foundation,
 						c->component_id,
 						"udp",
@@ -2390,8 +2390,8 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 					nice_candidate_free(c);
 					continue;
 				} else {
-					g_snprintf(buffer, 100,
-						"a=candidate:%s %d %s %d %s %d typ relay raddr %s rport %d tcptype %s\r\n", 
+					g_snprintf(buffer, sizeof(buffer),
+						"%s %d %s %d %s %d typ relay raddr %s rport %d tcptype %s",
 							c->foundation,
 							c->component_id,
 							"tcp",
@@ -2405,11 +2405,14 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stre
 #endif
 			}
 		}
-		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+#pragma GCC diagnostic ignored "-Wformat-security"
+		janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", buffer);
+#pragma GCC diagnostic warning "-Wformat-security"
+		mline->attributes = g_list_append(mline->attributes, a);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s", handle->handle_id, buffer); /* buffer already newline terminated */
 		if(log_candidates) {
 			/* Save for the summary, in case we need it */
-			component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer+strlen("a=candidate:")));
+			component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer));
 		}
 		nice_candidate_free(c);
 	}
