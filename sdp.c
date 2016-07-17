@@ -24,17 +24,6 @@
 #include "debug.h"
 
 
-/* SDP Initialization */
-int janus_sdp_init(void) {
-	/* Nothing to do here, maybe in the future */
-	return 0;
-}
-
-void janus_sdp_deinit(void) {
-	/* Nothing to do here, maybe in the future */
-}
-
-
 /* Pre-parse SDP: is this SDP valid? how many audio/video lines? any features to take into account? */
 janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle) {
 	if(!jsep_sdp || !audio || !video || !data || !bundle || !rtcpmux || !trickle) {
@@ -787,7 +776,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		first = m->attributes;
 		/* Overwrite RTP profile for audio and video */
-		if(m->type != JANUS_SDP_APPLICATION) {
+		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 			g_free(m->proto);
 			m->proto = g_strdup(rtp_profile);
 		}
@@ -801,8 +790,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 			if(audio > 1 || !handle->audio_id) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (we have %d audio lines, and the id is %d)\n", handle->handle_id, audio, handle->audio_id);
 				m->port = 0;
-				g_free(m->direction);
-				m->direction = g_strdup("inactive");
+				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
 				continue;
 			}
@@ -811,8 +799,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 			if(stream == NULL) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping audio line (invalid stream %d)\n", handle->handle_id, handle->audio_id);
 				m->port = 0;
-				g_free(m->direction);
-				m->direction = g_strdup("inactive");
+				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
 				continue;
 			}
@@ -825,8 +812,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (we have %d video lines, and the id is %d)\n", handle->handle_id, video,
 					janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? handle->audio_id : handle->video_id);
 				m->port = 0;
-				g_free(m->direction);
-				m->direction = g_strdup("inactive");
+				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
 				continue;
 			}
@@ -835,8 +821,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 			if(stream == NULL) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping video line (invalid stream %d)\n", handle->handle_id, id);
 				m->port = 0;
-				g_free(m->direction);
-				m->direction = g_strdup("inactive");
+				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
 				continue;
 			}
@@ -852,8 +837,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 				if(data > 1 || !id) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping SCTP line (we have %d SCTP lines, and the id is %d)\n", handle->handle_id, data, id);
 					m->port = 0;
-					g_free(m->direction);
-					m->direction = g_strdup("inactive");
+					m->direction = JANUS_SDP_INACTIVE;
 					temp = temp->next;
 					continue;
 				}
@@ -862,16 +846,14 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 				if(stream == NULL) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping SCTP line (invalid stream %d)\n", handle->handle_id, id);
 					m->port = 0;
-					g_free(m->direction);
-					m->direction = g_strdup("inactive");
+					m->direction = JANUS_SDP_INACTIVE;
 					temp = temp->next;
 					continue;
 				}
 			} else {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping unsupported application media line...\n", handle->handle_id);
 				m->port = 0;
-				g_free(m->direction);
-				m->direction = g_strdup("inactive");
+				m->direction = JANUS_SDP_INACTIVE;
 				temp = temp->next;
 				continue;
 			}
@@ -879,8 +861,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
 			m->port = 0;
-			g_free(m->direction);
-			m->direction = g_strdup("inactive");
+			m->direction = JANUS_SDP_INACTIVE;
 			temp = temp->next;
 			continue;
 		}
@@ -906,7 +887,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #endif
 		}
-		if(m->type != JANUS_SDP_APPLICATION) {
+		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 			a = janus_sdp_attribute_create("rtcp-mux", NULL);
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 		}
@@ -928,7 +909,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		/* Add last attributes, rtcp and ssrc (msid) */
 		if(m->type == JANUS_SDP_AUDIO &&
-				(m->direction == NULL || !strcasecmp(m->direction, "sendrecv") || !strcasecmp(m->direction, "sendonly"))) {
+				(m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusaudio", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusa0", stream->audio_ssrc);
@@ -938,7 +919,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" label:janusa0", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 		} else if(m->type == JANUS_SDP_VIDEO &&
-				(m->direction == NULL || !strcasecmp(m->direction, "sendrecv") || !strcasecmp(m->direction, "sendonly"))) {
+				(m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", stream->video_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusv0", stream->video_ssrc);
@@ -951,7 +932,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 		/* And now the candidates */
 		janus_ice_candidates_to_sdp(handle, m, stream->stream_id, 1);
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) &&
-				m->type != JANUS_SDP_APPLICATION)
+				(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO))
 			janus_ice_candidates_to_sdp(handle, m, stream->stream_id, 2);
 		/* Next */
 		temp = temp->next;

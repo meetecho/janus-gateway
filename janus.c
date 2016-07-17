@@ -32,7 +32,6 @@
 #include "log.h"
 #include "debug.h"
 #include "rtcp.h"
-#include "sdp.h"
 #include "auth.h"
 #include "utils.h"
 
@@ -3571,11 +3570,6 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "Data Channels support not compiled\n");
 #endif
 
-	/* Initialize Sofia-SDP */
-	if(janus_sdp_init() < 0) {
-		exit(1);
-	}
-
 	/* Load plugins */
 	const char *path = PLUGINDIR;
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
@@ -3878,8 +3872,6 @@ gint main(int argc, char *argv[])
 	janus_dtls_srtp_cleanup();
 	EVP_cleanup();
 	ERR_free_strings();
-	JANUS_LOG(LOG_INFO, "Cleaning SDP structures...\n");
-	janus_sdp_deinit();
 #ifdef HAVE_SCTP
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();

@@ -124,7 +124,6 @@ rec_dir = <folder where recordings should be stored, when enabled>
 #include "plugin.h"
 
 #include <jansson.h>
-#include <sofia-sip/sdp.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -133,6 +132,7 @@ rec_dir = <folder where recordings should be stored, when enabled>
 #include "../rtp.h"
 #include "../rtcp.h"
 #include "../record.h"
+#include "../sdp-utils.h"
 #include "../utils.h"
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -286,7 +286,6 @@ static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
-static su_home_t *sdphome = NULL;
 static void *janus_videoroom_handler(void *data);
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data);
@@ -723,11 +722,6 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 		/* Invalid arguments */
 		return -1;
 	}
-	sdphome = su_home_new(sizeof(su_home_t));
-	if(su_home_init(sdphome) < 0) {
-		JANUS_LOG(LOG_FATAL, "Ops, error setting up sofia-sdp?\n");
-		return -1;
-	}
 
 	/* Read configuration */
 	char filename[255];
@@ -920,9 +914,6 @@ void janus_videoroom_destroy(void) {
 		g_thread_join(watchdog);
 		watchdog = NULL;
 	}
-	su_home_deinit(sdphome);
-	su_home_unref(sdphome);
-	sdphome = NULL;
 
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
@@ -3388,59 +3379,58 @@ static void *janus_videoroom_handler(void *data) {
 				/* Which media are available? */
 				int audio = 0, video = 0, data = 0;
 				const char *audio_mode = NULL, *video_mode = NULL;
-				sdp_parser_t *parser = sdp_parse(sdphome, msg->sdp, strlen(msg->sdp), 0);
-				sdp_session_t *parsed_sdp = sdp_session(parser);
+				janus_sdp *parsed_sdp = janus_sdp_import(msg->sdp);
 				if(!parsed_sdp) {
 					/* Invalid SDP */
-					JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdp_parsing_error(parser));
+					JANUS_LOG(LOG_ERR, "Error parsing SDP\n");
 					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
-					g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdp_parsing_error(parser));
-					sdp_parser_free(parser);
+					g_snprintf(error_cause, 512, "Error parsing SDP");
 					goto error;
 				}
-				sdp_media_t *m = parsed_sdp->sdp_media;
-				while(m) {
-					if(m->m_type == sdp_media_audio && m->m_port > 0) {
+				GList *temp = parsed_sdp->m_lines;
+				while(temp) {
+					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
 						audio++;
 						participant->audio = TRUE;
 						if(audio > 1) {
-							m = m->m_next;
+							temp = temp->next;
 							continue;
 						}
-					} else if(m->m_type == sdp_media_video && m->m_port > 0) {
+					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
 						video++;
 						participant->video = TRUE;
 						if(video > 1) {
-							m = m->m_next;
+							temp = temp->next;
 							continue;
 						}
 #ifdef HAVE_SCTP
-					} else if(m->m_type == sdp_media_application && m->m_port > 0) {
+					} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 						data++;
 						participant->data = TRUE;
 						if(data > 1) {
-							m = m->m_next;
+							temp = temp->next;
 							continue;
 						}
 #endif
 					}
-					if(m->m_type != sdp_media_application) {
+					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						/* What is the direction? */
-						switch(m->m_mode) {
-							case sdp_recvonly:
+						switch(m->direction) {
+							case JANUS_SDP_RECVONLY:
 								/* If we're getting a 'recvonly' publisher, we're going to answer with 'inactive' */
-							case sdp_inactive:
-								if(m->m_type == sdp_media_audio) {
+							case JANUS_SDP_INACTIVE:
+								if(m->type == JANUS_SDP_AUDIO) {
 									audio_mode = "inactive";
 								} else {
 									video_mode = "inactive";
 								}
 								break;
-							case sdp_sendonly:
+							case JANUS_SDP_SENDONLY:
 								/* What we expect, turn this into 'recvonly' */
-							case sdp_sendrecv:
+							case JANUS_SDP_SENDRECV:
 							default:
-								if(m->m_type == sdp_media_audio) {
+								if(m->type == JANUS_SDP_AUDIO) {
 									audio_mode = "recvonly";
 								} else {
 									video_mode = "recvonly";
@@ -3448,9 +3438,9 @@ static void *janus_videoroom_handler(void *data) {
 								break;
 						}
 					}
-					m = m->m_next;
+					temp = temp->next;
 				}
-				sdp_parser_free(parser);
+				janus_sdp_free(parsed_sdp);
 				JANUS_LOG(LOG_VERB, "The publisher %s going to send an audio stream\n", audio ? "is" : "is NOT");
 				int opus_pt = 0, isac32_pt = 0, isac16_pt = 0, pcmu_pt = 0, pcma_pt = 0,
 					vp8_pt = 0, vp9_pt = 0, h264_pt = 0;

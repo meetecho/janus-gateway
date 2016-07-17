@@ -29,16 +29,6 @@
 
 #include "sdp-utils.h"
 
-/** @name Janus SDP setup
- */
-///@{
-/*! \brief Janus SDP processor initialization
- * @returns 0 in case of success, -1 in case of an error */
-int janus_sdp_init(void);
-/*! \brief Janus SDP processor deinitialization */
-void janus_sdp_deinit(void);
-///@}
-
 
 /** @name Janus SDP helper methods
  */

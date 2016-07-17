@@ -57,6 +57,18 @@ typedef enum janus_sdp_mtype {
 	JANUS_SDP_OTHER
 } janus_sdp_mtype;
 
+/*! \brief Helper enumeration to quickly identify m-line directions */
+typedef enum janus_sdp_mdirection {
+	/*! \brief sendrecv */
+	JANUS_SDP_SENDRECV,
+	/*! \brief sendonly */
+	JANUS_SDP_SENDONLY,
+	/*! \brief recvonly */
+	JANUS_SDP_RECVONLY,
+	/*! \brief inactive */
+	JANUS_SDP_INACTIVE
+} janus_sdp_mdirection;
+
 /*! \brief SDP m-line representation */
 typedef struct janus_sdp_mline {
 	/*! \brief Media type as a janus_sdp_mtype enumerator */
@@ -78,7 +90,7 @@ typedef struct janus_sdp_mline {
 	/*! \brief Media b= value */
 	int b_value;
 	/*! \brief Media direction */
-	char *direction;
+	janus_sdp_mdirection direction;
 	/*! \brief List of m-line attributes */
 	GList *attributes;
 } janus_sdp_mline;

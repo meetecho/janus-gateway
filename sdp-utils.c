@@ -40,7 +40,6 @@ void janus_sdp_free(janus_sdp *sdp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		g_free(m->type_str);
 		g_free(m->proto);
-		g_free(m->direction);
 		g_free(m->c_addr);
 		g_free(m->b_name);
 		g_list_free(m->ptypes);
@@ -188,6 +187,7 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 							m->type = JANUS_SDP_OTHER;
 						m->type_str = g_strdup(type);
 						m->proto = g_strdup(proto);
+						m->direction = JANUS_SDP_SENDRECV;
 						/* Now let's check the payload types */
 						gchar **mline_parts = g_strsplit(line+2, " ", -1);
 						if(!mline_parts) {
@@ -264,13 +264,21 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						char *semicolon = strchr(line, ':');
 						if(semicolon == NULL) {
 							/* Is this a media direction attribute? */
-							if(!strcasecmp(line, "sendrecv")
-									|| !strcasecmp(line, "sendonly")
-									|| !strcasecmp(line, "recvonly")
-									|| !strcasecmp(line, "inactive")) {
+							if(!strcasecmp(line, "sendrecv")) {
 								g_free(a);
-								g_free(mline->direction);
-								mline->direction = g_strdup(line);
+								mline->direction = JANUS_SDP_SENDRECV;
+								break;
+							} else if(!strcasecmp(line, "sendonly")) {
+								g_free(a);
+								mline->direction = JANUS_SDP_SENDONLY;
+								break;
+							} else if(!strcasecmp(line, "recvonly")) {
+								g_free(a);
+								mline->direction = JANUS_SDP_RECVONLY;
+								break;
+							} else if(!strcasecmp(line, "inactive")) {
+								g_free(a);
+								mline->direction = JANUS_SDP_INACTIVE;
 								break;
 							}
 							a->name = g_strdup(line);
@@ -378,7 +386,23 @@ char *janus_sdp_export(janus_sdp *imported) {
 			}
 		}
 		/* a= */
-		g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", m->direction ? m->direction : "sendrecv");
+		const char *direction = NULL;
+		switch(m->direction) {
+			case JANUS_SDP_SENDONLY:
+				direction = "sendonly";
+				break;
+			case JANUS_SDP_RECVONLY:
+				direction = "recvonly";
+				break;
+			case JANUS_SDP_INACTIVE:
+				direction = "inactive";
+				break;
+			case JANUS_SDP_SENDRECV:
+			default:
+				direction = "sendrecv";
+				break;
+		}
+		g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", direction);
 		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		if(m->port == 0) {
 			/* No point going on */
