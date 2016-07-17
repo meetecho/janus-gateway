@@ -1154,6 +1154,29 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
 		}
+	} else if(!strcasecmp(request_text, "exists")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto error;
+		json_t *room = json_object_get(root, "room");
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		gboolean room_exists = g_hash_table_contains(rooms, &room_id);
+		janus_mutex_unlock(&rooms_mutex);
+		if(!internal) {
+			/* Send response back */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "textroom", json_string("success"));
+			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "exists", room_exists ? json_true() : json_false());
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			json_decref(reply);
+			gateway->relay_data(handle, reply_text, strlen(reply_text));
+			g_free(reply_text);
+		}
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 			error_code, error_cause, TRUE,
