@@ -25,14 +25,15 @@
 
 
 /* Pre-parse SDP: is this SDP valid? how many audio/video lines? any features to take into account? */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle) {
+janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errlen,
+		int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle) {
 	if(!jsep_sdp || !audio || !video || !data || !bundle || !rtcpmux || !trickle) {
-		JANUS_LOG(LOG_ERR, "  Can't preparse, invalid arduments\n");
+		JANUS_LOG(LOG_ERR, "  Can't preparse, invalid arguments\n");
 		return NULL;
 	}
-	janus_sdp *parsed_sdp = janus_sdp_import(jsep_sdp);
+	janus_sdp *parsed_sdp = janus_sdp_parse(jsep_sdp, error_str, errlen);
 	if(!parsed_sdp) {
-		JANUS_LOG(LOG_ERR, "  Error parsing SDP?\n");
+		JANUS_LOG(LOG_ERR, "  Error parsing SDP? %s\n", error_str ? error_str : "(unknown reason)");
 		/* Invalid SDP */
 		return NULL;
 	}
@@ -62,7 +63,7 @@ janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int 
 }
 
 /* Parse SDP */
-int janus_sdp_parse(void *ice_handle, janus_sdp *remote_sdp) {
+int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 	if(!ice_handle || !remote_sdp)
 		return -1;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
@@ -549,14 +550,9 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 	return 0;
 }
 
-char *janus_sdp_anonymize(const char *sdp) {
-	if(sdp == NULL)
-		return NULL;
-	janus_sdp *anon = janus_sdp_import(sdp);
-	if(anon == NULL) {
-		JANUS_LOG(LOG_ERR, "Error parsing/anonymizing SDP\n");
-		return NULL;
-	}
+int janus_sdp_anonymize(janus_sdp *anon) {
+	if(anon == NULL)
+		return -1;
 	int audio = 0, video = 0;
 #ifdef HAVE_SCTP
 	int data = 0;
@@ -676,38 +672,39 @@ char *janus_sdp_anonymize(const char *sdp) {
 		}
 		temp = temp->next;
 	}
-	char *buf = janus_sdp_export(anon);
-	janus_sdp_free(anon);
-	if(buf != NULL) {
-		JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
-		JANUS_LOG(LOG_VERB, "  >> Anonymized (%zu --> %zu bytes)\n", strlen(sdp), strlen(buf));
-		JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
-		JANUS_LOG(LOG_VERB, "%s\n", buf);
-		return buf;
-	} else {
-		JANUS_LOG(LOG_ERR, "Error anonymizing SDP\n");
-		return NULL;
-	}
+
+	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
+	JANUS_LOG(LOG_VERB, "  >> Anonymized\n");
+	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
+
+	return 0;
 }
 
-char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
-	if(ice_handle == NULL || origsdp == NULL)
+char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
+	if(ice_handle == NULL || anon == NULL)
 		return NULL;
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
 	janus_ice_stream *stream = NULL;
-	janus_sdp *anon = janus_sdp_import(origsdp);
-	if(anon == NULL) {
-		JANUS_LOG(LOG_ERR, "Error parsing/merging SDP\n");
-		return NULL;
+	/* Check available media */
+	int audio = 0;
+	int video = 0;
+	int data = 0;
+	GList *temp = anon->m_lines;
+	while(temp) {
+		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+			audio = 1;
+		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+			video = 1;
+#ifdef HAVE_SCTP
+		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
+			if(m->proto && !strcasecmp(m->proto, "DTLS/SCTP"))
+				data = 1;
+#endif
+		}
+		temp = temp->next;
 	}
 	char *rtp_profile = handle->rtp_profile ? handle->rtp_profile : (char *)"RTP/SAVPF";
-	/* FIXME Any Plan B to take into account? */
-	int planb = strstr(origsdp, "a=planb:") ? 1 : 0;
-	if(planb) {
-		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B);
-	} else {
-		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B);
-	}
 	gboolean ipv4 = !strstr(janus_get_public_ip(), ":");
 	/* Origin o= */
 	gint64 sessid = janus_get_real_time();
@@ -724,13 +721,6 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 	if(anon->s_name == NULL)
 		anon->s_name = g_strdup("Meetecho Janus");
 	/* bundle: add new global attribute */
-	int audio = (strstr(origsdp, "m=audio") != NULL);
-	int video = (strstr(origsdp, "m=video") != NULL);
-#ifdef HAVE_SCTP
-	int data = (strstr(origsdp, "DTLS/SCTP") && !strstr(origsdp, " 0 DTLS/SCTP"));
-#else
-	int data = 0;
-#endif
 	char buffer[2048], buffer_part[512];
 	buffer[0] = '\0';
 	buffer_part[0] = '\0';
@@ -771,7 +761,7 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 #ifdef HAVE_SCTP
 	data = 0;
 #endif
-	GList *temp = anon->m_lines;
+	temp = anon->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		first = m->attributes;
@@ -938,11 +928,10 @@ char *janus_sdp_merge(void *ice_handle, const char *origsdp) {
 		temp = temp->next;
 	}
 
-	char *sdp = janus_sdp_export(anon);
-	janus_sdp_free(anon);
+	char *sdp = janus_sdp_write(anon);
 
 	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
-	JANUS_LOG(LOG_VERB, "  >> Merged (%zu --> %zu bytes)\n", strlen(origsdp), strlen(sdp));
+	JANUS_LOG(LOG_VERB, "  >> Merged (%zu bytes)\n", strlen(sdp));
 	JANUS_LOG(LOG_VERB, " -------------------------------------------\n");
 	JANUS_LOG(LOG_VERB, "%s\n", sdp);
 

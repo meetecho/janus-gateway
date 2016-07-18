@@ -74,9 +74,14 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 	return a;
 }
 
-janus_sdp *janus_sdp_import(const char *sdp) {
-	if(!sdp || strstr(sdp, "v=") != sdp)
+janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
+	if(!sdp)
 		return NULL;
+	if(strstr(sdp, "v=") != sdp) {
+		if(error)
+			g_snprintf(error, errlen, "Invalid SDP (doesn't start with v=)");
+		return NULL;
+	}
 	janus_sdp *imported = g_malloc0(sizeof(janus_sdp));
 
 	gboolean success = TRUE;
@@ -92,12 +97,14 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 				continue;
 			}
 			if(strlen(line) < 3) {
-				JANUS_LOG(LOG_ERR, "Invalid line (%zu bytes): %s\n", strlen(line), line);
+				if(error)
+					g_snprintf(error, errlen, "Invalid line (%zu bytes): %s", strlen(line), line);
 				success = FALSE;
 				break;
 			}
 			if(*(line+1) != '=') {
-				JANUS_LOG(LOG_ERR, "Invalid line (2nd char is not '='): %s\n", line);
+				if(error)
+					g_snprintf(error, errlen, "Invalid line (2nd char is not '='): %s", line);
 				success = FALSE;
 				break;
 			}
@@ -107,7 +114,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 				switch(c) {
 					case 'v': {
 						if(sscanf(line, "v=%d", &imported->version) != 1) {
-							JANUS_LOG(LOG_ERR, "Invalid v= line: %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid v= line: %s", line);
 							success = FALSE;
 							break;
 						}
@@ -117,7 +125,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						char name[256], addrtype[6], addr[256];
 						if(sscanf(line, "o=%255s %"SCNu64" %"SCNu64" IN %5s %255s",
 								name, &imported->o_sessid, &imported->o_version, addrtype, addr) != 5) {
-							JANUS_LOG(LOG_ERR, "Invalid o= line: %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid o= line: %s", line);
 							success = FALSE;
 							break;
 						}
@@ -126,7 +135,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						else if(!strcasecmp(addrtype, "IP6"))
 							imported->o_ipv4 = FALSE;
 						else {
-							JANUS_LOG(LOG_ERR, "Invalid o= line (unsupported protocol %s): %s\n", addrtype, line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid o= line (unsupported protocol %s): %s", addrtype, line);
 							success = FALSE;
 							break;
 						}
@@ -140,7 +150,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 					}
 					case 't': {
 						if(sscanf(line, "t=%"SCNu64" %"SCNu64, &imported->t_start, &imported->t_stop) != 2) {
-							JANUS_LOG(LOG_ERR, "Invalid t= line: %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid t= line: %s", line);
 							success = FALSE;
 							break;
 						}
@@ -155,7 +166,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 							a->value = NULL;
 						} else {
 							if(*(semicolon+1) == '\0') {
-								JANUS_LOG(LOG_ERR, "Invalid a= line: %s\n", line);
+								if(error)
+									g_snprintf(error, errlen, "Invalid a= line: %s", line);
 								success = FALSE;
 								break;
 							}
@@ -173,7 +185,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						char type[32];
 						char proto[64];
 						if(sscanf(line, "m=%31s %"SCNu16" %63s %*s", type, &m->port, proto) != 3) {
-							JANUS_LOG(LOG_ERR, "Invalid m= line: %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid m= line: %s", line);
 							success = FALSE;
 							break;
 						}
@@ -191,7 +204,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						/* Now let's check the payload types */
 						gchar **mline_parts = g_strsplit(line+2, " ", -1);
 						if(!mline_parts) {
-							JANUS_LOG(LOG_ERR, "Invalid m= line (no payload types): %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid m= line (no payload types): %s", line);
 							success = FALSE;
 							break;
 						}
@@ -208,7 +222,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						}
 						g_strfreev(mline_parts);
 						if(m->ptypes == NULL) {
-							JANUS_LOG(LOG_ERR, "Invalid m= line (no payload types): %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid m= line (no payload types): %s", line);
 							success = FALSE;
 							break;
 						}
@@ -228,7 +243,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 					case 'c': {
 						char addrtype[6], addr[256];
 						if(sscanf(line, "c=IN %5s %255s", addrtype, addr) != 2) {
-							JANUS_LOG(LOG_ERR, "Invalid c= line: %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid c= line: %s", line);
 							success = FALSE;
 							break;
 						}
@@ -237,7 +253,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						else if(!strcasecmp(addrtype, "IP6"))
 							mline->c_ipv4 = FALSE;
 						else {
-							JANUS_LOG(LOG_ERR, "Invalid c= line (unsupported protocol %s): %s\n", addrtype, line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid c= line (unsupported protocol %s): %s", addrtype, line);
 							success = FALSE;
 							break;
 						}
@@ -248,7 +265,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 						line += 2;
 						char *semicolon = strchr(line, ':');
 						if(semicolon == NULL || (*(semicolon+1) == '\0')) {
-							JANUS_LOG(LOG_ERR, "Invalid b= line: %s\n", line);
+							if(error)
+								g_snprintf(error, errlen, "Invalid b= line: %s", line);
 							success = FALSE;
 							break;
 						}
@@ -285,7 +303,8 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 							a->value = NULL;
 						} else {
 							if(*(semicolon+1) == '\0') {
-								JANUS_LOG(LOG_ERR, "Invalid a= line: %s\n", line);
+								if(error)
+									g_snprintf(error, errlen, "Invalid a= line: %s", line);
 								success = FALSE;
 								break;
 							}
@@ -312,17 +331,22 @@ janus_sdp *janus_sdp_import(const char *sdp) {
 		g_strfreev(parts);
 	}
 	/* FIXME Do a last check: is all the stuff that's supposed to be there available? */
-	if(imported->o_name == NULL || imported->o_addr == NULL || imported->s_name == NULL || imported->m_lines == NULL)
+	if(imported->o_name == NULL || imported->o_addr == NULL || imported->s_name == NULL || imported->m_lines == NULL) {
 		success = FALSE;
+		if(error)
+			g_snprintf(error, errlen, "Missing mandatory lines (o=, s= or m=)");
+	}
 	/* If something wrong happened, free and return a failure */
 	if(!success) {
+		if(error)
+			JANUS_LOG(LOG_ERR, "%s\n", error);
 		janus_sdp_free(imported);
 		imported = NULL;
 	}
 	return imported;
 }
 
-char *janus_sdp_export(janus_sdp *imported) {
+char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
 	gboolean success = TRUE;

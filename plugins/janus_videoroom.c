@@ -3379,12 +3379,13 @@ static void *janus_videoroom_handler(void *data) {
 				/* Which media are available? */
 				int audio = 0, video = 0, data = 0;
 				const char *audio_mode = NULL, *video_mode = NULL;
-				janus_sdp *parsed_sdp = janus_sdp_import(msg->sdp);
+				char error_str[100];
+				janus_sdp *parsed_sdp = janus_sdp_parse(msg->sdp, error_str, sizeof(error_str));
 				if(!parsed_sdp) {
 					/* Invalid SDP */
-					JANUS_LOG(LOG_ERR, "Error parsing SDP\n");
+					JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", error_str);
 					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
-					g_snprintf(error_cause, 512, "Error parsing SDP");
+					g_snprintf(error_cause, 512, "Error parsing SDP: %s", error_str);
 					goto error;
 				}
 				GList *temp = parsed_sdp->m_lines;

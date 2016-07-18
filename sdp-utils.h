@@ -110,13 +110,16 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 
 /*! \brief Method to parse an SDP string to a janus_sdp object
  * @param[in] sdp The SDP string to parse
- * @returns A pointer to a janus_sdp object, if successful, NULL otherwise */
-janus_sdp *janus_sdp_import(const char *sdp);
+ * @param[in,out] error Buffer to receive a reason for an error, if any
+ * @param[in] errlen The length of the error buffer
+ * @returns A pointer to a janus_sdp object, if successful, NULL otherwise; in case
+ * of errors, if provided the error string is filled with a reason  */
+janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen);
 
 /*! \brief Method to serialize a janus_sdp object to an SDP string
  * @param[in] sdp The janus_sdp object to serialize
  * @returns A pointer to a string with the serialized SDP, if successful, NULL otherwise */
-char *janus_sdp_export(janus_sdp *sdp);
+char *janus_sdp_write(janus_sdp *sdp);
 
 /*! \brief Method to free a Janus SDP object
  * @param[in] sdp The Janus SDP object to free */

@@ -36,6 +36,8 @@
 /*! \brief Method to pre-parse a session description
  * \details This method is only used to quickly check how many audio and video lines are in an SDP, and to generate a Janus SDP instance
  * @param[in] jsep_sdp The SDP that the browser peer originated
+ * @param[in,out] error Buffer to receive a reason for an error, if any
+ * @param[in] errlen The length of the error buffer
  * @param[out] audio The number of audio m-lines
  * @param[out] video The number of video m-lines
  * @param[out] data The number of SCTP m-lines
@@ -43,14 +45,14 @@
  * @param[out] rtcpmux Whether rtcp-mux has been negotiated or not
  * @param[out] trickle Whether ICE trickling is being used (no candidates) or not
  * @returns The Janus SDP object in case of success, NULL in case the SDP is invalid */
-janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle);
+janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errlen, int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle);
 
-/*! \brief Method to parse a session description
- * \details This method will parse a session description coming from a peer, and set up the ICE candidates accordingly
+/*! \brief Method to process a parsed session description
+ * \details This method will process a session description coming from a peer, and set up the ICE candidates accordingly
  * @param[in] handle Opaque pointer to the ICE handle this session description will modify
- * @param[in] sdp The Janus SDP object to parse
+ * @param[in] sdp The Janus SDP object to process
  * @returns 0 in case of success, -1 in case of an error */
-int janus_sdp_parse(void *handle, janus_sdp *sdp);
+int janus_sdp_process(void *handle, janus_sdp *sdp);
 
 /*! \brief Method to parse a single candidate
  * \details This method will parse a single remote candidate provided by a peer, whether it is trickling or not
@@ -69,15 +71,15 @@ int janus_sdp_parse_candidate(void *stream, const char *candidate, int trickle);
 int janus_sdp_parse_ssrc(void *stream, const char *ssrc_attr, int video);
 
 /*! \brief Method to strip/anonymize a session description
- * @param[in] sdp The session description to strip/anonymize
- * @returns A string containing the stripped/anonymized session description in case of success, NULL if the SDP is invalid */
-char *janus_sdp_anonymize(const char *sdp);
+ * @param[in,out] sdp The Janus SDP description object to strip/anonymize
+ * @returns 0 in case of success, a non-zero integer in case of an error */
+int janus_sdp_anonymize(janus_sdp *sdp);
 
 /*! \brief Method to merge a stripped session description and the right transport information
  * @param[in] handle Opaque pointer to the ICE handle this session description is related to
- * @param[in] sdp The stripped session description to merge
+ * @param[in] sdp The Janus SDP description object to merge/enrich
  * @returns A string containing the full session description in case of success, NULL if the SDP is invalid */
-char *janus_sdp_merge(void *handle, const char *sdp);
+char *janus_sdp_merge(void *handle, janus_sdp *sdp);
 ///@}
 
 #endif
