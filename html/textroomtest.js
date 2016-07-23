@@ -159,11 +159,11 @@ $(document).ready(function() {
 										if(whisper === true) {
 											// Private message
 											$('#chatroom').append('<p style="color: purple;">[' + dateString + '] <b>[whisper from ' + participants[from] + ']</b> ' + msg);
-											$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
+											$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										} else {
 											// Public message
 											$('#chatroom').append('<p>[' + dateString + '] <b>' + participants[from] + ':</b> ' + msg);
-											$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
+											$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										}
 									} else if(what === "join") {
 										// Somebody joined
@@ -179,14 +179,14 @@ $(document).ready(function() {
 											});
 										}
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' joined</i></p>');
-										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
+										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 									} else if(what === "leave") {
 										// Somebody left
 										var username = json["username"];
 										var when = new Date();
 										$('#rp' + username).remove();
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' left</i></p>');
-										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
+										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										delete participants[username];
 									} else if(what === "destroyed") {
 										// Room was destroyed, goodbye!
@@ -286,7 +286,7 @@ function registerUsername() {
 						});
 					}
 					$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[p.username] + ' joined</i></p>');
-					$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
+					$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 				}
 			}
 		};
@@ -319,7 +319,7 @@ function sendPrivateMsg(username) {
 				error: function(reason) { bootbox.alert(reason); },
 				success: function() {
 					$('#chatroom').append('<p style="color: purple;">[' + getDateString() + '] <b>[whisper to ' + display + ']</b> ' + result);
-					$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;				
+					$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 				}
 			});
 		}
@@ -337,7 +337,8 @@ function sendData() {
 		textroom: "message",
 		transaction: randomString(12),
 		room: myroom,
-		text: data
+		text: data,
+    ack: true // acknowledge message reciept by server? (does NOT acknowledge receipt by other clients)
 	};
 	textroom.data({
 		text: JSON.stringify(message),
