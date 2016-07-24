@@ -155,7 +155,7 @@ static struct janus_json_parameter message_parameters[] = {
 	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"to", JSON_STRING, 0},
 	{"tos", JSON_ARRAY, 0},
-    {"ack", JANUS_JSON_BOOL, 0}
+	{"ack", JANUS_JSON_BOOL, 0}
 };
 
 /* Static configuration instance */
