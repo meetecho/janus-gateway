@@ -338,7 +338,7 @@ function sendData() {
 		transaction: randomString(12),
 		room: myroom,
 		text: data,
-    ack: true // acknowledge message reciept by server? (does NOT acknowledge receipt by other clients)
+        ack: true // acknowledge message reciept by server? (does NOT acknowledge receipt by other clients)
 	};
 	textroom.data({
 		text: JSON.stringify(message),

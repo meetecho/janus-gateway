@@ -155,7 +155,7 @@ static struct janus_json_parameter message_parameters[] = {
 	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"to", JSON_STRING, 0},
 	{"tos", JSON_ARRAY, 0},
-  {"ack", JANUS_JSON_BOOL, 0}
+    {"ack", JANUS_JSON_BOOL, 0}
 };
 
 /* Static configuration instance */
@@ -803,7 +803,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 #endif
 		}
 		g_free(msg_text);
-		janus_mutex_unlock(&textroom->mutex);
+    janus_mutex_unlock(&textroom->mutex);
     /* Should we send ack event? Yes if no ack field provided, else follow field directive */
     json_t *ack = json_object_get(root, "ack");
 		if(!internal && (ack == NULL || json_is_true(ack))) {
