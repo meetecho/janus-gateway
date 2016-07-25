@@ -2476,9 +2476,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
-			if (session->raw_media != NULL) {
-				sdp_parser_free(session->raw_media)
-			}
+			if(session->raw_media != NULL)
+				sdp_parser_free(session->raw_media);
 			session->raw_media = parser;
 			GError *error = NULL;
 			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
