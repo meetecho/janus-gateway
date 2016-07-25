@@ -10,18 +10,18 @@
  * (broadcasting), or to individual users (whispers). This plugin can be
  * used within the context of any application that needs real-time text
  * broadcasting (e.g., chatrooms, but not only).
- * 
+ *
  * The only message that is sent to the plugin through the Janus API is
  * a "setup" message, by which the user initializes the PeerConnection
  * itself. Apart from that, all other messages are exchanged directly
  * via Data Channels.
- * 
+ *
  * Each room can also be configured with an HTTP backend to contact for
  * incoming messages. If configured, messages addressed to that room will
  * also be forwarded, by means of an HTTP POST, to the specified address.
  * Notice that this will only work if libcurl was available when
  * configuring and installing Janus.
- * 
+ *
  * \note This plugin is only meant to showcase what you can do with
  * data channels involving multiple participants at the same time. While
  * functional, it's not inherently better or faster than doing the same
@@ -32,16 +32,16 @@
  * said, the plugin can be useful if you don't plan to use any other
  * infrastructure than Janus, and yet you also want to have text-based
  * communication (e.g., to add a chatroom to an audio or video conference).
- * 
+ *
  * Notice that, in general, all users can create rooms. If you want to
  * limit this functionality, you can configure an admin \c admin_key in
  * the plugin settings. When configured, only "create" requests that
  * include the correct \c admin_key value in an "admin_key" property
  * will succeed, and will be rejected otherwise.
- * 
+ *
  * \section textroomapi Text Room API
  * TBD.
- * 
+ *
  * \ingroup plugins
  * \ref plugins
  */
@@ -104,7 +104,7 @@ static janus_plugin janus_textroom_plugin =
 		.get_name = janus_textroom_get_name,
 		.get_author = janus_textroom_get_author,
 		.get_package = janus_textroom_get_package,
-		
+
 		.create_session = janus_textroom_create_session,
 		.handle_message = janus_textroom_handle_message,
 		.setup_media = janus_textroom_setup_media,
@@ -154,7 +154,8 @@ static struct janus_json_parameter message_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"text", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"to", JSON_STRING, 0},
-	{"tos", JSON_ARRAY, 0}
+	{"tos", JSON_ARRAY, 0},
+	{"ack", JANUS_JSON_BOOL, 0}
 };
 
 /* Static configuration instance */
@@ -361,7 +362,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL)
 		janus_config_print(config);
 	janus_mutex_init(&config_mutex);
-	
+
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
@@ -407,7 +408,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 				textroom->room_pin = g_strdup(pin->value);
 			}
 			if(post != NULL && post->value != NULL) {
-#ifdef HAVE_LIBCURL	
+#ifdef HAVE_LIBCURL
 				/* FIXME Should we check if this is a valid HTTP address? */
 				textroom->http_backend = g_strdup(post->value);
 #else
@@ -439,9 +440,9 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	}
 	janus_mutex_unlock(&rooms_mutex);
 
-#ifdef HAVE_LIBCURL	
+#ifdef HAVE_LIBCURL
 	curl_global_init(CURL_GLOBAL_ALL);
-#endif	
+#endif
 
 	GError *error = NULL;
 	/* Start the sessions watchdog */
@@ -486,7 +487,7 @@ void janus_textroom_destroy(void) {
 	messages = NULL;
 	sessions = NULL;
 
-#ifdef HAVE_LIBCURL	
+#ifdef HAVE_LIBCURL
 	curl_global_cleanup();
 #endif
 
@@ -531,7 +532,7 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_textroom_session *session = (janus_textroom_session *)g_malloc0(sizeof(janus_textroom_session));
 	session->handle = handle;
 	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
@@ -551,7 +552,7 @@ void janus_textroom_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
+	}
 	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -574,7 +575,7 @@ void janus_textroom_destroy_session(janus_plugin_session *handle, int *error) {
 char *janus_textroom_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
-	}	
+	}
 	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
@@ -607,7 +608,7 @@ void janus_textroom_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;	
+	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -629,7 +630,7 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *buf, int l
 	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
 	/* Incoming request from this user: what should we do? */
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;	
+	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
@@ -647,7 +648,7 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *buf, int l
 
 /* Helper method to handle incoming messages from the data channel */
 void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *text, gboolean internal) {
-	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;	
+	janus_textroom_session *session = (janus_textroom_session *)handle->plugin_handle;
 	/* Parse JSON */
 	json_error_t error;
 	json_t *root = json_loads(text, 0, &error);
@@ -803,7 +804,9 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		}
 		g_free(msg_text);
 		janus_mutex_unlock(&textroom->mutex);
-		if(!internal) {
+		/* Should we send ack event? Yes if no ack field provided, else follow field directive */
+		json_t *ack = json_object_get(root, "ack");
+		if(!internal && (ack == NULL || json_is_true(ack))) {
 			/* Send response back */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			json_decref(reply);
@@ -1095,7 +1098,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		if(pin)
 			textroom->room_pin = g_strdup(json_string_value(pin));
 		if(post) {
-#ifdef HAVE_LIBCURL	
+#ifdef HAVE_LIBCURL
 			/* FIXME Should we check if this is a valid HTTP address? */
 			textroom->http_backend = g_strdup(json_string_value(post));
 #else
@@ -1453,7 +1456,7 @@ static void *janus_textroom_handler(void *data) {
 		g_free(event_text);
 		janus_textroom_message_free(msg);
 		continue;
-		
+
 error:
 		{
 			if(root != NULL)
