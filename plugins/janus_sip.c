@@ -327,6 +327,7 @@ typedef struct janus_sip_session {
 	janus_sip_account account;
 	janus_sip_call_status status;
 	janus_sip_media media;
+	sdp_parser_t *raw_media;
 	char *transaction;
 	char *callee;
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
@@ -893,6 +894,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt_name = NULL;
 	session->media.video_srtp_suite_in = 0;
 	session->media.video_srtp_suite_out = 0;
+	session->raw_media = NULL;
 	janus_mutex_init(&session->rec_mutex);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
@@ -1201,6 +1203,10 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
+	if (session->raw_media != NULL) {
+		sdp_parser_free(session->raw_media);
+		session->raw_media = NULL;
+	}
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
@@ -2276,8 +2282,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(session->stack->s_nh_i != NULL) {
 				if(session->stack->s_nh_i == nh) {
-					/* re-INVITE, we don't support those. */
-					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					if (sdp_session_cmp(sdp_session(session->raw_media), sdp_session(parser)) == 0) {
+						/* re-INVITE that is basically a session-refresh (no media-change needed), accept. */
+						nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+					} else {
+						/* re-INVITE, we don't support those. */
+						nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					}
 				} else if(session->status >= janus_sip_call_status_inviting) {
 					/* Busy with another call */
 					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
@@ -2465,6 +2476,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
+			if (session->raw_media != NULL) {
+				sdp_parser_free(session->raw_media)
+			}
+			session->raw_media = parser;
 			GError *error = NULL;
 			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
 			if(error != NULL) {
@@ -2484,7 +2499,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			g_free(fixed_sdp);
-			sdp_parser_free(parser);
 			break;
 		}
 		case nua_r_register: {
