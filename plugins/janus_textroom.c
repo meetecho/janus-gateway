@@ -804,15 +804,16 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		}
 		g_free(msg_text);
 		janus_mutex_unlock(&textroom->mutex);
-		/* Should we send ack event? Yes if no ack field provided, else follow field directive */
+		/* By default we send a confirmation back to the user that sent this message:
+		 * if the user passed an ack=false, though, we don't do that */
 		json_t *ack = json_object_get(root, "ack");
 		if(!internal && (ack == NULL || json_is_true(ack))) {
 			/* Send response back */
 			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
 		}
+		json_decref(reply);
 	} else if(!strcasecmp(request_text, "join")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, join_parameters,
 			error_code, error_cause, TRUE,
