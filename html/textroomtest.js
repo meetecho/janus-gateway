@@ -338,8 +338,12 @@ function sendData() {
 		transaction: randomString(12),
 		room: myroom,
  		text: data,
- 		ack: true // should server acknowledge message reciept? (does NOT acknowledge receipt by other clients)
 	};
+	// Note: messages are always acknowledged by default. This means that you'll
+	// always receive a confirmation back that the message has been received by the
+	// server and forwarded to the recipients. If you do not want this to happen,
+	// just add an ack:false property to the message above, and server won't send
+	// you a response (meaning you just have to hope it succeeded).
 	textroom.data({
 		text: JSON.stringify(message),
 		error: function(reason) { bootbox.alert(reason); },
