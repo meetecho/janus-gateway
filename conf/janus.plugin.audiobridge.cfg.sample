@@ -10,6 +10,8 @@
 [general]
 ;admin_key = supersecret		; If set, rooms can be created via API only
 								; if this key is provided in the request
+;events = no					; Whether events should be sent to event
+								; handlers (default is yes)
 
 [1234]
 description = Demo Room

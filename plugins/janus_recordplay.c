@@ -341,6 +341,7 @@ static struct janus_json_parameter play_parameters[] = {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -538,6 +539,12 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *path = janus_config_get_item_drilldown(config, "general", "path");
 		if(path && path->value)
 			recordings_path = g_strdup(path->value);
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_RECORDPLAY_NAME);
+		}
 		/* Done */
 		janus_config_destroy(config);
 		config = NULL;
@@ -1226,7 +1233,7 @@ static void *janus_recordplay_handler(void *data) {
 			json_object_set_new(result, "status", json_string("recording"));
 			json_object_set_new(result, "id", json_integer(id));
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("recording"));
 				json_object_set_new(info, "id", json_integer(id));
@@ -1316,7 +1323,7 @@ static void *janus_recordplay_handler(void *data) {
 			json_object_set_new(result, "status", json_string("preparing"));
 			json_object_set_new(result, "id", json_integer(id_value));
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("playout"));
 				json_object_set_new(info, "id", json_integer(id_value));
@@ -1342,7 +1349,7 @@ static void *janus_recordplay_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "status", json_string("playing"));
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("playing"));
 				json_object_set_new(info, "id", json_integer(session->recording->id));
@@ -1411,7 +1418,7 @@ static void *janus_recordplay_handler(void *data) {
 			if(session->recording)
 				json_object_set_new(result, "id", json_integer(session->recording->id));
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("stopped"));
 				if(session->recording)

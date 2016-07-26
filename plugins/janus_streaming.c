@@ -288,6 +288,7 @@ static janus_mutex config_mutex;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -568,6 +569,12 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_STREAMING_NAME);
+		}
 		/* Iterate on all rooms */
 		GList *cl = janus_config_get_categories(config);
 		while(cl != NULL) {
@@ -1564,7 +1571,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		json_object_set_new(ml, "is_private", json_string(mp->is_private ? "true" : "false"));
 		json_object_set_new(response, "stream", ml);
 		/* Also notify event handlers */
-		if(gateway->events_is_enabled()) {
+		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "id", json_integer(mp->id));
@@ -1652,7 +1659,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			old_mountpoints = g_list_append(old_mountpoints, mp);
 		}
 		/* Also notify event handlers */
-		if(gateway->events_is_enabled()) {
+		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "id", json_integer(id_value));
@@ -2216,7 +2223,7 @@ static void *janus_streaming_handler(void *data) {
 			/* We wait for the setup_media event to start: on the other hand, it may have already arrived */
 			json_object_set_new(result, "status", json_string(session->started ? "started" : "starting"));
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("starting"));
 				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
@@ -2234,7 +2241,7 @@ static void *janus_streaming_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "status", json_string("pausing"));
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("pausing"));
 				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
@@ -2302,7 +2309,7 @@ static void *janus_streaming_handler(void *data) {
 			json_object_set_new(result, "switched", json_string("ok"));
 			json_object_set_new(result, "id", json_integer(id_value));
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("switching"));
 				json_object_set_new(info, "id", json_integer(id_value));
@@ -2330,7 +2337,7 @@ static void *janus_streaming_handler(void *data) {
 				janus_mutex_unlock(&session->mountpoint->mutex);
 			}
 			/* Also notify event handlers */
-			if(gateway->events_is_enabled()) {
+			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("stopping"));
 				json_object_set_new(info, "id", json_integer(session->mountpoint->id));

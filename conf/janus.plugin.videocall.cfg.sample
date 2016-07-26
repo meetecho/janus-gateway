@@ -1,1 +1,4 @@
-; The Video Call plugin doesn't need any configuration
+; events = yes|no, whether events should be sent to event handlers
+
+[general]
+;events = no

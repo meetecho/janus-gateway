@@ -165,6 +165,7 @@ static janus_mutex config_mutex;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -377,6 +378,12 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
 		if(key != NULL && key->value != NULL)
 			admin_key = g_strdup(key->value);
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_TEXTROOM_NAME);
+		}
 		/* Iterate on all rooms */
 		GList *cl = janus_config_get_categories(config);
 		while(cl != NULL) {
@@ -912,7 +919,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			g_free(reply_text);
 		}
 		/* Also notify event handlers */
-		if(gateway->events_is_enabled()) {
+		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("join"));
 			json_object_set_new(info, "room", json_integer(room_id));
@@ -979,7 +986,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			g_free(event_text);
 		}
 		/* Also notify event handlers */
-		if(gateway->events_is_enabled()) {
+		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("leave"));
 			json_object_set_new(info, "room", json_integer(room_id));
@@ -1177,7 +1184,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			g_free(reply_text);
 		}
 		/* Also notify event handlers */
-		if(gateway->events_is_enabled()) {
+		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "room", json_integer(room_id));
@@ -1297,7 +1304,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		/* We'll let the watchdog worry about freeing resources */
 		old_rooms = g_list_append(old_rooms, textroom);
 		/* Also notify event handlers */
-		if(gateway->events_is_enabled()) {
+		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "room", json_integer(room_id));

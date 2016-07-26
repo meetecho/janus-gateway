@@ -1,7 +1,7 @@
 [general]
 ; Specify which local IP address to use. If not set it will be automatically
 ; guessed from the system
-; local_ip = 1.2.3.4
+;local_ip = 1.2.3.4
 
 ; Enable local keep-alives to keep the registration open. Keep-alives are
 ; sent in the form of OPTIONS requests, at the given interval inseconds.
@@ -17,3 +17,6 @@ behind_nat = no
 ; user_agent = Cool WebRTC Gateway
 ; Expiration time for registrations
 register_ttl = 3600
+
+; Whether events should be sent to event handlers (default is yes)
+;events = no
