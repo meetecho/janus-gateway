@@ -107,6 +107,10 @@ typedef struct janus_sdp_attribute {
  * @param[in] value Value of the attribute, as a printf compliant string (variable arguments)
  * @returns A pointer to a valid janus_sdp_attribute instance, if successfull, NULL otherwise */
 janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *value, ...) G_GNUC_PRINTF(2, 3);
+/*! \brief Helper method to free a janus_sdp_attribute instance
+ * @note This method does not remove the attribute from the global or m-line attributes, that's up to the caller
+ * @param[in] attr The janus_sdp_attribute instance to free */
+void janus_sdp_attribute_destroy(janus_sdp_attribute *attr);
 
 /*! \brief Method to parse an SDP string to a janus_sdp object
  * @param[in] sdp The SDP string to parse

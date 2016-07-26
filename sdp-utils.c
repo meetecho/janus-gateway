@@ -29,9 +29,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 	GList *temp = sdp->attributes;
 	while(temp) {
 		janus_sdp_attribute *a = (janus_sdp_attribute *)temp->data;
-		g_free(a->name);
-		g_free(a->value);
-		g_free(a);
+		janus_sdp_attribute_destroy(a);
 		temp = temp->next;
 	}
 	g_list_free(sdp->attributes);
@@ -46,9 +44,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 		GList *temp2 = m->attributes;
 		while(temp2) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)temp2->data;
-			g_free(a->name);
-			g_free(a->value);
-			g_free(a);
+			janus_sdp_attribute_destroy(a);
 			temp2 = temp2->next;
 		}
 		g_free(m);
@@ -72,6 +68,14 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 		a->value = g_strdup(buffer);
 	}
 	return a;
+}
+
+void janus_sdp_attribute_destroy(janus_sdp_attribute *attr) {
+	if(!attr)
+		return;
+	g_free(attr->name);
+	g_free(attr->value);
+	g_free(attr);
 }
 
 janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
@@ -361,9 +365,7 @@ int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt) {
 			if(atoi(a->value) == pt) {
 				m->attributes = g_list_remove(m->attributes, a);
 				ma = m->attributes;
-				g_free(a->name);
-				g_free(a->value);
-				g_free(a);
+				janus_sdp_attribute_destroy(a);
 				continue;
 			}
 			ma = ma->next;

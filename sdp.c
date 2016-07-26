@@ -577,9 +577,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 				|| !strcasecmp(a->name, "rtcp-rsize")) {
 			anon->attributes = g_list_remove(anon->attributes, a);
 			temp = anon->attributes;
-			g_free(a->name);
-			g_free(a->value);
-			g_free(a);
+			janus_sdp_attribute_destroy(a);
 			continue;
 		}
 		temp = temp->next;
@@ -635,9 +633,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "sctpmap")) {
 				m->attributes = g_list_remove(m->attributes, a);
 				tempA = m->attributes;
-				g_free(a->name);
-				g_free(a->value);
-				g_free(a);
+				janus_sdp_attribute_destroy(a);
 				continue;
 			}
 			tempA = tempA->next;
