@@ -26,6 +26,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 	g_free(sdp->o_name);
 	g_free(sdp->o_addr);
 	g_free(sdp->s_name);
+	g_free(sdp->c_addr);
 	GList *temp = sdp->attributes;
 	while(temp) {
 		janus_sdp_attribute *a = (janus_sdp_attribute *)temp->data;
@@ -159,6 +160,27 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							success = FALSE;
 							break;
 						}
+						break;
+					}
+					case 'c': {
+						char addrtype[6], addr[256];
+						if(sscanf(line, "c=IN %5s %255s", addrtype, addr) != 2) {
+							if(error)
+								g_snprintf(error, errlen, "Invalid c= line: %s", line);
+							success = FALSE;
+							break;
+						}
+						if(!strcasecmp(addrtype, "IP4"))
+							imported->c_ipv4 = TRUE;
+						else if(!strcasecmp(addrtype, "IP6"))
+							imported->c_ipv4 = FALSE;
+						else {
+							if(error)
+								g_snprintf(error, errlen, "Invalid c= line (unsupported protocol %s): %s", addrtype, line);
+							success = FALSE;
+							break;
+						}
+						imported->c_addr = g_strdup(addr);
 						break;
 					}
 					case 'a': {
@@ -395,6 +417,12 @@ char *janus_sdp_write(janus_sdp *imported) {
 	/* t= */
 	g_snprintf(buffer, sizeof(buffer), "t=%"SCNu64" %"SCNu64"\r\n", imported->t_start, imported->t_stop);
 	g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+	/* c= */
+	if(imported->c_addr != NULL) {
+		g_snprintf(buffer, sizeof(buffer), "c=IN %s %s\r\n",
+			imported->c_ipv4 ? "IP4" : "IP6", imported->c_addr);
+		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+	}
 	/* a= */
 	GList *temp = imported->attributes;
 	while(temp) {

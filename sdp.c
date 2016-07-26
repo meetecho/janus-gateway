@@ -709,6 +709,9 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 	/* Session name s= */
 	if(anon->s_name == NULL)
 		anon->s_name = g_strdup("Meetecho Janus");
+	/* Chrome doesn't like global c= lines, remove it */
+	g_free(anon->c_addr);
+	anon->c_addr = NULL;
 	/* bundle: add new global attribute */
 	char buffer[2048], buffer_part[512];
 	buffer[0] = '\0';

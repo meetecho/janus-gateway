@@ -39,6 +39,10 @@ typedef struct janus_sdp {
 	guint64 t_start;
 	/*! \brief t= stop */
 	guint64 t_stop;
+	/*! \brief c= protocol (not rendered for WebRTC usage) */
+	gboolean c_ipv4;
+	/*! \brief c= address (not rendered for WebRTC usage) */
+	char *c_addr;
 	/*! \brief List of global a= attributes */
 	GList *attributes;
 	/*! \brief List of m= m-lines */
