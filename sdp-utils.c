@@ -346,6 +346,33 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 	return imported;
 }
 
+int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt) {
+	if(!sdp || pt < 0)
+		return -1;
+	GList *ml = sdp->m_lines;
+	while(ml) {
+		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		/* Remove any reference from the m-line */
+		m->ptypes = g_list_remove(m->ptypes, GINT_TO_POINTER(pt));
+		/* Also remove all attributes that reference the same payload type */
+		GList *ma = m->attributes;
+		while(ma) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+			if(atoi(a->value) == pt) {
+				m->attributes = g_list_remove(m->attributes, a);
+				ma = m->attributes;
+				g_free(a->name);
+				g_free(a->value);
+				g_free(a);
+				continue;
+			}
+			ma = ma->next;
+		}
+		ml = ml->next;
+	}
+	return 0;
+}
+
 char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;

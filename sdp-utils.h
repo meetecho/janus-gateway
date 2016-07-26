@@ -116,6 +116,12 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
  * of errors, if provided the error string is filled with a reason  */
 janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen);
 
+/*! \brief Helper method to quickly remove all traces (m-line, rtpmap, fmtp, etc.) of a payload type
+ * @param[in] sdp The janus_sdp object to remove the payload type from
+ * @param[in] pt The payload type to remove
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt);
+
 /*! \brief Method to serialize a janus_sdp object to an SDP string
  * @param[in] sdp The janus_sdp object to serialize
  * @returns A pointer to a string with the serialized SDP, if successful, NULL otherwise */

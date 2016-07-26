@@ -640,35 +640,28 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 				g_free(a);
 				continue;
 			}
-			/* Also remove attributes/formats we know we don't support now */
+			tempA = tempA->next;
+		}
+		/* Also remove attributes/formats we know we don't support (or don't want to support) now */
+		tempA = m->attributes;
+		GList *purged_ptypes = NULL;
+		while(tempA) {
+			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
 			if(strstr(a->value, "red/90000") || strstr(a->value, "ulpfec/90000") || strstr(a->value, "rtx/90000")) {
 				int ptype = atoi(a->value);
-				JANUS_LOG(LOG_VERB, "Will remove payload type %d\n", ptype);
-				/* Remove this attribute */
-				m->attributes = g_list_remove(m->attributes, a);
-				tempA = m->attributes;
-				g_free(a->name);
-				g_free(a->value);
-				g_free(a);
-				/* Also remove other attributes with the same payload type, and any reference from the m-line */
-				m->ptypes = g_list_remove(m->ptypes, GINT_TO_POINTER(ptype));
-				GList *tempAA = m->attributes;
-				while(tempAA) {
-					janus_sdp_attribute *aa = (janus_sdp_attribute *)tempAA->data;
-					if(atoi(aa->value) == ptype) {
-						if(tempAA == tempA)
-							tempA = tempA->next;
-						m->attributes = g_list_remove(m->attributes, aa);
-						tempAA = m->attributes;
-						g_free(aa->name);
-						g_free(aa->value);
-						g_free(aa);
-						continue;
-					}
-					tempAA = tempAA->next;
-				}
+				JANUS_LOG(LOG_VERB, "Will remove payload type %d (%s)\n", ptype, a->value);
+				purged_ptypes = g_list_append(purged_ptypes, GINT_TO_POINTER(ptype));
 			}
 			tempA = tempA->next;
+		}
+		if(purged_ptypes) {
+			tempA = purged_ptypes;
+			while(tempA) {
+				int ptype = GPOINTER_TO_INT(tempA->data);
+				janus_sdp_remove_payload_type(anon, ptype);
+				tempA = tempA->next;
+			}
+			g_list_free(purged_ptypes);
 		}
 		temp = temp->next;
 	}
