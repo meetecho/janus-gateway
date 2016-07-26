@@ -1616,6 +1616,12 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing SDP");
 				goto error;
 			}
+			if(strstr(msg->sdp, "m=application")) {
+				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
+				error_code = JANUS_SIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");
+				goto error;
+			}
 			JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->account.username, uri_text);
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
 			/* Clean up SRTP stuff from before first, in case it's still needed */
