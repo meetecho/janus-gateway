@@ -156,6 +156,14 @@ $(document).ready(function() {
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
 											$('#registerset').removeAttr('disabled');
+										} else {
+											// Reset status
+											sipcall.hangup();
+											$('#dovideo').removeAttr('disabled').val('');
+											$('#peer').removeAttr('disabled').val('');
+											$('#call').removeAttr('disabled').html('Call')
+												.removeClass("btn-danger").addClass("btn-success")
+												.unbind('click').click(doCall);
 										}
 										bootbox.alert(error);
 										return;
