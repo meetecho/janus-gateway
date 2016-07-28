@@ -341,6 +341,7 @@ typedef struct janus_sip_session {
 	janus_sip_account account;
 	janus_sip_call_status status;
 	janus_sip_media media;
+	sdp_parser_t *raw_media;
 	char *transaction;
 	char *callee;
 	janus_sdp *sdp;				/* The SDP this user sent */
@@ -1661,6 +1662,12 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "Missing SDP");
+				goto error;
+			}
+			if(strstr(msg->sdp, "m=application")) {
+				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
+				error_code = JANUS_SIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->account.username, uri_text);
