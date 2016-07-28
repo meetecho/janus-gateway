@@ -341,7 +341,6 @@ typedef struct janus_sip_session {
 	janus_sip_account account;
 	janus_sip_call_status status;
 	janus_sip_media media;
-	sdp_parser_t *raw_media;
 	char *transaction;
 	char *callee;
 	janus_sdp *sdp;				/* The SDP this user sent */
