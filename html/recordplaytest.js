@@ -149,6 +149,8 @@ $(document).ready(function() {
 															bootbox.alert("WebRTC error... " + JSON.stringify(error));
 														}
 													});
+												if(result["warning"])
+													bootbox.alert(result["warning"]);
 											} else if(event === 'recording') {
 												// Got an ANSWER to our recording OFFER
 												if(jsep !== null && jsep !== undefined)

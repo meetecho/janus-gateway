@@ -1251,30 +1251,32 @@ static void *janus_recordplay_handler(void *data) {
 				goto error;
 			}
 			/* Access the frames */
+			const char *warning = NULL;
 			if(rec->arc_file) {
 				session->aframes = janus_recordplay_get_frames(recordings_path, rec->arc_file);
 				if(session->aframes == NULL) {
-					JANUS_LOG(LOG_ERR, "Error opening audio recording\n");
-					error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
-					g_snprintf(error_cause, 512, "Error opening audio recording");
-					goto error;
+					JANUS_LOG(LOG_WARN, "Error opening audio recording, trying to go on anyway\n");
+					warning = "Broken audio file, playing video only";
 				}
 			}
 			if(rec->vrc_file) {
 				session->vframes = janus_recordplay_get_frames(recordings_path, rec->vrc_file);
 				if(session->vframes == NULL) {
-					JANUS_LOG(LOG_ERR, "Error opening video recording\n");
-					error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
-					g_snprintf(error_cause, 512, "Error opening video recording");
-					goto error;
+					JANUS_LOG(LOG_WARN, "Error opening video recording, trying to go on anyway\n");
+					warning = "Broken video file, playing audio only";
 				}
+			}
+			if(session->aframes == NULL && session->vframes == NULL) {
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
+				g_snprintf(error_cause, 512, "Error opening recording files");
+				goto error;
 			}
 			session->recording = rec;
 			session->recorder = FALSE;
 			rec->viewers = g_list_append(rec->viewers, session);
 			/* We need to prepare an offer */
 			char sdptemp[1024], audio_mline[256], video_mline[512];
-			if(session->recording->arc_file) {
+			if(session->aframes) {
 				g_snprintf(audio_mline, 256, sdp_a_template,
 					OPUS_PT,						/* Opus payload type */
 					"sendonly",						/* Playout is sendonly */
@@ -1282,7 +1284,7 @@ static void *janus_recordplay_handler(void *data) {
 			} else {
 				audio_mline[0] = '\0';
 			}
-			if(session->recording->vrc_file) {
+			if(session->vframes) {
 				g_snprintf(video_mline, 512, sdp_v_template,
 					VP8_PT,							/* VP8 payload type */
 					"sendonly",						/* Playout is sendonly */
@@ -1306,6 +1308,8 @@ static void *janus_recordplay_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "status", json_string("preparing"));
 			json_object_set_new(result, "id", json_integer(id_value));
+			if(warning)
+				json_object_set_new(result, "warning", json_string(warning));
 		} else if(!strcasecmp(request_text, "start")) {
 			if(!session->aframes && !session->vframes) {
 				JANUS_LOG(LOG_ERR, "Not a playout session, can't start\n");
