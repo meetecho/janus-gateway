@@ -3577,6 +3577,20 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Sessions */
+	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+	old_sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+	janus_mutex_init(&sessions_mutex);
+	/* Start the sessions watchdog */
+	sessions_watchdog_context = g_main_context_new();
+	GMainLoop *watchdog_loop = g_main_loop_new(sessions_watchdog_context, FALSE);
+	GError *error = NULL;
+	GThread *watchdog = g_thread_try_new("sessions watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
+		exit(1);
+	}
+
 	/* Load plugins */
 	const char *path = PLUGINDIR;
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
@@ -3692,7 +3706,7 @@ gint main(int argc, char *argv[])
 	disabled_plugins = NULL;
 
 	/* Create a thread pool to handle incoming requests, no matter what the transport */
-	GError *error = NULL;
+	error = NULL;
 	tasks = g_thread_pool_new(janus_transport_task, NULL, -1, FALSE, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
@@ -3818,20 +3832,6 @@ gint main(int argc, char *argv[])
 	if(!admin_api_enabled && janus_auth_is_enabled()) {
 		JANUS_LOG(LOG_FATAL, "No Admin/monitor transport is available, but the token based authentication mechanism is enabled... this will cause all requests to fail, giving up! If you want to use tokens, enable the Admin/monitor API and restart Janus\n");
 		exit(1);	/* FIXME Should we really give up? */
-	}
-
-	/* Sessions */
-	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	old_sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	janus_mutex_init(&sessions_mutex);
-	/* Start the sessions watchdog */
-	sessions_watchdog_context = g_main_context_new();
-	GMainLoop *watchdog_loop = g_main_loop_new(sessions_watchdog_context, FALSE);
-	error = NULL;
-	GThread *watchdog = g_thread_try_new("watchdog", &janus_sessions_watchdog, watchdog_loop, &error);
-	if(error != NULL) {
-		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start sessions watchdog...\n", error->code, error->message ? error->message : "??");
-		exit(1);
 	}
 
 	/* Ok, Janus has started! Let the parent now about this if we're daemonizing */

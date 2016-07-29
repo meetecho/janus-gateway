@@ -570,14 +570,14 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 
 	GError *error = NULL;
 	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("rplay watchdog", &janus_recordplay_watchdog, NULL, &error);
+	watchdog = g_thread_try_new("recordplay watchdog", &janus_recordplay_watchdog, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Record&Play watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	handler_thread = g_thread_try_new("janus recordplay handler", janus_recordplay_handler, NULL, &error);
+	handler_thread = g_thread_try_new("recordplay handler", janus_recordplay_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Record&Play handler thread...\n", error->code, error->message ? error->message : "??");

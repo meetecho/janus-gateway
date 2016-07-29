@@ -889,7 +889,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	handler_thread = g_thread_try_new("janus streaming handler", janus_streaming_handler, NULL, &error);
+	handler_thread = g_thread_try_new("streaming handler", janus_streaming_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Streaming handler thread...\n", error->code, error->message ? error->message : "??");
@@ -2110,7 +2110,9 @@ static void *janus_streaming_handler(void *data) {
 			session->mountpoint = mp;
 			if(mp->streaming_type == janus_streaming_type_on_demand) {
 				GError *error = NULL;
-				g_thread_try_new(session->mountpoint->name, &janus_streaming_ondemand_thread, session, &error);
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "mp %"SCNu64, id_value);
+				g_thread_try_new(tname, &janus_streaming_ondemand_thread, session, &error);
 				if(error != NULL) {
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n", error->code, error->message ? error->message : "??");
 					error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
@@ -2589,7 +2591,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtp->id), live_rtp);
 	janus_mutex_unlock(&mountpoints_mutex);
 	GError *error = NULL;
-	g_thread_try_new(live_rtp->name, &janus_streaming_relay_thread, live_rtp, &error);
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "mp %"SCNu64, live_rtp->id);
+	g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtp, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n", error->code, error->message ? error->message : "??");
 		if(live_rtp->name)
@@ -2694,7 +2698,9 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	janus_mutex_unlock(&mountpoints_mutex);
 	if(live) {
 		GError *error = NULL;
-		g_thread_try_new(file_source->name, &janus_streaming_filesource_thread, file_source, &error);
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "mp %"SCNu64, file_source->id);
+		g_thread_try_new(tname, &janus_streaming_filesource_thread, file_source, &error);
 		if(error != NULL) {
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n", error->code, error->message ? error->message : "??");
 			if(file_source->name)
@@ -2956,7 +2962,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtsp->id), live_rtsp);
 	janus_mutex_unlock(&mountpoints_mutex);	
 	GError *error = NULL;
-	g_thread_try_new(live_rtsp->name, &janus_streaming_relay_thread, live_rtsp, &error);	
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "mp %"SCNu64, live_rtsp->id);
+	g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtsp, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
 		janus_streaming_mountpoint_free(live_rtsp);

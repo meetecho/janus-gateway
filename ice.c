@@ -1438,7 +1438,9 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		}
 		/* Start the outgoing data thread */
 		GError *error = NULL;
-		handle->send_thread = g_thread_try_new("ice send thread", &janus_ice_send_thread, handle, &error);
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "icesend %"SCNu64, handle->handle_id);
+		handle->send_thread = g_thread_try_new(tname, &janus_ice_send_thread, handle, &error);
 		if(error != NULL) {
 			/* FIXME We should clear some resources... */
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE send thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
@@ -2537,7 +2539,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->icectx = g_main_context_new();
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
 	GError *error = NULL;
-	handle->icethread = g_thread_try_new("ice thread", &janus_ice_thread, handle, &error);
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
+	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
 	if(error != NULL) {
 		/* FIXME We should clear some resources... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
