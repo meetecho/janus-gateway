@@ -2795,7 +2795,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				fseek(audiobridge->recording, 0, SEEK_END);
 				long int size = ftell(audiobridge->recording);
 				if(size >= 8) {
-					JANUS_LOG(LOG_WARN, "%ld\n", size);
 					size -= 8;
 					fseek(audiobridge->recording, 4, SEEK_SET);
 					fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
