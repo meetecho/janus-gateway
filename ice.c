@@ -688,7 +688,7 @@ void janus_ice_deinit(void) {
 	if(old_handles != NULL)
 		g_hash_table_destroy(old_handles);
 	if(janus_force_rtcpmux_blackhole_fd >= 0)
-	    close(janus_force_rtcpmux_blackhole_fd);
+		close(janus_force_rtcpmux_blackhole_fd);
 	old_handles = NULL;
 	janus_mutex_unlock(&old_handles_mutex);
 #ifdef HAVE_LIBCURL
