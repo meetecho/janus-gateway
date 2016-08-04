@@ -546,6 +546,7 @@ typedef struct janus_audiobridge_room {
 	gboolean record;			/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file */
 	FILE *recording;			/* File to record the room into */
+	gint64 record_lastupdate;	/* Time when we last updated the wav header */
 	gboolean destroy;			/* Value to flag the room for destruction */
 	GHashTable *participants;	/* Map of participants */
 	GThread *thread;			/* Mixer thread for this room */
@@ -861,7 +862,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 				audiobridge->room_pin ? audiobridge->room_pin : "no pin");
 			/* We need a thread for the mix */
 			GError *error = NULL;
-			audiobridge->thread = g_thread_try_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge, &error);
+			char tname[16];
+			g_snprintf(tname, sizeof(tname), "mixer %"SCNu64, audiobridge->room_id);
+			audiobridge->thread = g_thread_try_new(tname, &janus_audiobridge_mixer_thread, audiobridge, &error);
 			if(error != NULL) {
 				/* FIXME We should clear some resources... */
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
@@ -891,7 +894,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 
 	GError *error = NULL;
 	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("abridge watchdog", &janus_audiobridge_watchdog, NULL, &error);
+	watchdog = g_thread_try_new("audiobridge watchdog", &janus_audiobridge_watchdog, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the AudioBridge watchdog thread...\n", error->code, error->message ? error->message : "??");
@@ -899,7 +902,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	handler_thread = g_thread_try_new("janus audiobridge handler", janus_audiobridge_handler, NULL, &error);
+	handler_thread = g_thread_try_new("audiobridge handler", janus_audiobridge_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the AudioBridge handler thread...\n", error->code, error->message ? error->message : "??");
@@ -1218,7 +1221,9 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			audiobridge->room_pin ? audiobridge->room_pin : "no pin");
 		/* We need a thread for the mix */
 		GError *error = NULL;
-		audiobridge->thread = g_thread_try_new("audiobridge mixer thread", &janus_audiobridge_mixer_thread, audiobridge, &error);
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "mixer %"SCNu64, audiobridge->room_id);
+		audiobridge->thread = g_thread_try_new(tname, &janus_audiobridge_mixer_thread, audiobridge, &error);
 		if(error != NULL) {
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
@@ -1938,7 +1943,12 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Finally, start the encoding thread if it hasn't already */
 			if(participant->thread == NULL) {
 				GError *error = NULL;
-				participant->thread = g_thread_try_new("audiobridge participant thread", &janus_audiobridge_participant_thread, participant, &error);
+				char roomtrunc[5], parttrunc[5];
+				g_snprintf(roomtrunc, sizeof(roomtrunc), "%"SCNu64, audiobridge->room_id);
+				g_snprintf(parttrunc, sizeof(parttrunc), "%"SCNu64, participant->user_id);
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "mixer %s %s", roomtrunc, parttrunc);
+				participant->thread = g_thread_try_new(tname, &janus_audiobridge_participant_thread, participant, &error);
 				if(error != NULL) {
 					/* FIXME We should fail here... */
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the participant thread...\n", error->code, error->message ? error->message : "??");
@@ -2587,6 +2597,8 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			if(fwrite(&header, 1, sizeof(header), audiobridge->recording) != sizeof(header)) {
 				JANUS_LOG(LOG_ERR, "Error writing WAV header...\n");
 			}
+			fflush(audiobridge->recording);
+			audiobridge->record_lastupdate = janus_get_monotonic_time();
 		}
 	}
 
@@ -2683,6 +2695,24 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				outBuffer[i] = buffer[i];
 			}
 			fwrite(outBuffer, sizeof(opus_int16), samples, audiobridge->recording);
+			/* Every 5 seconds we update the wav header */
+			gint64 now = janus_get_monotonic_time();
+			if(now - audiobridge->record_lastupdate >= 5*G_USEC_PER_SEC) {
+				audiobridge->record_lastupdate = now;
+				/* Update the length in the header */
+				fseek(audiobridge->recording, 0, SEEK_END);
+				long int size = ftell(audiobridge->recording);
+				if(size >= 8) {
+					size -= 8;
+					fseek(audiobridge->recording, 4, SEEK_SET);
+					fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
+					size += 8;
+					fseek(audiobridge->recording, 40, SEEK_SET);
+					fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
+					fflush(audiobridge->recording);
+					fseek(audiobridge->recording, 0, SEEK_END);
+				}
+			}
 		}
 		/* Send proper packet to each participant (remove own contribution) */
 		ps = participants_list;
@@ -2724,8 +2754,21 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		}
 		g_list_free(participants_list);
 	}
-	if(audiobridge->recording)
-		fclose(audiobridge->recording);
+	if(audiobridge->recording) {
+		/* Update the length in the header */
+		fseek(audiobridge->recording, 0, SEEK_END);
+		long int size = ftell(audiobridge->recording);
+		if(size >= 8) {
+			size -= 8;
+			fseek(audiobridge->recording, 4, SEEK_SET);
+			fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
+			size += 8;
+			fseek(audiobridge->recording, 40, SEEK_SET);
+			fwrite(&size, sizeof(uint32_t), 1, audiobridge->recording);
+			fflush(audiobridge->recording);
+			fclose(audiobridge->recording);
+		}
+	}
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %"SCNu64" (%s)...\n", audiobridge->room_id, audiobridge->room_name);
 
 	/* We'll let the watchdog worry about free resources */
