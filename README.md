@@ -74,7 +74,7 @@ is quite straightforward:
 	wget https://github.com/cisco/libsrtp/archive/v1.5.0.tar.gz
 	tar xfv v1.5.0.tar.gz
 	cd libsrtp-1.5.0
-	./configure --prefix=/usr --enable-openssl
+	./configure --prefix=/usr/local --enable-openssl
 	make libsrtp.so && sudo make install
 
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
