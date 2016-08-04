@@ -141,7 +141,8 @@ int main(int argc, char *argv[])
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
 	long offset = 0;
-	uint16_t len = 0, count = 0;
+	uint16_t len = 0;
+	uint32_t count = 0;
 	uint32_t last_ts = 0, reset = 0;
 	int times_resetted = 0;
 	uint32_t post_reset_pkts = 0;
@@ -534,7 +535,7 @@ int main(int argc, char *argv[])
 	if(!working)
 		exit(0);
 	
-	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" RTP packets\n", count);
+	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
 	while(tmp) {
@@ -545,7 +546,7 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
 		tmp = tmp->next;
 	}
-	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" frame packets\n", count);
+	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
 
 	if(video) {
 		/* Look for maximum width and height, if possible, and for the average framerate */

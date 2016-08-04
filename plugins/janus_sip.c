@@ -913,14 +913,14 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	GError *error = NULL;
 	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("etest watchdog", &janus_sip_watchdog, NULL, &error);
+	watchdog = g_thread_try_new("sip watchdog", &janus_sip_watchdog, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	handler_thread = g_thread_try_new("janus sip handler", janus_sip_handler, NULL, &error);
+	handler_thread = g_thread_try_new("sip handler", janus_sip_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP handler thread...\n", error->code, error->message ? error->message : "??");
@@ -1631,7 +1631,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack == NULL) {
 				/* Start the thread first */
 				GError *error = NULL;
-				g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "sip %s", session->account.username);
+				g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
 				if(error != NULL) {
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
@@ -2010,7 +2012,9 @@ static void *janus_sip_handler(void *data) {
 			/* Start the media */
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
-			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
+			char tname[16];
+			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+			g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}
@@ -2739,7 +2743,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sdp_parser_free(session->raw_media);
 			session->raw_media = parser;
 			GError *error = NULL;
-			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
+			char tname[16];
+			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+			g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}

@@ -368,6 +368,11 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 	if(handle == NULL)
 		return -2;
 	janus_ice_component *component = NULL;
+	if(strstr(candidate, "end-of-candidates")) {
+		/* FIXME Should we do something with this? */
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] end-of-candidates received\n", handle->handle_id);
+		return 0;
+	}
 	if(strstr(candidate, "candidate:") == candidate) {
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
 		candidate += strlen("candidate:");
