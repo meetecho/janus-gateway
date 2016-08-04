@@ -271,7 +271,7 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
-	handler_thread = g_thread_try_new("janus echotest handler", janus_echotest_handler, NULL, &error);
+	handler_thread = g_thread_try_new("echotest handler", janus_echotest_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the EchoTest handler thread...\n", error->code, error->message ? error->message : "??");

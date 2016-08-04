@@ -98,10 +98,8 @@ gboolean janus_ice_is_bundle_forced(void) {
 
 /* Whether rtcp-mux support is mandatory or not (false by default) */
 static gboolean janus_force_rtcpmux;
-static gint janus_rtcpmux_blackhole_port = 1234;
-static gint janus_rtcpmux_blackhole_fd = 0;
-GThread *blackhole_watchdog = NULL;
-gpointer janus_rtcpmux_blackhole_watchdog(gpointer user_data);
+static gint janus_force_rtcpmux_blackhole_port = 1234;
+static gint janus_force_rtcpmux_blackhole_fd = -1;
 void janus_ice_force_rtcpmux(gboolean forced) {
 	janus_force_rtcpmux = forced;
 	JANUS_LOG(LOG_INFO, "rtcp-mux %s going to be forced\n", janus_force_rtcpmux ? "is" : "is NOT");
@@ -121,7 +119,7 @@ void janus_ice_force_rtcpmux(gboolean forced) {
 		 */
 		int blackhole = socket(AF_INET, SOCK_DGRAM, 0);
 		if(blackhole < 0) {
-			JANUS_LOG(LOG_WARN, "Error creating RTCP component blackhole socket, using port %d instead\n", janus_rtcpmux_blackhole_port);
+			JANUS_LOG(LOG_WARN, "Error creating RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
 			return;
 		}
 		fcntl(blackhole, F_SETFL, O_NONBLOCK);
@@ -130,67 +128,26 @@ void janus_ice_force_rtcpmux(gboolean forced) {
 		serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
 		serveraddr.sin_port = htons(0);		/* Choose a random port, that works for us */
 		if(bind(blackhole, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) {
-			JANUS_LOG(LOG_WARN, "Error binding RTCP component blackhole socket, using port %d instead\n", janus_rtcpmux_blackhole_port);
+			JANUS_LOG(LOG_WARN, "Error binding RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
+			close(blackhole);
 			return;
 		}
 		socklen_t len = sizeof(serveraddr);
 		if(getsockname(blackhole, (struct sockaddr *)&serveraddr, &len) < 0) {
-			JANUS_LOG(LOG_WARN, "Error retrieving port assigned to RTCP component blackhole socket, using port %d instead\n", janus_rtcpmux_blackhole_port);
+			JANUS_LOG(LOG_WARN, "Error retrieving port assigned to RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
+			close(blackhole);
 			return;
 		}
-		janus_rtcpmux_blackhole_port = ntohs(serveraddr.sin_port);
-		JANUS_LOG(LOG_VERB, "  -- RTCP component blackhole socket bound to port %d\n", janus_rtcpmux_blackhole_port);
-		janus_rtcpmux_blackhole_fd = blackhole;
-
-		/* Start the blackhole watchdog thread */
-		GError *error = NULL;
-		blackhole_watchdog = g_thread_try_new("blackhole watchdog", &janus_rtcpmux_blackhole_watchdog, NULL, &error);
-		if(error != NULL) {
-			JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start rtcp-mux blackhole watchdog...\n", error->code, error->message ? error->message : "??");
-			return;
-		}
+		janus_force_rtcpmux_blackhole_port = ntohs(serveraddr.sin_port);
+		JANUS_LOG(LOG_VERB, "  -- RTCP component blackhole socket bound to port %d\n", janus_force_rtcpmux_blackhole_port);
+		janus_force_rtcpmux_blackhole_fd = blackhole;
 	}
 }
 gint janus_ice_get_rtcpmux_blackhole_port(void) {
-	return janus_rtcpmux_blackhole_port;
+	return janus_force_rtcpmux_blackhole_port;
 }
 gboolean janus_ice_is_rtcpmux_forced(void) {
 	return janus_force_rtcpmux;
-}
-
-gpointer janus_rtcpmux_blackhole_watchdog(gpointer user_data) {
-	JANUS_LOG(LOG_WARN, "Starting blackhole watchdog (%d)\n", janus_rtcpmux_blackhole_fd);
-	if(janus_rtcpmux_blackhole_fd <= 0)
-		return NULL;
-
-	/* Monitor the blackhole socket (unneeded RTCP components keepalives) and dump the packets */
-	char buffer[1500];
-	struct sockaddr_storage addr;
-	socklen_t len = sizeof(addr);
-	ssize_t bytes = 0;
-	int resfd = 0;
-	struct pollfd fds;
-
-	/* Loop: poll has no timeout so we wait forever */
-	while(!janus_is_stopping()) {
-		fds.fd = janus_rtcpmux_blackhole_fd;
-		fds.events = POLLIN;
-		fds.revents = 0;
-		resfd = poll(&fds, 1, -1);
-		if(resfd < 0) {
-			break;
-		} else if(resfd == 0) {
-			/* No data, keep going */
-			continue;
-		}
-		if(janus_rtcpmux_blackhole_fd && (fds.revents & POLLIN)) {
-			do {
-				/* Read and ignore */
-				bytes = recvfrom(janus_rtcpmux_blackhole_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&addr, &len);
-			} while(bytes > -1);
-		}
-	}
-	return NULL;
 }
 
 
@@ -429,7 +386,6 @@ gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	return (result == NULL);
 }
 
-
 static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gboolean up) {
 	if(handle == NULL)
 		return;
@@ -639,21 +595,8 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 }
 
 void janus_ice_deinit(void) {
-	if(blackhole_watchdog) {
-		JANUS_LOG(LOG_INFO, "Ending rtcp-mux blackhole watchdog...\n");
-		/* Since the poll has no timeout, we send a bogus datagram just to wake it */
-		int fd = socket(AF_INET, SOCK_DGRAM, 0);
-		struct sockaddr_in bogus;
-		bogus.sin_family = AF_INET;
-		bogus.sin_port = htons(janus_rtcpmux_blackhole_port);
-		inet_pton(AF_INET, "127.0.0.1", &bogus.sin_addr.s_addr);
-		socklen_t addrlen = sizeof(struct sockaddr_in);
-		char c = 0;
-		sendto(fd, &c, 1, 0, (struct sockaddr *)&bogus, addrlen);
-		/* Wait for the thread to leave */
-		g_thread_join(blackhole_watchdog);
-	}
-	blackhole_watchdog = NULL;
+	if(janus_force_rtcpmux_blackhole_fd >= 0)
+		close(janus_force_rtcpmux_blackhole_fd);
 #ifdef HAVE_LIBCURL
 	janus_turnrest_deinit();
 #endif
@@ -698,11 +641,13 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	remote.sin_addr.s_addr = inet_addr(janus_stun_server);
 	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
 		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test\n");
+		close(fd);
 		return -1;
 	}
 	int bytes = sendto(fd, buf, len, 0, (struct sockaddr*)&remote, sizeof(remote));
 	if(bytes < 0) {
 		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
+		close(fd);
 		return -1;
 	}
 	JANUS_LOG(LOG_VERB, "  >> Sent %d bytes %s:%u, waiting for reply...\n", bytes, janus_stun_server, janus_stun_port);
@@ -715,6 +660,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	select(fd+1, &readfds, NULL, NULL, &timeout);
 	if(!FD_ISSET(fd, &readfds)) {
 		JANUS_LOG(LOG_FATAL, "No response to our STUN BINDING test\n");
+		close(fd);
 		return -1;
 	}
 	socklen_t addrlen = sizeof(remote);
@@ -722,12 +668,14 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
 	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
+		close(fd);
 		return -1;
 	}
 	StunClass class = stun_message_get_class(&msg);
 	StunMethod method = stun_message_get_method(&msg);
 	if(class != STUN_RESPONSE || method != STUN_BINDING) {
 		JANUS_LOG(LOG_FATAL, "Unexpected STUN response: %d/%d\n", class, method);
+		close(fd);
 		return -1;
 	}
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
@@ -737,6 +685,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
 		janus_set_public_ip(public_ip);
 		g_free(public_ip);
+		close(fd);
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
@@ -746,8 +695,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
 		janus_set_public_ip(public_ip);
 		g_free(public_ip);
+		close(fd);
 		return 0;
 	}
+	close(fd);
 	return -1;
 }
 
@@ -1428,7 +1379,9 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 		}
 		/* Start the outgoing data thread */
 		GError *error = NULL;
-		handle->send_thread = g_thread_try_new("ice send thread", &janus_ice_send_thread, handle, &error);
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "icesend %"SCNu64, handle->handle_id);
+		handle->send_thread = g_thread_try_new(tname, &janus_ice_send_thread, handle, &error);
 		if(error != NULL) {
 			/* FIXME We should clear some resources... */
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE send thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
@@ -2525,7 +2478,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	handle->icectx = g_main_context_new();
 	handle->iceloop = g_main_loop_new(handle->icectx, FALSE);
 	GError *error = NULL;
-	handle->icethread = g_thread_try_new("ice thread", &janus_ice_thread, handle, &error);
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
+	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
 	if(error != NULL) {
 		/* FIXME We should clear some resources... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
