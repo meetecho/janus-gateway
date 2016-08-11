@@ -3873,8 +3873,10 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_INFO, "Destroying sessions...\n");
 	if(sessions != NULL)
 		g_hash_table_destroy(sessions);
+	sessions = NULL;
 	if(old_sessions != NULL)
 		g_hash_table_destroy(old_sessions);
+	old_sessions = NULL;
 	JANUS_LOG(LOG_INFO, "Freeing crypto resources...\n");
 	janus_dtls_srtp_cleanup();
 	EVP_cleanup();
