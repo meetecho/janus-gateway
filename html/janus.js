@@ -2145,6 +2145,7 @@ function Janus(gatewayCallbacks) {
 					});
 				}
 				if(media.video && media.video != 'screen' && media.video != 'window') {
+<<<<<<< HEAD
 					if(typeof media.video === 'object') {
 						videoSupport = media.video;
 					} else {
@@ -2190,6 +2191,55 @@ function Janus(gatewayCallbacks) {
 							height = 480;
 							maxHeight = 480;
 							width = 640;
+=======
+					var minWidth = 0;
+					var maxWidth = 0;
+					var minAspectRatio = 0;
+					var maxAspectRatio = 0;
+					if (media.video.indexOf('4:3') !== -1) {
+						maxAspectRatio = 1.334;
+					} else if (media.video.indexOf('16:9') !== -1) {
+						minAspectRatio = 1.776;
+					} else {
+						Janus.log("Default video setting (" + media.video + ") is 4:3");
+						maxAspectRatio = 1.334;
+					}
+					if (media.video.indexOf('lowres') != -1) {
+						maxWidth = 320;
+					} else if (media.video.indexOf('stdres') != -1) {
+						maxWidth = 640;
+					} else if (media.video.indexOf('hires') != -1) {
+						// High resolution is only 16:9
+						maxAspectRatio = 0;
+						minAspectRatio = 1.776;
+						minWidth = 1280;
+						if(navigator.mozGetUserMedia) {
+							var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+							if(firefoxVer < 38) {
+								// Unless this is and old Firefox, which doesn't support it
+								Janus.warn(media.video + " unsupported, falling back to stdres (old Firefox)");
+								maxWidth = 640;
+								minAspectRatio = 0;
+							}
+						}
+					} else {
+						Janus.log("Default video setting (" + media.video + ") is stdres");
+						maxWidth = 640;
+					}
+					Janus.log("Adding media constraint " + media.video);
+					if(navigator.mozGetUserMedia) {
+						var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+						if(firefoxVer < 38) {
+							videoSupport = {
+								'require': ['width'],
+								'width':  {'max': maxWidth}
+							};
+						} else {
+							// http://stackoverflow.com/questions/28282385/webrtc-firefox-constraints/28911694#28911694
+							// https://github.com/meetecho/janus-gateway/pull/246
+							videoSupport = {};
+							videoSupport['width'] = { ideal: (maxWidth > 0) ? maxWidth : minWidth };
+							videoSupport['aspectRatio'] = { ideal: (minAspectRatio > 0) ? minAspectRatio : maxAspectRatio };
 						}
 						Janus.log("Adding media constraint:", media.video);
 						videoSupport = {
@@ -2197,9 +2247,20 @@ function Janus(gatewayCallbacks) {
 							'width':  {'ideal': width}
 						};
 						Janus.log("Adding video constraint:", videoSupport);
+						    'mandatory': {},
+						    'optional': []
+						};
+						if (maxWidth > 0) {
+							videoSupport['mandatory']['maxWidth'] = maxWidth;
+						} else {
+							videoSupport['mandatory']['minWidth'] = minWidth;
+						}
+						if (minAspectRatio > 0) {
+							videoSupport['mandatory']['minAspectRatio'] = minAspectRatio;
+						} else {
+							videoSupport['mandatory']['maxAspectRatio'] = maxAspectRatio;
+						}
 					}
-<<<<<<< HEAD
-=======
 					var hasFPS = media.video.match(/([1-9][0-9]*)fps/);
 					if (hasFPS) {
 						var fps = parseInt(hasFPS[0]);
