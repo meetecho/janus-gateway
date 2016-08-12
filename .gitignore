@@ -68,6 +68,9 @@ Makefile.in
 
 .deps
 .dirstamp
-
 # OS X
 .DS_Store
+
+#backup files
+*~
+*.swp
