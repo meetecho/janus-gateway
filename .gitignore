@@ -45,3 +45,8 @@ Makefile.in
 
 .deps
 .dirstamp
+.DS_Store
+
+#backup files
+*~
+*.swp
