@@ -2198,6 +2198,26 @@ function Janus(gatewayCallbacks) {
 						};
 						Janus.log("Adding video constraint:", videoSupport);
 					}
+<<<<<<< HEAD
+=======
+					var hasFPS = media.video.match(/([1-9][0-9]*)fps/);
+					if (hasFPS) {
+						var fps = parseInt(hasFPS[0]);
+						Janus.debug("Adding fps constraint from " + media.video + " (" + fps + ")");
+						if (navigator.mozGetUserMedia) {
+							var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
+							if (firefoxVer >= 38) {
+								videoSupport['frameRate'] = {'ideal': fps};
+							}
+						} else {
+							videoSupport['mandatory']['minFrameRate'] = fps;
+							videoSupport['mandatory']['maxFrameRate'] = fps;
+						}
+					}
+					if(typeof media.video === 'object') {
+						videoSupport = media.video;
+					}
+					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
 					if(!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
