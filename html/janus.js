@@ -2120,6 +2120,30 @@ function Janus(gatewayCallbacks) {
 				var simulcast2 = callbacks.simulcast2 === true ? true : false;
 				if((simulcast || simulcast2) && !jsep && (media.video === undefined || media.video === false))
 					media.video = "hires";
+				if (media.facing) {
+					MediaStreamTrack.getSources(function(sources) {
+						var videoSources = [];
+						var videoSource = null;
+						for (var i = 0, l = sources.length; i < l; i++) {
+							if (sources[i]["kind"] === "video") {
+								videoSources.push(sources[i]);
+							}
+							if (sources[i]["facing"] === media.facing) {
+								videoSource = sources[i];
+								break;
+							}
+						}
+						if (!videoSources.length) {
+							pluginHandle.consentDialog(false);
+							return callbacks.error("No video sources found");
+						}
+						if (!videoSource) {
+							Janus.warn("Couldn't find the requested camera, falling back to existing one");
+							videoSource = videoSources[0];
+						}
+						videoSupport["mandatory"]["sourceId"] = videoSource["id"];
+					});
+				}
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					if(typeof media.video === 'object') {
 						videoSupport = media.video;
