@@ -3869,10 +3869,8 @@ gint main(int argc, char *argv[])
 	g_thread_pool_free(tasks, FALSE, FALSE);
 
 	JANUS_LOG(LOG_INFO, "Destroying sessions...\n");
-	if(sessions != NULL)
-		g_clear_pointer(&sessions, g_hash_table_destroy);
-	if(old_sessions != NULL)
-		g_clear_pointer(&old_sessions, g_hash_table_destroy);
+	g_clear_pointer(&sessions, g_hash_table_destroy);
+	g_clear_pointer(&old_sessions, g_hash_table_destroy);
 	JANUS_LOG(LOG_INFO, "Freeing crypto resources...\n");
 	janus_dtls_srtp_cleanup();
 	EVP_cleanup();
