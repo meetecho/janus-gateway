@@ -1,5 +1,6 @@
 Janus WebRTC Gateway
 ====================
+[![Docker Repository on Quay](https://quay.io/repository/dazzl/janus-gateway/status "Docker Repository on Quay")](https://quay.io/repository/dazzl/janus-gateway)
 
 Janus is an open source, general purpose, WebRTC gateway designed and
 developed by [Meetecho](http://www.meetecho.com). This version
