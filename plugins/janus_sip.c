@@ -156,6 +156,7 @@ static struct janus_json_parameter proxy_parameters[] = {
 };
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"autoack", JANUS_JSON_BOOL, 0},
 	{"headers", JSON_OBJECT, 0},
 	{"srtp", JSON_STRING, 0}
 };
@@ -301,6 +302,7 @@ typedef struct janus_sip_account {
 typedef struct janus_sip_media {
 	char *remote_ip;
 	int ready:1;
+	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
 	int has_audio:1;
 	int audio_rtp_fd, audio_rtcp_fd;
@@ -330,6 +332,7 @@ typedef struct janus_sip_session {
 	janus_sip_account account;
 	janus_sip_call_status status;
 	janus_sip_media media;
+	sdp_parser_t *raw_media;
 	char *transaction;
 	char *callee;
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
@@ -470,6 +473,7 @@ static int janus_sip_srtp_set_remote(janus_sip_session *session, gboolean video,
 static void janus_sip_srtp_cleanup(janus_sip_session *session) {
 	if(session == NULL)
 		return;
+	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -769,14 +773,14 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	GError *error = NULL;
 	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("etest watchdog", &janus_sip_watchdog, NULL, &error);
+	watchdog = g_thread_try_new("sip watchdog", &janus_sip_watchdog, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	handler_thread = g_thread_try_new("janus sip handler", janus_sip_handler, NULL, &error);
+	handler_thread = g_thread_try_new("sip handler", janus_sip_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP handler thread...\n", error->code, error->message ? error->message : "??");
@@ -865,6 +869,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->callee = NULL;
 	session->media.remote_ip = NULL;
 	session->media.ready = 0;
+	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
@@ -894,6 +899,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_pt_name = NULL;
 	session->media.video_srtp_suite_in = 0;
 	session->media.video_srtp_suite_out = 0;
+	session->raw_media = NULL;
 	janus_mutex_init(&session->rec_mutex);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
@@ -955,6 +961,7 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "call_status", json_string(janus_sip_call_status_string(session->status)));
 	if(session->callee) {
 		json_object_set_new(info, "callee", json_string(session->callee ? session->callee : "??"));
+		json_object_set_new(info, "auto-ack", json_string(session->media.autoack ? "yes" : "no"));
 		json_object_set_new(info, "srtp-required", json_string(session->media.require_srtp ? "yes" : "no"));
 		json_object_set_new(info, "sdes-local", json_string(session->media.has_srtp_local ? "yes" : "no"));
 		json_object_set_new(info, "sdes-remote", json_string(session->media.has_srtp_remote ? "yes" : "no"));
@@ -1201,6 +1208,10 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
+	if (session->raw_media != NULL) {
+		sdp_parser_free(session->raw_media);
+		session->raw_media = NULL;
+	}
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
@@ -1414,7 +1425,7 @@ static void *janus_sip_handler(void *data) {
 			if(guest) {
 				/* Not needed, we can stop here: just pick a random username if it wasn't provided and say we're registered */
 				if(!username)
-					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", g_random_int());
+					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", janus_random_uint32());
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
 				send_register = FALSE;
 			} else {
@@ -1472,7 +1483,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack == NULL) {
 				/* Start the thread first */
 				GError *error = NULL;
-				g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "sip %s", session->account.username);
+				g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
 				if(error != NULL) {
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
@@ -1546,6 +1559,9 @@ static void *janus_sip_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			json_t *uri = json_object_get(root, "uri");
+			/* Check if we need to ACK manually (e.g., for the Record-Route hack) */
+			json_t *autoack = json_object_get(root, "autoack");
+			gboolean do_autoack = autoack ? json_is_true(autoack) : TRUE;
 			/* Check if the INVITE needs to be enriched with custom headers */
 			char custom_headers[2048];
 			custom_headers[0] = '\0';
@@ -1605,6 +1621,12 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "Missing SDP");
+				goto error;
+			}
+			if(strstr(msg->sdp, "m=application")) {
+				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
+				error_code = JANUS_SIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");
 				goto error;
 			}
 			JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->account.username, uri_text);
@@ -1673,6 +1695,7 @@ static void *janus_sip_handler(void *data) {
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_inviting;
 			/* Send INVITE */
+			session->media.autoack = do_autoack;
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
@@ -1680,7 +1703,7 @@ static void *janus_sip_handler(void *data) {
 				NUTAG_PROXY(session->account.proxy),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
-				NUTAG_AUTOACK(0),
+				NUTAG_AUTOACK(do_autoack),
 				TAG_END());
 			g_free(sdp);
 			sdp_parser_free(parser);
@@ -1810,7 +1833,9 @@ static void *janus_sip_handler(void *data) {
 			/* Start the media */
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
-			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
+			char tname[16];
+			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+			g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}
@@ -2272,8 +2297,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			if(session->stack->s_nh_i != NULL) {
 				if(session->stack->s_nh_i == nh) {
-					/* re-INVITE, we don't support those. */
-					nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					if (sdp_session_cmp(sdp_session(session->raw_media), sdp_session(parser)) == 0) {
+						/* re-INVITE that is basically a session-refresh (no media-change needed), accept. */
+						nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+					} else {
+						/* re-INVITE, we don't support those. */
+						nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+					}
 				} else if(session->status >= janus_sip_call_status_inviting) {
 					/* Busy with another call */
 					JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sip_call_status_string(session->status));
@@ -2331,6 +2361,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			g_free(call_text);
 			g_free(fixed_sdp);
+			sdp_parser_free(parser);
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 			session->stack->s_nh_i = nh;
@@ -2425,12 +2456,14 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sdp_parser_free(parser);
 				break;
 			}
-			/* Send an ACK */
-			char *route = sip->sip_record_route ? url_as_string(session->stack->s_home, sip->sip_record_route->r_url) : NULL;
-			JANUS_LOG(LOG_WARN, "Sending ACK (route=%s)\n", route ? route : "none");
-			nua_ack(nh,
-				TAG_IF(route, NTATAG_DEFAULT_PROXY(route)),
-				TAG_END());
+			/* Send an ACK, if needed */
+			if(!session->media.autoack) {
+				char *route = sip->sip_record_route ? url_as_string(session->stack->s_home, sip->sip_record_route->r_url) : NULL;
+				JANUS_LOG(LOG_INFO, "Sending ACK (route=%s)\n", route ? route : "none");
+				nua_ack(nh,
+					TAG_IF(route, NTATAG_DEFAULT_PROXY(route)),
+					TAG_END());
+			}
 			/* Parse SDP */
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
 			session->status = janus_sip_call_status_incall;
@@ -2458,8 +2491,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
+			if(session->raw_media != NULL)
+				sdp_parser_free(session->raw_media);
+			session->raw_media = parser;
 			GError *error = NULL;
-			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
+			char tname[16];
+			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+			g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}

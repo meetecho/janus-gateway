@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.1.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.1.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -18,7 +18,7 @@ LT_INIT
 case "$host_os" in
 darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include"
-	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib"
+	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
   AM_CONDITIONAL([WINDOWS_OS], false)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
@@ -97,6 +97,12 @@ AC_ARG_ENABLE([boringssl],
               [],
               [enable_boringssl=no])
 
+AC_ARG_ENABLE([dtls-settimeout],
+              [AS_HELP_STRING([--enable-dtls-settimeout],
+                              [Use DTLSv1_set_initial_timeout_duration (only available in recent BoringSSL versions)])],
+              [],
+              [enable_dtls_settimeout=no])
+
 AC_ARG_ENABLE([turn-rest-api],
               [AS_HELP_STRING([--disable-turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
@@ -122,11 +128,17 @@ AS_IF([test "x$enable_boringssl" = "xyes"],
        AC_SUBST(BORINGSSL_CFLAGS)
 	   BORINGSSL_LIBS=" -L/opt/boringssl/lib";
        AC_SUBST(BORINGSSL_LIBS)
-	   AC_CHECK_HEADERS([openssl/opensslfeatures.h],
+	   AC_CHECK_HEADERS([openssl/opensslconf.h],
 	                    [],
 	                    [AC_MSG_ERROR([BoringSSL headers not found in /opt/boringssl, use --disable-boringssl if you want to use OpenSSL instead])])
       ])
 AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x$enable_boringssl" = "xyes"])
+
+AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
+      [
+      AC_DEFINE(HAVE_DTLS_SETTIMEOUT)
+      AC_MSG_NOTICE([Assuming DTLSv1_set_initial_timeout_duration is available])
+      ])
 
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
@@ -357,6 +369,12 @@ AC_ARG_ENABLE([plugin-voicemail],
               [],
               [enable_plugin_voicemail=yes])
 
+AC_ARG_ENABLE([plugin-textroom],
+              [AS_HELP_STRING([--disable-plugin-textroom],
+                              [Disable textroom plugin])],
+              [],
+              [enable_plugin_textroom=yes])
+
 PKG_CHECK_MODULES([OPUS],
                   [opus],
                   [],
@@ -381,6 +399,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
 
 ##
 # Post-processing
@@ -501,6 +520,9 @@ AM_COND_IF([ENABLE_PLUGIN_VOICEMAIL],
 AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 	[echo "    Record&Play:           yes"],
 	[echo "    Record&Play:           no"])
+AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
+	[echo "    Text Room:             yes"],
+	[echo "    Text Room:             no"])
 
 echo
 echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."

@@ -488,6 +488,11 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	SSL_set_options(dtls->ssl, SSL_OP_SINGLE_ECDH_USE);
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
+#ifdef HAVE_DTLS_SETTIMEOUT
+	guint ms = 100;
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Setting DTLS initial timeout: %u\n", handle->handle_id, ms);
+	DTLSv1_set_initial_timeout_duration(dtls->ssl, ms);
+#endif
 	dtls->ready = 0;
 #ifdef HAVE_SCTP
 	dtls->sctp = NULL;
@@ -701,7 +706,9 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					if(dtls->sctp != NULL) {
 						/* FIXME We need to start it in a thread, though, since it has blocking accept/connect stuff */
 						GError *error = NULL;
-						g_thread_try_new("DTLS-SCTP", janus_dtls_sctp_setup_thread, dtls, &error);
+						char tname[16];
+						g_snprintf(tname, sizeof(tname), "sctpinit %"SCNu64, handle->handle_id);
+						g_thread_try_new(tname, janus_dtls_sctp_setup_thread, dtls, &error);
 						if(error != NULL) {
 							/* Something went wrong... */
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the DTLS-SCTP thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
@@ -793,11 +800,6 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 	janus_ice_handle *handle = stream->handle;
 	if(!handle) {
 		JANUS_LOG(LOG_ERR, "No ICE handle related to this alert...\n");
-		return;
-	}
-	if(stream->stream_id == handle->data_id) {
-		/* FIXME BADLY We got a DTLS alert on the Data channel, we ignore it for now */
-		JANUS_LOG(LOG_WARN, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16", but it's the data channel so we don't care...\n", handle->handle_id, stream->stream_id);
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);

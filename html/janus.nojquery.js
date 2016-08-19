@@ -319,7 +319,7 @@ function Janus(gatewayCallbacks) {
 
 	// Private method to create random identifiers (e.g., transaction)
 	function randomString(len) {
-		charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		var charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 		var randomString = '';
 		for (var i = 0; i < len; i++) {
 			var randomPoz = Math.floor(Math.random() * charSet.length);
@@ -1253,7 +1253,6 @@ function Janus(gatewayCallbacks) {
 					"sdpMid": event.candidate.sdpMid,
 					"sdpMLineIndex": event.candidate.sdpMLineIndex
 				};
-				Janus.debug("candidates: " + JSON.stringify(candidate));
 				if(config.trickle === true) {
 					// Send candidate
 					sendTrickleCandidate(handleId, candidate);

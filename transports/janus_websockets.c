@@ -433,7 +433,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.iface = ip ? ip : interface;
 			info.protocols = wss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			info.extensions = lws_get_internal_extensions();
+			info.extensions = NULL;
 #else
 			info.extensions = libwebsocket_get_internal_extensions();
 #endif
@@ -487,7 +487,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.iface = ip ? ip : interface;
 				info.protocols = swss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-				info.extensions = lws_get_internal_extensions();
+				info.extensions = NULL;
 #else
 				info.extensions = libwebsocket_get_internal_extensions();
 #endif
@@ -533,7 +533,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.iface = ip ? ip : interface;
 			info.protocols = admin_wss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			info.extensions = lws_get_internal_extensions();
+			info.extensions = NULL;
 #else
 			info.extensions = libwebsocket_get_internal_extensions();
 #endif
@@ -587,7 +587,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.iface = ip ? ip : interface;
 				info.protocols = admin_swss_protocols;
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-				info.extensions = lws_get_internal_extensions();
+				info.extensions = NULL;
 #else
 				info.extensions = libwebsocket_get_internal_extensions();
 #endif
@@ -622,7 +622,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	GError *error = NULL;
 	/* Start the WebSocket service threads */
 	if(wss != NULL) {
-		wss_thread = g_thread_try_new("websockets thread", &janus_websockets_thread, wss, &error);
+		wss_thread = g_thread_try_new("ws thread", &janus_websockets_thread, wss, &error);
 		if(!wss_thread) {
 			g_atomic_int_set(&initialized, 0);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n", error->code, error->message ? error->message : "??");
@@ -630,7 +630,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 	}
 	if(swss != NULL) {
-		swss_thread = g_thread_try_new("secure websockets thread", &janus_websockets_thread, swss, &error);
+		swss_thread = g_thread_try_new("sws thread", &janus_websockets_thread, swss, &error);
 		if(!swss_thread) {
 			g_atomic_int_set(&initialized, 0);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Secure WebSockets thread...\n", error->code, error->message ? error->message : "??");
@@ -638,7 +638,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 	}
 	if(admin_wss != NULL) {
-		admin_wss_thread = g_thread_try_new("admin websockets thread", &janus_websockets_thread, admin_wss, &error);
+		admin_wss_thread = g_thread_try_new("admin ws thread", &janus_websockets_thread, admin_wss, &error);
 		if(!admin_wss_thread) {
 			g_atomic_int_set(&initialized, 0);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Admin WebSockets thread...\n", error->code, error->message ? error->message : "??");
@@ -646,7 +646,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		}
 	}
 	if(admin_swss != NULL) {
-		admin_swss_thread = g_thread_try_new("secure admin websockets thread", &janus_websockets_thread, admin_swss, &error);
+		admin_swss_thread = g_thread_try_new("admin sws thread", &janus_websockets_thread, admin_swss, &error);
 		if(!admin_swss_thread) {
 			g_atomic_int_set(&initialized, 0);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Secure Admin WebSockets thread...\n", error->code, error->message ? error->message : "??");

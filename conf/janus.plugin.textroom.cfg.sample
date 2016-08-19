@@ -3,9 +3,7 @@
 ; is_private = yes|no (whether this room should be in the public list, default=yes)
 ; secret = <optional password needed for manipulating (e.g. destroying) the room>
 ; pin = <optional password needed for joining the room>
-; sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
-; record = true|false (whether this room should be recorded, default=false)
-; record_file = /path/to/recording.wav (where to save the recording)
+; post = <optional backend to contact via HTTP post for all incoming messages>
 
 [general]
 ;admin_key = supersecret		; If set, rooms can be created via API only
@@ -13,7 +11,7 @@
 
 [1234]
 description = Demo Room
+; is_private = yes
 secret = adminpwd
-sampling_rate = 16000
-record = false
-;record_file = /tmp/janus-audioroom-1234.wav
+; pin = roompwd
+; post = http://example.com/forward/here

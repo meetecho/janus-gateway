@@ -198,6 +198,12 @@ typedef struct janus_ice_stats {
 	guint32 data_packets;
 	/*! \brief Data bytes sent or received */
 	guint64 data_bytes;
+	/*! \brief Last time the slow_link callback (of the plugin) was called */
+	gint64 last_slowlink_time;
+	/*! \brief Start time of recent NACKs (for slow_link) */
+	gint64 sl_nack_period_ts;
+	/*! \brief Count of recent NACKs (for slow_link) */
+	guint sl_nack_recent_cnt;
 } janus_ice_stats;
 
 /*! \brief Janus media statistics: received packet info
@@ -406,12 +412,6 @@ struct janus_ice_component {
 	seq_info_t *last_seqs_audio;
 	/*! \brief List of recently received video sequence numbers (as a support to NACK generation) */
 	seq_info_t *last_seqs_video;
-	/*! \brief Last time the slow_link callback (of the plugin) was called */
-	gint64 last_slowlink_time;
-	/*! \brief Start time of recent NACKs (for slow_link) */
-	gint64 sl_nack_period_ts;
-	/*! \brief Count of recent NACKs (for slow_link) */
-	guint sl_nack_recent_cnt;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */

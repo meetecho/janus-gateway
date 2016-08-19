@@ -13,8 +13,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <ogg/ogg.h>
-
 #include "pp-g711.h"
 #include "../debug.h"
 
