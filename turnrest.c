@@ -15,7 +15,11 @@
  
 #ifdef HAVE_LIBCURL
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <netdb.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>

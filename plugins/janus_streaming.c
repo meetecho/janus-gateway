@@ -114,7 +114,11 @@ url = RTSP stream URL (only if type=rtsp)
 
 #include <jansson.h>
 #include <errno.h>
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
 #include <sys/poll.h>
+#endif
 #include <sys/time.h>
 
 #ifdef HAVE_LIBCURL
@@ -2285,6 +2289,14 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 		return -1;
 	}	
 	if(port > 0) {
+#ifdef _WIN32
+		guint bufsize = 212992;
+		if(setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&bufsize, sizeof(bufsize)) < 0) {
+			JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_RCVBUF failed\n", mountpointname, listenername);
+			close(fd);
+			return -1;
+		}
+#endif
 		if(IN_MULTICAST(ntohl(mcast))) {
 #ifdef IP_MULTICAST_ALL			
 			int mc_all = 0;
@@ -2297,7 +2309,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 			struct ip_mreq mreq;
 			memset(&mreq, 0, sizeof(mreq));
 			mreq.imr_multiaddr.s_addr = mcast;
-			if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(struct ip_mreq)) == -1) {
+			if(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *)&mreq, sizeof(struct ip_mreq)) == -1) {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener IP_ADD_MEMBERSHIP failed\n", mountpointname, listenername);
 				close(fd);
 				return -1;

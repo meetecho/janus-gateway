@@ -15,8 +15,12 @@
  * \ingroup core
  * \ref core
  */
- 
+
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
+#endif
 #include <sys/stat.h>
 #include <errno.h>
 

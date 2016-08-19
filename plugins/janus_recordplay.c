@@ -246,7 +246,11 @@
 #include "plugin.h"
 
 #include <dirent.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <jansson.h>
@@ -1592,7 +1596,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 	fseek(file, 0L, SEEK_END);
 	long fsize = ftell(file);
 	fseek(file, 0L, SEEK_SET);
-	JANUS_LOG(LOG_VERB, "File is %zu bytes\n", fsize);
+	JANUS_LOG(LOG_VERB, "File is %ld bytes\n", fsize);
 
 	/* Pre-parse */
 	JANUS_LOG(LOG_VERB, "Pre-parsing file %s to generate ordered index...\n", source);
@@ -1739,7 +1743,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 					JANUS_LOG(LOG_VERB, "Timestamp reset: %"SCNu32"\n", reset);
 				}
 			} else if(ntohl(rtp->timestamp) < reset) {
-				JANUS_LOG(LOG_VERB, "Updating timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
+				JANUS_LOG(LOG_VERB, "Updating timestamp reset: %"SCNu32" (was %"SCNu32")\n", (uint32_t)ntohl(rtp->timestamp), reset);
 				reset = ntohl(rtp->timestamp);
 			}
 		}
@@ -1771,7 +1775,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		bytes = fread(prebuffer, sizeof(char), 16, file);
 		rtp_header *rtp = (rtp_header *)prebuffer;
 		JANUS_LOG(LOG_HUGE, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
-				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+				(uint32_t)ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), (uint32_t)ntohl(rtp->timestamp));
 		/* Generate frame packet and insert in the ordered list */
 		janus_recordplay_frame_packet *p = g_malloc0(sizeof(janus_recordplay_frame_packet));
 		if(p == NULL) {

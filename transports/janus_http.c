@@ -27,12 +27,20 @@
 
 #include "transport.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <sys/time.h>
+#undef interface
+#else
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/socket.h>
+#endif
 #include <sys/types.h>
+#ifndef _WIN32
 #include <netdb.h>
+#endif
 
 #include <microhttpd.h>
 
@@ -129,11 +137,11 @@ typedef struct janus_http_session {
 	gint64 destroyed;		/* Whether this session has been destroyed */
 } janus_http_session;
 /* We keep track of created sessions as we handle long polls */
-const char *keepalive_id = "keepalive";
-GHashTable *sessions = NULL;
-GList *old_sessions = NULL;
-GThread *sessions_watchdog = NULL;
-janus_mutex sessions_mutex;
+static const char *keepalive_id = "keepalive";
+static GHashTable *sessions = NULL;
+static GList *old_sessions = NULL;
+static GThread *sessions_watchdog = NULL;
+static janus_mutex sessions_mutex;
 
 
 /* Callback (libmicrohttpd) invoked when a new connection is attempted on the REST API */

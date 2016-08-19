@@ -50,8 +50,12 @@
 
 #include "plugin.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
 #include <net/if.h>
+#endif
 
 #include <jansson.h>
 
@@ -74,6 +78,7 @@
 #include "../rtcp.h"
 #include "../utils.h"
 
+#include "../os.h"
 
 /* Plugin information */
 #define JANUS_SIP_VERSION			6

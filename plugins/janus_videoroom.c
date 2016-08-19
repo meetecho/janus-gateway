@@ -129,7 +129,11 @@ rec_dir = <folder where recordings should be stored, when enabled>
 #include "../record.h"
 #include "../utils.h"
 #include <sys/types.h>
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
 #include <sys/socket.h>
+#endif
 
 
 /* Plugin information */

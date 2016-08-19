@@ -14,8 +14,14 @@
 
 #include <stdint.h>
 #include <glib.h>
+#ifdef _WIN32
+#include <sys/types.h>
+#else
 #include <netinet/in.h>
+#endif
 #include <jansson.h>
+
+#include "os.h"
 
 /* Use JANUS_JSON_BOOL instead of the non-existing JSON_BOOLEAN */
 #define JANUS_JSON_BOOL JSON_TRUE
@@ -32,12 +38,12 @@ struct janus_json_parameter {
 /*! \brief Helper to retrieve the system monotonic time, as Glib's
  * g_get_monotonic_time may not be available (only since 2.28)
  * @returns The system monotonic time */
-gint64 janus_get_monotonic_time(void);
+shared gint64 janus_get_monotonic_time(void);
 
 /*! \brief Helper to retrieve the system real time, as Glib's
  * g_get_real_time may not be available (only since 2.28)
  * @returns The system real time */
-gint64 janus_get_real_time(void);
+shared gint64 janus_get_real_time(void);
 
 /*! \brief Helper to replace strings
  * @param message The string that contains the text to replace, which may be
@@ -45,18 +51,18 @@ gint64 janus_get_real_time(void);
  * @param old_string The old text to replace
  * @param new_string The new text
  * @returns A pointer to the updated text string (re-allocated or just updated) */
-char *janus_string_replace(char *message, const char *old_string, const char *new_string) G_GNUC_WARN_UNUSED_RESULT;
+shared char *janus_string_replace(char *message, const char *old_string, const char *new_string) G_GNUC_WARN_UNUSED_RESULT;
 
 /*! \brief Helper to parse yes/no|true/false configuration values
  * @param value The configuration value to parse
  * @returns true if the value contains a "yes", "YES", "true", TRUE", "1", false otherwise */
-gboolean janus_is_true(const char *value);
+shared gboolean janus_is_true(const char *value);
 
 /*! \brief Helper to compare strings in constant time
  * @param str1 The first string to compare
  * @param str2 The second string to compare
  * @returns true if the strings are the same, false otherwise */
-gboolean janus_strcmp_const_time(const void *str1, const void *str2);
+shared gboolean janus_strcmp_const_time(const void *str1, const void *str2);
 
 /** @name Flags helper methods
  */
@@ -66,23 +72,23 @@ typedef uint32_t janus_flags;
 
 /*! \brief Janus flags reset method
  * \param[in] flags The janus_flags instance to reset */
-void janus_flags_reset(janus_flags *flags);
+shared void janus_flags_reset(janus_flags *flags);
 
 /*! \brief Janus flags set method
  * \param[in] flags The janus_flags instance to update
  * \param[in] flag The flag to set */
-void janus_flags_set(janus_flags *flags, uint32_t flag);
+shared void janus_flags_set(janus_flags *flags, uint32_t flag);
 
 /*! \brief Janus flags clear method
  * \param[in] flags The janus_flags instance to update
  * \param[in] flag The flag to clear */
-void janus_flags_clear(janus_flags *flags, uint32_t flag);
+shared void janus_flags_clear(janus_flags *flags, uint32_t flag);
 
 /*! \brief Janus flags check method
  * \param[in] flags The janus_flags instance to check
  * \param[in] flag The flag to check
  * \returns true if the flag is set, false otherwise */
-gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag);
+shared gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag);
 ///@}
 
 /*! \brief Helper to create a new directory, and recursively create parent directories if needed
@@ -90,54 +96,54 @@ gboolean janus_flags_is_set(janus_flags *flags, uint32_t flag);
  * @param mode File permissions for the new directory file
  * @returns An integer like the regular mkdir does
  * @note A failure may indicate that creating any of the subdirectories failed: some may still have been created */
-int janus_mkdir(const char *dir, mode_t mode);
+shared int janus_mkdir(const char *dir, mode_t mode);
 
 /*! \brief Ugly and dirty helper to quickly get the payload type associated with a codec in an SDP
  * @param sdp The SDP to parse
  * @param codec The codec to look for
  * @returns The payload type, if found, -1 otherwise */
-int janus_get_codec_pt(const char *sdp, const char *codec);
+shared int janus_get_codec_pt(const char *sdp, const char *codec);
 
 /*! \brief Ugly and dirty helper to quickly get the codec associated with a payload type in an SDP
  * @param sdp The SDP to parse
  * @param pt The payload type to look for
  * @returns The codec name, if found, NULL otherwise */
-const char *janus_get_codec_from_pt(const char *sdp, int pt);
+shared const char *janus_get_codec_from_pt(const char *sdp, int pt);
 
 /*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
  * @param ip The IP address to check
  * @param[in,out] family The address family of the address, set by the method if valid
  * @returns true if the address is valid, false otherwise */
-gboolean janus_is_ip_valid(const char *ip, int *family);
+shared gboolean janus_is_ip_valid(const char *ip, int *family);
 
 /*! \brief Convert a sockaddr address to an IP string
  * \note The resulting string is allocated, which means the caller must free it itself when done
  * @param address The sockaddr address to convert
  * @returns A string containing the IP address, if successful, NULL otherwise */
-char *janus_address_to_ip(struct sockaddr *address);
+shared char *janus_address_to_ip(struct sockaddr *address);
 
 /*! \brief Create and lock a PID file
  * @param file Path to the PID file to use
  * @returns 0 if successful, a negative integer otherwise */
-int janus_pidfile_create(const char *file);
+shared int janus_pidfile_create(const char *file);
 
 /*! \brief Unlock and remove a previously created PID file
  * @returns 0 if successful, a negative integer otherwise */
-int janus_pidfile_remove(void);
+shared int janus_pidfile_remove(void);
 
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
  * @param[out] The type description, e.g., "a positive integer"; required size is 19 characters
  * @returns 0 if successful, a negative integer otherwise */
-void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
+shared void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
 /*! \brief Checks whether the JSON value matches the type and constraint
  * @param val The JSON value to be checked
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
  * @returns TRUE if the value is valid */
-gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
+shared gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 
 /*! \brief Validates the JSON object against the description of its parameters
  * @param missing_format printf format to indicate a missing required parameter; needs one %s for the parameter name

@@ -16,14 +16,20 @@
 #ifndef _JANUS_RTCP_H
 #define _JANUS_RTCP_H
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
 #ifdef __MACH__
 #include <machine/endian.h>
 #else
 #include <endian.h>
 #endif
+#endif
 #include <inttypes.h>
 #include <string.h>
+
+#include "os.h"
 
 /*! \brief RTCP Packet Types (http://www.networksorcery.com/enp/protocol/rtcp.htm) */
 typedef enum {
@@ -220,36 +226,36 @@ typedef struct rtcp_context
 /*! \brief Method to retrieve the LSR from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @returns The last SR received */
-uint32_t janus_rtcp_context_get_lsr(rtcp_context *ctx);
+shared uint32_t janus_rtcp_context_get_lsr(rtcp_context *ctx);
 /*! \brief Method to retrieve the total number of lost packets from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The total number of lost packets */
-uint32_t janus_rtcp_context_get_lost_all(rtcp_context *ctx, gboolean remote);
+shared uint32_t janus_rtcp_context_get_lost_all(rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve the jitter from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The computed jitter */
-uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx, gboolean remote);
+shared uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx, gboolean remote);
 
 
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns The sender SSRC, or 0 in case of error */
-guint32 janus_rtcp_get_sender_ssrc(char *packet, int len);
+shared guint32 janus_rtcp_get_sender_ssrc(char *packet, int len);
 /*! \brief Method to quickly retrieve the received SSRC (needed for demuxing RTCP in BUNDLE)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns The receiver SSRC, or 0 in case of error */
-guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len);
+shared guint32 janus_rtcp_get_receiver_ssrc(char *packet, int len);
 
 /*! \brief Method to parse/validate an RTCP message
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_parse(rtcp_context *ctx, char *packet, int len);
+shared int janus_rtcp_parse(rtcp_context *ctx, char *packet, int len);
 
 /*! \brief Method to fix an RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] ctx RTCP context to update, if needed (optional)
@@ -260,45 +266,45 @@ int janus_rtcp_parse(rtcp_context *ctx, char *packet, int len);
  * @param[in] newssrcl The SSRC of the sender to put in the message
  * @param[in] newssrcr The SSRC of the receiver to put in the message
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
+shared int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, uint32_t newssrcl, uint32_t newssrcr);
 
 /*! \brief Method to filter an outgoing RTCP message (http://tools.ietf.org/html/draft-ietf-straw-b2bua-rtcp-00)
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @param[in,out] newlen The data length of the filtered RTCP message
  * @returns A pointer to the new RTCP message data, NULL in case all messages have been filtered out */
-char *janus_rtcp_filter(char *packet, int len, int *newlen);
+shared char *janus_rtcp_filter(char *packet, int len, int *newlen);
 
 /*! \brief Method to quickly process the header of an incoming RTP packet to update the associated RTCP context
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The RTP packet
  * @param[in] len The packet data length in bytes
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len);
+shared int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report
  * @param[in] rb Pointer to a valid report_block area of the RTCP data
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb);
+shared int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb);
 
 /*! \brief Method to check whether an RTCP message contains a FIR request
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns TRUE in case of success, FALSE otherwise */
-gboolean janus_rtcp_has_fir(char *packet, int len);
+shared gboolean janus_rtcp_has_fir(char *packet, int len);
 
 /*! \brief Method to check whether an RTCP message contains a PLI request
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns TRUE in case of success, FALSE otherwise */
-gboolean janus_rtcp_has_pli(char *packet, int len);
+shared gboolean janus_rtcp_has_pli(char *packet, int len);
 
 /*! \brief Method to parse an RTCP NACK message
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns A list of janus_nack elements containing the sequence numbers to send again */
-GSList *janus_rtcp_get_nacks(char *packet, int len);
+shared GSList *janus_rtcp_get_nacks(char *packet, int len);
 
 /*! \brief Method to remove an RTCP NACK message
  * @param[in] packet The message data
@@ -308,20 +314,20 @@ GSList *janus_rtcp_get_nacks(char *packet, int len);
  * some sequence numbers in a NACK, we remove the NACK as a whole before forwarding the
  * RTCP message. Future versions will only selectively remove the sequence numbers that
  * have been handled. */
-int janus_rtcp_remove_nacks(char *packet, int len);
+shared int janus_rtcp_remove_nacks(char *packet, int len);
 
 /*! \brief Inspect an existing RTCP REMB message to retrieve the reported bitrate
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @returns The reported bitrate if successful, 0 if no REMB packet was available */
-uint64_t janus_rtcp_get_remb(char *packet, int len);
+shared uint64_t janus_rtcp_get_remb(char *packet, int len);
 
 /*! \brief Method to modify an existing RTCP REMB message to cap the reported bitrate
  * @param[in] packet The message data
  * @param[in] len The message data length in bytes
  * @param[in] bitrate The new bitrate to report (e.g., 128000)
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate);
+shared int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate);
 
 /*! \brief Method to generate a new RTCP SDES message
  * @param[in] packet The buffer data
@@ -329,21 +335,21 @@ int janus_rtcp_cap_remb(char *packet, int len, uint64_t bitrate);
  * @param[in] cname The CNAME to write
  * @param[in] cnamelen The CNAME data length in bytes
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen);
+shared int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen);
 
 /*! \brief Method to generate a new RTCP REMB message to cap the reported bitrate
  * @param[in] packet The buffer data (MUST be at least 24 chars)
  * @param[in] len The message data length in bytes (MUST be 24)
  * @param[in] bitrate The bitrate to report (e.g., 128000)
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_remb(char *packet, int len, uint64_t bitrate);
+shared int janus_rtcp_remb(char *packet, int len, uint64_t bitrate);
 
 /*! \brief Method to generate a new RTCP FIR message to request a key frame
  * @param[in] packet The buffer data (MUST be at least 20 chars)
  * @param[in] len The message data length in bytes (MUST be 20)
  * @param[in,out] seqnr The current FIR sequence number (will be incremented by the method)
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_fir(char *packet, int len, int *seqnr);
+shared int janus_rtcp_fir(char *packet, int len, int *seqnr);
 
 /*! \brief Method to generate a new legacy RTCP FIR (RFC2032) message to request a key frame
  * \note This is actually identical to janus_rtcp_fir(), with the difference that we set 192 as packet type
@@ -351,19 +357,19 @@ int janus_rtcp_fir(char *packet, int len, int *seqnr);
  * @param[in] len The message data length in bytes (MUST be 20)
  * @param[in,out] seqnr The current FIR sequence number (will be incremented by the method)
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr);
+shared int janus_rtcp_fir_legacy(char *packet, int len, int *seqnr);
 
 /*! \brief Method to generate a new RTCP PLI message to request a key frame
  * @param[in] packet The buffer data (MUST be at least 12 chars)
  * @param[in] len The message data length in bytes (MUST be 12)
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_pli(char *packet, int len);
+shared int janus_rtcp_pli(char *packet, int len);
 
 /*! \brief Method to generate a new RTCP NACK message to report lost packets
  * @param[in] packet The buffer data (MUST be at least 16 chars)
  * @param[in] len The message data length in bytes (MUST be 16)
  * @param[in] nacks List of packets to NACK
  * @returns The message data length in bytes, if successful, -1 on errors */
-int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
+shared int janus_rtcp_nacks(char *packet, int len, GSList *nacks);
 
 #endif

@@ -154,6 +154,7 @@ janus_plugin *create(void) {
 #include <unistd.h>
 #include <inttypes.h>
 
+#include "os.h"
 
 /*! \brief Version of the API, to match the one plugins were compiled against
  * 
@@ -418,12 +419,12 @@ struct janus_plugin_result {
  * @note The content is always strdup-ed, if available, so remember to free the original
  * string yourself, if you allocated it
  * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
-janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *content);
+shared janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *content);
 
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
  * @param[in] result The janus_plugin_result instance to destroy
  * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
-void janus_plugin_result_destroy(janus_plugin_result *result);
+shared void janus_plugin_result_destroy(janus_plugin_result *result);
 ///@}
 
 

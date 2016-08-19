@@ -3,8 +3,7 @@ Janus WebRTC Gateway
 
 Janus is an open source, general purpose, WebRTC gateway designed and
 developed by [Meetecho](http://www.meetecho.com). This version
-of the gateway can only be installed on Linux systems: next versions
-will take into account cross compilation on different environments.
+of the gateway can be installed on Linux, OSX and Windows systems.
 
 For some online demos and documentations, make sure you pay the
 [project website](http://janus.conf.meetecho.com/) a visit!
@@ -15,7 +14,7 @@ you can use. If you encounter issues, though, please submit an issue
 on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 
 
-##Dependencies
+##Dependencies on Linux or OSX
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
@@ -176,6 +175,121 @@ On Ubuntu/Debian:
 
 	aptitude install doxygen graphviz
 
+#Dependenicies on Windows
+
+Compilation under Windows is pretty complicated. It requires
+MSYS2 development environment to be installed. In order to install it follow
+the guide under following link:
+
+	https://msys2.github.io/
+
+Once it is installed open migw32 or mingw64 shell and install additional MSYS2
+tools:
+
+	pacman -S --noconfirm make git wget libtool autoconf automake doxygen \
+		gengetopt pkg-config patch
+
+and following packages for x86 version (mingw32) to build 32-bit binary:
+
+	pacman -S --noconfirm mingw-w64-i686-toolchain mingw-w64-i686-glib2 \
+		mingw-w64-i686-libnice mingw-w64-i686-dlfcn \
+		mingw-w64-i686-libwebsockets mingw-w64-i686-opus \
+		mingw-w64-i686-libogg mingw-w64-i686-jansson \
+		mingw-w64-i686-curl mingw-w64-i686-cmake mingw-w64-i686-ffmpeg
+
+Similarly you can install packages for x86_64 version (mingw64) to build 64-bit
+binary:
+
+	pacman -S --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-glib2 \
+		mingw-w64-x86_64-libnice  mingw-w64-x86_64-dlfcn \
+		mingw-w64-x86_64-libwebsockets mingw-w64-x86_64-opus \
+		mingw-w64-x86_64-libogg mingw-w64-x86_64-jansson \
+		mingw-w64-x86_64-curl mingw-w64-x86_64-cmake mingw-w64-x86_64-ffmpeg
+
+There are some dependencies that you have to compile and install manually
+because its binaries are not accessible from pacman repository yet.
+However pacman scripts with all the patches for all remianing dependencies
+were submitted to
+
+	https://github.com/Alexpux/MINGW-packages
+
+for your convenience.
+
+libmicrohttpd (x86, x86_64):
+
+	mkdir mingw-w64-libmicrohttpd
+	cd mingw-w64-libmicrohttpd
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libmicrohttpd/PKGBUILD
+	makepkg-mingw -sLfi --noconfirm
+
+Sofia-SIP (x86, x86_64):
+
+	mkdir mingw-w64-sofia-sip-git
+	cd mingw-w64-sofia-sip-git
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/PKGBUILD
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0001-add-mingw-support.patch
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0002-su-select-port.patch
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0003-inet-pton-ntop-fix.patch
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0004-add-su_win32_port.patch
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0005-add-no-undefined-flag.patch
+	makepkg-mingw -sLfi --noconfirm
+
+libsrtp (x86, x86_64):
+
+	mkdir mingw-w64-libsrtp
+	cd mingw-w64-libsrtp
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/PKGBUILD
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0001-DEV_URANDOM-removal.patch
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0002-symbolic-link-creation-removal-for-mingw-platform.patch
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0003-fix-path-for-getopt_s.patch
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/words.tx
+	makepkg-mingw -sLfi --noconfirm
+
+usrsctp (x86, x86_64):
+
+	mkdir mingw-w64-usrsctp
+	cd mingw-w64-usrsctp
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-usrsctp/PKGBUILD
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-usrsctp/0001-add-mingw-support.patch
+	makepkg-mingw -sLfi --noconfirm
+
+rabbitmq-c (x86, x86_64):
+
+	mkdir mingw-w64-rabbitmq-c
+	cd mingw-w64-rabbitmq-c
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-rabbitmq-c/PKGBUILD
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-rabbitmq-c/0001-librabbitmq-CMakeLists.txt.patch
+	makepkg-mingw -sLfi --noconfirm
+
+* *Note:* 
+
+If you need to build Janus Gateway documentation please install Windows version
+of Graphviz from
+
+	http://www.graphviz.org/Download_windows.php
+
+and make sure ```dot``` tool is in the PATH and
+
+	MSYS2_PATH_TYPE=inherit
+
+is not commented out in the mingw*.ini file.
+
+* *Note:* Windows version of Janus WebRTC Gateway fully supports Service Control
+Manager. You can create Janus WebRTC Gateway Windows Service by e.g.:
+
+	sc create "Janus WebRTC Gateway" binpath=c:/msys64/mingw64/bin/janus.exe
+
+To remove the service from Windows system type:
+
+	sc delete "Janus WebRTC Gateway"
+
+To start Janus WebRTC Windows Service execute:
+
+	net start "Janus WebRTC Gateway"
+
+To stop Janus WebRTC Windows Service execute: 
+
+	net stop "Janus WebRTC Gateway"
 
 ##Compile
 Once you have installed all the dependencies, get the code:

@@ -560,7 +560,7 @@ void *janus_rmq_in_thread(void *data) {
 			received += frame.payload.body_fragment.len;
 			index = payload+received;
 		}
-		JANUS_LOG(LOG_VERB, "Got %"SCNu64"/%"SCNu64" bytes from the %s queue (%"SCNu64")\n",
+		JANUS_LOG(LOG_VERB, "Got %"SCNu64"/%"SCNu64" bytes from the %s queue (%zu)\n",
 			received, total, admin ? "admin API" : "Janus API", frame.payload.body_fragment.len);
 		JANUS_LOG(LOG_VERB, "%s\n", payload);
 		/* Parse the JSON payload */

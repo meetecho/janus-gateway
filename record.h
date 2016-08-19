@@ -57,20 +57,20 @@ typedef struct janus_recorder {
  * @param[in] codec Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9")
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
-janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename);
+shared janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save
  * @param[in] length The frame data length
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length);
+shared int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length);
 /*! \brief Close the recorder
  * @param[in] recorder The janus_recorder instance to close
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_recorder_close(janus_recorder *recorder);
+shared int janus_recorder_close(janus_recorder *recorder);
 /*! \brief Free the recorder resources
  * @param[in] recorder The janus_recorder instance to free
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_recorder_free(janus_recorder *recorder);
+shared int janus_recorder_free(janus_recorder *recorder);
 
 #endif

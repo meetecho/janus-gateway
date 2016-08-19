@@ -9,8 +9,6 @@
  * \ref postprocessing
  */
 
-#include <arpa/inet.h>
-#include <endian.h>
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>

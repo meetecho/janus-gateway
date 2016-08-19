@@ -17,13 +17,22 @@
 
 #include <dlfcn.h>
 #include <dirent.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <glib/gstdio.h>
+#include <gio/gnetworking.h>
+#else
 #include <net/if.h>
 #include <netdb.h>
+#endif
 #include <signal.h>
 #include <getopt.h>
+#ifndef _WIN32
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <poll.h>
+#endif
 
 #include "janus.h"
 #include "cmdline.h"
@@ -36,6 +45,8 @@
 #include "auth.h"
 #include "utils.h"
 
+#include <openssl/err.h>
+#include <openssl/ssl.h>
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
@@ -43,31 +54,35 @@
 #define JANUS_VERSION_STRING	"0.1.1"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
+#ifdef _WIN32
+#define SHLIB_EXT ".dll"
+#else
 #ifdef __MACH__
 #define SHLIB_EXT "0.dylib"
 #else
 #define SHLIB_EXT ".so"
 #endif
+#endif
 
 
-static janus_config *config = NULL;
-static char *config_file = NULL;
-static char *configs_folder = NULL;
+shared janus_config *config;
+shared char *config_file;
+shared char *configs_folder;
 
-static GHashTable *transports = NULL;
-static GHashTable *transports_so = NULL;
+shared GHashTable *transports;
+shared GHashTable *transports_so;
 
-static GHashTable *plugins = NULL;
-static GHashTable *plugins_so = NULL;
+shared GHashTable *plugins;
+shared GHashTable *plugins_so;
 
 
 /* Daemonization */
-static gboolean daemonize = FALSE;
-static int pipefd[2];
+shared gboolean daemonize;
+shared int pipefd[2];
 
 
 /* API secrets */
-static char *api_secret = NULL, *admin_api_secret = NULL;
+shared char *api_secret, *admin_api_secret;
 
 /* JSON parameters */
 static int janus_process_error_string(janus_request *request, uint64_t session_id, const char *transaction, gint error, gchar *error_string);
@@ -125,11 +140,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
 /* IP addresses */
-static gchar local_ip[INET6_ADDRSTRLEN];
+shared gchar local_ip[INET6_ADDRSTRLEN];
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
-static gchar *public_ip = NULL;
+shared gchar *public_ip;
 gchar *janus_get_public_ip(void) {
 	/* Fallback to the local IP, if we have no public one */
 	return public_ip ? public_ip : local_ip;
@@ -140,14 +155,14 @@ void janus_set_public_ip(const char *ip) {
 		return;
 	public_ip = g_strdup(ip);
 }
-static volatile gint stop = 0;
+shared volatile gint stop;
 gint janus_is_stopping(void) {
 	return g_atomic_int_get(&stop);
 }
 
 
 /* Public instance name */
-static gchar *server_name = NULL;
+shared gchar *server_name;
 
 
 /* Information */
@@ -237,10 +252,10 @@ json_t *janus_info(const char *transaction) {
 
 
 /* Logging */
-int janus_log_level = LOG_INFO;
-gboolean janus_log_timestamps = FALSE;
-gboolean janus_log_colors = FALSE;
-int lock_debug = 0;
+shared int janus_log_level;
+shared gboolean janus_log_timestamps;
+shared gboolean janus_log_colors;
+shared int lock_debug;
 
 
 /*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
@@ -302,7 +317,7 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
 	};
-GThreadPool *tasks = NULL;
+shared GThreadPool *tasks;
 void janus_transport_task(gpointer data, gpointer user_data);
 ///@}
 
@@ -333,9 +348,9 @@ static janus_callbacks janus_handler_plugin =
 
 
 /* Gateway Sessions */
-static janus_mutex sessions_mutex;
-static GHashTable *sessions = NULL, *old_sessions = NULL;
-static GMainContext *sessions_watchdog_context = NULL;
+shared janus_mutex sessions_mutex;
+shared GHashTable *sessions, *old_sessions;
+shared GMainContext *sessions_watchdog_context;
 
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
@@ -2972,13 +2987,40 @@ error:
 }
 
 
-/* Main */
-gint main(int argc, char *argv[])
-{
+static void janus_main(int argc, char *argv[]) {
+	config = NULL;
+	config_file = NULL;
+	configs_folder = NULL;
+	transports = NULL;
+	transports_so = NULL;
+	plugins = NULL;
+	plugins_so = NULL;
+	daemonize = FALSE;
+	api_secret = NULL;
+	admin_api_secret = NULL;
+	public_ip = NULL;
+	stop = 0;
+	server_name = NULL;
+	janus_log_level = LOG_INFO;
+	janus_log_timestamps = FALSE;
+	janus_log_colors = FALSE;
+	lock_debug = 0;
+	tasks = NULL;
+	sessions = NULL;
+	old_sessions = NULL;
+	sessions_watchdog_context = NULL;
+#ifdef _WIN32
+	gchar buf[MAX_PATH];
+	GetModuleFileName(NULL, buf, MAX_PATH);
+	if (g_chdir(g_path_get_dirname(buf)))
+		exit(1);
+	g_networking_init();
+#else
 	/* Core dumps may be disallowed by parent of this process; change that */
 	struct rlimit core_limits;
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
+#endif
 
 	struct gengetopt_args_info args_info;
 	/* Let's call our cmdline parser */
@@ -3035,6 +3077,7 @@ gint main(int argc, char *argv[])
 			logfile = item->value;
 	}
 
+#ifndef _WIN32
 	/* Check if we're going to daemonize Janus */
 	if(args_info.daemon_given) {
 		daemonize = TRUE;
@@ -3114,6 +3157,7 @@ gint main(int argc, char *argv[])
 		}
 		/* We close stdin/stdout/stderr when initializing the logger */
 	}
+#endif
 
 	/* Initialize logger */
 	if(janus_log_init(daemonize, use_stdout, logfile) < 0)
@@ -3895,5 +3939,83 @@ gint main(int argc, char *argv[])
 
 	JANUS_PRINT("Bye!\n");
 
+#ifdef _WIN32
+	WSACleanup();
+#endif
+}
+
+#ifdef _WIN32
+
+SERVICE_STATUS service_status = {0};
+SERVICE_STATUS_HANDLE service_status_handle = NULL;
+
+static void service_ctrl_handler(DWORD ctrl_code) {
+	switch (ctrl_code) {
+		case SERVICE_CONTROL_STOP :
+
+			if (service_status.dwCurrentState != SERVICE_RUNNING)
+				break;
+ 
+			service_status.dwCurrentState = SERVICE_STOP_PENDING;
+			service_status.dwControlsAccepted = 0;
+			service_status.dwWin32ExitCode = 0;
+			service_status.dwCheckPoint = 4;
+ 
+			SetServiceStatus(service_status_handle, &service_status);
+ 
+			janus_handle_signal(0);
+
+			break;
+
+		default:
+			break;
+	}
+}
+
+static void janus_service_main(DWORD argc, LPTSTR *argv) {
+
+	service_status_handle = RegisterServiceCtrlHandler(JANUS_NAME,
+									(LPHANDLER_FUNCTION)service_ctrl_handler);
+ 
+	if (!service_status_handle)
+		return;
+ 
+	ZeroMemory(&service_status, sizeof(service_status));
+	service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+	service_status.dwCurrentState = SERVICE_START_PENDING;
+	service_status.dwControlsAccepted = 0;
+	service_status.dwWin32ExitCode = 0;
+	service_status.dwCheckPoint = 0;
+
+	SetServiceStatus(service_status_handle, &service_status);
+
+	service_status.dwCurrentState = SERVICE_RUNNING;
+	service_status.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+	service_status.dwWin32ExitCode = 0;
+	service_status.dwCheckPoint = 0;
+
+	SetServiceStatus(service_status_handle, &service_status);
+
+	janus_main(argc, argv);
+
+	service_status.dwCurrentState = SERVICE_STOPPED;
+	service_status.dwControlsAccepted = 0;
+	service_status.dwWin32ExitCode = 0;
+	service_status.dwCheckPoint = 3;
+
+	SetServiceStatus(service_status_handle, &service_status);
+
+}
+#endif
+
+/* Main */
+gint main(int argc, char *argv[])
+{
+#ifdef _WIN32
+	SERVICE_TABLE_ENTRY service_table[] = {{(LPTSTR)JANUS_NAME,
+					(LPSERVICE_MAIN_FUNCTION)janus_service_main}, {NULL, NULL}};
+	StartServiceCtrlDispatcher(service_table);
+#endif
+	janus_main(argc, argv);
 	exit(0);
 }

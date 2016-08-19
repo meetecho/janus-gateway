@@ -13,7 +13,9 @@
 #include <pthread.h>
 #include <errno.h>
 
-extern int lock_debug;
+#include "os.h"
+
+shared extern int lock_debug;
 
 /*! \brief Janus mutex implementation */
 typedef pthread_mutex_t janus_mutex;

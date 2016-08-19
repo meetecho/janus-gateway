@@ -28,10 +28,14 @@
 //~ #define DEBUG_SCTP
 
 #include <sys/types.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#endif
 #include <pthread.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -48,10 +52,10 @@
 
 /*! \brief SCTP stuff initialization
  * \returns 0 on success, a negative integer otherwise */
-int janus_sctp_init(void);
+shared int janus_sctp_init(void);
 
 /*! \brief SCTP stuff de-initialization */
-void janus_sctp_deinit(void);
+shared void janus_sctp_deinit(void);
 
 
 #define BUFFER_SIZE (1<<16)
@@ -184,27 +188,27 @@ typedef struct janus_datachannel_ack {
  * \param[in] handle_id Identifier of the handle owning this SCTP association (for debugging purposes only)
  * \param[in] udp_port The port as negotiated in the sctpmap attribute (http://tools.ietf.org/html/draft-ietf-mmusic-sctp-sdp-06)
  * \returns A janus_sctp_association instance if successful, NULL otherwise */
-janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handle_id, uint16_t udp_port);
+shared janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handle_id, uint16_t udp_port);
 
 /*! \brief Setup (connect) an existing SCTP association
  * \param[in] sctp The SCTP association to setup */
-int janus_sctp_association_setup(janus_sctp_association *sctp);
+shared int janus_sctp_association_setup(janus_sctp_association *sctp);
 
 /*! \brief Destroy an existing SCTP association
  * \param[in] sctp The SCTP association to get rid of */
-void janus_sctp_association_destroy(janus_sctp_association *sctp);
+shared void janus_sctp_association_destroy(janus_sctp_association *sctp);
 
 /*! \brief Callback to notify the SCTP stack when data has been decapsulated from DTLS
  * \param[in] sctp The SCTP association this data is for
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
-void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len);
+shared void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len);
 
 /*! \brief Method to send data via SCTP to the peer
  * \param[in] sctp The SCTP association this data is from
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
-void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len);
+shared void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len);
 
 #endif
 
