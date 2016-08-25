@@ -258,7 +258,7 @@ rabbitmq-c (x86, x86_64):
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-rabbitmq-c/0001-librabbitmq-CMakeLists.txt.patch
 	makepkg-mingw -sLfi --noconfirm
 
-* *Note:* 
+* *Note:*
 
 If you need to build Janus Gateway documentation please install Windows version
 of Graphviz from
@@ -271,7 +271,9 @@ and make sure ```dot``` tool is in the PATH and
 
 is not commented out in the mingw*.ini file.
 
-* *Note:* Windows version of Janus WebRTC Gateway fully supports Service Control
+* *Note:*
+
+Windows version of Janus WebRTC Gateway fully supports Service Control
 Manager. You can create Janus WebRTC Gateway Windows Service by e.g.:
 
 	sc create "Janus WebRTC Gateway" binpath=c:/msys64/mingw64/bin/janus.exe
@@ -282,11 +284,11 @@ To remove the service from Windows system type:
 
 To start Janus WebRTC Windows Service execute:
 
-	net start "Janus WebRTC Gateway"
+	sc start "Janus WebRTC Gateway"
 
 To stop Janus WebRTC Windows Service execute: 
 
-	net stop "Janus WebRTC Gateway"
+	sc stop "Janus WebRTC Gateway"
 
 ##Compile
 Once you have installed all the dependencies, get the code:
