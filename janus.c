@@ -3010,9 +3010,19 @@ static void janus_main(int argc, char *argv[]) {
 	old_sessions = NULL;
 	sessions_watchdog_context = NULL;
 #ifdef _WIN32
-	gchar buf[MAX_PATH];
-	GetModuleFileName(NULL, buf, MAX_PATH);
-	if (g_chdir(g_path_get_dirname(buf)))
+	guint16 path_utf16[MAX_PATH];
+	GetModuleFileNameW(NULL, path_utf16, MAX_PATH);
+	int num = WideCharToMultiByte(CP_UTF8, 0, path_utf16, -1, 0, 0, 0, 0);
+	if (!num)
+		exit(1);
+	gchar *path_utf8 = (gchar *)g_new0(gchar, num);
+	if (!WideCharToMultiByte(CP_UTF8, 0, path_utf16, -1, path_utf8, num, 0, 0)) {
+		g_free(path_utf8);
+		exit(1);
+	}
+	int ret = g_chdir(g_path_get_dirname(path_utf8));
+	g_free(path_utf8);
+	if (ret)
 		exit(1);
 	g_networking_init();
 #else
