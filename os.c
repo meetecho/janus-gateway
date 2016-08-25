@@ -196,8 +196,7 @@ unsigned long inet_aton(register const char *cp, struct in_addr *addr) {
 
 #ifdef _WIN32
 
-static struct sockaddr *
-dupaddr(const sockaddr_gen * src)
+static struct sockaddr *dupaddr(const sockaddr_gen * src)
 {
 	sockaddr_gen * d = malloc(sizeof(*d));
 
@@ -208,8 +207,7 @@ dupaddr(const sockaddr_gen * src)
 	return (struct sockaddr *) d;
 }
 
-int
-getifaddrs(struct ifaddrs **ifpp)
+int getifaddrs(struct ifaddrs **ifpp)
 {
 	SOCKET s = INVALID_SOCKET;
 	size_t il_len = 8192;
@@ -305,19 +303,19 @@ void freeifaddrs(struct ifaddrs *ifp) {
 	struct ifaddrs *p, *q;
 
 	for(p = ifp; p; ) {
-	if (p->ifa_name)
-		free(p->ifa_name);
-	if(p->ifa_addr)
-		free(p->ifa_addr);
-	if(p->ifa_dstaddr)
-		free(p->ifa_dstaddr);
-	if(p->ifa_netmask)
-		free(p->ifa_netmask);
-	if(p->ifa_data)
-		free(p->ifa_data);
-	q = p;
-	p = p->ifa_next;
-	free(q);
+		if (p->ifa_name)
+			free(p->ifa_name);
+		if(p->ifa_addr)
+			free(p->ifa_addr);
+		if(p->ifa_dstaddr)
+			free(p->ifa_dstaddr);
+		if(p->ifa_netmask)
+			free(p->ifa_netmask);
+		if(p->ifa_data)
+			free(p->ifa_data);
+		q = p;
+		p = p->ifa_next;
+		free(q);
 	}
 }
 

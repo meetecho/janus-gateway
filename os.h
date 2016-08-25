@@ -134,9 +134,9 @@ shared void freeifaddrs(struct ifaddrs *ifp);
 /*! \brief strcasestr - locate a substring in a string (case insensitive)
 * @param heystak string
 * @param needle substring to locaate
-* @returns If needle is an empty string, heystack is returned; if needle occurs nowhere
-* in heystack, NULL is returned; otherwise a pointer to the first character of
-* the first occurrence of needle is returned */
+* @returns If needle is an empty string, heystack is returned; if needle occurs
+* nowhere in heystack, NULL is returned; otherwise a pointer to the first
+* character of the first occurrence of needle is returned */
 shared char *strcasestr(const char *haystack, const char *needle);
 
 #endif
