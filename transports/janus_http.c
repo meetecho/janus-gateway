@@ -680,7 +680,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			if(!server_key || !server_pem) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
 			} else {
-				int swsport = 8889;
+				int swsport = 8089;
 				item = janus_config_get_item_drilldown(config, "general", "secure_port");
 				if(item && item->value)
 					swsport = atoi(item->value);

@@ -913,7 +913,7 @@ void janus_streaming_destroy(void) {
 	}
 
 	/* Remove all mountpoints */
-	janus_mutex_unlock(&mountpoints_mutex);
+	janus_mutex_lock(&mountpoints_mutex);
 	GHashTableIter iter;
 	gpointer value;
 	g_hash_table_iter_init(&iter, mountpoints);
