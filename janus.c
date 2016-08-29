@@ -3327,8 +3327,7 @@ gint main(int argc, char *argv[])
 				index = list[i];
 			}
 		}
-		g_strfreev(list);
-		list = NULL;
+		g_clear_pointer(&list, g_strfreev);
 	}
 	item = janus_config_get_item_drilldown(config, "nat", "ice_ignore_list");
 	if(item && item->value) {
@@ -3345,8 +3344,7 @@ gint main(int argc, char *argv[])
 				index = list[i];
 			}
 		}
-		g_strfreev(list);
-		list = NULL;
+		g_clear_pointer(&list, g_strfreev);
 	}
 	/* What is the local IP? */
 	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");
@@ -3907,8 +3905,7 @@ gint main(int argc, char *argv[])
 	g_thread_pool_free(tasks, FALSE, FALSE);
 
 	JANUS_LOG(LOG_INFO, "Destroying sessions...\n");
-	if(sessions != NULL)
-		g_hash_table_destroy(sessions);
+	g_clear_pointer(&sessions, g_hash_table_destroy);
 	janus_ice_deinit();
 	JANUS_LOG(LOG_INFO, "Freeing crypto resources...\n");
 	janus_dtls_srtp_cleanup();
