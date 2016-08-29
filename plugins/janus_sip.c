@@ -1604,7 +1604,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing SDP");
 				goto error;
 			}
-			if(strstr(msg->sdp, "m=application")) {
+			if(strstr(msg_sdp, "m=application")) {
 				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");

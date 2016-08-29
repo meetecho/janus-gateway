@@ -727,7 +727,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		JANUS_LOG(LOG_ERR, "No message??\n");
 		error_code = JANUS_RECORDPLAY_ERROR_NO_MESSAGE;
 		g_snprintf(error_cause, 512, "%s", "No message??");
-		goto error;
+		goto plugin_response;
 	}
 
 	janus_recordplay_session *session = (janus_recordplay_session *)handle->plugin_handle;	
@@ -735,26 +735,26 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
 		g_snprintf(error_cause, 512, "%s", "session associated with this handle...");
-		goto error;
+		goto plugin_response;
 	}
 	if(session->destroyed) {
 		JANUS_LOG(LOG_ERR, "Session has already been destroyed...\n");
 		error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
 		g_snprintf(error_cause, 512, "%s", "Session has already been destroyed...");
-		goto error;
+		goto plugin_response;
 	}
 	if(!json_is_object(root)) {
 		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");
 		error_code = JANUS_RECORDPLAY_ERROR_INVALID_JSON;
 		g_snprintf(error_cause, 512, "JSON error: not an object");
-		goto error;
+		goto plugin_response;
 	}
 	/* Get the request first */
 	JANUS_VALIDATE_JSON_OBJECT(root, request_parameters,
 		error_code, error_cause, TRUE,
 		JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
 	if(error_code != 0)
-		goto error;
+		goto plugin_response;
 	json_t *request = json_object_get(root, "request");
 	/* Some requests ('create' and 'destroy') can be handled synchronously */
 	const char *request_text = json_string_value(request);
@@ -796,7 +796,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 			error_code, error_cause, TRUE,
 			JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto error;
+			goto plugin_response;
 		json_t *video_bitrate_max = json_object_get(root, "video-bitrate-max");
 		if(video_bitrate_max) {
 			session->video_bitrate = json_integer_value(video_bitrate_max);
@@ -832,15 +832,21 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
 		error_code = JANUS_RECORDPLAY_ERROR_INVALID_REQUEST;
 		g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
-		goto error;
 	}
 
 plugin_response:
 		{
-			if (!response) {
+			if(error_code == 0 && !response) {
 				error_code = JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Invalid response");
-				goto error;
+			}
+			if(error_code != 0) {
+				/* Prepare JSON error event */
+				json_t *event = json_object();
+				json_object_set_new(event, "recordplay", json_string("event"));
+				json_object_set_new(event, "error_code", json_integer(error_code));
+				json_object_set_new(event, "error", json_string(error_cause));
+				response = event;
 			}
 			if(root != NULL)
 				json_decref(root);
@@ -848,25 +854,7 @@ plugin_response:
 				json_decref(jsep);
 			g_free(transaction);
 
-			janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, response);
-			return result;
-		}
-
-error:
-		{
-			if(root != NULL)
-				json_decref(root);
-			if(jsep != NULL)
-				json_decref(jsep);
-			g_free(transaction);
-
-			/* Prepare JSON error event */
-			json_t *event = json_object();
-			json_object_set_new(event, "recordplay", json_string("event"));
-			json_object_set_new(event, "error_code", json_integer(error_code));
-			json_object_set_new(event, "error", json_string(error_cause));
-			janus_plugin_result *result = janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, event);
-			return result;
+			return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, response);
 		}
 
 }
