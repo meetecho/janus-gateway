@@ -152,8 +152,7 @@ JANUS_API int janus_pidfile_remove(void);
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
- * @param[out] The type description, e.g., "a positive integer"; required size is 19 characters
- * @returns 0 if successful, a negative integer otherwise */
+ * @param[out] The type description, e.g., "a positive integer"; required size is 19 characters */
 JANUS_API void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
 /*! \brief Checks whether the JSON value matches the type and constraint
