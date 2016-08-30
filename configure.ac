@@ -20,20 +20,20 @@ darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
-  AM_CONDITIONAL([WINDOWS_OS], false)
+	AM_CONDITIONAL([WINDOWS_OS], false)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
 ;;
 mingw*)
-  CFLAGS="$CFLAGS -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_POSIX_C_SOURCE -pipe -mwindows -mconsole"
-  LDFLAGS="$LDFLAGS -Wl,--enable-auto-image-base"
-  LIBS="-lws2_32 -liphlpapi"
+	CFLAGS="$CFLAGS -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_POSIX_C_SOURCE -pipe -mwindows -mconsole"
+	LDFLAGS="$LDFLAGS -Wl,--enable-auto-image-base"
+	LIBS="-lws2_32 -liphlpapi"
 	AM_CONDITIONAL([DARWIN_OS], false)
-  AM_CONDITIONAL([WINDOWS_OS], true)
+	AM_CONDITIONAL([WINDOWS_OS], true)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
 ;;
 *)
 	AM_CONDITIONAL([DARWIN_OS], false)
-  AM_CONDITIONAL([WINDOWS_OS], false)
+	AM_CONDITIONAL([WINDOWS_OS], false)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
 esac
 
