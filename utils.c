@@ -536,3 +536,12 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 	}
 	return is_valid;
 }
+
+void janus_set_non_blocking_mode(int fd) {
+#ifdef _WIN32
+	u_long argp = 1;
+	ioctlsocket(fd, FIONBIO, &argp);
+#else
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+#endif
+}

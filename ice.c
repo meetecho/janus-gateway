@@ -34,6 +34,7 @@
 #include "rtp.h"
 #include "rtcp.h"
 #include "apierror.h"
+#include "utils.h"
 
 /* STUN server/port, if any */
 static char *janus_stun_server = NULL;
@@ -125,12 +126,7 @@ void janus_ice_force_rtcpmux(gboolean forced) {
 			JANUS_LOG(LOG_WARN, "Error creating RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
 			return;
 		}
-#ifdef _WIN32
-		u_long argp = 1;
-		ioctlsocket(blackhole, FIONBIO, &argp);
-#else
-		fcntl(blackhole, F_SETFL, O_NONBLOCK);
-#endif
+		janus_set_non_blocking_mode(blackhole);
 		struct sockaddr_in serveraddr;
 		serveraddr.sin_family = AF_INET;
 		serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);

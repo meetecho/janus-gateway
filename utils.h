@@ -163,6 +163,10 @@ JANUS_API void janus_get_json_type_name(int jtype, unsigned int flags, char *typ
  * @returns TRUE if the value is valid */
 JANUS_API gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 
+/*! \brief Sets non blocking mode for given file descriptor
+ * @param fd file descriptor */
+JANUS_API void janus_set_non_blocking_mode(int fd);
+
 /*! \brief Validates the JSON object against the description of its parameters
  * @param missing_format printf format to indicate a missing required parameter; needs one %s for the parameter name
  * @param invalid_format printf format to indicate an invalid parameter; needs two %s for parameter name and type description from janus_get_json_type_name
