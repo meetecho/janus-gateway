@@ -3,7 +3,7 @@ Janus WebRTC Gateway
 
 Janus is an open source, general purpose, WebRTC gateway designed and
 developed by [Meetecho](http://www.meetecho.com). This version
-of the gateway can be installed on Linux, OSX and Windows systems.
+of the gateway can be installed on Linux, OS X and Windows systems.
 
 For some online demos and documentations, make sure you pay the
 [project website](http://janus.conf.meetecho.com/) a visit!
@@ -14,7 +14,7 @@ you can use. If you encounter issues, though, please submit an issue
 on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 
 
-##Dependencies on Linux or OSX
+##Dependencies on Linux or OS X
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
@@ -239,7 +239,7 @@ libsrtp (x86, x86_64):
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0001-DEV_URANDOM-removal.patch
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0002-symbolic-link-creation-removal-for-mingw-platform.patch
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0003-fix-path-for-getopt_s.patch
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/words.tx
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/words.txt
 	makepkg-mingw -sLfi --noconfirm
 
 usrsctp (x86, x86_64):
