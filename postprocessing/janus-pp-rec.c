@@ -411,7 +411,7 @@ int main(int argc, char *argv[])
 			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
 					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
 				if(post_reset_pkts < 1000) {
-					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
+					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", (uint32_t)ntohl(rtp->timestamp));
 					late_pkt = TRUE;
 					times_resetted--;
 				}
