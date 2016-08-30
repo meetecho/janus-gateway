@@ -74,9 +74,9 @@
 
 #include "../os.h"
 
-shared int janus_log_level;
-shared gboolean janus_log_timestamps;
-shared gboolean janus_log_colors;
+JANUS_API int janus_log_level;
+JANUS_API gboolean janus_log_timestamps;
+JANUS_API gboolean janus_log_colors;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
 int working = 0;

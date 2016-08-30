@@ -19,7 +19,7 @@
 #include "os.h"
 
 /*! \brief OpenSSL BIO filter for fragmentation constructor */
-shared BIO_METHOD *BIO_janus_dtls_filter(void);
+JANUS_API BIO_METHOD *BIO_janus_dtls_filter(void);
 
 /*! \brief Set the MTU for the BIO filter
  * \note The default starting MTU is 1472, in case fragmentation is needed
@@ -29,6 +29,6 @@ shared BIO_METHOD *BIO_janus_dtls_filter(void);
  * start from
  * @param start_mtu The MTU to start from (1472 by default)
  */
-shared void janus_dtls_bio_filter_set_mtu(int start_mtu);
+JANUS_API void janus_dtls_bio_filter_set_mtu(int start_mtu);
 
 #endif

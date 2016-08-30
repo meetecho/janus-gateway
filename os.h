@@ -19,12 +19,12 @@
 
 #ifdef _WIN32
 #ifdef SHARED
-#define shared __declspec(dllexport) 
+#define JANUS_API __declspec(dllexport) 
 #else
-#define shared __declspec(dllimport)
+#define JANUS_API __declspec(dllimport)
 #endif
 #else
-#define shared
+#define JANUS_API
 #endif
 
 #ifndef __BIG_ENDIAN
@@ -97,7 +97,7 @@ struct ifaddrs {
 * @param timeout number of milliseconds that poll should block
 * waiting for a file descriptor to become ready.
 * @returns positive number in case of success, -1 otherwise */
-shared int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+JANUS_API int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
 #endif
 
@@ -108,7 +108,7 @@ shared int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 * @param cp Internet host address
 * @param addr address binary structure
 * @returns nonzero if the address is valid, a zero otherwise */
-shared unsigned long inet_aton(register const char *cp, struct in_addr *addr);
+JANUS_API unsigned long inet_aton(register const char *cp, struct in_addr *addr);
 
 #endif
 
@@ -117,7 +117,7 @@ shared unsigned long inet_aton(register const char *cp, struct in_addr *addr);
 /*! \brief getifaddrs - get interface addresses
 * @param ifpp list of interface addresses
 * @returns zero in case of success, -1 otherwise */
-shared int getifaddrs(struct ifaddrs **ifpp);
+JANUS_API int getifaddrs(struct ifaddrs **ifpp);
 
 #endif
 
@@ -125,7 +125,7 @@ shared int getifaddrs(struct ifaddrs **ifpp);
 
 /*! \brief freeifaddrs - frees interface addresses
 * @param ifp list of interface addresses */
-shared void freeifaddrs(struct ifaddrs *ifp);
+JANUS_API void freeifaddrs(struct ifaddrs *ifp);
 
 #endif
 
@@ -137,7 +137,7 @@ shared void freeifaddrs(struct ifaddrs *ifp);
 * @returns If needle is an empty string, heystack is returned; if needle occurs
 * nowhere in heystack, NULL is returned; otherwise a pointer to the first
 * character of the first occurrence of needle is returned */
-shared char *strcasestr(const char *haystack, const char *needle);
+JANUS_API char *strcasestr(const char *haystack, const char *needle);
 
 #endif
 
@@ -147,7 +147,7 @@ shared char *strcasestr(const char *haystack, const char *needle);
 * @param fd file descriptor
 * @param operation LOCK_SH, LOCK_EX, LOCK_UN, LOCK_NB
 * @returns zero in case of susscess, -1 otherwise */
-shared int flock (int fd, int operation);
+JANUS_API int flock (int fd, int operation);
 
 #endif
 

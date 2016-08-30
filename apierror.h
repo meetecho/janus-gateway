@@ -70,6 +70,6 @@
 /*! \brief Helper method to get a string representation of an API error code
  * @param[in] error The API error code
  * @returns A string representation of the error code */
-shared const char *janus_get_api_error(int error);
+JANUS_API const char *janus_get_api_error(int error);
 
 #endif

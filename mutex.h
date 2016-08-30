@@ -15,7 +15,7 @@
 
 #include "os.h"
 
-shared extern int lock_debug;
+JANUS_API extern int lock_debug;
 
 /*! \brief Janus mutex implementation */
 typedef pthread_mutex_t janus_mutex;

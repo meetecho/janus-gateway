@@ -52,10 +52,10 @@
 
 /*! \brief SCTP stuff initialization
  * \returns 0 on success, a negative integer otherwise */
-shared int janus_sctp_init(void);
+JANUS_API int janus_sctp_init(void);
 
 /*! \brief SCTP stuff de-initialization */
-shared void janus_sctp_deinit(void);
+JANUS_API void janus_sctp_deinit(void);
 
 
 #define BUFFER_SIZE (1<<16)
@@ -188,27 +188,27 @@ typedef struct janus_datachannel_ack {
  * \param[in] handle_id Identifier of the handle owning this SCTP association (for debugging purposes only)
  * \param[in] udp_port The port as negotiated in the sctpmap attribute (http://tools.ietf.org/html/draft-ietf-mmusic-sctp-sdp-06)
  * \returns A janus_sctp_association instance if successful, NULL otherwise */
-shared janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handle_id, uint16_t udp_port);
+JANUS_API janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handle_id, uint16_t udp_port);
 
 /*! \brief Setup (connect) an existing SCTP association
  * \param[in] sctp The SCTP association to setup */
-shared int janus_sctp_association_setup(janus_sctp_association *sctp);
+JANUS_API int janus_sctp_association_setup(janus_sctp_association *sctp);
 
 /*! \brief Destroy an existing SCTP association
  * \param[in] sctp The SCTP association to get rid of */
-shared void janus_sctp_association_destroy(janus_sctp_association *sctp);
+JANUS_API void janus_sctp_association_destroy(janus_sctp_association *sctp);
 
 /*! \brief Callback to notify the SCTP stack when data has been decapsulated from DTLS
  * \param[in] sctp The SCTP association this data is for
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
-shared void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len);
+JANUS_API void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len);
 
 /*! \brief Method to send data via SCTP to the peer
  * \param[in] sctp The SCTP association this data is from
  * \param[in] buf The data buffer
  * \param[in] len The buffer length */
-shared void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len);
+JANUS_API void janus_sctp_send_data(janus_sctp_association *sctp, char *buf, int len);
 
 #endif
 

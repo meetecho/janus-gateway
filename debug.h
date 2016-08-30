@@ -16,9 +16,9 @@
 #include <glib/gprintf.h>
 #include "log.h"
 
-shared extern int janus_log_level;
-shared extern gboolean janus_log_timestamps;
-shared extern gboolean janus_log_colors;
+JANUS_API extern int janus_log_level;
+JANUS_API extern gboolean janus_log_timestamps;
+JANUS_API extern gboolean janus_log_colors;
 
 /** @name Janus log colors
  */

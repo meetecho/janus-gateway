@@ -33,9 +33,9 @@
 ///@{
 /*! \brief Janus SDP processor initialization
  * @returns 0 in case of success, -1 in case of an error */
-shared int janus_sdp_init(void);
+JANUS_API int janus_sdp_init(void);
 /*! \brief Janus SDP processor deinitialization */
-shared void janus_sdp_deinit(void);
+JANUS_API void janus_sdp_deinit(void);
 ///@}
 
 
@@ -50,7 +50,7 @@ typedef struct janus_sdp {
 
 /*! \brief Method to free a Janus SDP instance
  * @param[in] sdp The Janus SDP instance to free */
-shared void janus_sdp_free(janus_sdp *sdp);
+JANUS_API void janus_sdp_free(janus_sdp *sdp);
 
 
 /** @name Janus SDP helper methods
@@ -66,14 +66,14 @@ shared void janus_sdp_free(janus_sdp *sdp);
  * @param[out] rtcpmux Whether rtcp-mux has been negotiated or not
  * @param[out] trickle Whether ICE trickling is being used (no candidates) or not
  * @returns The Janus SDP instance in case of success, NULL in case the SDP is invalid */
-shared janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle);
+JANUS_API janus_sdp *janus_sdp_preparse(const char *jsep_sdp, int *audio, int *video, int *data, int *bundle, int *rtcpmux, int *trickle);
 
 /*! \brief Method to parse a session description
  * \details This method will parse a session description coming from a peer, and set up the ICE candidates accordingly
  * @param[in] session The ICE session this session description will modify
  * @param[in] sdp The Janus SDP instance to parse
  * @returns 0 in case of success, -1 in case of an error */
-shared int janus_sdp_parse(janus_ice_handle *session, janus_sdp *sdp);
+JANUS_API int janus_sdp_parse(janus_ice_handle *session, janus_sdp *sdp);
 
 /*! \brief Method to parse a single candidate
  * \details This method will parse a single remote candidate provided by a peer, whether it is trickling or not
@@ -81,7 +81,7 @@ shared int janus_sdp_parse(janus_ice_handle *session, janus_sdp *sdp);
  * @param[in] candidate The remote candidate to process
  * @param[in] trickle Whether this is a trickle candidate, or coming from the SDP
  * @returns 0 in case of success, a non-zero integer in case of an error */
-shared int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, int trickle);
+JANUS_API int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, int trickle);
 
 /*! \brief Method to parse a SSRC attribute
  * \details This method will parse a SSRC attribute, and set it for the peer
@@ -89,18 +89,18 @@ shared int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candi
  * @param[in] ssrc_attr The SSRC attribute value to parse
  * @param[in] video Whether this is a video SSRC or not
  * @returns 0 in case of success, a non-zero integer in case of an error */
-shared int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int video);
+JANUS_API int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int video);
 
 /*! \brief Method to strip/anonymize a session description
  * @param[in] sdp The session description to strip/anonymize
  * @returns A string containing the stripped/anonymized session description in case of success, NULL if the SDP is invalid */
-shared char *janus_sdp_anonymize(const char *sdp);
+JANUS_API char *janus_sdp_anonymize(const char *sdp);
 
 /*! \brief Method to merge a stripped session description and the right transport information
  * @param[in] session The ICE session this session description is related to
  * @param[in] sdp The stripped session description to merge
  * @returns A string containing the full session description in case of success, NULL if the SDP is invalid */
-shared char *janus_sdp_merge(janus_ice_handle *session, const char *sdp);
+JANUS_API char *janus_sdp_merge(janus_ice_handle *session, const char *sdp);
 ///@}
 
 #endif
