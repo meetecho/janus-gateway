@@ -629,10 +629,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 	}
 		/* m= */
 	if(anon->sdp_media) {
-		int audio = 0, video = 0;
-#ifdef HAVE_SCTP
-		int data = 0;
-#endif
+		int audio = 0, video = 0, data = 0;
 		sdp_media_t *m = anon->sdp_media;
 		while(m) {
 			if(m->m_type == sdp_media_audio && m->m_port > 0) {
@@ -641,7 +638,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 			} else if(m->m_type == sdp_media_video && m->m_port > 0) {
 				video++;
 				m->m_port = video == 1 ? 1 : 0;
-#ifdef HAVE_SCTP
 			} else if(m->m_type == sdp_media_application) {
 				if(m->m_proto_name != NULL && !strcasecmp(m->m_proto_name, "DTLS/SCTP") && m->m_port != 0) {
 					data++;
@@ -649,7 +645,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 				} else {
 					m->m_port = 0;
 				}
-#endif
 			} else {
 				m->m_port = 0;
 			}

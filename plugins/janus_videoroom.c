@@ -552,10 +552,16 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"a=rtcp-fb:%d nack\r\n"				/* H264 payload type */ \
 		"a=rtcp-fb:%d nack pli\r\n"			/* H264 payload type */ \
 		"a=rtcp-fb:%d goog-remb\r\n"		/* H264 payload type */
+#ifdef HAVE_SCTP
 #define sdp_d_template \
 		"m=application 1 DTLS/SCTP 5000\r\n" \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=sctpmap:5000 webrtc-datachannel 16\r\n"
+#else
+#define sdp_d_template \
+		"m=application 0 DTLS/SCTP 0\r\n" \
+		"c=IN IP4 1.1.1.1\r\n"
+#endif
 
 
 /* Error codes */
@@ -3414,7 +3420,6 @@ static void *janus_videoroom_handler(void *data) {
 							m = m->m_next;
 							continue;
 						}
-#ifdef HAVE_SCTP
 					} else if(m->m_type == sdp_media_application && m->m_port > 0) {
 						data++;
 						participant->data = TRUE;
@@ -3422,7 +3427,6 @@ static void *janus_videoroom_handler(void *data) {
 							m = m->m_next;
 							continue;
 						}
-#endif
 					}
 					if(m->m_type != sdp_media_application) {
 						/* What is the direction? */
