@@ -104,6 +104,9 @@ static janus_transport_callbacks *gateway = NULL;
 static gboolean http_janus_api_enabled = FALSE;
 static gboolean http_admin_api_enabled = FALSE;
 
+/* JSON serialization options */
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
 
 /* Incoming HTTP message */
 typedef struct janus_http_msg {
@@ -551,9 +554,26 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 		janus_config_print(config);
 
 		/* Handle configuration */
-		
-		/* ... starting with the base paths */
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "base_path");
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		if(item && item->value) {
+			/* Check how we need to format/serialize the JSON output */
+			if(!strcasecmp(item->value, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			}
+		}
+
+		/* Check the base paths */
+		item = janus_config_get_item_drilldown(config, "general", "base_path");
 		if(item && item->value) {
 			if(item->value[0] != '/') {
 				JANUS_LOG(LOG_FATAL, "Invalid base path %s (it should start with a /, e.g., /janus\n", item->value);
@@ -1298,7 +1318,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		if(event != NULL) {
 			if(max_events == 1) {
 				/* Return just this message and leave */
-				gchar *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				gchar *event_text = json_dumps(event, json_format);
 				json_decref(event);
 				ret = janus_http_return_success(msg, event_text);
 			} else {
@@ -1314,7 +1334,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 					events++;
 				}
 				/* Return the array of messages and leave */
-				gchar *list_text = json_dumps(list, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				gchar *list_text = json_dumps(list, json_format);
 				json_decref(list);
 				ret = janus_http_return_success(msg, list_text);
 			}
@@ -1366,7 +1386,7 @@ parsingdone:
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
-		char *response_text = json_dumps(msg->response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		char *response_text = json_dumps(msg->response, json_format);
 		json_decref(msg->response);
 		msg->response = NULL;
 		ret = janus_http_return_success(msg, response_text);
@@ -1613,7 +1633,7 @@ parsingdone:
 	if(!msg->response) {
 		ret = MHD_NO;
 	} else {
-		char *response_text = json_dumps(msg->response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		char *response_text = json_dumps(msg->response, json_format);
 		json_decref(msg->response);
 		msg->response = NULL;
 		ret = janus_http_return_success(msg, response_text);
@@ -1740,7 +1760,7 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 		}
 		/* FIXME Improve the Janus protocol keep-alive mechanism in JavaScript */
 	}
-	char *payload_text = json_dumps(list ? list : event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	char *payload_text = json_dumps(list ? list : event, json_format);
 	json_decref(list ? list : event);
 	/* Finish the request by sending the response */
 	JANUS_LOG(LOG_VERB, "We have a message to serve...\n\t%s\n", payload_text);
@@ -1798,7 +1818,7 @@ int janus_http_return_error(janus_http_msg *msg, uint64_t session_id, const char
 	json_object_set_new(error_data, "code", json_integer(error));
 	json_object_set_new(error_data, "reason", json_string(error_string));
 	json_object_set_new(reply, "error", error_data);
-	gchar *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	gchar *reply_text = json_dumps(reply, json_format);
 	json_decref(reply);
 	/* Use janus_http_return_error to send the error response */
 	return janus_http_return_success(msg, reply_text);

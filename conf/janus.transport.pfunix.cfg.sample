@@ -4,6 +4,8 @@
 [general]
 enabled = yes					; Whether to enable the Unix Sockets interface
 								; for Janus API clients
+json = indented					; Whether the JSON messages should be indented (default),
+								; plain (no indentation) or compact (no indentation and no spaces)
 path = /tmp/ux-janusapi			; Path to bind to (Janus API)
 ;type = SOCK_SEQPACKET			; SOCK_SEQPACKET (default) or SOCK_DGRAM?
 

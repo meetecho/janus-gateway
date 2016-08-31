@@ -1,6 +1,8 @@
 ; WebSockets stuff: whether they should be enabled, which ports they
 ; should use, and so on.
 [general]
+json = indented				; Whether the JSON messages should be indented (default),
+							; plain (no indentation) or compact (no indentation and no spaces)
 ws = yes					; Whether to enable the WebSockets API
 ws_port = 8188				; WebSockets server port
 ;ws_interface = eth0		; Whether we should bind this server to a specific interface only
