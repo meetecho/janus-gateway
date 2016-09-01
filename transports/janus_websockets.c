@@ -98,6 +98,9 @@ static janus_transport_callbacks *gateway = NULL;
 static gboolean wss_janus_api_enabled = FALSE;
 static gboolean wss_admin_api_enabled = FALSE;
 
+/* JSON serialization options */
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
 
 /* Logging */
 static int ws_log_level = 0;
@@ -360,7 +363,25 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		janus_config_print(config);
 
 		/* Handle configuration */
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "ws_logging");
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		if(item && item->value) {
+			/* Check how we need to format/serialize the JSON output */
+			if(!strcasecmp(item->value, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			}
+		}
+
+		item = janus_config_get_item_drilldown(config, "general", "ws_logging");
 		if(item && item->value) {
 			ws_log_level = atoi(item->value);
 			if(ws_log_level < 0)
@@ -782,7 +803,7 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 	}
 	janus_mutex_lock(&client->mutex);
 	/* Convert to string and enqueue */
-	char *payload = json_dumps(message, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	char *payload = json_dumps(message, json_format);
 	g_async_queue_push(client->messages, payload);
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	lws_callback_on_writable(client->wsi);

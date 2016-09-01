@@ -97,6 +97,9 @@ janus_transport *create(void) {
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
 
+/* JSON serialization options */
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
 #define BUFFER_SIZE		8192
 
 struct sockaddr_un sizecheck;
@@ -190,6 +193,24 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		/* Handle configuration */
 		janus_config_print(config);
 
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		if(item && item->value) {
+			/* Check how we need to format/serialize the JSON output */
+			if(!strcasecmp(item->value, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			}
+		}
+
 		/* First of all, initialize the socketpair for writeable notifications */
 		if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
 			JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
@@ -197,7 +218,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 		}
 
 		/* Setup the Janus API Unix Sockets server(s) */
-		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "enabled");
+		item = janus_config_get_item_drilldown(config, "general", "enabled");
 		if(!item || !item->value || !janus_is_true(item->value)) {
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Janus API)\n");
 		} else {
@@ -343,7 +364,7 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 	}
 	janus_mutex_unlock(&clients_mutex);
 	/* Convert to string */
-	char *payload = json_dumps(message, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	char *payload = json_dumps(message, json_format);
 	json_decref(message);
 	if(client->fd != -1) {
 		/* SOCK_SEQPACKET, enqueue the packet and have poll tell us when it's time to send it */
