@@ -34,6 +34,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 		temp = temp->next;
 	}
 	g_list_free(sdp->attributes);
+	sdp->attributes = NULL;
 	temp = sdp->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -42,6 +43,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 		g_free(m->c_addr);
 		g_free(m->b_name);
 		g_list_free(m->ptypes);
+		m->ptypes = NULL;
 		GList *temp2 = m->attributes;
 		while(temp2) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)temp2->data;
@@ -52,6 +54,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 		temp = temp->next;
 	}
 	g_list_free(sdp->m_lines);
+	sdp->m_lines = NULL;
 	g_free(sdp);
 }
 
@@ -444,6 +447,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 		if(m->port == 0) {
 			/* Remove all payload types if we're rejecting the media */
 			g_list_free(m->ptypes);
+			m->ptypes = NULL;
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(0));
 		}
 		GList *ptypes = m->ptypes;
