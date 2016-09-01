@@ -658,6 +658,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 				tempA = tempA->next;
 			}
 			g_list_free(purged_ptypes);
+			purged_ptypes = NULL;
 		}
 		temp = temp->next;
 	}
