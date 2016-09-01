@@ -3012,7 +3012,7 @@ static void *janus_sip_relay_thread(void *data) {
 	socklen_t addrlen;
 	struct sockaddr_in remote;
 	int resfd = 0, bytes = 0;
-	struct pollfd fds[4];
+	struct pollfd fds[5];
 	int pipe_fd = session->media.pipefd[0];
 	char buffer[1500];
 	memset(buffer, 0, 1500);
