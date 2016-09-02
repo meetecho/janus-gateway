@@ -150,6 +150,7 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 	sdp_media_t *m = remote_sdp->sdp_media;
 	while(m) {
 		/* What media type is this? */
+		stream = NULL;
 		if(m->m_type == sdp_media_audio) {
 			if(handle->rtp_profile == NULL && m->m_proto_name != NULL)
 				handle->rtp_profile = g_strdup(m->m_proto_name);
@@ -218,6 +219,8 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 #endif
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
+		}
+		if(stream == NULL) {
 			m = m->m_next;
 			continue;
 		}
