@@ -2359,6 +2359,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			/* Send SDP to the browser */
+			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
 			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", fixed_sdp);
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));
