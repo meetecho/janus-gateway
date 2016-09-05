@@ -149,6 +149,7 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 	sdp_media_t *m = remote_sdp->sdp_media;
 	while(m) {
 		/* What media type is this? */
+		stream = NULL;
 		if(m->m_type == sdp_media_audio) {
 			if(handle->rtp_profile == NULL && m->m_proto_name != NULL)
 				handle->rtp_profile = g_strdup(m->m_proto_name);
@@ -217,6 +218,8 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 #endif
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
+		}
+		if(stream == NULL) {
 			m = m->m_next;
 			continue;
 		}
@@ -610,10 +613,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 	}
 		/* m= */
 	if(anon->sdp_media) {
-		int audio = 0, video = 0;
-#ifdef HAVE_SCTP
-		int data = 0;
-#endif
+		int audio = 0, video = 0, data = 0;
 		sdp_media_t *m = anon->sdp_media;
 		while(m) {
 			if(m->m_type == sdp_media_audio && m->m_port > 0) {
@@ -622,7 +622,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 			} else if(m->m_type == sdp_media_video && m->m_port > 0) {
 				video++;
 				m->m_port = video == 1 ? 1 : 0;
-#ifdef HAVE_SCTP
 			} else if(m->m_type == sdp_media_application) {
 				if(m->m_proto_name != NULL && !strcasecmp(m->m_proto_name, "DTLS/SCTP") && m->m_port != 0) {
 					data++;
@@ -630,7 +629,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 				} else {
 					m->m_port = 0;
 				}
-#endif
 			} else {
 				m->m_port = 0;
 			}

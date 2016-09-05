@@ -8,6 +8,8 @@
 ; pool instead. Since long polls are involved, make sure you choose a
 ; value that doesn't keep new connections waiting.
 [general]
+json = indented				; Whether the JSON messages should be indented (default),
+							; plain (no indentation) or compact (no indentation and no spaces)
 base_path = /janus			; Base path to bind to in the web server (plain HTTP only)
 threads = unlimited			; unlimited=thread per connection, number=thread pool
 http = yes					; Whether to enable the plain HTTP interface
