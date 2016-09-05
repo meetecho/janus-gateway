@@ -154,6 +154,8 @@ janus_plugin *create(void) {
 #include <unistd.h>
 #include <inttypes.h>
 
+#include <jansson.h>
+
 
 /*! \brief Version of the API, to match the one plugins were compiled against
  * 
@@ -164,7 +166,7 @@ janus_plugin *create(void) {
  * gateway or it will crash.
  * 
  */
-#define JANUS_PLUGIN_API_VERSION	6
+#define JANUS_PLUGIN_API_VERSION	7
 
 /*! \brief Initialization of all plugin properties to NULL
  * 
@@ -262,10 +264,11 @@ struct janus_plugin {
 	/*! \brief Method to handle an incoming message/request from a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] transaction The transaction identifier for this message/request
-	 * @param[in] message The stringified version of the message/request JSON
+	 * @param[in] message The json_t object containing the message/request JSON
+	 * @param[in] jsep The json_t object containing the JSEP type/SDP, if available
 	 * @returns A janus_plugin_result instance that may contain a response (for immediate/synchronous replies), an ack
 	 * (for asynchronously managed requests) or an error */
-	struct janus_plugin_result * (* const handle_message)(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+	struct janus_plugin_result * (* const handle_message)(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 	/*! \brief Callback to be notified when the associated PeerConnection is up and ready to be used
 	 * @param[in] handle The plugin/gateway session used for this peer */
 	void (* const setup_media)(janus_plugin_session *handle);
@@ -317,21 +320,23 @@ struct janus_plugin {
 	 *  \note This was added in version 0.0.7 of the gateway. Janus assumes
 	 * the string is always allocated, so don't return constants here
 	 * @param[in] handle The plugin/gateway session used for this peer
-	 * @returns A JSON-formatted string with the requested info */
-	char *(* const query_session)(janus_plugin_session *handle);
+	 * @returns A json_t object with the requested info */
+	json_t *(* const query_session)(janus_plugin_session *handle);
 
 };
 
 /*! \brief Callbacks to contact the gateway */
 struct janus_callbacks {
 	/*! \brief Callback to push events/messages to a peer
+	 * @note The Janus core increases the references to both the message and jsep
+	 * json_t objects. This means that you'll have to decrease your own
+	 * reference yourself with a \c json_decref after calling push_event.
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] plugin The plugin instance that is sending the message/event
 	 * @param[in] transaction The transaction identifier this message refers to
-	 * @param[in] message The stringified version of the JSON message
-	 * @param[in] sdp_type The type of the SDP attached to the message/event, if any (offer/answer)
-	 * @param[in] sdp The SDP attached to the message/event, if any (in case the plugin is requesting or responding to a media setup) */
-	int (* const push_event)(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
+	 * @param[in] message The json_t object containing the JSON message
+	 * @param[in] jsep The json_t object containing the JSEP type and the SDP attached to the message/event, if any (offer/answer) */
+	int (* const push_event)(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
 
 	/*! \brief Callback to relay RTP packets to a peer
 	 * @param[in] handle The plugin/gateway session used for this peer
@@ -401,24 +406,29 @@ typedef enum janus_plugin_result_type {
 struct janus_plugin_result {
 	/*! \brief Result type */
 	janus_plugin_result_type type;
+	/*! \brief Text associated with this plugin result.
+	 * @note This is ONLY used for JANUS_PLUGIN_OK_WAIT (to provide hints on
+	 * why a request is being handled asynchronously) and JANUS_PLUGIN_ERROR
+	 * (to provide a reason for the error). It is ignored for JANUS_PLUGIN_OK.
+	 * Besides, it is NOT freed when destroying the janus_plugin_result instance,
+	 * so if you allocated a string for that, you'll have to free it yourself. */
+	const char *text;
 	/*! \brief Result content
-	 * @note This MUST be a valid JSON payload in case of JANUS_PLUGIN_OK (even when
-	 * returning application level errors), and MUST be a generic string
-	 * in case of JANUS_PLUGIN_ERROR. If returning a JANUS_PLUGIN_OK_WAIT,
-	 * the content is optional, but if provided (e.g., if the plugin wants
-	 * to provide verbose info about the reasons for choosing an async approach)
-	 * the content MUST be a generic string, as it will end up in a string
-	 * element in the JSON ack response. */
-	char *content;
+	 * @note This is ONLY used for JANUS_PLUGIN_OK, and is ignored otherwise.
+	 * It MUST be a valid JSON payload (even when returning application
+	 * level errors). Its reference is decremented automatically when destroying
+	 * the janus_plugin_result instance, so if your plugin wants to re-use the
+	 * same object for multiple responses, you jave to \c json_incref the object before
+	 * passing it to the core, and \c json_decref it when you're done with it. */
+	json_t *content;
 };
 
 /*! \brief Helper to quickly create a janus_plugin_result instance
  * @param[in] type The type of result
- * @param[in] content The content of the result
- * @note The content is always strdup-ed, if available, so remember to free the original
- * string yourself, if you allocated it
+ * @param[in] text String to add to the result (for JANUS_PLUGIN_OK_WAIT or JANUS_PLUGIN_ERROR), if any
+ * @param[in] content The json_t object with the content of the result, if any
  * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
-janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *content);
+janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content);
 
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
  * @param[in] result The janus_plugin_result instance to destroy

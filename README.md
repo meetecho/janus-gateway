@@ -228,8 +228,8 @@ things you can configure, either in a configuration file:
 or on the command line:
 
 	<installdir>/bin/janus --help
-
-	janus 0.1.2
+	
+	janus 0.2.0
 
 	Usage: janus [OPTIONS]...
 

@@ -106,7 +106,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 		if(m->type == JANUS_SDP_AUDIO) {
-			if(handle->rtp_profile == NULL)
+			if(handle->rtp_profile == NULL && m->proto != NULL)
 				handle->rtp_profile = g_strdup(m->proto);
 			if(m->port > 0) {
 				audio++;
@@ -122,7 +122,7 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio rejected by peer...\n", handle->handle_id);
 			}
 		} else if(m->type == JANUS_SDP_VIDEO) {
-			if(handle->rtp_profile == NULL)
+			if(handle->rtp_profile == NULL && m->proto != NULL)
 				handle->rtp_profile = g_strdup(m->proto);
 			if(m->port > 0) {
 				video++;
@@ -174,6 +174,8 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 #endif
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
+		}
+		if(stream == NULL) {
 			temp = temp->next;
 			continue;
 		}
@@ -327,6 +329,11 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 	if(handle == NULL)
 		return -2;
 	janus_ice_component *component = NULL;
+	if(strstr(candidate, "end-of-candidates")) {
+		/* FIXME Should we do something with this? */
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] end-of-candidates received\n", handle->handle_id);
+		return 0;
+	}
 	if(strstr(candidate, "candidate:") == candidate) {
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
 		candidate += strlen("candidate:");
@@ -593,11 +600,15 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
 			video++;
 			m->port = video == 1 ? 9 : 0;
-#ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
+			if(m->proto != NULL && !strcasecmp(m->proto, "DTLS/SCTP") && m->port != 0) {
+				data++;
+				m->port = data == 1 ? 1 : 0;
+			} else {
+				m->port = 0;
+			}
 			data++;
 			m->port = data == 1 ? 9 : 0;
-#endif
 		} else {
 			m->port = 0;
 		}

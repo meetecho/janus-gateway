@@ -240,7 +240,9 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	sctp->sock = sock;
 	sctp->messages = g_async_queue_new_full((GDestroyNotify) janus_sctp_message_destroy);
 	GError *error = NULL;
-	sctp->thread = g_thread_try_new("JanusSCTP", &janus_sctp_thread, sctp, &error);
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "sctp %"SCNu64, sctp->handle_id);
+	sctp->thread = g_thread_try_new(tname, &janus_sctp_thread, sctp, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
