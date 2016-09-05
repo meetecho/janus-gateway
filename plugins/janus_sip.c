@@ -96,13 +96,13 @@ const char *janus_sip_get_name(void);
 const char *janus_sip_get_author(void);
 const char *janus_sip_get_package(void);
 void janus_sip_create_session(janus_plugin_session *handle, int *error);
-struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_sip_setup_media(janus_plugin_session *handle);
 void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_sip_hangup_media(janus_plugin_session *handle);
 void janus_sip_destroy_session(janus_plugin_session *handle, int *error);
-char *janus_sip_query_session(janus_plugin_session *handle);
+json_t *janus_sip_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_sip_plugin =
@@ -190,9 +190,8 @@ static void *janus_sip_handler(void *data);
 typedef struct janus_sip_message {
 	janus_plugin_session *handle;
 	char *transaction;
-	char *message;
-	char *sdp_type;
-	char *sdp;
+	json_t *message;
+	json_t *jsep;
 } janus_sip_message;
 static GAsyncQueue *messages = NULL;
 static janus_sip_message exit_message;
@@ -205,12 +204,12 @@ static void janus_sip_message_free(janus_sip_message *msg) {
 
 	g_free(msg->transaction);
 	msg->transaction = NULL;
-	g_free(msg->message);
+	if(msg->message)
+		json_decref(msg->message);
 	msg->message = NULL;
-	g_free(msg->sdp_type);
-	msg->sdp_type = NULL;
-	g_free(msg->sdp);
-	msg->sdp = NULL;
+	if(msg->jsep)
+		json_decref(msg->jsep);
+	msg->jsep = NULL;
 
 	g_free(msg);
 }
@@ -768,14 +767,14 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 
 	GError *error = NULL;
 	/* Start the sessions watchdog */
-	watchdog = g_thread_try_new("etest watchdog", &janus_sip_watchdog, NULL, &error);
+	watchdog = g_thread_try_new("sip watchdog", &janus_sip_watchdog, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
-	handler_thread = g_thread_try_new("janus sip handler", janus_sip_handler, NULL, &error);
+	handler_thread = g_thread_try_new("sip handler", janus_sip_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP handler thread...\n", error->code, error->message ? error->message : "??");
@@ -940,7 +939,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
-char *janus_sip_query_session(janus_plugin_session *handle) {
+json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
@@ -977,25 +976,21 @@ char *janus_sip_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "recording", recording);
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
-	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(info);
-	return info_text;
+	return info;
 }
 
-struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
-	JANUS_LOG(LOG_VERB, "%s\n", message);
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
-	msg->sdp_type = sdp_type;
-	msg->sdp = sdp;
+	msg->jsep = jsep;
 	g_async_queue_push(messages, msg);
 
 	/* All the requests to this plugin are handled asynchronously */
-	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
+	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
 
 void janus_sip_setup_media(janus_plugin_session *handle) {
@@ -1209,10 +1204,9 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 	msg->handle = handle;
-	msg->message = g_strdup("{\"request\":\"hangup\"}");
+	msg->message = json_pack("{ss}", "request", "hangup");
 	msg->transaction = NULL;
-	msg->sdp_type = NULL;
-	msg->sdp = NULL;
+	msg->jsep = NULL;
 	g_async_queue_push(messages, msg);
 }
 
@@ -1250,20 +1244,11 @@ static void *janus_sip_handler(void *data) {
 		}
 		/* Handle request */
 		error_code = 0;
-		root = NULL;
-		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
+		root = msg->message;
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_SIP_ERROR_NO_MESSAGE;
 			g_snprintf(error_cause, 512, "%s", "No message??");
-			goto error;
-		}
-		json_error_t error;
-		root = json_loads(msg->message, 0, &error);
-		if(!root) {
-			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
-			error_code = JANUS_SIP_ERROR_INVALID_JSON;
-			g_snprintf(error_cause, 512, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
@@ -1280,7 +1265,6 @@ static void *janus_sip_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
-		char *sdp_type = NULL, *sdp = NULL;
 
 		if(!strcasecmp(request_text, "register")) {
 			/* Send a REGISTER */
@@ -1477,7 +1461,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->stack == NULL) {
 				/* Start the thread first */
 				GError *error = NULL;
-				g_thread_try_new("worker", janus_sip_sofia_thread, session, &error);
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "sip %s", session->account.username);
+				g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
 				if(error != NULL) {
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
@@ -1529,7 +1515,7 @@ static void *janus_sip_handler(void *data) {
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registered"));
 				json_object_set_new(result, "username", json_string(session->account.username));
-				json_object_set_new(result, "register_sent", json_string("false"));
+				json_object_set_new(result, "register_sent", json_false());
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
@@ -1609,14 +1595,22 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Any SDP to handle? if not, something's wrong */
-			if(!msg->sdp) {
+			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(!msg_sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "Missing SDP");
 				goto error;
 			}
+			if(strstr(msg_sdp, "m=application")) {
+				JANUS_LOG(LOG_ERR, "The SIP plugin does not support DataChannels\n");
+				error_code = JANUS_SIP_ERROR_MISSING_SDP;
+				g_snprintf(error_cause, 512, "The SIP plugin does not support DataChannels");
+				goto error;
+			}
 			JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->account.username, uri_text);
-			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			/* Clean up SRTP stuff from before first, in case it's still needed */
 			janus_sip_srtp_cleanup(session);
 			session->media.require_srtp = require_srtp;
@@ -1626,7 +1620,7 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
 			char sdperror[100];
-			janus_sdp *parsed_sdp = janus_sdp_parse(msg->sdp, sdperror, sizeof(sdperror));
+			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
 			if(!parsed_sdp) {
 				JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdperror);
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
@@ -1634,11 +1628,11 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Allocate RTP ports and merge them with the anonymized SDP */
-			if(strstr(msg->sdp, "m=audio") && !strstr(msg->sdp, "m=audio 0")) {
+			if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
 				session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
-			if(strstr(msg->sdp, "m=video") && !strstr(msg->sdp, "m=video 0")) {
+			if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
@@ -1743,7 +1737,9 @@ static void *janus_sip_handler(void *data) {
 			}
 			answer_srtp = answer_srtp || session->media.has_srtp_remote;
 			/* Any SDP to handle? if not, something's wrong */
-			if(!msg->sdp) {
+			const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+			const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+			if(!msg_sdp) {
 				JANUS_LOG(LOG_ERR, "Missing SDP\n");
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
 				g_snprintf(error_cause, 512, "Missing SDP");
@@ -1751,14 +1747,14 @@ static void *janus_sip_handler(void *data) {
 			}
 			/* Accept a call from another peer */
 			JANUS_LOG(LOG_VERB, "We're accepting the call from %s\n", session->callee);
-			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			session->media.has_srtp_local = answer_srtp;
 			if(answer_srtp) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate SDES-SRTP (%s)...\n", session->media.require_srtp ? "mandatory" : "optional");
 			}
 			/* Parse the SDP we got, manipulate some things, and generate a new one */
 			char sdperror[100];
-			janus_sdp *parsed_sdp = janus_sdp_parse(msg->sdp, sdperror, sizeof(sdperror));
+			janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, sdperror, sizeof(sdperror));
 			if(!parsed_sdp) {
 				JANUS_LOG(LOG_ERR, "Error parsing SDP: %s\n", sdperror);
 				error_code = JANUS_SIP_ERROR_MISSING_SDP;
@@ -1766,11 +1762,11 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			/* Allocate RTP ports and merge them with the anonymized SDP */
-			if(strstr(msg->sdp, "m=audio") && !strstr(msg->sdp, "m=audio 0")) {
+			if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
 				session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
-			if(strstr(msg->sdp, "m=video") && !strstr(msg->sdp, "m=video 0")) {
+			if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
 				session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
 			}
@@ -1817,7 +1813,9 @@ static void *janus_sip_handler(void *data) {
 			/* Start the media */
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
-			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
+			char tname[16];
+			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+			g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}
@@ -1826,7 +1824,6 @@ static void *janus_sip_handler(void *data) {
 			if(session->status != janus_sip_call_status_invited) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not invited? status=%s)\n", janus_sip_call_status_string(session->status));
 				/* Ignore */
-				json_decref(root);
 				janus_sip_message_free(msg);
 				continue;
 				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
@@ -1862,7 +1859,6 @@ static void *janus_sip_handler(void *data) {
 			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
 				/* Ignore */
-				json_decref(root);
 				janus_sip_message_free(msg);
 				continue;
 				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
@@ -2136,38 +2132,27 @@ static void *janus_sip_handler(void *data) {
 			goto error;
 		}
 
-		json_decref(root);
 		/* Prepare JSON event */
 		json_t *event = json_object();
 		json_object_set_new(event, "sip", json_string("event"));
 		if(result != NULL)
 			json_object_set_new(event, "result", result);
-		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event, NULL);
+		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(event);
-		JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-		int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event_text, sdp_type, sdp);
-		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-		g_free(event_text);
-		if(sdp)
-			g_free(sdp);
 		janus_sip_message_free(msg);
 		continue;
 
 error:
 		{
-			if(root != NULL)
-				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "sip", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(event);
-			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-			int ret = gateway->push_event(msg->handle, &janus_sip_plugin, msg->transaction, event_text, NULL, NULL);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(event_text);
 			janus_sip_message_free(msg);
 		}
 	}
@@ -2215,12 +2200,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "event", json_string("proceeding"));
 				json_object_set_new(calling, "code", json_integer(status));
 				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
-				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(call_text);
 			} else if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->status = janus_sip_call_status_idle;
@@ -2232,12 +2214,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "code", json_integer(status));
 				json_object_set_new(calling, "reason", json_string(phrase ? phrase : "???"));
 				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
-				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(call_text);
 				/* Get rid of any PeerConnection that may have been set up */
 				if(session->transaction)
 					g_free(session->transaction);
@@ -2297,12 +2276,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
 					}
 					json_object_set_new(missed, "result", result);
-					char *missed_text = json_dumps(missed, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 					json_decref(missed);
-					JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", missed_text);
-					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed_text, NULL, NULL);
-					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-					g_free(missed_text);
 				}
 				janus_sdp_free(sdp);
 				break;
@@ -2317,6 +2293,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "Someone is inviting us in a call:\n%s", sip->sip_payload->pl_data);
 			janus_sip_sdp_process(session, sdp, FALSE);
 			/* Send SDP to the browser */
+			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", fixed_sdp);
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
@@ -2330,12 +2307,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(calling, "srtp", json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 			}
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, jsep);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(call);
-			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "offer", fixed_sdp);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(call_text);
+			json_decref(jsep);
 			g_free(fixed_sdp);
 			janus_sdp_free(sdp);
 			/* Send a Ringing back */
@@ -2467,23 +2442,24 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
-			g_thread_try_new("janus rtp handler", janus_sip_relay_thread, session, &error);
+			char tname[16];
+			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+			g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 			if(error != NULL) {
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 			}
 			/* Send SDP to the browser */
+			json_t *jsep = json_pack("{ssss}", "type", "answer", "sdp", fixed_sdp);
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
 			json_object_set_new(calling, "event", json_string("accepted"));
 			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(call, "result", calling);
-			char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, jsep);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(call);
-			JANUS_LOG(LOG_VERB, "Pushing event to peer: %s\n", call_text);
-			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, "answer", fixed_sdp);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(call_text);
+			json_decref(jsep);
 			g_free(fixed_sdp);
 			janus_sdp_free(sdp);
 			break;
@@ -2500,14 +2476,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *calling = json_object();
 				json_object_set_new(calling, "event", json_string("registered"));
 				json_object_set_new(calling, "username", json_string(session->account.username));
-				json_object_set_new(calling, "register_sent", json_string("true"));
+				json_object_set_new(calling, "register_sent", json_true());
 				json_object_set_new(call, "result", calling);
-				char *call_text = json_dumps(call, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
-				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", call_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(call_text);
 			} else if(status == 401) {
 				/* Get scheme/realm from 401 error */
 				sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
@@ -2535,15 +2508,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(event, "sip", json_string("event"));
 				json_t *result = json_object();
 				json_object_set_new(result, "event", json_string("registration_failed"));
-			        json_object_set_new(result, "code", json_integer(status));
+				json_object_set_new(result, "code", json_integer(status));
 				json_object_set_new(result, "reason", json_string(phrase ? phrase : ""));
-			        json_object_set_new(event, "result", result);
-				char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(event);
-				JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(event_text);
 			}
 			break;
 		}
@@ -2941,10 +2911,9 @@ static void *janus_sip_relay_thread(void *data) {
 				/* FIXME Simulate a "hangup" coming from the browser */
 				janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
 				msg->handle = session->handle;
-				msg->message = g_strdup("{\"request\":\"hangup\"}");
+				msg->message = json_pack("{ss}", "request", "hangup");
 				msg->transaction = NULL;
-				msg->sdp_type = NULL;
-				msg->sdp = NULL;
+				msg->jsep = NULL;
 				g_async_queue_push(messages, msg);
 				break;
 			} else if(fds[i].revents & POLLIN) {

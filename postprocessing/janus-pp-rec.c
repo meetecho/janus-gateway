@@ -141,10 +141,8 @@ int main(int argc, char *argv[])
 	gint64 c_time = 0, w_time = 0;
 	int bytes = 0, skip = 0;
 	long offset = 0;
-	uint16_t len = 0, count = 0;
-	uint32_t last_ts = 0, reset = 0;
-	int times_resetted = 0;
-	uint32_t post_reset_pkts = 0;
+	uint16_t len = 0;
+	uint32_t count = 0;
 	char prebuffer[1500];
 	memset(prebuffer, 0, 1500);
 	/* Let's look for timestamp resets first */
@@ -295,39 +293,15 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_ERR, "Invalid header...\n");
 			exit(1);
 		}
-		if(!data) {
-			/* Only read RTP header */
-			bytes = fread(prebuffer, sizeof(char), 16, file);
-			janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
-			if(last_ts > 0) {
-				/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
-				if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
-					reset = ntohl(rtp->timestamp);
-					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
-					times_resetted++;
-					post_reset_pkts = 0;
-				} else if(ntohl(rtp->timestamp) < reset) {
-					if(post_reset_pkts < 1000) {
-						JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
-						reset = ntohl(rtp->timestamp);
-					} else {
-						reset = ntohl(rtp->timestamp);
-						JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
-						times_resetted++;
-						post_reset_pkts = 0;
-					}
-				}
-			}
-			last_ts = ntohl(rtp->timestamp);
-			post_reset_pkts++;
-		}
 		/* Skip data for now */
 		offset += len;
 	}
 	if(!working)
 		exit(0);
-	JANUS_LOG(LOG_WARN, "Counted %d timestamp resets\n", times_resetted);
 	/* Now let's parse the frames and order them */
+	uint32_t last_ts = 0, reset = 0;
+	int times_resetted = 0;
+	uint32_t post_reset_pkts = 0;
 	offset = 0;
 	/* Timestamp reset related stuff */
 	last_ts = 0;
@@ -420,11 +394,21 @@ int main(int argc, char *argv[])
 			p->ts = ntohl(rtp->timestamp);
 		} else {
 			/* Is the new timestamp smaller than the next one, and if so, is it a timestamp reset or simply out of order? */
+			gboolean late_pkt = FALSE;
 			if(ntohl(rtp->timestamp) < last_ts && (last_ts-ntohl(rtp->timestamp) > 2*1000*1000*1000)) {
-				reset = ntohl(rtp->timestamp);
-				JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
-				times_resetted++;
-				post_reset_pkts = 0;
+				if(post_reset_pkts > 1000) {
+					reset = ntohl(rtp->timestamp);
+					JANUS_LOG(LOG_WARN, "Timestamp reset: %"SCNu32"\n", reset);
+					times_resetted++;
+					post_reset_pkts = 0;
+				}
+			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
+					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
+				if(post_reset_pkts < 1000) {
+					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
+					late_pkt = TRUE;
+					times_resetted--;
+				}
 			} else if(ntohl(rtp->timestamp) < reset) {
 				if(post_reset_pkts < 1000) {
 					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
@@ -438,6 +422,8 @@ int main(int argc, char *argv[])
 			}
 			/* Take into account the number of resets when setting the internal, 64-bit, timestamp */
 			p->ts = (times_resetted*max32)+ntohl(rtp->timestamp);
+			if(late_pkt)
+				times_resetted++;
 		}
 		p->len = len;
 		p->drop = 0;
@@ -534,7 +520,7 @@ int main(int argc, char *argv[])
 	if(!working)
 		exit(0);
 	
-	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" RTP packets\n", count);
+	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" RTP packets\n", count);
 	janus_pp_frame_packet *tmp = list;
 	count = 0;
 	while(tmp) {
@@ -545,7 +531,7 @@ int main(int argc, char *argv[])
 			JANUS_LOG(LOG_VERB, "[%10lu][%4d] time=%"SCNu64"s\n", tmp->offset, tmp->len, tmp->ts);
 		tmp = tmp->next;
 	}
-	JANUS_LOG(LOG_INFO, "Counted %"SCNu16" frame packets\n", count);
+	JANUS_LOG(LOG_INFO, "Counted %"SCNu32" frame packets\n", count);
 
 	if(video) {
 		/* Look for maximum width and height, if possible, and for the average framerate */
