@@ -202,57 +202,57 @@ function updateSettings() {
 				} else if(k === 'locking_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable locking debug" : "Disable locking debug");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable locking debug" : "Disable locking debug");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["locking_debug"] === 0 ?
+						var text = (!settings["locking_debug"] ?
 							"Are you sure you want to enable the locking debug?<br/>This will print a line on the console any time a mutex is locked/unlocked"
 								: "Are you sure you want to disable the locking debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLockingDebug(settings["locking_debug"] === 0 ? 1 : 0);
+								setLockingDebug(!settings["locking_debug"]);
 						});
 					});
 				} else if(k === 'log_timestamps') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable log timestamps" : "Disable log timestamps");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable log timestamps" : "Disable log timestamps");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["log_timestamps"] === 0 ?
+						var text = (!settings["log_timestamps"] ?
 							"Are you sure you want to enable the log timestamps?<br/>This will print the current date/time for each new line on the console"
 								: "Are you sure you want to disable the log timestamps?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLogTimestamps(settings["log_timestamps"] === 0 ? 1 : 0);
+								setLogTimestamps(!settings["log_timestamps"]);
 						});
 					});
 				} else if(k === 'log_colors') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable log colors" : "Disable log colors");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable log colors" : "Disable log colors");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["log_colors"] === 0 ?
+						var text = (!settings["log_colors"] ?
 							"Are you sure you want to enable the log colors?<br/>This will strip the colors from events like warnings, errors, etc. on the console"
 								: "Are you sure you want to disable the log colors?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLogColors(settings["log_colors"] === 0 ? 1 : 0);
+								setLogColors(!settings["log_colors"]);
 						});
 					});
 				} else if(k === 'libnice_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable libnice debug" : "Disable libnice debug");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable libnice debug" : "Disable libnice debug");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["libnice_debug"] === 0 ?
+						var text = (!settings["libnice_debug"] ?
 							"Are you sure you want to enable the libnice debug?<br/>This will print the a very verbose debug of every libnice-related operation on the console"
 								: "Are you sure you want to disable the libnice debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLibniceDebug(settings["libnice_debug"] === 0 ? 1 : 0);
+								setLibniceDebug(!settings["libnice_debug"]);
 						});
 					});
 				}

@@ -39,8 +39,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			12
-#define JANUS_VERSION_STRING	"0.1.2"
+#define JANUS_VERSION			21
+#define JANUS_VERSION_STRING	"0.2.1"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -107,16 +107,16 @@ static struct janus_json_parameter admin_parameters[] = {
 	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter debug_parameters[] = {
-	{"debug", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"debug", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter level_parameters[] = {
 	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter timestamps_parameters[] = {
-	{"timestamps", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"timestamps", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter colors_parameters[] = {
-	{"colors", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+	{"colors", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter mnq_parameters[] = {
 	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
@@ -165,21 +165,21 @@ json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
-	json_object_set_new(info, "log-to-stdout", json_string(janus_log_is_stdout_enabled() ? "true" : "false"));
-	json_object_set_new(info, "log-to-file", json_string(janus_log_is_logfile_enabled() ? "true" : "false"));
+	json_object_set_new(info, "log-to-stdout", janus_log_is_stdout_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "log-to-file", janus_log_is_logfile_enabled() ? json_true() : json_false());
 	if(janus_log_is_logfile_enabled())
 		json_object_set_new(info, "log-path", json_string(janus_log_get_logfile_path()));
 #ifdef HAVE_SCTP
-	json_object_set_new(info, "data_channels", json_string("true"));
+	json_object_set_new(info, "data_channels", json_true());
 #else
-	json_object_set_new(info, "data_channels", json_string("false"));
+	json_object_set_new(info, "data_channels", json_false());
 #endif
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
 		json_object_set_new(info, "public-ip", json_string(public_ip));
-	json_object_set_new(info, "ipv6", json_string(janus_ice_is_ipv6_enabled() ? "true" : "false"));
-	json_object_set_new(info, "ice-tcp", json_string(janus_ice_is_ice_tcp_enabled() ? "true" : "false"));
+	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_stun_server(), janus_ice_get_stun_port());
@@ -190,9 +190,9 @@ json_t *janus_info(const char *transaction) {
 		g_snprintf(server, 255, "%s:%"SCNu16, janus_ice_get_turn_server(), janus_ice_get_turn_port());
 		json_object_set_new(info, "turn-server", json_string(server));
 	}
-	json_object_set_new(info, "api_secret", json_string(api_secret != NULL ? "true" : "false"));
-	json_object_set_new(info, "auth_token", json_string(janus_auth_is_enabled() ? "true" : "false"));
-	json_object_set_new(info, "event_handlers", json_string(janus_events_is_enabled() ? "true" : "false"));
+	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
+	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
@@ -338,7 +338,7 @@ void janus_transport_task(gpointer data, gpointer user_data);
  * gateway is handled here.
  */
 ///@{
-int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp);
+int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp);
 void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
@@ -1284,9 +1284,11 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 
-		/* Send the message to the plugin (which must eventually free transaction_text, body_text, jsep_type and sdp) */
-		char *body_text = json_dumps(body, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle, g_strdup((char *)transaction_text), body_text, jsep_type, jsep_sdp_stripped);
+		/* Send the message to the plugin (which must eventually free transaction_text and unref the two objects, body and jsep) */
+		json_incref(body);
+		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
+			g_strdup((char *)transaction_text), body,
+			jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL);
 		if(result == NULL) {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
@@ -1294,27 +1296,17 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		if(result->type == JANUS_PLUGIN_OK) {
 			/* The plugin gave a result already (synchronous request/response) */
-			if(result->content == NULL) {
-				/* Missing content... */
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't provide any content for this synchronous response");
+			if(result->content == NULL || !json_is_object(result->content)) {
+				/* Missing content, or not a JSON object */
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE,
+					result->content == NULL ?
+						"Plugin didn't provide any content for this synchronous response" :
+						"Plugin returned an invalid JSON response");
 				janus_plugin_result_destroy(result);
 				goto jsondone;
 			}
-			json_error_t error;
-			json_t *event = json_loads(result->content, 0, &error);
-			if(!event) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: on line %d: %s)\n", handle->handle_id, error.line, error.text);
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
-				janus_plugin_result_destroy(result);
-				goto jsondone;
-			}
-			if(!json_is_object(event)) {
-				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot send response from plugin (JSON error: not an object)\n", handle->handle_id);
-				json_decref(event);
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin returned an invalid JSON response");
-				janus_plugin_result_destroy(result);
-				goto jsondone;
-			}
+			/* Reference the content, as destroying the result instance will decref it */
+			json_incref(result->content);
 			/* Prepare JSON response */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
@@ -1323,7 +1315,7 @@ int janus_process_incoming_request(janus_request *request) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
-			json_object_set_new(plugin_data, "data", event);
+			json_object_set_new(plugin_data, "data", result->content);
 			json_object_set_new(reply, "plugindata", plugin_data);
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1332,14 +1324,15 @@ int janus_process_incoming_request(janus_request *request) {
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("ack"));
 			json_object_set_new(reply, "session_id", json_integer(session_id));
-			if(result->content)
-				json_object_set_new(reply, "hint", json_string(result->content));
+			if(result->text)
+				json_object_set_new(reply, "hint", json_string(result->text));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 		} else {
 			/* Something went horribly wrong! */
-			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "%s", result->content ? g_strdup(result->content) : "Plugin returned a severe (unknown) error");
+			ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE,
+				(char *)(result->text ? result->text : "Plugin returned a severe (unknown) error"));
 			janus_plugin_result_destroy(result);
 			goto jsondone;
 		}
@@ -1505,12 +1498,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
-			json_object_set_new(status, "token_auth", json_integer(janus_auth_is_enabled()));
+			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
-			json_object_set_new(status, "log_timestamps", json_integer(janus_log_timestamps));
-			json_object_set_new(status, "log_colors", json_integer(janus_log_colors));
-			json_object_set_new(status, "locking_debug", json_integer(lock_debug));
-			json_object_set_new(status, "libnice_debug", json_integer(janus_ice_is_ice_debugging_enabled()));
+			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
+			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
+			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
+			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
 			json_object_set_new(reply, "status", status);
 			/* Send the success reply */
@@ -1550,17 +1543,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				goto jsondone;
 			}
 			json_t *debug = json_object_get(root, "debug");
-			int debug_num = json_integer_value(debug);
-			if(debug_num < 0 || debug_num > 1) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be either 0 or 1)");
-				goto jsondone;
-			}
-			lock_debug = debug_num;
+			lock_debug = json_is_true(debug);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "locking_debug", json_integer(lock_debug));
+			json_object_set_new(reply, "locking_debug", lock_debug ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1574,17 +1562,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				goto jsondone;
 			}
 			json_t *timestamps = json_object_get(root, "timestamps");
-			int timestamps_num = json_integer_value(timestamps);
-			if(timestamps_num < 0 || timestamps_num > 1) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timestamps should be either 0 or 1)");
-				goto jsondone;
-			}
-			janus_log_timestamps = timestamps_num;
+			janus_log_timestamps = json_is_true(timestamps);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "log_timestamps", json_integer(janus_log_timestamps));
+			json_object_set_new(reply, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1598,17 +1581,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				goto jsondone;
 			}
 			json_t *colors = json_object_get(root, "colors");
-			int colors_num = json_integer_value(colors);
-			if(colors_num < 0 || colors_num > 1) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (colors should be either 0 or 1)");
-				goto jsondone;
-			}
-			janus_log_colors = colors_num;
+			janus_log_colors = json_is_true(colors);
 			/* Prepare JSON reply */
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "log_colors", json_integer(janus_log_colors));
+			json_object_set_new(reply, "log_colors", janus_log_colors ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1622,12 +1600,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				goto jsondone;
 			}
 			json_t *debug = json_object_get(root, "debug");
-			int debug_num = json_integer_value(debug);
-			if(debug_num < 0 || debug_num > 1) {
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (debug should be either 0 or 1)");
-				goto jsondone;
-			}
-			if(debug_num) {
+			if(json_is_true(debug)) {
 				janus_ice_debugging_enable();
 			} else {
 				janus_ice_debugging_disable();
@@ -1636,7 +1609,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *reply = json_object();
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "libnice_debug", json_integer(janus_ice_is_ice_debugging_enabled()));
+			json_object_set_new(reply, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2100,46 +2073,44 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		json_object_set_new(info, "created", json_integer(handle->created));
-		json_object_set_new(info, "send_thread_created", json_integer(g_atomic_int_get(&handle->send_thread_created)));
+		json_object_set_new(info, "send_thread_created", g_atomic_int_get(&handle->send_thread_created) ? json_true() : json_false());
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
 		if(handle->app && handle->app_handle && janus_plugin_session_is_alive(handle->app_handle)) {
 			janus_plugin *plugin = (janus_plugin *)handle->app;
 			json_object_set_new(info, "plugin", json_string(plugin->get_package()));
 			if(plugin->query_session) {
 				/* FIXME This check will NOT work with legacy plugins that were compiled BEFORE the method was specified in plugin.h */
-				char *query = plugin->query_session(handle->app_handle);
+				json_t *query = plugin->query_session(handle->app_handle);
 				if(query != NULL) {
-					/* Make sure this is JSON */
-					json_error_t error;
-					json_t *query_info = json_loads(query, 0, &error);
-					if(!query_info || !json_is_object(query_info)) {
-						JANUS_LOG(LOG_WARN, "Ignoring invalid query response from the plugin\n");
+					/* Make sure this is a JSON object */
+					if(!json_is_object(query)) {
+						JANUS_LOG(LOG_WARN, "Ignoring invalid query response from the plugin (not an object)\n");
+						json_decref(query);
 					} else {
-						json_object_set_new(info, "plugin_specific", query_info);
+						json_object_set_new(info, "plugin_specific", query);
 					}
-					g_free(query);
 					query = NULL;
 				}
 			}
 		}
 		json_t *flags = json_object();
-		json_object_set_new(flags, "got-offer", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER)));
-		json_object_set_new(flags, "got-answer", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER)));
-		json_object_set_new(flags, "processing-offer", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER)));
-		json_object_set_new(flags, "starting", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)));
-		json_object_set_new(flags, "ready", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)));
-		json_object_set_new(flags, "stopped", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)));
-		json_object_set_new(flags, "alert", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)));
-		json_object_set_new(flags, "bundle", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)));
-		json_object_set_new(flags, "rtcp-mux", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX)));
-		json_object_set_new(flags, "trickle", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE)));
-		json_object_set_new(flags, "all-trickles", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)));
-		json_object_set_new(flags, "trickle-synced", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED)));
-		json_object_set_new(flags, "data-channels", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS)));
-		json_object_set_new(flags, "has-audio", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)));
-		json_object_set_new(flags, "has-video", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)));
-		json_object_set_new(flags, "plan-b", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)));
-		json_object_set_new(flags, "cleaning", json_integer(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING)));
+		json_object_set_new(flags, "got-offer", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER) ? json_true() : json_false());
+		json_object_set_new(flags, "got-answer", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER) ? json_true() : json_false());
+		json_object_set_new(flags, "processing-offer", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER) ? json_true() : json_false());
+		json_object_set_new(flags, "starting", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START) ? json_true() : json_false());
+		json_object_set_new(flags, "ready", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY) ? json_true() : json_false());
+		json_object_set_new(flags, "stopped", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) ? json_true() : json_false());
+		json_object_set_new(flags, "alert", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) ? json_true() : json_false());
+		json_object_set_new(flags, "bundle", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? json_true() : json_false());
+		json_object_set_new(flags, "rtcp-mux", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) ? json_true() : json_false());
+		json_object_set_new(flags, "trickle", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) ? json_true() : json_false());
+		json_object_set_new(flags, "all-trickles", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES) ? json_true() : json_false());
+		json_object_set_new(flags, "trickle-synced", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE_SYNCED) ? json_true() : json_false());
+		json_object_set_new(flags, "data-channels", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_DATA_CHANNELS) ? json_true() : json_false());
+		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
+		json_object_set_new(flags, "has-video", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO) ? json_true() : json_false());
+		json_object_set_new(flags, "plan-b", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B) ? json_true() : json_false());
+		json_object_set_new(flags, "cleaning", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING) ? json_true() : json_false());
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {
 			json_object_set_new(info, "agent-created", json_integer(handle->agent_created));
@@ -2248,7 +2219,7 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 	json_t *s = json_object();
 	json_object_set_new(s, "id", json_integer(stream->stream_id));
 	json_object_set_new(s, "ready", json_integer(stream->cdone));
-	json_object_set_new(s, "disabled", json_string(stream->disabled ? "true" : "false"));
+	json_object_set_new(s, "disabled", stream->disabled ? json_true() : json_false());
 	json_t *ss = json_object();
 	if(stream->audio_ssrc)
 		json_object_set_new(ss, "audio", json_integer(stream->audio_ssrc));
@@ -2344,8 +2315,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
 		json_object_set_new(d, "dtls-role", json_string(janus_get_dtls_srtp_role(component->stream->dtls_role)));
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
-		json_object_set_new(d, "valid", json_integer(dtls->srtp_valid));
-		json_object_set_new(d, "ready", json_integer(dtls->ready));
+		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
+		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
 		if(dtls->dtls_connected > 0)
 			json_object_set_new(d, "connected", json_integer(dtls->dtls_connected));
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
@@ -2399,8 +2370,8 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(out_stats, "data_packets", json_integer(component->out_stats.data_packets));
 		json_object_set_new(out_stats, "data_bytes", json_integer(component->out_stats.data_bytes));
 #ifdef HAVE_SCTP
-		if(dtls->sctp)	/* FIXME */
-			json_object_set_new(d, "sctp-association", json_integer(1));
+		/* FIXME Actually check if this succeeded? */
+		json_object_set_new(d, "sctp-association", dtls->sctp ? json_true() : json_false());
 #endif
 	}
 	json_object_set_new(c, "dtls", d);
@@ -2538,7 +2509,7 @@ janus_plugin *janus_plugin_find(const gchar *package) {
 
 
 /* Plugin callback interface */
-int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, const char *message, const char *sdp_type, const char *sdp) {
+int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep) {
 	if(!plugin || !message)
 		return -1;
 	if(!plugin_session || plugin_session < (janus_plugin_session *)0x1000 ||
@@ -2550,22 +2521,18 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	janus_session *session = ice_handle->session;
 	if(!session || session->destroy)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
-	/* Make sure this is JSON */
-	json_error_t error;
-	json_t *plugin_event = json_loads(message, 0, &error);
-	if(!plugin_event) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: on line %d: %s)\n", ice_handle->handle_id, error.line, error.text);
-		return JANUS_ERROR_INVALID_JSON;
-	}
-	if(!json_is_object(plugin_event)) {
+	/* Make sure this is a JSON object */
+	if(!json_is_object(message)) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (JSON error: not an object)\n", ice_handle->handle_id);
 		return JANUS_ERROR_INVALID_JSON_OBJECT;
 	}
 	/* Attach JSEP if possible? */
-	json_t *jsep = NULL;
+	const char *sdp_type = json_string_value(json_object_get(jsep, "type"));
+	const char *sdp = json_string_value(json_object_get(jsep, "sdp"));
+	json_t *merged_jsep = NULL;
 	if(sdp_type != NULL && sdp != NULL) {
-		jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp);
-		if(jsep == NULL) {
+		merged_jsep = janus_plugin_handle_sdp(plugin_session, plugin, sdp_type, sdp);
+		if(merged_jsep == NULL) {
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Cannot push event (handle not available anymore or negotiation stopped)\n", ice_handle->handle_id);
@@ -2576,6 +2543,8 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 			}
 		}
 	}
+	/* Reference the payload, as the plugin may still need it and will do a decref itself */
+	json_incref(message);
 	/* Prepare JSON event */
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("event"));
@@ -2585,10 +2554,10 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 		json_object_set_new(event, "transaction", json_string(transaction));
 	json_t *plugin_data = json_object();
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
-	json_object_set_new(plugin_data, "data", plugin_event);
+	json_object_set_new(plugin_data, "data", message);
 	json_object_set_new(event, "plugindata", plugin_data);
-	if(jsep != NULL)
-		json_object_set_new(event, "jsep", jsep);
+	if(merged_jsep != NULL)
+		json_object_set_new(event, "jsep", merged_jsep);
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session->session_id, event);

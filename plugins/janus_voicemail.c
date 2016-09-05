@@ -131,13 +131,13 @@ const char *janus_voicemail_get_name(void);
 const char *janus_voicemail_get_author(void);
 const char *janus_voicemail_get_package(void);
 void janus_voicemail_create_session(janus_plugin_session *handle, int *error);
-struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp);
+struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep);
 void janus_voicemail_setup_media(janus_plugin_session *handle);
 void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_voicemail_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len);
 void janus_voicemail_hangup_media(janus_plugin_session *handle);
 void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error);
-char *janus_voicemail_query_session(janus_plugin_session *handle);
+json_t *janus_voicemail_query_session(janus_plugin_session *handle);
 
 /* Plugin setup */
 static janus_plugin janus_voicemail_plugin =
@@ -185,9 +185,8 @@ static void *janus_voicemail_handler(void *data);
 typedef struct janus_voicemail_message {
 	janus_plugin_session *handle;
 	char *transaction;
-	char *message;
-	char *sdp_type;
-	char *sdp;
+	json_t *message;
+	json_t *jsep;
 } janus_voicemail_message;
 static GAsyncQueue *messages = NULL;
 static janus_voicemail_message exit_message;
@@ -200,12 +199,12 @@ static void janus_voicemail_message_free(janus_voicemail_message *msg) {
 
 	g_free(msg->transaction);
 	msg->transaction = NULL;
-	g_free(msg->message);
+	if(msg->message)
+		json_decref(msg->message);
 	msg->message = NULL;
-	g_free(msg->sdp_type);
-	msg->sdp_type = NULL;
-	g_free(msg->sdp);
-	msg->sdp = NULL;
+	if(msg->jsep)
+		json_decref(msg->jsep);
+	msg->jsep = NULL;
 
 	g_free(msg);
 }
@@ -448,11 +447,6 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}	
 	janus_voicemail_session *session = (janus_voicemail_session *)g_malloc0(sizeof(janus_voicemail_session));
-	if(session == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		*error = -2;
-		return;
-	}
 	session->handle = handle;
 	session->recording_id = janus_random_uint64();
 	session->start_time = 0;
@@ -460,11 +454,6 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 	char f[255];
 	g_snprintf(f, 255, "%s/janus-voicemail-%"SCNu64".opus", recordings_path, session->recording_id);
 	session->filename = g_strdup(f);
-	if(session->filename == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		*error = -2;
-		return;
-	}
 	session->file = NULL;
 	session->seq = 0;
 	session->started = FALSE;
@@ -504,7 +493,7 @@ void janus_voicemail_destroy_session(janus_plugin_session *handle, int *error) {
 	return;
 }
 
-char *janus_voicemail_query_session(janus_plugin_session *handle) {
+json_t *janus_voicemail_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}	
@@ -522,28 +511,21 @@ char *janus_voicemail_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "filename", session->filename ? json_string(session->filename) : NULL);
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
-	char *info_text = json_dumps(info, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	json_decref(info);
-	return info_text;
+	return info;
 }
 
-struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, char *message, char *sdp_type, char *sdp) {
+struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized");
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
 	janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
-	if(msg == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error");
-	}
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
-	msg->sdp_type = sdp_type;
-	msg->sdp = sdp;
+	msg->jsep = jsep;
 	g_async_queue_push(messages, msg);
 
 	/* All the requests to this plugin are handled asynchronously */
-	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL);
+	return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
 
 void janus_voicemail_setup_media(janus_plugin_session *handle) {
@@ -565,12 +547,9 @@ void janus_voicemail_setup_media(janus_plugin_session *handle) {
 	json_t *event = json_object();
 	json_object_set_new(event, "voicemail", json_string("event"));
 	json_object_set_new(event, "status", json_string("started"));
-	char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+	int ret = gateway->push_event(handle, &janus_voicemail_plugin, NULL, event, NULL);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
-	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-	int ret = gateway->push_event(handle, &janus_voicemail_plugin, NULL, event_text, NULL, NULL);
-	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-	g_free(event_text);
 }
 
 void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -585,15 +564,10 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 		/* FIXME Simulate a "stop" coming from the browser */
 		session->started = FALSE;
 		janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
-		if(msg == NULL) {
-			JANUS_LOG(LOG_FATAL, "Memory error!\n");
-			return;
-		}
 		msg->handle = handle;
-		msg->message = g_strdup("{\"request\":\"stop\"}");
+		msg->message = json_pack("{ss}", "request", "stop");
 		msg->transaction = NULL;
-		msg->sdp_type = NULL;
-		msg->sdp = NULL;
+		msg->jsep = NULL;
 		g_async_queue_push(messages, msg);
 		return;
 	}
@@ -673,20 +647,11 @@ static void *janus_voicemail_handler(void *data) {
 		}
 		/* Handle request */
 		error_code = 0;
-		root = NULL;
-		JANUS_LOG(LOG_VERB, "Handling message: %s\n", msg->message);
+		root = msg->message;
 		if(msg->message == NULL) {
 			JANUS_LOG(LOG_ERR, "No message??\n");
 			error_code = JANUS_VOICEMAIL_ERROR_NO_MESSAGE;
 			g_snprintf(error_cause, 512, "%s", "No message??");
-			goto error;
-		}
-		json_error_t error;
-		root = json_loads(msg->message, 0, &error);
-		if(!root) {
-			JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
-			error_code = JANUS_VOICEMAIL_ERROR_INVALID_JSON;
-			g_snprintf(error_cause, 512, "JSON error: on line %d: %s", error.line, error.text);
 			goto error;
 		}
 		if(!json_is_object(root)) {
@@ -781,26 +746,26 @@ static void *janus_voicemail_handler(void *data) {
 			goto error;
 		}
 
-		json_decref(root);
 		/* Prepare JSON event */
 		JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
-		char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		json_decref(event);
 		/* Any SDP to handle? */
-		if(!msg->sdp) {
-			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, NULL, NULL);
+		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
+		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		if(!msg_sdp) {
+			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(event);
 		} else {
-			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg->sdp_type, msg->sdp);
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			const char *type = NULL;
-			if(!strcasecmp(msg->sdp_type, "offer"))
+			if(!strcasecmp(msg_sdp_type, "offer"))
 				type = "answer";
-			if(!strcasecmp(msg->sdp_type, "answer"))
+			if(!strcasecmp(msg_sdp_type, "answer"))
 				type = "offer";
 			/* Fill the SDP template and use that as our answer */
 			char sdp[1024];
 			/* What is the Opus payload type? */
-			int opus_pt = janus_get_codec_pt(msg->sdp, "opus");
+			int opus_pt = janus_get_codec_pt(msg_sdp, "opus");
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
 			g_snprintf(sdp, 1024, sdp_template,
 				janus_get_real_time(),			/* We need current time here */
@@ -809,20 +774,22 @@ static void *janus_voicemail_handler(void *data) {
 				opus_pt,						/* Opus payload type */
 				opus_pt							/* Opus payload type */);
 			/* Did the peer negotiate video? */
-			if(strstr(msg->sdp, "m=video") != NULL) {
+			if(strstr(msg_sdp, "m=video") != NULL) {
 				/* If so, reject it */
 				g_strlcat(sdp, "m=video 0 RTP/SAVPF 0\r\n", 1024);				
 			}
+			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
 			/* How long will the gateway take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
-			int res = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, type, sdp);
+			int res = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event, jsep);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+			json_decref(event);
+			json_decref(jsep);
 			if(res != JANUS_OK) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			}
 		}
-		g_free(event_text);
 		janus_voicemail_message_free(msg);
 		
 		if(session->stopping) {
@@ -833,19 +800,14 @@ static void *janus_voicemail_handler(void *data) {
 		
 error:
 		{
-			if(root != NULL)
-				json_decref(root);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
 			json_object_set_new(event, "error_code", json_integer(error_code));
 			json_object_set_new(event, "error", json_string(error_cause));
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(event);
-			JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event_text, NULL, NULL);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-			g_free(event_text);
 			janus_voicemail_message_free(msg);
 		}
 	}
