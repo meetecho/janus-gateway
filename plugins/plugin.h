@@ -166,7 +166,7 @@ janus_plugin *create(void) {
  * gateway or it will crash.
  * 
  */
-#define JANUS_PLUGIN_API_VERSION	6
+#define JANUS_PLUGIN_API_VERSION	7
 
 /*! \brief Initialization of all plugin properties to NULL
  * 
