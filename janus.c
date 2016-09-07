@@ -1258,6 +1258,10 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body,
 			jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL);
+		if(jsep_type)
+			g_free(jsep_type);
+		if(jsep_sdp_stripped)
+			g_free(jsep_sdp_stripped);
 		if(result == NULL) {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
