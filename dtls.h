@@ -20,6 +20,7 @@
 #include <srtp/srtp.h>
 
 #include "sctp.h"
+#include "refcount.h"
 #include "dtls-bio.h"
 
 /*! \brief DTLS stuff initialization

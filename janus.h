@@ -30,6 +30,7 @@
 
 #include "mutex.h"
 #include "ice.h"
+#include "refcount.h"
 #include "transports/transport.h"
 #include "plugins/plugin.h"
 
