@@ -132,7 +132,7 @@ int janus_dtls_bio_filter_write(BIO *bio, const char *in, int inl) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 	long ret = BIO_write(bio->next_bio, in, inl);
 #else
-	long ret = BIO_write(BIO_next(), in, inl);
+	long ret = BIO_write(BIO_next(bio), in, inl);
 #endif
 	JANUS_LOG(LOG_HUGE, "  -- %ld\n", ret);
 	
