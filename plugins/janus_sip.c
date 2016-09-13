@@ -2253,7 +2253,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			if (!sip->sip_payload) {
-				JANUS_LOG(LOG_ERR,"\tReceived re-invite without SDP - responding 200 OK\n");
+				JANUS_LOG(LOG_WARN,"\tReceived re-invite without SDP - responding 200 OK\n");
 				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
 				break;
 			}
