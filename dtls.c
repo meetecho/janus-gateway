@@ -384,6 +384,11 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	JANUS_LOG(LOG_INFO, "Fingerprint of our certificate: %s\n", local_fingerprint);
 	SSL_CTX_set_cipher_list(ssl_ctx, DTLS_CIPHERS);
 
+	if(janus_dtls_bio_filter_init() < 0) {
+		JANUS_LOG(LOG_FATAL, "Error initializing BIO filter\n");
+		return -8;
+	}
+
 	/* Initialize libsrtp */
 	if(srtp_init() != err_status_ok) {
 		JANUS_LOG(LOG_FATAL, "Ops, error setting up libsrtp?\n");
