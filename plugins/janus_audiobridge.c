@@ -2341,7 +2341,7 @@ static void *janus_audiobridge_handler(void *data) {
 				int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, newuser, NULL);
 				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			}
-			json_decref(event);
+			json_decref(newuser);
 			/* Return a list of all available participants for the new participant now */
 			json_t *list = json_array();
 			g_hash_table_iter_init(&iter, audiobridge->participants);

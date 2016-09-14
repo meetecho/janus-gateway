@@ -170,6 +170,9 @@ static GThread *handler_thread;
 static GThread *watchdog;
 static void *janus_textroom_handler(void *data);
 
+/* JSON serialization options */
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
 
 typedef struct janus_textroom_message {
 	janus_plugin_session *handle;
@@ -372,6 +375,23 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+		if(item && item->value) {
+			/* Check how we need to format/serialize the JSON output */
+			if(!strcasecmp(item->value, "indented")) {
+				/* Default: indented, we use three spaces for that */
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "plain")) {
+				/* Not indented and no new lines, but still readable */
+				json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+			} else if(!strcasecmp(item->value, "compact")) {
+				/* Compact, so no spaces between separators */
+				json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
+				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+			}
+		}
 		/* Any admin key to limit who can "create"? */
 		janus_config_item *key = janus_config_get_item_drilldown(config, "general", "admin_key");
 		if(key != NULL && key->value != NULL)
@@ -718,7 +738,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		json_object_set_new(msg, "text", json_string(message));
 		if(username || usernames)
 			json_object_set_new(msg, "whisper", json_true());
-		char *msg_text = json_dumps(msg, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		char *msg_text = json_dumps(msg, json_format);
 		json_decref(msg);
 		/* Start preparing the response too */
 		json_t *reply = json_object();
@@ -805,7 +825,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		json_t *ack = json_object_get(root, "ack");
 		if(!internal && (ack == NULL || json_is_true(ack))) {
 			/* Send response back */
-			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *reply_text = json_dumps(reply, json_format);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
 		}
@@ -872,7 +892,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(event, "username", json_string(username_text));
 			if(display_text != NULL)
 				json_object_set_new(event, "display", json_string(display_text));
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
 			gateway->relay_data(handle, event_text, strlen(event_text));
 			/* Broadcast */
@@ -902,7 +922,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "participants", list);
-			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
@@ -948,7 +968,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(event, "textroom", json_string("leave"));
 			json_object_set_new(event, "room", json_integer(textroom->room_id));
 			json_object_set_new(event, "username", json_string(participant->username));
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
 			gateway->relay_data(handle, event_text, strlen(event_text));
 			/* Broadcast */
@@ -974,7 +994,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_t *reply = json_object();
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
@@ -1013,7 +1033,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "list", list);
-			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
@@ -1149,7 +1169,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "room", json_integer(textroom->room_id));
-			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
@@ -1172,7 +1192,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(reply, "room", json_integer(room_id));
 			json_object_set_new(reply, "exists", room_exists ? json_true() : json_false());
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
@@ -1233,7 +1253,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_t *event = json_object();
 			json_object_set_new(event, "textroom", json_string("destroyed"));
 			json_object_set_new(event, "room", json_integer(textroom->room_id));
-			char *event_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *event_text = json_dumps(event, json_format);
 			json_decref(event);
 			gateway->relay_data(handle, event_text, strlen(event_text));
 			/* Broadcast */
@@ -1260,7 +1280,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_t *reply = json_object();
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
 			g_free(reply_text);
@@ -1287,7 +1307,7 @@ error:
 					json_object_set_new(reply, "transaction", json_string(transaction_text));
 				json_object_set_new(reply, "error_code", json_integer(error_code));
 				json_object_set_new(reply, "error", json_string(error_cause));
-				char *reply_text = json_dumps(reply, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+				char *reply_text = json_dumps(reply, json_format);
 				json_decref(reply);
 				gateway->relay_data(handle, reply_text, strlen(reply_text));
 				g_free(reply_text);
