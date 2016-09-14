@@ -2100,6 +2100,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "sdps", sdps);
 		if(handle->pending_trickles)
 			json_object_set_new(info, "pending-trickles", json_integer(g_list_length(handle->pending_trickles)));
+		if(handle->queued_packets)
+			json_object_set_new(info, "queued-packets", json_integer(g_async_queue_length(handle->queued_packets)));
 		json_t *streams = json_array();
 		if(handle->audio_stream) {
 			json_t *s = janus_admin_stream_summary(handle->audio_stream);
