@@ -17,6 +17,9 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
+/*! \brief OpenSSL BIO filter for fragmentation initialization */
+int janus_dtls_bio_filter_init(void);
+
 /*! \brief OpenSSL BIO filter for fragmentation constructor */
 BIO_METHOD *BIO_janus_dtls_filter(void);
 

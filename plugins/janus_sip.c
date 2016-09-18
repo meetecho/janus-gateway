@@ -2252,6 +2252,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
 				break;
 			}
+			if (!sip->sip_payload) {
+				JANUS_LOG(LOG_WARN,"\tReceived re-invite without SDP - responding 200 OK\n");
+				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+				break;
+			}
 			sdp_parser_t *parser = sdp_parse(ssip->s_home, sip->sip_payload->pl_data, sip->sip_payload->pl_len, 0);
 			if(!sdp_session(parser)) {
 				JANUS_LOG(LOG_ERR, "\tError parsing SDP!\n");
