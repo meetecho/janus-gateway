@@ -560,10 +560,7 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 int janus_sdp_anonymize(janus_sdp *anon) {
 	if(anon == NULL)
 		return -1;
-	int audio = 0, video = 0;
-#ifdef HAVE_SCTP
-	int data = 0;
-#endif
+	int audio = 0, video = 0, data = 0;
 		/* o= */
 	if(anon->o_addr != NULL) {
 		g_free(anon->o_addr);
