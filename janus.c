@@ -762,9 +762,9 @@ int janus_process_incoming_request(janus_request *request) {
 			/* TODO Make error struct to pass verbose information */
 			janus_ice_handle_destroy(session, handle_id);
 			janus_mutex_lock(&session->mutex);
-			g_hash_table_remove(session->ice_handles, &handle_id);
+			if(g_hash_table_remove(session->ice_handles, &handle_id))
+				janus_refcount_decrease(&handle->ref);
 			janus_mutex_unlock(&session->mutex);
-			janus_refcount_decrease(&handle->ref);
 			JANUS_LOG(LOG_ERR, "Couldn't attach to plugin '%s', error '%d'\n", plugin_text, error);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
 			goto jsondone;
@@ -814,9 +814,9 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		int error = janus_ice_handle_destroy(session, handle_id);
 		janus_mutex_lock(&session->mutex);
-		g_hash_table_remove(session->ice_handles, &handle_id);
+		if(g_hash_table_remove(session->ice_handles, &handle_id))
+			janus_refcount_decrease(&handle->ref);
 		janus_mutex_unlock(&session->mutex);
-		janus_refcount_decrease(&handle->ref);
 
 		if(error != 0) {
 			/* TODO Make error struct to pass verbose information */
@@ -2937,9 +2937,9 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	/* Destroy the handle */
 	janus_ice_handle_destroy(session, ice_handle->handle_id);
 	janus_mutex_lock(&session->mutex);
-	g_hash_table_remove(session->ice_handles, &ice_handle->handle_id);
+	if(g_hash_table_remove(session->ice_handles, &ice_handle->handle_id))
+		janus_refcount_decrease(&ice_handle->ref);
 	janus_mutex_unlock(&session->mutex);
-	janus_refcount_decrease(&ice_handle->ref);
 }
 
 
