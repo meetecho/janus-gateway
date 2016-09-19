@@ -11,11 +11,11 @@
  * it is sent to the peers. The actual SDP processing (parsing SDP strings,
  * representation of SDP as an internal format, and so on) is done via
  * the tools provided in sdp-utils.h.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include "janus.h"
 #include "ice.h"
 #include "dtls.h"
