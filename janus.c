@@ -1387,10 +1387,10 @@ trickledone:
 
 jsondone:
 	/* Done processing */
-	if(session != NULL)
-		janus_refcount_decrease(&session->ref);
 	if(handle != NULL)
 		janus_refcount_decrease(&handle->ref);
+	if(session != NULL)
+		janus_refcount_decrease(&session->ref);
 	return ret;
 }
 
@@ -2143,10 +2143,10 @@ int janus_process_incoming_admin_request(janus_request *request) {
 
 jsondone:
 	/* Done processing */
-	if(session != NULL)
-		janus_refcount_decrease(&session->ref);
 	if(handle != NULL)
 		janus_refcount_decrease(&handle->ref);
+	if(session != NULL)
+		janus_refcount_decrease(&session->ref);
 	return ret;
 }
 
