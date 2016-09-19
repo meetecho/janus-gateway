@@ -11,11 +11,11 @@
  * it is sent to the peers. The actual SDP processing (parsing SDP strings,
  * representation of SDP as an internal format, and so on) is done via
  * the tools provided in sdp-utils.h.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include "janus.h"
 #include "ice.h"
 #include "dtls.h"
@@ -560,10 +560,7 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 int janus_sdp_anonymize(janus_sdp *anon) {
 	if(anon == NULL)
 		return -1;
-	int audio = 0, video = 0;
-#ifdef HAVE_SCTP
-	int data = 0;
-#endif
+	int audio = 0, video = 0, data = 0;
 		/* o= */
 	if(anon->o_addr != NULL) {
 		g_free(anon->o_addr);
@@ -654,7 +651,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 		GList *purged_ptypes = NULL;
 		while(tempA) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)tempA->data;
-			if(strstr(a->value, "red/90000") || strstr(a->value, "ulpfec/90000") || strstr(a->value, "rtx/90000")) {
+			if(a->value && (strstr(a->value, "red/90000") || strstr(a->value, "ulpfec/90000") || strstr(a->value, "rtx/90000"))) {
 				int ptype = atoi(a->value);
 				JANUS_LOG(LOG_VERB, "Will remove payload type %d (%s)\n", ptype, a->value);
 				purged_ptypes = g_list_append(purged_ptypes, GINT_TO_POINTER(ptype));

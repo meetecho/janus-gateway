@@ -2297,6 +2297,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
 			JANUS_LOG(LOG_VERB, "Someone is inviting us in a call:\n%s", sip->sip_payload->pl_data);
 			janus_sip_sdp_process(session, sdp, FALSE);
+			/* Check if offer has neither audio nor video, fail with 488 */
+			if (!session->media.has_audio && !session->media.has_video) {
+				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				janus_sdp_free(sdp);
+				g_free(fixed_sdp);
+				break;
+			}
 			/* Send SDP to the browser */
 			json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", fixed_sdp);
 			json_t *call = json_object();
