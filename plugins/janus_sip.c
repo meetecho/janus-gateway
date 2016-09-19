@@ -2357,6 +2357,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sip->sip_payload->pl_data);
 			gboolean changed = FALSE;
 			janus_sip_sdp_process(session, sdp, FALSE, reinvite, &changed);
+			/* Check if offer has neither audio nor video, fail with 488 */
+			if (!session->media.has_audio && !session->media.has_video) {
+				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				janus_sdp_free(sdp);
+				break;
+			}
 			if(reinvite) {
 				/* No need to involve the browser: we reply ourselves */
 				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
