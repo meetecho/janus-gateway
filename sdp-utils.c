@@ -473,6 +473,9 @@ char *janus_sdp_write(janus_sdp *imported) {
 		/* a= */
 		const char *direction = NULL;
 		switch(m->direction) {
+			case JANUS_SDP_DEFAULT:
+				/* Dob't write the direction */
+				break;
 			case JANUS_SDP_SENDONLY:
 				direction = "sendonly";
 				break;
@@ -483,13 +486,14 @@ char *janus_sdp_write(janus_sdp *imported) {
 				direction = "inactive";
 				break;
 			case JANUS_SDP_SENDRECV:
-			case JANUS_SDP_DEFAULT:
 			default:
 				direction = "sendrecv";
 				break;
 		}
-		g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", direction);
-		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+		if(direction != NULL) {
+			g_snprintf(buffer, sizeof(buffer), "a=%s\r\n", direction);
+			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+		}
 		if(m->port == 0) {
 			/* No point going on */
 			temp = temp->next;
