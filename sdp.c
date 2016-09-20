@@ -598,14 +598,12 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 			video++;
 			m->port = video == 1 ? 9 : 0;
 		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
-			if(m->proto != NULL && !strcasecmp(m->proto, "DTLS/SCTP") && m->port != 0) {
+			if(m->proto != NULL && !strcasecmp(m->proto, "DTLS/SCTP")) {
 				data++;
-				m->port = data == 1 ? 1 : 0;
+				m->port = data == 1 ? 9 : 0;
 			} else {
 				m->port = 0;
 			}
-			data++;
-			m->port = data == 1 ? 9 : 0;
 		} else {
 			m->port = 0;
 		}

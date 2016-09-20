@@ -85,6 +85,8 @@ typedef struct janus_sdp_mline {
 	guint16 port;
 	/*! \brief Media protocol */
 	char *proto;
+	/*! \brief List of formats */
+	GList *fmts;
 	/*! \brief List of payload types */
 	GList *ptypes;
 	/*! \brief Media c= protocol */

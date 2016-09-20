@@ -42,6 +42,8 @@ void janus_sdp_free(janus_sdp *sdp) {
 		g_free(m->proto);
 		g_free(m->c_addr);
 		g_free(m->b_name);
+		g_list_free_full(m->fmts, (GDestroyNotify)g_free);
+		m->fmts = NULL;
 		g_list_free(m->ptypes);
 		m->ptypes = NULL;
 		GList *temp2 = m->attributes;
@@ -230,31 +232,36 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 						m->type_str = g_strdup(type);
 						m->proto = g_strdup(proto);
 						m->direction = JANUS_SDP_SENDRECV;
-						/* Now let's check the payload types */
-						gchar **mline_parts = g_strsplit(line+2, " ", -1);
-						if(!mline_parts) {
-							if(error)
-								g_snprintf(error, errlen, "Invalid m= line (no payload types): %s", line);
-							success = FALSE;
-							break;
-						}
-						int mindex = 0;
-						while(mline_parts[mindex]) {
-							if(mindex < 3) {
-								/* We've parsed these before */
-								mindex++;
-								continue;
+						if(m->port > 0) {
+							/* Now let's check the payload types/formats */
+							gchar **mline_parts = g_strsplit(line+2, " ", -1);
+							if(!mline_parts) {
+								if(error)
+									g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
+								success = FALSE;
+								break;
 							}
-							int ptype = atoi(mline_parts[mindex]);
-							m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(ptype));
-							mindex++;
-						}
-						g_strfreev(mline_parts);
-						if(m->ptypes == NULL) {
-							if(error)
-								g_snprintf(error, errlen, "Invalid m= line (no payload types): %s", line);
-							success = FALSE;
-							break;
+							int mindex = 0;
+							while(mline_parts[mindex]) {
+								if(mindex < 3) {
+									/* We've parsed these before */
+									mindex++;
+									continue;
+								}
+								/* Add string fmt */
+								m->fmts = g_list_append(m->fmts, g_strdup(mline_parts[mindex]));
+								/* Add numeric payload type */
+								int ptype = atoi(mline_parts[mindex]);
+								m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(ptype));
+								mindex++;
+							}
+							g_strfreev(mline_parts);
+							if(m->fmts == NULL || m->ptypes == NULL) {
+								if(error)
+									g_snprintf(error, errlen, "Invalid m= line (no payload types/formats): %s", line);
+								success = FALSE;
+								break;
+							}
 						}
 						/* Append to the list of m-lines */
 						imported->m_lines = g_list_append(imported->m_lines, m);
@@ -445,16 +452,31 @@ char *janus_sdp_write(janus_sdp *imported) {
 		g_snprintf(buffer, sizeof(buffer), "m=%s %d %s", m->type_str, m->port, m->proto);
 		g_strlcat(sdp, buffer, JANUS_BUFSIZE);
 		if(m->port == 0) {
-			/* Remove all payload types if we're rejecting the media */
+			/* Remove all payload types/formats if we're rejecting the media */
+			g_list_free_full(m->fmts, (GDestroyNotify)g_free);
+			m->fmts = NULL;
 			g_list_free(m->ptypes);
 			m->ptypes = NULL;
 			m->ptypes = g_list_append(m->ptypes, GINT_TO_POINTER(0));
-		}
-		GList *ptypes = m->ptypes;
-		while(ptypes) {
-			g_snprintf(buffer, sizeof(buffer), " %d", GPOINTER_TO_INT(ptypes->data));
-			g_strlcat(sdp, buffer, JANUS_BUFSIZE);
-			ptypes = ptypes->next;
+			g_strlcat(sdp, " 0", JANUS_BUFSIZE);
+		} else {
+			if(strstr(m->proto, "RTP") != NULL) {
+				/* RTP profile, use payload types */
+				GList *ptypes = m->ptypes;
+				while(ptypes) {
+					g_snprintf(buffer, sizeof(buffer), " %d", GPOINTER_TO_INT(ptypes->data));
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					ptypes = ptypes->next;
+				}
+			} else {
+				/* Something else, use formats */
+				GList *fmts = m->fmts;
+				while(fmts) {
+					g_snprintf(buffer, sizeof(buffer), " %s", (char *)(fmts->data));
+					g_strlcat(sdp, buffer, JANUS_BUFSIZE);
+					fmts = fmts->next;
+				}
+			}
 		}
 		g_strlcat(sdp, "\r\n", JANUS_BUFSIZE);
 		/* c= */
