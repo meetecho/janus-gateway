@@ -248,8 +248,8 @@ static struct janus_json_parameter publish_parameters[] = {
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"vid_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"au_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
@@ -1789,15 +1789,15 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_t *fl = json_object();
 				guint32 rpk = GPOINTER_TO_UINT(key_f);
 				rtp_forwarder *rpv = value_f;
-				json_object_set_new(fl, "ip" , json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
+				json_object_set_new(fl, "ip", json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
 				if(rpv->is_video > 0) {
-					json_object_set_new(fl, "video_stream_id" , json_integer(rpk));
-					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
-                		} else {
-					json_object_set_new(fl, "audio_stream_id" , json_integer(rpk));
-					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+					json_object_set_new(fl, "video_stream_id", json_integer(rpk));
+					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
+				} else {
+					json_object_set_new(fl, "audio_stream_id", json_integer(rpk));
+					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
 				}
-			json_array_append_new(flist, fl);
+				json_array_append_new(flist, fl);
 			}		
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			json_object_set_new(pl, "rtp_forwarder", flist);
@@ -1962,7 +1962,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		rtp_header *rtp = (rtp_header *)buf;
 		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
-		/* Forward RTP to the appropriate port for the rtp_forwarders associated wih this publisher, if there are any */
+		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
