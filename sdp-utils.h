@@ -63,6 +63,8 @@ typedef enum janus_sdp_mtype {
 
 /*! \brief Helper enumeration to quickly identify m-line directions */
 typedef enum janus_sdp_mdirection {
+	/*! \brief default=sendrecv */
+	JANUS_SDP_DEFAULT,
 	/*! \brief sendrecv */
 	JANUS_SDP_SENDRECV,
 	/*! \brief sendonly */
@@ -83,6 +85,8 @@ typedef struct janus_sdp_mline {
 	guint16 port;
 	/*! \brief Media protocol */
 	char *proto;
+	/*! \brief List of formats */
+	GList *fmts;
 	/*! \brief List of payload types */
 	GList *ptypes;
 	/*! \brief Media c= protocol */

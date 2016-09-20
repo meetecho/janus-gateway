@@ -598,14 +598,12 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 			video++;
 			m->port = video == 1 ? 9 : 0;
 		} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
-			if(m->proto != NULL && !strcasecmp(m->proto, "DTLS/SCTP") && m->port != 0) {
+			if(m->proto != NULL && !strcasecmp(m->proto, "DTLS/SCTP")) {
 				data++;
-				m->port = data == 1 ? 1 : 0;
+				m->port = data == 1 ? 9 : 0;
 			} else {
 				m->port = 0;
 			}
-			data++;
-			m->port = data == 1 ? 9 : 0;
 		} else {
 			m->port = 0;
 		}
@@ -743,9 +741,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 	}
 	/* Global attributes: start with group */
 	GList *first = anon->attributes;
-#pragma GCC diagnostic ignored "-Wformat-security"
-	janus_sdp_attribute *a = janus_sdp_attribute_create("group", buffer);
-#pragma GCC diagnostic warning "-Wformat-security"
+	janus_sdp_attribute *a = janus_sdp_attribute_create("group", "%s", buffer);
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	/* msid-semantic: add new global attribute */
 	a = janus_sdp_attribute_create("msid-semantic", " WMS janus");
@@ -858,23 +854,17 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 		}
 		/* a=mid:(audio|video|data) */
 		if(m->type == JANUS_SDP_AUDIO) {
-#pragma GCC diagnostic ignored "-Wformat-security"
-			a = janus_sdp_attribute_create("mid", handle->audio_mid ? handle->audio_mid : "audio");
-#pragma GCC diagnostic warning "-Wformat-security"
+			a = janus_sdp_attribute_create("mid", "%s", handle->audio_mid ? handle->audio_mid : "audio");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 		} else if(m->type == JANUS_SDP_VIDEO) {
-#pragma GCC diagnostic ignored "-Wformat-security"
-			a = janus_sdp_attribute_create("mid", handle->video_mid ? handle->video_mid : "video");
-#pragma GCC diagnostic warning "-Wformat-security"
+			a = janus_sdp_attribute_create("mid", "%s", handle->video_mid ? handle->video_mid : "video");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			/* FIXME sctpmap and webrtc-datachannel should be dynamic */
 			a = janus_sdp_attribute_create("sctpmap", "5000 webrtc-datachannel 16");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
-#pragma GCC diagnostic ignored "-Wformat-security"
-			a = janus_sdp_attribute_create("mid", handle->data_mid ? handle->data_mid : "data");
-#pragma GCC diagnostic warning "-Wformat-security"
+			a = janus_sdp_attribute_create("mid", "%s", handle->data_mid ? handle->data_mid : "data");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #endif
 		}
@@ -900,7 +890,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 		m->attributes = g_list_insert_before(m->attributes, first, a);
 		/* Add last attributes, rtcp and ssrc (msid) */
 		if(m->type == JANUS_SDP_AUDIO &&
-				(m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
+				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusaudio", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusa0", stream->audio_ssrc);
@@ -910,7 +900,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" label:janusa0", stream->audio_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 		} else if(m->type == JANUS_SDP_VIDEO &&
-				(m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
+				(m->direction == JANUS_SDP_DEFAULT || m->direction == JANUS_SDP_SENDRECV || m->direction == JANUS_SDP_SENDONLY)) {
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" cname:janusvideo", stream->video_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" msid:janus janusv0", stream->video_ssrc);

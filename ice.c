@@ -2418,9 +2418,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 #endif
 			}
 		}
-#pragma GCC diagnostic ignored "-Wformat-security"
-		janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", buffer);
-#pragma GCC diagnostic warning "-Wformat-security"
+		janus_sdp_attribute *a = janus_sdp_attribute_create("candidate", "%s", buffer);
 		mline->attributes = g_list_append(mline->attributes, a);
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"]     %s", handle->handle_id, buffer); /* buffer already newline terminated */
 		if(log_candidates) {
