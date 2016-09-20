@@ -743,9 +743,7 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 	}
 	/* Global attributes: start with group */
 	GList *first = anon->attributes;
-#pragma GCC diagnostic ignored "-Wformat-security"
-	janus_sdp_attribute *a = janus_sdp_attribute_create("group", buffer);
-#pragma GCC diagnostic warning "-Wformat-security"
+	janus_sdp_attribute *a = janus_sdp_attribute_create("group", "%s", buffer);
 	anon->attributes = g_list_insert_before(anon->attributes, first, a);
 	/* msid-semantic: add new global attribute */
 	a = janus_sdp_attribute_create("msid-semantic", " WMS janus");
@@ -858,23 +856,17 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 		}
 		/* a=mid:(audio|video|data) */
 		if(m->type == JANUS_SDP_AUDIO) {
-#pragma GCC diagnostic ignored "-Wformat-security"
-			a = janus_sdp_attribute_create("mid", handle->audio_mid ? handle->audio_mid : "audio");
-#pragma GCC diagnostic warning "-Wformat-security"
+			a = janus_sdp_attribute_create("mid", "%s", handle->audio_mid ? handle->audio_mid : "audio");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 		} else if(m->type == JANUS_SDP_VIDEO) {
-#pragma GCC diagnostic ignored "-Wformat-security"
-			a = janus_sdp_attribute_create("mid", handle->video_mid ? handle->video_mid : "video");
-#pragma GCC diagnostic warning "-Wformat-security"
+			a = janus_sdp_attribute_create("mid", "%s", handle->video_mid ? handle->video_mid : "video");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			/* FIXME sctpmap and webrtc-datachannel should be dynamic */
 			a = janus_sdp_attribute_create("sctpmap", "5000 webrtc-datachannel 16");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
-#pragma GCC diagnostic ignored "-Wformat-security"
-			a = janus_sdp_attribute_create("mid", handle->data_mid ? handle->data_mid : "data");
-#pragma GCC diagnostic warning "-Wformat-security"
+			a = janus_sdp_attribute_create("mid", "%s", handle->data_mid ? handle->data_mid : "data");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #endif
 		}
