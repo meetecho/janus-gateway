@@ -63,6 +63,8 @@ typedef enum janus_sdp_mtype {
 
 /*! \brief Helper enumeration to quickly identify m-line directions */
 typedef enum janus_sdp_mdirection {
+	/*! \brief default=sendrecv */
+	JANUS_SDP_DEFAULT,
 	/*! \brief sendrecv */
 	JANUS_SDP_SENDRECV,
 	/*! \brief sendonly */

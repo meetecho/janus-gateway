@@ -483,6 +483,7 @@ char *janus_sdp_write(janus_sdp *imported) {
 				direction = "inactive";
 				break;
 			case JANUS_SDP_SENDRECV:
+			case JANUS_SDP_DEFAULT:
 			default:
 				direction = "sendrecv";
 				break;
