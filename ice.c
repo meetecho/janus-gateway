@@ -930,9 +930,9 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
+	janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
 	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
 		return 0;
-	janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
 	janus_mutex_lock(&session->mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
@@ -1306,7 +1306,9 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 	if((sl_nack_recent_cnt >= SLOW_LINK_NACKS_PER_SEC) && (now-last_slowlink_time > 1*G_USEC_PER_SEC)) {
 		/* Tell the plugin */
 		janus_plugin *plugin = (janus_plugin *)handle->app;
-		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle))
+		if(plugin && plugin->slow_link && janus_plugin_session_is_alive(handle->app_handle) &&
+				!g_atomic_int_get(&handle->app_handle->stopped) &&
+				!g_atomic_int_get(&handle->destroyed))
 			plugin->slow_link(handle->app_handle, uplink, video);
 		/* Notify the user/application too */
 		janus_session *session = (janus_session *)handle->session;
@@ -1791,7 +1793,9 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtp)
+				if(plugin && plugin->incoming_rtp &&
+						!g_atomic_int_get(&handle->app_handle->stopped) &&
+						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtp(handle->app_handle, video, buf, buflen);
 				/* Update stats (TODO Do the same for the last second window as well) */
 				if(buflen > 0) {
@@ -2067,7 +2071,9 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 
 				janus_plugin *plugin = (janus_plugin *)handle->app;
-				if(plugin && plugin->incoming_rtcp)
+				if(plugin && plugin->incoming_rtcp &&
+						!g_atomic_int_get(&handle->app_handle->stopped) &&
+						!g_atomic_int_get(&handle->destroyed))
 					plugin->incoming_rtcp(handle->app_handle, video, buf, buflen);
 			}
 		}
@@ -2090,7 +2096,9 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 	if(handle == NULL || buffer == NULL || length <= 0)
 		return;
 	janus_plugin *plugin = (janus_plugin *)handle->app;
-	if(plugin && plugin->incoming_data)
+	if(plugin && plugin->incoming_data &&
+			!g_atomic_int_get(&handle->app_handle->stopped) &&
+			!g_atomic_int_get(&handle->destroyed))
 		plugin->incoming_data(handle->app_handle, buffer, length);
 }
 
