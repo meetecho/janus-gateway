@@ -485,6 +485,7 @@ gint janus_session_destroy(janus_session *session) {
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return 0;
+	janus_mutex_lock(&session->mutex);
 	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 		GHashTableIter iter;
 		gpointer value;
@@ -499,6 +500,7 @@ gint janus_session_destroy(janus_session *session) {
 			janus_refcount_decrease(&handle->ref);
 		}
 	}
+	janus_mutex_unlock(&session->mutex);
 
 	/* The session will actually be destroyed when the counter gets to 0 */
 	janus_refcount_decrease(&session->ref);
@@ -2019,10 +2021,10 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		}
 		/* List handles */
 		json_t *list = json_array();
+		janus_mutex_lock(&session->mutex);
 		if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 			GHashTableIter iter;
 			gpointer value;
-			janus_mutex_lock(&session->mutex);
 			g_hash_table_iter_init(&iter, session->ice_handles);
 			while (g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_ice_handle *handle = value;
@@ -2031,8 +2033,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				}
 				json_array_append_new(list, json_integer(handle->handle_id));
 			}
-			janus_mutex_unlock(&session->mutex);
 		}
+		janus_mutex_unlock(&session->mutex);
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
