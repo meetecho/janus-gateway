@@ -21,11 +21,11 @@
 ;    The following options are only valid for the 'rtp' type:
 ; audioport = local port for receiving audio frames
 ; audiomcast = multicast group port for receiving audio frames, if any
-; audiocodec = <audio RTP payload type> (e.g., 111)
+; audiopt = <audio RTP payload type> (e.g., 111)
 ; audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 ; videoport = local port for receiving video frames
 ; videomcast = multicast group port for receiving video frames, if any
-; videocodec = <video RTP payload type> (e.g., 100)
+; videopt = <video RTP payload type> (e.g., 100)
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
 ; videobufferkf = yes|no (whether the plugin should store the latest
 ;		keyframe and send it immediately for new viewers, EXPERIMENTAL)

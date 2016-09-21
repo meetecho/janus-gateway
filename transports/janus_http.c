@@ -1748,7 +1748,7 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session_id);
 		/* Turn this into a "keepalive" response */
 		char tr[12];
-		janus_http_random_string(12, (char *)&tr);		
+		janus_http_random_string(12, (char *)&tr);
 		if(max_events == 1) {
 			event = json_object();
 			json_object_set_new(event, "janus", json_string("keepalive"));
@@ -1760,8 +1760,8 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 		}
 		/* FIXME Improve the Janus protocol keep-alive mechanism in JavaScript */
 	}
-	char *payload_text = json_dumps(list ? list : event, json_format);
-	json_decref(list ? list : event);
+	char *payload_text = json_dumps(max_events == 1 ? event : list, json_format);
+	json_decref(max_events == 1 ? event : list);
 	/* Finish the request by sending the response */
 	JANUS_LOG(LOG_VERB, "We have a message to serve...\n\t%s\n", payload_text);
 	/* Send event */
@@ -1776,7 +1776,7 @@ int janus_http_return_success(janus_http_msg *msg, char *payload) {
 		return MHD_NO;
 	}
 	struct MHD_Response *response = MHD_create_response_from_buffer(
-		strlen(payload),
+		payload ? strlen(payload) : 0,
 		(void*)payload,
 		MHD_RESPMEM_MUST_FREE);
 	MHD_add_response_header(response, "Content-Type", "application/json");
