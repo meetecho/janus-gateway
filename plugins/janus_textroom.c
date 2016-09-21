@@ -545,6 +545,7 @@ void janus_textroom_destroy_session(janus_plugin_session *handle, int *error) {
 	JANUS_LOG(LOG_VERB, "Removing TextRoom session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	janus_textroom_hangup_media(handle);
+	handle->plugin_handle = NULL;
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 

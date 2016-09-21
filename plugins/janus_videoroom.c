@@ -990,6 +990,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	if(!g_atomic_int_get(&session->destroyed)) {
 		/* Any related WebRTC PeerConnection is not available anymore either */
 		janus_videoroom_hangup_media(handle);
+		handle->plugin_handle = NULL;
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Get rid of publisher */
 			janus_videoroom_publisher *p = (janus_videoroom_publisher *)session->participant;

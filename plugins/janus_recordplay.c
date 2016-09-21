@@ -673,6 +673,7 @@ void janus_recordplay_destroy_session(janus_plugin_session *handle, int *error) 
 	}
 	JANUS_LOG(LOG_VERB, "Removing Record&Play session...\n");
 	janus_recordplay_hangup_media(handle);
+	handle->plugin_handle = NULL;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);

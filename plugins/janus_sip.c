@@ -888,6 +888,7 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_mutex_lock(&sessions_mutex);
 	janus_sip_hangup_media(handle);
+	handle->plugin_handle = NULL;
 	JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
 	/* Shutdown the NUA */
 	if(session->stack && session->stack->s_nua)
