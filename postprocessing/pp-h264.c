@@ -27,6 +27,10 @@
 	 (LIBAVCODEC_VERSION_MAJOR == major && \
 	  LIBAVCODEC_VERSION_MINOR >= minor))
 
+#if LIBAVCODEC_VER_AT_LEAST(51, 42)
+#define PIX_FMT_YUV420P AV_PIX_FMT_YUV420P
+#endif
+
 
 /* MP4 output */
 static AVFormatContext *fctx;
