@@ -80,6 +80,27 @@ void janus_session_notify_event(janus_session *session, json_t *event);
  * @param[in] session The Janus Gateway-Client session to destroy
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_session_destroy(janus_session *session);
+/*! \brief Method to find an existing Janus ICE handle from its ID
+ * @param[in] session The Janus Gateway-Client session this ICE handle belongs to
+ * @param[in] handle_id The Janus ICE handle ID
+ * @returns The Janus ICE handle if successful, NULL otherwise */
+janus_ice_handle *janus_session_handles_find(janus_session *session, guint64 handle_id);
+/*! \brief Method to insert a Janus ICE handle in a session
+ * @param[in] session The Janus Gateway-Client session
+ * @param[in] handle_id The Janus ICE handle */
+void janus_session_handles_insert(janus_session *session, janus_ice_handle *handle);
+/*! \brief Method to remove a Janus ICE handle from a session
+ * @param[in] session The Janus Gateway-Client session
+ * @param[in] handle The Janus ICE handle
+ * @returns The error code of janus_ice_handle_destroy */
+gint janus_session_handles_remove(janus_session *session, janus_ice_handle *handle);
+/*! \brief Method to remove all Janus ICE handles from a session
+ * @param[in] session The Janus Gateway-Client session */
+void janus_session_handles_clear(janus_session *session);
+/*! \brief Method to list the IDs of all Janus ICE handles of a session as JSON
+ * @param[in] session The Janus Gateway-Client session
+ * @returns The JSON array */
+json_t *janus_session_handles_list_json(janus_session *session);
 ///@}
 
 
