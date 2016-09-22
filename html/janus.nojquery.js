@@ -208,7 +208,8 @@ Janus.init = function(options) {
 				params.error(XHR, 'error', '');
 			};
 		};
-		// Detect tab close
+		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
+		var oldOBF = window.onbeforeunload;
 		window.onbeforeunload = function() {
 			Janus.log("Closing window");
 			for(var s in Janus.sessions) {
@@ -218,6 +219,8 @@ Janus.init = function(options) {
 					Janus.sessions[s].destroy();
 				}
 			}
+			if(oldOBF && typeof oldOBF == "function")
+				oldOBF();
 		}
 		function addJsList(srcArray) {
 			if (!srcArray || !Array.isArray(srcArray) || srcArray.length == 0) {
