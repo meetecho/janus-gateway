@@ -818,15 +818,15 @@ void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref);
 void janus_ice_stream_free(const janus_refcount *handle_ref);
 void janus_ice_component_free(const janus_refcount *handle_ref);
 
-janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
-	if(gateway_session == NULL)
+janus_ice_handle *janus_ice_handle_create(void *core_session) {
+	if(core_session == NULL)
 		return NULL;
-	janus_session *session = (janus_session *)gateway_session;
+	janus_session *session = (janus_session *)core_session;
 	janus_ice_handle *handle = NULL;
 	guint64 handle_id = 0;
 	while(handle_id == 0) {
 		handle_id = janus_random_uint64();
-		handle = janus_ice_handle_find(gateway_session, handle_id);
+		handle = janus_ice_handle_find(core_session, handle_id);
 		if(handle != NULL) {
 			/* Handle ID already taken, try another one */
 			janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
@@ -840,7 +840,7 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 		return NULL;
 	}
 	janus_refcount_init(&handle->ref, janus_ice_free);
-	handle->session = gateway_session;
+	handle->session = core_session;
 	handle->created = janus_get_monotonic_time();
 	handle->handle_id = handle_id;
 	handle->app = NULL;
@@ -861,10 +861,10 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 	return handle;
 }
 
-janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id) {
-	if(gateway_session == NULL)
+janus_ice_handle *janus_ice_handle_find(void *core_session, guint64 handle_id) {
+	if(core_session == NULL)
 		return NULL;
-	janus_session *session = (janus_session *)gateway_session;
+	janus_session *session = (janus_session *)core_session;
 	janus_mutex_lock(&session->mutex);
 	janus_ice_handle *handle = session->ice_handles ? g_hash_table_lookup(session->ice_handles, &handle_id) : NULL;
 	if(handle != NULL) {
@@ -876,16 +876,14 @@ janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id
 	return handle;
 }
 
-gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, janus_plugin *plugin) {
-	if(gateway_session == NULL)
+gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin) {
+	if(core_session == NULL)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
+	janus_session *session = (janus_session *)core_session;
 	if(plugin == NULL)
 		return JANUS_ERROR_PLUGIN_NOT_FOUND;
-	janus_session *session = (janus_session *)gateway_session;
-	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
-	janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
 	janus_mutex_lock(&session->mutex);
 	if(handle->app != NULL) {
 		/* This handle is already attached to a plugin */
@@ -923,15 +921,13 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	return 0;
 }
 
-gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
+gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	/* session->mutex has to be locked when calling this function */
-	if(gateway_session == NULL)
+	if(core_session == NULL)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
-	janus_session *session = (janus_session *)gateway_session;
-	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
+	janus_session *session = (janus_session *)core_session;
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
-	janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
 	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
 		return 0;
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
@@ -995,12 +991,12 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	json_t *event = json_object();
 	json_object_set_new(event, "janus", json_string("detached"));
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
-	json_object_set_new(event, "sender", json_integer(handle_id));
+	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
 	janus_session_notify_event(session, event);
 	/* We only actually destroy the handle later */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle->handle_id, error);
 	/* Unref the handle: we only unref the session too when actually freeing the handle, so that it is freed before that */
 	janus_refcount_decrease(&handle->ref);
 	return error;
@@ -2119,7 +2115,7 @@ void *janus_ice_thread(void *data) {
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
 	janus_ice_webrtc_free(handle);
 	/* This ICE session is over, unref it */
 	janus_refcount_decrease(&handle->ref);
@@ -3543,11 +3539,12 @@ void *janus_ice_send_thread(void *data) {
 			continue;
 		}
 	}
-	JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
 	if(handle->iceloop) {
 		g_main_loop_quit(handle->iceloop);
 		g_main_context_wakeup(handle->icectx);
 	}
+	handle->send_thread = NULL;
 	janus_refcount_decrease(&handle->ref);
 	return NULL;
 }

@@ -301,7 +301,6 @@ int janus_sctp_association_setup(janus_sctp_association *sctp) {
 void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 	if(sctp == NULL)
 		return;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Destroying SCTP association\n", sctp->handle_id);
 	usrsctp_deregister_address(sctp);
 	usrsctp_shutdown(sctp->sock, SHUT_RDWR);
 	usrsctp_close(sctp->sock);

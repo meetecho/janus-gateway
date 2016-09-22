@@ -60,7 +60,7 @@ void my_free_function(janus_refcount *counter) {
 #include <glib.h>
 #include "mutex.h"
 
-//~ #define REFCOUNT_DEBUG
+#define REFCOUNT_DEBUG
 
 extern int refcount_debug;
 

@@ -472,26 +472,26 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
  */
 ///@{
 /*! \brief Method to create a new Janus ICE handle
- * @param[in] gateway_session The gateway/peer session this ICE handle will belong to
+ * @param[in] core_session The core/peer session this ICE handle will belong to
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session);
+janus_ice_handle *janus_ice_handle_create(void *core_session);
 /*! \brief Method to find an existing Janus ICE handle from its ID
- * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
+ * @param[in] core_session The core/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id);
+janus_ice_handle *janus_ice_handle_find(void *core_session, guint64 handle_id);
 /*! \brief Method to attach a Janus ICE handle to a plugin
  * \details This method is very important, as it allows plugins to send/receive media (RTP/RTCP) to/from a WebRTC peer.
- * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
+ * @param[in] core_session The core/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
  * @param[in] plugin The plugin the ICE handle needs to be attached to
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, janus_plugin *plugin);
+gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle, janus_plugin *plugin);
 /*! \brief Method to destroy a Janus ICE handle
- * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
+ * @param[in] core_session The core/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID to destroy
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id);
+gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup */
 void janus_ice_webrtc_hangup(janus_ice_handle *handle);
