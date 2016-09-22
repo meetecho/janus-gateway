@@ -2300,7 +2300,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 	}	
 	if(port > 0) {
 		if(IN_MULTICAST(ntohl(mcast))) {
-#ifdef IP_MULTICAST_ALL			
+#ifdef IP_MULTICAST_ALL
 			int mc_all = 0;
 			if((setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, (void*) &mc_all, sizeof(mc_all))) < 0) {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt IP_MULTICAST_ALL failed\n", mountpointname, listenername);
@@ -2323,6 +2323,17 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const char* list
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
 	address.sin_addr.s_addr = INADDR_ANY;
+	/* If this is multicast, allow a re-use of the same ports (different groups may be used) */
+	if(port > 0 && IN_MULTICAST(ntohl(mcast))) {
+		int reuse = 1;
+		if(setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) == -1) {
+			JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEPORT failed\n", mountpointname, listenername);
+			close(fd);
+			return -1;
+		}
+		address.sin_addr.s_addr = mcast;
+	}
+	/* Bind to the specified port */
 	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
 		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (port %d)...\n", mountpointname, medianame, port);
 		close(fd);
