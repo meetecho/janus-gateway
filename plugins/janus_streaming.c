@@ -1155,6 +1155,16 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
 			if(source->video_fd != -1)
 				json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
+			janus_mutex_lock(&source->rec_mutex);
+			if(source->arc || source->vrc) {
+				json_t *recording = json_object();
+				if(source->arc && source->arc->filename)
+					json_object_set_new(recording, "audio", json_string(source->arc->filename));
+				if(source->vrc && source->vrc->filename)
+					json_object_set_new(recording, "video", json_string(source->vrc->filename));
+				json_object_set_new(ml, "recording", recording);
+			}
+			janus_mutex_unlock(&source->rec_mutex);
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
