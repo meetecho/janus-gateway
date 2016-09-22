@@ -762,8 +762,8 @@ int janus_process_incoming_request(janus_request *request) {
 		int error = 0;
 		if((error = janus_ice_handle_attach_plugin(session, handle_id, plugin_t)) != 0) {
 			/* TODO Make error struct to pass verbose information */
-			janus_ice_handle_destroy(session, handle_id);
 			janus_mutex_lock(&session->mutex);
+			janus_ice_handle_destroy(session, handle_id);
 			if(g_hash_table_remove(session->ice_handles, &handle_id))
 				janus_refcount_decrease(&handle->ref);
 			janus_mutex_unlock(&session->mutex);
@@ -814,8 +814,8 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
 			goto jsondone;
 		}
-		int error = janus_ice_handle_destroy(session, handle_id);
 		janus_mutex_lock(&session->mutex);
+		int error = janus_ice_handle_destroy(session, handle_id);
 		if(g_hash_table_remove(session->ice_handles, &handle_id))
 			janus_refcount_decrease(&handle->ref);
 		janus_mutex_unlock(&session->mutex);
@@ -2937,8 +2937,8 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	if(!session)
 		return;
 	/* Destroy the handle */
-	janus_ice_handle_destroy(session, ice_handle->handle_id);
 	janus_mutex_lock(&session->mutex);
+	janus_ice_handle_destroy(session, ice_handle->handle_id);
 	if(g_hash_table_remove(session->ice_handles, &ice_handle->handle_id))
 		janus_refcount_decrease(&ice_handle->ref);
 	janus_mutex_unlock(&session->mutex);

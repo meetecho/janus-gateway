@@ -924,6 +924,7 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 }
 
 gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
+	/* session->mutex has to be locked when calling this function */
 	if(gateway_session == NULL)
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = (janus_session *)gateway_session;
@@ -933,7 +934,6 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
 	if(!g_atomic_int_compare_and_exchange(&handle->destroyed, 0, 1))
 		return 0;
-	janus_mutex_lock(&session->mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
@@ -956,7 +956,6 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 			}
 			g_main_loop_quit(handle->iceloop);
 		}
-		janus_mutex_unlock(&session->mutex);
 		return 0;
 	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
@@ -1000,7 +999,6 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
 	janus_session_notify_event(session, event);
-	janus_mutex_unlock(&session->mutex);
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
 	/* Unref the handle: we only unref the session too when actually freeing the handle, so that it is freed before that */
