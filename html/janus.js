@@ -186,6 +186,7 @@ Janus.init = function(options) {
 			if(src === 'jquery.min.js') {
 				if(window.jQuery) {
 					// Already loaded
+					Janus.debug(src + " already loaded, skipping");
 					done();
 					return;
 				}
@@ -193,6 +194,7 @@ Janus.init = function(options) {
 			if(src === 'adapter.js') {
 				if(navigator.getUserMedia && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection) {
 					// Already loaded
+					Janus.debug(src + " already loaded, skipping");
 					done();
 					return;
 				}
