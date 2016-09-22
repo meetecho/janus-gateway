@@ -948,7 +948,6 @@ struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handl
 	if(!session)
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 
-	JANUS_LOG(LOG_VERB, "%s\n", message);
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
