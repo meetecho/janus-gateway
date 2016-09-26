@@ -2806,6 +2806,11 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->opus_pt,			/* Opus payload type */
 				participant->opus_pt, 			/* Opus payload type and room sampling rate */
 				participant->room->sampling_rate);
+			/* Is the peer recvonly? */
+			if(strstr(msg_sdp, "a=recvonly") != NULL) {
+				/* If so, use sendonly here */
+				g_strlcat(sdp, "a=sendonly\r\n", 1024);
+			}
 			/* Did the peer negotiate video? */
 			if(strstr(msg_sdp, "m=video") != NULL) {
 				/* If so, reject it */
