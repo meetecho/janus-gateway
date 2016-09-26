@@ -454,6 +454,12 @@ static void janus_videoroom_subscriber_free(const janus_refcount *s_ref) {
 	g_free(s);
 }
 
+static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) {
+	if(!p)
+		return;
+	janus_refcount_decrease(&p->ref);
+}
+
 static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 	if(!p)
 		return;
@@ -497,7 +503,6 @@ static void janus_videoroom_session_free(const janus_refcount *session_ref) {
 	/* This session can be destroyed, free all the resources */
 	g_free(session);
 }
-
 
 static void janus_videoroom_room_destroy(janus_videoroom *room) {
 	if(!room)
@@ -804,7 +809,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			g_atomic_int_set(&videoroom->destroyed, 0);
 			janus_mutex_init(&videoroom->mutex);
 			janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
-			videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+			videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_publisher_dereference);
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, janus_uint64_dup(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
@@ -2517,6 +2522,7 @@ static void *janus_videoroom_handler(void *data) {
 				GHashTableIter iter;
 				gpointer value;
 				janus_mutex_lock(&videoroom->mutex);
+				janus_refcount_increase(&publisher->ref);
 				g_hash_table_insert(videoroom->participants, janus_uint64_dup(publisher->user_id), publisher);
 				g_hash_table_iter_init(&iter, videoroom->participants);
 				while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
