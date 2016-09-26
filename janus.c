@@ -350,6 +350,11 @@ static GMainContext *sessions_watchdog_context = NULL;
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
 
+static void janus_ice_handle_dereference(janus_ice_handle *handle) {
+	if(handle)
+		janus_refcount_decrease(&handle->ref);
+}
+
 static void janus_session_free(const janus_refcount *session_ref) {
 	janus_session *session = janus_refcount_containerof(session_ref, janus_session, ref);
 	/* This session can be destroyed, free all the resources */
@@ -509,7 +514,7 @@ janus_ice_handle *janus_session_handles_find(janus_session *session, guint64 han
 void janus_session_handles_insert(janus_session *session, janus_ice_handle *handle) {
 	janus_mutex_lock(&session->mutex);
 	if(session->ice_handles == NULL)
-		session->ice_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+		session->ice_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_ice_handle_dereference);
 	janus_refcount_increase(&handle->ref);
 	g_hash_table_insert(session->ice_handles, janus_uint64_dup(handle->handle_id), handle);
 	janus_mutex_unlock(&session->mutex);
@@ -518,8 +523,7 @@ void janus_session_handles_insert(janus_session *session, janus_ice_handle *hand
 gint janus_session_handles_remove(janus_session *session, janus_ice_handle *handle) {
 	janus_mutex_lock(&session->mutex);
 	gint error = janus_ice_handle_destroy(session, handle);
-	if(g_hash_table_remove(session->ice_handles, &handle->handle_id))
-		janus_refcount_decrease(&handle->ref);
+	g_hash_table_remove(session->ice_handles, &handle->handle_id);
 	janus_mutex_unlock(&session->mutex);
 	return error;
 }
@@ -537,7 +541,6 @@ void janus_session_handles_clear(janus_session *session) {
 				continue;
 			janus_ice_handle_destroy(session, handle);
 			g_hash_table_iter_remove(&iter);
-			janus_refcount_decrease(&handle->ref);
 		}
 	}
 	janus_mutex_unlock(&session->mutex);
