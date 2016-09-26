@@ -1195,7 +1195,7 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		if(participant->outbuf)
 			json_object_set_new(info, "queue-out", json_integer(g_async_queue_length(participant->outbuf)));
 		if(participant->last_drop > 0)
-			json_object_set_new(info, "lasy-drop", json_integer(participant->last_drop));
+			json_object_set_new(info, "last-drop", json_integer(participant->last_drop));
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
 	}
@@ -1941,8 +1941,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 				if(now - participant->last_drop > 5*G_USEC_PER_SEC) {
 					JANUS_LOG(LOG_WARN, "Too many packets in queue (%d > %d), removing older ones\n",
 						g_list_length(participant->inbuf), DEFAULT_PREBUFFERING*2);
+					participant->last_drop = now;
 				}
-				participant->last_drop = now;
 				while(g_list_length(participant->inbuf) > DEFAULT_PREBUFFERING*2) {
 					/* Remove this packet: it's too old */
 					GList *first = g_list_first(participant->inbuf);
