@@ -140,8 +140,8 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		bytes = fread(prebuffer, sizeof(char), len, file);
 		if(bytes != len)
 			JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, len);
-		if(prebuffer[0] == 0x67 || prebuffer[0] == 0x27) {
-			/* See if we can extract the width/height as well */
+		if((prebuffer[0] & 0x1F) == 7) {
+			/* SPS, see if we can extract the width/height as well */
 			JANUS_LOG(LOG_VERB, "Parsing width/height\n");
 			/* Let's check if it's the right profile, first */
 			int index = 1;
@@ -267,7 +267,10 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			uint8_t fragment = *buffer & 0x1F;
 			uint8_t nal = *(buffer+1) & 0x1F;
 			uint8_t start_bit = *(buffer+1) & 0x80;
-			JANUS_LOG(LOG_HUGE, "Fragment=%d, NAL=%d, Start=%d\n", fragment, nal, start_bit);
+			if(fragment == 28 || fragment == 29)
+				JANUS_LOG(LOG_HUGE, "Fragment=%d, NAL=%d, Start=%d (len=%d)\n", fragment, nal, start_bit, len);
+			else
+				JANUS_LOG(LOG_HUGE, "Fragment=%d (len=%d)\n", fragment, len);
 			if(fragment == 5 ||
 					((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
 				JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame\n", tmp->seq, tmp->ts);
