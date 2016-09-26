@@ -8,6 +8,8 @@
 [general]
 ;admin_key = supersecret		; If set, rooms can be created via API only
 								; if this key is provided in the request
+json = indented					; Whether the data channel JSON messages should be indented (default),
+								; plain (no indentation) or compact (no indentation and no spaces)
 
 [1234]
 description = Demo Room

@@ -150,6 +150,7 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 	sdp_media_t *m = remote_sdp->sdp_media;
 	while(m) {
 		/* What media type is this? */
+		stream = NULL;
 		if(m->m_type == sdp_media_audio) {
 			if(handle->rtp_profile == NULL && m->m_proto_name != NULL)
 				handle->rtp_profile = g_strdup(m->m_proto_name);
@@ -218,6 +219,8 @@ int janus_sdp_parse(janus_ice_handle *handle, janus_sdp *sdp) {
 #endif
 		} else {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"] Skipping disabled/unsupported media line...\n", handle->handle_id);
+		}
+		if(stream == NULL) {
 			m = m->m_next;
 			continue;
 		}
@@ -368,6 +371,11 @@ int janus_sdp_parse_candidate(janus_ice_stream *stream, const char *candidate, i
 	if(handle == NULL)
 		return -2;
 	janus_ice_component *component = NULL;
+	if(strstr(candidate, "end-of-candidates")) {
+		/* FIXME Should we do something with this? */
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] end-of-candidates received\n", handle->handle_id);
+		return 0;
+	}
 	if(strstr(candidate, "candidate:") == candidate) {
 		/* Skipping the 'candidate:' prefix Firefox puts in trickle candidates */
 		candidate += strlen("candidate:");
@@ -624,10 +632,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 	}
 		/* m= */
 	if(anon->sdp_media) {
-		int audio = 0, video = 0;
-#ifdef HAVE_SCTP
-		int data = 0;
-#endif
+		int audio = 0, video = 0, data = 0;
 		sdp_media_t *m = anon->sdp_media;
 		while(m) {
 			if(m->m_type == sdp_media_audio && m->m_port > 0) {
@@ -636,7 +641,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 			} else if(m->m_type == sdp_media_video && m->m_port > 0) {
 				video++;
 				m->m_port = video == 1 ? 1 : 0;
-#ifdef HAVE_SCTP
 			} else if(m->m_type == sdp_media_application) {
 				if(m->m_proto_name != NULL && !strcasecmp(m->m_proto_name, "DTLS/SCTP") && m->m_port != 0) {
 					data++;
@@ -644,7 +648,6 @@ char *janus_sdp_anonymize(const char *sdp) {
 				} else {
 					m->m_port = 0;
 				}
-#endif
 			} else {
 				m->m_port = 0;
 			}
@@ -703,7 +706,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 				GList *ptypes = NULL;
 				sdp_attribute_t *a = m->m_attributes;
 				while(a) {
-					if(strstr(a->a_value, "red/90000") || strstr(a->a_value, "ulpfec/90000") || strstr(a->a_value, "rtx/90000")) {
+					if(a->a_value && (strstr(a->a_value, "red/90000") || strstr(a->a_value, "ulpfec/90000") || strstr(a->a_value, "rtx/90000"))) {
 						int ptype = atoi(a->a_value);
 						ptypes = g_list_append(ptypes, GINT_TO_POINTER(ptype));
 						JANUS_LOG(LOG_VERB, "Will remove payload type %d\n", ptype);
@@ -736,7 +739,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 						a = m->m_attributes;
 						sdp_attribute_t *old = NULL;
 						while(a) {
-							int a_pt = atoi(a->a_value);
+							int a_pt = a->a_value ? atoi(a->a_value) : -1;
 							if(a_pt == ptype) {
 								if(!old) {
 									m->m_attributes = a->a_next;

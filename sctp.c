@@ -240,7 +240,9 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	sctp->sock = sock;
 	sctp->messages = g_async_queue_new_full((GDestroyNotify) janus_sctp_message_destroy);
 	GError *error = NULL;
-	sctp->thread = g_thread_try_new("JanusSCTP", &janus_sctp_thread, sctp, &error);
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "sctp %"SCNu64, sctp->handle_id);
+	sctp->thread = g_thread_try_new(tname, &janus_sctp_thread, sctp, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
@@ -298,7 +300,7 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len) {
 	if(sctp == NULL || sctp->dtls == NULL || buf == NULL || len <= 0)
 		return;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data from DTLS to SCTP stack: %d bytes\n", sctp->handle_id, len);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Data from DTLS to SCTP stack: %d bytes\n", sctp->handle_id, len);
 	janus_mutex_lock(&sctp->mutex);
 	if(sctp->messages != NULL)
 		g_async_queue_push(sctp->messages, janus_sctp_message_create(TRUE, buf, len));
@@ -309,7 +311,7 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 	janus_sctp_association *sctp = (janus_sctp_association *)instance;
 	if(sctp == NULL || sctp->dtls == NULL)
 		return -1;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data from SCTP to DTLS stack: %zu bytes\n", sctp->handle_id, length);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Data from SCTP to DTLS stack: %zu bytes\n", sctp->handle_id, length);
 	janus_mutex_lock(&sctp->mutex);
 	if(sctp->messages != NULL)
 		g_async_queue_push(sctp->messages, janus_sctp_message_create(FALSE, buffer, length));
