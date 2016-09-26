@@ -113,6 +113,73 @@ static uint32_t janus_pp_h264_eg_decode(uint8_t *base, uint32_t *offset) {
 	return res-1;
 }
 
+/* Helper to parse a SPS (only to get the video resolution) */
+static void janus_pp_h264_parse_sps(char *buffer, int *width, int *height) {
+	/* Let's check if it's the right profile, first */
+	int index = 1;
+	int profile_idc = *(buffer+index);
+	if(profile_idc != 66) {
+		JANUS_LOG(LOG_ERR, "Profile is not baseline (%d), unsupported stream\n", profile_idc);
+		exit(1);
+	}
+	/* Then let's skip 2 bytes and evaluate/skip the rest */
+	index += 3;
+	uint32_t offset = 0;
+	uint8_t *base = (uint8_t *)(buffer+index);
+	/* Skip seq_parameter_set_id and log2_max_frame_num_minus4 */
+	janus_pp_h264_eg_decode(base, &offset);
+	janus_pp_h264_eg_decode(base, &offset);
+	/* Evaluate pic_order_cnt_type */
+	int pic_order_cnt_type = janus_pp_h264_eg_decode(base, &offset);
+	if(pic_order_cnt_type == 0) {
+		/* Skip log2_max_pic_order_cnt_lsb_minus4 */
+		janus_pp_h264_eg_decode(base, &offset);
+	} else if(pic_order_cnt_type == 1) {
+		/* Skip delta_pic_order_always_zero_flag, offset_for_non_ref_pic,
+		 * offset_for_top_to_bottom_field and num_ref_frames_in_pic_order_cnt_cycle */
+		janus_pp_h264_eg_getbit(base, offset++);
+		janus_pp_h264_eg_decode(base, &offset);
+		janus_pp_h264_eg_decode(base, &offset);
+		int num_ref_frames_in_pic_order_cnt_cycle = janus_pp_h264_eg_decode(base, &offset);
+		int i = 0;
+		for(i=0; i<num_ref_frames_in_pic_order_cnt_cycle; i++) {
+			janus_pp_h264_eg_decode(base, &offset);
+		}
+	}
+	/* Skip max_num_ref_frames and gaps_in_frame_num_value_allowed_flag */
+	janus_pp_h264_eg_decode(base, &offset);
+	janus_pp_h264_eg_getbit(base, offset++);
+	/* We need the following three values */
+	int pic_width_in_mbs_minus1 = janus_pp_h264_eg_decode(base, &offset);
+	int pic_height_in_map_units_minus1 = janus_pp_h264_eg_decode(base, &offset);
+	int frame_mbs_only_flag = janus_pp_h264_eg_getbit(base, offset++);
+	if(!frame_mbs_only_flag) {
+		/* Skip mb_adaptive_frame_field_flag */
+		janus_pp_h264_eg_getbit(base, offset++);
+	}
+	/* Skip direct_8x8_inference_flag */
+	janus_pp_h264_eg_getbit(base, offset++);
+	/* We need the following value to evaluate offsets, if any */
+	int frame_cropping_flag = janus_pp_h264_eg_getbit(base, offset++);
+	int frame_crop_left_offset = 0, frame_crop_right_offset = 0,
+		frame_crop_top_offset = 0, frame_crop_bottom_offset = 0;
+	if(frame_cropping_flag) {
+		frame_crop_left_offset = janus_pp_h264_eg_decode(base, &offset);
+		frame_crop_right_offset = janus_pp_h264_eg_decode(base, &offset);
+		frame_crop_top_offset = janus_pp_h264_eg_decode(base, &offset);
+		frame_crop_bottom_offset = janus_pp_h264_eg_decode(base, &offset);
+	}
+	/* Skip vui_parameters_present_flag */
+	janus_pp_h264_eg_getbit(base, offset++);
+
+	/* We skipped what we didn't care about and got what we wanted, compute width/height */
+	if(width)
+		*width = ((pic_width_in_mbs_minus1 +1)*16) - frame_crop_bottom_offset*2 - frame_crop_top_offset*2;
+	if(height)
+		*height = ((2 - frame_mbs_only_flag)* (pic_height_in_map_units_minus1 +1) * 16) - (frame_crop_right_offset * 2) - (frame_crop_left_offset * 2);
+}
+
+
 int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 	if(!file || !list)
 		return -1;
@@ -143,70 +210,38 @@ int janus_pp_h264_preprocess(FILE *file, janus_pp_frame_packet *list) {
 		if((prebuffer[0] & 0x1F) == 7) {
 			/* SPS, see if we can extract the width/height as well */
 			JANUS_LOG(LOG_VERB, "Parsing width/height\n");
-			/* Let's check if it's the right profile, first */
-			int index = 1;
-			int profile_idc = prebuffer[index];
-			if(profile_idc != 66) {
-				JANUS_LOG(LOG_ERR, "Profile is not baseline (%d), unsupported stream\n", profile_idc);
-				exit(1);
-			}
-			/* Then let's skip 2 bytes and evaluate/skip the rest */
-			index += 3;
-			uint32_t offset = 0;
-			uint8_t *base = (uint8_t *)&prebuffer[index];
-			/* Skip seq_parameter_set_id and log2_max_frame_num_minus4 */
-			janus_pp_h264_eg_decode(base, &offset);
-			janus_pp_h264_eg_decode(base, &offset);
-			/* Evaluate pic_order_cnt_type */
-			int pic_order_cnt_type = janus_pp_h264_eg_decode(base, &offset);
-			if(pic_order_cnt_type == 0) {
-				/* Skip log2_max_pic_order_cnt_lsb_minus4 */
-				janus_pp_h264_eg_decode(base, &offset);
-			} else if(pic_order_cnt_type == 1) {
-				/* Skip delta_pic_order_always_zero_flag, offset_for_non_ref_pic,
-				 * offset_for_top_to_bottom_field and num_ref_frames_in_pic_order_cnt_cycle */
-				janus_pp_h264_eg_getbit(base, offset++);
-				janus_pp_h264_eg_decode(base, &offset);
-				janus_pp_h264_eg_decode(base, &offset);
-				int num_ref_frames_in_pic_order_cnt_cycle = janus_pp_h264_eg_decode(base, &offset);
-				int i = 0;
-				for(i=0; i<num_ref_frames_in_pic_order_cnt_cycle; i++) {
-					janus_pp_h264_eg_decode(base, &offset);
-				}
-			}
-			/* Skip max_num_ref_frames and gaps_in_frame_num_value_allowed_flag */
-			janus_pp_h264_eg_decode(base, &offset);
-			janus_pp_h264_eg_getbit(base, offset++);
-			/* We need the following three values */
-			int pic_width_in_mbs_minus1 = janus_pp_h264_eg_decode(base, &offset);
-			int pic_height_in_map_units_minus1 = janus_pp_h264_eg_decode(base, &offset);
-			int frame_mbs_only_flag = janus_pp_h264_eg_getbit(base, offset++);
-			if(!frame_mbs_only_flag) {
-				/* Skip mb_adaptive_frame_field_flag */
-				janus_pp_h264_eg_getbit(base, offset++);
-			}
-			/* Skip direct_8x8_inference_flag */
-			janus_pp_h264_eg_getbit(base, offset++);
-			/* We need the following value to evaluate offsets, if any */
-			int frame_cropping_flag = janus_pp_h264_eg_getbit(base, offset++);
-			int frame_crop_left_offset = 0, frame_crop_right_offset = 0,
-				frame_crop_top_offset = 0, frame_crop_bottom_offset = 0;
-			if(frame_cropping_flag) {
-				frame_crop_left_offset = janus_pp_h264_eg_decode(base, &offset);
-				frame_crop_right_offset = janus_pp_h264_eg_decode(base, &offset);
-				frame_crop_top_offset = janus_pp_h264_eg_decode(base, &offset);
-				frame_crop_bottom_offset = janus_pp_h264_eg_decode(base, &offset);
-			}
-			/* Skip vui_parameters_present_flag */
-			janus_pp_h264_eg_getbit(base, offset++);
-
-			/* We skipped what we didn't care about and got what we wanted, compute width/height */
-			int width = ((pic_width_in_mbs_minus1 +1)*16) - frame_crop_bottom_offset*2 - frame_crop_top_offset*2;
-			int height = ((2 - frame_mbs_only_flag)* (pic_height_in_map_units_minus1 +1) * 16) - (frame_crop_right_offset * 2) - (frame_crop_left_offset * 2);
+			int width = 0, height = 0;
+			janus_pp_h264_parse_sps(prebuffer, &width, &height);
 			if(width > max_width)
 				max_width = width;
 			if(height > max_height)
 				max_height = height;
+		} else if((prebuffer[0] & 0x1F) == 24) {
+			/* May we find an SPS in this STAP-A? */
+			JANUS_LOG(LOG_HUGE, "Parsing STAP-A...\n");
+			char *buffer = prebuffer;
+			buffer++;
+			int tot = len-1;
+			uint16_t psize = 0;
+			while(tot > 0) {
+				memcpy(&psize, buffer, 2);
+				psize = ntohs(psize);
+				buffer += 2;
+				tot -= 2;
+				int nal = *buffer & 0x1F;
+				JANUS_LOG(LOG_HUGE, "  -- NALU of size %u: %d\n", psize, nal);
+				if(nal == 7) {
+					JANUS_LOG(LOG_VERB, "Parsing width/height\n");
+					int width = 0, height = 0;
+					janus_pp_h264_parse_sps(buffer, &width, &height);
+					if(width > max_width)
+						max_width = width;
+					if(height > max_height)
+						max_height = height;
+				}
+				buffer += psize;
+				tot -= psize;
+			}
 		}
 		if(tmp->drop) {
 			/* We marked this packet as one to drop, before */
@@ -268,12 +303,13 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			uint8_t nal = *(buffer+1) & 0x1F;
 			uint8_t start_bit = *(buffer+1) & 0x80;
 			if(fragment == 28 || fragment == 29)
-				JANUS_LOG(LOG_HUGE, "Fragment=%d, NAL=%d, Start=%d (len=%d)\n", fragment, nal, start_bit, len);
+				JANUS_LOG(LOG_HUGE, "Fragment=%d, NAL=%d, Start=%d (len=%d, frameLen=%d)\n", fragment, nal, start_bit, len, frameLen);
 			else
-				JANUS_LOG(LOG_HUGE, "Fragment=%d (len=%d)\n", fragment, len);
+				JANUS_LOG(LOG_HUGE, "Fragment=%d (len=%d, frameLen=%d)\n", fragment, len, frameLen);
 			if(fragment == 5 ||
 					((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128)) {
 				JANUS_LOG(LOG_VERB, "(seq=%"SCNu16", ts=%"SCNu64") Key frame\n", tmp->seq, tmp->ts);
+				keyFrame = 1;
 				/* Is this the first keyframe we find? */
 				if(keyframe_ts == 0) {
 					keyframe_ts = tmp->ts;
@@ -285,9 +321,34 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				uint8_t *temp = received_frame + frameLen;
 				memset(temp, 0x00, 1);
 				memset(temp + 1, 0x00, 1);
-				memset(temp + 2, 0x00, 1);
-				memset(temp + 3, 0x01, 1);
-				frameLen += 4;
+				memset(temp + 2, 0x01, 1);
+				frameLen += 3;
+			} else if(fragment == 24) {	/* STAP-A */
+				/* De-aggregate the NALs and write each of them separately */
+				buffer++;
+				int tot = len-1;
+				uint16_t psize = 0;
+				frameLen = 0;
+				while(tot > 0) {
+					memcpy(&psize, buffer, 2);
+					psize = ntohs(psize);
+					buffer += 2;
+					tot -= 2;
+					/* Now we have a single NAL */
+					uint8_t *temp = received_frame + frameLen;
+					memset(temp, 0x00, 1);
+					memset(temp + 1, 0x00, 1);
+					memset(temp + 2, 0x01, 1);
+					frameLen += 3;
+					memcpy(received_frame + frameLen, buffer, psize);
+					frameLen += psize;
+					/* Go on */
+					buffer += psize;
+					tot -= psize;
+				}
+				/* Done, we'll wait for the next video data to write the frame */
+				tmp = tmp->next;
+				continue;
 			} else if((fragment == 28) || (fragment == 29)) {	/* FIXME true fr FU-A, not FU-B */
 				uint8_t indicator = *buffer;
 				uint8_t header = *(buffer+1);
@@ -298,10 +359,9 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 					uint8_t *temp = received_frame + frameLen;
 					memset(temp, 0x00, 1);
 					memset(temp + 1, 0x00, 1);
-					memset(temp + 2, 0x00, 1);
-					memset(temp + 3, 0x01, 1);
-					memset(temp + 4, (indicator & 0xE0) | (header & 0x1F), 1);
-					frameLen += 5;
+					memset(temp + 2, 0x01, 1);
+					memset(temp + 3, (indicator & 0xE0) | (header & 0x1F), 1);
+					frameLen += 4;
 				} else if (header & 0x40) {
 					/* Last part of fragmented packet (E bit set) */
 				}
@@ -316,6 +376,7 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			tmp = tmp->next;
 		}
 		if(frameLen > 0) {
+			/* Save the frame */
 			memset(received_frame + frameLen, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
 			AVPacket packet;
