@@ -441,11 +441,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 
 /* Freeing stuff */
 static void janus_videoroom_subscriber_destroy(janus_videoroom_subscriber *s) {
-	if(!s)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&s->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&s->ref);
+	if(s && g_atomic_int_compare_and_exchange(&s->destroyed, 0, 1))
+		janus_refcount_decrease(&s->ref);
 }
 
 static void janus_videoroom_subscriber_free(const janus_refcount *s_ref) {
@@ -455,17 +452,13 @@ static void janus_videoroom_subscriber_free(const janus_refcount *s_ref) {
 }
 
 static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) {
-	if(!p)
-		return;
-	janus_refcount_decrease(&p->ref);
+	if(p)
+		janus_refcount_decrease(&p->ref);
 }
 
 static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
-	if(!p)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&p->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&p->ref);
+	if(p && g_atomic_int_compare_and_exchange(&p->destroyed, 0, 1))
+		janus_refcount_decrease(&p->ref);
 }
 
 static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
@@ -489,11 +482,8 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 }
 
 static void janus_videoroom_session_destroy(janus_videoroom_session *session) {
-	if(!session)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&session->ref);
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
 }
 
 static void janus_videoroom_session_free(const janus_refcount *session_ref) {
@@ -505,11 +495,8 @@ static void janus_videoroom_session_free(const janus_refcount *session_ref) {
 }
 
 static void janus_videoroom_room_destroy(janus_videoroom *room) {
-	if(!room)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&room->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&room->ref);
+	if(room && g_atomic_int_compare_and_exchange(&room->destroyed, 0, 1))
+		janus_refcount_decrease(&room->ref);
 }
 
 static void janus_videoroom_room_free(const janus_refcount *room_ref) {
