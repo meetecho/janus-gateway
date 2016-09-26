@@ -686,6 +686,7 @@ typedef struct janus_audiobridge_participant {
 	/* RTP stuff */
 	GList *inbuf;			/* Incoming audio from this participant, as an ordered list of packets */
 	GAsyncQueue *outbuf;	/* Mixed audio for this participant */
+	gint64 last_drop;		/* When we last dropped a packet because the imcoming queue was full */
 	janus_mutex qmutex;		/* Incoming queue mutex */
 	int opus_pt;			/* Opus payload type */
 	janus_audiobridge_rtp_context context;	/* Needed in case the participant changes room */
@@ -1193,6 +1194,8 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 		}
 		if(participant->outbuf)
 			json_object_set_new(info, "queue-out", json_integer(g_async_queue_length(participant->outbuf)));
+		if(participant->last_drop > 0)
+			json_object_set_new(info, "lasy-drop", json_integer(participant->last_drop));
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
 	}
@@ -1934,8 +1937,12 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		} else {
 			/* Make sure we're not queueing too many packets: if so, get rid of the older ones */
 			if(g_list_length(participant->inbuf) >= DEFAULT_PREBUFFERING*2) {
-				JANUS_LOG(LOG_WARN, "Too many packets in queue (%d > %d), removing older ones\n",
-					g_list_length(participant->inbuf), DEFAULT_PREBUFFERING*2);
+				gint64 now = janus_get_monotonic_time();
+				if(now - participant->last_drop > 5*G_USEC_PER_SEC) {
+					JANUS_LOG(LOG_WARN, "Too many packets in queue (%d > %d), removing older ones\n",
+						g_list_length(participant->inbuf), DEFAULT_PREBUFFERING*2);
+				}
+				participant->last_drop = now;
 				while(g_list_length(participant->inbuf) > DEFAULT_PREBUFFERING*2) {
 					/* Remove this packet: it's too old */
 					GList *first = g_list_first(participant->inbuf);
@@ -2043,6 +2050,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 		g_free(pkt);
 		pkt = NULL;
 	}
+	participant->last_drop = 0;
 	janus_mutex_unlock(&participant->qmutex);
 	if(audiobridge != NULL) {
 		janus_mutex_unlock(&audiobridge->mutex);
@@ -2180,6 +2188,7 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->display = NULL;
 				participant->inbuf = NULL;
 				participant->outbuf = NULL;
+				participant->last_drop = 0;
 				participant->encoder = NULL;
 				participant->decoder = NULL;
 				participant->reset = FALSE;
