@@ -1115,9 +1115,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 }
 
 void janus_ice_stream_destroy(GHashTable *container, janus_ice_stream *stream) {
-	if(stream == NULL)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&stream->destroyed, 0, 1))
+	if(!stream || !g_atomic_int_compare_and_exchange(&stream->destroyed, 0, 1))
 		return;
 	if(container != NULL)
 		g_hash_table_remove(container, GUINT_TO_POINTER(stream->stream_id));
@@ -1163,9 +1161,7 @@ void janus_ice_stream_free(const janus_refcount *stream_ref) {
 }
 
 void janus_ice_component_destroy(GHashTable *container, janus_ice_component *component) {
-	if(component == NULL)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&component->destroyed, 0, 1))
+	if(!component || !g_atomic_int_compare_and_exchange(&component->destroyed, 0, 1))
 		return;
 	if(container != NULL)
 		g_hash_table_remove(container, GUINT_TO_POINTER(component->component_id));

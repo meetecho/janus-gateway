@@ -31,9 +31,6 @@ janus_transport_session *janus_transport_session_create(void *transport_p, void 
 }
 
 void janus_transport_session_destroy(janus_transport_session *session) {
-	if(!session)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&session->ref);
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
 }

@@ -770,9 +770,7 @@ void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls) {
 }
 
 void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
-	if(dtls == NULL)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&dtls->destroyed, 0, 1))
+	if(!dtls || !g_atomic_int_compare_and_exchange(&dtls->destroyed, 0, 1))
 		return;
 	dtls->ready = 0;
 #ifdef HAVE_SCTP

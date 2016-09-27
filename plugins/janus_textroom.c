@@ -209,12 +209,8 @@ typedef struct janus_textroom_participant {
 } janus_textroom_participant;
 
 static void janus_textroom_room_destroy(janus_textroom_room *textroom) {
-	if(!textroom)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&textroom->destroyed, 0, 1))
-		return;
-	/* Decrease the counter */
-	janus_refcount_decrease(&textroom->ref);
+	if(textroom && g_atomic_int_compare_and_exchange(&textroom->destroyed, 0, 1))
+		janus_refcount_decrease(&textroom->ref);
 }
 static void janus_textroom_room_free(const janus_refcount *textroom_ref) {
 	janus_textroom_room *textroom = janus_refcount_containerof(textroom_ref, janus_textroom_room, ref);
@@ -229,11 +225,8 @@ static void janus_textroom_room_free(const janus_refcount *textroom_ref) {
 }
 
 static void janus_textroom_session_destroy(janus_textroom_session *session) {
-	if(!session)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&session->ref);
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
 }
 static void janus_textroom_session_free(const janus_refcount *session_ref) {
 	janus_textroom_session *session = janus_refcount_containerof(session_ref, janus_textroom_session, ref);
@@ -246,12 +239,8 @@ static void janus_textroom_session_free(const janus_refcount *session_ref) {
 }
 
 static void janus_textroom_participant_destroy(janus_textroom_participant *participant) {
-	if(!participant)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&participant->destroyed, 0, 1))
-		return;
-	/* Decrease the counter */
-	janus_refcount_decrease(&participant->ref);
+	if(participant && g_atomic_int_compare_and_exchange(&participant->destroyed, 0, 1))
+		janus_refcount_decrease(&participant->ref);
 }
 static void janus_textroom_participant_free(const janus_refcount *participant_ref) {
 	janus_textroom_participant *participant = janus_refcount_containerof(participant_ref, janus_textroom_participant, ref);

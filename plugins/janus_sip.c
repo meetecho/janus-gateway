@@ -326,11 +326,8 @@ static janus_mutex sessions_mutex;
 static void janus_sip_srtp_cleanup(janus_sip_session *session);
 
 static void janus_sip_session_destroy(janus_sip_session *session) {
-	if(!session)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&session->ref);
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
 }
 
 static void janus_sip_session_free(const janus_refcount *session_ref) {

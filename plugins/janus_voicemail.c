@@ -208,11 +208,8 @@ static GHashTable *sessions;
 static janus_mutex sessions_mutex;
 
 static void janus_voicemail_session_destroy(janus_voicemail_session *session) {
-	if(!session)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&session->ref);
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
 }
 
 static void janus_voicemail_session_free(const janus_refcount *session_ref) {

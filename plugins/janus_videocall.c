@@ -354,11 +354,8 @@ static GHashTable *sessions;
 static janus_mutex sessions_mutex;
 
 static void janus_videocall_session_destroy(janus_videocall_session *session) {
-	if(!session)
-		return;
-	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
-		return;
-	janus_refcount_decrease(&session->ref);
+	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
+		janus_refcount_decrease(&session->ref);
 }
 
 static void janus_videocall_session_free(const janus_refcount *session_ref) {
@@ -1211,10 +1208,8 @@ static void *janus_videocall_handler(void *data) {
 			if(peer && g_atomic_int_compare_and_exchange(&peer->incall, 1, 0)) {
 				janus_refcount_decrease(&session->ref);
 			}
-			if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0)) {
-				if(peer) {
-					janus_refcount_decrease(&peer->ref);
-				}
+			if(g_atomic_int_compare_and_exchange(&session->incall, 1, 0) && peer) {
+				janus_refcount_decrease(&peer->ref);
 			}
 			/* Notify the success as an hangup message */
 			result = json_object();
