@@ -236,8 +236,8 @@ static struct janus_json_parameter publish_parameters[] = {
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"vid_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
-	{"au_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
@@ -417,6 +417,7 @@ typedef struct janus_videoroom_subscriber_context {
 			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
 	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
 			v_last_seq, v_base_seq, v_base_seq_prev;
+	gboolean a_seq_reset, v_seq_reset;
 } janus_videoroom_subscriber_context;
 
 typedef struct janus_videoroom_subscriber {
@@ -1743,15 +1744,15 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_t *fl = json_object();
 				guint32 rpk = GPOINTER_TO_UINT(key_f);
 				rtp_forwarder *rpv = value_f;
-				json_object_set_new(fl, "ip" , json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
+				json_object_set_new(fl, "ip", json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
 				if(rpv->is_video > 0) {
-					json_object_set_new(fl, "video_stream_id" , json_integer(rpk));
-					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
-                		} else {
-					json_object_set_new(fl, "audio_stream_id" , json_integer(rpk));
-					json_object_set_new(fl, "port" , json_integer(ntohs(rpv->serv_addr.sin_port)));
+					json_object_set_new(fl, "video_stream_id", json_integer(rpk));
+					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
+				} else {
+					json_object_set_new(fl, "audio_stream_id", json_integer(rpk));
+					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
 				}
-			json_array_append_new(flist, fl);
+				json_array_append_new(flist, fl);
 			}		
 			janus_mutex_unlock(&p->rtp_forwarders_mutex);
 			json_object_set_new(pl, "rtp_forwarder", flist);
@@ -1892,7 +1893,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		rtp_header *rtp = (rtp_header *)buf;
 		rtp->type = video ? participant->video_pt : participant->audio_pt;
 		rtp->ssrc = htonl(video ? participant->video_ssrc : participant->audio_ssrc);
-		/* Forward RTP to the appropriate port for the rtp_forwarders associated wih this publisher, if there are any */
+		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		GHashTableIter iter;
 		gpointer value;
 		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
@@ -2577,6 +2578,8 @@ static void *janus_videoroom_handler(void *data) {
 					subscriber->context.v_last_seq = 0;
 					subscriber->context.v_base_seq = 0;
 					subscriber->context.v_base_seq_prev = 0;
+					subscriber->context.a_seq_reset = FALSE;
+					subscriber->context.v_seq_reset = FALSE;
 					subscriber->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
 					if(!publisher->audio)
 						subscriber->audio = FALSE;	/* ... unless the publisher isn't sending any audio */
@@ -2656,11 +2659,37 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
 				if(audio) {
-					participant->audio_active = json_is_true(audio);
+					gboolean audio_active = json_is_true(audio);
+					if(session->started && audio_active && !participant->audio_active) {
+						/* Audio was just resumed, try resetting the RTP headers for viewers */
+						janus_mutex_lock(&participant->listeners_mutex);
+						GSList *ps = participant->listeners;
+						while(ps) {
+							janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+							if(l)
+								l->context.a_seq_reset = TRUE;
+							ps = ps->next;
+						}
+						janus_mutex_unlock(&participant->listeners_mutex);
+					}
+					participant->audio_active = audio_active;
 					JANUS_LOG(LOG_VERB, "Setting audio property: %s (room %"SCNu64", user %"SCNu64")\n", participant->audio_active ? "true" : "false", participant->room->room_id, participant->user_id);
 				}
 				if(video) {
-					participant->video_active = json_is_true(video);
+					gboolean video_active = json_is_true(video);
+					if(session->started && video_active && !participant->video_active) {
+						/* Video was just resumed, try resetting the RTP headers for viewers */
+						janus_mutex_lock(&participant->listeners_mutex);
+						GSList *ps = participant->listeners;
+						while(ps) {
+							janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+							if(l)
+								l->context.v_seq_reset = TRUE;
+							ps = ps->next;
+						}
+						janus_mutex_unlock(&participant->listeners_mutex);
+					}
+					participant->video_active = video_active;
 					JANUS_LOG(LOG_VERB, "Setting video property: %s (room %"SCNu64", user %"SCNu64")\n", participant->video_active ? "true" : "false", participant->room->room_id, participant->user_id);
 				}
 				if(bitrate) {
@@ -3276,10 +3305,17 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			return;
 		}
 		if(ntohl(packet->data->ssrc) != subscriber->context.v_last_ssrc) {
+			/* Publisher switch? Fix sequence numbers and timestamps */
 			subscriber->context.v_last_ssrc = ntohl(packet->data->ssrc);
 			subscriber->context.v_base_ts_prev = subscriber->context.v_last_ts;
 			subscriber->context.v_base_ts = packet->timestamp;
 			subscriber->context.v_base_seq_prev = subscriber->context.v_last_seq;
+			subscriber->context.v_base_seq = packet->seq_number;
+		}
+		if(subscriber->context.v_seq_reset) {
+			/* video_active false-->true? Fix sequence numbers */
+			subscriber->context.v_seq_reset = FALSE;
+			subscriber->context.v_base_seq_prev = subscriber->context.a_last_seq;
 			subscriber->context.v_base_seq = packet->seq_number;
 		}
 		/* Compute a coherent timestamp and sequence number */
@@ -3301,11 +3337,18 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			return;
 		}
 		if(ntohl(packet->data->ssrc) != subscriber->context.a_last_ssrc) {
+			/* Publisher switch? Fix sequence numbers and timestamps */
 			subscriber->context.a_last_ssrc = ntohl(packet->data->ssrc);
 			subscriber->context.a_base_ts_prev = subscriber->context.a_last_ts;
 			subscriber->context.a_base_ts = packet->timestamp;
 			subscriber->context.a_base_seq_prev = subscriber->context.a_last_seq;
 			subscriber->context.a_base_seq = packet->seq_number;
+		}
+		if(subscriber->context.a_seq_reset) {
+			/* audio_active false-->true? Fix sequence numbers */
+			subscriber->context.a_seq_reset = FALSE;
+			subscriber->context.a_base_seq_prev = subscriber->context.a_last_seq;
+			listener->context.a_base_seq = packet->seq_number;
 		}
 		/* Compute a coherent timestamp and sequence number */
 		subscriber->context.a_last_ts = (packet->timestamp-subscriber->context.a_base_ts)

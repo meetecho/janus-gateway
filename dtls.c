@@ -118,8 +118,9 @@ void *janus_dtls_sctp_setup_thread(void *data);
 #endif
 
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 /*
- * FIXME DTLS locking stuff to make OpenSSL thread safe
+ * DTLS locking stuff to make OpenSSL thread safe (not needed for 1.1.0)
  *
  * Note: this is an attempt to fix the infamous issue #316:
  * 		https://github.com/meetecho/janus-gateway/issues/316
@@ -164,6 +165,7 @@ static void janus_dtls_cb_openssl_lock(int mode, int type, const char *file, int
 		janus_mutex_unlock(&janus_dtls_locks[type]);
 	}
 }
+#endif
 
 
 static int janus_dtls_generate_keys(X509** certificate, EVP_PKEY** private_key) {
@@ -318,7 +320,9 @@ error:
 
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
-	/* FIXME First of all make OpenSSL thread safe (see note above on issue #316) */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+	JANUS_LOG(LOG_WARN, "OpenSSL pre-1.1.0\n");
+	/* First of all make OpenSSL thread safe (see note above on issue #316) */
 	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
 	int l=0;
 	for(l = 0; l < CRYPTO_num_locks(); l++) {
@@ -326,9 +330,16 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	}
 	CRYPTO_THREADID_set_callback(janus_dtls_cb_openssl_threadid);
 	CRYPTO_set_locking_callback(janus_dtls_cb_openssl_lock);
+#else
+	JANUS_LOG(LOG_WARN, "OpenSSL >= 1.1.0\n");
+#endif
 
 	/* Go on and create the DTLS context */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
+#else
+	ssl_ctx = SSL_CTX_new(DTLS_method());
+#endif
 	if(!ssl_ctx) {
 		JANUS_LOG(LOG_FATAL, "Ops, error creating DTLS context?\n");
 		return -1;
@@ -378,6 +389,11 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	*(lfp-1) = 0;
 	JANUS_LOG(LOG_INFO, "Fingerprint of our certificate: %s\n", local_fingerprint);
 	SSL_CTX_set_cipher_list(ssl_ctx, DTLS_CIPHERS);
+
+	if(janus_dtls_bio_filter_init() < 0) {
+		JANUS_LOG(LOG_FATAL, "Error initializing BIO filter\n");
+		return -8;
+	}
 
 	/* Initialize libsrtp */
 	if(srtp_init() != err_status_ok) {

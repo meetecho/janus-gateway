@@ -783,6 +783,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		json_object_set_new(calling, "username", json_string(session->username));
 		json_object_set_new(calling, "reason", json_string("Remote hangup"));
 		json_object_set_new(call, "result", calling);
+		gateway->close_pc(session->peer->handle);
 		int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, call, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(call);
@@ -990,7 +991,6 @@ static void *janus_videocall_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->username, session->peer->username);
 				JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 				/* Send SDP to our peer */
-				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", sdp);
 				json_t *call = json_object();
 				json_object_set_new(call, "videocall", json_string("event"));
 				json_t *calling = json_object();
@@ -1015,6 +1015,7 @@ static void *janus_videocall_handler(void *data) {
 					sdp = janus_string_replace(sdp, " 97", "");
 					sdp = janus_string_replace(sdp, " 98", "");
 				}
+				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", sdp);
 				g_atomic_int_set(&session->hangingup, 0);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, jsep);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -1227,6 +1228,7 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(calling, "username", json_string(session->username));
 				json_object_set_new(calling, "reason", json_string(hangup_text));
 				json_object_set_new(call, "result", calling);
+				gateway->close_pc(peer->handle);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
