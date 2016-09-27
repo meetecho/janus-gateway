@@ -1826,8 +1826,8 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	/* Media relaying can start now */
 	session->started = TRUE;
 	if(session->participant) {
-		/* If this is a publisher, notify all listeners about the fact they can
-		 * now subscribe; if this is a listener, instead, ask the publisher a FIR */
+		/* If this is a publisher, notify all subscribers about the fact they can
+		 * now subscribe; if this is a subscriber, instead, ask the publisher a FIR */
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			janus_videoroom_publisher *participant = (janus_videoroom_publisher *)session->participant;
 			/* Notify all other participants that there's a new boy in town */
@@ -2662,15 +2662,15 @@ static void *janus_videoroom_handler(void *data) {
 					gboolean audio_active = json_is_true(audio);
 					if(session->started && audio_active && !participant->audio_active) {
 						/* Audio was just resumed, try resetting the RTP headers for viewers */
-						janus_mutex_lock(&participant->listeners_mutex);
-						GSList *ps = participant->listeners;
+						janus_mutex_lock(&participant->subscribers_mutex);
+						GSList *ps = participant->subscribers;
 						while(ps) {
-							janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+							janus_videoroom_subscriber *l = (janus_videoroom_subscriber *)ps->data;
 							if(l)
 								l->context.a_seq_reset = TRUE;
 							ps = ps->next;
 						}
-						janus_mutex_unlock(&participant->listeners_mutex);
+						janus_mutex_unlock(&participant->subscribers_mutex);
 					}
 					participant->audio_active = audio_active;
 					JANUS_LOG(LOG_VERB, "Setting audio property: %s (room %"SCNu64", user %"SCNu64")\n", participant->audio_active ? "true" : "false", participant->room->room_id, participant->user_id);
@@ -2679,15 +2679,15 @@ static void *janus_videoroom_handler(void *data) {
 					gboolean video_active = json_is_true(video);
 					if(session->started && video_active && !participant->video_active) {
 						/* Video was just resumed, try resetting the RTP headers for viewers */
-						janus_mutex_lock(&participant->listeners_mutex);
-						GSList *ps = participant->listeners;
+						janus_mutex_lock(&participant->subscribers_mutex);
+						GSList *ps = participant->subscribers;
 						while(ps) {
-							janus_videoroom_listener *l = (janus_videoroom_listener *)ps->data;
+							janus_videoroom_subscriber *l = (janus_videoroom_subscriber *)ps->data;
 							if(l)
 								l->context.v_seq_reset = TRUE;
 							ps = ps->next;
 						}
-						janus_mutex_unlock(&participant->listeners_mutex);
+						janus_mutex_unlock(&participant->subscribers_mutex);
 					}
 					participant->video_active = video_active;
 					JANUS_LOG(LOG_VERB, "Setting video property: %s (room %"SCNu64", user %"SCNu64")\n", participant->video_active ? "true" : "false", participant->room->room_id, participant->user_id);
@@ -3168,7 +3168,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(pt >= 0)
 							janus_videoroom_sdp_a_format(audio_mline, 256, videoroom->acodec, pt, audio_mode);
 						if(audio_mline[0] == '\0' && pass == 1) {
-							/* Remove "pass == 1" if the listener also should get a line with port=0. */
+							/* Remove "pass == 1" if the subscriber also should get a line with port=0. */
 							g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
 						}
 					}
@@ -3197,7 +3197,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(pt >= 0)
 							janus_videoroom_sdp_v_format(video_mline, 512, videoroom->vcodec, pt, b, video_mode);
 						if(video_mline[0] == '\0' && pass == 1) {
-							/* Remove "pass == 1" if the listener also should get a line with port=0. */
+							/* Remove "pass == 1" if the subscriber also should get a line with port=0. */
 							g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
 						}
 					}
@@ -3245,7 +3245,7 @@ static void *janus_videoroom_handler(void *data) {
 				} else {
 					/* Store the participant's SDP for interested subscribers */
 					participant->sdp = newsdp;
-					/* We'll wait for the setup_media event before actually telling listeners */
+					/* We'll wait for the setup_media event before actually telling subscribers */
 				}
 			}
 		}
@@ -3348,7 +3348,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* audio_active false-->true? Fix sequence numbers */
 			subscriber->context.a_seq_reset = FALSE;
 			subscriber->context.a_base_seq_prev = subscriber->context.a_last_seq;
-			listener->context.a_base_seq = packet->seq_number;
+			subscriber->context.a_base_seq = packet->seq_number;
 		}
 		/* Compute a coherent timestamp and sequence number */
 		subscriber->context.a_last_ts = (packet->timestamp-subscriber->context.a_base_ts)
