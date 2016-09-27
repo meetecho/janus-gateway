@@ -238,6 +238,11 @@ static void janus_textroom_session_free(const janus_refcount *session_ref) {
 	g_free(session);
 }
 
+static void janus_textroom_participant_dereference(janus_textroom_participant *p) {
+	if(p)
+		janus_refcount_decrease(&p->ref);
+}
+
 static void janus_textroom_participant_destroy(janus_textroom_participant *participant) {
 	if(participant && g_atomic_int_compare_and_exchange(&participant->destroyed, 0, 1))
 		janus_refcount_decrease(&participant->ref);
@@ -393,7 +398,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 				JANUS_LOG(LOG_WARN, "HTTP backend specified, but libcurl support was not built in...\n");
 #endif
 			}
-			textroom->participants = g_hash_table_new(g_str_hash, g_str_equal);
+			textroom->participants = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, (GDestroyNotify)janus_textroom_participant_dereference);
 			textroom->destroyed = 0;
 			janus_mutex_init(&textroom->mutex);
 			janus_refcount_init(&textroom->ref, janus_textroom_room_free);
@@ -506,7 +511,7 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_textroom_session *session = (janus_textroom_session *)g_malloc0(sizeof(janus_textroom_session));
 	session->handle = handle;
-	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_participant_dereference);
 	session->destroyed = 0;
 	janus_mutex_init(&session->mutex);
 	janus_refcount_init(&session->ref, janus_textroom_session_free);
@@ -854,7 +859,9 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		participant->destroyed = 0;
 		janus_mutex_init(&participant->mutex);
 		janus_refcount_init(&participant->ref, janus_textroom_participant_free);
+		janus_refcount_increase(&participant->ref);
 		g_hash_table_insert(session->rooms, janus_uint64_dup(textroom->room_id), participant);
+		janus_refcount_increase(&participant->ref);
 		g_hash_table_insert(textroom->participants, participant->username, participant);
 		/* Notify all participants */
 		JANUS_LOG(LOG_VERB, "Notifying all participants about the new join\n");
