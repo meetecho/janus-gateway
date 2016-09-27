@@ -350,6 +350,11 @@ static GMainContext *sessions_watchdog_context = NULL;
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
 
+static void janus_ice_handle_dereference(janus_ice_handle *handle) {
+	if(handle)
+		janus_refcount_decrease(&handle->ref);
+}
+
 static void janus_session_free(const janus_refcount *session_ref) {
 	janus_session *session = janus_refcount_containerof(session_ref, janus_session, ref);
 	/* This session can be destroyed, free all the resources */
@@ -485,6 +490,45 @@ gint janus_session_destroy(janus_session *session) {
 	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return 0;
+	janus_session_handles_clear(session);
+	/* The session will actually be destroyed when the counter gets to 0 */
+	janus_refcount_decrease(&session->ref);
+
+	return 0;
+}
+
+janus_ice_handle *janus_session_handles_find(janus_session *session, guint64 handle_id) {
+	if(session == NULL)
+		return NULL;
+	janus_mutex_lock(&session->mutex);
+	janus_ice_handle *handle = session->ice_handles ? g_hash_table_lookup(session->ice_handles, &handle_id) : NULL;
+	if(handle != NULL) {
+		/* A successful find automatically increases the reference counter:
+		 * it's up to the caller to decrease it again when done */
+		janus_refcount_increase(&handle->ref);
+	}
+	janus_mutex_unlock(&session->mutex);
+	return handle;
+}
+
+void janus_session_handles_insert(janus_session *session, janus_ice_handle *handle) {
+	janus_mutex_lock(&session->mutex);
+	if(session->ice_handles == NULL)
+		session->ice_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_ice_handle_dereference);
+	janus_refcount_increase(&handle->ref);
+	g_hash_table_insert(session->ice_handles, janus_uint64_dup(handle->handle_id), handle);
+	janus_mutex_unlock(&session->mutex);
+}
+
+gint janus_session_handles_remove(janus_session *session, janus_ice_handle *handle) {
+	janus_mutex_lock(&session->mutex);
+	gint error = janus_ice_handle_destroy(session, handle);
+	g_hash_table_remove(session->ice_handles, &handle->handle_id);
+	janus_mutex_unlock(&session->mutex);
+	return error;
+}
+
+void janus_session_handles_clear(janus_session *session) {
 	janus_mutex_lock(&session->mutex);
 	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
 		GHashTableIter iter;
@@ -497,17 +541,28 @@ gint janus_session_destroy(janus_session *session) {
 				continue;
 			janus_ice_handle_destroy(session, handle);
 			g_hash_table_iter_remove(&iter);
-			janus_refcount_decrease(&handle->ref);
 		}
 	}
 	janus_mutex_unlock(&session->mutex);
-
-	/* The session will actually be destroyed when the counter gets to 0 */
-	janus_refcount_decrease(&session->ref);
-
-	return 0;
 }
 
+json_t *janus_session_handles_list_json(janus_session *session) {
+	json_t *list = json_array();
+	janus_mutex_lock(&session->mutex);
+	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, session->ice_handles);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_ice_handle *handle = value;
+			if(!handle)
+				continue;
+			json_array_append_new(list, json_integer(handle->handle_id));
+		}
+	}
+	janus_mutex_unlock(&session->mutex);
+	return list;
+}
 
 /* Requests management */
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
@@ -699,7 +754,7 @@ int janus_process_incoming_request(janus_request *request) {
 	session->last_activity = janus_get_monotonic_time();
 	handle = NULL;
 	if(handle_id > 0) {
-		handle = janus_ice_handle_find(session, handle_id);
+		handle = janus_session_handles_find(session, handle_id);
 		if(!handle) {
 			JANUS_LOG(LOG_ERR, "Couldn't find any handle %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, "No such handle %"SCNu64" in session %"SCNu64"", handle_id, session_id);
@@ -762,11 +817,7 @@ int janus_process_incoming_request(janus_request *request) {
 		int error = 0;
 		if((error = janus_ice_handle_attach_plugin(session, handle, plugin_t)) != 0) {
 			/* TODO Make error struct to pass verbose information */
-			janus_mutex_lock(&session->mutex);
-			janus_ice_handle_destroy(session, handle);
-			if(g_hash_table_remove(session->ice_handles, &handle_id))
-				janus_refcount_decrease(&handle->ref);
-			janus_mutex_unlock(&session->mutex);
+			janus_session_handles_remove(session, handle);
 			JANUS_LOG(LOG_ERR, "Couldn't attach to plugin '%s', error '%d'\n", plugin_text, error);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_ATTACH, "Couldn't attach to plugin: error '%d'", error);
 			goto jsondone;
@@ -814,12 +865,7 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin to detach from");
 			goto jsondone;
 		}
-		janus_mutex_lock(&session->mutex);
-		int error = janus_ice_handle_destroy(session, handle);
-		if(g_hash_table_remove(session->ice_handles, &handle_id))
-			janus_refcount_decrease(&handle->ref);
-		janus_mutex_unlock(&session->mutex);
-
+		int error = janus_session_handles_remove(session, handle);
 		if(error != 0) {
 			/* TODO Make error struct to pass verbose information */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "Couldn't detach from plugin: error '%d'", error);
@@ -2004,7 +2050,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 	}
 	handle = NULL;
 	if(handle_id > 0) {
-		handle = janus_ice_handle_find(session, handle_id);
+		handle = janus_session_handles_find(session, handle_id);
 		if(!handle) {
 			JANUS_LOG(LOG_ERR, "Couldn't find any handle %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_HANDLE_NOT_FOUND, "No such handle %"SCNu64" in session %"SCNu64"", handle_id, session_id);
@@ -2020,21 +2066,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		}
 		/* List handles */
-		json_t *list = json_array();
-		janus_mutex_lock(&session->mutex);
-		if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, session->ice_handles);
-			while (g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_ice_handle *handle = value;
-				if(handle == NULL) {
-					continue;
-				}
-				json_array_append_new(list, json_integer(handle->handle_id));
-			}
-		}
-		janus_mutex_unlock(&session->mutex);
+		json_t *list = janus_session_handles_list_json(session);
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -2937,11 +2969,7 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	if(!session)
 		return;
 	/* Destroy the handle */
-	janus_mutex_lock(&session->mutex);
-	janus_ice_handle_destroy(session, ice_handle);
-	if(g_hash_table_remove(session->ice_handles, &ice_handle->handle_id))
-		janus_refcount_decrease(&ice_handle->ref);
-	janus_mutex_unlock(&session->mutex);
+	janus_session_handles_remove(session, ice_handle);
 }
 
 

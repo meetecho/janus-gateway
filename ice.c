@@ -826,10 +826,10 @@ janus_ice_handle *janus_ice_handle_create(void *core_session) {
 	guint64 handle_id = 0;
 	while(handle_id == 0) {
 		handle_id = janus_random_uint64();
-		handle = janus_ice_handle_find(core_session, handle_id);
+		handle = janus_session_handles_find(session, handle_id);
 		if(handle != NULL) {
 			/* Handle ID already taken, try another one */
-			janus_refcount_decrease(&handle->ref);	/* janus_ice_handle_find increases it */
+			janus_refcount_decrease(&handle->ref);	/* janus_session_handles_find increases it */
 			handle_id = 0;
 		}
 	}
@@ -840,39 +840,14 @@ janus_ice_handle *janus_ice_handle_create(void *core_session) {
 		return NULL;
 	}
 	janus_refcount_init(&handle->ref, janus_ice_free);
+	janus_refcount_increase(&session->ref);
 	handle->session = core_session;
 	handle->created = janus_get_monotonic_time();
 	handle->handle_id = handle_id;
 	handle->app = NULL;
 	handle->app_handle = NULL;
 	janus_mutex_init(&handle->mutex);
-
-	/* Session and handle reference each other */
-	janus_refcount_increase(&session->ref);
-	janus_refcount_increase(&handle->ref);
-
-	/* Set up other stuff */
-	janus_mutex_lock(&session->mutex);
-	if(session->ice_handles == NULL)
-		session->ice_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	g_hash_table_insert(session->ice_handles, janus_uint64_dup(handle->handle_id), handle);
-	janus_mutex_unlock(&session->mutex);
-
-	return handle;
-}
-
-janus_ice_handle *janus_ice_handle_find(void *core_session, guint64 handle_id) {
-	if(core_session == NULL)
-		return NULL;
-	janus_session *session = (janus_session *)core_session;
-	janus_mutex_lock(&session->mutex);
-	janus_ice_handle *handle = session->ice_handles ? g_hash_table_lookup(session->ice_handles, &handle_id) : NULL;
-	if(handle != NULL) {
-		/* A successful find automatically increases the reference counter:
-		 * it's up to the caller to decrease it again when done */
-		janus_refcount_increase(&handle->ref);
-	}
-	janus_mutex_unlock(&session->mutex);
+	janus_session_handles_insert(session, handle);
 	return handle;
 }
 
