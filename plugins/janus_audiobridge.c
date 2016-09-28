@@ -2034,6 +2034,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 			json_object_set_new(info, "event", json_string("left"));
 			json_object_set_new(info, "room", json_integer(audiobridge->room_id));
 			json_object_set_new(info, "id", json_integer(participant->user_id));
+			json_object_set_new(info, "display", json_string(participant->display));
 			gateway->notify_event(session->handle, info);
 		}
 		janus_mutex_unlock(&audiobridge->mutex);
@@ -2520,6 +2521,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "event", json_string("configured"));
 				json_object_set_new(info, "room", json_integer(audiobridge->room_id));
 				json_object_set_new(info, "id", json_integer(participant->user_id));
+				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 				json_object_set_new(info, "quality", json_integer(participant->opus_complexity));
 				gateway->notify_event(session->handle, info);
@@ -2699,6 +2701,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "event", json_string("left"));
 				json_object_set_new(info, "room", json_integer(old_audiobridge->room_id));
 				json_object_set_new(info, "id", json_integer(participant->user_id));
+				json_object_set_new(info, "display", json_string(participant->display));
 				gateway->notify_event(session->handle, info);
 			}
 			janus_mutex_unlock(&old_audiobridge->mutex);
@@ -2848,6 +2851,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "event", json_string("left"));
 				json_object_set_new(info, "room", json_integer(audiobridge->room_id));
 				json_object_set_new(info, "id", json_integer(participant->user_id));
+				json_object_set_new(info, "display", json_string(participant->display));
 				gateway->notify_event(session->handle, info);
 			}
 			/* Done */
