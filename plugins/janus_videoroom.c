@@ -3853,7 +3853,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		if(listener->context.v_seq_reset) {
 			/* video_active false-->true? Fix sequence numbers */
 			listener->context.v_seq_reset = FALSE;
-			listener->context.v_base_seq_prev = listener->context.a_last_seq;
+			listener->context.v_base_seq_prev = listener->context.v_last_seq;
 			listener->context.v_base_seq = packet->seq_number;
 		}
 		/* Compute a coherent timestamp and sequence number */
