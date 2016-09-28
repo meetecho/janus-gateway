@@ -60,9 +60,10 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 	json_t *event = json_object();
 	json_object_set_new(event, "type", json_integer(type));
 	json_object_set_new(event, "timestamp", json_integer(janus_get_monotonic_time()));
-	json_object_set_new(event, "session_id", json_integer(session_id));
+	if(type != JANUS_EVENT_TYPE_CORE)	/* Core events don't have a session ID */
+		json_object_set_new(event, "session_id", json_integer(session_id));
 	json_t *body = NULL;
-	if(type != JANUS_EVENT_TYPE_WEBRTC)
+	if(type != JANUS_EVENT_TYPE_WEBRTC && type != JANUS_EVENT_TYPE_CORE)
 		body = json_object();
 
 	/* Each type may require different arguments */
@@ -118,6 +119,11 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			json_object_set_new(body, "plugin", json_string(name));
 			json_t *data = va_arg(args, json_t *);
 			json_object_set(body, "data", data);
+			break;
+		}
+		case JANUS_EVENT_TYPE_CORE: {
+			/* For core-related events, there's a json_t object with info on what happened */
+			body = va_arg(args, json_t *);
 			break;
 		}
 		default:

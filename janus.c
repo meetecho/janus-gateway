@@ -144,6 +144,7 @@ void janus_set_public_ip(const char *ip) {
 	public_ip = g_strdup(ip);
 }
 static volatile gint stop = 0;
+static gint stop_signal = 0;
 gint janus_is_stopping(void) {
 	return g_atomic_int_get(&stop);
 }
@@ -270,6 +271,7 @@ int lock_debug = 0;
 
 /*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
 static void janus_handle_signal(int signum) {
+	stop_signal = signum;
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
 			JANUS_PRINT("Stopping gateway, please wait...\n");
@@ -4043,9 +4045,24 @@ gint main(int argc, char *argv[])
 		} while(res == -1 && errno == EINTR);
 	}
 
+	/* If the Event Handlers mechanism is enabled, notify handlers that Janus just started */
+	if(janus_events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "status", json_string("started"));
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, 0, info);
+	}
+
 	while(!g_atomic_int_get(&stop)) {
 		/* Loop until we have to stop */
 		usleep(250000); /* A signal will cancel usleep() but not g_usleep() */
+	}
+
+	/* If the Event Handlers mechanism is enabled, notify handlers that Janus is hanging up */
+	if(janus_events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "status", json_string("shutdown"));
+		json_object_set_new(info, "signum", json_integer(stop_signal));
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, 0, info);
 	}
 
 	/* Done */

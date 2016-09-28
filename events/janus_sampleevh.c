@@ -161,6 +161,8 @@ int janus_sampleevh_init(const char *config_path) {
 											janus_flags_set(&janus_sampleevh.events_mask, JANUS_EVENT_TYPE_PLUGIN);
 										} else if(!strcasecmp(index, "transports")) {
 											janus_flags_set(&janus_sampleevh.events_mask, JANUS_EVENT_TYPE_TRANSPORT);
+										} else if(!strcasecmp(index, "core")) {
+											janus_flags_set(&janus_sampleevh.events_mask, JANUS_EVENT_TYPE_CORE);
 										} else {
 											JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
 										}
@@ -464,6 +466,24 @@ static void *janus_sampleevh_handler(void *data) {
 					 * exactly the same as that of the plugin related events
 					 * above, with a "transport" property instead of "plugin"
 					 * to contain the transport package name. */
+					break;
+				case JANUS_EVENT_TYPE_CORE:
+					/* This is a core related event. This can contain different
+					 * information about the health of the Janus instance, or
+					 * more generically on some events in the Janus life cycle
+					 * (e.g., when it's just been started or when a shutdown
+					 * has been requested). Considering the heterogeneous nature
+					 * of the information being reported, the content is always
+					 * a JSON object (event). Core events are the only ones
+					 * missing a session_id. Here's an example:
+						{
+						   "type": 256,
+						   "timestamp": 28381185382,
+						   "event": {
+							  "status": "started"
+						   }
+						}
+					*/
 					break;
 				default:
 					JANUS_LOG(LOG_WARN, "Unknown type of event '%d'\n", type);

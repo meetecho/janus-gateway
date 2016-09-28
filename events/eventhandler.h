@@ -141,6 +141,8 @@ static janus_eventhandler janus_fake_eventhandler handler plugin =
 #define JANUS_EVENT_TYPE_PLUGIN			(1 << 6)
 /*! \brief Events originated by transports (at the moment, all of them, no way to pick) */
 #define JANUS_EVENT_TYPE_TRANSPORT		(1 << 7)
+/*! \brief Events originated by the core for its own events (e.g., Janus starting/shutting down) */
+#define JANUS_EVENT_TYPE_CORE			(1 << 8)
 	/* TODO Others? */
 /*! \brief Mask with all events enabled (shortcut when you want to subscribe to everything) */
 #define JANUS_EVENT_TYPE_ALL		(0xffffffff)
