@@ -1547,7 +1547,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		if(video_port > 0) {
 			video_handle = janus_rtp_forwarder_add_helper(publisher, host, video_port, 1);
-			if(video_handle) {
+			if(video_handle)
 				janus_refcount_increase(&publisher->ref);
 		}
 		janus_mutex_unlock(&videoroom->mutex);
