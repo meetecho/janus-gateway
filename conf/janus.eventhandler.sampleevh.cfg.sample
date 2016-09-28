@@ -16,5 +16,6 @@ backend = http://your.webserver.here/and/a/path
 				; Address the plugin will send all events to as HTTP POST
 				; requests with an application/json payload. In case
 				; authentication is required to contact the backend, set
-				; the credentials in backend_auth as well.
-;backend_auth = myuser:mypwd
+				; the credentials as well (basic authentication only).
+;backend_user = myuser
+;backend_pwd = mypwd

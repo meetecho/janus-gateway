@@ -84,7 +84,8 @@ static void janus_sampleevh_event_free(json_t *event) {
 }
 
 /* Web backend to send the events to */
-static char *backend = NULL, *backend_auth = NULL;
+static char *backend = NULL;
+static char *backend_user = NULL, *backend_pwd = NULL;
 static size_t janus_sampleehv_write_data(void *buffer, size_t size, size_t nmemb, void *userp) {
 	return size*nmemb;
 }
@@ -122,8 +123,10 @@ int janus_sampleevh_init(const char *config_path) {
 			} else {
 				backend = g_strdup(item->value);
 				/* Any credentials needed? */
-				item = janus_config_get_item_drilldown(config, "general", "backend_auth");
-				backend_auth = (item && item->value) ? g_strdup(item->value) : NULL;
+				item = janus_config_get_item_drilldown(config, "general", "backend_user");
+				backend_user = (item && item->value) ? g_strdup(item->value) : NULL;
+				item = janus_config_get_item_drilldown(config, "general", "backend_pwd");
+				backend_pwd = (item && item->value) ? g_strdup(item->value) : NULL;
 				/* Which events should we subscribe to? */
 				item = janus_config_get_item_drilldown(config, "general", "events");
 				if(item && item->value) {
@@ -502,9 +505,9 @@ static void *janus_sampleevh_handler(void *data) {
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, event_text);
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, janus_sampleehv_write_data);
 		/* Any credentials? */
-		if(backend_auth != NULL) {
-			curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_ANY);
-			curl_easy_setopt(curl, CURLOPT_USERPWD, backend_auth);
+		if(backend_user != NULL && backend_pwd != NULL) {
+			curl_easy_setopt(curl, CURLOPT_USERNAME, backend_user);
+			curl_easy_setopt(curl, CURLOPT_PASSWORD, backend_pwd);
 		}
 		/* Don't wait forever (let's say, 10 seconds) */
 		curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
