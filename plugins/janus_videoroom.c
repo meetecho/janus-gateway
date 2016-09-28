@@ -1542,20 +1542,22 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		guint32 video_handle = 0;
 		if(audio_port > 0) {
 			audio_handle = janus_rtp_forwarder_add_helper(publisher, host, audio_port, 0);
+			if(audio_handle)
+				janus_refcount_increase(&publisher->ref);
 		}
 		if(video_port > 0) {
 			video_handle = janus_rtp_forwarder_add_helper(publisher, host, video_port, 1);
+			if(video_handle) {
+				janus_refcount_increase(&publisher->ref);
 		}
 		janus_mutex_unlock(&videoroom->mutex);
 		response = json_object();
 		json_t* rtp_stream = json_object();
 		if(audio_handle > 0) {
-			janus_refcount_increase(&publisher->ref);
 			json_object_set_new(rtp_stream, "audio_stream_id", json_integer(audio_handle));
 			json_object_set_new(rtp_stream, "audio", json_integer(audio_port));
 		}
 		if(video_handle > 0) {
-			janus_refcount_increase(&publisher->ref);
 			/* Send a FIR to the new RTP forward publisher */
 			char buf[20];
 			memset(buf, 0, 20);
@@ -1611,22 +1613,23 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		janus_refcount_increase(&publisher->ref);	/* Just to handle the message now */
 		janus_mutex_lock(&publisher->rtp_forwarders_mutex);
-		if(g_hash_table_lookup(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id)) == NULL) {
-			janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
+		if(!g_hash_table_remove(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id))) {
+			/* These two unrefs are related to the message handling */
+			janus_refcount_decrease(&publisher->ref);
 			janus_refcount_decrease(&videoroom->ref);
+			janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 			janus_mutex_unlock(&videoroom->mutex);
 			JANUS_LOG(LOG_ERR, "No such stream (%"SCNu32")\n", stream_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 			g_snprintf(error_cause, 512, "No such stream (%"SCNu32")", stream_id);
 			goto plugin_response;
 		}
-		g_hash_table_remove(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id));
-		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 		/* This unref is for the stopped forwarder */
 		janus_refcount_decrease(&publisher->ref);
 		/* These two unrefs are related to the message handling */
 		janus_refcount_decrease(&publisher->ref);
 		janus_refcount_decrease(&videoroom->ref);
+		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
 		janus_mutex_unlock(&videoroom->mutex);
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("stop_rtp_forward"));
@@ -2548,16 +2551,18 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *data = json_object_get(root, "data");
 				janus_mutex_lock(&videoroom->mutex);
 				janus_videoroom_publisher *publisher = g_hash_table_lookup(videoroom->participants, &feed_id);
-				janus_mutex_unlock(&videoroom->mutex);
 				if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) || publisher->sdp == NULL) {
 					janus_refcount_decrease(&videoroom->ref);
 					JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 					g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
+					janus_mutex_unlock(&videoroom->mutex);
 					goto error;
 				} else {
+					/* Increase the refcount before unlocking so that nobody can remove and free the publisher in the meantime. */
 					janus_refcount_increase(&publisher->ref);
 					janus_refcount_increase(&publisher->session->ref);
+					janus_mutex_unlock(&videoroom->mutex);
 					janus_videoroom_subscriber *subscriber = g_malloc0(sizeof(janus_videoroom_subscriber));
 					subscriber->session = session;
 					subscriber->room = videoroom;
@@ -2865,15 +2870,16 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				janus_mutex_lock(&subscriber->room->mutex);
 				janus_videoroom_publisher *publisher = g_hash_table_lookup(subscriber->room->participants, &feed_id);
-				janus_mutex_unlock(&subscriber->room->mutex);
 				if(publisher == NULL || g_atomic_int_get(&publisher->destroyed) || publisher->sdp == NULL) {
 					JANUS_LOG(LOG_ERR, "No such feed (%"SCNu64")\n", feed_id);
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 					g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
+					janus_mutex_unlock(&subscriber->room->mutex);
 					goto error;
 				}
 				janus_refcount_increase(&publisher->ref);
 				janus_refcount_increase(&publisher->session->ref);
+				janus_mutex_unlock(&subscriber->room->mutex);
 				gboolean paused = subscriber->paused;
 				subscriber->paused = TRUE;
 				/* Unsubscribe from the previous publisher */
