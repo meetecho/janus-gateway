@@ -987,6 +987,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Get rid of publisher */
 			janus_videoroom_publisher *p = (janus_videoroom_publisher *)session->participant;
+			session->participant = NULL;
 			if(p->room) {
 				janus_refcount_decrease(&p->room->ref);
 			}
@@ -994,6 +995,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			janus_videoroom_publisher_destroy(p);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)session->participant;
+			session->participant = NULL;
 			if(s->room) {
 				janus_refcount_decrease(&s->room->ref);
 			}

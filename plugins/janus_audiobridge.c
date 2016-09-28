@@ -1932,6 +1932,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 		return;
 	/* Get rid of participant */
 	janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
+	session->participant = NULL;
 	janus_mutex_lock(&rooms_mutex);
 	janus_audiobridge_room *audiobridge = participant->room;
 	gboolean removed = FALSE;
