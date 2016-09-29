@@ -2768,6 +2768,11 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "unpublished", json_string("ok"));
 			} else if(!strcasecmp(request_text, "leave")) {
+				/* Prepare an event to confirm the request */
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", json_integer(participant->room->room_id));
+				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
 				janus_videoroom_leave_or_unpublish(participant, TRUE);
 				/* Done */
@@ -3323,7 +3328,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		if(subscriber->context.v_seq_reset) {
 			/* video_active false-->true? Fix sequence numbers */
 			subscriber->context.v_seq_reset = FALSE;
-			subscriber->context.v_base_seq_prev = subscriber->context.a_last_seq;
+			subscriber->context.v_base_seq_prev = subscriber->context.v_last_seq;
 			subscriber->context.v_base_seq = packet->seq_number;
 		}
 		/* Compute a coherent timestamp and sequence number */
