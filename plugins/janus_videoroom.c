@@ -1544,13 +1544,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		guint32 video_handle = 0;
 		if(audio_port > 0) {
 			audio_handle = janus_rtp_forwarder_add_helper(publisher, host, audio_port, 0);
-			if(audio_handle)
-				janus_refcount_increase(&publisher->ref);
 		}
 		if(video_port > 0) {
 			video_handle = janus_rtp_forwarder_add_helper(publisher, host, video_port, 1);
-			if(video_handle)
-				janus_refcount_increase(&publisher->ref);
 		}
 		janus_mutex_unlock(&videoroom->mutex);
 		response = json_object();
@@ -1616,7 +1612,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_refcount_increase(&publisher->ref);	/* Just to handle the message now */
 		janus_mutex_lock(&publisher->rtp_forwarders_mutex);
 		if(!g_hash_table_remove(publisher->rtp_forwarders, GUINT_TO_POINTER(stream_id))) {
-			/* These two unrefs are related to the message handling */
 			janus_refcount_decrease(&publisher->ref);
 			janus_refcount_decrease(&videoroom->ref);
 			janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
@@ -1626,9 +1621,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such stream (%"SCNu32")", stream_id);
 			goto plugin_response;
 		}
-		/* This unref is for the stopped forwarder */
-		janus_refcount_decrease(&publisher->ref);
-		/* These two unrefs are related to the message handling */
 		janus_refcount_decrease(&publisher->ref);
 		janus_refcount_decrease(&videoroom->ref);
 		janus_mutex_unlock(&publisher->rtp_forwarders_mutex);
