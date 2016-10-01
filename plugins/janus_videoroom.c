@@ -1893,6 +1893,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	janus_videoroom_publisher *participant = (janus_videoroom_publisher *)session->participant;
 	if(participant == NULL || g_atomic_int_get(&participant->destroyed))
 		return;
+	/* Prevent the participant from beeing freed elsewhere. */
+	janus_refcount_increase(&participant->ref);
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		/* Update payload type and SSRC */
 		rtp_header *rtp = (rtp_header *)buf;
@@ -1924,6 +1926,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		packet.timestamp = ntohl(packet.data->timestamp);
 		packet.seq_number = ntohs(packet.data->seq_number);
 		/* Go */
+		janus_mutex_lock(&participant->subscribers_mutex);
 		g_slist_foreach(participant->subscribers, janus_videoroom_relay_rtp_packet, &packet);
 		
 		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
@@ -1971,7 +1974,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				}
 			}
 		}
+		janus_mutex_unlock(&participant->subscribers_mutex);
 	}
+	g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 }
 
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -2040,7 +2045,9 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+	janus_mutex_lock(&participant->subscribers_mutex);
 	g_slist_foreach(participant->subscribers, janus_videoroom_relay_data_packet, text);
+	janus_mutex_unlock(&participant->subscribers_mutex);
 	g_free(text);
 }
 
@@ -2166,6 +2173,13 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
 		janus_videoroom_publisher *participant = (janus_videoroom_publisher *)session->participant;
+		/* Get rid of the recorders, if available */
+		janus_mutex_lock(&participant->rec_mutex);
+		g_free(participant->recording_base);
+		janus_videoroom_recorder_close(participant);
+		janus_mutex_unlock(&participant->rec_mutex);
+		/* Use subscribers_mutex to protect fields used in janus_videoroom_incoming_rtp */
+		janus_mutex_lock(&participant->subscribers_mutex);
 		g_free(participant->sdp);
 		participant->sdp = NULL;
 		participant->firefox = FALSE;
@@ -2175,12 +2189,6 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
-		/* Get rid of the recorders, if available */
-		g_free(participant->recording_base);
-		janus_mutex_lock(&participant->rec_mutex);
-		janus_videoroom_recorder_close(participant);
-		janus_mutex_unlock(&participant->rec_mutex);
-		janus_mutex_lock(&participant->subscribers_mutex);
 		while(participant->subscribers) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)participant->subscribers->data;
 			if(s) {
