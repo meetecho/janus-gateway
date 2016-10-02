@@ -2325,6 +2325,7 @@ static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_vide
 static void *janus_videoroom_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VideoRoom handler thread\n");
 	janus_videoroom_message *msg = NULL;
+	janus_videoroom_publisher *participant = NULL;
 	int error_code = 0;
 	char error_cause[512];
 	json_t *root = NULL;
@@ -2663,7 +2664,7 @@ static void *janus_videoroom_handler(void *data) {
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Handle this publisher */
-			janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+			participant = janus_videoroom_session_get_publisher(session);
 			if(participant == NULL) {
 				JANUS_LOG(LOG_ERR, "Invalid participant instance\n");
 				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -2674,24 +2675,20 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Already in as a publisher on this handle\n");
 				error_code = JANUS_VIDEOROOM_ERROR_ALREADY_JOINED;
 				g_snprintf(error_cause, 512, "Already in as a publisher on this handle");
-				g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 				goto error;
 			} else if(!strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish")) {
 				if(!strcasecmp(request_text, "publish") && participant->sdp) {
 					JANUS_LOG(LOG_ERR, "Can't publish, already published\n");
 					error_code = JANUS_VIDEOROOM_ERROR_ALREADY_PUBLISHED;
 					g_snprintf(error_cause, 512, "Can't publish, already published");
-					g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 					goto error;
 				}
 				/* Configure (or publish a new feed) audio/video/bitrate for this publisher */
 				JANUS_VALIDATE_JSON_OBJECT(root, publish_parameters,
 					error_code, error_cause, TRUE,
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
-				if(error_code != 0) {
-					g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
+				if(error_code != 0)
 					goto error;
-				}
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *bitrate = json_object_get(root, "bitrate");
@@ -2789,7 +2786,6 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Can't unpublish, not published\n");
 					error_code = JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED;
 					g_snprintf(error_cause, 512, "Can't unpublish, not published");
-					g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 					goto error;
 				}
 				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
@@ -2812,7 +2808,6 @@ static void *janus_videoroom_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 				error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST;
 				g_snprintf(error_cause, 512, "Unknown request '%s'", request_text);
-				g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 				goto error;
 			}
 			g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
@@ -3020,19 +3015,17 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			} else {
 				/* This is a new publisher: is there room? */
-				janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+				participant = janus_videoroom_session_get_publisher(session);
 				janus_videoroom *videoroom = participant->room;
 				int count = 0;
 				GHashTableIter iter;
 				gpointer value;
 				if(!videoroom) {
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-					g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 					goto error;
 				}
 				if(g_atomic_int_get(&videoroom->destroyed)) {
 					error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
-					g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 					goto error;
 				}
 				janus_mutex_lock(&videoroom->mutex);
@@ -3049,7 +3042,6 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
 					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
 					g_snprintf(error_cause, 512, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
-					g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 					goto error;
 				}
 				/* Now prepare the SDP to give back */
@@ -3067,7 +3059,6 @@ static void *janus_videoroom_handler(void *data) {
 					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
 					g_snprintf(error_cause, 512, "Error parsing SDP: %s", sdp_parsing_error(parser));
 					sdp_parser_free(parser);
-					g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 					goto error;
 				}
 				sdp_media_t *m = parsed_sdp->sdp_media;
@@ -3297,12 +3288,14 @@ static void *janus_videoroom_handler(void *data) {
 				g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 			}
 		}
+		g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 		janus_videoroom_message_free(msg);
 
 		continue;
 		
 error:
 		{
+			g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
 			/* Prepare JSON error event */
 			json_t *event = json_object();
 			json_object_set_new(event, "videoroom", json_string("event"));
