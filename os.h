@@ -15,6 +15,7 @@
 #include <io.h>
 #include <ws2tcpip.h>
 #define IFF_RUNNING 0xFFFFFFFF
+#define SO_REUSEPORT SO_REUSEADDR
 #endif
 
 #ifdef _WIN32

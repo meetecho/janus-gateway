@@ -706,7 +706,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 				GList *ptypes = NULL;
 				sdp_attribute_t *a = m->m_attributes;
 				while(a) {
-					if(strstr(a->a_value, "red/90000") || strstr(a->a_value, "ulpfec/90000") || strstr(a->a_value, "rtx/90000")) {
+					if(a->a_value && (strstr(a->a_value, "red/90000") || strstr(a->a_value, "ulpfec/90000") || strstr(a->a_value, "rtx/90000"))) {
 						int ptype = atoi(a->a_value);
 						ptypes = g_list_append(ptypes, GINT_TO_POINTER(ptype));
 						JANUS_LOG(LOG_VERB, "Will remove payload type %d\n", ptype);
@@ -739,7 +739,7 @@ char *janus_sdp_anonymize(const char *sdp) {
 						a = m->m_attributes;
 						sdp_attribute_t *old = NULL;
 						while(a) {
-							int a_pt = atoi(a->a_value);
+							int a_pt = a->a_value ? atoi(a->a_value) : -1;
 							if(a_pt == ptype) {
 								if(!old) {
 									m->m_attributes = a->a_next;

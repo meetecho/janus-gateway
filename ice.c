@@ -475,7 +475,7 @@ static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gbo
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	json_object_set_new(event, "type", json_string(video ? "video" : "audio"));
-	json_object_set_new(event, "receiving", json_string(up ? "true" : "false"));
+	json_object_set_new(event, "receiving", up ? json_true() : json_false());
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
@@ -1765,7 +1765,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 	/* What is this? */
 	if (janus_is_dtls(buf) || (!janus_is_rtp(buf) && !janus_is_rtcp(buf))) {
 		/* This is DTLS: either handshake stuff, or data coming from SCTP DataChannels */
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
+		JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Looks like DTLS!\n", handle->handle_id);
 		janus_dtls_srtp_incoming_msg(component->dtls, buf, len);
 		/* Update stats (TODO Do the same for the last second window as well) */
 		component->in_stats.data_packets++;
