@@ -192,7 +192,8 @@ and following packages for x86 version (mingw32) to build 32-bit binary:
 		mingw-w64-i686-libnice mingw-w64-i686-dlfcn \
 		mingw-w64-i686-libwebsockets mingw-w64-i686-opus \
 		mingw-w64-i686-libogg mingw-w64-i686-jansson \
-		mingw-w64-i686-curl mingw-w64-i686-cmake mingw-w64-i686-ffmpeg
+		mingw-w64-i686-curl mingw-w64-i686-cmake mingw-w64-i686-ffmpeg \
+		mingw-w64-i686-libsrtp mingw-w64-i686-usrsctp mingw-w64-i686-rabbitmq-c
 
 Similarly you can install packages for x86_64 version (mingw64) to build 64-bit
 binary:
@@ -201,7 +202,9 @@ binary:
 		mingw-w64-x86_64-libnice  mingw-w64-x86_64-dlfcn \
 		mingw-w64-x86_64-libwebsockets mingw-w64-x86_64-opus \
 		mingw-w64-x86_64-libogg mingw-w64-x86_64-jansson \
-		mingw-w64-x86_64-curl mingw-w64-x86_64-cmake mingw-w64-x86_64-ffmpeg
+		mingw-w64-x86_64-curl mingw-w64-x86_64-cmake mingw-w64-x86_64-ffmpeg \
+		mingw-w64-x86_64-libsrtp mingw-w64-x86_64-usrsctp \
+		mingw-w64-x86_64-rabbitmq-c
 
 There are some dependencies that you have to compile and install manually
 because its binaries are not accessible from pacman repository yet.
@@ -229,33 +232,6 @@ Sofia-SIP (x86, x86_64):
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0003-inet-pton-ntop-fix.patch
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0004-add-su_win32_port.patch
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-sofia-sip-git/0005-add-no-undefined-flag.patch
-	makepkg-mingw -sLfi --noconfirm
-
-libsrtp (x86, x86_64):
-
-	mkdir mingw-w64-libsrtp
-	cd mingw-w64-libsrtp
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/PKGBUILD
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0001-DEV_URANDOM-removal.patch
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0002-symbolic-link-creation-removal-for-mingw-platform.patch
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/0003-fix-path-for-getopt_s.patch
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libsrtp/words.txt
-	makepkg-mingw -sLfi --noconfirm
-
-usrsctp (x86, x86_64):
-
-	mkdir mingw-w64-usrsctp
-	cd mingw-w64-usrsctp
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-usrsctp/PKGBUILD
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-usrsctp/0001-add-mingw-support.patch
-	makepkg-mingw -sLfi --noconfirm
-
-rabbitmq-c (x86, x86_64):
-
-	mkdir mingw-w64-rabbitmq-c
-	cd mingw-w64-rabbitmq-c
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-rabbitmq-c/PKGBUILD
-	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-rabbitmq-c/0001-librabbitmq-CMakeLists.txt.patch
 	makepkg-mingw -sLfi --noconfirm
 
 * *Note:*
