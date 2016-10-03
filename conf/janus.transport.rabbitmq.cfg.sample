@@ -16,6 +16,8 @@
 ; is disabled by default, so set enable=yes if you want to use it.
 [general]
 enable = no					; Whether the support must be enabled
+json = indented				; Whether the JSON messages should be indented (default),
+							; plain (no indentation) or compact (no indentation and no spaces)
 host = localhost			; The address of the RabbitMQ server
 ;port = 5672				; The port of the RabbitMQ server (5672 by default)
 ;username = guest			; Username to use to authenticate, if needed

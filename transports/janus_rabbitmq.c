@@ -105,6 +105,9 @@ static janus_transport_callbacks *gateway = NULL;
 static gboolean rmq_janus_api_enabled = FALSE;
 static gboolean rmq_admin_api_enabled = FALSE;
 
+/* JSON serialization options */
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+
 
 /* RabbitMQ client session: we only create a single one as of now */
 typedef struct janus_rabbitmq_client {
@@ -162,9 +165,27 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 	if(config != NULL)
 		janus_config_print(config);
 
+	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "json");
+	if(item && item->value) {
+		/* Check how we need to format/serialize the JSON output */
+		if(!strcasecmp(item->value, "indented")) {
+			/* Default: indented, we use three spaces for that */
+			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+		} else if(!strcasecmp(item->value, "plain")) {
+			/* Not indented and no new lines, but still readable */
+			json_format = JSON_INDENT(0) | JSON_PRESERVE_ORDER;
+		} else if(!strcasecmp(item->value, "compact")) {
+			/* Compact, so no spaces between separators */
+			json_format = JSON_COMPACT | JSON_PRESERVE_ORDER;
+		} else {
+			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
+			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
+		}
+	}
+
 	/* Handle configuration, starting from the server details */
 	char *rmqhost = NULL;
-	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "host");
+	item = janus_config_get_item_drilldown(config, "general", "host");
 	if(item && item->value)
 		rmqhost = g_strdup(item->value);
 	else
@@ -591,7 +612,7 @@ void *janus_rmq_out_thread(void *data) {
 		if(!rmq_client->destroy && !g_atomic_int_get(&stopping) && response->payload) {
 			janus_mutex_lock(&rmq_client->mutex);
 			/* Gotcha! Convert json_t to string */
-			char *payload_text = json_dumps(response->payload, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+			char *payload_text = json_dumps(response->payload, json_format);
 			json_decref(response->payload);
 			response->payload = NULL;
 			JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
