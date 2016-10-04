@@ -427,11 +427,7 @@ struct janus_plugin_result {
  * @param[in] text String to add to the result (for JANUS_PLUGIN_OK_WAIT or JANUS_PLUGIN_ERROR), if any
  * @param[in] content The json_t object with the content of the result, if any
  * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
-<<<<<<< HEAD
 JANUS_API janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content);
-=======
-janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content);
->>>>>>> upstream/master
 
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
  * @param[in] result The janus_plugin_result instance to destroy
