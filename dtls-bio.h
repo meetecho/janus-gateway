@@ -21,6 +21,9 @@
 /*! \brief OpenSSL BIO filter for fragmentation initialization */
 JANUS_API int janus_dtls_bio_filter_init(void);
 
+/*! \brief OpenSSL BIO filter for fragmentation initialization */
+JANUS_API int janus_dtls_bio_filter_init(void);
+
 /*! \brief OpenSSL BIO filter for fragmentation constructor */
 JANUS_API BIO_METHOD *BIO_janus_dtls_filter(void);
 
