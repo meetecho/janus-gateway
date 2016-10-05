@@ -739,12 +739,19 @@ void janus_websockets_destroy(void) {
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_WEBSOCKETS_NAME);
 }
 
-static void janus_websockets_destroy_client(janus_websockets_client *ws_client) {
+static void janus_websockets_destroy_client(
+	janus_websockets_client *ws_client,
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+	struct lws *wsi,
+#else
+	struct libwebsocket *wsi,
+#endif
+	const char *log_prefix) { 
 	if(!ws_client || !g_atomic_int_compare_and_exchange(&ws_client->destroyed, 0, 1))
 		return;
 	/* Cleanup */
 	janus_mutex_lock(&ws_client->mutex);
-	JANUS_LOG(LOG_INFO, "[WSS-%p] Destroying WebSocket client\n", wsi);
+	JANUS_LOG(LOG_INFO, "[%s-%p] Destroying WebSocket client\n", log_prefix, wsi);
 #ifndef HAVE_LIBWEBSOCKETS_NEWAPI
 	ws_client->context = NULL;
 #endif
@@ -1150,13 +1157,13 @@ static int janus_websockets_callback(
 		}
 		case LWS_CALLBACK_CLOSED: {
 			JANUS_LOG(LOG_VERB, "[WSS-%p] WS connection closed\n", wsi);
-			janus_websockets_destroy_client(ws_client);
+			janus_websockets_destroy_client(ws_client, wsi, "WSS");
 			JANUS_LOG(LOG_VERB, "[WSS-%p]   -- closed\n", wsi);
 			return 0;
 		}
 		case LWS_CALLBACK_WSI_DESTROY: {
 			JANUS_LOG(LOG_VERB, "[WSS-%p] WS connection destroyed\n", wsi);
-			janus_websockets_destroy_client(ws_client);
+			janus_websockets_destroy_client(ws_client, wsi, "WSS");
 			JANUS_LOG(LOG_VERB, "[WSS-%p]   -- destroyed\n", wsi);
 			return 0;
 		}
@@ -1390,38 +1397,14 @@ static int janus_websockets_admin_callback(
 		}
 		case LWS_CALLBACK_CLOSED: {
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WS connection closed\n", wsi);
-			if(ws_client != NULL) {
-				g_atomic_int_set(&ws_client->destroyed, 1);
-				/* Cleanup */
-				janus_mutex_lock(&ws_client->mutex);
-				JANUS_LOG(LOG_INFO, "[AdminWSS-%p] Destroying WebSocket client\n", wsi);
-#ifndef HAVE_LIBWEBSOCKETS_NEWAPI
-				ws_client->context = NULL;
-#endif
-				ws_client->wsi = NULL;
-				/* Notify core */
-				gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
-				ws_client->ts->transport_p = NULL;
-				janus_transport_session_destroy(ws_client->ts);
-				/* Remove messages queue too, if needed */
-				if(ws_client->messages != NULL) {
-					char *response = NULL;
-					while((response = g_async_queue_try_pop(ws_client->messages)) != NULL) {
-						g_free(response);
-					}
-					g_async_queue_unref(ws_client->messages);
-				}
-				/* ... and the shared buffers */
-				g_free(ws_client->incoming);
-				ws_client->incoming = NULL;
-				g_free(ws_client->buffer);
-				ws_client->buffer = NULL;
-				ws_client->buflen = 0;
-				ws_client->bufpending = 0;
-				ws_client->bufoffset = 0;
-				janus_mutex_unlock(&ws_client->mutex);
-			}
+			janus_websockets_destroy_client(ws_client, wsi, "AdminWSS");
 			JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- closed\n", wsi);
+			return 0;
+		}
+		case LWS_CALLBACK_WSI_DESTROY: {
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p] WS connection destroyed\n", wsi);
+			janus_websockets_destroy_client(ws_client, wsi, "AdminWSS");
+			JANUS_LOG(LOG_VERB, "[AdminWSS-%p]   -- destroyed\n", wsi);
 			return 0;
 		}
 		default:
