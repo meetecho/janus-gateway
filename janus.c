@@ -347,7 +347,7 @@ void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, ch
 void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, int len);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
-void janus_plugin_notify_event(janus_plugin_session *plugin_session, json_t *event);
+void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_plugin_push_event,
@@ -2979,29 +2979,33 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	janus_mutex_unlock(&session->mutex);
 }
 
-void janus_plugin_notify_event(janus_plugin_session *plugin_session, json_t *event) {
+void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event) {
 	/* A plugin asked to notify an event to the handlers */
-	if(!event || !json_is_object(event))
+	if(!plugin || !event || !json_is_object(event))
 		return;
-	if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
-		json_decref(event);
-		return;
+	guint64 session_id = 0, handle_id = 0;
+	if(plugin_session != NULL) {
+		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
+			json_decref(event);
+			return;
+		}
+		janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+		if(!ice_handle) {
+			json_decref(event);
+			return;
+		}
+		handle_id = ice_handle->handle_id;
+		janus_session *session = (janus_session *)ice_handle->session;
+		if(!session) {
+			json_decref(event);
+			return;
+		}
+		session_id = session->session_id;
 	}
-	janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
-	if(!ice_handle) {
-		json_decref(event);
-		return;
-	}
-	janus_session *session = (janus_session *)ice_handle->session;
-	if(!session) {
-		json_decref(event);
-		return;
-	}
-	janus_plugin *plugin_t = (janus_plugin *)ice_handle->app;
 	/* Notify event handlers */
 	if(janus_events_is_enabled()) {
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_PLUGIN,
-			session->session_id, ice_handle->handle_id, plugin_t->get_package(), event);
+			session_id, handle_id, plugin->get_package(), event);
 	} else {
 		json_decref(event);
 	}

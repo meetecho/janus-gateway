@@ -373,9 +373,10 @@ struct janus_callbacks {
 	gboolean (* const events_is_enabled)(void);
 	/*! \brief Callback to notify an event to the registered and subscribed event handlers
 	 * \note Don't unref the event object, the core will do that for you
-	 * @param[in] handle The plugin/gateway session originating the event
+	 * @param[in] plugin The plugin originating the event
+	 * @param[in] handle The plugin/gateway session originating the event, if any
 	 * @param[in] event The event to notify as a Jansson json_t object */
-	void (* const notify_event)(janus_plugin_session *handle, json_t *event);
+	void (* const notify_event)(janus_plugin *plugin, janus_plugin_session *handle, json_t *event);
 
 };
 

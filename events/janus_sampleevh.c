@@ -443,7 +443,12 @@ static void *janus_sampleevh_handler(void *data) {
 					 * plugin (e.g., "janus.plugin.echotest") and a "data"
 					 * object that contains whatever the plugin decided to
 					 * notify you about, that will always vary from plugin to
-					 * plugin. Here's an example:
+					 * plugin. Besides, notice that "session_id" and "handle_id"
+					 * may or may not be present: when they are, you'll know
+					 * the event has been triggered within the context of a
+					 * specific handle session with the plugin; when they're
+					 * not, the plugin sent an event out of context of a
+					 * specific session it is handling. Here's an example:
 						{
 						   "type": 64,
 						   "timestamp": 3570336031,

@@ -942,7 +942,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(info, "username", json_string(username_text));
 			if(display_text)
 				json_object_set_new(info, "display", json_string(display_text));
-			gateway->notify_event(handle, info);
+			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
 	} else if(!strcasecmp(request_text, "leave")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
@@ -1007,7 +1007,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(info, "event", json_string("leave"));
 			json_object_set_new(info, "room", json_integer(room_id));
 			json_object_set_new(info, "username", json_string(participant->username));
-			gateway->notify_event(handle, info);
+			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
 		g_free(participant->username);
 		g_free(participant->display);
@@ -1204,7 +1204,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(handle, info);
+			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
 	} else if(!strcasecmp(request_text, "exists")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
@@ -1324,7 +1324,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(handle, info);
+			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
 		}
 	} else {
 		JANUS_LOG(LOG_ERR, "Unsupported request %s\n", request_text);

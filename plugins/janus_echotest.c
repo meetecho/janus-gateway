@@ -951,7 +951,7 @@ static void *janus_echotest_handler(void *data) {
 					json_object_set_new(recording, "video", json_string(session->vrc->filename));
 				json_object_set_new(info, "recording", recording);
 			}
-			gateway->notify_event(session->handle, info);
+			gateway->notify_event(&janus_echotest_plugin, session->handle, info);
 		}
 
 		/* Done, on to the next request */

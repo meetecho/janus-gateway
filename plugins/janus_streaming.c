@@ -1568,7 +1568,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "id", json_integer(mp->id));
 			json_object_set_new(info, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
-			gateway->notify_event(session->handle, info);
+			gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 		}
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
@@ -1653,7 +1653,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "id", json_integer(id_value));
-			gateway->notify_event(session->handle, info);
+			gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		/* Send info back */
@@ -2186,7 +2186,7 @@ static void *janus_streaming_handler(void *data) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("starting"));
 				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "pause")) {
 			if(session->mountpoint == NULL) {
@@ -2204,7 +2204,7 @@ static void *janus_streaming_handler(void *data) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("pausing"));
 				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "switch")) {
 			/* This listener wants to switch to a different mountpoint
@@ -2272,7 +2272,7 @@ static void *janus_streaming_handler(void *data) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("switching"));
 				json_object_set_new(info, "id", json_integer(id_value));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "stop")) {
 			if(session->stopping || !session->started) {
@@ -2300,7 +2300,7 @@ static void *janus_streaming_handler(void *data) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("stopping"));
 				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */

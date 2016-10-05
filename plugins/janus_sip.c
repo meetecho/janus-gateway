@@ -754,7 +754,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("sip-out"));
 					json_object_set_new(info, "sip", json_string(sofia_log));
-					gateway->notify_event(session->handle, info);
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				} else {
 					JANUS_LOG(LOG_WARN, "Couldn't find a session associated to this message, dropping it...\n%s", sofia_log);
 				}
@@ -1676,7 +1676,7 @@ static void *janus_sip_handler(void *data) {
 					json_object_set_new(info, "event", json_string("registered"));
 					json_object_set_new(info, "identity", json_string(session->account.identity));
 					json_object_set_new(info, "type", json_string("guest"));
-					gateway->notify_event(session->handle, info);
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			}
 		} else if(!strcasecmp(request_text, "call")) {
@@ -1846,7 +1846,7 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(info, "callee", json_string(uri_text));
 				json_object_set_new(info, "call-id", json_string(callid));
 				json_object_set_new(info, "sdp", json_string(sdp));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
 			/* Send INVITE */
 			session->callee = g_strdup(uri_text);
@@ -1979,7 +1979,7 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(info, "event", json_string("accepted"));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
 			/* Send 200 OK */
 			g_atomic_int_set(&session->hangingup, 0);
@@ -2043,7 +2043,7 @@ static void *janus_sip_handler(void *data) {
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				json_object_set_new(info, "code", json_integer(response_code));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
 			g_free(session->callee);
 			session->callee = NULL;
@@ -2374,7 +2374,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("sip-in"));
 			json_object_set_new(info, "sip", json_string(msg_str));
-			gateway->notify_event(session->handle, info);
+			gateway->notify_event(&janus_sip_plugin, session->handle, info);
 		}
 	}
 
@@ -2422,7 +2422,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					if(session->callid)
 						json_object_set_new(info, "call-id", json_string(session->callid));
 					json_object_set_new(info, "code", json_integer(status));
-					gateway->notify_event(session->handle, info);
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			} else if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
@@ -2447,7 +2447,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "code", json_integer(status));
 					if(phrase)
 						json_object_set_new(info, "reason", json_string(phrase));
-					gateway->notify_event(session->handle, info);
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
 				if(session->callid)
@@ -2529,7 +2529,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 						json_t *info = json_object();
 						json_object_set_new(info, "event", json_string("missed_call"));
 						json_object_set_new(info, "caller", json_string(caller_text));
-						gateway->notify_event(session->handle, info);
+						gateway->notify_event(&janus_sip_plugin, session->handle, info);
 					}
 				}
 				sdp_parser_free(parser);
@@ -2578,7 +2578,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_object_set_new(info, "username", json_string(session->callee));
 				if(sip->sip_from && sip->sip_from->a_display)
 					json_object_set_new(info, "displayname", json_string(sip->sip_from->a_display));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
@@ -2739,7 +2739,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				json_object_set_new(info, "username", json_string(session->callee));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
 			break;
 		}
@@ -2767,7 +2767,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "identity", json_string(session->account.identity));
 					if(session->account.proxy)
 						json_object_set_new(info, "proxy", json_string(session->account.proxy));
-					gateway->notify_event(session->handle, info);
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			} else if(status == 401) {
 				/* Get scheme/realm from 401 error */
@@ -2809,7 +2809,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					json_object_set_new(info, "code", json_integer(status));
 					if(phrase)
 						json_object_set_new(info, "reason", json_string(phrase ? phrase : ""));
-					gateway->notify_event(session->handle, info);
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			}
 			break;

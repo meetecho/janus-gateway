@@ -1430,7 +1430,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "room", json_integer(audiobridge->room_id));
-			gateway->notify_event(session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 		}
 		janus_mutex_unlock(&rooms_mutex);
 		goto plugin_response;
@@ -1523,7 +1523,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("destroyed"));
 			json_object_set_new(info, "room", json_integer(room_id));
-			gateway->notify_event(session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 		}
 		JANUS_LOG(LOG_VERB, "Waiting for the mixer thread to complete...\n");
 		audiobridge->destroyed = janus_get_monotonic_time();
@@ -2035,7 +2035,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 			json_object_set_new(info, "room", json_integer(audiobridge->room_id));
 			json_object_set_new(info, "id", json_integer(participant->user_id));
 			json_object_set_new(info, "display", json_string(participant->display));
-			gateway->notify_event(session->handle, info);
+			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 		}
 		janus_mutex_unlock(&audiobridge->mutex);
 	}
@@ -2379,7 +2379,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "id", json_integer(user_id));
 				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "configure")) {
 			/* Handle this participant */
@@ -2524,7 +2524,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
 				json_object_set_new(info, "quality", json_integer(participant->opus_complexity));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "changeroom")) {
 			/* The participant wants to leave the current room and join another one without reconnecting (e.g., a sidebar) */
@@ -2702,7 +2702,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "room", json_integer(old_audiobridge->room_id));
 				json_object_set_new(info, "id", json_integer(participant->user_id));
 				json_object_set_new(info, "display", json_string(participant->display));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			janus_mutex_unlock(&old_audiobridge->mutex);
 			/* Stop recording, if we were (since this is a new room, a new recording would be required, so a new configure) */
@@ -2779,7 +2779,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "id", json_integer(participant->user_id));
 				json_object_set_new(info, "display", json_string(participant->display));
 				json_object_set_new(info, "muted", participant->muted ? json_true() : json_false());
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			janus_mutex_unlock(&audiobridge->mutex);
 			janus_mutex_unlock(&rooms_mutex);
@@ -2852,7 +2852,7 @@ static void *janus_audiobridge_handler(void *data) {
 				json_object_set_new(info, "room", json_integer(audiobridge->room_id));
 				json_object_set_new(info, "id", json_integer(participant->user_id));
 				json_object_set_new(info, "display", json_string(participant->display));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			/* Done */
 			if(audiobridge != NULL)

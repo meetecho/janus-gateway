@@ -714,7 +714,7 @@ static void *janus_voicemail_handler(void *data) {
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("starting"));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
@@ -737,7 +737,7 @@ static void *janus_voicemail_handler(void *data) {
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("done"));
-				gateway->notify_event(session->handle, info);
+				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
 			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
