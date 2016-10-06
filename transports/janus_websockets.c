@@ -744,13 +744,13 @@ void janus_websockets_destroy(void) {
 }
 
 static void janus_websockets_destroy_client(
-	janus_websockets_client *ws_client,
+		janus_websockets_client *ws_client,
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-	struct lws *wsi,
+		struct lws *wsi,
 #else
-	struct libwebsocket *wsi,
+		struct libwebsocket *wsi,
 #endif
-	const char *log_prefix) {
+		const char *log_prefix) {
 	if(!ws_client || ws_client->destroy)
 		return;
 	/* Notify core */
