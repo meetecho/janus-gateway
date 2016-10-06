@@ -790,7 +790,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
 			janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
-			videoroom->room_id = atol(cat->name);
+			videoroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);
@@ -2996,6 +2996,11 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "unpublished", json_string("ok"));
 			} else if(!strcasecmp(request_text, "leave")) {
+				/* Prepare an event to confirm the request */
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", json_integer(participant->room->room_id));
+				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
 				janus_videoroom_leave_or_unpublish(participant, TRUE);
 				/* Done */
@@ -3946,7 +3951,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		if(listener->context.v_seq_reset) {
 			/* video_active false-->true? Fix sequence numbers */
 			listener->context.v_seq_reset = FALSE;
-			listener->context.v_base_seq_prev = listener->context.a_last_seq;
+			listener->context.v_base_seq_prev = listener->context.v_last_seq;
 			listener->context.v_base_seq = packet->seq_number;
 		}
 		/* Compute a coherent timestamp and sequence number */

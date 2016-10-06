@@ -963,7 +963,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			}
 			/* Create the audio bridge room */
 			janus_audiobridge_room *audiobridge = g_malloc0(sizeof(janus_audiobridge_room));
-			audiobridge->room_id = atol(cat->name);
+			audiobridge->room_id = g_ascii_strtoull(cat->name, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);

@@ -2409,6 +2409,23 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
+ * \section pi Raspberry Pi resources
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="http://linux-projects.org">Linux Projects</a></td>
+ * 		<td><a href="http://www.linux-projects.org/rpi-videoconference-demo-os/">Rpi VideoConference OS</a></td>
+ *		<td>Ready-to-use OS for video conferences over the web from a Raspberry Pi</td>
+ * </tr>
+ * <tr>
+ * 		<td><a href="http://linux-projects.org">Linux Projects</a></td>
+ * 		<td><a href="http://www.linux-projects.org/uv4l/tutorials/janus-gateway/">UV4L, User Space Video Collection</a></td>
+ * 		<td>Software modules providing solutions for encrypted live data, audio and video streaming, mirroring, conferencing</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
  * \section thirdplugins Third-party plugins
  *
  * <table class="table table-striped">

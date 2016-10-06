@@ -1481,7 +1481,7 @@ void janus_recordplay_update_recordings_list(void) {
 			continue;
 		}
 		janus_config_category *cat = (janus_config_category *)cl->data;
-		guint64 id = atol(cat->name);
+		guint64 id = g_ascii_strtoull(cat->name, NULL, 0);
 		if(id == 0) {
 			JANUS_LOG(LOG_WARN, "Invalid ID, skipping...\n");
 			janus_config_destroy(nfo);
