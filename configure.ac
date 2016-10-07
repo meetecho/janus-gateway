@@ -64,6 +64,12 @@ AC_ARG_ENABLE([rabbitmq],
               [],
               [enable_rabbitmq=yes])
 
+AC_ARG_ENABLE([mqtt],
+              [AS_HELP_STRING([--disable-mqtt],
+                              [Disable MQTT integration])],
+              [],
+              [enable_mqtt=yes])
+
 AC_ARG_ENABLE([unix-sockets],
               [AS_HELP_STRING([--disable-unix-sockets],
                               [Disable Unix Sockets integration])],
@@ -258,7 +264,20 @@ AC_CHECK_LIB([rabbitmq],
                AS_IF([test "x$enable_rabbitmq" = "xyes"],
                      [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq])])
              ])
+AC_CHECK_LIB([paho-mqtt3a],
+             [MQTTAsync_create],
+             [
+               AS_IF([test "x$enable_mqtt" = "xyes"],
+               [
+                  AC_DEFINE(HAVE_MQTT)
+               ])
+             ],
+             [
+               AS_IF([test "x$enable_mqtt" = "xyes"],
+                     [AC_MSG_ERROR([paho c client not found. See README.md for installation instructions or use --disable-mqtt])])
+             ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
+AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -442,6 +461,9 @@ AM_COND_IF([ENABLE_WEBSOCKETS],
 AM_COND_IF([ENABLE_RABBITMQ],
 	[echo "    RabbitMQ:              yes"],
 	[echo "    RabbitMQ:              no"])
+AM_COND_IF([ENABLE_MQTT],
+	[echo "    MQTT:                  yes"],
+	[echo "    MQTT:                  no"])
 AM_COND_IF([ENABLE_PFUNIX],
 	[echo "    Unix Sockets:          yes"],
 	[echo "    Unix Sockets:          no"])
