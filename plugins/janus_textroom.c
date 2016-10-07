@@ -412,7 +412,7 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *post = janus_config_get_item(cat, "post");
 			/* Create the text room */
 			janus_textroom_room *textroom = g_malloc0(sizeof(janus_textroom_room));
-			textroom->room_id = atol(cat->name);
+			textroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
 				description = g_strdup(desc->value);

@@ -1516,8 +1516,6 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"]     No component %d in stream %d??\n", handle->handle_id, component_id, stream_id);
 		return;
 	}
-	if(component->selected_pair)
-		g_free(component->selected_pair);
 	char sp[200];
 #ifndef HAVE_LIBNICE_TCP
 	g_snprintf(sp, 200, "%s <-> %s", local, remote);
@@ -1565,7 +1563,9 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 		laddress, lport, ltype, local->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp",
 		raddress, rport, rtype, remote->transport == NICE_CANDIDATE_TRANSPORT_UDP ? "udp" : "tcp");
 #endif
+	gchar *prev_selected_pair = component->selected_pair;
 	component->selected_pair = g_strdup(sp);
+	g_clear_pointer(&prev_selected_pair, g_free);
 	/* Now we can start the DTLS handshake (FIXME This was on the 'connected' state notification, before) */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"]   Component is ready enough, starting DTLS handshake...\n", handle->handle_id);
 	/* Have we been here before? (might happen, when trickling) */
@@ -3364,9 +3364,10 @@ void *janus_ice_send_thread(void *data) {
 					/* Append REMB */
 					memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
 					/* Free old packet and update */
-					g_free(pkt->data);
+					char *prev_data = pkt->data;
 					pkt->data = rtcpbuf;
 					pkt->length = rrlen+pkt->length;
+					g_clear_pointer(&prev_data, g_free);
 				}
 				/* FIXME Copy in a buffer and fix SSRC */
 				char sbuf[JANUS_BUFSIZE];
