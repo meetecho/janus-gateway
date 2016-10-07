@@ -2350,10 +2350,10 @@ void janus_transport_close(gpointer key, gpointer value, gpointer user_data) {
 }
 
 void janus_transportso_close(gpointer key, gpointer value, gpointer user_data) {
-	void *transport = (janus_transport *)value;
+	void *transport = value;
 	if(!transport)
 		return;
-	/* FIXME We need access to what was returned by dlopen, not the transport instance */
+	/* FIXME We don't dlclose transports to be sure we can detect leaks */
 	//~ dlclose(transport);
 }
 
@@ -2440,10 +2440,10 @@ void janus_plugin_close(gpointer key, gpointer value, gpointer user_data) {
 }
 
 void janus_pluginso_close(gpointer key, gpointer value, gpointer user_data) {
-	void *plugin = (janus_plugin *)value;
+	void *plugin = value;
 	if(!plugin)
 		return;
-	/* FIXME We need access to what was returned by dlopen, not the plugin instance */
+	/* FIXME We don't dlclose plugins to be sure we can detect leaks */
 	//~ dlclose(plugin);
 }
 
