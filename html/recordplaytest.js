@@ -234,7 +234,7 @@ $(document).ready(function() {
 									$('#video').removeClass('hide').show();
 									if($('#thevideo').length === 0)
 										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay muted="muted"/>');
-									attachMediaStream($('#thevideo').get(0), stream);
+									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									$("#thevideo").get(0).muted = "muted";
 									$("#videobox").parent().block({
 										message: '<b>Publishing...</b>',
@@ -272,7 +272,7 @@ $(document).ready(function() {
 											spinner.stop();
 										spinner = null;
 									});
-									attachMediaStream($('#thevideo').get(0), stream);
+									Janus.attachMediaStream($('#thevideo').get(0), stream);
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");

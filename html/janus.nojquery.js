@@ -99,7 +99,8 @@ Janus.init = function(options) {
 		Janus.listDevices = function(callback) {
 			callback = (typeof callback == "function") ? callback : Janus.noop;
 			if(navigator.mediaDevices) {
-				getUserMedia({ audio: true, video: true }, function(stream) {
+				navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+				.then(function(stream) {
 					navigator.mediaDevices.enumerateDevices().then(function(devices) {
 						Janus.debug(devices);
 						callback(devices);
@@ -116,7 +117,8 @@ Janus.init = function(options) {
 							}
 						} catch(e) {}
 					});
-				}, function(err) {
+				})
+				.catch(function(err) {
 					Janus.error(err);
 					callback([]);
 				});
@@ -125,6 +127,33 @@ Janus.init = function(options) {
 				callback([]);
 			}
 		}
+		// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
+		Janus.attachMediaStream = function(element, stream) {
+			if(adapter.browserDetails.browser === 'chrome') {
+				var chromever = adapter.browserDetails.version;
+				if(chromever >= 43) {
+					element.srcObject = stream;
+				} else if(typeof element.src !== 'undefined') {
+					element.src = URL.createObjectURL(stream);
+				} else {
+					Janus.error("Error attaching stream to element");
+				}
+			} else {
+				element.srcObject = stream;
+			}
+		};
+		Janus.reattachMediaStream = function(to, from) {
+			if(adapter.browserDetails.browser === 'chrome') {
+				var chromever = adapter.browserDetails.version;
+				if(chromever >= 43) {
+					to.srcObject = from.srcObject;
+				} else if(typeof element.src !== 'undefined') {
+					to.src = from.src;
+				}
+			} else {
+				to.srcObject = from.srcObject;
+			}
+		};
 		// Prepare a helper method to send AJAX requests in a syntax similar to jQuery (at least for what we care)
 		Janus.ajax = function(params) {
 			// Check params
@@ -179,7 +208,8 @@ Janus.init = function(options) {
 				params.error(XHR, 'error', '');
 			};
 		};
-		// Detect tab close
+		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
+		var oldOBF = window.onbeforeunload;
 		window.onbeforeunload = function() {
 			Janus.log("Closing window");
 			for(var s in Janus.sessions) {
@@ -189,6 +219,8 @@ Janus.init = function(options) {
 					Janus.sessions[s].destroy();
 				}
 			}
+			if(oldOBF && typeof oldOBF == "function")
+				oldOBF();
 		}
 		function addJsList(srcArray) {
 			if (!srcArray || !Array.isArray(srcArray) || srcArray.length == 0) {
@@ -209,8 +241,9 @@ Janus.init = function(options) {
 		}
 		function addJs(src,done) {
 			if(src === 'adapter.js') {
-				if(window.getUserMedia && window.RTCPeerConnection) {
+				if(navigator.getUserMedia && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection) {
 					// Already loaded
+					Janus.debug(src + " already loaded, skipping");
 					done();
 					return;
 				}
@@ -232,7 +265,8 @@ Janus.init = function(options) {
 
 // Helper method to check whether WebRTC is supported by this browser
 Janus.isWebrtcSupported = function() {
-	return window.RTCPeerConnection && window.getUserMedia;
+	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null &&
+		navigator.getUserMedia !== undefined && navigator.getUserMedia !== null;
 };
 
 
@@ -278,7 +312,7 @@ function Janus(gatewayCallbacks) {
 	}
 	var iceServers = gatewayCallbacks.iceServers;
 	if(iceServers === undefined || iceServers === null)
-		iceServers = [{"url": "stun:stun.l.google.com:19302"}];
+		iceServers = [{urls: "stun:stun.l.google.com:19302"}];
 	// Whether IPv6 candidates should be gathered
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
@@ -1235,7 +1269,7 @@ function Janus(gatewayCallbacks) {
 		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
-					(webrtcDetectedBrowser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
+					(adapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
 				Janus.log("End of candidates.");
 				config.iceDone = true;
 				if(config.trickle === true) {
@@ -1463,8 +1497,8 @@ function Janus(gatewayCallbacks) {
 							.then(function(stream) { gsmCallback(null, stream); })
 							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
-					if(window.navigator.userAgent.match('Chrome')) {
-						var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
+					if(adapter.browserDetails.browser === 'chrome') {
+						var chromever = adapter.browserDetails.version;
 						var maxver = 33;
 						if(window.navigator.userAgent.match('Linux'))
 							maxver = 35;	// "known" crash in chrome 34 and 35 on linux
@@ -1663,7 +1697,7 @@ function Janus(gatewayCallbacks) {
 		Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = null;
-		if(webrtcDetectedBrowser == "firefox" || webrtcDetectedBrowser == "edge") {
+		if(adapter.browserDetails.browser == "firefox" || adapter.browserDetails.browser == "edge") {
 			mediaConstraints = {
 				'offerToReceiveAudio':isAudioRecvEnabled(media),
 				'offerToReceiveVideo':isVideoRecvEnabled(media)
@@ -1721,7 +1755,7 @@ function Janus(gatewayCallbacks) {
 		var config = pluginHandle.webrtcStuff;
 		Janus.log("Creating answer (iceDone=" + config.iceDone + ")");
 		var mediaConstraints = null;
-		if(webrtcDetectedBrowser == "firefox" || webrtcDetectedBrowser == "edge") {
+		if(adapter.browserDetails.browser == "firefox" || adapter.browserDetails.browser == "edge") {
 			mediaConstraints = {
 				'offerToReceiveAudio':isAudioRecvEnabled(media),
 				'offerToReceiveVideo':isVideoRecvEnabled(media)
@@ -1803,7 +1837,7 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		// Start getting the volume, if getStats is supported
-		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {	// FIXME
+		if(config.pc.getStats && adapter.browserDetails.browser == "chrome") {	// FIXME
 			if(config.remoteStream === null || config.remoteStream === undefined) {
 				Janus.warn("Remote stream unavailable");
 				return 0;
@@ -1918,7 +1952,7 @@ function Janus(gatewayCallbacks) {
 		if(config.pc === null || config.pc === undefined)
 			return "Invalid PeerConnection";
 		// Start getting the bitrate, if getStats is supported
-		if(config.pc.getStats && webrtcDetectedBrowser == "chrome") {
+		if(config.pc.getStats && adapter.browserDetails.browser == "chrome") {
 			// Do it the Chrome way
 			if(config.remoteStream === null || config.remoteStream === undefined) {
 				Janus.warn("Remote stream unavailable");
@@ -1954,7 +1988,7 @@ function Janus(gatewayCallbacks) {
 				return "0 kbits/sec";	// We don't have a bitrate value yet
 			}
 			return config.bitrate.value;
-		} else if(config.pc.getStats && webrtcDetectedBrowser == "firefox") {
+		} else if(config.pc.getStats && adapter.browserDetails.browser == "firefox") {
 			// Do it the Firefox way
 			if(config.remoteStream === null || config.remoteStream === undefined
 					|| config.remoteStream.stream === null || config.remoteStream.stream === undefined) {
@@ -2122,7 +2156,7 @@ function Janus(gatewayCallbacks) {
 
 	function isVideoSendEnabled(media) {
 		Janus.debug("isVideoSendEnabled:", media);
-		if(webrtcDetectedBrowser == "edge") {
+		if(adapter.browserDetails.browser == "edge") {
 			Janus.warn("Edge doesn't support compatible video yet");
 			return false;
 		}
@@ -2137,7 +2171,7 @@ function Janus(gatewayCallbacks) {
 
 	function isVideoRecvEnabled(media) {
 		Janus.debug("isVideoRecvEnabled:", media);
-		if(webrtcDetectedBrowser == "edge") {
+		if(adapter.browserDetails.browser == "edge") {
 			Janus.warn("Edge doesn't support compatible video yet");
 			return false;
 		}
@@ -2152,7 +2186,7 @@ function Janus(gatewayCallbacks) {
 
 	function isDataEnabled(media) {
 		Janus.debug("isDataEnabled:", media);
-		if(webrtcDetectedBrowser == "edge") {
+		if(adapter.browserDetails.browser == "edge") {
 			Janus.warn("Edge doesn't support data channels yet");
 			return false;
 		}
