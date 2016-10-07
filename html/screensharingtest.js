@@ -224,7 +224,7 @@ $(document).ready(function() {
 									if($('#screenvideo').length === 0) {
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 									}
-									attachMediaStream($('#screenvideo').get(0), stream);
+									Janus.attachMediaStream($('#screenvideo').get(0), stream);
 									$("#screencapture").parent().block({
 										message: '<b>Publishing...</b>',
 										css: {
@@ -465,7 +465,7 @@ function newRemoteFeed(id, display) {
 						spinner.stop();
 					spinner = null;
 				});
-				attachMediaStream($('#screenvideo').get(0), stream);
+				Janus.attachMediaStream($('#screenvideo').get(0), stream);
 			},
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
