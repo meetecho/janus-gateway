@@ -33,14 +33,14 @@
  * @param[in] ipv6 Whether IPv6 candidates must be negotiated or not
  * @param[in] rtp_min_port Minimum port to use for RTP/RTCP, if a range is to be used
  * @param[in] rtp_max_port Maximum port to use for RTP/RTCP, if a range is to be used */
-void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
+JANUS_API void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t rtp_min_port, uint16_t rtp_max_port);
 /*! \brief ICE stuff de-initialization */
-void janus_ice_deinit(void);
+JANUS_API void janus_ice_deinit(void);
 /*! \brief Method to force Janus to use a STUN server when gathering candidates
  * @param[in] stun_server STUN server address to use
  * @param[in] stun_port STUN port to use
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port);
+JANUS_API int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port);
 /*! \brief Method to force Janus to use a TURN server when gathering candidates
  * @param[in] turn_server TURN server address to use
  * @param[in] turn_port TURN port to use
@@ -48,7 +48,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port);
  * @param[in] turn_user TURN username, if needed
  * @param[in] turn_pwd TURN password, if needed
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd);
+JANUS_API int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *turn_type, gchar *turn_user, gchar *turn_pwd);
 /*! \brief Method to force Janus to contact a TURN REST API server to get a TURN service to use when gathering candidates.
  * The TURN REST API takes precedence over any static credential passed via janus_ice_set_turn_server
  * @note Requires libcurl to be available, and a working TURN REST API backend (see turnrest.h)
@@ -56,35 +56,35 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
  * @param[in] api_key API key to use, if required
  * @param[in] api_method HTTP method to use (POST by default)
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method);
+JANUS_API int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
-char *janus_ice_get_stun_server(void);
+JANUS_API char *janus_ice_get_stun_server(void);
 /*! \brief Method to get the STUN server port
  * @returns The currently used STUN server port, if available, or 0 if not */
-uint16_t janus_ice_get_stun_port(void);
+JANUS_API uint16_t janus_ice_get_stun_port(void);
 /*! \brief Method to get the TURN server IP address
  * @returns The currently used TURN server IP address, if available, or NULL if not */
-char *janus_ice_get_turn_server(void);
+JANUS_API char *janus_ice_get_turn_server(void);
 /*! \brief Method to get the TURN server port
  * @returns The currently used TURN server port, if available, or 0 if not */
-uint16_t janus_ice_get_turn_port(void);
+JANUS_API uint16_t janus_ice_get_turn_port(void);
 /*! \brief Method to get the specified TURN REST API backend, if any
  * @returns The currently specified  TURN REST API backend, if available, or NULL if not */
-char *janus_ice_get_turn_rest_api(void);
+JANUS_API char *janus_ice_get_turn_rest_api(void);
 /*! \brief Helper method to force Janus to overwrite all host candidates with the public IP */
-void janus_ice_enable_nat_1_1(void);
+JANUS_API void janus_ice_enable_nat_1_1(void);
 /*! \brief Method to add an interface/IP to the enforce list for ICE (that is, only gather candidates from these and ignore the others)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance which interface must be used (e.g., the main interface connected to the internet),
  * adding it to the enforce list will prevent libnice from gathering candidates from other interfaces.
  * If you're interested in excluding interfaces explicitly, instead, check janus_ice_ignore_interface.
  * @param[in] ip Interface/IP to enforce (e.g., 192.168. or eth0) */
-void janus_ice_enforce_interface(const char *ip);
+JANUS_API void janus_ice_enforce_interface(const char *ip);
 /*! \brief Method to check whether an interface is currently in the enforce list for ICE (that is, won't have candidates)
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the enforce list, false otherwise */
-gboolean janus_ice_is_enforced(const char *ip);
+JANUS_API gboolean janus_ice_is_enforced(const char *ip);
 /*! \brief Method to add an interface/IP to the ignore list for ICE (that is, don't gather candidates)
  * \note This method is especially useful to speed up the ICE gathering process on the gateway: in fact,
  * if you know in advance an interface is not going to be used (e.g., one of those created by VMware),
@@ -92,54 +92,54 @@ gboolean janus_ice_is_enforced(const char *ip);
  * Unlike the enforce list, the ignore list also accepts IP addresses, partial or complete.
  * If you're interested in only using specific interfaces, instead, check janus_ice_enforce_interface.
  * @param[in] ip Interface/IP to ignore (e.g., 192.168. or eth1) */
-void janus_ice_ignore_interface(const char *ip);
+JANUS_API void janus_ice_ignore_interface(const char *ip);
 /*! \brief Method to check whether an interface/IP is currently in the ignore list for ICE (that is, won't have candidates)
  * @param[in] ip Interface/IP to check (e.g., 192.168.244.1 or eth1)
  * @returns true if the interface/IP is in the ignore list, false otherwise */
-gboolean janus_ice_is_ignored(const char *ip);
+JANUS_API gboolean janus_ice_is_ignored(const char *ip);
 /*! \brief Method to check whether ICE Lite mode is enabled or not (still WIP)
  * @returns true if ICE-TCP support is enabled/supported, false otherwise */
-gboolean janus_ice_is_ice_lite_enabled(void);
+JANUS_API gboolean janus_ice_is_ice_lite_enabled(void);
 /*! \brief Method to check whether ICE-TCP support is enabled/supported or not (still WIP)
  * @returns true if ICE-TCP support is enabled/supported, false otherwise */
-gboolean janus_ice_is_ice_tcp_enabled(void);
+JANUS_API gboolean janus_ice_is_ice_tcp_enabled(void);
 /*! \brief Method to check whether IPv6 candidates are enabled/supported or not (still WIP)
  * @returns true if IPv6 candidates are enabled/supported, false otherwise */
-gboolean janus_ice_is_ipv6_enabled(void);
+JANUS_API gboolean janus_ice_is_ipv6_enabled(void);
 /*! \brief Method to check whether BUNDLE support is forced or not
  * @returns true if BUNDLE is mandatory, false otherwise */
-gboolean janus_ice_is_bundle_forced(void);
+JANUS_API gboolean janus_ice_is_bundle_forced(void);
 /*! \brief Method to set the BUNDLE support mode (true means mandatory, false means optional)
  * @param forced whether BUNDLE support must be forced or not (default is false) */
-void janus_ice_force_bundle(gboolean forced);
+JANUS_API void janus_ice_force_bundle(gboolean forced);
 /*! \brief Method to check whether rtcp-mux support is forced or not
  * @returns true if rtcp-mux is mandatory, false otherwise */
-gboolean janus_ice_is_rtcpmux_forced(void);
+JANUS_API gboolean janus_ice_is_rtcpmux_forced(void);
 /*! \brief Method to set the rtcp-mux support mode (true means mandatory, false means optional)
  * @param forced whether rtcp-mux support must be forced or not (default is false) */
-void janus_ice_force_rtcpmux(gboolean forced);
+JANUS_API void janus_ice_force_rtcpmux(gboolean forced);
 /*! \brief Method to get the port that has been assigned for the RTCP component blackhole in case of rtcp-mux
  * @returns The blackhole port */
-gint janus_ice_get_rtcpmux_blackhole_port(void);
+JANUS_API gint janus_ice_get_rtcpmux_blackhole_port(void);
 /*! \brief Method to modify the max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @param[in] mnq The new max NACK value */
-void janus_set_max_nack_queue(uint mnq);
+JANUS_API void janus_set_max_nack_queue(uint mnq);
 /*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @returns The current max NACK value */
-uint janus_get_max_nack_queue(void);
+JANUS_API uint janus_get_max_nack_queue(void);
 /*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
  * @returns True if libnice debugging is enabled, FALSE otherwise */
-gboolean janus_ice_is_ice_debugging_enabled(void);
+JANUS_API gboolean janus_ice_is_ice_debugging_enabled(void);
 /*! \brief Method to enable libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-void janus_ice_debugging_enable(void);
+JANUS_API void janus_ice_debugging_enable(void);
 /*! \brief Method to disable libnice debugging (the default) */
-void janus_ice_debugging_disable(void);
+JANUS_API void janus_ice_debugging_disable(void);
 
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
  * @param[in] state The libnice ICE state
  * @returns A string representation of the libnice ICE state */
-const gchar *janus_get_ice_state_name(gint state);
+JANUS_API const gchar *janus_get_ice_state_name(gint state);
 
 
 /*! \brief Janus ICE handle/session */
@@ -217,18 +217,18 @@ typedef struct janus_ice_stats_item {
 
 /*! \brief Quick helper method to reset stats
  * @param stats The janus_ice_stats instance to reset */
-void janus_ice_stats_reset(janus_ice_stats *stats);
+JANUS_API void janus_ice_stats_reset(janus_ice_stats *stats);
 
 /*! \brief Quick helper method to notify a WebRTC hangup through the Janus API
  * @param handle The janus_ice_handle instance this event refers to
  * @param reason A description of why this happened */
-void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason);
+JANUS_API void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason);
 
 
 /*! \brief Quick helper method to check if a plugin session associated with a Janus handle is still valid
  * @param plugin_session The janus_plugin_session instance to validate
  * @returns true if the plugin session is valid, false otherwise */
-gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session);
+JANUS_API gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session);
 
 
 /*! \brief A helper struct for determining when to send NACKs */
@@ -442,16 +442,16 @@ struct janus_ice_trickle {
  * @param[in] transaction The Janus API ID of the original trickle request
  * @param[in] candidate The trickle candidate, as a Jansson object
  * @returns a pointer to the new instance, if successful, NULL otherwise */
-janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate);
+JANUS_API janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *transaction, json_t *candidate);
 /*! \brief Helper method to parse trickle candidates
  * @param[in] handle The Janus ICE handle this candidate belongs to
  * @param[in] candidate The trickle candidate to parse, as a Jansson object
  * @param[in,out] error Error string describing the failure, if any
  * @returns 0 in case of success, any code from apierror.h in case of failure */
-gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const char **error);
+JANUS_API gint janus_ice_trickle_parse(janus_ice_handle *handle, json_t *candidate, const char **error);
 /*! \brief Helper method to destroy a janus_ice_trickle instance
  * @param[in] trickle The janus_ice_trickle instance to destroy */
-void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
+JANUS_API void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 ///@}
 
 
@@ -461,41 +461,41 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 /*! \brief Method to create a new Janus ICE handle
  * @param[in] gateway_session The gateway/peer session this ICE handle will belong to
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session);
+JANUS_API janus_ice_handle *janus_ice_handle_create(void *gateway_session);
 /*! \brief Method to find an existing Janus ICE handle from its ID
  * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id);
+JANUS_API janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id);
 /*! \brief Method to attach a Janus ICE handle to a plugin
  * \details This method is very important, as it allows plugins to send/receive media (RTP/RTCP) to/from a WebRTC peer.
  * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
  * @param[in] plugin The plugin the ICE handle needs to be attached to
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, janus_plugin *plugin);
+JANUS_API gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, janus_plugin *plugin);
 /*! \brief Method to destroy a Janus ICE handle
  * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID to destroy
  * @returns 0 in case of success, a negative integer otherwise */
-gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id);
+JANUS_API gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id);
 /*! \brief Method to actually free the resources allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance to free */
-void janus_ice_free(janus_ice_handle *handle);
+JANUS_API void janus_ice_free(janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup */
-void janus_ice_webrtc_hangup(janus_ice_handle *handle);
+JANUS_API void janus_ice_webrtc_hangup(janus_ice_handle *handle);
 /*! \brief Method to only free the WebRTC related resources allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */
-void janus_ice_webrtc_free(janus_ice_handle *handle);
+JANUS_API void janus_ice_webrtc_free(janus_ice_handle *handle);
 /*! \brief Method to only free resources related to a specific ICE stream allocated by a Janus ICE handle
  * @param[in] container The map containing the list of all streams for the handle
  * @param[in] stream The Janus ICE stream instance to free */
-void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream);
+JANUS_API void janus_ice_stream_free(GHashTable *container, janus_ice_stream *stream);
 /*! \brief Method to only free resources related to a specific ICE component allocated by a Janus ICE handle
  * @param[in] container The map containing the list of all components for the stream
  * @param[in] component The Janus ICE component instance to free */
-void janus_ice_component_free(GHashTable *container, janus_ice_component *component);
+JANUS_API void janus_ice_component_free(GHashTable *container, janus_ice_component *component);
 ///@}
 
 
@@ -506,14 +506,14 @@ void janus_ice_component_free(GHashTable *container, janus_ice_component *compon
  * @param[in] agent The libnice agent for which the callback applies
  * @param[in] stream_id The stream ID for which the callback applies
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_candidate_gathering_done (NiceAgent *agent, guint stream_id, gpointer ice);
+JANUS_API void janus_ice_cb_candidate_gathering_done (NiceAgent *agent, guint stream_id, gpointer ice);
 /*! \brief libnice callback to notify when the state of a component changes for an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
  * @param[in] stream_id The stream ID for which the callback applies
  * @param[in] component_id The component ID for which the callback applies
  * @param[in] state New ICE state of the component
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_component_state_changed (NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice);
+JANUS_API void janus_ice_cb_component_state_changed (NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice);
 /*! \brief libnice callback to notify when a pair of candidates has been selected for an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
  * @param[in] stream_id The stream ID for which the callback applies
@@ -522,9 +522,9 @@ void janus_ice_cb_component_state_changed (NiceAgent *agent, guint stream_id, gu
  * @param[in] remote Remote candidate (or foundation)
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
 #ifndef HAVE_LIBNICE_TCP
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice);
+JANUS_API void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice);
 #else
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice);
+JANUS_API void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice);
 #endif
 /*! \brief libnice callback to notify when a new remote candidate has been discovered for an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
@@ -533,9 +533,9 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
  * @param[in] foundation Candidate (or foundation)
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
 #ifndef HAVE_LIBNICE_TCP
-void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
+JANUS_API void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
 #else
-void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice);
+JANUS_API void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice);
 #endif
 /*! \brief libnice callback to notify when data has been received by an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
@@ -544,30 +544,30 @@ void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candida
  * @param[in] len Length of the data buffer
  * @param[in] buf Data buffer
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_nice_recv (NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice);
+JANUS_API void janus_ice_cb_nice_recv (NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice);
 
 /*! \brief Gateway RTP callback, called when a plugin has an RTP packet to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] video Whether this is an audio or a video frame
  * @param[in] buf The packet data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len);
+JANUS_API void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len);
 /*! \brief Gateway RTCP callback, called when a plugin has an RTCP message to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] video Whether this is related to an audio or a video stream
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len);
+JANUS_API void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len);
 /*! \brief Gateway SCTP/DataChannel callback, called when a plugin has data to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buf The message data (buffer)
  * @param[in] len The buffer lenght */
-void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
+JANUS_API void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
 /*! \brief Plugin SCTP/DataChannel callback, called by the SCTP stack when when there's data for a plugin
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] buffer The message data (buffer)
  * @param[in] length The buffer lenght */
-void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
+JANUS_API void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
 ///@}
 
 
@@ -575,9 +575,9 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
  */
 ///@{
 /*! \brief Janus ICE handle thread */
-void *janus_ice_thread(void *data);
+JANUS_API void *janus_ice_thread(void *data);
 /*! \brief Janus ICE thread for sending outgoing packets */
-void *janus_ice_send_thread(void *data);
+JANUS_API void *janus_ice_send_thread(void *data);
 /*! \brief Method to locally set up the ICE candidates (initialization and gathering)
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] offer Whether this is for an OFFER or an ANSWER
@@ -588,23 +588,23 @@ void *janus_ice_send_thread(void *data);
  * @param[in] rtcpmux Whether rtcp-mux is supported or not
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int bundle, int rtcpmux, int trickle);
+JANUS_API int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int bundle, int rtcpmux, int trickle);
 /*! \brief Method to add local candidates to the gateway SDP
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in,out] sdp The handle description the gateway is preparing
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
-void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id);
+JANUS_API void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
-void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id, guint component_id);
+JANUS_API void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id, guint component_id);
 /*! \brief Callback to be notified when the DTLS handshake for a specific component has been completed
  * \details This method also decides when to notify attached plugins about the availability of a reliable PeerConnection
  * @param[in] handle The Janus ICE handle this callback refers to
  * @param[in] component The Janus ICE component that is now ready to be used */
-void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component);
+JANUS_API void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component);
 ///@}
 
 #endif

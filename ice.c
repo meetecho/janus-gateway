@@ -13,11 +13,14 @@
  * \ingroup protocols
  * \ref protocols
  */
- 
+
+#ifndef _WIN32
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#endif
+#include <sys/time.h>
 #include <fcntl.h>
 #include <stun/usages/bind.h>
 #include <nice/debug.h>
@@ -31,6 +34,7 @@
 #include "rtp.h"
 #include "rtcp.h"
 #include "apierror.h"
+#include "utils.h"
 
 /* STUN server/port, if any */
 static char *janus_stun_server = NULL;
@@ -122,7 +126,7 @@ void janus_ice_force_rtcpmux(gboolean forced) {
 			JANUS_LOG(LOG_WARN, "Error creating RTCP component blackhole socket, using port %d instead\n", janus_force_rtcpmux_blackhole_port);
 			return;
 		}
-		fcntl(blackhole, F_SETFL, O_NONBLOCK);
+		janus_set_non_blocking_mode(blackhole);
 		struct sockaddr_in serveraddr;
 		serveraddr.sin_family = AF_INET;
 		serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -738,7 +742,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		close(fd);
 		return -1;
 	}
-	int bytes = sendto(fd, buf, len, 0, (struct sockaddr*)&remote, sizeof(remote));
+	int bytes = sendto(fd, (void *)buf, len, 0, (struct sockaddr*)&remote, sizeof(remote));
 	if(bytes < 0) {
 		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
 		close(fd);
@@ -758,7 +762,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		return -1;
 	}
 	socklen_t addrlen = sizeof(remote);
-	bytes = recvfrom(fd, buf, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+	bytes = recvfrom(fd, (void *)buf, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
 	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");

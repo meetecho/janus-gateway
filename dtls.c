@@ -17,6 +17,7 @@
 #include "dtls.h"
 #include "rtcp.h"
 
+#include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/bn.h>
 #include <openssl/evp.h>

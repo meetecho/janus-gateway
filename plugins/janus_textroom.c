@@ -733,7 +733,11 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		time(&timer);
 		struct tm *tm_info = localtime(&timer);
 		char msgTime[64];
+#ifdef _WIN32
+		strftime(msgTime, sizeof(msgTime), "%Y-%m-%dT%H:%M:%S%z", tm_info);
+#else
 		strftime(msgTime, sizeof(msgTime), "%FT%T%z", tm_info);
+#endif
 		json_object_set_new(msg, "date", json_string(msgTime));
 		json_object_set_new(msg, "text", json_string(message));
 		if(username || usernames)

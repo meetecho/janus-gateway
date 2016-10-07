@@ -1177,8 +1177,8 @@ void janus_sctp_handle_send_failed_event(struct sctp_send_failed_event *ssfe) {
 	if(ssfe->ssfe_flags & ~(SCTP_DATA_SENT | SCTP_DATA_UNSENT)) {
 		JANUS_LOG(LOG_VERB, "(flags = %x) ", ssfe->ssfe_flags);
 	}
-	JANUS_LOG(LOG_VERB, "message with PPID = %d, SID = %d, flags: 0x%04x due to error = 0x%08x",
-	       ntohl(ssfe->ssfe_info.snd_ppid), ssfe->ssfe_info.snd_sid,
+	JANUS_LOG(LOG_VERB, "message with PPID = %"SCNu32", SID = %d, flags: 0x%04x due to error = 0x%08x",
+		   (uint32_t)ntohl(ssfe->ssfe_info.snd_ppid), ssfe->ssfe_info.snd_sid,
 	       ssfe->ssfe_info.snd_flags, ssfe->ssfe_error);
 	n = ssfe->ssfe_length - sizeof(struct sctp_send_failed_event);
 	for(i = 0; i < n; i++) {

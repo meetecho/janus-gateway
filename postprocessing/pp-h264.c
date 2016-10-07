@@ -9,8 +9,6 @@
  * \ref postprocessing
  */
 
-#include <arpa/inet.h>
-#include <endian.h>
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
@@ -82,7 +80,11 @@ int janus_pp_h264_create(char *destination) {
 	vStream->time_base = (AVRational){1, 90000};
 	vStream->codec->width = max_width;
 	vStream->codec->height = max_height;
+#if LIBAVCODEC_VER_AT_LEAST(53, 0)
+	vStream->codec->pix_fmt = AV_PIX_FMT_YUV420P;
+#else
 	vStream->codec->pix_fmt = PIX_FMT_YUV420P;
+#endif
 	//~ if (fctx->flags & AVFMT_GLOBALHEADER)
 		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
 	if(avio_open(&fctx->pb, fctx->filename, AVIO_FLAG_WRITE) < 0) {

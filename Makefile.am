@@ -17,7 +17,13 @@ AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
 
-AM_CFLAGS += -fstack-protector-all -g -ggdb -fPIC -rdynamic -pthread
+AM_CFLAGS += -fstack-protector-all -g -ggdb -pthread
+
+if WINDOWS_OS
+AM_CFLAGS += -Wno-sign-compare -Wno-format-nonliteral
+else
+AM_CFLAGS += -fPIC -rdynamic
+endif
 
 # FIXME: make docs work with distcheck
 DISTCHECK_CONFIGURE_FLAGS = --disable-docs --enable-post-processing
@@ -30,7 +36,7 @@ bin_PROGRAMS = janus
 headerdir = $(includedir)/janus
 header_HEADERS = \
 	plugins/plugin.h transports/transport.h apierror.h config.h debug.h dtls.h \
-	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h turnrest.h utils.h log.h
+	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h turnrest.h utils.h log.h os.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -53,15 +59,21 @@ stream_DATA = $(NULL)
 recordingsdir = $(datadir)/janus/recordings
 recordings_DATA = $(NULL)
 
+if WINDOWS_OS
+INSTDIR = ../..
+else
+INSTDIR = $(NULL)
+endif
+
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
-	    s|[@]confdir[@]|$(confdir)|;\
-	    s|[@]certdir[@]|$(certdir)|;\
-	    s|[@]plugindir[@]|$(plugindir)|;\
-	    s|[@]transportdir[@]|$(transportdir)|;\
-	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
-	    s|[@]streamdir[@]|$(streamdir)|" \
+	    s|[@]confdir[@]|$(INSTDIR)$(confdir)|;\
+	    s|[@]certdir[@]|$(INSTDIR)$(certdir)|;\
+	    s|[@]plugindir[@]|$(INSTDIR)$(plugindir)|;\
+	    s|[@]transportdir[@]|$(INSTDIR)$(transportdir)|;\
+	    s|[@]recordingsdir[@]|$(INSTDIR)$(recordingsdir)|;\
+	    s|[@]streamdir[@]|$(INSTDIR)$(streamdir)|" \
 	$< > $@ || rm $@
 
 EXTRA_DIST += conf/janus.cfg.sample.in
@@ -72,6 +84,30 @@ CLEANFILES += conf/janus.cfg.sample
 ##
 
 janus_SOURCES = \
+	janus.c cmdline.c $(NULL)
+
+janus_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(JANUS_CFLAGS) \
+	-DPLUGINDIR=\"$(plugindir)\" \
+	-DTRANSPORTDIR=\"$(transportdir)\" \
+	-DCONFDIR=\"$(confdir)\" \
+	$(BORINGSSL_CFLAGS) \
+	$(NULL)
+
+janus_LDADD = \
+	$(BORINGSSL_LIBS) \
+	$(JANUS_LIBS) \
+	$(JANUS_MANUAL_LIBS) \
+	-lsrtp \
+	libjanus.la \
+	$(NULL)
+
+libjanusdir = $(libdir)
+
+libjanus_LTLIBRARIES = libjanus.la
+
+libjanus_la_SOURCES = \
 	apierror.c \
 	apierror.h \
 	auth.c \
@@ -108,9 +144,11 @@ janus_SOURCES = \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
+	os.h \
+	os.c \
 	$(NULL)
 
-janus_CFLAGS = \
+libjanus_la_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
@@ -119,17 +157,29 @@ janus_CFLAGS = \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
-janus_LDADD = \
+if WINDOWS_OS
+libjanus_la_CFLAGS += \
+	-DSHARED \
+	$(NULL)
+endif
+
+libjanus_la_LIBADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
 	-lsrtp \
 	$(NULL)
 
+if WINDOWS_OS
+libjanus_la_LDFLAGS = \
+	-no-undefined \
+	$(NULL)
+endif
+
 BUILT_SOURCES = cmdline.c cmdline.h
 
 cmdline.c: janus.ggo
-	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
+	gengetopt --set-package="janus" --set-version="$(VERSION)" --output-dir=$(srcdir) --header-output-dir=$(srcdir) --src-output-dir=$(srcdir) < $^
 
 EXTRA_DIST += janus.ggo
 CLEANFILES += cmdline.c cmdline.h
@@ -146,6 +196,16 @@ transports_cflags = \
 transports_libadd = \
 	$(TRANSPORTS_LIBS) \
 	$(NULL)
+
+if WINDOWS_OS
+transports_libadd += \
+	libjanus.la \
+	$(NULL)
+
+transports_ldflags = \
+	-no-undefined \
+	$(NULL)
+endif
 
 if ENABLE_REST
 transport_LTLIBRARIES += transports/libjanus_http.la
@@ -201,6 +261,16 @@ plugins_cflags = \
 plugins_libadd = \
 	$(PLUGINS_LIBS) \
 	$(NULL)
+
+if WINDOWS_OS
+plugins_libadd += \
+	libjanus.la \
+	$(NULL)
+
+plugins_ldflags = \
+	-no-undefined \
+	$(NULL)
+endif
 
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
@@ -328,7 +398,6 @@ janus_pp_rec_SOURCES = \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \
-	log.c \
 	$(NULL)
 
 janus_pp_rec_CFLAGS = \
@@ -338,6 +407,7 @@ janus_pp_rec_CFLAGS = \
 
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
+	libjanus.la \
 	$(NULL)
 endif
 
@@ -353,9 +423,20 @@ endif
 # Configuration
 ##
 
+if WINDOWS_OS
+install-data-hook:
+	$(foreach plugin,$(plugin_LTLIBRARIES),mv "$(DESTDIR)$(libdir)/janus/bin/$(basename $(notdir $(plugin)))-0.dll" "$(DESTDIR)$(plugindir)" 2>/dev/null;)
+	$(foreach transport,$(transport_LTLIBRARIES),mv "$(DESTDIR)$(libdir)/janus/bin/$(basename $(notdir $(transport)))-0.dll" "$(DESTDIR)$(transportdir)" 2>/dev/null;)
+	rm -rf $(DESTDIR)$(plugindir)/../bin
+
+uninstall-hook:
+	rm -rf $(DESTDIR)$(libdir)/janus
+
+endif
+
 configs:
 	$(MKDIR_P) $(DESTDIR)$(confdir)
-	$(foreach config,$(conf_DATA),cp "$(CURDIR)/$(config)" "$(DESTDIR)$(confdir)/$(notdir $(basename $(config) .sample))";)
+	$(foreach config,$(conf_DATA),cp "$(DESTDIR)$(confdir)/$(notdir $(config))" "$(DESTDIR)$(confdir)/$(notdir $(basename $(config) .sample))";)
 
 ##
 # Extra cleanup

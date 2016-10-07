@@ -13,14 +13,20 @@
 #ifndef _JANUS_RTP_H
 #define _JANUS_RTP_H
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
 #ifdef __MACH__
 #include <machine/endian.h>
 #else
 #include <endian.h>
 #endif
+#endif
 #include <inttypes.h>
 #include <string.h>
+
+#include "os.h"
 
 #define RTP_HEADER_SIZE	12
 

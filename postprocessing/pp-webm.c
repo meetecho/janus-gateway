@@ -9,8 +9,9 @@
  * \ref postprocessing
  */
 
+#ifndef _WIN32
 #include <arpa/inet.h>
-#include <endian.h>
+#endif
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
@@ -103,7 +104,11 @@ int janus_pp_webm_create(char *destination, int vp8) {
 	vStream->codec->time_base = (AVRational){1, fps};
 	vStream->codec->width = max_width;
 	vStream->codec->height = max_height;
+#if LIBAVCODEC_VER_AT_LEAST(53, 0)
+	vStream->codec->pix_fmt = AV_PIX_FMT_YUV420P;
+#else
 	vStream->codec->pix_fmt = PIX_FMT_YUV420P;
+#endif
 	if (fctx->flags & AVFMT_GLOBALHEADER)
 		vStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
 	//~ fctx->timestamp = 0;

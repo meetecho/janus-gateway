@@ -388,7 +388,7 @@ gboolean janus_config_save(janus_config *config, const char *folder, const char 
 	struct tm tmresult;
 	time_t ltime = time(NULL);
 	localtime_r(&ltime, &tmresult);
-	strftime(date, sizeof(date), "%a %b %e %T %Y", &tmresult);
+	strftime(date, sizeof(date), DATE_TIME_FORMAT, &tmresult);
 	g_snprintf(header, 256, ";\n; File automatically generated on %s\n;\n\n", date);
 	fwrite(header, sizeof(char), strlen(header), file);
 	/* Go on with the configuration */

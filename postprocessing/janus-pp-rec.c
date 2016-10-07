@@ -49,8 +49,9 @@
  * \ref postprocessing
  */
 
+#ifndef _WIN32
 #include <arpa/inet.h>
-#include <endian.h>
+#endif
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
@@ -71,9 +72,11 @@
 #define ntohll(x) ((1==ntohl(1)) ? (x) : ((gint64)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 
 
-int janus_log_level = 4;
-gboolean janus_log_timestamps = FALSE;
-gboolean janus_log_colors = TRUE;
+#include "../os.h"
+
+JANUS_API int janus_log_level;
+JANUS_API gboolean janus_log_timestamps;
+JANUS_API gboolean janus_log_colors;
 
 static janus_pp_frame_packet *list = NULL, *last = NULL;
 int working = 0;
@@ -89,6 +92,9 @@ void janus_pp_handle_signal(int signum) {
 /* Main Code */
 int main(int argc, char *argv[])
 {
+	janus_log_level = 4;
+	janus_log_timestamps = FALSE;
+	janus_log_colors = TRUE;
 	janus_log_init(FALSE, TRUE, NULL);
 	atexit(janus_log_destroy);
 
@@ -127,7 +133,7 @@ int main(int argc, char *argv[])
 	fseek(file, 0L, SEEK_END);
 	long fsize = ftell(file);
 	fseek(file, 0L, SEEK_SET);
-	JANUS_LOG(LOG_INFO, "File is %zu bytes\n", fsize);
+	JANUS_LOG(LOG_INFO, "File is %lu bytes\n", fsize);
 
 	/* Handle SIGINT */
 	working = 1;
@@ -373,7 +379,7 @@ int main(int argc, char *argv[])
 		bytes = fread(prebuffer, sizeof(char), 16, file);
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_VERB, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
-				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+				(uint32_t)ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), (uint32_t)ntohl(rtp->timestamp));
 		if(rtp->extension) {
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
 		JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
@@ -405,13 +411,13 @@ int main(int argc, char *argv[])
 			} else if(ntohl(rtp->timestamp) > reset && ntohl(rtp->timestamp) > last_ts &&
 					(ntohl(rtp->timestamp)-last_ts > 2*1000*1000*1000)) {
 				if(post_reset_pkts < 1000) {
-					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", ntohl(rtp->timestamp));
+					JANUS_LOG(LOG_WARN, "Late pre-reset packet after a timestamp reset: %"SCNu32"\n", (uint32_t)ntohl(rtp->timestamp));
 					late_pkt = TRUE;
 					times_resetted--;
 				}
 			} else if(ntohl(rtp->timestamp) < reset) {
 				if(post_reset_pkts < 1000) {
-					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", ntohl(rtp->timestamp), reset);
+					JANUS_LOG(LOG_WARN, "Updating latest timestamp reset: %"SCNu32" (was %"SCNu32")\n", (uint32_t)ntohl(rtp->timestamp), reset);
 					reset = ntohl(rtp->timestamp);
 				} else {
 					reset = ntohl(rtp->timestamp);
@@ -637,7 +643,7 @@ int main(int argc, char *argv[])
 		fseek(file, 0L, SEEK_END);
 		fsize = ftell(file);
 		fseek(file, 0L, SEEK_SET);
-		JANUS_LOG(LOG_INFO, "%s is %zu bytes\n", destination, fsize);
+		JANUS_LOG(LOG_INFO, "%s is %lu bytes\n", destination, fsize);
 		fclose(file);
 	}
 	janus_pp_frame_packet *temp = list, *next = NULL;

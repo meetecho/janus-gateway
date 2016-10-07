@@ -26,11 +26,11 @@
  * @param[in] server_pem Path to the certificate to use
  * @param[in] server_key Path to the key to use
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_dtls_srtp_init(const char* server_pem, const char* server_key);
+JANUS_API gint janus_dtls_srtp_init(const char* server_pem, const char* server_key);
 /*! \brief Method to cleanup DTLS stuff before exiting */
-void janus_dtls_srtp_cleanup(void);
+JANUS_API void janus_dtls_srtp_cleanup(void);
 /*! \brief Method to return a string representation (SHA-256) of the certificate fingerprint */
-gchar *janus_dtls_get_local_fingerprint(void);
+JANUS_API gchar *janus_dtls_get_local_fingerprint(void);
 
 
 /*! \brief DTLS roles */
@@ -91,81 +91,81 @@ typedef struct janus_dtls_srtp {
  * @param[in] component Opaque pointer to the component owning that will use the stack
  * @param[in] role The role of the DTLS stack (client/server)
  * @returns A new janus_dtls_srtp instance if successful, NULL otherwise */
-janus_dtls_srtp *janus_dtls_srtp_create(void *component, janus_dtls_role role);
+JANUS_API janus_dtls_srtp *janus_dtls_srtp_create(void *component, janus_dtls_role role);
 /*! \brief Start a DTLS handshake
  * @param[in] dtls The janus_dtls_srtp instance to start the handshake on */
-void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls);
+JANUS_API void janus_dtls_srtp_handshake(janus_dtls_srtp *dtls);
 /*! \brief Handle an incoming DTLS message
  * @param[in] dtls The janus_dtls_srtp instance to start the handshake on
  * @param[in] buf The DTLS message data
  * @param[in] len The DTLS message data lenght */
-void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len);
+JANUS_API void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len);
 /*! \brief Send an alert on a janus_dtls_srtp instance
  * @param[in] dtls The janus_dtls_srtp instance to send the alert on */
-void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls);
+JANUS_API void janus_dtls_srtp_send_alert(janus_dtls_srtp *dtls);
 /*! \brief Destroy a janus_dtls_srtp instance
  * @param[in] dtls The janus_dtls_srtp instance to destroy */
-void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls);
+JANUS_API void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls);
 
 /*! \brief DTLS alert callback (http://www.openssl.org/docs/ssl/SSL_CTX_set_info_callback.html)
  * @param[in] ssl SSL instance where the alert occurred
  * @param[in] where The context where the event occurred
  * @param[in] ret The error code */
-void janus_dtls_callback(const SSL *ssl, int where, int ret);
+JANUS_API void janus_dtls_callback(const SSL *ssl, int where, int ret);
 
 /*! \brief DTLS certificate verification callback (http://www.openssl.org/docs/ssl/SSL_CTX_set_verify.html)
  * \details This method always returns 1 (true), in order not to fail when a certificate verification is requested. This is especially needed because all certificates used for DTLS in WebRTC are self signed, and as such a formal verification would fail.
  * @param[in] preverify_ok Whether the verification of the certificate was passed
  * @param[in] ctx context used for the certificate verification */
-int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
+JANUS_API int janus_dtls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
 
 /*! \brief DTLS BIOs to/from socket bridge
  * \details As libnice is going to actually send and receive data, and not OpenSSL, a read/write BIO is used to "bridge" the data between the crypto stuff and the network.
  * @param[in] dtls The janus_dtls_srtp instance to use */
-void janus_dtls_fd_bridge(janus_dtls_srtp *dtls);
+JANUS_API void janus_dtls_fd_bridge(janus_dtls_srtp *dtls);
 
 #ifdef HAVE_SCTP
 /*! \brief Callback (called from the ICE handle) to encapsulate in DTLS outgoing SCTP data (DataChannel)
  * @param[in] dtls The janus_dtls_srtp instance to use
  * @param[in] buf The data buffer to encapsulate
  * @param[in] len The data length */
-void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
+JANUS_API void janus_dtls_wrap_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
 
 /*! \brief Callback (called from the SCTP stack) to encapsulate in DTLS outgoing SCTP data (DataChannel)
  * @param[in] dtls The janus_dtls_srtp instance to use
  * @param[in] buf The data buffer to encapsulate
  * @param[in] len The data length
  * @returns The number of sent bytes in case of success, 0 or a negative integer otherwise */
-int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
+JANUS_API int janus_dtls_send_sctp_data(janus_dtls_srtp *dtls, char *buf, int len);
 
 /*! \brief Callback to be notified about incoming SCTP data (DataChannel) to forward to the handle
  * @param[in] dtls The janus_dtls_srtp instance to use
  * @param[in] buf The data buffer
  * @param[in] len The data length */
-void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
+JANUS_API void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
 #endif
 
 /*! \brief DTLS retransmission timer
  * \details As libnice is going to actually send and receive data, OpenSSL cannot handle retransmissions by itself: this timed callback (g_source_set_callback) deals with this.
  * @param[in] stack Opaque pointer to the janus_dtls_srtp instance to use
  * @returns true if a retransmission is still needed, false otherwise */
-gboolean janus_dtls_retry(gpointer stack);
+JANUS_API gboolean janus_dtls_retry(gpointer stack);
 
 
 /*! \brief Helper method to get a string representation of a libsrtp error code
  * @param[in] error The libsrtp error code
  * @returns A string representation of the error code */
-const gchar *janus_get_srtp_error(int error);
+JANUS_API const gchar *janus_get_srtp_error(int error);
 
 /*! \brief Helper method to get a string representation of a Janus DTLS state
  * @param[in] state The Janus DTLS state
  * @returns A string representation of the state */
-const gchar *janus_get_dtls_srtp_state(janus_dtls_state state);
+JANUS_API const gchar *janus_get_dtls_srtp_state(janus_dtls_state state);
 
 /*! \brief Helper method to get a string representation of a DTLS role
  * @param[in] role The DTLS role
  * @returns A string representation of the role */
-const gchar *janus_get_dtls_srtp_role(janus_dtls_role role);
+JANUS_API const gchar *janus_get_dtls_srtp_role(janus_dtls_role role);
 
 
 #endif

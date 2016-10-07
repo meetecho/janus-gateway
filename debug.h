@@ -16,9 +16,9 @@
 #include <glib/gprintf.h>
 #include "log.h"
 
-extern int janus_log_level;
-extern gboolean janus_log_timestamps;
-extern gboolean janus_log_colors;
+JANUS_API extern int janus_log_level;
+JANUS_API extern gboolean janus_log_timestamps;
+JANUS_API extern gboolean janus_log_colors;
 
 /** @name Janus log colors
  */
@@ -75,6 +75,13 @@ static const char *janus_log_prefix[] = {
 	"",
 	""
 };
+
+#ifdef _WIN32
+#define DATE_TIME_FORMAT "[%a %b %d %H:%M:%S %Y] "
+#else
+#define DATE_TIME_FORMAT "[%a %b %e %T %Y] "
+#endif
+
 ///@}
 
 /** @name Janus log wrappers
@@ -95,7 +102,7 @@ do { \
 			time_t janusltime = time(NULL); \
 			localtime_r(&janusltime, &janustmresult); \
 			strftime(janus_log_ts, sizeof(janus_log_ts), \
-			         "[%a %b %e %T %Y] ", &janustmresult); \
+			         DATE_TIME_FORMAT, &janustmresult); \
 		} \
 		if (level == LOG_FATAL || level == LOG_ERR || level == LOG_DBG) { \
 			snprintf(janus_log_src, sizeof(janus_log_src), \

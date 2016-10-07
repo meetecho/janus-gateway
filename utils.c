@@ -14,11 +14,16 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifndef _WIN32
 #include <arpa/inet.h>
+#endif
 #include <sys/file.h>
 #include <sys/types.h>
+#ifndef _WIN32
 #include <sys/socket.h>
+#endif
 #include <unistd.h>
+#include <glib/gstdio.h>
 
 #include "utils.h"
 #include "debug.h"
@@ -213,7 +218,7 @@ int janus_mkdir(const char *dir, mode_t mode) {
 	for(p = tmp + 1; *p; p++) {
 		if(*p == '/') {
 			*p = 0;
-			res = mkdir(tmp, mode);
+			res = g_mkdir(tmp, mode);
 			if(res != 0 && errno != EEXIST) {
 				JANUS_LOG(LOG_ERR, "Error creating folder %s\n", tmp);
 				return res;
@@ -221,7 +226,7 @@ int janus_mkdir(const char *dir, mode_t mode) {
 			*p = '/';
 		}
 	}
-	res = mkdir(tmp, mode);
+	res = g_mkdir(tmp, mode);
 	if(res != 0 && errno != EEXIST)
 		return res;
 	return 0;
@@ -530,4 +535,13 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
 		}
 	}
 	return is_valid;
+}
+
+void janus_set_non_blocking_mode(int fd) {
+#ifdef _WIN32
+	u_long argp = 1;
+	ioctlsocket(fd, FIONBIO, &argp);
+#else
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+#endif
 }

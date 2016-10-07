@@ -153,9 +153,8 @@ janus_plugin *create(void) {
 #include <ctype.h>
 #include <unistd.h>
 #include <inttypes.h>
-
 #include <jansson.h>
-
+#include "os.h"
 
 /*! \brief Version of the API, to match the one plugins were compiled against
  * 
@@ -428,12 +427,12 @@ struct janus_plugin_result {
  * @param[in] text String to add to the result (for JANUS_PLUGIN_OK_WAIT or JANUS_PLUGIN_ERROR), if any
  * @param[in] content The json_t object with the content of the result, if any
  * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
-janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content);
+JANUS_API janus_plugin_result *janus_plugin_result_new(janus_plugin_result_type type, const char *text, json_t *content);
 
 /*! \brief Helper to quickly destroy a janus_plugin_result instance
  * @param[in] result The janus_plugin_result instance to destroy
  * @returns A valid janus_plugin_result instance, if successful, or NULL otherwise */
-void janus_plugin_result_destroy(janus_plugin_result *result);
+JANUS_API void janus_plugin_result_destroy(janus_plugin_result *result);
 ///@}
 
 

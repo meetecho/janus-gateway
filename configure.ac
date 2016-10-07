@@ -20,10 +20,20 @@ darwin*)
 	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include"
 	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
+	AM_CONDITIONAL([WINDOWS_OS], false)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
+;;
+mingw*)
+	CFLAGS="$CFLAGS -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_POSIX_C_SOURCE -pipe -mwindows -mconsole"
+	LDFLAGS="$LDFLAGS -Wl,--enable-auto-image-base"
+	LIBS="-lws2_32 -liphlpapi"
+	AM_CONDITIONAL([DARWIN_OS], false)
+	AM_CONDITIONAL([WINDOWS_OS], true)
+	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
 ;;
 *)
 	AM_CONDITIONAL([DARWIN_OS], false)
+	AM_CONDITIONAL([WINDOWS_OS], false)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
 esac
 
@@ -64,11 +74,22 @@ AC_ARG_ENABLE([rabbitmq],
               [],
               [enable_rabbitmq=yes])
 
+case "$host_os" in
+mingw*)
+AC_ARG_ENABLE([unix-sockets],
+              [AS_HELP_STRING([--disable-unix-sockets],
+                              [Disable Unix Sockets integration])],
+              [],
+              [enable_pfunix=no])
+;;
+*)
 AC_ARG_ENABLE([unix-sockets],
               [AS_HELP_STRING([--disable-unix-sockets],
                               [Disable Unix Sockets integration])],
               [],
               [enable_pfunix=yes])
+;;
+esac
 
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
@@ -260,26 +281,32 @@ AC_CHECK_LIB([rabbitmq],
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 
-AC_TRY_COMPILE([
-               #include <stdlib.h>
-               #include <sys/socket.h>
-               #include <sys/un.h>
-               void test() {
-                 int pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
-                 if(pfd < 0)
-                   exit(1);
-               }],
-               [],
-               [
-                 AS_IF([test "x$enable_pfunix" = "xyes"],
-                 [
-                    AC_DEFINE(HAVE_PFUNIX)
-                 ])
-               ],
-               [
-                 AS_IF([test "x$enable_pfunix" = "xyes"],
-                       [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
-               ])
+case "$host_os" in
+mingw*)
+;;
+*)
+  AC_TRY_COMPILE([
+                #include <stdlib.h>
+                #include <sys/socket.h>
+                #include <sys/un.h>
+                void test() {
+                  int pfd = socket(PF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
+                  if(pfd < 0)
+                    exit(1);
+                }],
+                [],
+                [
+                  AS_IF([test "x$enable_pfunix" = "xyes"],
+                  [
+                      AC_DEFINE(HAVE_PFUNIX)
+                  ])
+                ],
+                [
+                  AS_IF([test "x$enable_pfunix" = "xyes"],
+                        [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
+                ])
+;;
+esac
 AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_pfunix" = "xyes"])
 
 
@@ -397,6 +424,29 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
       ])
 
 AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
+
+##
+# OS
+##
+AC_CHECK_FUNCS([poll],[AC_DEFINE(HAVE_POLL)])
+
+AC_CHECK_FUNCS([inet_aton],[AC_DEFINE(HAVE_INET_ATON)])
+
+AC_CHECK_FUNCS([getifaddrs],[AC_DEFINE(HAVE_GETIFADDRS)])
+
+AC_CHECK_FUNCS([freeifaddrs],[AC_DEFINE(HAVE_FREEIFADDRS)])
+
+AC_CHECK_FUNCS([strcasestr],[AC_DEFINE(HAVE_STRCASESTR)])
+
+AC_CHECK_FUNCS([flock],[AC_DEFINE(HAVE_FLOCK)])
+
+AC_CHECK_TYPES([uint],[AC_DEFINE(HAVE_UINT)])
+
+AC_CHECK_TYPES([nfds_t],[AC_DEFINE(HAVE_NFDS_T)],[],[[#include <sys/poll.h>]])
+
+AC_CHECK_TYPES([in_addr_t],[AC_DEFINE(HAVE_IN_ADDR_T)],[],[[#include <netinet/in.h>]])
+
+AC_CHECK_TYPES([struct ifaddrs],[AC_DEFINE(HAVE_STRUCT_IFADDRS)],[],[[#include <ifaddrs.h>]])
 
 AC_CONFIG_FILES([
   Makefile
