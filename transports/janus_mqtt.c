@@ -55,9 +55,9 @@ const char *janus_mqtt_get_author(void);
 const char *janus_mqtt_get_package(void);
 gboolean janus_mqtt_is_janus_api_enabled(void);
 gboolean janus_mqtt_is_admin_api_enabled(void);
-int janus_mqtt_send_message(void *context, void *request_id, gboolean admin, json_t *message);
-void janus_mqtt_session_created(void *context, guint64 session_id);
-void janus_mqtt_session_over(void *context, guint64 session_id, gboolean timeout);
+int janus_mqtt_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message);
+void janus_mqtt_session_created(janus_transport_session *transport, guint64 session_id);
+void janus_mqtt_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout);
 
 /* Transport setup */
 static janus_transport janus_mqtt_transport_ =
@@ -152,6 +152,7 @@ void janus_mqtt_client_destroy_context(janus_mqtt_context **ctx);
 
 /* We only handle a single client */
 static janus_mqtt_context *context_ = NULL;
+static janus_transport_session *mqtt_session = NULL;
 
 int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path) {
 	if(callback == NULL || config_path == NULL) {
@@ -163,6 +164,8 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	janus_mqtt_context *ctx = g_malloc0(sizeof(struct janus_mqtt_context));
 	ctx->gateway = callback;
 	context_ = ctx;
+	/* Prepare the transport session (again, just one) */
+	mqtt_session = janus_transport_session_create(context_, NULL);
 
 	/* Read configuration */
 	char filename[255];
@@ -324,6 +327,7 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 error:
 	/* If we got here, something went wrong */
+	janus_transport_session_destroy(mqtt_session);
 	janus_mqtt_client_destroy_context(&ctx);
 	g_free((char *)url);
 	g_free((char *)client_id);
@@ -337,6 +341,7 @@ error:
 void janus_mqtt_destroy(void) {
 	JANUS_LOG(LOG_INFO, "Disconnecting MQTT client...\n");
 
+	janus_transport_session_destroy(mqtt_session);
 	janus_mqtt_client_disconnect(context_);
 }
 
@@ -376,16 +381,17 @@ gboolean janus_mqtt_is_admin_api_enabled(void) {
 	return janus_mqtt_admin_api_enabled_;
 }
 
-int janus_mqtt_send_message(void *context, void *request_id, gboolean admin, json_t *message) {
-	if(message == NULL) {
+int janus_mqtt_send_message(janus_transport_session *transport, void *request_id, gboolean admin, json_t *message) {
+	if(message == NULL || transport == NULL) {
 		return -1;
 	}
-	if(context == NULL) {
+	/* Not really needed as we always only have a single context, but that's fine */
+	janus_mqtt_context *ctx = (janus_mqtt_context *)transport->transport_p;
+	if(ctx == NULL) {
 		json_decref(message);
 		return -1;
 	}
 
-	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
 	char *payload = json_dumps(message, json_format_);
 	json_decref(message);
 	JANUS_LOG(LOG_HUGE, "Sending %s API message via MQTT: %s\n", admin ? "admin" : "Janus", payload);
@@ -398,11 +404,11 @@ int janus_mqtt_send_message(void *context, void *request_id, gboolean admin, jso
 	return 0;
 }
 
-void janus_mqtt_session_created(void *context, guint64 session_id) {
+void janus_mqtt_session_created(janus_transport_session *transport, guint64 session_id) {
 	/* We don't care */
 }
 
-void janus_mqtt_session_over(void *context, guint64 session_id, gboolean timeout) {
+void janus_mqtt_session_over(janus_transport_session *transport, guint64 session_id, gboolean timeout) {
 	/* We don't care, not even if it's a timeout (should we?), our client is always up */
 }
 
@@ -423,7 +429,7 @@ int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicL
 
 		json_error_t error;
 		json_t *root = json_loadb(message->payload, message->payloadlen, 0, &error);
-		ctx->gateway->incoming_request(&janus_mqtt_transport_, ctx, NULL, admin, root, &error);
+		ctx->gateway->incoming_request(&janus_mqtt_transport_, mqtt_session, NULL, admin, root, &error);
 	}
 
 	MQTTAsync_freeMessage(&message);
