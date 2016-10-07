@@ -2353,6 +2353,7 @@ void janus_transportso_close(gpointer key, gpointer value, gpointer user_data) {
 	void *transport = (janus_transport *)value;
 	if(!transport)
 		return;
+	/* FIXME We need access to what was returned by dlopen, not the transport instance */
 	//~ dlclose(transport);
 }
 
@@ -2442,6 +2443,7 @@ void janus_pluginso_close(gpointer key, gpointer value, gpointer user_data) {
 	void *plugin = (janus_plugin *)value;
 	if(!plugin)
 		return;
+	/* FIXME We need access to what was returned by dlopen, not the plugin instance */
 	//~ dlclose(plugin);
 }
 
@@ -3648,7 +3650,11 @@ gint main(int argc, char *argv[])
 					janus_plugin->get_package(), janus_plugin->get_api_compatibility(), JANUS_PLUGIN_API_VERSION);
 				continue;
 			}
-			janus_plugin->init(&janus_handler_plugin, configs_folder);
+			if(janus_plugin->init(&janus_handler_plugin, configs_folder) < 0) {
+				JANUS_LOG(LOG_WARN, "The '%s' plugin could not be initialized\n", janus_plugin->get_package());
+				dlclose(plugin);
+				continue;
+			}
 			JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_plugin->get_version(), janus_plugin->get_version_string());
 			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_plugin->get_package(), janus_plugin->get_name());
 			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_plugin->get_description());
@@ -3771,7 +3777,11 @@ gint main(int argc, char *argv[])
 					janus_transport->get_package(), janus_transport->get_api_compatibility(), JANUS_TRANSPORT_API_VERSION);
 				continue;
 			}
-			janus_transport->init(&janus_handler_transport, configs_folder);
+			if(janus_transport->init(&janus_handler_transport, configs_folder) < 0) {
+				JANUS_LOG(LOG_WARN, "The '%s' plugin could not be initialized\n", janus_transport->get_package());
+				dlclose(transport);
+				continue;
+			}
 			JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_transport->get_version(), janus_transport->get_version_string());
 			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_transport->get_package(), janus_transport->get_name());
 			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_transport->get_description());
