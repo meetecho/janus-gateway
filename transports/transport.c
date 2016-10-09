@@ -27,6 +27,7 @@ janus_transport_session *janus_transport_session_create(void *transport_p, void 
 	tp->p_free = p_free;
 	g_atomic_int_set(&tp->destroyed, 0);
 	janus_refcount_init(&tp->ref, janus_transport_session_free);
+	janus_mutex_init(&tp->mutex);
 	return tp;
 }
 
