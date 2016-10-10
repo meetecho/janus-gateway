@@ -979,8 +979,6 @@ static int janus_websockets_common_callback(
 {
 	const char *log_prefix = admin ? "AdminWSS" : "WSS";
 	janus_websockets_client *ws_client = (janus_websockets_client *)user;
-	if(reason != LWS_CALLBACK_ESTABLISHED && g_atomic_int_get(&ws_client->destroyed))
-		return 0;
 	switch(reason) {
 		case LWS_CALLBACK_ESTABLISHED: {
 			/* Is there any filtering we should apply? */
@@ -1038,6 +1036,8 @@ static int janus_websockets_common_callback(
 				JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);
 				return -1;
 			}
+			if(g_atomic_int_get(&ws_client->destroyed))
+				return 0;
 			/* Is this a new message, or part of a fragmented one? */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			const size_t remaining = lws_remaining_packet_payload(wsi);
