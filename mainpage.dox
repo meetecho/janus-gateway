@@ -40,7 +40,7 @@
  * HTTP/WebSocket JavaScript API to use the gateway and the plugins it
  * makes available in your web application can be found in the \ref JS
  * and \ref rest pages. New API transports can be created referring to
- * the \transportapi page. If you're interested in monitoring Janus
+ * the \ref transportapi page. If you're interested in monitoring Janus
  * resources, you can refer to the \ref admin page.
  *
  * Finally, some information on how to deploy Janus and your web

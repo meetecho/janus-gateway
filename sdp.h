@@ -36,7 +36,7 @@
 /*! \brief Method to pre-parse a session description
  * \details This method is only used to quickly check how many audio and video lines are in an SDP, and to generate a Janus SDP instance
  * @param[in] jsep_sdp The SDP that the browser peer originated
- * @param[in,out] error Buffer to receive a reason for an error, if any
+ * @param[in,out] error_str Buffer to receive a reason for an error, if any
  * @param[in] errlen The length of the error buffer
  * @param[out] audio The number of audio m-lines
  * @param[out] video The number of video m-lines

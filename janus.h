@@ -113,6 +113,7 @@ struct janus_request {
  * @param[in] transport Pointer to the transport
  * @param[in] instance Opaque pointer to the transport-provided instance
  * @param[in] request_id Opaque pointer to the request ID, if available
+ * @param[in] admin Whether this is a Janus API or Admin API request
  * @param[in] message Opaque pointer to the original request, if available
  * @returns A pointer to a janus_request instance if successful, NULL otherwise */
 janus_request *janus_request_new(janus_transport *transport, void *instance, void *request_id, gboolean admin, json_t *message);
@@ -121,7 +122,6 @@ janus_request *janus_request_new(janus_transport *transport, void *instance, voi
  * @note The opaque pointers in the instance are not destroyed, that's up to you */
 void janus_request_destroy(janus_request *request);
 /*! \brief Helper to process an incoming request, no matter where it comes from
- * @param[in] source The request instance and its source
  * @param[in] request The JSON request
  * @returns 0 on success, a negative integer otherwise
  */
@@ -133,6 +133,7 @@ int janus_process_incoming_request(janus_request *request);
 int janus_process_incoming_admin_request(janus_request *request);
 /*! \brief Method to return a successful Janus response message (JSON) to the browser
  * @param[in] request The request instance and its source
+ * @param[in] payload The payload to return as a JSON object
  * @returns 0 on success, a negative integer otherwise
  */
 int janus_process_success(janus_request *request, json_t *payload);
@@ -146,7 +147,7 @@ int janus_process_success(janus_request *request, json_t *payload);
  * associated with the error code is used
  * @returns 0 on success, a negative integer otherwise
  */
-int janus_process_error(janus_request *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
+int janus_process_error(janus_request *request, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 ///@}
 
 
