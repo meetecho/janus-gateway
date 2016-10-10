@@ -32,15 +32,14 @@
 #include "log.h"
 #include "debug.h"
 #include "rtcp.h"
-#include "sdp.h"
 #include "auth.h"
 #include "utils.h"
 
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			20
-#define JANUS_VERSION_STRING	"0.2.0"
+#define JANUS_VERSION			21
+#define JANUS_VERSION_STRING	"0.2.1"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -931,12 +930,13 @@ int janus_process_incoming_request(janus_request *request) {
 			jsep_sdp = (char *)json_string_value(sdp);
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote SDP:\n%s", handle->handle_id, jsep_sdp);
 			/* Is this valid SDP? */
+			char error_str[512];
 			int audio = 0, video = 0, data = 0, bundle = 0, rtcpmux = 0, trickle = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
+			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data, &bundle, &rtcpmux, &trickle);
 			trickle = trickle && do_trickle;
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, error_str);
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				janus_mutex_unlock(&handle->mutex);
@@ -974,6 +974,7 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Setup ICE locally (we received an offer) */
 					if(janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle) < 0) {
 						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
+						janus_sdp_free(parsed_sdp);
 						g_free(jsep_type);
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error setting ICE locally");
@@ -984,6 +985,7 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Make sure we're waiting for an ANSWER in the first place */
 					if(!handle->agent) {
 						JANUS_LOG(LOG_ERR, "Unexpected ANSWER (did we offer?)\n");
+						janus_sdp_free(parsed_sdp);
 						g_free(jsep_type);
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Unexpected ANSWER (did we offer?)");
@@ -991,8 +993,15 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
-				janus_sdp_parse(handle, parsed_sdp);
-				janus_sdp_free(parsed_sdp);
+				if(janus_sdp_process(handle, parsed_sdp) < 0) {
+					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
+					janus_sdp_free(parsed_sdp);
+					g_free(jsep_type);
+					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Error processing SDP");
+					janus_mutex_unlock(&handle->mutex);
+					goto jsondone;
+				}
 				if(!offer) {
 					/* Set remote candidates now (we received an answer) */
 					if(bundle) {
@@ -1219,14 +1228,16 @@ int janus_process_incoming_request(janus_request *request) {
 			handle->remote_sdp = g_strdup(jsep_sdp);
 			janus_mutex_unlock(&handle->mutex);
 			/* Anonymize SDP */
-			jsep_sdp_stripped = janus_sdp_anonymize(jsep_sdp);
-			if(jsep_sdp_stripped == NULL) {
+			if(janus_sdp_anonymize(parsed_sdp) < 0) {
 				/* Invalid SDP */
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
+				janus_sdp_free(parsed_sdp);
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
 			}
+			jsep_sdp_stripped = janus_sdp_write(parsed_sdp);
+			janus_sdp_free(parsed_sdp);
 			sdp = NULL;
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		}
@@ -1234,10 +1245,8 @@ int janus_process_incoming_request(janus_request *request) {
 		/* Make sure the app handle is still valid */
 		if(handle->app == NULL || handle->app_handle == NULL || !janus_plugin_session_is_alive(handle->app_handle)) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this message");
-			if(jsep_type)
-				g_free(jsep_type);
-			if(jsep_sdp_stripped)
-				g_free(jsep_sdp_stripped);
+			g_free(jsep_type);
+			g_free(jsep_sdp_stripped);
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			goto jsondone;
 		}
@@ -1247,6 +1256,8 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body,
 			jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL);
+		g_free(jsep_type);
+		g_free(jsep_sdp_stripped);
 		if(result == NULL) {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
@@ -2539,13 +2550,13 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		return NULL;
 	}
 	/* Is this valid SDP? */
+	char error_str[512];
 	int audio = 0, video = 0, data = 0, bundle = 0, rtcpmux = 0, trickle = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
+	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, error_str, sizeof(error_str), &audio, &video, &data, &bundle, &rtcpmux, &trickle);
 	if(parsed_sdp == NULL) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP...\n", ice_handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP... %s\n", ice_handle->handle_id, error_str);
 		return NULL;
 	}
-	janus_sdp_free(parsed_sdp);
 	gboolean updating = FALSE;
 	if(offer) {
 		/* We still don't have a local ICE setup */
@@ -2584,6 +2595,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
+				janus_sdp_free(parsed_sdp);
 				return NULL;
 			}
 		} else {
@@ -2597,31 +2609,34 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Handle detached or PC closed, giving up...!\n", ice_handle ? ice_handle->handle_id : 0);
+				janus_sdp_free(parsed_sdp);
 				return NULL;
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
 			g_usleep(100000);
 			if(ice_handle->cdone < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates!\n", ice_handle->handle_id);
+				janus_sdp_free(parsed_sdp);
 				return NULL;
 			}
 		}
 	}
 	/* Anonymize SDP */
-	char *sdp_stripped = janus_sdp_anonymize(sdp);
-	if(sdp_stripped == NULL) {
+	if(janus_sdp_anonymize(parsed_sdp) < 0) {
 		/* Invalid SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid SDP\n", ice_handle->handle_id);
+		janus_sdp_free(parsed_sdp);
 		return NULL;
 	}
 	/* Add our details */
-	char *sdp_merged = janus_sdp_merge(ice_handle, sdp_stripped);
+	char *sdp_merged = janus_sdp_merge(ice_handle, parsed_sdp);
 	if(sdp_merged == NULL) {
 		/* Couldn't merge SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error merging SDP\n", ice_handle->handle_id);
-		g_free(sdp_stripped);
+		janus_sdp_free(parsed_sdp);
 		return NULL;
 	}
+	janus_sdp_free(parsed_sdp);
 	/* FIXME Any disabled m-line? */
 	if(strstr(sdp_merged, "m=audio 0")) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio disabled via SDP\n", ice_handle->handle_id);
@@ -2839,8 +2854,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	json_t *jsep = json_object();
 	json_object_set_new(jsep, "type", json_string(sdp_type));
 	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
-	g_free(sdp_stripped);
-	//~ g_free(sdp_merged);
 	ice_handle->local_sdp = sdp_merged;
 	return jsep;
 }
@@ -3543,11 +3556,6 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "Data Channels support not compiled\n");
 #endif
 
-	/* Initialize Sofia-SDP */
-	if(janus_sdp_init() < 0) {
-		exit(1);
-	}
-
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	old_sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
@@ -3856,8 +3864,6 @@ gint main(int argc, char *argv[])
 	janus_dtls_srtp_cleanup();
 	EVP_cleanup();
 	ERR_free_strings();
-	JANUS_LOG(LOG_INFO, "Cleaning SDP structures...\n");
-	janus_sdp_deinit();
 #ifdef HAVE_SCTP
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();

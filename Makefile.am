@@ -10,8 +10,8 @@ AM_CFLAGS = \
 	-Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
 	-Wmissing-include-dirs -Wno-aggregate-return -Wunused-but-set-variable \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
-AM_CFLAGS += -Wno-undef  # sophiasip is not -Wundef--safe
-AM_CFLAGS += -Wno-redundant-decls  # sophiasip also contains redundant declarations
+AM_CFLAGS += -Wno-undef  # sofiasip is not -Wundef--safe
+AM_CFLAGS += -Wno-redundant-decls  # sofiasip also contains redundant declarations
 AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
@@ -30,7 +30,7 @@ bin_PROGRAMS = janus
 headerdir = $(includedir)/janus
 header_HEADERS = \
 	plugins/plugin.h transports/transport.h apierror.h config.h debug.h dtls.h \
-	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h turnrest.h utils.h log.h
+	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h sdp-utils.h turnrest.h utils.h log.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -101,6 +101,8 @@ janus_SOURCES = \
 	sctp.h \
 	sdp.c \
 	sdp.h \
+	sdp-utils.c \
+	sdp-utils.h \
 	turnrest.c \
 	turnrest.h \
 	utils.c \
@@ -150,9 +152,9 @@ transports_libadd = \
 if ENABLE_REST
 transport_LTLIBRARIES += transports/libjanus_http.la
 transports_libjanus_http_la_SOURCES = transports/janus_http.c
-transports_libjanus_http_la_CFLAGS = $(transports_cflags)
-transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) -lmicrohttpd
-transports_libjanus_http_la_LIBADD = $(transports_libadd)
+transports_libjanus_http_la_CFLAGS = $(transports_cflags) $(MHD_CFLAGS)
+transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) $(MHD_LDFLAGS) $(MHD_LIBS)
+transports_libjanus_http_la_LIBADD = $(transports_libadd) $(MHD_LDFLAGS)
 conf_DATA += conf/janus.transport.http.cfg.sample
 EXTRA_DIST += conf/janus.transport.http.cfg.sample.in
 CLEANFILES += conf/janus.transport.http.cfg.sample
@@ -215,9 +217,9 @@ plugins_libadd = \
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
 plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
-plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) -lopus
-plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd)
+plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS)
+plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS)
+plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD)
 conf_DATA += conf/janus.plugin.audiobridge.cfg.sample
 EXTRA_DIST += conf/janus.plugin.audiobridge.cfg.sample
 endif
@@ -252,9 +254,9 @@ endif
 if ENABLE_PLUGIN_SIP
 plugin_LTLIBRARIES += plugins/libjanus_sip.la
 plugins_libjanus_sip_la_SOURCES = plugins/janus_sip.c
-plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(PLUGIN_SIP_CFLAGS)
-plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(PLUGIN_SIP_LDFLAGS)
-plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(PLUGIN_SIP_LIBADD)
+plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(SOFIA_CFLAGS)
+plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LIBS)
+plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
 conf_DATA += conf/janus.plugin.sip.cfg.sample
 EXTRA_DIST += conf/janus.plugin.sip.cfg.sample
 endif
