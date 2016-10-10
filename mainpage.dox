@@ -1309,7 +1309,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * RabbitMQ messaging to talk to Janus, rather than using HTTP messages
  * or WebSockets. Specifically, RabbitMQ just basically forwards messages
  * on queues, and as such implementing a pseudo-bidirectional channel
- * as the Janus API requires needs some precaution.
+ * as the Janus API requires some precaution.
  *
  * In particular, when configuring Janus to use RabbitMQ you'll have to
  * specify \b two \b queues:
@@ -1345,7 +1345,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * MQTT messaging to talk to Janus, rather than using HTTP messages
  * or WebSockets. Similar to RabbitMQ, MQTT just basically forwards messages
  * on queues, and as such implementing a pseudo-bidirectional channel
- * as the Janus API requires needs some precaution.
+ * as the Janus API requires some precaution.
  *
  * In particular, when configuring Janus to use MQTT you'll have to
  * specify \b two \b queues:
