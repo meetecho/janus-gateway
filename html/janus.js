@@ -1210,6 +1210,10 @@ function Janus(gatewayCallbacks) {
 			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
 			pc_constraints.optional.push({"googIPv6":true});
 		}
+		if(adapter.browserDetails.browser === "edge") {
+			// This is Edge, enable BUNDLE explicitly
+			pc_config.bundlePolicy = "max-bundle";
+		}
 		Janus.log("Creating PeerConnection");
 		Janus.debug(pc_constraints);
 		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
@@ -1285,6 +1289,10 @@ function Janus(gatewayCallbacks) {
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
 		} else {
+			if(adapter.browserDetails.browser === "edge") {
+				// This is Edge, add an a=end-of-candidates at the end
+				jsep.sdp += "a=end-of-candidates\r\n";
+			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
 					function() {
@@ -1315,6 +1323,10 @@ function Janus(gatewayCallbacks) {
 			if(jsep === null || jsep === undefined) {
 				createOffer(handleId, media, callbacks);
 			} else {
+				if(adapter.browserDetails.browser === "edge") {
+					// This is Edge, add an a=end-of-candidates at the end
+					jsep.sdp += "a=end-of-candidates\r\n";
+				}
 				config.pc.setRemoteDescription(
 						new RTCSessionDescription(jsep),
 						function() {
@@ -1622,6 +1634,10 @@ function Janus(gatewayCallbacks) {
 				Janus.warn("Wait, no PeerConnection?? if this is an answer, use createAnswer and not handleRemoteJsep");
 				callbacks.error("No PeerConnection: if this is an answer, use createAnswer and not handleRemoteJsep");
 				return;
+			}
+			if(adapter.browserDetails.browser === "edge") {
+				// This is Edge, add an a=end-of-candidates at the end
+				jsep.sdp += "a=end-of-candidates\r\n";
 			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),

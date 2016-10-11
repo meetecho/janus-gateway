@@ -103,8 +103,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 	}
 	/* Now go on with m-line and their attributes */
 	temp = remote_sdp->m_lines;
+	gboolean bundled = FALSE;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		bundled = FALSE;
 		if(m->type == JANUS_SDP_AUDIO) {
 			if(handle->rtp_profile == NULL && m->proto != NULL)
 				handle->rtp_profile = g_strdup(m->proto);
@@ -134,8 +136,9 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->video_id));
 				} else {
-					gint id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
+					guint id = handle->audio_id > 0 ? handle->audio_id : handle->video_id;
 					stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+					bundled = id == handle->audio_id;
 				}
 			} else {
 				/* Video rejected? */
@@ -157,8 +160,9 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 						stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(handle->data_id));
 					} else {
-						gint id = handle->audio_id > 0 ? handle->audio_id : (handle->video_id > 0 ? handle->video_id : handle->data_id);
+						guint id = handle->audio_id > 0 ? handle->audio_id : (handle->video_id > 0 ? handle->video_id : handle->data_id);
 						stream = g_hash_table_lookup(handle->streams, GUINT_TO_POINTER(id));
+						bundled = (id == handle->audio_id || id == handle->video_id);
 					}
 					if(stream == NULL) {
 						JANUS_LOG(LOG_WARN, "No valid stream for data??\n");
@@ -256,20 +260,23 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 			rfingerprint = NULL;
 			return -2;
 		}
-		/* FIXME We're replacing the fingerprint info, assuming it's going to be the same for all media */
-		if(stream->remote_hashing != NULL)
-			g_free(stream->remote_hashing);
-		stream->remote_hashing = g_strdup(rhashing);
-		if(stream->remote_fingerprint != NULL)
-			g_free(stream->remote_fingerprint);
-		stream->remote_fingerprint = g_strdup(rfingerprint);
-		/* Store the ICE username and password for this stream */
-		if(stream->ruser != NULL)
-			g_free(stream->ruser);
-		stream->ruser = g_strdup(ruser);
-		if(stream->rpass != NULL)
-			g_free(stream->rpass);
-		stream->rpass = g_strdup(rpass);
+		/* Make sure we don't overwrite previously parsed fingerprints and ICE credentials if we're bundling */
+		if(!bundled) {
+			/* Store fingerprint and hashing */
+			if(stream->remote_hashing != NULL)
+				g_free(stream->remote_hashing);
+			stream->remote_hashing = g_strdup(rhashing);
+			if(stream->remote_fingerprint != NULL)
+				g_free(stream->remote_fingerprint);
+			stream->remote_fingerprint = g_strdup(rfingerprint);
+			/* Store the ICE username and password for this stream */
+			if(stream->ruser != NULL)
+				g_free(stream->ruser);
+			stream->ruser = g_strdup(ruser);
+			if(stream->rpass != NULL)
+				g_free(stream->rpass);
+			stream->rpass = g_strdup(rpass);
+		}
 		/* Now look for candidates and other info */
 		tempA = m->attributes;
 		while(tempA) {
