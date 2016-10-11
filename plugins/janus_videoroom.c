@@ -958,7 +958,7 @@ static void janus_videoroom_notify_participants(janus_videoroom_publisher *parti
 	GHashTableIter iter;
 	gpointer value;
 	g_hash_table_iter_init(&iter, participant->room->participants);
-	while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+	while (!g_atomic_int_get(&participant->room->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom_publisher *p = value;
 		if(p && p->session && p != participant) {
 			JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
@@ -970,10 +970,10 @@ static void janus_videoroom_notify_participants(janus_videoroom_publisher *parti
 
 static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *participant, gboolean is_leaving) {
 	/* we need to check if the room still exists, may have been destroyed already */
-	if(!participant->room || participant->room->destroyed)
+	if(!participant->room || g_atomic_int_get(&participant->room->destroyed))
 		return;
-	json_t *event = json_object();
 	janus_mutex_lock(&participant->room->mutex);
+	json_t *event = json_object();
 	json_object_set_new(event, "videoroom", json_string("event"));
 	json_object_set_new(event, "room", json_integer(participant->room->room_id));
 	json_object_set_new(event, is_leaving ? "leaving" : "unpublished", json_integer(participant->user_id));
@@ -981,8 +981,8 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 	if(is_leaving) {
 		g_hash_table_remove(participant->room->participants, &participant->user_id);
 	}
-	janus_mutex_unlock(&participant->room->mutex);
 	json_decref(event);
+	janus_mutex_unlock(&participant->room->mutex);
 }
 
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
@@ -1009,17 +1009,20 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		handle->plugin_handle = NULL;
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Get rid of publisher */
-			janus_videoroom_publisher *p = (janus_videoroom_publisher *)session->participant;
 			janus_mutex_lock(&session->mutex);
+			janus_videoroom_publisher *p = (janus_videoroom_publisher *)session->participant;
+			if(p)
+				janus_refcount_increase(&p->ref);
 			session->participant = NULL;
 			janus_mutex_unlock(&session->mutex);
-			janus_videoroom_leave_or_unpublish(p, TRUE);
-			if(p->room) {
+			if(p && p->room) {
+				janus_videoroom_leave_or_unpublish(p, TRUE);
 				/* Don't clear p->room.  Another thread calls janus_videoroom_leave_or_unpublish,
 					 too, and there is no mutex to protect this change. */
 				janus_refcount_decrease(&p->room->ref);
 			}
 			janus_videoroom_publisher_destroy(p);
+			g_clear_pointer(&p, janus_videoroom_publisher_dereference);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)session->participant;
 			session->participant = NULL;
@@ -1733,7 +1736,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_mutex_unlock(&rooms_mutex);
 			goto plugin_response;
 		}
-		if(videoroom->destroyed) {
+		if(g_atomic_int_get(&videoroom->destroyed)) {
 			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
 			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
@@ -1753,7 +1756,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		gpointer value;
 		janus_mutex_lock(&videoroom->mutex);
 		g_hash_table_iter_init(&iter, videoroom->participants);
-		while (!videoroom->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+		while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_publisher *p = value;
 			if(g_hash_table_size(p->rtp_forwarders) == 0)
 				continue;
@@ -1872,7 +1875,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			janus_videoroom *videoroom = participant->room;
 			janus_mutex_lock(&videoroom->mutex);
 			g_hash_table_iter_init(&iter, videoroom->participants);
-			while (!videoroom->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+			while (!g_atomic_int_get(&videoroom->destroyed) && g_hash_table_iter_next(&iter, NULL, &value)) {
 				janus_videoroom_publisher *p = value;
 				if(p == participant) {
 					continue;	/* Skip the new publisher itself */
