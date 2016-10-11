@@ -2124,10 +2124,6 @@ function Janus(gatewayCallbacks) {
 
 	function isVideoSendEnabled(media) {
 		Janus.debug("isVideoSendEnabled:", media);
-		if(adapter.browserDetails.browser == "edge") {
-			Janus.warn("Edge doesn't support compatible video yet");
-			return false;
-		}
 		if(media === undefined || media === null)
 			return true;	// Default
 		if(media.video === false)
@@ -2139,10 +2135,6 @@ function Janus(gatewayCallbacks) {
 
 	function isVideoRecvEnabled(media) {
 		Janus.debug("isVideoRecvEnabled:", media);
-		if(adapter.browserDetails.browser == "edge") {
-			Janus.warn("Edge doesn't support compatible video yet");
-			return false;
-		}
 		if(media === undefined || media === null)
 			return true;	// Default
 		if(media.video === false)
