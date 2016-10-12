@@ -125,6 +125,9 @@ rec_dir = <folder where recordings should be stored, when enabled>
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#ifdef JANUS_THREAD_DEBUG
+static volatile gint handler_thread_count = 0;
+#endif
 
 /* Plugin information */
 #define JANUS_VIDEOROOM_VERSION			7
@@ -2326,7 +2329,11 @@ static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_vide
 
 /* Thread to handle incoming messages */
 static void *janus_videoroom_handler(void *data) {
+#ifdef JANUS_THREAD_DEBUG
+	JANUS_LOG(LOG_INFO, "Joining VideoRoom handler thread; %d\n", g_atomic_int_add(&handler_thread_count, 1) + 1);
+#else
 	JANUS_LOG(LOG_VERB, "Joining VideoRoom handler thread\n");
+#endif
 	janus_videoroom_message *msg = NULL;
 	int error_code = 0;
 	char error_cause[512];
@@ -3312,7 +3319,11 @@ error:
 			janus_videoroom_message_free(msg);
 		}
 	}
+#ifdef JANUS_THREAD_DEBUG
+	JANUS_LOG(LOG_INFO, "THREAD_DEBUG: Leaving VideoRoom handler thread; %d\n", g_atomic_int_add(&handler_thread_count, -1) - 1);
+#else
 	JANUS_LOG(LOG_VERB, "Leaving VideoRoom handler thread\n");
+#endif
 	return NULL;
 }
 

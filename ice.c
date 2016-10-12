@@ -32,6 +32,10 @@
 #include "rtcp.h"
 #include "apierror.h"
 
+#ifdef JANUS_THREAD_DEBUG
+static volatile gint send_thread_count = 0;
+#endif
+
 /* STUN server/port, if any */
 static char *janus_stun_server = NULL;
 static uint16_t janus_stun_port = 0;
@@ -3015,7 +3019,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	janus_refcount_increase(&handle->ref);
+#ifdef JANUS_THREAD_DEBUG
+	JANUS_LOG(LOG_INFO, "THREAD_DEBUG: [%"SCNu64"] ICE send thread started...; %p; %d\n", handle->handle_id, handle, g_atomic_int_add(&send_thread_count, 1) + 1);
+#else
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...; %p\n", handle->handle_id, handle);
+#endif
 	janus_ice_queued_packet *pkt = NULL;
 	gint64 before = janus_get_monotonic_time(),
 		audio_rtcp_last_rr = before, audio_rtcp_last_sr = before,
@@ -3520,6 +3528,9 @@ void *janus_ice_send_thread(void *data) {
 	}
 	handle->send_thread = NULL;
 	janus_refcount_decrease(&handle->ref);
+#ifdef JANUS_THREAD_DEBUG
+	JANUS_LOG(LOG_INFO, "THREAD_DEBUG: [%"SCNu64"] ICE send thread ended...; %p; %d\n", handle->handle_id, handle, g_atomic_int_add(&send_thread_count, -1) - 1);
+#endif
 	return NULL;
 }
 
