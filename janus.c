@@ -441,8 +441,8 @@ janus_session *janus_session_create(guint64 session_id) {
 			}
 		}
 	}
-	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"\n", session_id);
 	session = (janus_session *)g_malloc0(sizeof(janus_session));
+	JANUS_LOG(LOG_INFO, "Creating new session: %"SCNu64"; %p\n", session_id, session);
 	if(session == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -487,7 +487,7 @@ void janus_session_notify_event(janus_session *session, json_t *event) {
 /* Destroys a session but does not remove it from the sessions hash table. */
 gint janus_session_destroy(janus_session *session) {
 	guint64 session_id = session->session_id;
-	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"\n", session_id);
+	JANUS_LOG(LOG_INFO, "Destroying session %"SCNu64"; %p\n", session_id, session);
 	if(!g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		return 0;
 	janus_session_handles_clear(session);

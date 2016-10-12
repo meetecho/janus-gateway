@@ -410,7 +410,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	if(handle == NULL)
 		return;
 	/* Prepare JSON event to notify user/application */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying WebRTC hangup\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Notifying WebRTC hangup; %p\n", handle->handle_id, handle);
 	janus_session *session = (janus_session *)handle->session;
 	if(session == NULL)
 		return;
@@ -421,7 +421,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 	if(reason != NULL)
 		json_object_set_new(event, "reason", json_string(reason));
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);
 }
 
@@ -833,8 +833,8 @@ janus_ice_handle *janus_ice_handle_create(void *core_session) {
 			handle_id = 0;
 		}
 	}
-	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"\n", session->session_id, handle_id);
 	handle = (janus_ice_handle *)g_malloc0(sizeof(janus_ice_handle));
+	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"; %p %p\n", session->session_id, handle_id, core_session, handle);
 	if(handle == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
 		return NULL;
@@ -929,7 +929,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 		}
 		return 0;
 	}
-	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
+	JANUS_LOG(LOG_INFO, "Detaching handle from %s; %p %p %p %p\n", plugin_t->get_name(), handle, handle->app_handle, handle->app_handle->gateway_handle, handle->app_handle->plugin_handle);
 	/* TODO Actually detach handle... */
 	int error = 0;
 	if(g_atomic_int_compare_and_exchange(&handle->app_handle->stopped, 0, 1)) {
@@ -968,7 +968,7 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle->handle_id, error);
@@ -985,7 +985,7 @@ void janus_ice_free(const janus_refcount *handle_ref) {
 		janus_refcount_decrease(&handle->app_handle->ref);
 	janus_mutex_unlock(&handle->mutex);
 	janus_ice_webrtc_free(handle);
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed\n", handle->handle_id);
+	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed; %p %p\n", handle->handle_id, handle, handle->session);
 	/* Finally, unref the session and free the handle */
 	if(handle->session != NULL) {
 		janus_session *session = (janus_session *)handle->session;
@@ -1111,7 +1111,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	g_atomic_int_set(&handle->send_thread_created, 0);
 	janus_mutex_unlock(&handle->mutex);
-	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
+	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed; %p %p\n", handle->handle_id, handle, handle->session);
 }
 
 void janus_ice_stream_destroy(GHashTable *container, janus_ice_stream *stream) {
@@ -1285,7 +1285,7 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 			json_object_set_new(event, "uplink", uplink ? json_true() : json_false());
 			json_object_set_new(event, "nacks", json_integer(sl_nack_recent_cnt));
 			/* Send the event */
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 			janus_session_notify_event(session, event);
 		}
 		/* Update the counters */
@@ -2073,7 +2073,7 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 void *janus_ice_thread(void *data) {
 	janus_ice_handle *handle = data;
 	janus_refcount_increase(&handle->ref);
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started; %p\n", handle->handle_id, handle);
 	GMainLoop *loop = handle->iceloop;
 	if(loop == NULL) {
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid loop...\n", handle->handle_id);
@@ -2087,7 +2087,7 @@ void *janus_ice_thread(void *data) {
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
 	janus_ice_webrtc_free(handle);
 	/* This ICE session is over, unref it */
 	janus_refcount_decrease(&handle->ref);
@@ -3015,7 +3015,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
 	janus_refcount_increase(&handle->ref);
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...; %p\n", handle->handle_id, handle);
 	janus_ice_queued_packet *pkt = NULL;
 	gint64 before = janus_get_monotonic_time(),
 		audio_rtcp_last_rr = before, audio_rtcp_last_sr = before,
@@ -3513,7 +3513,7 @@ void *janus_ice_send_thread(void *data) {
 			continue;
 		}
 	}
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...; %p\n", handle->handle_id, handle);
 	if(handle->iceloop) {
 		g_main_loop_quit(handle->iceloop);
 		g_main_context_wakeup(handle->icectx);
@@ -3661,6 +3661,6 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_object_set_new(event, "session_id", json_integer(session->session_id));
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Send the event */
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...; %p\n", handle->handle_id, handle);
 	janus_session_notify_event(session, event);
 }
