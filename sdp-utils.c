@@ -52,6 +52,7 @@ void janus_sdp_free(janus_sdp *sdp) {
 			janus_sdp_attribute_destroy(a);
 			temp2 = temp2->next;
 		}
+		g_list_free(m->attributes);
 		g_free(m);
 		temp = temp->next;
 	}

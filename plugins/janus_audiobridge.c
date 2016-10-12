@@ -3166,6 +3166,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			fclose(audiobridge->recording);
 		}
 	}
+	g_free(rtpbuffer);
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %"SCNu64" (%s)...\n", audiobridge->room_id, audiobridge->room_name);
 
 	/* We'll let the watchdog worry about free resources */

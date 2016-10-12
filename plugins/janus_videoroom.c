@@ -920,7 +920,6 @@ void janus_videoroom_destroy(void) {
 	janus_mutex_unlock(&sessions_mutex);
 
 	janus_mutex_lock(&rooms_mutex);
-
 	g_hash_table_destroy(rooms);
 	rooms = NULL;
 	janus_mutex_unlock(&rooms_mutex);
