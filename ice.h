@@ -20,6 +20,7 @@
 #include <glib.h>
 #include <agent.h>
 
+#include "sdp.h"
 #include "dtls.h"
 #include "sctp.h"
 #include "rtcp.h"
@@ -533,9 +534,7 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 #endif
 /*! \brief libnice callback to notify when a new remote candidate has been discovered for an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] component_id The component ID for which the callback applies
- * @param[in] foundation Candidate (or foundation)
+ * @param[in] candidate The libnice candidate that has been discovered
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
 #ifndef HAVE_LIBNICE_TCP
 void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
@@ -594,12 +593,12 @@ void *janus_ice_send_thread(void *data);
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int bundle, int rtcpmux, int trickle);
-/*! \brief Method to add local candidates to the gateway SDP
+/*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus ICE handle this method refers to
- * @param[in,out] sdp The handle description the gateway is preparing
+ * @param[in] mline The Janus SDP m-line object to add candidates to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
-void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id);
+void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP

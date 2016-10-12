@@ -22,7 +22,6 @@ To install it, you'll need to satisfy the following dependencies:
 * [libnice](http://nice.freedesktop.org/wiki/)
 * [OpenSSL](http://www.openssl.org/) (at least v1.0.1e)
 * [libsrtp](https://github.com/cisco/libsrtp) (at least v1.5 suggested)
-* [Sofia-SIP](http://sofia-sip.sourceforge.net/)
 * [usrsctp](https://github.com/sctplab/usrsctp) (only needed if you
 are interested in Data Channels)
 * [libmicrohttpd](http://www.gnu.org/software/libmicrohttpd/) (only
@@ -38,6 +37,7 @@ you are interested in MQTT support for the Janus API)
 
 A couple of plugins depend on a few more libraries:
 
+* [Sofia-SIP](http://sofia-sip.sourceforge.net/) (only needed for the SIP plugin)
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
 * [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
 
@@ -244,7 +244,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 	
-	janus 0.2.0
+	janus 0.2.1
 
 	Usage: janus [OPTIONS]...
 

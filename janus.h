@@ -128,7 +128,7 @@ struct janus_request {
  * @param[in] transport Pointer to the transport
  * @param[in] instance Pointer to the transport-provided session instance
  * @param[in] request_id Opaque pointer to the request ID, if available
- * @param[in] admin Whether this is an admin or Janus API request
+ * @param[in] admin Whether this is a Janus API or Admin API request
  * @param[in] message Opaque pointer to the original request, if available
  * @returns A pointer to a janus_request instance if successful, NULL otherwise */
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message);
@@ -148,7 +148,7 @@ int janus_process_incoming_request(janus_request *request);
 int janus_process_incoming_admin_request(janus_request *request);
 /*! \brief Method to return a successful Janus response message (JSON) to the browser
  * @param[in] request The request instance and its source
- * @param[in] payload The JSON payload to return
+ * @param[in] payload The payload to return as a JSON object
  * @returns 0 on success, a negative integer otherwise
  */
 int janus_process_success(janus_request *request, json_t *payload);
