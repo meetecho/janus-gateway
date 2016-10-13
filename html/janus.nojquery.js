@@ -147,7 +147,7 @@ Janus.init = function(options) {
 				var chromever = adapter.browserDetails.version;
 				if(chromever >= 43) {
 					to.srcObject = from.srcObject;
-				} else if(typeof element.src !== 'undefined') {
+				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
 				}
 			} else {
