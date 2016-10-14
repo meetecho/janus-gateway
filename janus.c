@@ -3763,6 +3763,8 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the request pool task thread...\n", error->code, error->message ? error->message : "??");
 		exit(1);
 	}
+	/* Wait 120 seconds before stopping idle threads to avoid the creation of too many threads for AddressSanitizer. */
+	g_thread_pool_set_max_idle_time(120 * 1000);
 
 	/* Load transports */
 	gboolean janus_api_enabled = FALSE, admin_api_enabled = FALSE;
