@@ -32,6 +32,8 @@ you are interested in WebSockets support for the Janus API)
 WebSockets and/or BoringSSL support, as they make use of it)
 * [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) (only needed if
 you are interested in RabbitMQ support for the Janus API)
+* [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if
+you are interested in MQTT support for the Janus API)
 
 A couple of plugins depend on a few more libraries:
 
@@ -139,6 +141,19 @@ the first line with this:
 
 	git clone https://github.com/warmcat/libwebsockets.git
 
+The same applies for Eclipse Paho MQTT C client library, which is needed
+for the optional MQTT support. If you're interested in integrating MQTT
+queues as an alternative (or replacement) to HTTP and/or WebSockets
+to control Janus, you can install the latest version with the
+following steps:
+
+	git clone https://github.com/eclipse/paho.mqtt.c.git
+	cd paho.mqtt.c
+	make && sudo make install
+
+* *Note:* you may want to set up a different install path for the library,
+to achieve that, replace the last command by 'sudo prefix=/usr make install'.
+
 Finally, the same can be said for rabbitmq-c as well, which is needed
 for the optional RabbitMQ support. In fact, several different versions
 of the library can be found, and the versions usually available in most
@@ -188,6 +203,7 @@ tools:
 
 and following packages for x86 version (mingw32) to build 32-bit binary:
 
+	mkdir /mingw32
 	pacman -S --noconfirm mingw-w64-i686-toolchain mingw-w64-i686-glib2 \
 		mingw-w64-i686-libnice mingw-w64-i686-dlfcn \
 		mingw-w64-i686-libwebsockets mingw-w64-i686-opus \
@@ -198,6 +214,7 @@ and following packages for x86 version (mingw32) to build 32-bit binary:
 Similarly you can install packages for x86_64 version (mingw64) to build 64-bit
 binary:
 
+	mkdir /mingw64
 	pacman -S --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-glib2 \
 		mingw-w64-x86_64-libnice  mingw-w64-x86_64-dlfcn \
 		mingw-w64-x86_64-libwebsockets mingw-w64-x86_64-opus \

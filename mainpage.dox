@@ -91,6 +91,7 @@
  * - \b libmicrohttpd: http://www.gnu.org/software/libmicrohttpd/ (\c optional, Web server)
  * - \b libwebsockets: https://libwebsockets.org/ (\c optional, WebSockets)
  * - \b rabbitmq-c: https://github.com/alanxz/rabbitmq-c (\c optional, v1.0.4, RabbitMQ)
+ * - \b paho.mqtt.c: https://eclipse.org/paho/clients/c (\c optional, v1.1.0, MQTT)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  *
@@ -98,10 +99,10 @@
 
 /*! \page JS JavaScript API
  * The gateway exposes, assuming the HTTP transport has been compiled, a
- * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ/UnixSockets interfaces
- * as well, all of which based on JSON messages. These
+ * pseudo-RESTful interface, and optionally also WebSocket/RabbitMQ/MQTT/UnixSockets
+ * interfaces as well, all of which based on JSON messages. These
  * interfaces are described in more detail in the \ref plainhttp \ref WS
- * \ref rabbit and \ref unix documentation respectively, and all allow clients to
+ * \ref rabbit \ref mqtt and \ref unix documentation respectively, and all allow clients to
  * take advantage of the features provided by Janus and the functionality
  * made available by its plugins. Considering most clients will be web browsers,
  * a common choice will be to rely on either the REST or the WebSockets
@@ -538,14 +539,14 @@ janus.attach(
  *
  */
 
-/*! \page rest RESTful, WebSockets, RabbitMQ and UnixSockets API
+/*! \page rest RESTful, WebSockets, RabbitMQ, MQTT and UnixSockets API
  *
  * Since version \c 0.0.6, there are three different ways to interact with a
- * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit and a \ref unix
- * (both optional, need an external library to be available). All of
+ * Janus instance: a \ref plainhttp (the default), a \ref WS, a \ref rabbit, \ref mqtt
+ * and a \ref unix (both optional, need an external library to be available). All of
  * the interfaces use the same messages (in terms of requests, responses
  * and notifications), so almost all the concepts described in the
- * \ref plainhttp section apply to the WebSocket/RabbitMQ/UnixSockets interfaces as well.
+ * \ref plainhttp section apply to the WebSocket/RabbitMQ/MQTT/UnixSockets interfaces as well.
  * Besides, since version \c 0.1.0 the transport mechanism for the Janus API
  * has been made modular, which means other protocols for transporting
  * Janus API messages might become available in the future: considering the
@@ -556,8 +557,8 @@ janus.attach(
  * As it will be explained later in the \ref WS, \ref rabbit and \ref unix sections
  * below, the only differences come when addressing specific sessions/handles
  * and in part in how you handle notifications using something different than
- * the REST interface: in fact, since with WebSockets, RabbitMQ and UnixSockets (and, as
- * anticipated, with other protocols that may be added in the future too)
+ * the REST interface: in fact, since with WebSockets, RabbitMQ, MQTT and UnixSockets
+ * (and, as anticipated, with other protocols that may be added in the future too)
  * there's no REST-based path involved, you'll need a couple of additional
  * identifiers to bridge the gap.
  * Some details are also provided in case you're interested in \ref auth.
@@ -1301,10 +1302,10 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  *
  * \section rabbit RabbitMQ interface
  * The semantics of how the requests have to be built, when compared to
- * the usage of plain HTTP, is exactly the same as for WebSockets, so 
+ * the usage of plain HTTP, is exactly the same as for WebSockets, so
  * refer to the \ref WS documentation for details about that.
  *
- * Of course, there are other aspects that differ when making use of 
+ * Of course, there are other aspects that differ when making use of
  * RabbitMQ messaging to talk to Janus, rather than using HTTP messages
  * or WebSockets. Specifically, RabbitMQ just basically forwards messages
  * on queues, and as such implementing a pseudo-bidirectional channel
@@ -1335,10 +1336,30 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * implemented to do so, by looking at the Janus-level \c transaction
  * identifier.
  *
+ * \section mqtt MQTT interface
+ * The semantics of how the requests have to be built, when compared to
+ * the usage of plain HTTP, is exactly the same as for WebSockets, so
+ * refer to the \ref WS documentation for details about that.
+ *
+ * Of course, there are other aspects that differ when making use of
+ * MQTT messaging to talk to Janus, rather than using HTTP messages
+ * or WebSockets. Similar to RabbitMQ, MQTT just basically forwards messages
+ * on queues, and as such implementing a pseudo-bidirectional channel
+ * as the Janus API requires needs some precaution.
+ *
+ * In particular, when configuring Janus to use MQTT you'll have to
+ * specify \b two \b queues:
+ *
+ * - a queue for \b incoming messages (application -> Janus);
+ * - a queue for \b outgoing messages (Janus -> application).
+ *
+ * The proper usage of these queues will allow you to implement the kind
+ * of bidirectional channel Janus needs.
+ *
  * \section unix UnixSockets interface
  * The semantics of how the requests have to be built, when compared to
- * the usage of plain HTTP, is exactly the same as for WebSockets and
- * RabbitMQ, so refer to the \ref WS documentation for details about that.
+ * the usage of plain HTTP, is exactly the same as for WebSockets, RabbitMQ
+ * and MQTT, so refer to the \ref WS documentation for details about that.
  *
  * Apart from that, the only configuration needed is related to the path
  * the client and server will be sharing, and the socket type. Notice that only the
@@ -1765,7 +1786,7 @@ POST /admin
  * To conclude, all of the above mentioned examples have assumed an usage
  * of HTTP to interact with the Admin API. The same considerations already
  * made for the Janus API as to the usage of different transports (WebSockets,
- * RabbitMQ or others) apply here as well, particularly with respect to
+ * RabbitMQ, MQTT or others) apply here as well, particularly with respect to
  * the explicit \c session_id and \c handle_id in the JSON payload. Besides,
  * to use the Admin API over WebSockets you'll have to use <code>janus-admin-protocol</code>
  * as the subprotocol, instead of the <code>janus-protocol</code> of the

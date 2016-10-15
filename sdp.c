@@ -575,8 +575,8 @@ int janus_sdp_parse_ssrc(janus_ice_stream *stream, const char *ssrc_attr, int vi
 	janus_ice_handle *handle = stream->handle;
 	if(handle == NULL)
 		return -2;
-	guint32 ssrc = atol(ssrc_attr);
-	if(ssrc == 0)
+	guint64 ssrc = g_ascii_strtoull(ssrc_attr, NULL, 0);
+	if(ssrc == 0 || ssrc > G_MAXUINT32)
 		return -3;
 	if(video) {
 		if(stream->video_ssrc_peer == 0) {
