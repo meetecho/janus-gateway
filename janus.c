@@ -1450,7 +1450,7 @@ jsondone:
 static int janus_request_set_boolean_setting(
 		janus_request *request, guint64 session_id, const gchar *transaction_text,
 		const gchar *param_name, const gchar *setting_name,
-		void (*setter)(gboolean), gboolean (*getter)(void)) {
+		gboolean *ptr, void (*setter)(gboolean), gboolean (*getter)(void)) {
 	int error_code = 0;
 	char error_cause[100];
 	json_t *val = json_object_get(request->message, param_name);
@@ -1464,7 +1464,10 @@ static int janus_request_set_boolean_setting(
 	if(error_code != 0)
 		return janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
 	gboolean b_val = json_is_true(val);
-	setter(b_val);
+	if(ptr)
+		*ptr = b_val;
+	else
+		setter(b_val);
 	/* Prepare JSON reply */
 	json_t *reply = json_object();
 	json_object_set_new(reply, "janus", json_string("success"));
@@ -1472,22 +1475,6 @@ static int janus_request_set_boolean_setting(
 	json_object_set_new(reply, setting_name, (getter ? getter() : b_val) ? json_true() : json_false());
 	/* Send the success reply */
 	return janus_process_success(request, reply);
-}
-
-static void janus_request_set_lock_debug(gboolean debug) {
-	lock_debug = debug;
-}
-
-static void janus_request_set_refcount_debug(gboolean debug) {
-	refcount_debug = debug;
-}
-
-static void janus_request_set_log_timestamps(gboolean log) {
-	janus_log_timestamps = log;
-}
-
-static void janus_request_set_log_colors(gboolean log) {
-	janus_log_colors = log;
 }
 
 static void janus_request_set_ice_debug(gboolean debug) {
@@ -1603,23 +1590,23 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_locking_debug")) {
 			/* Enable/disable the locking debug (would show a message on the console for every lock attempt) */
-			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "locking_debug", janus_request_set_lock_debug, NULL);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "locking_debug", &lock_debug, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_refcount_debug")) {
 			/* Enable/disable the reference counter debug (would show a message on the console for every increase/decrease) */
-			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "refcount_debug", janus_request_set_refcount_debug, NULL);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "refcount_debug", &refcount_debug, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_timestamps")) {
 			/* Enable/disable the log timestamps */
-			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "timestamps", "log_timestamps", janus_request_set_log_timestamps, NULL);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "timestamps", "log_timestamps", &janus_log_timestamps, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_colors")) {
 			/* Enable/disable the log colors */
-			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "colors", "log_colors", janus_request_set_log_colors, NULL);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "colors", "log_colors", &janus_log_colors, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
 			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "libnice_debug", janus_request_set_ice_debug, janus_request_get_ice_debug);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "libnice_debug", NULL, janus_request_set_ice_debug, janus_request_get_ice_debug);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_max_nack_queue")) {
 			/* Change the current value for the max NACK queue */
