@@ -216,7 +216,7 @@ binary:
 
 	mkdir /mingw64
 	pacman -S --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-glib2 \
-		mingw-w64-x86_64-libnice  mingw-w64-x86_64-dlfcn \
+		mingw-w64-x86_64-libnice mingw-w64-x86_64-dlfcn \
 		mingw-w64-x86_64-libwebsockets mingw-w64-x86_64-opus \
 		mingw-w64-x86_64-libogg mingw-w64-x86_64-jansson \
 		mingw-w64-x86_64-curl mingw-w64-x86_64-cmake mingw-w64-x86_64-ffmpeg \
@@ -237,6 +237,14 @@ libmicrohttpd (x86, x86_64):
 	mkdir mingw-w64-libmicrohttpd
 	cd mingw-w64-libmicrohttpd
 	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-libmicrohttpd/PKGBUILD
+	makepkg-mingw -sLfi --noconfirm
+
+paho.mqtt.c (x86, x86_64):
+
+	mkdir mingw-w64-paho.mqtt.c
+	cd mingw-w64-paho.mqtt.c
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-paho.mqtt.c/PKGBUILD
+	wget https://raw.githubusercontent.com/Alexpux/MINGW-packages/master/mingw-w64-paho.mqtt.c/0001-CMakeLists.patch
 	makepkg-mingw -sLfi --noconfirm
 
 Sofia-SIP (x86, x86_64):
