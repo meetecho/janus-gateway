@@ -251,6 +251,8 @@ make
 sudo make install
 ```
 
+### Build janus gateway
+
 ```
 cd /path/to/janus-gateway
 ./configure --disable-unix-sockets --disable-rabbitmq --disable-mqtt --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
@@ -267,7 +269,7 @@ things you can configure, either in a configuration file:
 or on the command line:
 
 	<installdir>/bin/janus --help
-	
+
 	janus 0.2.1
 
 	Usage: janus [OPTIONS]...
