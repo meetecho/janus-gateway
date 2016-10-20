@@ -253,9 +253,11 @@ sudo make install
 
 ### Build janus gateway
 
+Note: Unix Sockets is not supported on macOS, so you must disable it.
+
 ```
 cd /path/to/janus-gateway
-./configure --disable-unix-sockets --disable-rabbitmq --disable-mqtt --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+./configure --disable-unix-sockets --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 make
 sudo make install
 ```
