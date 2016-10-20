@@ -65,24 +65,24 @@
 #endif
 
 
-JANUS_API janus_config *config;
-JANUS_API char *config_file;
-JANUS_API char *configs_folder;
+JANUS_LOCAL janus_config *config;
+JANUS_LOCAL char *config_file;
+JANUS_LOCAL char *configs_folder;
 
-JANUS_API GHashTable *transports;
-JANUS_API GHashTable *transports_so;
+JANUS_LOCAL GHashTable *transports;
+JANUS_LOCAL GHashTable *transports_so;
 
-JANUS_API GHashTable *plugins;
-JANUS_API GHashTable *plugins_so;
+JANUS_LOCAL GHashTable *plugins;
+JANUS_LOCAL GHashTable *plugins_so;
 
 
 /* Daemonization */
-JANUS_API gboolean daemonize;
-JANUS_API int pipefd[2];
+JANUS_LOCAL gboolean daemonize;
+JANUS_LOCAL int pipefd[2];
 
 
 /* API secrets */
-JANUS_API char *api_secret, *admin_api_secret;
+JANUS_LOCAL char *api_secret, *admin_api_secret;
 
 /* JSON parameters */
 static int janus_process_error_string(janus_request *request, uint64_t session_id, const char *transaction, gint error, gchar *error_string);
@@ -140,11 +140,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
 /* IP addresses */
-JANUS_API gchar local_ip[INET6_ADDRSTRLEN];
+JANUS_LOCAL gchar local_ip[INET6_ADDRSTRLEN];
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
-JANUS_API gchar *public_ip;
+JANUS_LOCAL gchar *public_ip;
 gchar *janus_get_public_ip(void) {
 	/* Fallback to the local IP, if we have no public one */
 	return public_ip ? public_ip : local_ip;
@@ -155,14 +155,14 @@ void janus_set_public_ip(const char *ip) {
 		return;
 	public_ip = g_strdup(ip);
 }
-JANUS_API volatile gint stop;
+JANUS_LOCAL volatile gint stop;
 gint janus_is_stopping(void) {
 	return g_atomic_int_get(&stop);
 }
 
 
 /* Public instance name */
-JANUS_API gchar *server_name;
+JANUS_LOCAL gchar *server_name;
 
 
 /* Information */
@@ -348,9 +348,9 @@ static janus_callbacks janus_handler_plugin =
 
 
 /* Gateway Sessions */
-JANUS_API janus_mutex sessions_mutex;
-JANUS_API GHashTable *sessions, *old_sessions;
-JANUS_API GMainContext *sessions_watchdog_context;
+JANUS_LOCAL janus_mutex sessions_mutex;
+JANUS_LOCAL GHashTable *sessions, *old_sessions;
+JANUS_LOCAL GMainContext *sessions_watchdog_context;
 
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */

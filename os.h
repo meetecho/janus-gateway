@@ -24,8 +24,10 @@
 #else
 #define JANUS_API __declspec(dllimport)
 #endif
+#define JANUS_LOCAL JANUS_API
 #else
 #define JANUS_API
+#define JANUS_LOCAL static
 #endif
 
 #ifndef __BIG_ENDIAN
