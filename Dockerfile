@@ -55,10 +55,6 @@ RUN cd janus-gateway && sh autogen.sh && ./configure --prefix=/usr/local \
     --enable-boringssl --enable-post-processing --disable-docs \
     && make && make configs && make install && cd
 
-# Configure Janus
-RUN sed -i -e 's/^;[[:space:]]*\(debug_timestamps.*$\)/\1/' \
-        /usr/local/etc/janus/janus.cfg
-
 # Command to execute for starting janus
 ENTRYPOINT ["/usr/local/bin/janus"]
 CMD ["-d4"]
