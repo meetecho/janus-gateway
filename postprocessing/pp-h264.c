@@ -8,7 +8,9 @@
  * \ingroup postprocessing
  * \ref postprocessing
  */
-
+#ifndef _WIN32
+#include <arpa/inet.h>
+#endif
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
