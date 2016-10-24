@@ -462,6 +462,10 @@ static void janus_videoroom_publisher_dereference(janus_videoroom_publisher *p) 
 	janus_refcount_decrease(&p->ref);
 }
 
+static void janus_videoroom_publisher_dereference_nodebug(janus_videoroom_publisher *p) {
+	janus_refcount_decrease_nodebug(&p->ref);
+}
+
 static void janus_videoroom_publisher_destroy(janus_videoroom_publisher *p) {
 	if(p && g_atomic_int_compare_and_exchange(&p->destroyed, 0, 1))
 		janus_refcount_decrease(&p->ref);
@@ -940,6 +944,15 @@ static janus_videoroom_publisher *janus_videoroom_session_get_publisher(janus_vi
 	janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)session->participant;
 	if(publisher)
 		janus_refcount_increase(&publisher->ref);
+	janus_mutex_unlock(&session->mutex);
+	return publisher;
+}
+
+static janus_videoroom_publisher *janus_videoroom_session_get_publisher_nodebug(janus_videoroom_session *session) {
+	janus_mutex_lock(&session->mutex);
+	janus_videoroom_publisher *publisher = (janus_videoroom_publisher *)session->participant;
+	if(publisher)
+		janus_refcount_increase_nodebug(&publisher->ref);
 	janus_mutex_unlock(&session->mutex);
 	return publisher;
 }
@@ -1906,9 +1919,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session || g_atomic_int_get(&session->destroyed) || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
-	janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+	janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher_nodebug(session);
 	if(participant == NULL || g_atomic_int_get(&participant->destroyed)) {
-		g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
+		g_clear_pointer(&participant, janus_videoroom_publisher_dereference_nodebug);
 		return;
 	}
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
@@ -1992,7 +2005,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		}
 		janus_mutex_unlock(&participant->subscribers_mutex);
 	}
-	g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
+	g_clear_pointer(&participant, janus_videoroom_publisher_dereference_nodebug);
 }
 
 void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -2053,9 +2066,9 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
 	if(!session || g_atomic_int_get(&session->destroyed) || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
-	janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher(session);
+	janus_videoroom_publisher *participant = janus_videoroom_session_get_publisher_nodebug(session);
 	if(participant == NULL || g_atomic_int_get(&participant->destroyed)) {
-		g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
+		g_clear_pointer(&participant, janus_videoroom_publisher_dereference_nodebug);
 		return;
 	}
 	/* Get a string out of the data */
@@ -2067,7 +2080,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	g_slist_foreach(participant->subscribers, janus_videoroom_relay_data_packet, text);
 	janus_mutex_unlock(&participant->subscribers_mutex);
 	g_free(text);
-	g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
+	g_clear_pointer(&participant, janus_videoroom_publisher_dereference_nodebug);
 }
 
 void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int video) {
