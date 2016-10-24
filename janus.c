@@ -108,17 +108,8 @@ static struct janus_json_parameter admin_parameters[] = {
 	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
-static struct janus_json_parameter debug_parameters[] = {
-	{"debug", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
-};
 static struct janus_json_parameter level_parameters[] = {
 	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
-};
-static struct janus_json_parameter timestamps_parameters[] = {
-	{"timestamps", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
-};
-static struct janus_json_parameter colors_parameters[] = {
-	{"colors", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter mnq_parameters[] = {
 	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
@@ -1456,6 +1447,47 @@ jsondone:
 	return ret;
 }
 
+static int janus_request_set_boolean_setting(
+		janus_request *request, guint64 session_id, const gchar *transaction_text,
+		const gchar *param_name, const gchar *setting_name,
+		gboolean *ptr, void (*setter)(gboolean), gboolean (*getter)(void)) {
+	int error_code = 0;
+	char error_cause[100];
+	json_t *val = json_object_get(request->message, param_name);
+	if(!val) {
+		error_code = JANUS_ERROR_MISSING_MANDATORY_ELEMENT;
+		g_snprintf(error_cause, sizeof(error_cause), "Missing mandatory element (%s)", param_name);
+	} else if(!janus_json_is_valid(val, JANUS_JSON_BOOL, 0)) {
+		error_code = JANUS_ERROR_INVALID_ELEMENT_TYPE;
+		g_snprintf(error_cause, sizeof(error_cause), "Invalid element type (%s should be a boolean)", param_name);
+	}
+	if(error_code != 0)
+		return janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+	gboolean b_val = json_is_true(val);
+	if(ptr)
+		*ptr = b_val;
+	else
+		setter(b_val);
+	/* Prepare JSON reply */
+	json_t *reply = json_object();
+	json_object_set_new(reply, "janus", json_string("success"));
+	json_object_set_new(reply, "transaction", json_string(transaction_text));
+	json_object_set_new(reply, setting_name, (getter ? getter() : b_val) ? json_true() : json_false());
+	/* Send the success reply */
+	return janus_process_success(request, reply);
+}
+
+static void janus_request_set_ice_debug(gboolean debug) {
+	if(debug)
+		janus_ice_debugging_enable();
+	else
+		janus_ice_debugging_disable();
+}
+
+static gboolean janus_request_get_ice_debug(void) {
+	return janus_ice_is_ice_debugging_enabled();
+}
+
 /* Admin/monitor WebServer requests handler */
 int janus_process_incoming_admin_request(janus_request *request) {
 	int ret = -1;
@@ -1558,106 +1590,23 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_locking_debug")) {
 			/* Enable/disable the locking debug (would show a message on the console for every lock attempt) */
-			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *debug = json_object_get(root, "debug");
-			lock_debug = json_is_true(debug);
-			/* Prepare JSON reply */
-			json_t *reply = json_object();
-			json_object_set_new(reply, "janus", json_string("success"));
-			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "locking_debug", lock_debug ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "locking_debug", &lock_debug, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_refcount_debug")) {
 			/* Enable/disable the reference counter debug (would show a message on the console for every increase/decrease) */
-			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *debug = json_object_get(root, "debug");
-			if(json_is_true(debug)) {
-				refcount_debug = TRUE;
-			} else {
-				refcount_debug = FALSE;
-			}
-			/* Prepare JSON reply */
-			json_t *reply = json_object();
-			json_object_set_new(reply, "janus", json_string("success"));
-			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "refcount_debug", refcount_debug ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "refcount_debug", &refcount_debug, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_timestamps")) {
 			/* Enable/disable the log timestamps */
-			JANUS_VALIDATE_JSON_OBJECT(root, timestamps_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *timestamps = json_object_get(root, "timestamps");
-			janus_log_timestamps = json_is_true(timestamps);
-			/* Prepare JSON reply */
-			json_t *reply = json_object();
-			json_object_set_new(reply, "janus", json_string("success"));
-			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "timestamps", "log_timestamps", &janus_log_timestamps, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_log_colors")) {
 			/* Enable/disable the log colors */
-			JANUS_VALIDATE_JSON_OBJECT(root, colors_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *colors = json_object_get(root, "colors");
-			janus_log_colors = json_is_true(colors);
-			/* Prepare JSON reply */
-			json_t *reply = json_object();
-			json_object_set_new(reply, "janus", json_string("success"));
-			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "log_colors", janus_log_colors ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "colors", "log_colors", &janus_log_colors, NULL, NULL);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_libnice_debug")) {
 			/* Enable/disable the libnice debugging (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html) */
-			JANUS_VALIDATE_JSON_OBJECT(root, debug_parameters,
-				error_code, error_cause, FALSE,
-				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
-			if(error_code != 0) {
-				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
-				goto jsondone;
-			}
-			json_t *debug = json_object_get(root, "debug");
-			if(json_is_true(debug)) {
-				janus_ice_debugging_enable();
-			} else {
-				janus_ice_debugging_disable();
-			}
-			/* Prepare JSON reply */
-			json_t *reply = json_object();
-			json_object_set_new(reply, "janus", json_string("success"));
-			json_object_set_new(reply, "transaction", json_string(transaction_text));
-			json_object_set_new(reply, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
-			/* Send the success reply */
-			ret = janus_process_success(request, reply);
+			ret = janus_request_set_boolean_setting(request, session_id, transaction_text, "debug", "libnice_debug", NULL, janus_request_set_ice_debug, janus_request_get_ice_debug);
 			goto jsondone;
 		} else if(!strcasecmp(message_text, "set_max_nack_queue")) {
 			/* Change the current value for the max NACK queue */
