@@ -302,6 +302,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 		// Other forwarders
 	]
 }
+\endverbatim
  *
  * That completes the list of synchronous requests you can send to the
  * AudioBridge plugin. As anticipated, though, there are also several
