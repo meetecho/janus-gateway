@@ -2363,6 +2363,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				janus_sdp_free(sdp);
 				break;
 			}
+			/* Also fail with 488 if there's no remote IP address that can be used for RTP */
+			if (!session->media.remote_ip) {
+				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				janus_sdp_free(sdp);
+				break;
+			}
 			if(reinvite) {
 				/* No need to involve the browser: we reply ourselves */
 				nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
@@ -2501,6 +2507,18 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* If we asked for SRTP and are not getting it, fail */
 			if(session->media.require_srtp && !session->media.has_srtp_remote) {
 				JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
+				janus_sdp_free(sdp);
+				g_free(fixed_sdp);
+				/* Hangup immediately */
+				session->status = janus_sip_call_status_closing;
+				nua_bye(nh, TAG_END());
+				g_free(session->callee);
+				session->callee = NULL;
+				break;
+			}
+			if(!session->media.remote_ip) {
+				/* No remote address parsed? Give up */
+				JANUS_LOG(LOG_ERR, "\tNo remote IP address found for RTP, something's wrong with the SDP!\n");
 				janus_sdp_free(sdp);
 				g_free(fixed_sdp);
 				/* Hangup immediately */
