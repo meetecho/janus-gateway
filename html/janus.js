@@ -195,12 +195,14 @@ Janus.init = function(options) {
 				}
 			}
 			if(src === 'adapter.js') {
-				if(navigator.getUserMedia && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection) {
-					// Already loaded
-					Janus.debug(src + " already loaded, skipping");
-					done();
-					return;
-				}
+				try {
+					if(adapter) {
+						// Already loaded
+						Janus.debug(src + " already loaded, skipping");
+						done();
+						return;
+					}
+				} catch(e) {};
 			}
 			var oHead = document.getElementsByTagName('head').item(0);
 			var oScript = document.createElement("script");

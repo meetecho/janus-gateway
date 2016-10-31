@@ -240,14 +240,14 @@ Janus.init = function(options) {
 			}
 		}
 		function addJs(src,done) {
-			if(src === 'adapter.js') {
-				if(navigator.getUserMedia && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection) {
+			try {
+				if(adapter) {
 					// Already loaded
 					Janus.debug(src + " already loaded, skipping");
 					done();
 					return;
 				}
-			}
+			} catch(e) {};
 			var oHead = document.getElementsByTagName('head').item(0);
 			var oScript = document.createElement("script");
 			oScript.type = "text/javascript";
