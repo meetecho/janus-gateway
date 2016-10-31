@@ -302,6 +302,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 		// Other forwarders
 	]
 }
+\endverbatim
  *
  * That completes the list of synchronous requests you can send to the
  * AudioBridge plugin. As anticipated, though, there are also several
@@ -3246,6 +3247,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			fclose(audiobridge->recording);
 		}
 	}
+	g_free(rtpbuffer);
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %"SCNu64" (%s)...\n", audiobridge->room_id, audiobridge->room_name);
 
 	/* We'll let the watchdog worry about free resources */

@@ -1054,7 +1054,7 @@ static int janus_websockets_common_callback(
 			return 0;
 		}
 		case LWS_CALLBACK_RECEIVE: {
-			JANUS_LOG(LOG_VERB, "[%s-%p] Got %zu bytes:\n", log_prefix, wsi, len);
+			JANUS_LOG(LOG_HUGE, "[%s-%p] Got %zu bytes:\n", log_prefix, wsi, len);
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			if(ws_client == NULL || ws_client->wsi == NULL) {
 #else
@@ -1070,14 +1070,14 @@ static int janus_websockets_common_callback(
 			const size_t remaining = libwebsockets_remaining_packet_payload(wsi);
 #endif
 			if(ws_client->incoming == NULL) {
-				JANUS_LOG(LOG_VERB, "[%s-%p] First fragment: %zu bytes, %zu remaining\n", log_prefix, wsi, len, remaining);
+				JANUS_LOG(LOG_HUGE, "[%s-%p] First fragment: %zu bytes, %zu remaining\n", log_prefix, wsi, len, remaining);
 				ws_client->incoming = g_malloc0(len+1);
 				memcpy(ws_client->incoming, in, len);
 				ws_client->incoming[len] = '\0';
 				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming);
 			} else {
 				size_t offset = strlen(ws_client->incoming);
-				JANUS_LOG(LOG_VERB, "[%s-%p] Appending fragment: offset %zu, %zu bytes, %zu remaining\n", log_prefix, wsi, offset, len, remaining);
+				JANUS_LOG(LOG_HUGE, "[%s-%p] Appending fragment: offset %zu, %zu bytes, %zu remaining\n", log_prefix, wsi, offset, len, remaining);
 				ws_client->incoming = g_realloc(ws_client->incoming, offset+len+1);
 				memcpy(ws_client->incoming+offset, in, len);
 				ws_client->incoming[offset+len] = '\0';
@@ -1089,10 +1089,10 @@ static int janus_websockets_common_callback(
 			if(remaining > 0 || !libwebsocket_is_final_fragment(wsi)) {
 #endif
 				/* Still waiting for some more fragments */
-				JANUS_LOG(LOG_VERB, "[%s-%p] Waiting for more fragments\n", log_prefix, wsi);
+				JANUS_LOG(LOG_HUGE, "[%s-%p] Waiting for more fragments\n", log_prefix, wsi);
 				return 0;
 			}
-			JANUS_LOG(LOG_VERB, "[%s-%p] Done, parsing message: %zu bytes\n", log_prefix, wsi, strlen(ws_client->incoming));
+			JANUS_LOG(LOG_HUGE, "[%s-%p] Done, parsing message: %zu bytes\n", log_prefix, wsi, strlen(ws_client->incoming));
 			/* If we got here, the message is complete: parse the JSON payload */
 			json_error_t error;
 			json_t *root = json_loads(ws_client->incoming, 0, &error);
@@ -1116,14 +1116,14 @@ static int janus_websockets_common_callback(
 				/* Check if we have a pending/partial write to complete first */
 				if(ws_client->buffer && ws_client->bufpending > 0 && ws_client->bufoffset > 0
 						&& !ws_client->destroy && !g_atomic_int_get(&stopping)) {
-					JANUS_LOG(LOG_VERB, "[%s-%p] Completing pending WebSocket write (still need to write last %d bytes)...\n",
+					JANUS_LOG(LOG_HUGE, "[%s-%p] Completing pending WebSocket write (still need to write last %d bytes)...\n",
 						log_prefix, wsi, ws_client->bufpending);
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 					int sent = lws_write(wsi, ws_client->buffer + ws_client->bufoffset, ws_client->bufpending, LWS_WRITE_TEXT);
 #else
 					int sent = libwebsocket_write(wsi, ws_client->buffer + ws_client->bufoffset, ws_client->bufpending, LWS_WRITE_TEXT);
 #endif
-					JANUS_LOG(LOG_VERB, "[%s-%p]   -- Sent %d/%d bytes\n", log_prefix, wsi, sent, ws_client->bufpending);
+					JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Sent %d/%d bytes\n", log_prefix, wsi, sent, ws_client->bufpending);
 					if(sent > -1 && sent < ws_client->bufpending) {
 						/* We still couldn't send everything that was left, we'll try and complete this in the next round */
 						ws_client->bufpending -= sent;
@@ -1149,28 +1149,28 @@ static int janus_websockets_common_callback(
 					int buflen = LWS_SEND_BUFFER_PRE_PADDING + strlen(response) + LWS_SEND_BUFFER_POST_PADDING;
 					if(ws_client->buffer == NULL) {
 						/* Let's allocate a shared buffer */
-						JANUS_LOG(LOG_VERB, "[%s-%p] Allocating %d bytes (response is %zu bytes)\n", log_prefix, wsi, buflen, strlen(response));
+						JANUS_LOG(LOG_HUGE, "[%s-%p] Allocating %d bytes (response is %zu bytes)\n", log_prefix, wsi, buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_malloc0(buflen);
 					} else if(buflen > ws_client->buflen) {
 						/* We need a larger shared buffer */
-						JANUS_LOG(LOG_VERB, "[%s-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", log_prefix, wsi, buflen, ws_client->buflen, strlen(response));
+						JANUS_LOG(LOG_HUGE, "[%s-%p] Re-allocating to %d bytes (was %d, response is %zu bytes)\n", log_prefix, wsi, buflen, ws_client->buflen, strlen(response));
 						ws_client->buflen = buflen;
 						ws_client->buffer = g_realloc(ws_client->buffer, buflen);
 					}
 					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
-					JANUS_LOG(LOG_VERB, "[%s-%p] Sending WebSocket message (%zu bytes)...\n", log_prefix, wsi, strlen(response));
+					JANUS_LOG(LOG_HUGE, "[%s-%p] Sending WebSocket message (%zu bytes)...\n", log_prefix, wsi, strlen(response));
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 					int sent = lws_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
 #else
 					int sent = libwebsocket_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
 #endif
-					JANUS_LOG(LOG_VERB, "[%s-%p]   -- Sent %d/%zu bytes\n", log_prefix, wsi, sent, strlen(response));
+					JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Sent %d/%zu bytes\n", log_prefix, wsi, sent, strlen(response));
 					if(sent > -1 && sent < (int)strlen(response)) {
 						/* We couldn't send everything in a single write, we'll complete this in the next round */
 						ws_client->bufpending = strlen(response) - sent;
 						ws_client->bufoffset = LWS_SEND_BUFFER_PRE_PADDING + sent;
-						JANUS_LOG(LOG_VERB, "[%s-%p]   -- Couldn't write all bytes (%d missing), setting offset %d\n",
+						JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Couldn't write all bytes (%d missing), setting offset %d\n",
 							log_prefix, wsi, ws_client->bufpending, ws_client->bufoffset);
 					}
 					/* We can get rid of the message */
@@ -1189,13 +1189,13 @@ static int janus_websockets_common_callback(
 			return 0;
 		}
 		case LWS_CALLBACK_CLOSED: {
-			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection closed\n", log_prefix, wsi);
+			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection down, closing\n", log_prefix, wsi);
 			janus_websockets_destroy_client(ws_client, wsi, log_prefix);
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- closed\n", log_prefix, wsi);
 			return 0;
 		}
 		case LWS_CALLBACK_WSI_DESTROY: {
-			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection destroyed\n", log_prefix, wsi);
+			JANUS_LOG(LOG_VERB, "[%s-%p] WS connection down, destroying\n", log_prefix, wsi);
 			janus_websockets_destroy_client(ws_client, wsi, log_prefix);
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- destroyed\n", log_prefix, wsi);
 			return 0;

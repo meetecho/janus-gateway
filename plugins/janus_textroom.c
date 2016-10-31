@@ -509,6 +509,9 @@ void janus_textroom_destroy(void) {
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
 	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_lock(&rooms_mutex);
+	g_hash_table_destroy(rooms);
+	janus_mutex_unlock(&rooms_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;

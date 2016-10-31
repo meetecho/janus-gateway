@@ -146,7 +146,7 @@ int janus_pidfile_remove(void);
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
- * @param[out] The type description, e.g., "a positive integer"; required size is 19 characters
+ * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters
  * @returns 0 if successful, a negative integer otherwise */
 void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
@@ -214,7 +214,6 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
  * @param member The JSON member with the secret, usually "secret" or "pin"
  * @param[out] error_code int to return error code
  * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is 60
- * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
  * @param missing_code The code to be returned in error_code if a parameter is missing
  * @param invalid_code The code to be returned in error_code if a parameter is invalid
  * @param unauthorized_code The code to be returned in error_code if the secret doesn't match */

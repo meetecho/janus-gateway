@@ -529,9 +529,7 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 #endif
 /*! \brief libnice callback to notify when a new remote candidate has been discovered for an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] component_id The component ID for which the callback applies
- * @param[in] foundation Candidate (or foundation)
+ * @param[in] candidate The libnice candidate that has been discovered
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
 #ifndef HAVE_LIBNICE_TCP
 void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
