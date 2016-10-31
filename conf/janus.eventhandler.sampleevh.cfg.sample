@@ -19,3 +19,16 @@ backend = http://your.webserver.here/and/a/path
 				; the credentials as well (basic authentication only).
 ;backend_user = myuser
 ;backend_pwd = mypwd
+				; You can also configure how retransmissions should
+				; happen, after a failed attempt to deliver an event.
+				; Specifically, you can specify how many times a
+				; retransmission should be attempted (default=5) and
+				; which step is used, in milliseconds, for the exponential
+				; backoff before retrying (e.g, if step=100ms, then the
+				; the first retry will happen after 100ms, the second
+				; after 200ms, then 400ms, and so on). If the event cannot
+				; be retransmitted after the maximum number of attemps
+				; is reached, then it's lost. Beware that retransmissions
+				; will also delay pending events and increase the queue.
+;max_retransmisson = 5
+;retransmissions_backoff = 100

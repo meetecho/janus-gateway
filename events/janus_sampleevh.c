@@ -13,6 +13,7 @@
 
 #include "eventhandler.h"
 
+#include <math.h>
 #include <curl/curl.h>
 
 #include "../debug.h"
@@ -83,6 +84,10 @@ static void janus_sampleevh_event_free(json_t *event) {
 	json_decref(event);
 }
 
+/* Retransmission management */
+static int max_retransmissions = 5;
+static int retransmissions_backoff = 100;
+
 /* Web backend to send the events to */
 static char *backend = NULL;
 static char *backend_user = NULL, *backend_pwd = NULL;
@@ -127,6 +132,28 @@ int janus_sampleevh_init(const char *config_path) {
 				backend_user = (item && item->value) ? g_strdup(item->value) : NULL;
 				item = janus_config_get_item_drilldown(config, "general", "backend_pwd");
 				backend_pwd = (item && item->value) ? g_strdup(item->value) : NULL;
+				/* Any specific setting for retransmissions? */
+				item = janus_config_get_item_drilldown(config, "general", "max_retransmissions");
+				if(item && item->value) {
+					int mr = atoi(item->value);
+					if(mr < 0) {
+						JANUS_LOG(LOG_WARN, "Invalid negative value for 'max_retransmissions', using default (%d)\n", max_retransmissions);
+					} else if(mr == 0) {
+						JANUS_LOG(LOG_WARN, "Retransmissions disabled (max_retransmissions=0)\n");
+						max_retransmissions = 0;
+					} else {
+						max_retransmissions = mr;
+					}
+				}
+				item = janus_config_get_item_drilldown(config, "general", "retransmissions_backoff");
+				if(item && item->value) {
+					int rb = atoi(item->value);
+					if(rb <= 0) {
+						JANUS_LOG(LOG_WARN, "Invalid negative or null value for 'retransmissions_backoff', using default (%d)\n", retransmissions_backoff);
+					} else {
+						retransmissions_backoff = rb;
+					}
+				}
 				/* Which events should we subscribe to? */
 				item = janus_config_get_item_drilldown(config, "general", "events");
 				if(item && item->value) {
@@ -286,235 +313,239 @@ void janus_sampleevh_incoming_event(json_t *event) {
 static void *janus_sampleevh_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining SampleEventHandler handler thread\n");
 	json_t *event = NULL, *output = NULL;
+	char *event_text = NULL;
 	int count = 0, max = group_events ? 100 : 1;
+	int retransmit = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
-		event = g_async_queue_pop(events);
-		if(event == NULL)
-			continue;
-		if(event == &exit_event)
-			break;
-		count = 0;
-		output = NULL;
+		if(!retransmit) {
+			event = g_async_queue_pop(events);
+			if(event == NULL)
+				continue;
+			if(event == &exit_event)
+				break;
+			count = 0;
+			output = NULL;
 
-		while(TRUE) {
-			/* Handle event: just for fun, let's see how long it took for us to take care of this */
-			json_t *created = json_object_get(event, "timestamp");
-			if(created && json_is_integer(created)) {
-				gint64 then = json_integer_value(created);
-				gint64 now = janus_get_monotonic_time();
-				JANUS_LOG(LOG_DBG, "Handled event after %"SCNu64" us\n", now-then);
+			while(TRUE) {
+				/* Handle event: just for fun, let's see how long it took for us to take care of this */
+				json_t *created = json_object_get(event, "timestamp");
+				if(created && json_is_integer(created)) {
+					gint64 then = json_integer_value(created);
+					gint64 now = janus_get_monotonic_time();
+					JANUS_LOG(LOG_DBG, "Handled event after %"SCNu64" us\n", now-then);
+				}
+
+				/* Let's check what kind of event this is: we don't really do anything
+				 * with it in this plugin, it's just to show how you can handle
+				 * different types of events in an event handler. */
+				int type = json_integer_value(json_object_get(event, "type"));
+				switch(type) {
+					case JANUS_EVENT_TYPE_SESSION:
+						/* This is a session related event. The only info that is
+						 * provided is a name for the event itself. Here's an example
+						 * of a new session being created:
+							{
+							   "type": 1,
+							   "timestamp": 3583879627,
+							   "session_id": 2004798115,
+							   "event": {
+								  "name": "created"
+							   }
+							}
+						*/
+						break;
+					case JANUS_EVENT_TYPE_HANDLE:
+						/* This is a handle related event. The only info that is provided
+						 * are the name for the event itself and the package name of the
+						 * plugin this handle refers to (e.g., "janus.plugin.echotest").
+						 * Here's an example of a new handled being attached in a session
+						 * to the EchoTest plugin:
+							{
+							   "type": 2,
+							   "timestamp": 3570304977,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "name": "attached",
+								  "plugin: "janus.plugin.echotest"
+							   }
+							}
+						*/
+						break;
+					case JANUS_EVENT_TYPE_JSEP:
+						/* This is a JSEP/SDP related event. It provides information
+						 * about an ongoing WebRTC negotiation, and so tells you
+						 * about the SDP being sent/received, and who's sending it
+						 * ("local" means Janus, "remote" means the user). Here's an
+						 * example, where the user originated an offer towards Janus:
+							{
+							   "type": 8,
+							   "timestamp": 3570400208,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "owner": "remote",
+								  "jsep": {
+									 "type": "offer",
+									 "sdp": "v=0[..]\r\n"
+								  }
+							   }
+							}
+						*/
+						break;
+					case JANUS_EVENT_TYPE_WEBRTC:
+						/* This is a WebRTC related event, and so the content of
+						 * the event may vary quite a bit. In fact, you may be notified
+						 * about ICE or DTLS states, or when a WebRTC PeerConnection
+						 * goes up or down. Here are some examples, in no particular order:
+							{
+							   "type": 16,
+							   "timestamp": 3570416659,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "ice": "connecting",
+								  "stream_id": 1,
+								  "component_id": 1
+							   }
+							}
+						 *
+							{
+							   "type": 16,
+							   "timestamp": 3570637554,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "selected-pair": "[..]",
+								  "stream_id": 1,
+								  "component_id": 1
+							   }
+							}
+						 *
+							{
+							   "type": 16,
+							   "timestamp": 3570656112,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "dtls": "connected",
+								  "stream_id": 1,
+								  "component_id": 1
+							   }
+							}
+						 *
+							{
+							   "type": 16,
+							   "timestamp": 3570657237,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "connection": "webrtcup"
+							   }
+							}
+						*/
+						break;
+					case JANUS_EVENT_TYPE_MEDIA:
+						/* This is a media related event. This can contain different
+						 * information about the health of a media session, or about
+						 * what's going on in general (e.g., when Janus started/stopped
+						 * receiving media of a certain type, or (TODO) when some media related
+						 * statistics are available). Here's an example of Janus getting
+						 * video from the peer for the first time, or after a second
+						 * of no video at all (which would have triggered a "receiving": false):
+							{
+							   "type": 32,
+							   "timestamp": 3571078797,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "media": "video",
+								  "receiving": "true"
+							   }
+							}
+						*/
+						break;
+					case JANUS_EVENT_TYPE_PLUGIN:
+						/* This is a plugin related event. Since each plugin may
+						 * provide info in a very custom way, the format of this event
+						 * is in general very dynamic. You'll always find, though,
+						 * an "event" object containing the package name of the
+						 * plugin (e.g., "janus.plugin.echotest") and a "data"
+						 * object that contains whatever the plugin decided to
+						 * notify you about, that will always vary from plugin to
+						 * plugin. Besides, notice that "session_id" and "handle_id"
+						 * may or may not be present: when they are, you'll know
+						 * the event has been triggered within the context of a
+						 * specific handle session with the plugin; when they're
+						 * not, the plugin sent an event out of context of a
+						 * specific session it is handling. Here's an example:
+							{
+							   "type": 64,
+							   "timestamp": 3570336031,
+							   "session_id": 2004798115,
+							   "handle_id": 3708519405,
+							   "event": {
+								  "plugin": "janus.plugin.echotest",
+								  "data": {
+									 "audio_active": "true",
+									 "video_active": "true",
+									 "bitrate": 0
+								  }
+							   }
+							}
+						*/
+						break;
+					case JANUS_EVENT_TYPE_TRANSPORT:
+						/* This is a transport related event (TODO). The syntax of
+						 * the common format (transport specific data aside) is
+						 * exactly the same as that of the plugin related events
+						 * above, with a "transport" property instead of "plugin"
+						 * to contain the transport package name. */
+						break;
+					case JANUS_EVENT_TYPE_CORE:
+						/* This is a core related event. This can contain different
+						 * information about the health of the Janus instance, or
+						 * more generically on some events in the Janus life cycle
+						 * (e.g., when it's just been started or when a shutdown
+						 * has been requested). Considering the heterogeneous nature
+						 * of the information being reported, the content is always
+						 * a JSON object (event). Core events are the only ones
+						 * missing a session_id. Here's an example:
+							{
+							   "type": 256,
+							   "timestamp": 28381185382,
+							   "event": {
+								  "status": "started"
+							   }
+							}
+						*/
+						break;
+					default:
+						JANUS_LOG(LOG_WARN, "Unknown type of event '%d'\n", type);
+						break;
+				}
+				if(!group_events) {
+					/* We're done here, we just need a single event */
+					output = event;
+					break;
+				}
+				/* If we got here, we're grouping */
+				if(output == NULL)
+					output = json_array();
+				json_array_append_new(output, event);
+				/* Never group more than a maximum number of events, though, or we might stay here forever */
+				count++;
+				if(count == max)
+					break;
+				event = g_async_queue_try_pop(events);
+				if(event == NULL || event == &exit_event)
+					break;
 			}
 
-			/* Let's check what kind of event this is: we don't really do anything
-			 * with it in this plugin, it's just to show how you can handle
-			 * different types of events in an event handler. */
-			int type = json_integer_value(json_object_get(event, "type"));
-			switch(type) {
-				case JANUS_EVENT_TYPE_SESSION:
-					/* This is a session related event. The only info that is
-					 * provided is a name for the event itself. Here's an example
-					 * of a new session being created:
-						{
-						   "type": 1,
-						   "timestamp": 3583879627,
-						   "session_id": 2004798115,
-						   "event": {
-							  "name": "created"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_HANDLE:
-					/* This is a handle related event. The only info that is provided
-					 * are the name for the event itself and the package name of the
-					 * plugin this handle refers to (e.g., "janus.plugin.echotest").
-					 * Here's an example of a new handled being attached in a session
-					 * to the EchoTest plugin:
-						{
-						   "type": 2,
-						   "timestamp": 3570304977,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "name": "attached",
-							  "plugin: "janus.plugin.echotest"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_JSEP:
-					/* This is a JSEP/SDP related event. It provides information
-					 * about an ongoing WebRTC negotiation, and so tells you
-					 * about the SDP being sent/received, and who's sending it
-					 * ("local" means Janus, "remote" means the user). Here's an
-					 * example, where the user originated an offer towards Janus:
-						{
-						   "type": 8,
-						   "timestamp": 3570400208,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "owner": "remote",
-							  "jsep": {
-								 "type": "offer",
-								 "sdp": "v=0[..]\r\n"
-							  }
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_WEBRTC:
-					/* This is a WebRTC related event, and so the content of
-					 * the event may vary quite a bit. In fact, you may be notified
-					 * about ICE or DTLS states, or when a WebRTC PeerConnection
-					 * goes up or down. Here are some examples, in no particular order:
-						{
-						   "type": 16,
-						   "timestamp": 3570416659,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "ice": "connecting",
-							  "stream_id": 1,
-							  "component_id": 1
-						   }
-						}
-					 *
-						{
-						   "type": 16,
-						   "timestamp": 3570637554,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "selected-pair": "[..]",
-							  "stream_id": 1,
-							  "component_id": 1
-						   }
-						}
-					 *
-						{
-						   "type": 16,
-						   "timestamp": 3570656112,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "dtls": "connected",
-							  "stream_id": 1,
-							  "component_id": 1
-						   }
-						}
-					 *
-						{
-						   "type": 16,
-						   "timestamp": 3570657237,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "connection": "webrtcup"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_MEDIA:
-					/* This is a media related event. This can contain different
-					 * information about the health of a media session, or about
-					 * what's going on in general (e.g., when Janus started/stopped
-					 * receiving media of a certain type, or (TODO) when some media related
-					 * statistics are available). Here's an example of Janus getting
-					 * video from the peer for the first time, or after a second
-					 * of no video at all (which would have triggered a "receiving": false):
-						{
-						   "type": 32,
-						   "timestamp": 3571078797,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "media": "video",
-							  "receiving": "true"
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_PLUGIN:
-					/* This is a plugin related event. Since each plugin may
-					 * provide info in a very custom way, the format of this event
-					 * is in general very dynamic. You'll always find, though,
-					 * an "event" object containing the package name of the
-					 * plugin (e.g., "janus.plugin.echotest") and a "data"
-					 * object that contains whatever the plugin decided to
-					 * notify you about, that will always vary from plugin to
-					 * plugin. Besides, notice that "session_id" and "handle_id"
-					 * may or may not be present: when they are, you'll know
-					 * the event has been triggered within the context of a
-					 * specific handle session with the plugin; when they're
-					 * not, the plugin sent an event out of context of a
-					 * specific session it is handling. Here's an example:
-						{
-						   "type": 64,
-						   "timestamp": 3570336031,
-						   "session_id": 2004798115,
-						   "handle_id": 3708519405,
-						   "event": {
-							  "plugin": "janus.plugin.echotest",
-							  "data": {
-								 "audio_active": "true",
-								 "video_active": "true",
-								 "bitrate": 0
-							  }
-						   }
-						}
-					*/
-					break;
-				case JANUS_EVENT_TYPE_TRANSPORT:
-					/* This is a transport related event (TODO). The syntax of
-					 * the common format (transport specific data aside) is
-					 * exactly the same as that of the plugin related events
-					 * above, with a "transport" property instead of "plugin"
-					 * to contain the transport package name. */
-					break;
-				case JANUS_EVENT_TYPE_CORE:
-					/* This is a core related event. This can contain different
-					 * information about the health of the Janus instance, or
-					 * more generically on some events in the Janus life cycle
-					 * (e.g., when it's just been started or when a shutdown
-					 * has been requested). Considering the heterogeneous nature
-					 * of the information being reported, the content is always
-					 * a JSON object (event). Core events are the only ones
-					 * missing a session_id. Here's an example:
-						{
-						   "type": 256,
-						   "timestamp": 28381185382,
-						   "event": {
-							  "status": "started"
-						   }
-						}
-					*/
-					break;
-				default:
-					JANUS_LOG(LOG_WARN, "Unknown type of event '%d'\n", type);
-					break;
-			}
-			if(!group_events) {
-				/* We're done here, we just need a single event */
-				output = event;
-				break;
-			}
-			/* If we got here, we're grouping */
-			if(output == NULL)
-				output = json_array();
-			json_array_append_new(output, event);
-			/* Never group more than a maximum number of events, though, or we might stay here forever */
-			count++;
-			if(count == max)
-				break;
-			event = g_async_queue_try_pop(events);
-			if(event == NULL || event == &exit_event)
-				break;
+			/* Since this a simple plugin, it does the same for all events: so just convert to string... */
+			event_text = json_dumps(output, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		}
-
-		/* Since this a simple plugin, it does the same for all events: so just convert to string... */
-		char *event_text = json_dumps(output, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		/* ... and send via HTTP POST */
+		/* Whether we just prepared the event or this is a retransmission, send it via HTTP POST */
 		CURLcode res;
 		CURL *curl = curl_easy_init();
 		if(curl == NULL) {
@@ -540,6 +571,20 @@ static void *janus_sampleevh_handler(void *data) {
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
 			JANUS_LOG(LOG_ERR, "Couldn't relay event to the backend: %s\n", curl_easy_strerror(res));
+			if(max_retransmissions > 0) {
+				/* Retransmissions enabled, let's try again */
+				if(retransmit == max_retransmissions) {
+					retransmit = 0;
+					JANUS_LOG(LOG_WARN, "Maximum number of retransmissions reached (%d), event lost...\n", max_retransmissions);
+				} else {
+					int next = retransmissions_backoff * (pow(2, retransmit));
+					JANUS_LOG(LOG_WARN, "Retransmitting event in %d ms...\n", next);
+					g_usleep(next*1000);
+					retransmit++;
+				}
+			} else {
+				JANUS_LOG(LOG_WARN, "Retransmissions disabled, event lost...\n");
+			}
 		} else {
 			JANUS_LOG(LOG_DBG, "Event sent!\n");
 		}
@@ -547,10 +592,12 @@ done:
 		/* Cleanup */
 		if(curl)
 			curl_easy_cleanup(curl);
-		g_free(event_text);
+		if(!retransmit)
+			g_free(event_text);
 
 		/* Done, let's unref the event */
 		json_decref(output);
+		output = NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Leaving SampleEventHandler handler thread\n");
 	return NULL;
