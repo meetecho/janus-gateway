@@ -587,6 +587,7 @@ static void *janus_sampleevh_handler(void *data) {
 			}
 		} else {
 			JANUS_LOG(LOG_DBG, "Event sent!\n");
+			retransmit = 0;
 		}
 done:
 		/* Cleanup */
