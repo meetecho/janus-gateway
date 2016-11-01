@@ -65,9 +65,11 @@ static int pipefd[2];
 
 
 #ifdef REFCOUNT_DEBUG
+#include <time.h>
 /* Reference counters debugging */
 GHashTable *counters = NULL;
 janus_mutex counters_mutex;
+time_t last_refcount_dump = 0;
 #endif
 
 
@@ -369,6 +371,28 @@ static void janus_session_free(const janus_refcount *session_ref) {
 	g_free(session);
 }
 
+#ifdef REFCOUNT_DEBUG
+static void janus_refcount_dump(void) {
+	time_t now = time(NULL);
+	if(!counters || now - last_refcount_dump < REFCOUNT_DUMP_INTERVAL) {
+		return;
+	}
+	last_refcount_dump = now;
+	janus_mutex_lock(&counters_mutex);
+	JANUS_PRINT("Debugging reference counters: %d still allocated\n", g_hash_table_size(counters));
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, counters);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_refcount *ref = (janus_refcount *) value;
+		if(now - ref->created >= REFCOUNT_DUMP_AGE) {
+			JANUS_PRINT("  -- %p %"SCNi64"\n", value, (int64_t) (now - ref->created));
+		}
+	}
+	janus_mutex_unlock(&counters_mutex);
+}
+#endif
+
 static gboolean janus_check_sessions(gpointer user_data) {
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -403,6 +427,9 @@ static gboolean janus_check_sessions(gpointer user_data) {
 			}
 		}
 	}
+#ifdef REFCOUNT_DEBUG
+	janus_refcount_dump();
+#endif
 	janus_mutex_unlock(&sessions_mutex);
 
 	return G_SOURCE_CONTINUE;

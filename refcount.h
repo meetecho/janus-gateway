@@ -62,6 +62,10 @@ void my_free_function(janus_refcount *counter) {
 
 #define REFCOUNT_DEBUG
 
+#ifdef REFCOUNT_DEBUG
+#include <time.h>
+#endif
+
 extern int refcount_debug;
 
 /*! \brief Macro to programmatically address the object itself from its counter
@@ -78,6 +82,9 @@ typedef struct janus_refcount janus_refcount;
 struct janus_refcount {
 	/*! \brief The reference counter itself */
 	gint count;
+#ifdef REFCOUNT_DEBUG
+	time_t created;
+#endif
 	/*! \brief Pointer to the function that will be used to free the object */
 	void (*free)(const janus_refcount *);
 };
@@ -85,10 +92,14 @@ struct janus_refcount {
 
 #ifdef REFCOUNT_DEBUG
 /* Reference counters debugging */
+#define REFCOUNT_DUMP_INTERVAL 3600
+#define REFCOUNT_DUMP_AGE 3600
+
 extern GHashTable *counters;
 extern janus_mutex counters_mutex;
 static void janus_refcount_track(janus_refcount *ref) {
 	janus_mutex_lock(&counters_mutex);
+	ref->created = time(NULL);
 	if(counters == NULL)
 		counters = g_hash_table_new(NULL, NULL);
 	g_hash_table_insert(counters, ref, ref);
