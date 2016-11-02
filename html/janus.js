@@ -147,7 +147,7 @@ Janus.init = function(options) {
 				var chromever = adapter.browserDetails.version;
 				if(chromever >= 43) {
 					to.srcObject = from.srcObject;
-				} else if(typeof element.src !== 'undefined') {
+				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
 				}
 			} else {
@@ -195,12 +195,14 @@ Janus.init = function(options) {
 				}
 			}
 			if(src === 'adapter.js') {
-				if(navigator.getUserMedia && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection) {
-					// Already loaded
-					Janus.debug(src + " already loaded, skipping");
-					done();
-					return;
-				}
+				try {
+					if(adapter) {
+						// Already loaded
+						Janus.debug(src + " already loaded, skipping");
+						done();
+						return;
+					}
+				} catch(e) {};
 			}
 			var oHead = document.getElementsByTagName('head').item(0);
 			var oScript = document.createElement("script");

@@ -1701,6 +1701,8 @@ int janus_http_notifier(janus_transport_session *ts, janus_http_session *session
 		g_usleep(100000);
 		end = janus_get_monotonic_time();
 	}
+	if((max_events == 1 && event == NULL) || (max_events > 1 && list == NULL))
+		found = FALSE;
 	if(!found) {
 		JANUS_LOG(LOG_VERB, "Long poll time out for session %"SCNu64"...\n", session->session_id);
 		/* Turn this into a "keepalive" response */

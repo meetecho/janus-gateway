@@ -73,11 +73,11 @@ uninstall that version and [install 1.5 manually](https://github.com/cisco/libsr
 In fact, 1.4.x is known to cause several issues with WebRTC. Installation
 is quite straightforward:
 
-	wget https://github.com/cisco/libsrtp/archive/v1.5.0.tar.gz
-	tar xfv v1.5.0.tar.gz
-	cd libsrtp-1.5.0
+	wget https://github.com/cisco/libsrtp/archive/v1.5.4.tar.gz
+	tar xfv v1.5.4.tar.gz
+	cd libsrtp-1.5.4
 	./configure --prefix=/usr --enable-openssl
-	make libsrtp.so && sudo make install
+	make shared_library && sudo make install
 
 * *Note:* you may need to pass --libdir=/usr/lib64 to the configure
 script if you're installing on a x86_64 distribution.
