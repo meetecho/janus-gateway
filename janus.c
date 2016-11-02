@@ -150,21 +150,21 @@ gint janus_is_stopping(void) {
 /* Public instance name */
 static gchar *server_name = NULL;
 
-static json_t *janus_create_reply(const char *status, uint64_t session_id, const char *transaction) {
-	json_t *reply = json_object();
-	json_object_set_new(reply, "janus", json_string(status));
+static json_t *janus_create_message(const char *status, uint64_t session_id, const char *transaction) {
+	json_t *msg = json_object();
+	json_object_set_new(msg, "janus", json_string(status));
 	if(session_id > 0)
-		json_object_set_new(reply, "session_id", json_integer(session_id));
+		json_object_set_new(msg, "session_id", json_integer(session_id));
 	if(transaction != NULL)
-		json_object_set_new(reply, "transaction", json_string(transaction));
-	return reply;
+		json_object_set_new(msg, "transaction", json_string(transaction));
+	return msg;
 }
 
 /* Information */
 json_t *janus_info(const char *transaction);
 json_t *janus_info(const char *transaction) {
 	/* Prepare a summary on the gateway */
-	json_t *info = janus_create_reply("server_info", 0, transaction);
+	json_t *info = janus_create_message("server_info", 0, transaction);
 	json_object_set_new(info, "name", json_string(JANUS_NAME));
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
@@ -388,7 +388,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 
 				/* Notify the transport */
 				if(session->source) {
-					json_t *event = janus_create_reply("timeout", session->session_id, NULL);
+					json_t *event = janus_create_message("timeout", session->session_id, NULL);
 					/* Send this to the transport client and notify the session's over */
 					session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
 					session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
@@ -854,7 +854,7 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		if(!strcasecmp(message_text, "ping")) {
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("pong", 0, transaction_text);
+			json_t *reply = janus_create_message("pong", 0, transaction_text);
 			ret = janus_process_success(request, reply);
 			goto jsondone;
 		}
@@ -892,7 +892,7 @@ int janus_process_incoming_request(janus_request *request) {
 		/* Notify the source that a new session has been created */
 		request->transport->session_created(request->instance, session->session_id);
 		/* Prepare JSON reply */
-		json_t *reply = janus_create_reply("success", 0, transaction_text);
+		json_t *reply = janus_create_message("success", 0, transaction_text);
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(session_id));
 		json_object_set_new(reply, "data", data);
@@ -939,7 +939,7 @@ int janus_process_incoming_request(janus_request *request) {
 	if(!strcasecmp(message_text, "keepalive")) {
 		/* Just a keep-alive message, reply with an ack */
 		JANUS_LOG(LOG_VERB, "Got a keep-alive on session %"SCNu64"\n", session_id);
-		json_t *reply = janus_create_reply("ack", session_id, transaction_text);
+		json_t *reply = janus_create_message("ack", session_id, transaction_text);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "attach")) {
@@ -993,7 +993,7 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		/* Prepare JSON reply */
-		json_t *reply = janus_create_reply("success", session_id, transaction_text);
+		json_t *reply = janus_create_message("success", session_id, transaction_text);
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(handle_id));
 		json_object_set_new(reply, "data", data);
@@ -1016,7 +1016,7 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_session_destroy(session);
 
 		/* Prepare JSON reply */
-		json_t *reply = janus_create_reply("success", session_id, transaction_text);
+		json_t *reply = janus_create_message("success", session_id, transaction_text);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "detach")) {
@@ -1037,7 +1037,7 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		/* Prepare JSON reply */
-		json_t *reply = janus_create_reply("success", session_id, transaction_text);
+		json_t *reply = janus_create_message("success", session_id, transaction_text);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "hangup")) {
@@ -1052,7 +1052,7 @@ int janus_process_incoming_request(janus_request *request) {
 		}
 		janus_ice_webrtc_hangup(handle);
 		/* Prepare JSON reply */
-		json_t *reply = janus_create_reply("success", session_id, transaction_text);
+		json_t *reply = janus_create_message("success", session_id, transaction_text);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 	} else if(!strcasecmp(message_text, "message")) {
@@ -1281,7 +1281,7 @@ int janus_process_incoming_request(janus_request *request) {
 			/* Reference the content, as destroying the result instance will decref it */
 			json_incref(result->content);
 			/* Prepare JSON response */
-			json_t *reply = janus_create_reply("success", session->session_id, transaction_text);
+			json_t *reply = janus_create_message("success", session->session_id, transaction_text);
 			json_object_set_new(reply, "sender", json_integer(handle->handle_id));
 			json_t *plugin_data = json_object();
 			json_object_set_new(plugin_data, "plugin", json_string(plugin_t->get_package()));
@@ -1291,7 +1291,7 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_success(request, reply);
 		} else if(result->type == JANUS_PLUGIN_OK_WAIT) {
 			/* The plugin received the request but didn't process it yet, send an ack (asynchronous notifications may follow) */
-			json_t *reply = janus_create_reply("ack", session_id, transaction_text);
+			json_t *reply = janus_create_message("ack", session_id, transaction_text);
 			if(result->text)
 				json_object_set_new(reply, "hint", json_string(result->text));
 			/* Send the success reply */
@@ -1389,7 +1389,7 @@ int janus_process_incoming_request(janus_request *request) {
 trickledone:
 		janus_mutex_unlock(&handle->mutex);
 		/* We reply right away, not to block the web server... */
-		json_t *reply = janus_create_reply("ack", session_id, transaction_text);
+		json_t *reply = janus_create_message("ack", session_id, transaction_text);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 	} else {
@@ -1425,7 +1425,7 @@ static json_t *janus_json_token_plugin_array(const char *token_value) {
 static json_t *janus_json_list_token_plugins(const char *token_value, const gchar *transaction_text) {
 	json_t *plugins_list = janus_json_token_plugin_array(token_value);
 	/* Prepare JSON reply */
-	json_t *reply = janus_create_reply("success", 0, transaction_text);
+	json_t *reply = janus_create_message("success", 0, transaction_text);
 	json_t *data = json_object();
 	json_object_set_new(data, "plugins", plugins_list);
 	json_object_set_new(reply, "data", data);
@@ -1592,7 +1592,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		}
 		if(!strcasecmp(message_text, "get_status")) {
 			/* Return some info on the settings (mostly debug-related, at the moment) */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_t *status = json_object();
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
@@ -1623,7 +1623,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			janus_log_level = level_num;
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "level", json_integer(janus_log_level));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1640,7 +1640,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *debug = json_object_get(root, "debug");
 			lock_debug = json_is_true(debug);
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "locking_debug", lock_debug ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1661,7 +1661,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				refcount_debug = FALSE;
 			}
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "refcount_debug", refcount_debug ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1678,7 +1678,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *timestamps = json_object_get(root, "timestamps");
 			janus_log_timestamps = json_is_true(timestamps);
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1695,7 +1695,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_t *colors = json_object_get(root, "colors");
 			janus_log_colors = json_is_true(colors);
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "log_colors", janus_log_colors ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1716,7 +1716,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				janus_ice_debugging_disable();
 			}
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1738,7 +1738,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			janus_set_max_nack_queue(mnq_num);
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1762,7 +1762,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				janus_mutex_unlock(&sessions_mutex);
 			}
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_object_set_new(reply, "sessions", list);
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1801,7 +1801,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				g_list_free(list);
 			}
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			json_t *data = json_object();
 			json_object_set_new(data, "tokens", tokens_list);
 			json_object_set_new(reply, "data", data);
@@ -1836,7 +1836,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 				goto jsondone;
 			}
 			/* Prepare JSON reply */
-			json_t *reply = janus_create_reply("success", 0, transaction_text);
+			json_t *reply = janus_create_message("success", 0, transaction_text);
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1894,7 +1894,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		/* List handles */
 		json_t *list = janus_session_handles_list_json(session);
 		/* Prepare JSON reply */
-		json_t *reply = janus_create_reply("success", session_id, transaction_text);
+		json_t *reply = janus_create_message("success", session_id, transaction_text);
 		json_object_set_new(reply, "handles", list);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
@@ -1989,7 +1989,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "streams", streams);
 		janus_mutex_unlock(&handle->mutex);
 		/* Prepare JSON reply */
-		json_t *reply = janus_create_reply("success", session_id, transaction_text);
+		json_t *reply = janus_create_message("success", session_id, transaction_text);
 		json_object_set_new(reply, "handle_id", json_integer(handle_id));
 		json_object_set_new(reply, "info", info);
 		/* Send the success reply */
@@ -2022,7 +2022,7 @@ static int janus_process_error_string(janus_request *request, uint64_t session_i
 	/* Done preparing error */
 	JANUS_LOG(LOG_VERB, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string);
 	/* Prepare JSON error */
-	json_t *reply = janus_create_reply("error", session_id, transaction);
+	json_t *reply = janus_create_message("error", session_id, transaction);
 	json_t *error_data = json_object();
 	json_object_set_new(error_data, "code", json_integer(error));
 	json_object_set_new(error_data, "reason", json_string(error_string));
@@ -2371,7 +2371,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	/* Reference the payload, as the plugin may still need it and will do a decref itself */
 	json_incref(message);
 	/* Prepare JSON event */
-	json_t *event = janus_create_reply("event", session->session_id, transaction);
+	json_t *event = janus_create_message("event", session->session_id, transaction);
 	json_object_set_new(event, "sender", json_integer(ice_handle->handle_id));
 	json_t *plugin_data = json_object();
 	json_object_set_new(plugin_data, "plugin", json_string(plugin->get_package()));
