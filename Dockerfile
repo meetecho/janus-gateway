@@ -52,7 +52,7 @@ RUN git clone https://github.com/alanxz/rabbitmq-c && cd rabbitmq-c \
 # Install Janus itself
 COPY / janus-gateway
 RUN cd janus-gateway && sh autogen.sh && ./configure --prefix=/usr/local \
-    --enable-boringssl --enable-post-processing --disable-docs \
+    --enable-boringssl --enable-post-processing --disable-mqtt --disable-docs \
     && make && make configs && make install && cd
 
 # Command to execute for starting janus
