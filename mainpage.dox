@@ -2383,16 +2383,22 @@ ldd janus | grep asan
  * experimental and incomplete as per the author words, but a good starting point</td>
  * </tr>
  * <tr>
- * 		<td>C#/.NET</td>
- * 		<td><a href="https://github.com/Computician">Benjamin Trent</a></td>
- * 		<td><a href="https://github.com/Computician/JanusSharp">JanusSharp</a></td>
- * 		<td>C#/.Net client side API wrapper for the Janus API</td>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
+ * 		<td><a href="https://github.com/cargomedia/janus-gateway-js">janus-gateway-js</a></td>
+ * 		<td>Simple JavaScript client for janus-gateway that runs in the browser as well as in Node.js</td>
  * </tr>
  * <tr>
  * 		<td>ruby</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-ruby">janus-gateway-ruby</a></td>
  * 		<td>ruby client side API wrapper for the Janus API (websocket only at the moment)</td>
+ * </tr>
+ * <tr>
+ * 		<td>C#/.NET</td>
+ * 		<td><a href="https://github.com/Computician">Benjamin Trent</a></td>
+ * 		<td><a href="https://github.com/Computician/JanusSharp">JanusSharp</a></td>
+ * 		<td>C#/.Net client side API wrapper for the Janus API</td>
  * </tr>
  * <tr>
  * 		<td>PHP</td>
@@ -2441,6 +2447,18 @@ ldd janus | grep asan
  * 		<td><a href="http://linux-projects.org">Linux Projects</a></td>
  * 		<td><a href="http://www.linux-projects.org/uv4l/tutorials/janus-gateway/">UV4L, User Space Video Collection</a></td>
  * 		<td>Software modules providing solutions for encrypted live data, audio and video streaming, mirroring, conferencing</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section docker Docker resources
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/krull">Brendan Jocson</a></td>
+ * 		<td><a href="https://github.com/krull/docker-janus">docker-janus</a></td>
+ *		<td>Debian 8 based docker image for Meetecho's Janus Gateway</td>
  * </tr>
  * </table>
  * <br/>
