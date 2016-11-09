@@ -239,14 +239,15 @@ for more info.
 ### Install dependencies
 
 ```
-brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg glib pkg-config gengetopt
+brew tap homebrew/boneyard
+brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg glib pkg-config gengetopt autoconf automake libtool
 ```
 
 ```
 wget https://github.com/cisco/libsrtp/archive/v1.5.4.tar.gz
 tar xvf v1.5.4.tar.gz
 cd libsrtp-1.5.4
-./configure --prefix=/usr/local/libsrtp
+./configure --prefix=/usr/local
 make
 sudo make install
 ```
