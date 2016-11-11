@@ -16,6 +16,10 @@
 #define CLOCK_REALTIME CALENDAR_CLOCK
 #define CLOCK_MONOTONIC SYSTEM_CLOCK
 
+#if !defined(__DARWIN_C_LEVEL) || __DARWIN_C_LEVEL < 199309L
+typedef int clockid_t;
+#endif
+
 /* the mach kernel uses struct mach_timespec, so struct timespec
     is loaded from <sys/_types/_timespec.h> for compatability */
 // struct timespec { time_t tv_sec; long tv_nsec; };
