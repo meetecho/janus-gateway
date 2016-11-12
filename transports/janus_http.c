@@ -1736,7 +1736,8 @@ int janus_http_return_success(janus_transport_session *ts, char *payload) {
 	}
 	janus_http_msg *msg = (janus_http_msg *)ts->transport_p;
 	if(!msg || !msg->connection) {
-		g_free(payload);
+		if(payload)
+			free(payload);
 		return MHD_NO;
 	}
 	struct MHD_Response *response = MHD_create_response_from_buffer(

@@ -396,7 +396,7 @@ int janus_pfunix_send_message(janus_transport_session *transport, void *request_
 		do {
 			res = sendto(client->admin ? admin_pfd : pfd, payload, strlen(payload), 0, (struct sockaddr *)&client->addr, sizeof(struct sockaddr_un));
 		} while(res == -1 && errno == EINTR);
-		g_free(payload);
+		free(payload);
 	}
 	return 0;
 }
