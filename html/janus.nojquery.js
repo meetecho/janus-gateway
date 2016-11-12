@@ -59,6 +59,7 @@ Janus.init = function(options) {
 		// Console logging (all debugging disabled by default)
 		Janus.trace = Janus.noop;
 		Janus.debug = Janus.noop;
+		Janus.vdebug = Janus.noop;
 		Janus.log = Janus.noop;
 		Janus.warn = Janus.noop;
 		Janus.error = Janus.noop;
@@ -66,6 +67,7 @@ Janus.init = function(options) {
 			// Enable all debugging levels
 			Janus.trace = console.trace.bind(console);
 			Janus.debug = console.debug.bind(console);
+			Janus.vdebug = console.debug.bind(console);
 			Janus.log = console.log.bind(console);
 			Janus.warn = console.warn.bind(console);
 			Janus.error = console.error.bind(console);
@@ -79,6 +81,9 @@ Janus.init = function(options) {
 					case "debug":
 						Janus.debug = console.debug.bind(console);
 						break;
+					case "vdebug":
+						Janus.vdebug = console.debug.bind(console);
+						break;
 					case "log":
 						Janus.log = console.log.bind(console);
 						break;
@@ -89,7 +94,7 @@ Janus.init = function(options) {
 						Janus.error = console.error.bind(console);
 						break;
 					default:
-						console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'log', warn', 'error')");
+						console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'vdebug', 'log', warn', 'error')");
 						break;
 				}
 			}
@@ -240,14 +245,14 @@ Janus.init = function(options) {
 			}
 		}
 		function addJs(src,done) {
-			if(src === 'adapter.js') {
-				if(navigator.getUserMedia && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection) {
+			try {
+				if(adapter) {
 					// Already loaded
 					Janus.debug(src + " already loaded, skipping");
 					done();
 					return;
 				}
-			}
+			} catch(e) {};
 			var oHead = document.getElementsByTagName('head').item(0);
 			var oScript = document.createElement("script");
 			oScript.type = "text/javascript";
@@ -404,8 +409,6 @@ function Janus(gatewayCallbacks) {
 		retries = 0;
 		if(!websockets && sessionId !== undefined && sessionId !== null)
 			setTimeout(eventHandler, 200);
-		Janus.debug("Got event on session " + sessionId);
-		Janus.debug(json);
 		if(!websockets && Array.isArray(json)) {
 			// We got an array: it means we passed a maxev > 1, iterate on all objects
 			for(var i=0; i<json.length; i++) {
@@ -415,9 +418,12 @@ function Janus(gatewayCallbacks) {
 		}
 		if(json["janus"] === "keepalive") {
 			// Nothing happened
+			Janus.vdebug("Got a keepalive on session " + sessionId);
 			return;
 		} else if(json["janus"] === "ack") {
 			// Just an ack, we can probably ignore
+			Janus.debug("Got an ack on session " + sessionId);
+			Janus.debug(json);
 			var transaction = json["transaction"];
 			if(transaction !== null && transaction !== undefined) {
 				var reportSuccess = transactions[transaction];
@@ -429,6 +435,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		} else if(json["janus"] === "success") {
 			// Success!
+			Janus.debug("Got a success on session " + sessionId);
+			Janus.debug(json);
 			var transaction = json["transaction"];
 			if(transaction !== null && transaction !== undefined) {
 				var reportSuccess = transactions[transaction];
@@ -440,6 +448,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		} else if(json["janus"] === "webrtcup") {
 			// The PeerConnection with the gateway is up! Notify this
+			Janus.debug("Got a webrtcup event on session " + sessionId);
+			Janus.debug(json);
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
 				Janus.warn("Missing sender...");
@@ -454,6 +464,8 @@ function Janus(gatewayCallbacks) {
 			return;
 		} else if(json["janus"] === "hangup") {
 			// A plugin asked the core to hangup a PeerConnection on one of our handles
+			Janus.debug("Got a hangup event on session " + sessionId);
+			Janus.debug(json);
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
 				Janus.warn("Missing sender...");
@@ -468,6 +480,8 @@ function Janus(gatewayCallbacks) {
 			pluginHandle.hangup();
 		} else if(json["janus"] === "detached") {
 			// A plugin asked the core to detach one of our handles
+			Janus.debug("Got a detached event on session " + sessionId);
+			Janus.debug(json);
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
 				Janus.warn("Missing sender...");
@@ -482,6 +496,8 @@ function Janus(gatewayCallbacks) {
 			pluginHandle.detach();
 		} else if(json["janus"] === "media") {
 			// Media started/stopped flowing
+			Janus.debug("Got a media event on session " + sessionId);
+			Janus.debug(json);
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
 				Janus.warn("Missing sender...");
@@ -493,9 +509,25 @@ function Janus(gatewayCallbacks) {
 				return;
 			}
 			pluginHandle.mediaState(json["type"], json["receiving"]);
+		} else if(json["janus"] === "slowlink") {
+			Janus.debug("Got a slowlink event on session " + sessionId);
+			Janus.debug(json);
+			// Trouble uplink or downlink
+			var sender = json["sender"];
+			if(sender === undefined || sender === null) {
+				Janus.warn("Missing sender...");
+				return;
+			}
+			var pluginHandle = pluginHandles[sender];
+			if(pluginHandle === undefined || pluginHandle === null) {
+				Janus.warn("This handle is not attached to this session");
+				return;
+			}
+			pluginHandle.slowLink(json["uplink"], json["nacks"]);
 		} else if(json["janus"] === "error") {
 			// Oops, something wrong happened
 			Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
+			Janus.debug(json);
 			var transaction = json["transaction"];
 			if(transaction !== null && transaction !== undefined) {
 				var reportSuccess = transactions[transaction];
@@ -506,6 +538,8 @@ function Janus(gatewayCallbacks) {
 			}
 			return;
 		} else if(json["janus"] === "event") {
+			Janus.debug("Got a plugin event on session " + sessionId);
+			Janus.debug(json);
 			var sender = json["sender"];
 			if(sender === undefined || sender === null) {
 				Janus.warn("Missing sender...");
@@ -539,7 +573,8 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("No provided notification callback");
 			}
 		} else {
-			Janus.warn("Unknown message '" + json["janus"] + "'");
+			Janus.warn("Unkown message/event  '" + json["janus"] + "' on session " + sessionId);
+			Janus.debug(json);
 		}
 	}
 
@@ -1079,8 +1114,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
-		Janus.debug("Sending trickle candidate (handle=" + handleId + "):");
-		Janus.debug(request);
+		Janus.vdebug("Sending trickle candidate (handle=" + handleId + "):");
+		Janus.vdebug(request);
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
@@ -1094,8 +1129,8 @@ function Janus(gatewayCallbacks) {
 			contentType: "application/json",
 			data: JSON.stringify(request),
 			success: function(json) {
-				Janus.debug("Candidate sent!");
-				Janus.debug(json);
+				Janus.vdebug("Candidate sent!");
+				Janus.vdebug(json);
 				if(json["janus"] !== "ack") {
 					Janus.error("Ooops: " + json["error"].code + " " + json["error"].reason);	// FIXME
 					return;

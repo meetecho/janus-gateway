@@ -116,7 +116,7 @@ function updateServerInfo() {
 				}
 			});
 			// Only check tokens if the mechanism is enabled
-			if(json["auth_token"] !== "true") {
+			if(!json["auth_token"]) {
 				$('a[href=#tokens]').parent().addClass('disabled');
 				$('a[href=#tokens]').attr('href', '#').unbind('click').click(function (e) { e.preventDefault(); return false; });
 			} else {

@@ -1174,7 +1174,7 @@ static int janus_websockets_common_callback(
 							log_prefix, wsi, ws_client->bufpending, ws_client->bufoffset);
 					}
 					/* We can get rid of the message */
-					g_free(response);
+					free(response);
 					/* Done for this round, check the next response/notification later */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 					lws_callback_on_writable(wsi);

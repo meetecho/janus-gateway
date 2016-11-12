@@ -1297,6 +1297,10 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		/* Forward to our SIP peer */
 		if(video) {
 			if(session->media.has_video && session->media.video_rtcp_fd) {
+				/* Fix SSRCs as the gateway does */
+				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
+					session->media.video_ssrc, session->media.video_ssrc_peer);
+				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1307,24 +1311,20 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTCP protect error... %s (len=%d-->%d)...\n",
 							session->account.username, janus_sip_get_srtp_error(res), len, protected);
 					} else {
-						/* Fix SSRCs as the gateway does */
-						JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
-							session->media.video_ssrc, session->media.video_ssrc_peer);
-						janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 						/* Forward the message to the peer */
 						send(session->media.video_rtcp_fd, sbuf, protected, 0);
 					}
 				} else {
-					/* Fix SSRCs as the gateway does */
-					JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
-						session->media.video_ssrc, session->media.video_ssrc_peer);
-					janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
 					/* Forward the message to the peer */
 					send(session->media.video_rtcp_fd, buf, len, 0);
 				}
 			}
 		} else {
 			if(session->media.has_audio && session->media.audio_rtcp_fd) {
+				/* Fix SSRCs as the gateway does */
+				JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
+					session->media.audio_ssrc, session->media.audio_ssrc_peer);
+				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 				/* Is SRTP involved? */
 				if(session->media.has_srtp_local) {
 					char sbuf[2048];
@@ -1335,18 +1335,10 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Audio SRTCP protect error... %s (len=%d-->%d)...\n",
 							session->account.username, janus_sip_get_srtp_error(res), len, protected);
 					} else {
-						/* Fix SSRCs as the gateway does */
-						JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
-							session->media.audio_ssrc, session->media.audio_ssrc_peer);
-						janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 						/* Forward the message to the peer */
 						send(session->media.audio_rtcp_fd, sbuf, protected, 0);
 					}
 				} else {
-					/* Fix SSRCs as the gateway does */
-					JANUS_LOG(LOG_HUGE, "[SIP] Fixing SSRCs (local %u, peer %u)\n",
-						session->media.audio_ssrc, session->media.audio_ssrc_peer);
-					janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
 					/* Forward the message to the peer */
 					send(session->media.audio_rtcp_fd, buf, len, 0);
 				}
@@ -3381,8 +3373,8 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Got something audio (RTP) */
 					addrlen = sizeof(remote);
 					bytes = recvfrom(session->media.audio_rtp_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-					if(session->media.audio_ssrc_peer == 0) {
-						rtp_header *header = (rtp_header *)buffer;
+					rtp_header *header = (rtp_header *)buffer;
+					if(session->media.audio_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.audio_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer audio SSRC: %"SCNu32"\n", session->media.audio_ssrc_peer);
 					}
@@ -3391,7 +3383,6 @@ static void *janus_sip_relay_thread(void *data) {
 						int buflen = bytes;
 						err_status_t res = srtp_unprotect(session->media.audio_srtp_in, buffer, &buflen);
 						if(res != err_status_ok && res != err_status_replay_fail && res != err_status_replay_old) {
-							rtp_header *header = (rtp_header *)buffer;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_ERR, "[SIP-%s] Audio SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n",
@@ -3401,7 +3392,6 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					rtp_header *header = (rtp_header *)buffer;
 					guint32 ssrc = ntohl(header->ssrc);
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);
@@ -3460,8 +3450,8 @@ static void *janus_sip_relay_thread(void *data) {
 					//~ rtp_header_t *rtp = (rtp_header_t *)buffer;
 					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
-					if(session->media.video_ssrc_peer == 0) {
-						rtp_header *header = (rtp_header *)buffer;
+					rtp_header *header = (rtp_header *)buffer;
+					if(session->media.video_ssrc_peer != ntohl(header->ssrc)) {
 						session->media.video_ssrc_peer = ntohl(header->ssrc);
 						JANUS_LOG(LOG_VERB, "Got SIP peer video SSRC: %"SCNu32"\n", session->media.video_ssrc_peer);
 					}
@@ -3470,7 +3460,6 @@ static void *janus_sip_relay_thread(void *data) {
 						int buflen = bytes;
 						err_status_t res = srtp_unprotect(session->media.video_srtp_in, buffer, &buflen);
 						if(res != err_status_ok && res != err_status_replay_fail && res != err_status_replay_old) {
-							rtp_header *header = (rtp_header *)buffer;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n",
@@ -3480,7 +3469,6 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					rtp_header *header = (rtp_header *)buffer;
 					guint32 ssrc = ntohl(header->ssrc);
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);

@@ -636,7 +636,7 @@ void *janus_rmq_out_thread(void *data) {
 			}
 			g_free(response->correlation_id);
 			response->correlation_id = NULL;
-			g_free(payload_text);
+			free(payload_text);
 			payload_text = NULL;
 			g_free(response);
 			response = NULL;

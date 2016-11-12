@@ -345,7 +345,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"pin" : "<password required to join the room, if any; optional>",
 	"display" : "<display name to have in the room; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
-	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>
+	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>,
+	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>
 }
 \endverbatim
  *
@@ -377,6 +378,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"request" : "configure",
 	"muted" : <true|false, whether to unmute or mute>,
 	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>,
+	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
 	"filename": "<basename of the file to record to, -audio.mjr will be added by the plugin>"
 }
@@ -566,11 +568,13 @@ static struct janus_json_parameter join_parameters[] = {
 	{"display", JSON_STRING, 0},
 	{"muted", JANUS_JSON_BOOL, 0},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter configure_parameters[] = {
 	{"muted", JANUS_JSON_BOOL, 0},
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
 };
@@ -684,6 +688,7 @@ typedef struct janus_audiobridge_participant {
 	gboolean active;		/* Whether this participant can receive media at all */
 	gboolean working;		/* Whether this participant is currently encoding/decoding */
 	gboolean muted;			/* Whether this participant is muted */
+	int volume_gain;		/* Gain to apply to the input audio (in percentage) */
 	int opus_complexity;	/* Complexity to use in the encoder (by default, DEFAULT_COMPLEXITY) */
 	/* RTP stuff */
 	GList *inbuf;			/* Incoming audio from this participant, as an ordered list of packets */
@@ -2177,7 +2182,9 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *display = json_object_get(root, "display");
 			const char *display_text = display ? json_string_value(display) : NULL;
 			json_t *muted = json_object_get(root, "muted");
+			json_t *gain = json_object_get(root, "volume");
 			json_t *quality = json_object_get(root, "quality");
+			int volume = gain ? json_integer_value(gain) : 100;
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
 				janus_mutex_unlock(&audiobridge->mutex);
@@ -2234,6 +2241,7 @@ static void *janus_audiobridge_handler(void *data) {
 				g_free(participant->display);
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* By default, everyone's unmuted when joining */
+			participant->volume_gain = volume;
 			participant->opus_complexity = complexity;
 			if(participant->outbuf == NULL)
 				participant->outbuf = g_async_queue_new();
@@ -2399,10 +2407,13 @@ static void *janus_audiobridge_handler(void *data) {
 				goto error;
 			json_t *muted = json_object_get(root, "muted");
 			json_t *quality = json_object_get(root, "quality");
+			json_t *gain = json_object_get(root, "volume");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
+			if(gain)
+				participant->volume_gain = json_integer_value(gain);
 			if(quality) {
-				int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
+				int complexity = json_integer_value(quality);
 				if(complexity < 1 || complexity > 10) {
 					JANUS_LOG(LOG_ERR, "Invalid element (quality should be a positive integer between 1 and 10)\n");
 					error_code = JANUS_AUDIOBRIDGE_ERROR_INVALID_ELEMENT;
@@ -2572,7 +2583,9 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *display = json_object_get(root, "display");
 			const char *display_text = display ? json_string_value(display) : NULL;
 			json_t *muted = json_object_get(root, "muted");
+			json_t *gain = json_object_get(root, "volume");
 			json_t *quality = json_object_get(root, "quality");
+			int volume = gain ? json_integer_value(gain) : 100;
 			int complexity = quality ? json_integer_value(quality) : DEFAULT_COMPLEXITY;
 			if(complexity < 1 || complexity > 10) {
 				janus_mutex_unlock(&audiobridge->mutex);
@@ -2723,6 +2736,7 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			participant->room = audiobridge;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
+			participant->volume_gain = volume;
 			if(quality) {
 				participant->opus_complexity = complexity;
 				if(participant->encoder)
@@ -3110,8 +3124,13 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)(peek ? peek->data : NULL);
 			if(pkt != NULL) {
 				curBuffer = (opus_int16 *)pkt->data;
-				for(i=0; i<samples; i++)
-					buffer[i] += curBuffer[i];
+				for(i=0; i<samples; i++) {
+					if(p->volume_gain == 100) {
+						buffer[i] += curBuffer[i];
+					} else {
+						buffer[i] += (curBuffer[i]*p->volume_gain)/100;
+					}
+				}
 			}
 			janus_mutex_unlock(&p->qmutex);
 			ps = ps->next;
@@ -3155,8 +3174,12 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 			janus_mutex_unlock(&p->qmutex);
 			curBuffer = (opus_int16 *)(pkt ? pkt->data : NULL);
-			for(i=0; i<samples; i++)
-				sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]) : 0);
+			for(i=0; i<samples; i++) {
+				if(p->volume_gain == 100)
+					sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]) : 0);
+				else
+					sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]*p->volume_gain)/100 : 0);
+			}
 			for(i=0; i<samples; i++)
 				/* FIXME Smoothen/Normalize instead of truncating? */
 				outBuffer[i] = sumBuffer[i];

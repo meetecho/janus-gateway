@@ -828,7 +828,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			}
 #endif
 		}
-		g_free(msg_text);
+		free(msg_text);
 		janus_mutex_unlock(&textroom->mutex);
 		/* By default we send a confirmation back to the user that sent this message:
 		 * if the user passed an ack=false, though, we don't do that */
@@ -837,7 +837,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			/* Send response back */
 			char *reply_text = json_dumps(reply, json_format);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
-			g_free(reply_text);
+			free(reply_text);
 		}
 		json_decref(reply);
 	} else if(!strcasecmp(request_text, "join")) {
@@ -922,7 +922,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 					json_object_set_new(p, "display", json_string(top->display));
 				json_array_append_new(list, p);
 			}
-			g_free(event_text);
+			free(event_text);
 		}
 		janus_mutex_unlock(&session->mutex);
 		janus_mutex_unlock(&textroom->mutex);
@@ -935,7 +935,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
-			g_free(reply_text);
+			free(reply_text);
 		}
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
@@ -1002,7 +1002,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64"\n", top->username, room_id);
 				gateway->relay_data(top->session->handle, event_text, strlen(event_text));
 			}
-			g_free(event_text);
+			free(event_text);
 		}
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
@@ -1025,7 +1025,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
-			g_free(reply_text);
+			free(reply_text);
 		}
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
@@ -1064,7 +1064,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
-			g_free(reply_text);
+			free(reply_text);
 		}
 	} else if(!strcasecmp(request_text, "create")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, create_parameters,
@@ -1200,7 +1200,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
-			g_free(reply_text);
+			free(reply_text);
 		}
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
@@ -1230,7 +1230,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
-			g_free(reply_text);
+			free(reply_text);
 		}
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
@@ -1306,7 +1306,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 				g_free(top->display);
 				g_free(top);
 			}
-			g_free(event_text);
+			free(event_text);
 		}
 		janus_mutex_unlock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
@@ -1318,7 +1318,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));
-			g_free(reply_text);
+			free(reply_text);
 		}
 		/* We'll let the watchdog worry about freeing resources */
 		old_rooms = g_list_append(old_rooms, textroom);
@@ -1352,7 +1352,7 @@ error:
 				char *reply_text = json_dumps(reply, json_format);
 				json_decref(reply);
 				gateway->relay_data(handle, reply_text, strlen(reply_text));
-				g_free(reply_text);
+				free(reply_text);
 			}
 			if(root != NULL)
 				json_decref(root);
