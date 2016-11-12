@@ -287,6 +287,15 @@ var janus = new Janus(
  * from you in the last second, after a start was detected before; useful to
  * figure out when Janus actually started handling your media, or to detect
  * problems on the media path (e.g., media never started, or stopped at some time);
+ * 		- \c slowLink: this callback is triggered when Janus reports trouble
+ * either sending or receiving media on the specified PeerConnection, typically
+ * as a consequence of too many NACKs received from/sent to the user in the
+ * last second: for instance, a \c slowLink with uplink=<b>true</b> means
+ * you notified several missing packets from Janus, while uplink=<b>false</b>
+ * means Janus is not receiving all your packets; useful to figure out when
+ * there are problems on the media path (e.g., excessive loss), in order to
+ * possibly react accordingly (e.g., decrease the bitrate if most of our
+ * packets are getting lost);
  * 		- \c onmessage: a message/event has been received from the plugin;
  * 		- \c onlocalstream: a local \c MediaStream is available and ready to be displayed;
  * 		- \c onremotestream: a remote \c MediaStream is available and ready to be displayed;
@@ -1083,6 +1092,8 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * established a PeerConnection with the user/application;
  *  - \c media: whether Janus is receiving (\c receiving: \c true/false)
  * audio/video (\c type: \c "audio/video") on this PeerConnection;
+ *  - \c slowlink: whether Janus is reporting trouble sending/receiving
+ * (\c uplink: \c true/false) media on this PeerConnection;
  *  - \c hangup: the PeerConnection was closed, either by Janus or by
  * the user/application, and as such cannot be used anymore.
  *
@@ -1140,6 +1151,19 @@ GET http://host:port/janus/<sessionid>?maxev=5
 	"sender" : <the handle identifier>
 	"type" : "audio",
 	"receiving" : true
+}
+\endverbatim
+ *
+ * Janus reporting problems sending media to a user (user sent many NACKs
+ * in the last second; uplink=true is from Janus' perspective):
+ *
+\verbatim
+{
+	"janus" : "slowlink",
+	"session_id" : <the session identifier>,
+	"sender" : <the handle identifier>
+	"uplink" : true,
+	"nacks" : <number of NACKs in the last second>
 }
 \endverbatim
  *
@@ -2387,6 +2411,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-js">janus-gateway-js</a></td>
  * 		<td>Simple JavaScript client for janus-gateway that runs in the browser as well as in Node.js</td>
+ * </tr>
+ * <tr>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://www.sipwise.com/">sip:wise</a></td>
+ * 		<td><a href="https://www.npmjs.com/~sipwise">admin/videoroom client</a></td>
+ * 		<td>Node.js clients that implement the Admin API and VideoRoom functionality</td>
  * </tr>
  * <tr>
  * 		<td>ruby</td>
