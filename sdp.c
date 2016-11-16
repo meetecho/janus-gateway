@@ -308,6 +308,10 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 					JANUS_LOG(LOG_VERB, "Got a sctpmap attribute: %s\n", a->value);
 				}
 #endif
+				if(!strcasecmp(a->name, "extmap")) {
+					/* FIXME Negotiate extmap uri's */
+                                        //JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a extmap: %s  \n", handle->handle_id, a->value);
+                                }
 			}
 			tempA = tempA->next;
 		}
@@ -863,6 +867,13 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 		if(m->type == JANUS_SDP_AUDIO) {
 			a = janus_sdp_attribute_create("mid", "%s", handle->audio_mid ? handle->audio_mid : "audio");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
+			/* FIXME it should be dynamic based on Negotiated SDP */
+			/* TODO Move to separate function like https://hg.mozilla.org/integration/mozilla-inbound/rev/5e7f819ed1fe#l10.97 */
+			a  = janus_sdp_attribute_create("extmap", "1 %s", "urn:ietf:params:rtp-hdrext:ssrc-audio-level");
+                        m->attributes = g_list_insert_before(m->attributes, first, a);
+                        a  = janus_sdp_attribute_create("extmap", "3 %s", "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time");
+                        m->attributes = g_list_insert_before(m->attributes, first, a);
+
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			a = janus_sdp_attribute_create("mid", "%s", handle->video_mid ? handle->video_mid : "video");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
