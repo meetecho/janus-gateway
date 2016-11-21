@@ -23,6 +23,24 @@
 #include "utils.h"
 #include "debug.h"
 
+/* FIXME Move to appropriate position */
+const char *ext_uri_map[16] = {"", EXTMAP_AUDIO_LEVEL, EXTMAP_TOFFSET, EXTMAP_ABS_SEND_TIME, EXTMAP_VIDEO_ORIENTATION, "", EXTMAP_PLAYOUT_DELAY};
+
+int janus_ice_extension_id(void* handle, int ext_id, int audio) {
+	janus_ice_handle* ice_handle = (janus_ice_handle *)handle;
+	if(!ice_handle) {
+		return -1;
+	}
+	janus_ice_stream *stream = (janus_ice_stream *) ice_handle->audio_stream;
+	if(!audio && (0/*FIXME Flag to check bundled streams*/)) {
+		stream = (janus_ice_stream *) ice_handle->video_stream;
+	}
+	if(!stream) {
+		return -1;
+	}
+	janus_ice_extmap *extmaps  = audio ? stream->aextmaps : stream->vextmaps;
+	return extmaps[ext_id].uri_id;
+}
 
 /* Pre-parse SDP: is this SDP valid? how many audio/video lines? any features to take into account? */
 janus_sdp *janus_sdp_preparse(const char *jsep_sdp, char *error_str, size_t errlen,
@@ -309,9 +327,11 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 				}
 #endif
 				if(!strcasecmp(a->name, "extmap")) {
-					/* FIXME Negotiate extmap uri's */
-                                        //JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got a extmap: %s  \n", handle->handle_id, a->value);
-                                }
+					int res = janus_sdp_parse_extmap(stream, a->value, m->type == JANUS_SDP_VIDEO);
+					if(res != 0) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse EXTMAP attribute... (%d)\n", handle->handle_id, res);
+					}
+				}
 			}
 			tempA = tempA->next;
 		}
@@ -568,6 +588,55 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 	return 0;
 }
 
+/* Format:  a=extmap:<value>["/"<direction>] <URI> <extensionattributes> 
+ * RFC-5285 a=extmap:2/sendrecv http://example.com/082005/ext.htm#xmeta short
+ * Eg: a=extmap:6 urn:ietf:params:rtp-hdrext:ssrc-audio-level vad=on 
+ * FIXME Add extensionattributes support too -Ajay */
+int janus_sdp_parse_extmap(void *ice_stream, char *extmap_attr, int video) {
+	if(!janus_ice_is_extmap_enabled()) {
+		return 0;
+	}
+	if(ice_stream == NULL || extmap_attr == NULL)
+		return -1;
+	janus_ice_stream *stream = (janus_ice_stream *)ice_stream;
+	janus_ice_extmap *extmaps  = video?stream->vextmaps:stream->aextmaps;
+	janus_ice_handle *handle = stream->handle;
+	if(handle == NULL || extmaps == NULL)
+		return -2;
+	uint8_t id = (uint8_t)strtoul(extmap_attr, &extmap_attr, 10);
+	if(id > 15) {
+		return -3;
+	}
+	extmaps[id].id = id;
+	extmaps[id].direction = SDP_SENDRECV;
+	if(*extmap_attr == '/') {
+		if(!strncmp(extmap_attr, "/recvonly", 9)) {
+			extmaps[id].direction = SDP_RECVONLY;
+		} else if(!strncmp(extmap_attr, "/sendonly", 9)) {
+			extmaps[id].direction = SDP_SENDONLY;
+		} else //if(!strncmp(extmap_attr, "/sendrecv", 9))
+			extmaps[id].direction = SDP_SENDRECV;
+			
+	}
+
+	extmap_attr = strchr(extmap_attr, ' ');
+	if(extmap_attr) extmap_attr++;
+	if(extmap_attr && *extmap_attr) {
+		int i, len;
+		for(i=0; i< 15; i++) {
+			len = ext_uri_map[i]?strlen(ext_uri_map[i]):0;
+			if((len > 4) && (!strncmp(extmap_attr, ext_uri_map[i], len))) {
+				extmaps[id].uri_id = i;
+				extmaps[id].active = TRUE;
+				break;
+			}
+		}
+		/* TODO: For extensionattributes like "vad=on" 
+		char *temp = strchar(extmap_attr+1, ' '); */
+	}
+	return 0;
+}
+
 int janus_sdp_anonymize(janus_sdp *anon) {
 	if(anon == NULL)
 		return -1;
@@ -693,9 +762,8 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 	janus_ice_handle *handle = (janus_ice_handle *)ice_handle;
 	janus_ice_stream *stream = NULL;
 	/* Check available media */
-	int audio = 0;
-	int video = 0;
-	int data = 0;
+	int audio = 0, video = 0, data = 0, it = 0;
+	int answer = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
 	GList *temp = anon->m_lines;
 	while(temp) {
 		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
@@ -867,16 +935,10 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 		if(m->type == JANUS_SDP_AUDIO) {
 			a = janus_sdp_attribute_create("mid", "%s", handle->audio_mid ? handle->audio_mid : "audio");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
-			/* FIXME it should be dynamic based on Negotiated SDP */
-			/* TODO Move to separate function like https://hg.mozilla.org/integration/mozilla-inbound/rev/5e7f819ed1fe#l10.97 */
-			a  = janus_sdp_attribute_create("extmap", "1 %s", "urn:ietf:params:rtp-hdrext:ssrc-audio-level");
-                        m->attributes = g_list_insert_before(m->attributes, first, a);
-                        a  = janus_sdp_attribute_create("extmap", "3 %s", "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time");
-                        m->attributes = g_list_insert_before(m->attributes, first, a);
-
 		} else if(m->type == JANUS_SDP_VIDEO) {
 			a = janus_sdp_attribute_create("mid", "%s", handle->video_mid ? handle->video_mid : "video");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
+
 #ifdef HAVE_SCTP
 		} else if(m->type == JANUS_SDP_APPLICATION) {
 			/* FIXME sctpmap and webrtc-datachannel should be dynamic */
@@ -885,6 +947,42 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 			a = janus_sdp_attribute_create("mid", "%s", handle->data_mid ? handle->data_mid : "data");
 			m->attributes = g_list_insert_before(m->attributes, first, a);
 #endif
+		}
+		if(janus_ice_is_extmap_enabled()) {
+			if(m->type == JANUS_SDP_AUDIO) {
+				if(answer) {
+					for(it = 0; it < 15 ; it++ ) {
+						if(stream->aextmaps[it].active == TRUE){
+							a  = janus_sdp_attribute_create("extmap", "%d %s", stream->aextmaps[it].id, ext_uri_map[stream->aextmaps[it].uri_id]);
+							m->attributes = g_list_insert_before(m->attributes, first, a);
+						}
+					}
+				} else {
+					a  = janus_sdp_attribute_create("extmap", "%d %s", EXTMAP_AUDIO_LEVEL_ID, ext_uri_map[EXTMAP_AUDIO_LEVEL_ID]);
+					m->attributes = g_list_insert_before(m->attributes, first, a);
+					a  = janus_sdp_attribute_create("extmap", "%d %s", EXTMAP_ABS_SEND_TIME_ID, ext_uri_map[EXTMAP_ABS_SEND_TIME_ID]);
+					m->attributes = g_list_insert_before(m->attributes, first, a);
+				}
+			} else if(m->type == JANUS_SDP_VIDEO) {
+				if(answer) {
+					for(it = 0; it < 15 ; it++ ) {
+						if(stream->vextmaps[it].active == TRUE){
+							a  = janus_sdp_attribute_create("extmap", "%d %s", stream->vextmaps[it].id, ext_uri_map[stream->vextmaps[it].uri_id]);
+							m->attributes = g_list_insert_before(m->attributes, first, a);
+						}
+					}
+				} else {
+					a  = janus_sdp_attribute_create("extmap", "%d %s", EXTMAP_TOFFSET_ID, ext_uri_map[EXTMAP_TOFFSET_ID]);
+					m->attributes = g_list_insert_before(m->attributes, first, a);
+					a  = janus_sdp_attribute_create("extmap", "%d %s", EXTMAP_ABS_SEND_TIME_ID, ext_uri_map[EXTMAP_ABS_SEND_TIME_ID]);
+					m->attributes = g_list_insert_before(m->attributes, first, a);
+					a  = janus_sdp_attribute_create("extmap", "%d %s", EXTMAP_VIDEO_ORIENT_ID, ext_uri_map[EXTMAP_VIDEO_ORIENT_ID]);
+					m->attributes = g_list_insert_before(m->attributes, first, a);
+					a  = janus_sdp_attribute_create("extmap", "%d %s", EXTMAP_PLAYOUT_DELAY_ID, ext_uri_map[EXTMAP_PLAYOUT_DELAY_ID]);
+					m->attributes = g_list_insert_before(m->attributes, first, a);
+				}
+			}
+
 		}
 		if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 			a = janus_sdp_attribute_create("rtcp-mux", NULL);

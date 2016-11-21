@@ -96,6 +96,14 @@ gboolean janus_ice_is_bundle_forced(void) {
 	return janus_force_bundle;
 }
 
+static gboolean janus_extmap;
+void janus_ice_extmap_support(gboolean extmap) {
+	janus_extmap = extmap;
+	JANUS_LOG(LOG_INFO, "EXTMAP %s going to be enabled\n", janus_extmap ? "is" : "is NOT");
+}
+gboolean janus_ice_is_extmap_enabled(void) {
+	return janus_extmap;
+}
 /* Whether rtcp-mux support is mandatory or not (false by default) */
 static gboolean janus_force_rtcpmux;
 static gint janus_force_rtcpmux_blackhole_port = 1234;
@@ -2712,6 +2720,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 		audio_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 		audio_stream->video_rtcp_ctx->tb = 90000;
+		memset(audio_stream->aextmaps, 0x00, sizeof(audio_stream->aextmaps));
+		memset(audio_stream->vextmaps, 0x00, sizeof(audio_stream->vextmaps));
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->audio_id), audio_stream);
@@ -2865,6 +2875,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 		video_stream->video_rtcp_ctx->tb = 90000;
 		video_stream->components = g_hash_table_new(NULL, NULL);
+		memset(video_stream->aextmaps, 0x00, sizeof(video_stream->aextmaps));
+		memset(video_stream->vextmaps, 0x00, sizeof(video_stream->vextmaps));
 		janus_mutex_init(&video_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->video_id), video_stream);
 		if(!have_turnrest_credentials) {

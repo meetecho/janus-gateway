@@ -136,6 +136,8 @@ void janus_ice_debugging_enable(void);
 /*! \brief Method to disable libnice debugging (the default) */
 void janus_ice_debugging_disable(void);
 
+void janus_ice_extmap_support(gboolean extmap);
+gboolean janus_ice_is_extmap_enabled(void);
 
 /*! \brief Helper method to get a string representation of a libnice ICE state
  * @param[in] state The libnice ICE state
@@ -151,6 +153,8 @@ typedef struct janus_ice_stream janus_ice_stream;
 typedef struct janus_ice_component janus_ice_component;
 /*! \brief Helper to handle pending trickle candidates (e.g., when we're still waiting for an offer) */
 typedef struct janus_ice_trickle janus_ice_trickle;
+/*! \brief Helper */
+typedef struct janus_ice_extmap janus_ice_extmap;
 
 
 #define JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER	(1 << 0)
@@ -170,6 +174,28 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO			(1 << 14)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
+
+/*FIXME move to appropriate position */
+/* SDP extmap */
+#define EXTMAP_AUDIO_LEVEL			"urn:ietf:params:rtp-hdrext:ssrc-audio-level"
+#define EXTMAP_TOFFSET				"urn:ietf:params:rtp-hdrext:toffset"
+#define EXTMAP_ABS_SEND_TIME		"http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
+#define EXTMAP_VIDEO_ORIENTATION	"urn:3gpp:video-orientation"
+#define EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+
+
+enum sdp_direction {
+	SDP_SENDRECV = 0x1,
+	SDP_SENDONLY = 0x2,
+	SDP_RECVONLY = 0x3,
+};
+
+struct janus_ice_extmap {
+	gboolean active;
+	uint8_t id;
+	enum sdp_direction direction;
+	enum extmap_uri_id uri_id;
+};
 
 
 /*! \brief Janus media statistics
@@ -366,6 +392,10 @@ struct janus_ice_stream {
 	janus_ice_component *rtp_component;
 	/*! \brief RTCP component */
 	janus_ice_component *rtcp_component;
+	/*! \brief array of audio extmaps */
+	janus_ice_extmap aextmaps[16];
+	/*! \brief array of video extmaps */
+	janus_ice_extmap vextmaps[16];
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
 	gint noerrorlog:1;
 	/*! \brief Mutex to lock/unlock this stream */
