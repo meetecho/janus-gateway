@@ -37,6 +37,8 @@
 
 #define JANUS_BUFSIZE	8192
 
+#define JANUS_THREAD_DEBUG
+
 /*! \brief Helper to address requests and their sources (e.g., a specific HTTP connection, websocket, RabbitMQ or others) */
 typedef struct janus_request janus_request;
  

@@ -2295,17 +2295,26 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {
-	JANUS_LOG(LOG_VERB, "Transport task pool, serving request\n");
 	janus_request *request = (janus_request *)data;
 	if(request == NULL) {
-		JANUS_LOG(LOG_ERR, "Missing request\n");
+		JANUS_LOG(LOG_ERR, "Transport task pool: missing request\n");
 		return;
 	}
+#ifdef JANUS_THREAD_DEBUG
+	char* msg = json_dumps(request->message, JSON_PRESERVE_ORDER);
+	JANUS_LOG(LOG_INFO, "Transport task pool, serving request; %d; %s\n", g_thread_pool_get_num_threads (tasks), msg);
+#else
+	JANUS_LOG(LOG_VERB, "THREAD_DEBUG: Transport task pool, serving request\n");
+#endif
 	if(!request->admin)
 		janus_process_incoming_request(request);
 	else
 		janus_process_incoming_admin_request(request);
 	/* Done */
+#ifdef JANUS_THREAD_DEBUG
+	JANUS_LOG(LOG_INFO, "THREAD_DEBUG: Transport task pool, request done; %d; %s\n", g_thread_pool_get_num_threads (tasks), msg);
+	free(msg);
+#endif
 	janus_request_destroy(request);
 }
 
