@@ -216,11 +216,11 @@ Remember to only do this once, or otherwise a subsequent ```make configs```
 will overwrite any configuration file you may have modified in the
 meanwhile.
 
-If you're not interested in Data Channels, WebSockets and/or RabbitMQ
+If you're not interested in Data Channels, WebSockets, MQTT and/or RabbitMQ
 (or you don't care about either of them) you can disable them when
 configuring:
 
-	./configure --disable-websockets --disable-data-channels --disable-rabbitmq
+	./configure --disable-websockets --disable-data-channels --disable-rabbitmq --disable-mqtt
 
 If Doxygen and graphviz are available, the process can also build the
 documentation for you. By default the compilation process will not try
