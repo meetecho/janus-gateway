@@ -2058,9 +2058,6 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	}
 	participant->last_drop = 0;
 	janus_mutex_unlock(&participant->qmutex);
-	if(audiobridge != NULL) {
-		janus_mutex_unlock(&audiobridge->mutex);
-	}
 	janus_mutex_unlock(&rooms_mutex);
 }
 
