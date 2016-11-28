@@ -2921,7 +2921,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 #else
 /* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *name, char *desc, char *url,
+		uint64_t id, char *name, char *desc,
+		char *url, char *username, char *password,
 		gboolean doaudio, gboolean dovideo) {
 	JANUS_LOG(LOG_ERR, "RTSP need libcurl\n");
 	return NULL;
