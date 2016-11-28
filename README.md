@@ -240,34 +240,29 @@ plugins you don't care about). Use the --help option when configuring
 for more info.
 
 
-## Compile on macOS
+### Building on MacOS
+While most of the above instructions will work when compiling Janus on
+MacOS as well, there are a few aspects to highlight when doing that.
 
-### Install dependencies
+First of all, you can use `brew` to install most of the dependencies:
 
-```
-brew tap homebrew/boneyard
-brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg glib pkg-config gengetopt autoconf automake libtool
-```
+	brew tap homebrew/boneyard
+	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg libcurl glib pkg-config gengetopt autoconf automake libtool
 
-```
-wget https://github.com/cisco/libsrtp/archive/v1.5.4.tar.gz
-tar xvf v1.5.4.tar.gz
-cd libsrtp-1.5.4
-./configure --prefix=/usr/local
-make
-sudo make install
-```
+For what concerns `libsrtp`, which needs to be installed manually, just
+pass `/usr/local` as a prefix when configuring, and proceed as normal:
 
-### Build janus gateway
+	[..]
+	./configure --prefix=/usr/local
+	[..]
 
-Note: Unix Sockets is not supported on macOS, so you must disable it.
+Finally, you may need to provide a custom `prefix` and `PKG_CONFIG_PATH`
+when configuring Janus as well. Besides, notice that since Unix Sockets
+are not supported on MacOS, you'll have to disable support for those:
 
-```
-cd /path/to/janus-gateway
-./configure --disable-unix-sockets --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
-make
-sudo make install
-```
+	./configure --disable-unix-sockets --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+
+Everything else works exactly the same way as on Linux.
 
 ##Configure and start
 To start the gateway, you can use the janus executable. There are several
