@@ -73,6 +73,8 @@ videobufferkf = yes|no (whether the plugin should store the latest
 
    The following options are only valid for the 'rstp' type:
 url = RTSP stream URL (only if type=rtsp)
+rtsp_user = RTSP authorization username (only if type=rtsp)
+rtsp_pwd = RTSP authorization password (only if type=rtsp)
 \endverbatim
  *
  * \section streamapi Streaming API
@@ -245,6 +247,8 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"url", JSON_STRING, 0},
+	{"rtsp_user", JSON_STRING, 0},
+	{"rtsp_pwd", JSON_STRING, 0},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0}
 };
@@ -391,7 +395,8 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		gboolean live, gboolean doaudio, gboolean dovideo);
 /* Helper to create a rtsp live source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *name, char *desc, char *url,
+		uint64_t id, char *name, char *desc,
+		char *url, char *username, char *password,
 		gboolean doaudio, gboolean dovideo);
 
 
@@ -809,6 +814,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *secret = janus_config_get_item(cat, "secret");
 				janus_config_item *pin = janus_config_get_item(cat, "pin");
 				janus_config_item *file = janus_config_get_item(cat, "url");
+				janus_config_item *username = janus_config_get_item(cat, "rtsp_user");
+				janus_config_item *password = janus_config_get_item(cat, "rtsp_pwd");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				if(file == NULL || file->value == NULL) {
@@ -837,7 +844,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(id && id->value) ? g_ascii_strtoull(id->value, 0, 10) : 0,
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
-						(char *)file->value, doaudio, dovideo)) == NULL) {
+						(char *)file->value,
+						username ? (char *)username->value : NULL,
+						password ? (char *)password->value : NULL,
+						doaudio, dovideo)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream '%s'...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -1446,6 +1456,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			json_t *url = json_object_get(root, "url");
+			json_t *username = json_object_get(root, "rtsp_user");
+			json_t *password = json_object_get(root, "rtsp_pwd");
 			gboolean doaudio = audio ? json_is_true(audio) : FALSE;
 			gboolean dovideo = video ? json_is_true(video) : FALSE;
 			if(!doaudio && !dovideo) {
@@ -1459,6 +1471,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
 					(char *)json_string_value(url),
+					username ? (char *)json_string_value(username) : NULL,
+					password ? (char *)json_string_value(password) : NULL,
 					doaudio, dovideo);
 			if(mp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error creating 'rtsp' stream...\n");
@@ -2721,7 +2735,8 @@ static int janus_streaming_rtsp_parse_sdp(const char* buffer, const char* name, 
 
 /* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *name, char *desc, char *url,
+		uint64_t id, char *name, char *desc,
+		char *url, char *username, char *password,
 		gboolean doaudio, gboolean dovideo) {
 	if(url == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream, missing url...\n");
@@ -2736,9 +2751,19 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	if(janus_log_level > LOG_INFO)
 		curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-	curl_easy_setopt(curl, CURLOPT_URL, url);	
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); 
-	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0L); 	 
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 0L);
+	/* Any authentication to take into account? */
+	if(username && password) {
+		/* Point out that digest authentication is only available is libcurl >= 7.45.0 */
+		if(LIBCURL_VERSION_NUM < 0x072d00) {
+			JANUS_LOG(LOG_WARN, "RTSP digest authentication unsupported (needs libcurl >= 7.45.0)\n");
+		}
+		curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_ANY);
+		curl_easy_setopt(curl, CURLOPT_USERNAME, username);
+		curl_easy_setopt(curl, CURLOPT_PASSWORD, password);
+	}
 	/* Send an RTSP DESCRIBE */
 	janus_streaming_buffer data;
 	data.buffer = g_malloc0(1);
