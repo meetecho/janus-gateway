@@ -240,6 +240,35 @@ plugins you don't care about). Use the --help option when configuring
 for more info.
 
 
+## Compile on macOS
+
+### Install dependencies
+
+```
+brew tap homebrew/boneyard
+brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg glib pkg-config gengetopt autoconf automake libtool
+```
+
+```
+wget https://github.com/cisco/libsrtp/archive/v1.5.4.tar.gz
+tar xvf v1.5.4.tar.gz
+cd libsrtp-1.5.4
+./configure --prefix=/usr/local
+make
+sudo make install
+```
+
+### Build janus gateway
+
+Note: Unix Sockets is not supported on macOS, so you must disable it.
+
+```
+cd /path/to/janus-gateway
+./configure --disable-unix-sockets --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+make
+sudo make install
+```
+
 ##Configure and start
 To start the gateway, you can use the janus executable. There are several
 things you can configure, either in a configuration file:
@@ -249,7 +278,7 @@ things you can configure, either in a configuration file:
 or on the command line:
 
 	<installdir>/bin/janus --help
-	
+
 	janus 0.2.1
 
 	Usage: janus [OPTIONS]...
