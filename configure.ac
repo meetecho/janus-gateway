@@ -44,37 +44,37 @@ AC_ARG_ENABLE([rest],
               [AS_HELP_STRING([--disable-rest],
                               [Disable REST (HTTP/HTTPS) support])],
               [],
-              [enable_rest=yes])
+              [enable_rest=maybe])
 
 AC_ARG_ENABLE([websockets],
               [AS_HELP_STRING([--disable-websockets],
                               [Disable WebSockets support])],
               [],
-              [enable_websockets=yes])
+              [enable_websockets=maybe])
 
 AC_ARG_ENABLE([data-channels],
               [AS_HELP_STRING([--disable-data-channels],
                               [Disable DataChannels])],
               [],
-              [enable_data_channels=yes])
+              [enable_data_channels=maybe])
 
 AC_ARG_ENABLE([rabbitmq],
               [AS_HELP_STRING([--disable-rabbitmq],
                               [Disable RabbitMQ integration])],
               [],
-              [enable_rabbitmq=yes])
+              [enable_rabbitmq=maybe])
 
 AC_ARG_ENABLE([mqtt],
               [AS_HELP_STRING([--disable-mqtt],
                               [Disable MQTT integration])],
               [],
-              [enable_mqtt=yes])
+              [enable_mqtt=maybe])
 
 AC_ARG_ENABLE([unix-sockets],
               [AS_HELP_STRING([--disable-unix-sockets],
                               [Disable Unix Sockets integration])],
               [],
-              [enable_pfunix=yes])
+              [enable_pfunix=maybe])
 
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
@@ -92,7 +92,7 @@ AC_ARG_ENABLE([turn-rest-api],
               [AS_HELP_STRING([--disable-turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
               [],
-              [enable_turn_rest_api=yes])
+              [enable_turn_rest_api=maybe])
 
 PKG_CHECK_MODULES([JANUS],
                   [
@@ -149,10 +149,11 @@ AC_CHECK_LIB([srtp],
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
              [
-               AS_IF([test "x$enable_data_channels" = "xyes"],
+               AS_IF([test "x$enable_data_channels" != "xno"],
                [
                   AC_DEFINE(HAVE_SCTP)
                   JANUS_MANUAL_LIBS+=" -lusrsctp"
+                  enable_data_channels=yes
                ])
              ],
              [
@@ -165,19 +166,16 @@ PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
                     AS_IF(
-                      [test "x$enable_turn_rest_api" = "xyes"],
+                      [test "x$enable_turn_rest_api" != "xno"],
                       [
                         AC_DEFINE(HAVE_LIBCURL)
                         JANUS_MANUAL_LIBS+=" -lcurl"
                         enable_turn_rest_api=yes
-                      ],
-                      [
-                        enable_turn_rest_api=no
                       ])
                   ],
                   [
-                    AC_MSG_NOTICE(libcurl not found. The TURN REST API client and RTSP support in the Streaming plugin will not be built.)
-                    enable_turn_rest_api=no
+                    AS_IF([test "x$enable_turn_rest_api" = "xyes"],
+                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-turn-rest-api])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
 
@@ -214,7 +212,10 @@ PKG_CHECK_MODULES([TRANSPORTS],
 
 PKG_CHECK_MODULES([MHD],
                   [libmicrohttpd],
-                  [],
+                  [
+                    AS_IF([test "x$enable_rest" = "xmaybe"],
+                          [enable_rest=yes])
+                  ],
                   [
                     AS_IF([test "x$enable_rest" = "xyes"],
                           [AC_MSG_ERROR([libmicrohttpd not found. See README.md for installation instructions or use --disable-rest])])
@@ -227,22 +228,24 @@ AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], false)
 AC_CHECK_LIB([websockets],
              [libwebsocket_create_context],
              [
-               AS_IF([test "x$enable_websockets" = "xyes"],
+               AS_IF([test "x$enable_websockets" != "xno"],
                [
                   AC_DEFINE(HAVE_WEBSOCKETS)
                   WS_MANUAL_LIBS="-lwebsockets"
+                  enable_websockets=yes
                ])
              ],
              [
 				AC_CHECK_LIB([websockets],
 							 [lws_create_context],
 							 [
-							   AS_IF([test "x$enable_websockets" = "xyes"],
+							   AS_IF([test "x$enable_websockets" != "xno"],
 							   [
 								  AC_DEFINE(HAVE_WEBSOCKETS)
 								  AC_DEFINE(HAVE_LIBWEBSOCKETS_NEWAPI)
 								  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], true)
 								  WS_MANUAL_LIBS="-lwebsockets"
+								  enable_websockets=yes
 							   ])
 							 ],
 							 [
@@ -256,9 +259,10 @@ AC_SUBST(WS_MANUAL_LIBS)
 AC_CHECK_LIB([rabbitmq],
              [amqp_error_string2],
              [
-               AS_IF([test "x$enable_rabbitmq" = "xyes"],
+               AS_IF([test "x$enable_rabbitmq" != "xno"],
                [
                   AC_DEFINE(HAVE_RABBITMQ)
+                  enable_rabbitmq=yes
                ])
              ],
              [
@@ -268,9 +272,10 @@ AC_CHECK_LIB([rabbitmq],
 AC_CHECK_LIB([paho-mqtt3a],
              [MQTTAsync_create],
              [
-               AS_IF([test "x$enable_mqtt" = "xyes"],
+               AS_IF([test "x$enable_mqtt" != "xno"],
                [
                   AC_DEFINE(HAVE_MQTT)
+                  enable_mqtt=yes
                ])
              ],
              [
@@ -291,9 +296,10 @@ AC_TRY_COMPILE([
                }],
                [],
                [
-                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                 AS_IF([test "x$enable_pfunix" != "xno"],
                  [
                     AC_DEFINE(HAVE_PFUNIX)
+                    enable_pfunix=yes
                  ])
                ],
                [
@@ -317,7 +323,7 @@ AC_ARG_ENABLE([plugin-audiobridge],
               [AS_HELP_STRING([--disable-plugin-audiobridge],
                               [Disable audiobridge plugin])],
               [],
-              [enable_plugin_audiobridge=yes])
+              [enable_plugin_audiobridge=maybe])
 
 AC_ARG_ENABLE([plugin-echotest],
               [AS_HELP_STRING([--disable-plugin-echotest],
@@ -335,7 +341,7 @@ AC_ARG_ENABLE([plugin-sip],
               [AS_HELP_STRING([--disable-plugin-sip],
                               [Disable sip plugin])],
               [],
-              [enable_plugin_sip=yes])
+              [enable_plugin_sip=maybe])
 
 AC_ARG_ENABLE([plugin-streaming],
               [AS_HELP_STRING([--disable-plugin-streaming],
@@ -359,7 +365,7 @@ AC_ARG_ENABLE([plugin-voicemail],
               [AS_HELP_STRING([--disable-plugin-voicemail],
                               [Disable voicemail plugin])],
               [],
-              [enable_plugin_voicemail=yes])
+              [enable_plugin_voicemail=maybe])
 
 AC_ARG_ENABLE([plugin-textroom],
               [AS_HELP_STRING([--disable-plugin-textroom],
@@ -369,30 +375,39 @@ AC_ARG_ENABLE([plugin-textroom],
 
 PKG_CHECK_MODULES([SOFIA],
                   [sofia-sip-ua],
-                  [],
                   [
-                    AC_MSG_NOTICE(sofia-sip-ua not found. The sip plugin will not be built.)
-                    enable_plugin_sip=no
+                    AS_IF([test "x$enable_plugin_sip" = "xmaybe"],
+                          [enable_plugin_sip=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_sip" = "xyes"],
+                          [AC_MSG_ERROR([sofia-sip-ua not found not found. See README.md for installation instructions or use --disable-plugin-sip])])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
 PKG_CHECK_MODULES([OPUS],
                   [opus],
-                  [],
                   [
-                    AC_MSG_NOTICE(libopus not found. The audiobridge plugin will not be built.)
-                    enable_plugin_audiobridge=no
+                    AS_IF([test "x$enable_plugin_audiobridge" = "xmaybe"],
+                          [enable_plugin_audiobridge=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
+                          [AC_MSG_ERROR([libopus not found not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
                   ])
 AC_SUBST([OPUS_CFLAGS])
 AC_SUBST([OPUS_LIBS])
 
 PKG_CHECK_MODULES([OGG],
                   [ogg],
-                  [],
                   [
-                    AC_MSG_NOTICE(libogg not found. The voicemail plugin will not be built.)
-                    enable_plugin_voicemail=no
+                    AS_IF([test "x$enable_plugin_voicemail" = "xmaybe"],
+                          [enable_plugin_voicemail=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_voicemail" = "xyes"],
+                          [AC_MSG_ERROR([libogg not found not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
                   ])
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])

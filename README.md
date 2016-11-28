@@ -222,11 +222,17 @@ Remember to only do this once, or otherwise a subsequent ```make configs```
 will overwrite any configuration file you may have modified in the
 meanwhile.
 
-If you're not interested in Data Channels, WebSockets, MQTT and/or RabbitMQ
-(or you don't care about either of them) you can disable them when
-configuring:
+If you're installed the above libraries but are not interested in Data
+Channels, WebSockets, MQTT and/or RabbitMQ (or you don't care about any
+of them), you can disable them when configuring:
 
 	./configure --disable-websockets --disable-data-channels --disable-rabbitmq --disable-mqtt
+
+If the libraries are not installed, instead, no need to manually disable
+them, as the configure script will skip them automatically and disable
+the related features by itself. A summary of what's going to be built
+will always appear after you do a configure, allowing you to double
+check if what you need and don't need is there.
 
 If Doxygen and graphviz are available, the process can also build the
 documentation for you. By default the compilation process will not try
@@ -236,7 +242,8 @@ to build the documentation, so if you instead prefer to build it, use the
 	./configure --enable-docs
 
 You can also selectively enable/disable other features (e.g., specific
-plugins you don't care about). Use the --help option when configuring
+plugins you don't care about, or whether or not you want to build the
+recordings post-processor). Use the --help option when configuring
 for more info.
 
 
@@ -257,10 +264,9 @@ pass `/usr/local` as a prefix when configuring, and proceed as normal:
 	[..]
 
 Finally, you may need to provide a custom `prefix` and `PKG_CONFIG_PATH`
-when configuring Janus as well. Besides, notice that since Unix Sockets
-are not supported on MacOS, you'll have to disable support for those:
+when configuring Janus as well:
 
-	./configure --disable-unix-sockets --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+	./configure --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 
 Everything else works exactly the same way as on Linux.
 
