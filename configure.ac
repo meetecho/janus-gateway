@@ -176,7 +176,7 @@ PKG_CHECK_MODULES([LIBCURL],
                       ])
                   ],
                   [
-                    AC_MSG_NOTICE(libcurl not found. The TURN REST API client will not be built.)
+                    AC_MSG_NOTICE(libcurl not found. The TURN REST API client and RTSP support in the Streaming plugin will not be built.)
                     enable_turn_rest_api=no
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
