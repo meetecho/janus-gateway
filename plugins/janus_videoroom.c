@@ -1765,8 +1765,11 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		g_hash_table_iter_init(&iter, videoroom->participants);
 		while (!videoroom->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom_participant *p = value;
-			if(g_hash_table_size(p->rtp_forwarders) == 0)
+			janus_mutex_lock(&p->rtp_forwarders_mutex);
+			if(g_hash_table_size(p->rtp_forwarders) == 0) {
+				janus_mutex_unlock(&p->rtp_forwarders_mutex);
 				continue;
+			}
 			json_t *pl = json_object();
 			json_object_set_new(pl, "publisher_id", json_integer(p->user_id));
 			if(p->display)
@@ -1775,7 +1778,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			GHashTableIter iter_f;
 			gpointer key_f, value_f;			
 			g_hash_table_iter_init(&iter_f, p->rtp_forwarders);
-			janus_mutex_lock(&p->rtp_forwarders_mutex);
 			while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {				
 				json_t *fl = json_object();
 				guint32 rpk = GPOINTER_TO_UINT(key_f);
@@ -1956,8 +1958,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
 		GHashTableIter iter;
 		gpointer value;
-		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
+		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
 		while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
 			rtp_forwarder* rtp_forward = (rtp_forwarder*)value;
 			if(video && rtp_forward->is_video) {
