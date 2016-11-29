@@ -2043,7 +2043,6 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 			json_object_set_new(info, "display", json_string(participant->display));
 			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 		}
-		janus_mutex_unlock(&audiobridge->mutex);
 	}
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&participant->rec_mutex);

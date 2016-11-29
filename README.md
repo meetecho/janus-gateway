@@ -34,12 +34,16 @@ WebSockets and/or BoringSSL support, as they make use of it)
 you are interested in RabbitMQ support for the Janus API)
 * [paho.mqtt.c](https://eclipse.org/paho/clients/c) (only needed if
 you are interested in MQTT support for the Janus API)
+* [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
+interested in the TURN REST API support)
 
 A couple of plugins depend on a few more libraries:
 
 * [Sofia-SIP](http://sofia-sip.sourceforge.net/) (only needed for the SIP plugin)
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
 * [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
+* [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
+interested in RTSP support in the Streaming plugin)
 
 Additionally, you'll need the following libraries and tools:
 
@@ -53,7 +57,8 @@ instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel pkgconfig gengetopt libtool autoconf automake
+       opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
+       libtool autoconf automake
 
 Notice that you may have to ```yum install epel-release``` as well if you're
 attempting an installation on a CentOS machine instead.
@@ -62,7 +67,8 @@ On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
-		libopus-dev libogg-dev pkg-config gengetopt libtool automake
+		libopus-dev libogg-dev libcurl4-openssl-dev pkg-config gengetopt \
+		libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
@@ -220,11 +226,17 @@ Remember to only do this once, or otherwise a subsequent ```make configs```
 will overwrite any configuration file you may have modified in the
 meanwhile.
 
-If you're not interested in Data Channels, WebSockets and/or RabbitMQ
-(or you don't care about either of them) you can disable them when
-configuring:
+If you're installed the above libraries but are not interested in Data
+Channels, WebSockets, MQTT and/or RabbitMQ (or you don't care about any
+of them), you can disable them when configuring:
 
-	./configure --disable-websockets --disable-data-channels --disable-rabbitmq
+	./configure --disable-websockets --disable-data-channels --disable-rabbitmq --disable-mqtt
+
+If the libraries are not installed, instead, no need to manually disable
+them, as the configure script will skip them automatically and disable
+the related features by itself. A summary of what's going to be built
+will always appear after you do a configure, allowing you to double
+check if what you need and don't need is there.
 
 If Doxygen and graphviz are available, the process can also build the
 documentation for you. By default the compilation process will not try
@@ -234,9 +246,33 @@ to build the documentation, so if you instead prefer to build it, use the
 	./configure --enable-docs
 
 You can also selectively enable/disable other features (e.g., specific
-plugins you don't care about). Use the --help option when configuring
+plugins you don't care about, or whether or not you want to build the
+recordings post-processor). Use the --help option when configuring
 for more info.
 
+
+### Building on MacOS
+While most of the above instructions will work when compiling Janus on
+MacOS as well, there are a few aspects to highlight when doing that.
+
+First of all, you can use `brew` to install most of the dependencies:
+
+	brew tap homebrew/boneyard
+	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg libcurl glib pkg-config gengetopt autoconf automake libtool
+
+For what concerns `libsrtp`, which needs to be installed manually, just
+pass `/usr/local` as a prefix when configuring, and proceed as normal:
+
+	[..]
+	./configure --prefix=/usr/local
+	[..]
+
+Finally, you may need to provide a custom `prefix` and `PKG_CONFIG_PATH`
+when configuring Janus as well:
+
+	./configure --prefix=/usr/local/janus PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+
+Everything else works exactly the same way as on Linux.
 
 ##Configure and start
 To start the gateway, you can use the janus executable. There are several
@@ -247,7 +283,7 @@ things you can configure, either in a configuration file:
 or on the command line:
 
 	<installdir>/bin/janus --help
-	
+
 	janus 0.2.1
 
 	Usage: janus [OPTIONS]...

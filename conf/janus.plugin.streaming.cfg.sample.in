@@ -111,9 +111,12 @@ secret = adminpwd
 ;videortpmap = VP8/90000
 
 ;
-; This is a sample configuration for an RTSP stream
+; This is a sample configuration for an RTSP stream: you can specify
+; the url to connect to and whether or not authentication is needed
+; using the url/rtsp_user/rtsp_pwd settings (but notice that digest
+; authentication will only work if you installed libcurl >= 7.45.0)
 ; NOTE WELL: the plugin does NOT transcode, so the RTSP stream MUST be
-; in a format the browser can digest (e.g., VP8 or H.264 for video)
+; in a format the browser can digest (e.g., VP8 or H.264 baseline for video)
 ;
 ;[rtsp-test]
 ;type = rtsp
@@ -122,3 +125,5 @@ secret = adminpwd
 ;audio = no
 ;video = yes
 ;url=rtsp://127.0.0.1:8554/unicast
+;rtsp_user=username
+;rtsp_pwd=password

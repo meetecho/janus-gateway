@@ -96,6 +96,7 @@
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
+ * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API and for RTSP support in the Streaming plugin)
  *
  */
 
@@ -2260,6 +2261,30 @@ exit 0
  *
  * \note sysvinit example provided by
  * <a href="https://github.com/saghul">\@saghul</a> 
+ *
+ * \section supervisor supervisor
+ * This section shows how you can add Janus to
+ * <a href="http://supervisord.org/">supervisor</a>, which is
+ * typically available on Ubuntu systems.
+ *
+ \verbatim
+[program:janus]
+command=/opt/janus/bin/janus
+user=root
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/janus.err.log
+stdout_logfile=/var/log/janus.out.log
+ \endverbatim
+ *
+ * \note The above configuration file should be added to
+ * <code>/etc/supervisor/conf.d/janus.conf</code>. Then the following commands
+ * should be run:
+ *
+ \verbatim
+sudo supervisorctl reread
+sudo supervisorctl update
+ \endverbatim
  *
  * \section Others
  * TODO.
