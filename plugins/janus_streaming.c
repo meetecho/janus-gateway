@@ -3510,14 +3510,12 @@ static gboolean janus_streaming_is_keyframe(gint codec, char* buffer, int len) {
 		guint16 seq = ntohs(header->seq_number);
 		JANUS_LOG(LOG_HUGE, "Checking if VP8 packet (size=%d, seq=%"SCNu16", ts=%"SCNu32") is a key frame...\n",
 			len, seq, timestamp);
-		uint16_t skip = 0;
-		if(header->extension) {
-			janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buffer+12);
-			JANUS_LOG(LOG_HUGE, "  -- RTP extension found (type=%"SCNu16", length=%"SCNu16")\n",
-				ntohs(ext->type), ntohs(ext->length));
-			skip = 4 + ntohs(ext->length)*4;
+		int plen = 0;
+		buffer = janus_rtp_payload(buffer, len, &plen);
+		if(!buffer) {
+			JANUS_LOG(LOG_WARN, "Couldn't access RTP payload\n");
+			return FALSE;
 		}
-		buffer += 12+skip;
 		/* Parse VP8 header now */
 		uint8_t vp8pd = *buffer;
 		uint8_t xbit = (vp8pd & 0x80);
@@ -3586,6 +3584,83 @@ static gboolean janus_streaming_is_keyframe(gint codec, char* buffer, int len) {
 		}
 		/* If we got here it's not a key frame */
 		return FALSE;
+	} else if(codec == JANUS_STREAMING_VP9) {
+		/* Parse RTP header first */
+		rtp_header *header = (rtp_header *)buffer;
+		guint32 timestamp = ntohl(header->timestamp);
+		guint16 seq = ntohs(header->seq_number);
+		JANUS_LOG(LOG_HUGE, "Checking if VP9 packet (size=%d, seq=%"SCNu16", ts=%"SCNu32") is a key frame...\n",
+			len, seq, timestamp);
+		int plen = 0;
+		buffer = janus_rtp_payload(buffer, len, &plen);
+		if(!buffer) {
+			JANUS_LOG(LOG_WARN, "Couldn't access RTP payload\n");
+			return FALSE;
+		}
+		/* Parse VP9 header now */
+		uint8_t vp9pd = *buffer;
+		uint8_t ibit = (vp9pd & 0x80);
+		uint8_t pbit = (vp9pd & 0x40);
+		uint8_t lbit = (vp9pd & 0x20);
+		uint8_t fbit = (vp9pd & 0x10);
+		uint8_t vbit = (vp9pd & 0x02);
+		buffer++;
+		if(ibit) {
+			/* Read the PictureID octet */
+			vp9pd = *buffer;
+			uint16_t picid = vp9pd, wholepicid = picid;
+			uint8_t mbit = (vp9pd & 0x80);
+			if(!mbit) {
+				buffer++;
+			} else {
+				memcpy(&picid, buffer, sizeof(uint16_t));
+				wholepicid = ntohs(picid);
+				picid = (wholepicid & 0x7FFF);
+				buffer += 2;
+			}
+		}
+		if(lbit) {
+			buffer++;
+			if(!fbit) {
+				/* Non-flexible mode, skip TL0PICIDX */
+				buffer++;
+			}
+		}
+		if(fbit && pbit) {
+			/* Skip reference indices */
+			uint8_t nbit = 1;
+			while(nbit) {
+				vp9pd = *buffer;
+				nbit = (vp9pd & 0x01);
+				buffer++;
+			}
+		}
+		if(vbit) {
+			/* Parse and skip SS */
+			vp9pd = *buffer;
+			uint n_s = (vp9pd & 0xE0) >> 5;
+			n_s++;
+			uint8_t ybit = (vp9pd & 0x10);
+			if(ybit) {
+				/* Iterate on all spatial layers and get resolution */
+				buffer++;
+				uint i=0;
+				for(i=0; i<n_s; i++) {
+					/* Width */
+					uint16_t *w = (uint16_t *)buffer;
+					int vp9w = ntohs(*w);
+					buffer += 2;
+					/* Height */
+					uint16_t *h = (uint16_t *)buffer;
+					int vp9h = ntohs(*h);
+					buffer += 2;
+					JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
+					return TRUE;
+				}
+			}
+		}
+		/* If we got here it's not a key frame */
+		return FALSE;
 	} else if(codec == JANUS_STREAMING_H264) {
 		/* Parse RTP header first */
 		rtp_header *header = (rtp_header *)buffer;
@@ -3593,14 +3668,12 @@ static gboolean janus_streaming_is_keyframe(gint codec, char* buffer, int len) {
 		guint16 seq = ntohs(header->seq_number);
 		JANUS_LOG(LOG_HUGE, "Checking if H264 packet (size=%d, seq=%"SCNu16", ts=%"SCNu32") is a key frame...\n",
 			len, seq, timestamp);
-		uint16_t skip = 0;
-		if(header->extension) {
-			janus_rtp_header_extension *ext = (janus_rtp_header_extension *)(buffer+12);
-			JANUS_LOG(LOG_HUGE, "  -- RTP extension found (type=%"SCNu16", length=%"SCNu16")\n",
-				ntohs(ext->type), ntohs(ext->length));
-			skip = 4 + ntohs(ext->length)*4;
+		int plen = 0;
+		buffer = janus_rtp_payload(buffer, len, &plen);
+		if(!buffer) {
+			JANUS_LOG(LOG_WARN, "Couldn't access RTP payload\n");
+			return FALSE;
 		}
-		buffer += 12+skip;
 		/* Parse H264 header now */
 		uint8_t fragment = *buffer & 0x1F;
 		uint8_t nal = *(buffer+1) & 0x1F;

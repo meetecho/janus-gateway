@@ -481,8 +481,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 
 
 /* Plugin information */
-#define JANUS_AUDIOBRIDGE_VERSION			9
-#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.9"
+#define JANUS_AUDIOBRIDGE_VERSION			10
+#define JANUS_AUDIOBRIDGE_VERSION_STRING	"0.0.10"
 #define JANUS_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define JANUS_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
 #define JANUS_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
@@ -695,6 +695,8 @@ typedef struct janus_audiobridge_participant {
 	gint64 last_drop;		/* When we last dropped a packet because the imcoming queue was full */
 	janus_mutex qmutex;		/* Incoming queue mutex */
 	int opus_pt;			/* Opus payload type */
+	int extmap_id;			/* Audio level RTP extension id, if any */
+	int dBov_level;			/* Value in dBov of the audio level (last value from extension) */
 	janus_audiobridge_rtp_context context;	/* Needed in case the participant changes room */
 	/* Opus stuff */
 	OpusEncoder *encoder;		/* Opus encoder instance */
@@ -713,6 +715,7 @@ typedef struct janus_audiobridge_rtp_relay_packet {
 	uint32_t ssrc;
 	uint32_t timestamp;
 	uint16_t seq_number;
+	gboolean silence;
 } janus_audiobridge_rtp_relay_packet;
 
 /* RTP forwarder instance: address to send to, and current RTP header info */
@@ -777,8 +780,8 @@ static gint janus_audiobridge_rtp_sort(gconstpointer a, gconstpointer b) {
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */ \
-		"a=fmtp:%d maxplaybackrate=%"SCNu32"; stereo=0; sprop-stereo=0; useinbandfec=0\r\n" \
-											/* Opus payload type and room sampling rate */
+		"a=fmtp:%d maxplaybackrate=%"SCNu32"; stereo=0; sprop-stereo=0; useinbandfec=0\r\n" /* Opus payload type and room sampling rate */ \
+		"%s"								/* extmap(s), if any */
 
 /* Helper struct to generate and parse WAVE headers */
 typedef struct wav_header {
@@ -1204,6 +1207,8 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "last-drop", json_integer(participant->last_drop));
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
+		if(participant->extmap_id > 0)
+			json_object_set_new(info, "audio-level-dBov", json_integer(participant->dBov_level));
 	}
 	json_object_set_new(info, "started", session->started ? json_true() : json_false());
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
@@ -1919,8 +1924,25 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		pkt->ssrc = 0;
 		pkt->timestamp = ntohl(rtp->timestamp);
 		pkt->seq_number = ntohs(rtp->seq_number);
+		/* Any audio level extension to quickly check if this is silence? */
+		pkt->silence = FALSE;
+		if(participant->extmap_id > 0) {
+			int level = 0;
+			if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->extmap_id, &level) == 0) {
+				pkt->silence = (level == 127);
+				participant->dBov_level = level;
+			}
+		}
 		participant->working = TRUE;
-		pkt->length = opus_decode(participant->decoder, (const unsigned char *)buf+12, len-12, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
+		int plen = 0;
+		const unsigned char *payload = (const unsigned char *)janus_rtp_payload(buf, len, &plen);
+		if(!payload) {
+			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error accessing the RTP payload\n");
+			g_free(pkt->data);
+			g_free(pkt);
+			return;
+		}
+		pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
 		participant->working = FALSE;
 		if(pkt->length < 0) {
 			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));
@@ -2225,6 +2247,8 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->context.a_base_seq = 0;
 				participant->context.a_base_seq_prev = 0;
 				participant->opus_pt = 0;
+				participant->extmap_id = 0;
+				participant->dBov_level = 0;
 			}
 			JANUS_LOG(LOG_VERB, "Creating Opus encoder/decoder (sampling rate %d)\n", audiobridge->sampling_rate);
 			/* Opus encoder */
@@ -2821,6 +2845,17 @@ static void *janus_audiobridge_handler(void *data) {
 			/* What is the Opus payload type? */
 			participant->opus_pt = janus_get_codec_pt(msg_sdp, "opus");
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", participant->opus_pt);
+			/* Is the audio level extension negotiated? */
+			participant->extmap_id = 0;
+			participant->dBov_level = 0;
+			int extmap_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+			char audio_level_extmap[100];
+			if(extmap_id > -1) {
+				participant->extmap_id = extmap_id;
+				g_snprintf(audio_level_extmap, sizeof(audio_level_extmap),
+					"a=extmap:%d %s\r\n", extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+			}
+			/* Prepare the response */
 			g_snprintf(sdp, 1024, sdp_template,
 				janus_get_real_time(),			/* We need current time here */
 				janus_get_real_time(),			/* We need current time here */
@@ -2828,7 +2863,8 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->opus_pt,			/* Opus payload type */
 				participant->opus_pt,			/* Opus payload type */
 				participant->opus_pt, 			/* Opus payload type and room sampling rate */
-				participant->room->sampling_rate);
+				participant->room->sampling_rate,
+				extmap_id > -1 ? audio_level_extmap : "");
 			/* Is the peer recvonly? */
 			if(strstr(msg_sdp, "a=recvonly") != NULL) {
 				/* If so, use sendonly here */
@@ -3041,7 +3077,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 			}
 			GList *peek = g_list_first(p->inbuf);
 			janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)(peek ? peek->data : NULL);
-			if(pkt != NULL) {
+			if(pkt != NULL && !pkt->silence) {
 				curBuffer = (opus_int16 *)pkt->data;
 				for(i=0; i<samples; i++) {
 					if(p->volume_gain == 100) {
@@ -3092,7 +3128,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				p->inbuf = g_list_delete_link(p->inbuf, first);
 			}
 			janus_mutex_unlock(&p->qmutex);
-			curBuffer = (opus_int16 *)(pkt ? pkt->data : NULL);
+			curBuffer = (opus_int16 *)((pkt && !pkt->silence) ? pkt->data : NULL);
 			for(i=0; i<samples; i++) {
 				if(p->volume_gain == 100)
 					sumBuffer[i] = buffer[i] - (curBuffer ? (curBuffer[i]) : 0);

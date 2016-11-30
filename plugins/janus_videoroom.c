@@ -139,8 +139,8 @@ rec_dir = <folder where recordings should be stored, when enabled>
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			7
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.7"
+#define JANUS_VIDEOROOM_VERSION			8
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.8"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."
@@ -421,6 +421,8 @@ typedef struct janus_videoroom_participant {
 	guint32 video_pt;		/* Video payload type (depends on room configuration) */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
+	guint8 audio_extmap_id;	/* Audio level extmap ID */
+	guint8 video_extmap_id;	/* Video level extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
@@ -498,27 +500,32 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
+		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */ \
+		"%s"								/* extmap(s), if any */
 #define sdp_a_template_isac32 \
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* ISAC32_PT payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d ISAC/32000\r\n"		/* ISAC32_PT payload type */
+		"a=rtpmap:%d ISAC/32000\r\n"		/* ISAC32_PT payload type */ \
+		"%s"								/* extmap(s), if any */
 #define sdp_a_template_isac16 \
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* ISAC16_PT payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d ISAC/16000\r\n"		/* ISAC16_PT payload type */
+		"a=rtpmap:%d ISAC/16000\r\n"		/* ISAC16_PT payload type */ \
+		"%s"								/* extmap(s), if any */
 #define sdp_a_template_pcmu \
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* PCMU_PT payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d PCMU/8000\r\n"		    /* PCMU_PT payload type */
+		"a=rtpmap:%d PCMU/8000\r\n"		    /* PCMU_PT payload type */ \
+		"%s"								/* extmap(s), if any */
 #define sdp_a_template_pcma \
 		"m=audio 1 RTP/SAVPF %d\r\n"		/* PCMA_PT payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
 		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d PCMA/8000\r\n"		    /* PCMA_PT payload type */
+		"a=rtpmap:%d PCMA/8000\r\n"		    /* PCMA_PT payload type */ \
+		"%s"								/* extmap(s), if any */
 #define sdp_v_template_vp8 \
 		"m=video 1 RTP/SAVPF %d\r\n"		/* VP8 payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
@@ -528,7 +535,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"a=rtcp-fb:%d ccm fir\r\n"			/* VP8 payload type */ \
 		"a=rtcp-fb:%d nack\r\n"				/* VP8 payload type */ \
 		"a=rtcp-fb:%d nack pli\r\n"			/* VP8 payload type */ \
-		"a=rtcp-fb:%d goog-remb\r\n"		/* VP8 payload type */
+		"a=rtcp-fb:%d goog-remb\r\n"		/* VP8 payload type */ \
+		"%s"								/* extmap(s), if any */
 #define sdp_v_template_vp9 \
 		"m=video 1 RTP/SAVPF %d\r\n"		/* VP9 payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
@@ -538,7 +546,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"a=rtcp-fb:%d ccm fir\r\n"			/* VP9 payload type */ \
 		"a=rtcp-fb:%d nack\r\n"				/* VP9 payload type */ \
 		"a=rtcp-fb:%d nack pli\r\n"			/* VP9 payload type */ \
-		"a=rtcp-fb:%d goog-remb\r\n"		/* VP9 payload type */
+		"a=rtcp-fb:%d goog-remb\r\n"		/* VP9 payload type */ \
+		"%s"								/* extmap(s), if any */
 #define sdp_v_template_h264 \
 		"m=video 1 RTP/SAVPF %d\r\n"		/* H264 payload type */ \
 		"c=IN IP4 1.1.1.1\r\n" \
@@ -549,7 +558,8 @@ typedef struct janus_videoroom_rtp_relay_packet {
 		"a=rtcp-fb:%d ccm fir\r\n"			/* H264 payload type */ \
 		"a=rtcp-fb:%d nack\r\n"				/* H264 payload type */ \
 		"a=rtcp-fb:%d nack pli\r\n"			/* H264 payload type */ \
-		"a=rtcp-fb:%d goog-remb\r\n"		/* H264 payload type */
+		"a=rtcp-fb:%d goog-remb\r\n"		/* H264 payload type */ \
+		"%s"								/* extmap(s), if any */
 #ifdef HAVE_SCTP
 #define sdp_d_template \
 		"m=application 1 DTLS/SCTP 5000\r\n" \
@@ -2282,37 +2292,48 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	}
 }
 
-static void janus_videoroom_sdp_a_format(char *mline, int mline_size, janus_videoroom_audiocodec acodec, int pt, const char *audio_mode) {
+static void janus_videoroom_sdp_a_format(char *mline, int mline_size, janus_videoroom_audiocodec acodec, int pt, const char *audio_mode, gboolean extmap, int extmap_id) {
+	char audio_level_extmap[100];
+	if(extmap) {
+		/* We only negotiate support (if required) for a single audio extension, audio levels */
+		g_snprintf(audio_level_extmap, sizeof(audio_level_extmap),
+			"a=extmap:%d %s\r\n", extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+	}
 	switch(acodec) {
 		case JANUS_VIDEOROOM_OPUS:
 			g_snprintf(mline, mline_size, sdp_a_template_opus,
 				pt,						/* Opus payload type */
 				audio_mode,
-				pt); 						/* Opus payload type */
+				pt,						/* Opus payload type */
+				extmap ? audio_level_extmap : "");
 			break;
 		case JANUS_VIDEOROOM_ISAC_32K:
 			g_snprintf(mline, mline_size, sdp_a_template_isac32,
 				pt,						/* ISAC 32K payload type */
 				audio_mode,
-				pt); 					/* ISAC 32K payload type */
+				pt, 					/* ISAC 32K payload type */
+				extmap ? audio_level_extmap : "");
 			break;
 		case JANUS_VIDEOROOM_ISAC_16K:
 			g_snprintf(mline, mline_size, sdp_a_template_isac16,
 				pt,						/* ISAC 16K payload type */
-				audio_mode,
-				pt);						/* ISAC 16K payload type */
+				audio_mode,				/* The publisher gets a recvonly or inactive back */
+				pt,						/* ISAC 16K payload type */
+				extmap ? audio_level_extmap : "");
 			break;
 		case JANUS_VIDEOROOM_PCMU:
 			g_snprintf(mline, mline_size, sdp_a_template_pcmu,
 				pt,						/* PCMU payload type */
-				audio_mode,
-				pt);						/* PCMU payload type */
+				audio_mode,				/* The publisher gets a recvonly or inactive back */
+				pt,						/* PCMU payload type */
+				extmap ? audio_level_extmap : "");
 			break;
 		case JANUS_VIDEOROOM_PCMA:
 			g_snprintf(mline, mline_size, sdp_a_template_pcma,
 				pt,						/* PCMA payload type */
-				audio_mode,
-				pt);						/* PCMA payload type */
+				audio_mode,				/* The publisher gets a recvonly or inactive back */
+				pt,						/* PCMA payload type */
+				extmap ? audio_level_extmap : "");
 			break;
 		default:
 			/* Shouldn't happen */
@@ -2321,41 +2342,50 @@ static void janus_videoroom_sdp_a_format(char *mline, int mline_size, janus_vide
 	}
 }
 
-static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_videoroom_videocodec vcodec, int pt, int b, const char *video_mode) {
+static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_videoroom_videocodec vcodec, int pt, int b, const char *video_mode, gboolean extmap, int extmap_id) {
+	char video_orientation_extmap[100];
+	if(extmap) {
+		/* We only negotiate support (if required) for a single video extension, video orientation */
+		g_snprintf(video_orientation_extmap, sizeof(video_orientation_extmap),
+			"a=extmap:%d %s\r\n", extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+	}
 	switch(vcodec) {
 		case JANUS_VIDEOROOM_VP8:
 			g_snprintf(mline, mline_size, sdp_v_template_vp8,
 				pt,							/* payload type */
-				b,								/* Bandwidth */
-				video_mode,						/* The publisher gets a recvonly or inactive back */
+				b,							/* Bandwidth */
+				video_mode,					/* The publisher gets a recvonly or inactive back */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
-				pt); 						/* payload type */
+				pt, 						/* payload type */
+				extmap ? video_orientation_extmap : "");
 			break;
 		case JANUS_VIDEOROOM_VP9:
 			g_snprintf(mline, mline_size, sdp_v_template_vp9,
 				pt,							/* payload type */
-				b,								/* Bandwidth */
-				video_mode,						/* The publisher gets a recvonly or inactive back */
+				b,							/* Bandwidth */
+				video_mode,					/* The publisher gets a recvonly or inactive back */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
-				pt); 						/* payload type */
+				pt, 						/* payload type */
+				extmap ? video_orientation_extmap : "");
 			break;
 		case JANUS_VIDEOROOM_H264:
 			g_snprintf(mline, mline_size, sdp_v_template_h264,
 				pt,							/* payload type */
-				b,								/* Bandwidth */
-				video_mode,						/* The publisher gets a recvonly or inactive back */
+				b,							/* Bandwidth */
+				video_mode,					/* The publisher gets a recvonly or inactive back */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
-				pt); 						/* payload type */
+				pt, 						/* payload type */
+				extmap ? video_orientation_extmap : "");
 			break;
 		default:
 			/* Shouldn't happen */
@@ -2544,6 +2574,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				publisher->audio_ssrc = janus_random_uint32();
 				publisher->video_ssrc = janus_random_uint32();
+				publisher->audio_extmap_id = 0;
+				publisher->video_extmap_id = 0;
 				publisher->remb_startup = 4;
 				publisher->remb_latest = 0;
 				publisher->fir_latest = 0;
@@ -3311,6 +3343,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Which media are available? */
 				int audio = 0, video = 0, data = 0;
 				const char *audio_mode = NULL, *video_mode = NULL;
+				gboolean audio_extmap = FALSE, video_extmap = FALSE;
 				char error_str[100];
 				janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(!parsed_sdp) {
@@ -3367,6 +3400,21 @@ static void *janus_videoroom_handler(void *data) {
 									video_mode = "recvonly";
 								}
 								break;
+						}
+						/* Are the extmaps we care about there? */
+						GList *ma = m->attributes;
+						while(ma) {
+							janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+							if(a->value) {
+								if(m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
+									participant->audio_extmap_id = atoi(a->value);
+									audio_extmap = TRUE;
+								} else if(m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
+									participant->video_extmap_id = atoi(a->value);
+									video_extmap = TRUE;
+								}
+							}
+							ma = ma->next;
 						}
 					}
 					temp = temp->next;
@@ -3464,7 +3512,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(pass == 1 && pt < 0)
 							JANUS_LOG(LOG_WARN, "Videoroom is forcing %s, but publisher didn't offer any... rejecting audio\n", janus_videoroom_audiocodec_name(videoroom->acodec));
 						if(pt >= 0)
-							janus_videoroom_sdp_a_format(audio_mline, 256, videoroom->acodec, pt, audio_mode);
+							janus_videoroom_sdp_a_format(audio_mline, 256, videoroom->acodec, pt, audio_mode, audio_extmap, participant->audio_extmap_id);
 						if(audio_mline[0] == '\0' && pass == 1) {
 							/* Remove "pass == 1" if the listener also should get a line with port=0. */
 							g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
@@ -3493,7 +3541,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(pass == 1 && pt < 0)
 							JANUS_LOG(LOG_WARN, "Videoroom is forcing %s, but publisher didn't offer any... rejecting video\n", janus_videoroom_videocodec_name(videoroom->vcodec));
 						if(pt >= 0)
-							janus_videoroom_sdp_v_format(video_mline, 512, videoroom->vcodec, pt, b, video_mode);
+							janus_videoroom_sdp_v_format(video_mline, 512, videoroom->vcodec, pt, b,video_mode, video_extmap, participant->video_extmap_id);
 						if(video_mline[0] == '\0' && pass == 1) {
 							/* Remove "pass == 1" if the listener also should get a line with port=0. */
 							g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
@@ -3727,7 +3775,7 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 			/* Shouldn't happen */
 			break;
 	}
-	janus_videoroom_sdp_a_format(audio_mline, 512, muxed_listener->room->acodec, pt, "sendonly");
+	janus_videoroom_sdp_a_format(audio_mline, 512, muxed_listener->room->acodec, pt, "sendonly", FALSE, 0);
 	pt = -1;
 	switch(muxed_listener->room->vcodec) {
 		case JANUS_VIDEOROOM_VP8:
@@ -3743,7 +3791,7 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 			/* Shouldn't happen */
 			break;
 	}
-	janus_videoroom_sdp_v_format(video_mline, 512, muxed_listener->room->vcodec, pt, 0, "sendonly");
+	janus_videoroom_sdp_v_format(video_mline, 512, muxed_listener->room->vcodec, pt, 0, "sendonly", FALSE, 0);
 	/* FIXME Add a fake user/SSRC just to avoid the "Failed to set max send bandwidth for video content" bug */
 	g_strlcat(audio_muxed, "a=planb:sfu0 1\r\n", 1024);
 	g_strlcat(video_muxed, "a=planb:sfu0 2\r\n", 1024);
