@@ -101,7 +101,8 @@ const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id) {
 	return NULL;
 }
 
-static int janus_rtp_header_extension_find(char *buf, int len, int id, uint8_t *byte) {
+/* Static helper to quickly find the extension data */
+static int janus_rtp_header_extension_find(char *buf, int len, int id, uint8_t *byte, uint32_t *word) {
 	if(!buf || len < 12)
 		return -1;
 	rtp_header *rtp = (rtp_header *)buf;
@@ -131,6 +132,8 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id, uint8_t *
 						/* Found! */
 						if(byte)
 							*byte = buf[hlen+i+1];
+						if(word)
+							*word = *(uint32_t *)(buf+hlen+i);
 						return 0;
 					}
 					i += 1 + idlen;
@@ -144,7 +147,7 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id, uint8_t *
 
 int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level) {
 	uint8_t byte = 0;
-	if(janus_rtp_header_extension_find(buf, len, id, &byte) < 0)
+	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL) < 0)
 		return -1;
 	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
 	int v = (byte & 0x80) >> 7;
@@ -158,7 +161,7 @@ int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int
 int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int id,
 		gboolean *c, gboolean *f, gboolean *r1, gboolean *r0) {
 	uint8_t byte = 0;
-	if(janus_rtp_header_extension_find(buf, len, id, &byte) < 0)
+	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL) < 0)
 		return -1;
 	/* a=extmap:4 urn:3gpp:video-orientation */
 	gboolean cbit = (byte & 0x08) >> 3;
@@ -174,5 +177,21 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
 		*r1 = r1bit;
 	if(r0)
 		*r0 = r0bit;
+	return 0;
+}
+
+int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
+		uint16_t *min_delay, uint16_t *max_delay) {
+	uint32_t bytes = 0;
+	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes) < 0)
+		return -1;
+	/* a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
+	uint16_t min = (bytes && 0x00FFF000) >> 12;
+	uint16_t max = bytes && 0x00000FFF;
+	JANUS_LOG(LOG_DBG, "%"SCNu32"x --> min=%"SCNu16", max=%"SCNu16"\n", bytes, min, max);
+	if(min_delay)
+		*min_delay = min;
+	if(max_delay)
+		*max_delay = max;
 	return 0;
 }

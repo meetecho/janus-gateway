@@ -116,4 +116,14 @@ int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int
 int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int id,
 	gboolean *c, gboolean *f, gboolean *r1, gboolean *r0);
 
+/*! \brief Helper to parse a playout-delay RTP extension (https://webrtc.org/experiments/rtp-hdrext/playout-delay)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] min_delay The minimum delay value
+ * @param[out] max_delay The maximum delay value
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
+	uint16_t *min_delay, uint16_t *max_delay);
+
 #endif

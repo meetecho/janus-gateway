@@ -421,8 +421,9 @@ typedef struct janus_videoroom_participant {
 	guint32 video_pt;		/* Video payload type (depends on room configuration) */
 	guint32 audio_ssrc;		/* Audio SSRC of this publisher */
 	guint32 video_ssrc;		/* Video SSRC of this publisher */
-	guint8 audio_extmap_id;	/* Audio level extmap ID */
-	guint8 video_extmap_id;	/* Video level extmap ID */
+	guint8 audio_level_extmap_id;	/* Audio level extmap ID */
+	guint8 video_orient_extmap_id;	/* Video orientation extmap ID */
+	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
@@ -2342,12 +2343,20 @@ static void janus_videoroom_sdp_a_format(char *mline, int mline_size, janus_vide
 	}
 }
 
-static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_videoroom_videocodec vcodec, int pt, int b, const char *video_mode, gboolean extmap, int extmap_id) {
-	char video_orientation_extmap[100];
-	if(extmap) {
-		/* We only negotiate support (if required) for a single video extension, video orientation */
-		g_snprintf(video_orientation_extmap, sizeof(video_orientation_extmap),
-			"a=extmap:%d %s\r\n", extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_videoroom_videocodec vcodec, int pt, int b, const char *video_mode,
+		gboolean vo_extmap, int vo_extmap_id, gboolean pd_extmap, int pd_extmap_id) {
+	char extmaps[200], temp[100];
+	memset(extmaps, 0, sizeof(extmaps));
+	memset(temp, 0, sizeof(temp));
+	if(vo_extmap) {
+		g_snprintf(temp, sizeof(temp),
+			"a=extmap:%d %s\r\n", vo_extmap_id, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+		g_strlcat(extmaps, temp, sizeof(extmaps));
+	}
+	if(pd_extmap) {
+		g_snprintf(temp, sizeof(temp),
+			"a=extmap:%d %s\r\n", pd_extmap_id, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
+		g_strlcat(extmaps, temp, sizeof(extmaps));
 	}
 	switch(vcodec) {
 		case JANUS_VIDEOROOM_VP8:
@@ -2360,7 +2369,7 @@ static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_vide
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
-				extmap ? video_orientation_extmap : "");
+				(vo_extmap || pd_extmap) ? extmaps : "");
 			break;
 		case JANUS_VIDEOROOM_VP9:
 			g_snprintf(mline, mline_size, sdp_v_template_vp9,
@@ -2372,7 +2381,7 @@ static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_vide
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
-				extmap ? video_orientation_extmap : "");
+				(vo_extmap || pd_extmap) ? extmaps : "");
 			break;
 		case JANUS_VIDEOROOM_H264:
 			g_snprintf(mline, mline_size, sdp_v_template_h264,
@@ -2385,7 +2394,7 @@ static void janus_videoroom_sdp_v_format(char *mline, int mline_size, janus_vide
 				pt, 						/* payload type */
 				pt, 						/* payload type */
 				pt, 						/* payload type */
-				extmap ? video_orientation_extmap : "");
+				(vo_extmap || pd_extmap) ? extmaps : "");
 			break;
 		default:
 			/* Shouldn't happen */
@@ -2574,8 +2583,9 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				publisher->audio_ssrc = janus_random_uint32();
 				publisher->video_ssrc = janus_random_uint32();
-				publisher->audio_extmap_id = 0;
-				publisher->video_extmap_id = 0;
+				publisher->audio_level_extmap_id = 0;
+				publisher->video_orient_extmap_id = 0;
+				publisher->playout_delay_extmap_id = 0;
 				publisher->remb_startup = 4;
 				publisher->remb_latest = 0;
 				publisher->fir_latest = 0;
@@ -3343,7 +3353,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Which media are available? */
 				int audio = 0, video = 0, data = 0;
 				const char *audio_mode = NULL, *video_mode = NULL;
-				gboolean audio_extmap = FALSE, video_extmap = FALSE;
+				gboolean audio_level_extmap = FALSE, video_orient_extmap = FALSE, playout_delay_extmap = FALSE;
 				char error_str[100];
 				janus_sdp *parsed_sdp = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
 				if(!parsed_sdp) {
@@ -3407,11 +3417,14 @@ static void *janus_videoroom_handler(void *data) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 							if(a->value) {
 								if(m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
-									participant->audio_extmap_id = atoi(a->value);
-									audio_extmap = TRUE;
+									participant->audio_level_extmap_id = atoi(a->value);
+									audio_level_extmap = TRUE;
 								} else if(m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
-									participant->video_extmap_id = atoi(a->value);
-									video_extmap = TRUE;
+									participant->video_orient_extmap_id = atoi(a->value);
+									video_orient_extmap = TRUE;
+								} else if(m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
+									participant->playout_delay_extmap_id = atoi(a->value);
+									playout_delay_extmap = TRUE;
 								}
 							}
 							ma = ma->next;
@@ -3511,8 +3524,10 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						if(pass == 1 && pt < 0)
 							JANUS_LOG(LOG_WARN, "Videoroom is forcing %s, but publisher didn't offer any... rejecting audio\n", janus_videoroom_audiocodec_name(videoroom->acodec));
-						if(pt >= 0)
-							janus_videoroom_sdp_a_format(audio_mline, 256, videoroom->acodec, pt, audio_mode, audio_extmap, participant->audio_extmap_id);
+						if(pt >= 0) {
+							janus_videoroom_sdp_a_format(audio_mline, 256, videoroom->acodec, pt, audio_mode,
+								audio_level_extmap, participant->audio_level_extmap_id);
+						}
 						if(audio_mline[0] == '\0' && pass == 1) {
 							/* Remove "pass == 1" if the listener also should get a line with port=0. */
 							g_snprintf(audio_mline, 256, "m=audio 0 RTP/SAVPF 0\r\n");
@@ -3540,8 +3555,11 @@ static void *janus_videoroom_handler(void *data) {
 						}
 						if(pass == 1 && pt < 0)
 							JANUS_LOG(LOG_WARN, "Videoroom is forcing %s, but publisher didn't offer any... rejecting video\n", janus_videoroom_videocodec_name(videoroom->vcodec));
-						if(pt >= 0)
-							janus_videoroom_sdp_v_format(video_mline, 512, videoroom->vcodec, pt, b,video_mode, video_extmap, participant->video_extmap_id);
+						if(pt >= 0) {
+							janus_videoroom_sdp_v_format(video_mline, 512, videoroom->vcodec, pt, b,video_mode,
+								video_orient_extmap, participant->video_orient_extmap_id,
+								playout_delay_extmap, participant->playout_delay_extmap_id);
+						}
 						if(video_mline[0] == '\0' && pass == 1) {
 							/* Remove "pass == 1" if the listener also should get a line with port=0. */
 							g_snprintf(video_mline, 512, "m=video 0 RTP/SAVPF 0\r\n");
@@ -3791,7 +3809,7 @@ int janus_videoroom_muxed_offer(janus_videoroom_listener_muxed *muxed_listener, 
 			/* Shouldn't happen */
 			break;
 	}
-	janus_videoroom_sdp_v_format(video_mline, 512, muxed_listener->room->vcodec, pt, 0, "sendonly", FALSE, 0);
+	janus_videoroom_sdp_v_format(video_mline, 512, muxed_listener->room->vcodec, pt, 0, "sendonly", FALSE, 0, FALSE, 0);
 	/* FIXME Add a fake user/SSRC just to avoid the "Failed to set max send bandwidth for video content" bug */
 	g_strlcat(audio_muxed, "a=planb:sfu0 1\r\n", 1024);
 	g_strlcat(video_muxed, "a=planb:sfu0 2\r\n", 1024);
