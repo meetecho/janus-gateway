@@ -23,6 +23,16 @@
 #define JANUS_JSON_PARAM_POSITIVE 2
 #define JANUS_JSON_PARAM_NONEMPTY 4
 
+/*! \brief EXTENSION URI's map
+ * placed here to make visible to plugins */
+enum extmap_uri_id {
+	EXTMAP_AUDIO_LEVEL_ID	= 1,
+	EXTMAP_TOFFSET_ID		= 2,
+	EXTMAP_ABS_SEND_TIME_ID = 3,
+	EXTMAP_VIDEO_ORIENT_ID	= 4,
+	EXTMAP_PLAYOUT_DELAY_ID	= 6,
+};
+
 struct janus_json_parameter {
 	const gchar *name;
 	json_type jtype;
@@ -121,6 +131,12 @@ int janus_get_codec_pt(const char *sdp, const char *codec);
  * @param pt The payload type to look for
  * @returns The codec name, if found, NULL otherwise */
 const char *janus_get_codec_from_pt(const char *sdp, int pt);
+
+/*! \brief Ugly and dirty helper to quickly get extension uri id
+ * @param handle is gateway_handle
+ * @param ext_id is extension id 
+ * @param audio is a boolean to differentiate audio/video */
+int janus_ice_extension_id(void* handle, int ext_id, gboolean audio);
 
 /*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
  * @param ip The IP address to check

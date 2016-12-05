@@ -70,6 +70,10 @@ int janus_sdp_parse_candidate(void *stream, const char *candidate, int trickle);
  * @returns 0 in case of success, a non-zero integer in case of an error */
 int janus_sdp_parse_ssrc(void *stream, const char *ssrc_attr, int video);
 
+/*!\brief Method to parse a extmap attribute
+ *  */
+int janus_sdp_parse_extmap(void *ice_stream, char *extmap_attr, int video);
+
 /*! \brief Method to strip/anonymize a session description
  * @param[in,out] sdp The Janus SDP description object to strip/anonymize
  * @returns 0 in case of success, a non-zero integer in case of an error */

@@ -1912,15 +1912,65 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			}
 			participant->reset = FALSE;
 		}
-		/* Decode frame (Opus -> slinear) */
 		rtp_header *rtp = (rtp_header *)buf;
+		int rtp_header_len = 12;
+		if(rtp->csrccount) {
+			rtp_header_len += rtp->csrccount * 4;
+		}
+
+		if(rtp->extension) {
+			janus_rtp_header_extension *ext = (janus_rtp_header_extension*) (buf+rtp_header_len);
+			int rtp_ext_len = ntohs(ext->length) * 4; /* 32-bit words */
+			rtp_header_len += 4; /* Extenstion Header */
+		//	JANUS_LOG(LOG_VERB, "[Opus] seq:%d t:%u len:%d hlen:%d elen:%d \n", ntohs(rtp->seq_number), ntohl(rtp->timestamp), len, rtp_header_len, rtp_ext_len); 
+			if(len > (rtp_header_len + rtp_ext_len)) {
+				/* 1-Byte extension */
+				if(ntohs(ext->type) == 0xBEDE) {
+					const uint8_t padding = 0x00, reserved = 0xF;
+					uint8_t _id, _len;
+					uint32_t _val;
+					int i = 0;
+					while(i < rtp_ext_len) {
+						_id = buf[rtp_header_len + i]  >> 4;
+						if(_id == reserved) {
+							break;
+						} else if(_id == padding) {
+							i++;
+							continue;
+						}
+						_len = (buf[rtp_header_len + i] & 0xF) + 1;
+						switch(janus_ice_extension_id(handle->gateway_handle, _id, TRUE)) {
+							case EXTMAP_AUDIO_LEVEL_ID: /* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
+								//_len == 1
+								_val = buf[rtp_header_len + i + 1];
+							//	JANUS_LOG(LOG_VERB, " id: %d len:%d _val:%d v:%d=%d level:%d \n", _id, _len, _val, ((_val >> 7) & 0x1), (_val&0x80), (_val & 0x7F));
+								break;
+							case EXTMAP_ABS_SEND_TIME_ID: /* a=extmap:3 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time */
+								//_len == 3
+								_val = 0x00FFFFFF & ntohl(*(uint32_t *)(buf+rtp_header_len + i));
+							//	JANUS_LOG(LOG_VERB, " id: %d len:%d _val:%d \n", _id, _len, _val);
+								break;
+							default:
+								break;
+						
+						}
+						i += 1 + _len;
+					}
+				
+				} /* else ?? currently no one is supporting 2-Byte extenstions */
+			
+				rtp_header_len += rtp_ext_len;
+			}
+		}
+		
+		/* Decode frame (Opus -> slinear) */
 		janus_audiobridge_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 		pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
 		pkt->ssrc = 0;
 		pkt->timestamp = ntohl(rtp->timestamp);
 		pkt->seq_number = ntohs(rtp->seq_number);
 		participant->working = TRUE;
-		pkt->length = opus_decode(participant->decoder, (const unsigned char *)buf+12, len-12, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
+		pkt->length = opus_decode(participant->decoder, (const unsigned char *)buf+rtp_header_len, len-rtp_header_len, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
 		participant->working = FALSE;
 		if(pkt->length < 0) {
 			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error decoding the Opus frame: %d (%s)\n", pkt->length, opus_strerror(pkt->length));

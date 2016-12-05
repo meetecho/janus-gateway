@@ -3497,13 +3497,16 @@ gint main(int argc, char *argv[])
 		}
 	}
 	/* Are we going to force BUNDLE and/or rtcp-mux? */
-	gboolean force_bundle = FALSE, force_rtcpmux = FALSE;
+	gboolean force_bundle = FALSE, force_rtcpmux = FALSE, extmap_support = FALSE;
 	item = janus_config_get_item_drilldown(config, "media", "force-bundle");
 	force_bundle = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	janus_ice_force_bundle(force_bundle);
 	item = janus_config_get_item_drilldown(config, "media", "force-rtcp-mux");
 	force_rtcpmux = (item && item->value) ? janus_is_true(item->value) : FALSE;
 	janus_ice_force_rtcpmux(force_rtcpmux);
+	item = janus_config_get_item_drilldown(config, "media", "extmap-support");
+	extmap_support = (item && item->value) ? janus_is_true(item->value) : FALSE;
+	janus_ice_extmap_support(extmap_support);
 	/* NACK related stuff */
 	item = janus_config_get_item_drilldown(config, "media", "max_nack_queue");
 	if(item && item->value) {
