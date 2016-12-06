@@ -26,6 +26,8 @@ is_private = yes|no (private rooms don't appear when you do a 'list' request)
 secret = <optional password needed for manipulating (e.g. destroying) the room>
 pin = <optional password needed for joining the room>
 sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
+audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
+	negotiated/used or not for new joins, default=yes)
 record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
 \endverbatim
@@ -81,6 +83,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"pin" : "<password required to join the room, optional>",
 	"is_private" : <true|false, whether the room should appear in a list request>,
 	"sampling" : <sampling rate of the room, optional, 16000 by default>,
+	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default true>,
 	"record" : <true|false, whether to record the room or not, default false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 }
@@ -554,6 +557,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"record", JANUS_JSON_BOOL, 0},
 	{"record_file", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
+	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter destroy_parameters[] = {
@@ -640,6 +644,7 @@ typedef struct janus_audiobridge_room {
 	gchar *room_pin;			/* Password needed to join this room, if any */
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	uint32_t sampling_rate;		/* Sampling rate of the mix (e.g., 16000 for wideband; can be 8, 12, 16, 24 or 48kHz) */
+	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new joins */
 	gboolean record;			/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file */
 	FILE *recording;			/* File to record the room into */
@@ -954,6 +959,7 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *desc = janus_config_get_item(cat, "description");
 			janus_config_item *priv = janus_config_get_item(cat, "is_private");
 			janus_config_item *sampling = janus_config_get_item(cat, "sampling_rate");
+			janus_config_item *audiolevel_ext = janus_config_get_item(cat, "audiolevel_ext");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
 			janus_config_item *pin = janus_config_get_item(cat, "pin");
 			janus_config_item *record = janus_config_get_item(cat, "record");
@@ -987,6 +993,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 			}
+			audiobridge->audiolevel_ext = TRUE;
+			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
+				audiobridge->audiolevel_ext = janus_is_true(audiolevel_ext->value);
 			if(secret != NULL && secret->value != NULL) {
 				audiobridge->room_secret = g_strdup(secret->value);
 			}
@@ -1285,6 +1294,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_t *pin = json_object_get(root, "pin");
 		json_t *is_private = json_object_get(root, "is_private");
 		json_t *sampling = json_object_get(root, "sampling");
+		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
 		json_t *permanent = json_object_get(root, "permanent");
@@ -1344,6 +1354,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			audiobridge->sampling_rate = json_integer_value(sampling);
 		else
 			audiobridge->sampling_rate = 16000;
+		audiobridge->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		switch(audiobridge->sampling_rate) {
 			case 8000:
 			case 12000:
@@ -2848,8 +2859,10 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Is the audio level extension negotiated? */
 			participant->extmap_id = 0;
 			participant->dBov_level = 0;
-			int extmap_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+			int extmap_id = -1;
 			char audio_level_extmap[100];
+			if(participant->room && participant->room->audiolevel_ext)
+				extmap_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 			if(extmap_id > -1) {
 				participant->extmap_id = extmap_id;
 				g_snprintf(audio_level_extmap, sizeof(audio_level_extmap),
