@@ -4,6 +4,8 @@
 ; secret = <optional password needed for manipulating (e.g. destroying) the room>
 ; pin = <optional password needed for joining the room>
 ; sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
+; audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must
+;		be negotiated/used or not for new joins, default=yes)
 ; record = true|false (whether this room should be recorded, default=false)
 ; record_file = /path/to/recording.wav (where to save the recording)
 

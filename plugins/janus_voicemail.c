@@ -569,7 +569,13 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	uint16_t seq = ntohs(rtp->seq_number);
 	if(session->seq == 0)
 		session->seq = seq;
-	ogg_packet *op = op_from_pkt((const unsigned char *)(buf+12), len-12);	/* TODO Check RTP extensions... */
+	int plen = 0;
+	const unsigned char *payload = (const unsigned char *)janus_rtp_payload(buf, len, &plen);
+	if(!payload) {
+		JANUS_LOG(LOG_ERR, "Ops! got an error accessing the RTP payload\n");
+		return;
+	}
+	ogg_packet *op = op_from_pkt(payload, plen);
 	//~ JANUS_LOG(LOG_VERB, "\tWriting at position %d (%d)\n", seq-session->seq+1, 960*(seq-session->seq+1));
 	op->granulepos = 960*(seq-session->seq+1); // FIXME: get this from the toc byte
 	ogg_stream_packetin(session->stream, op);

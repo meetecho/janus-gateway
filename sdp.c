@@ -642,7 +642,6 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "candidate")
 					|| !strcasecmp(a->name, "ssrc")
 					|| !strcasecmp(a->name, "ssrc-group")
-					|| !strcasecmp(a->name, "extmap")	/* TODO Actually implement RTP extensions */
 					|| !strcasecmp(a->name, "sctpmap")) {
 				m->attributes = g_list_remove(m->attributes, a);
 				tempA = m->attributes;

@@ -374,10 +374,14 @@ int main(int argc, char *argv[])
 		janus_pp_rtp_header *rtp = (janus_pp_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_VERB, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+		if(rtp->csrccount) {
+			JANUS_LOG(LOG_VERB, "  -- -- Skipping CSRC list\n");
+			skip += rtp->csrccount*4;
+		}
 		if(rtp->extension) {
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
-		JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
-				ntohs(ext->type), ntohs(ext->length)); 
+			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
+				ntohs(ext->type), ntohs(ext->length));
 			skip = 4 + ntohs(ext->length)*4;
 		}
 		/* Generate frame packet and insert in the ordered list */
