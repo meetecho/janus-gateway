@@ -43,7 +43,8 @@ A couple of plugins depend on a few more libraries:
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
 * [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
-interested in RTSP support in the Streaming plugin)
+interested in RTSP support in the Streaming plugin or in the sample
+Event Handler plugin)
 
 Additionally, you'll need the following libraries and tools:
 
@@ -284,7 +285,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.2.1
+	janus 0.2.2
 
 	Usage: janus [OPTIONS]...
 
