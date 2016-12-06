@@ -74,7 +74,7 @@ AC_ARG_ENABLE([unix-sockets],
               [AS_HELP_STRING([--disable-unix-sockets],
                               [Disable Unix Sockets integration])],
               [],
-              [enable_pfunix=maybe])
+              [enable_unix_sockets=maybe])
 
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
@@ -296,17 +296,17 @@ AC_TRY_COMPILE([
                }],
                [],
                [
-                 AS_IF([test "x$enable_pfunix" != "xno"],
+                 AS_IF([test "x$enable_unix_sockets" != "xno"],
                  [
                     AC_DEFINE(HAVE_PFUNIX)
-                    enable_pfunix=yes
+                    enable_unix_sockets=yes
                  ])
                ],
                [
-                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                 AS_IF([test "x$enable_unix_sockets" = "xyes"],
                        [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
                ])
-AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_pfunix" = "xyes"])
+AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 
 
 ##
