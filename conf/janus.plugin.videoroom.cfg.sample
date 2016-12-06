@@ -9,6 +9,12 @@
 ; fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 ; audiocodec = opus|isac32|isac16|pcmu|pcma (audio codec to force on publishers, default=opus)
 ; videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8)
+; audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must
+;		be negotiated/used or not for new publishers, default=yes)
+; videoorient_ext = yes|no (whether the video-orientation RTP extension must
+;		be negotiated/used or not for new publishers, default=yes)
+; playoutdelay_ext = yes|no (whether the playout-delay RTP extension must
+;		be negotiated/used or not for new publishers, default=yes)
 ; record = true|false (whether this room should be recorded, default=false)
 ; rec_dir = <folder where recordings should be stored, when enabled>
 

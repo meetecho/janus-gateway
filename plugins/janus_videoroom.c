@@ -64,6 +64,12 @@ bitrate = <max video bitrate for senders> (e.g., 128000)
 fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 audiocodec = opus|isac32|isac16|pcmu|pcma (audio codec to force on publishers, default=opus)
 videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8)
+audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
+	negotiated/used or not for new publishers, default=yes)
+videoorientation_ext = yes|no (whether the video-orientation RTP extension must be
+	negotiated/used or not for new publishers, default=yes)
+playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
+	negotiated/used or not for new publishers, default=yes)
 record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
 \endverbatim
@@ -218,6 +224,9 @@ static struct janus_json_parameter create_parameters[] = {
 	{"publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audiocodec", JSON_STRING, 0},
 	{"videocodec", JSON_STRING, 0},
+	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
+	{"videoorient_ext", JANUS_JSON_BOOL, 0},
+	{"playoutdelay_ext", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"rec_dir", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0}
@@ -379,6 +388,9 @@ typedef struct janus_videoroom {
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
 	janus_videoroom_audiocodec acodec;	/* Audio codec to force on publishers*/
 	janus_videoroom_videocodec vcodec;	/* Video codec to force on publishers*/
+	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new publishers */
+	gboolean videoorient_ext;	/* Whether the video-orientation extension must be negotiated or not for new publishers */
+	gboolean playoutdelay_ext;	/* Whether the playout-delay extension must be negotiated or not for new publishers */
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
 	gint64 destroyed;			/* Value to flag the room for destruction, done lazily */
@@ -784,6 +796,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
 			janus_config_item *audiocodec = janus_config_get_item(cat, "audiocodec");
 			janus_config_item *videocodec = janus_config_get_item(cat, "videocodec");
+			janus_config_item *audiolevel_ext = janus_config_get_item(cat, "audiolevel_ext");
+			janus_config_item *videoorient_ext = janus_config_get_item(cat, "videoorient_ext");
+			janus_config_item *playoutdelay_ext = janus_config_get_item(cat, "playoutdelay_ext");
 			janus_config_item *record = janus_config_get_item(cat, "record");
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
@@ -845,6 +860,15 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 					videoroom->vcodec = JANUS_VIDEOROOM_VP8;
 				}
 			}
+			videoroom->audiolevel_ext = TRUE;
+			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
+				videoroom->audiolevel_ext = janus_is_true(audiolevel_ext->value);
+			videoroom->videoorient_ext = TRUE;
+			if(videoorient_ext != NULL && videoorient_ext->value != NULL)
+				videoroom->videoorient_ext = janus_is_true(videoorient_ext->value);
+			videoroom->playoutdelay_ext = TRUE;
+			if(playoutdelay_ext != NULL && playoutdelay_ext->value != NULL)
+				videoroom->playoutdelay_ext = janus_is_true(playoutdelay_ext->value);
 			if(record && record->value) {
 				videoroom->record = janus_is_true(record->value);
 			}
@@ -1276,6 +1300,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				goto plugin_response;
 			}
 		}
+		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
+		json_t *videoorient_ext = json_object_get(root, "videoorient_ext");
+		json_t *playoutdelay_ext = json_object_get(root, "playoutdelay_ext");
 		json_t *record = json_object_get(root, "record");
 		json_t *rec_dir = json_object_get(root, "rec_dir");
 		json_t *permanent = json_object_get(root, "permanent");
@@ -1378,6 +1405,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				videoroom->vcodec = JANUS_VIDEOROOM_VP8;
 			}
 		}
+		videoroom->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
+		videoroom->videoorient_ext = videoorient_ext ? json_is_true(videoorient_ext) : TRUE;
+		videoroom->playoutdelay_ext = playoutdelay_ext ? json_is_true(playoutdelay_ext) : TRUE;
 		if(record) {
 			videoroom->record = json_is_true(record);
 		}
@@ -3416,13 +3446,13 @@ static void *janus_videoroom_handler(void *data) {
 						while(ma) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 							if(a->value) {
-								if(m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
+								if(videoroom->audiolevel_ext && m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
 									participant->audio_level_extmap_id = atoi(a->value);
 									audio_level_extmap = TRUE;
-								} else if(m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
+								} else if(videoroom->videoorient_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
 									participant->video_orient_extmap_id = atoi(a->value);
 									video_orient_extmap = TRUE;
-								} else if(m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
+								} else if(videoroom->playoutdelay_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
 									participant->playout_delay_extmap_id = atoi(a->value);
 									playout_delay_extmap = TRUE;
 								}
