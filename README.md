@@ -65,6 +65,12 @@ On Ubuntu or Debian, it would require something like this:
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev pkg-config gengetopt libtool automake
 
+
+On MacOS homebrew can be used to install all the dependencies. You might though have problems
+with some packages which are not in the main repository. As of the date of this writing, this is
+the case for libnice, that has to installed using boneyard repository:
+	brew install homebrew/boneyard/libnice
+
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
@@ -234,6 +240,8 @@ You can also selectively enable/disable other features (e.g., specific
 plugins you don't care about). Use the --help option when configuring
 for more info.
 
+On MacOS some difficulties were experienced with the configure script (issue with pkg-config?), which for some reason didn't set up correctly compiler environnement variables (CFLAGS, LDFLAGS, LIBS). This is an example of a configure that works, with boringssh instead of openssl, as well as microhttpd and rabbitmq libraries (tested on MacOSX 10.11.6):
+./configure LIBS="$LIBS -lnice -ljansson -lglib-2.0 -lgobject-2.0 -lcrypto -lssl -lrabbitmq -lmicrohttpd" JANUS_CFLAGS="-I/opt/boringssl/include/" JANUS_LIBS="-L/opt/boringssl/lib/ -L/usr/local/lib/"    CFLAGS="$CFLAGS -I/usr/local/include -I/usr/local/include/glib-2.0 -I/usr/local/Cellar/libnice/0.1.7/include/nice/ -I/usr/local/Cellar/libnice/0.1.7/include/stun/ -I/opt/boringssl/include/" LDFLAGS="-L/opt/boringssl/lib/ -L/usr/local/lib/" --prefix=/opt/janus --enable-boringssl --disable-data-channels --disable-websockets --disable-mqtt --disable-unix-sockets
 
 ##Configure and start
 To start the gateway, you can use the janus executable. There are several
