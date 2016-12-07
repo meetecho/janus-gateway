@@ -82,6 +82,12 @@ AC_ARG_ENABLE([boringssl],
               [],
               [enable_boringssl=no])
 
+AC_ARG_ENABLE([libsrtp2],
+              [AS_HELP_STRING([--enable-libsrtp2],
+                              [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
+              [],
+              [enable_libsrtp2=maybe])
+
 AC_ARG_ENABLE([dtls-settimeout],
               [AS_HELP_STRING([--enable-dtls-settimeout],
                               [Use DTLSv1_set_initial_timeout_duration (only available in recent BoringSSL versions)])],
@@ -141,10 +147,42 @@ AC_CHECK_LIB([dl],
              [JANUS_MANUAL_LIBS+=" -ldl"],
              [AC_MSG_ERROR([libdl not found.])])
 
-AC_CHECK_LIB([srtp],
-             [srtp_init],
-             [JANUS_MANUAL_LIBS+=" -lsrtp"],
-             [AC_MSG_ERROR([libsrtp not found.])])
+AM_CONDITIONAL([ENABLE_LIBSRTP_2], false)
+AS_IF([test "x$enable_libsrtp2" != "xno"],
+      [AC_CHECK_LIB([srtp2],
+                    [srtp_init],
+                    [
+                      AC_CHECK_HEADER([srtp2/srtp.h],
+                                      [
+                                        AC_DEFINE(HAVE_SRTP_2)
+                                        JANUS_MANUAL_LIBS+=" -lsrtp2"
+                                        enable_libsrtp2=yes
+                                        AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                                      ],
+                                      [
+                                        AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                                              [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                                      ])
+                    ],
+                    [
+                      AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                            [AC_MSG_ERROR([libsrtp2 not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                    ])
+      ])
+AM_COND_IF([ENABLE_LIBSRTP_2],
+           [],
+           [AC_CHECK_LIB([srtp],
+                         [srtp_init],
+                         [
+                           AC_CHECK_HEADER([srtp/srtp.h],
+                                           [
+                                             JANUS_MANUAL_LIBS+=" -lsrtp"
+                                             enable_libsrtp2=no
+                                           ],
+                                           [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
+                         ],
+                         [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])])
+           ])
 
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
@@ -461,12 +499,15 @@ AC_OUTPUT
 ##
 echo
 
+AM_COND_IF([ENABLE_LIBSRTP_2],
+	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           1.5.x"])
+AM_COND_IF([ENABLE_BORINGSSL],
+	[echo "SSL/crypto library:        BoringSSL"],
+	[echo "SSL/crypto library:        OpenSSL"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
-AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "BoringSSL (no OpenSSL):    yes"],
-	[echo "BoringSSL (no OpenSSL):    no"])
 AM_COND_IF([ENABLE_POST_PROCESSING],
 	[echo "Recordings post-processor: yes"],
 	[echo "Recordings post-processor: no"])
