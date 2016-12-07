@@ -218,7 +218,12 @@ You can also selectively enable/disable other features (e.g., specific plugins y
 
 On MacOS some difficulties were experienced with the configure script (issue with pkg-config?), which for some reason didn't set up correctly compiler environnement variables (CFLAGS, LDFLAGS, LIBS). This is an example of a configure that works, with boringssh instead of openssl, as well as microhttpd and rabbitmq libraries (tested on MacOSX 10.11.6):
 
-	./configure LIBS="$LIBS -lnice -ljansson -lglib-2.0 -lgobject-2.0 -lcrypto -lssl -lrabbitmq -lmicrohttpd" JANUS_CFLAGS="-I/opt/boringssl/include/" JANUS_LIBS="-L/opt/boringssl/lib/ -L/usr/local/lib/"    CFLAGS="$CFLAGS -I/usr/local/include -I/usr/local/include/glib-2.0 -I/usr/local/Cellar/libnice/0.1.7/include/nice/ -I/usr/local/Cellar/libnice/0.1.7/include/stun/ -I/opt/boringssl/include/" LDFLAGS="-L/opt/boringssl/lib/ -L/usr/local/lib/" --prefix=/opt/janus --enable-boringssl --disable-data-channels --disable-websockets --disable-mqtt --disable-unix-sockets
+	./configure LIBS="$LIBS -lnice -ljansson -lglib-2.0 -lgobject-2.0 -lcrypto -lssl -lrabbitmq -lmicrohttpd" \
+		JANUS_CFLAGS="-I/opt/boringssl/include/" JANUS_LIBS="-L/opt/boringssl/lib/ -L/usr/local/lib/"     \
+		CFLAGS="$CFLAGS -I/usr/local/include -I/usr/local/include/glib-2.0 \ 
+		-I/usr/local/Cellar/libnice/0.1.7/include/nice/ -I/usr/local/Cellar/libnice/0.1.7/include/stun/   \
+		-I/opt/boringssl/include/" LDFLAGS="-L/opt/boringssl/lib/ -L/usr/local/lib/" --prefix=/opt/janus  \
+		--enable-boringssl --disable-data-channels --disable-websockets --disable-mqtt --disable-unix-sockets
 
 ### Building on MacOS
 While most of the above instructions will work when compiling Janus on MacOS as well, there are a few aspects to highlight when doing that.
