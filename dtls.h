@@ -17,7 +17,12 @@
 
 #include <inttypes.h>
 #include <glib.h>
+
+#ifdef HAVE_SRTP_2
+#include <srtp2/srtp.h>
+#else
 #include <srtp/srtp.h>
+#endif
 
 #include "sctp.h"
 #include "dtls-bio.h"
