@@ -424,11 +424,7 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	}
 
 	/* Initialize libsrtp */
-#ifdef HAVE_SRTP_2
 	if(srtp_init() != srtp_err_status_ok) {
-#else
-	if(srtp_init() != err_status_ok) {
-#endif
 		JANUS_LOG(LOG_FATAL, "Ops, error setting up libsrtp?\n");
 		return 5;
 	}
@@ -700,13 +696,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					}
 					/* Build master keys and set SRTP policies */
 						/* Remote (inbound) */
-#ifdef HAVE_SRTP_2
 					srtp_crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
 					srtp_crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
-#else
-					crypto_policy_set_rtp_default(&(dtls->remote_policy.rtp));
-					crypto_policy_set_rtcp_default(&(dtls->remote_policy.rtcp));
-#endif
 					dtls->remote_policy.ssrc.type = ssrc_any_inbound;
 					unsigned char remote_policy_key[SRTP_MASTER_LENGTH];
 					dtls->remote_policy.key = (unsigned char *)&remote_policy_key;
@@ -718,13 +709,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 #endif
 					dtls->remote_policy.next = NULL;
 						/* Local (outbound) */
-#ifdef HAVE_SRTP_2
 					srtp_crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
 					srtp_crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
-#else
-					crypto_policy_set_rtp_default(&(dtls->local_policy.rtp));
-					crypto_policy_set_rtcp_default(&(dtls->local_policy.rtcp));
-#endif
 					dtls->local_policy.ssrc.type = ssrc_any_outbound;
 					unsigned char local_policy_key[SRTP_MASTER_LENGTH];
 					dtls->local_policy.key = (unsigned char *)&local_policy_key;
@@ -736,13 +722,8 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 #endif
 					dtls->local_policy.next = NULL;
 					/* Create SRTP sessions */
-#ifdef HAVE_SRTP_2
 					srtp_err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
 					if(res != srtp_err_status_ok) {
-#else
-					err_status_t res = srtp_create(&(dtls->srtp_in), &(dtls->remote_policy));
-					if(res != err_status_ok) {
-#endif
 						/* Something went wrong... */
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating inbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_get_srtp_error(res));
@@ -750,11 +731,7 @@ void janus_dtls_srtp_incoming_msg(janus_dtls_srtp *dtls, char *buf, uint16_t len
 					}
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Created inbound SRTP session for component %d in stream %d\n", handle->handle_id, component->component_id, stream->stream_id);
 					res = srtp_create(&(dtls->srtp_out), &(dtls->local_policy));
-#ifdef HAVE_SRTP_2
 					if(res != srtp_err_status_ok) {
-#else
-					if(res != err_status_ok) {
-#endif
 						/* Something went wrong... */
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Oops, error creating outbound SRTP session for component %d in stream %d??\n", handle->handle_id, component->component_id, stream->stream_id);
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"]  -- %d (%s)\n", handle->handle_id, res, janus_get_srtp_error(res));

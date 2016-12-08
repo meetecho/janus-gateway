@@ -1838,15 +1838,9 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			}
 
 			int buflen = len;
-#ifdef HAVE_SRTP_2
 			srtp_err_status_t res = srtp_unprotect(component->dtls->srtp_in, buf, &buflen);
 			if(res != srtp_err_status_ok) {
 				if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
-#else
-			err_status_t res = srtp_unprotect(component->dtls->srtp_in, buf, &buflen);
-			if(res != err_status_ok) {
-				if(res != err_status_replay_fail && res != err_status_replay_old) {
-#endif
 					/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
 					rtp_header *header = (rtp_header *)buf;
 					guint32 timestamp = ntohl(header->timestamp);
@@ -2025,13 +2019,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			int buflen = len;
-#ifdef HAVE_SRTP_2
 			srtp_err_status_t res = srtp_unprotect_rtcp(component->dtls->srtp_in, buf, &buflen);
 			if(res != srtp_err_status_ok) {
-#else
-			err_status_t res = srtp_unprotect_rtcp(component->dtls->srtp_in, buf, &buflen);
-			if(res != err_status_ok) {
-#endif
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTCP unprotect error: %s (len=%d-->%d)\n", handle->handle_id, janus_get_srtp_error(res), len, buflen);
 			} else {
 				/* Is this audio or video? */
@@ -3410,11 +3399,7 @@ void *janus_ice_send_thread(void *data) {
 					janus_mutex_unlock(&component->dtls->srtp_mutex);
 				}
 				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTCP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
-#ifdef HAVE_SRTP_2
 				if(res != srtp_err_status_ok) {
-#else
-				if(res != err_status_ok) {
-#endif
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTCP protect error... %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
 				} else {
 					/* Shoot! */
@@ -3494,11 +3479,7 @@ void *janus_ice_send_thread(void *data) {
 					int protected = pkt->length;
 					int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
-#ifdef HAVE_SRTP_2
 					if(res != srtp_err_status_ok) {
-#else
-					if(res != err_status_ok) {
-#endif
 						rtp_header *header = (rtp_header *)sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
