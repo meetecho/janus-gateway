@@ -50,7 +50,11 @@
  */
 
 #include <arpa/inet.h>
+#ifdef __MACH__
+#include <machine/endian.h>
+#else
 #include <endian.h>
+#endif
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
