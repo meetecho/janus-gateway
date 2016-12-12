@@ -223,7 +223,6 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 					}
 				}
 			}
-
 		} else {
 			/* https://tools.ietf.org/html/draft-ietf-payload-vp9 */
 			/* Read the first bytes of the payload, and get the first octet (VP9 Payload Descriptor) */

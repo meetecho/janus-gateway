@@ -380,7 +380,7 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 		do {
 			res = sendto(client->admin ? admin_pfd : pfd, payload, strlen(payload), 0, (struct sockaddr *)&client->addr, sizeof(struct sockaddr_un));
 		} while(res == -1 && errno == EINTR);
-		g_free(payload);
+		free(payload);
 	}
 	return 0;
 }
