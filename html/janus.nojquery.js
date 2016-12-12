@@ -1674,7 +1674,9 @@ function Janus(gatewayCallbacks) {
 					// Check whether a missing device is really a problem
 					var audioSend = isAudioSendEnabled(media);
 					var videoSend = isVideoSendEnabled(media);
-					if(audioSend || videoSend) {
+					var needAudioDevice = isAudioSendRequired(media);
+					var needVideoDevice = isVideoSendRequired(media);
+					if(audioSend || videoSend || needAudioDevice || needVideoDevice) {
 						// We need to send either audio or video
 						var haveAudioDevice = audioSend ? audioExist : false;
 						var haveVideoDevice = videoSend ? videoExist : false;
@@ -1682,6 +1684,14 @@ function Janus(gatewayCallbacks) {
 							// FIXME Should we really give up, or just assume recvonly for both?
 							pluginHandle.consentDialog(false);
 							callbacks.error('No capture device found');
+							return false;
+						} else if(!haveAudioDevice && needAudioDevice) {
+							pluginHandle.consentDialog(false);
+							callbacks.error('Audio capture is required, but no capture device found');
+							return false;
+						} else if(!haveVideoDevice && needVideoDevice) {
+							pluginHandle.consentDialog(false);
+							callbacks.error('Video capture is required, but no capture device found');
 							return false;
 						}
 					}
@@ -2199,6 +2209,17 @@ function Janus(gatewayCallbacks) {
 		return (media.audioSend === true);
 	}
 
+	function isAudioSendRequired(media) {
+		Janus.debug("isAudioSendRequired:", media);
+		if(media === undefined || media === null)
+			return false;	// Default
+		if(media.audio === false || media.audioSend === false)
+			return false;	// If we're not asking to capture audio, it's not required
+		if(media.failIfNoAudio === undefined || media.failIfNoAudio === null)
+			return false;	// Default
+		return (media.failIfNoAudio === true);
+	}
+
 	function isAudioRecvEnabled(media) {
 		Janus.debug("isAudioRecvEnabled:", media);
 		if(media === undefined || media === null)
@@ -2219,6 +2240,17 @@ function Janus(gatewayCallbacks) {
 		if(media.videoSend === undefined || media.videoSend === null)
 			return true;	// Default
 		return (media.videoSend === true);
+	}
+
+	function isVideoSendRequired(media) {
+		Janus.debug("isVideoSendRequired:", media);
+		if(media === undefined || media === null)
+			return false;	// Default
+		if(media.video === false || media.videoSend === false)
+			return false;	// If we're not asking to capture video, it's not required
+		if(media.failIfNoVideo === undefined || media.failIfNoVideo === null)
+			return false;	// Default
+		return (media.failIfNoVideo === true);
 	}
 
 	function isVideoRecvEnabled(media) {
