@@ -17,7 +17,18 @@
 
 #include <inttypes.h>
 #include <glib.h>
+
+#ifdef HAVE_SRTP_2
+#include <srtp2/srtp.h>
+#else
 #include <srtp/srtp.h>
+#define srtp_err_status_t err_status_t
+#define srtp_err_status_ok err_status_ok
+#define srtp_err_status_replay_fail err_status_replay_fail
+#define srtp_err_status_replay_old err_status_replay_old
+#define srtp_crypto_policy_set_rtp_default crypto_policy_set_rtp_default
+#define srtp_crypto_policy_set_rtcp_default crypto_policy_set_rtcp_default
+#endif
 
 #include "sctp.h"
 #include "dtls-bio.h"
