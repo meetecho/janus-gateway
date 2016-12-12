@@ -94,6 +94,7 @@
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
+ * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API and for RTSP support in the Streaming plugin)
  *
  */
 
@@ -287,6 +288,15 @@ var janus = new Janus(
  * from you in the last second, after a start was detected before; useful to
  * figure out when Janus actually started handling your media, or to detect
  * problems on the media path (e.g., media never started, or stopped at some time);
+ * 		- \c slowLink: this callback is triggered when Janus reports trouble
+ * either sending or receiving media on the specified PeerConnection, typically
+ * as a consequence of too many NACKs received from/sent to the user in the
+ * last second: for instance, a \c slowLink with uplink=<b>true</b> means
+ * you notified several missing packets from Janus, while uplink=<b>false</b>
+ * means Janus is not receiving all your packets; useful to figure out when
+ * there are problems on the media path (e.g., excessive loss), in order to
+ * possibly react accordingly (e.g., decrease the bitrate if most of our
+ * packets are getting lost);
  * 		- \c onmessage: a message/event has been received from the plugin;
  * 		- \c onlocalstream: a local \c MediaStream is available and ready to be displayed;
  * 		- \c onremotestream: a remote \c MediaStream is available and ready to be displayed;
@@ -1083,6 +1093,8 @@ GET http://host:port/janus/<sessionid>?maxev=5
  * established a PeerConnection with the user/application;
  *  - \c media: whether Janus is receiving (\c receiving: \c true/false)
  * audio/video (\c type: \c "audio/video") on this PeerConnection;
+ *  - \c slowlink: whether Janus is reporting trouble sending/receiving
+ * (\c uplink: \c true/false) media on this PeerConnection;
  *  - \c hangup: the PeerConnection was closed, either by Janus or by
  * the user/application, and as such cannot be used anymore.
  *
@@ -1140,6 +1152,19 @@ GET http://host:port/janus/<sessionid>?maxev=5
 	"sender" : <the handle identifier>
 	"type" : "audio",
 	"receiving" : true
+}
+\endverbatim
+ *
+ * Janus reporting problems sending media to a user (user sent many NACKs
+ * in the last second; uplink=true is from Janus' perspective):
+ *
+\verbatim
+{
+	"janus" : "slowlink",
+	"session_id" : <the session identifier>,
+	"sender" : <the handle identifier>
+	"uplink" : true,
+	"nacks" : <number of NACKs in the last second>
 }
 \endverbatim
  *
@@ -2235,6 +2260,30 @@ exit 0
  * \note sysvinit example provided by
  * <a href="https://github.com/saghul">\@saghul</a> 
  *
+ * \section supervisor supervisor
+ * This section shows how you can add Janus to
+ * <a href="http://supervisord.org/">supervisor</a>, which is
+ * typically available on Ubuntu systems.
+ *
+ \verbatim
+[program:janus]
+command=/opt/janus/bin/janus
+user=root
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/janus.err.log
+stdout_logfile=/var/log/janus.out.log
+ \endverbatim
+ *
+ * \note The above configuration file should be added to
+ * <code>/etc/supervisor/conf.d/janus.conf</code>. Then the following commands
+ * should be run:
+ *
+ \verbatim
+sudo supervisorctl reread
+sudo supervisorctl update
+ \endverbatim
+ *
  * \section Others
  * TODO.
  *
@@ -2383,16 +2432,28 @@ ldd janus | grep asan
  * experimental and incomplete as per the author words, but a good starting point</td>
  * </tr>
  * <tr>
- * 		<td>C#/.NET</td>
- * 		<td><a href="https://github.com/Computician">Benjamin Trent</a></td>
- * 		<td><a href="https://github.com/Computician/JanusSharp">JanusSharp</a></td>
- * 		<td>C#/.Net client side API wrapper for the Janus API</td>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
+ * 		<td><a href="https://github.com/cargomedia/janus-gateway-js">janus-gateway-js</a></td>
+ * 		<td>Simple JavaScript client for janus-gateway that runs in the browser as well as in Node.js</td>
+ * </tr>
+ * <tr>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://www.sipwise.com/">sip:wise</a></td>
+ * 		<td><a href="https://www.npmjs.com/~sipwise">admin/videoroom client</a></td>
+ * 		<td>Node.js clients that implement the Admin API and VideoRoom functionality</td>
  * </tr>
  * <tr>
  * 		<td>ruby</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-ruby">janus-gateway-ruby</a></td>
  * 		<td>ruby client side API wrapper for the Janus API (websocket only at the moment)</td>
+ * </tr>
+ * <tr>
+ * 		<td>C#/.NET</td>
+ * 		<td><a href="https://github.com/Computician">Benjamin Trent</a></td>
+ * 		<td><a href="https://github.com/Computician/JanusSharp">JanusSharp</a></td>
+ * 		<td>C#/.Net client side API wrapper for the Janus API</td>
  * </tr>
  * <tr>
  * 		<td>PHP</td>
@@ -2441,6 +2502,18 @@ ldd janus | grep asan
  * 		<td><a href="http://linux-projects.org">Linux Projects</a></td>
  * 		<td><a href="http://www.linux-projects.org/uv4l/tutorials/janus-gateway/">UV4L, User Space Video Collection</a></td>
  * 		<td>Software modules providing solutions for encrypted live data, audio and video streaming, mirroring, conferencing</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section docker Docker resources
+ *
+ * <table class="table table-striped">
+ * <tr><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td><a href="https://github.com/krull">Brendan Jocson</a></td>
+ * 		<td><a href="https://github.com/krull/docker-janus">docker-janus</a></td>
+ *		<td>Debian 8 based docker image for Meetecho's Janus Gateway</td>
  * </tr>
  * </table>
  * <br/>

@@ -168,6 +168,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		uint16_t info_bytes = htons(strlen(info_text));
 		fwrite(&info_bytes, sizeof(uint16_t), 1, recorder->file);
 		fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
+		free(info_text);
 		/* Done */
 		recorder->header = 1;
 	}
