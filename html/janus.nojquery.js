@@ -221,7 +221,7 @@ Janus.init = function(options) {
 				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
 						Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy();
+					Janus.sessions[s].destroy({asyncRequest: false});
 				}
 			}
 			if(oldOBF && typeof oldOBF == "function")
@@ -354,7 +354,7 @@ function Janus(gatewayCallbacks) {
 	this.getServer = function() { return server; };
 	this.isConnected = function() { return connected; };
 	this.getSessionId = function() { return sessionId; };
-	this.destroy = function(callbacks) { destroySession(callbacks); };
+	this.destroy = function(callbacks) { destroySession(callbacks, true); };
 	this.attach = function(callbacks) { createHandle(callbacks); };
 
 	// Private method to create random identifiers (e.g., transaction)
@@ -716,12 +716,14 @@ function Janus(gatewayCallbacks) {
 	}
 
 	// Private method to destroy a session
-	function destroySession(callbacks, syncRequest) {
-		syncRequest = (syncRequest === true);
-		Janus.log("Destroying session " + sessionId + " (sync=" + syncRequest + ")");
+	function destroySession(callbacks) {
 		callbacks = callbacks || {};
 		// FIXME This method triggers a success even when we fail
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
+		var asyncRequest = true;
+		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
+			asyncRequest = (callbacks.asyncRequest === true);
+		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
 			Janus.warn("Is the gateway down? (connected=false)");
 			callbacks.success();
@@ -738,7 +740,7 @@ function Janus(gatewayCallbacks) {
 		for(var ph in pluginHandles) {
 			var phv = pluginHandles[ph];
 			Janus.log("Destroying handle " + phv.id + " (" + phv.plugin + ")");
-			destroyHandle(phv.id, null, syncRequest);
+			destroyHandle(phv.id, {asyncRequest: asyncRequest});
 		}
 		// Ok, go on
 		var request = { "janus": "destroy", "transaction": randomString(12) };
@@ -783,7 +785,7 @@ function Janus(gatewayCallbacks) {
 		Janus.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId,
-			async: syncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1221,12 +1223,14 @@ function Janus(gatewayCallbacks) {
 	}
 
 	// Private method to destroy a plugin handle
-	function destroyHandle(handleId, callbacks, syncRequest) {
-		syncRequest = (syncRequest === true);
-		Janus.log("Destroying handle " + handleId + " (sync=" + syncRequest + ")");
+	function destroyHandle(handleId, callbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
+		var asyncRequest = true;
+		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
+			asyncRequest = (callbacks.asyncRequest === true);
+		Janus.log("Destroying handle " + handleId + " (sync=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
 		if(!connected) {
 			Janus.warn("Is the gateway down? (connected=false)");
@@ -1249,7 +1253,7 @@ function Janus(gatewayCallbacks) {
 		Janus.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
-			async: syncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
