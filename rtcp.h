@@ -35,6 +35,7 @@ typedef enum {
     RTCP_APP = 204,
     RTCP_RTPFB = 205,
     RTCP_PSFB = 206,
+    RTCP_XR = 207,
 } rtcp_type;
  
  
@@ -180,6 +181,28 @@ typedef struct rtcp_fb
 	/*! \brief Feedback Control Information */
 	char fci[1];
 } rtcp_fb;
+
+/*! \brief RTCP Extended Report Block (https://tools.ietf.org/html/rfc3611#section-3) */
+typedef struct extended_report_block
+{
+	/*! \brief Block type (BT) */
+	uint8_t blocktype;
+	/*! \brief Type-specific */
+	uint8_t typesp;
+	/*! \brief Block length */
+	uint16_t length;
+	/*! \brief Content (variable length) */
+	char content[1];
+
+} extended_report_block;
+
+/*! \brief RTCP Extended Report (https://tools.ietf.org/html/rfc3611#section-2) */
+typedef struct rtcp_xr
+{
+	rtcp_header header;
+	uint32_t ssrc;
+	extended_report_block erb[1];
+} rtcp_xr;
 
 
 /*! \brief Internal RTCP state context (for RR/SR) */
