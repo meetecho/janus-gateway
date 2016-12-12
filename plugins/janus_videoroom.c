@@ -1758,6 +1758,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
 			json_object_set_new(pl, "publisher", (p->sdp && p->session->started) ? json_true() : json_false());
+			if ((p->sdp && p->session->started)) {
+				json_object_set_new(pl, "internal_audio_ssrc", json_integer(p->audio_ssrc));
+				json_object_set_new(pl, "internal_video_ssrc", json_integer(p->video_ssrc));
+			}
 			json_array_append_new(list, pl);
 		}
 		janus_mutex_unlock(&videoroom->participants_mutex);
