@@ -68,7 +68,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 		}
 	}
 	json_t *body = NULL;
-	if(type != JANUS_EVENT_TYPE_WEBRTC && type != JANUS_EVENT_TYPE_CORE)
+	if(type != JANUS_EVENT_TYPE_MEDIA && type != JANUS_EVENT_TYPE_WEBRTC && type != JANUS_EVENT_TYPE_CORE)
 		body = json_object();
 
 	/* Each type may require different arguments */
