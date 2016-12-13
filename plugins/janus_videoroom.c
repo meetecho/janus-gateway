@@ -2715,7 +2715,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("joined"));
-					json_object_set_new(info, "room", json_integer(videoroom->room_id));
+					json_object_set_new(info, "room", json_integer(publisher->room->room_id));
 					json_object_set_new(info, "id", json_integer(user_id));
 					if(display_text != NULL)
 						json_object_set_new(info, "display", json_string(display_text));
@@ -2811,7 +2811,7 @@ static void *janus_videoroom_handler(void *data) {
 						if(notify_events && gateway->events_is_enabled()) {
 							json_t *info = json_object();
 							json_object_set_new(info, "event", json_string("subscribing"));
-							json_object_set_new(info, "room", json_integer(videoroom->room_id));
+							json_object_set_new(info, "room", json_integer(subscriber->room->room_id));
 							json_object_set_new(info, "feed", json_integer(feed_id));
 							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 						}
