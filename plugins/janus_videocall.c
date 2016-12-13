@@ -319,6 +319,7 @@ static struct janus_json_parameter set_parameters[] = {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static void *janus_videocall_handler(void *data);
@@ -422,9 +423,15 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_VIDEOCALL_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
-	if(config != NULL)
+	if(config != NULL) {
 		janus_config_print(config);
-	/* This plugin actually has nothing to configure... */
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_VIDEOCALL_NAME);
+		}
+	}
 	janus_config_destroy(config);
 	config = NULL;
 	
@@ -781,12 +788,19 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		json_t *calling = json_object();
 		json_object_set_new(calling, "event", json_string("hangup"));
 		json_object_set_new(calling, "username", json_string(session->username));
-		json_object_set_new(calling, "reason", json_string("Remote hangup"));
+		json_object_set_new(calling, "reason", json_string("Remote WebRTC hangup"));
 		json_object_set_new(call, "result", calling);
 		gateway->close_pc(session->peer->handle);
 		int ret = gateway->push_event(session->peer->handle, &janus_videocall_plugin, NULL, call, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(call);
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("hangup"));
+			json_object_set_new(info, "reason", json_string("Remote WebRTC hangup"));
+			gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+		}
 	}
 	session->peer = NULL;
 	/* Reset controls */
@@ -901,6 +915,13 @@ static void *janus_videocall_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("registered"));
 			json_object_set_new(result, "username", json_string(username_text));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("registered"));
+				json_object_set_new(info, "username", json_string(username_text));
+				gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
 			if(session->username == NULL) {
@@ -969,6 +990,13 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(result, "event", json_string("hangup"));
 				json_object_set_new(result, "username", json_string(session->username));
 				json_object_set_new(result, "reason", json_string("User busy"));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("hangup"));
+					json_object_set_new(info, "reason", json_string("User busy"));
+					gateway->notify_event(&janus_videocall_plugin, session->handle, info);
+				}
 				/* Hangup the call attempt of the user */
 				gateway->close_pc(session->handle);
 			} else {
@@ -1025,6 +1053,12 @@ static void *janus_videocall_handler(void *data) {
 				/* Send an ack back */
 				result = json_object();
 				json_object_set_new(result, "event", json_string("calling"));
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("calling"));
+					gateway->notify_event(&janus_videocall_plugin, session->handle, info);
+				}
 			}
 		} else if(!strcasecmp(request_text, "accept")) {
 			/* Accept a call from another peer */
@@ -1063,6 +1097,12 @@ static void *janus_videocall_handler(void *data) {
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("accepted"));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("accepted"));
+				gateway->notify_event(&janus_videocall_plugin, session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "set")) {
 			/* Update the local configuration (audio/video mute/unmute, bitrate cap or recording) */
 			JANUS_VALIDATE_JSON_OBJECT(root, set_parameters,
@@ -1188,6 +1228,23 @@ static void *janus_videocall_handler(void *data) {
 				}
 				janus_mutex_unlock(&session->rec_mutex);
 			}
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("configured"));
+				json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
+				json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
+				json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+				if(session->arc || session->vrc) {
+					json_t *recording = json_object();
+					if(session->arc && session->arc->filename)
+						json_object_set_new(recording, "audio", json_string(session->arc->filename));
+					if(session->vrc && session->vrc->filename)
+						json_object_set_new(recording, "video", json_string(session->vrc->filename));
+					json_object_set_new(info, "recording", recording);
+				}
+				gateway->notify_event(&janus_videocall_plugin, session->handle, info);
+			}
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("set"));
@@ -1217,6 +1274,14 @@ static void *janus_videocall_handler(void *data) {
 			json_object_set_new(result, "event", json_string("hangup"));
 			json_object_set_new(result, "username", json_string(session->username));
 			json_object_set_new(result, "reason", json_string(hangup_text));
+			json_object_set_new(result, "reason", json_string("Explicit hangup"));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("hangup"));
+				json_object_set_new(info, "reason", json_string("Explicit hangup"));
+				gateway->notify_event(&janus_videocall_plugin, session->handle, info);
+			}
 			/* Hangup the call on the user, if it's still up */
 			gateway->close_pc(session->handle);
 			if(peer != NULL) {
@@ -1232,6 +1297,13 @@ static void *janus_videocall_handler(void *data) {
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("hangup"));
+					json_object_set_new(info, "reason", json_string("Remote hangup"));
+					gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+				}
 				/* Hangup the call on the peer, if it's still up */
 				gateway->close_pc(peer->handle);
 			}

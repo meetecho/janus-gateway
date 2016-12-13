@@ -160,3 +160,16 @@ ice_ignore_list = vmnet
 ; transports are enabled and loaded at startup.
 [transports]
 ; disable = libjanus_rabbitmq.so
+
+; Event handlers allow you to receive live events from Janus happening
+; in core and/or plugins. Since this can require some more resources,
+; the feature is disabled by default. Setting broadcast to yes will
+; enable them. You can then choose which of the available event handlers
+; should be loaded or not. Use the 'disable' directive to prevent Janus
+; from loading one or more event handlers: use a comma separated list of
+; file names to identify the event handlers to disable. By default, if
+; broadcast is set to yes all available event handlers are enabled and
+; loaded at startup.
+[events]
+; broadcast = yes
+; disable = libjanus_sampleevh.so

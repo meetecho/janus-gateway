@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.2.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -17,8 +17,8 @@ LT_INIT
 
 case "$host_os" in
 darwin*)
-	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include"
-	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib"
+	CFLAGS="$CFLAGS -I/usr/local/opt/openssl/include -I/usr/local/include"
+	LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/opt/openssl/lib -L/opt/local/lib -L/usr/local/libsrtp/lib"
 	AM_CONDITIONAL([DARWIN_OS], true)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], false)
 ;;
@@ -44,43 +44,55 @@ AC_ARG_ENABLE([rest],
               [AS_HELP_STRING([--disable-rest],
                               [Disable REST (HTTP/HTTPS) support])],
               [],
-              [enable_rest=yes])
+              [enable_rest=maybe])
 
 AC_ARG_ENABLE([websockets],
               [AS_HELP_STRING([--disable-websockets],
                               [Disable WebSockets support])],
               [],
-              [enable_websockets=yes])
+              [enable_websockets=maybe])
 
 AC_ARG_ENABLE([data-channels],
               [AS_HELP_STRING([--disable-data-channels],
                               [Disable DataChannels])],
               [],
-              [enable_data_channels=yes])
+              [enable_data_channels=maybe])
 
 AC_ARG_ENABLE([rabbitmq],
               [AS_HELP_STRING([--disable-rabbitmq],
                               [Disable RabbitMQ integration])],
               [],
-              [enable_rabbitmq=yes])
+              [enable_rabbitmq=maybe])
 
 AC_ARG_ENABLE([mqtt],
               [AS_HELP_STRING([--disable-mqtt],
                               [Disable MQTT integration])],
               [],
-              [enable_mqtt=yes])
+              [enable_mqtt=maybe])
 
 AC_ARG_ENABLE([unix-sockets],
               [AS_HELP_STRING([--disable-unix-sockets],
                               [Disable Unix Sockets integration])],
               [],
-              [enable_pfunix=yes])
+              [enable_unix_sockets=maybe])
+
+AC_ARG_ENABLE([sample-event-handler],
+              [AS_HELP_STRING([--disable-sample-event-handler],
+                              [Disable sample event handler (HTTP POST) ])],
+              [],
+              [enable_sample_event_handler=maybe])
 
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
                               [Use BoringSSL instead of OpenSSL])],
               [],
               [enable_boringssl=no])
+
+AC_ARG_ENABLE([libsrtp2],
+              [AS_HELP_STRING([--enable-libsrtp2],
+                              [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
+              [],
+              [enable_libsrtp2=maybe])
 
 AC_ARG_ENABLE([dtls-settimeout],
               [AS_HELP_STRING([--enable-dtls-settimeout],
@@ -92,7 +104,7 @@ AC_ARG_ENABLE([turn-rest-api],
               [AS_HELP_STRING([--disable-turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
               [],
-              [enable_turn_rest_api=yes])
+              [enable_turn_rest_api=maybe])
 
 PKG_CHECK_MODULES([JANUS],
                   [
@@ -141,18 +153,51 @@ AC_CHECK_LIB([dl],
              [JANUS_MANUAL_LIBS+=" -ldl"],
              [AC_MSG_ERROR([libdl not found.])])
 
-AC_CHECK_LIB([srtp],
-             [srtp_init],
-             [JANUS_MANUAL_LIBS+=" -lsrtp"],
-             [AC_MSG_ERROR([libsrtp not found.])])
+AM_CONDITIONAL([ENABLE_LIBSRTP_2], false)
+AS_IF([test "x$enable_libsrtp2" != "xno"],
+      [AC_CHECK_LIB([srtp2],
+                    [srtp_init],
+                    [
+                      AC_CHECK_HEADER([srtp2/srtp.h],
+                                      [
+                                        AC_DEFINE(HAVE_SRTP_2)
+                                        JANUS_MANUAL_LIBS+=" -lsrtp2"
+                                        enable_libsrtp2=yes
+                                        AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                                      ],
+                                      [
+                                        AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                                              [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                                      ])
+                    ],
+                    [
+                      AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                            [AC_MSG_ERROR([libsrtp2 not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                    ])
+      ])
+AM_COND_IF([ENABLE_LIBSRTP_2],
+           [],
+           [AC_CHECK_LIB([srtp],
+                         [srtp_init],
+                         [
+                           AC_CHECK_HEADER([srtp/srtp.h],
+                                           [
+                                             JANUS_MANUAL_LIBS+=" -lsrtp"
+                                             enable_libsrtp2=no
+                                           ],
+                                           [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
+                         ],
+                         [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])])
+           ])
 
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
              [
-               AS_IF([test "x$enable_data_channels" = "xyes"],
+               AS_IF([test "x$enable_data_channels" != "xno"],
                [
                   AC_DEFINE(HAVE_SCTP)
                   JANUS_MANUAL_LIBS+=" -lusrsctp"
+                  enable_data_channels=yes
                ])
              ],
              [
@@ -165,21 +210,27 @@ PKG_CHECK_MODULES([LIBCURL],
                   [libcurl],
                   [
                     AS_IF(
-                      [test "x$enable_turn_rest_api" = "xyes"],
+                      [test "x$enable_turn_rest_api" != "xno"],
                       [
                         AC_DEFINE(HAVE_LIBCURL)
                         JANUS_MANUAL_LIBS+=" -lcurl"
                         enable_turn_rest_api=yes
-                      ],
+                      ])
+                    AS_IF([test "x$enable_sample_event_handler" != "xno"],
                       [
-                        enable_turn_rest_api=no
+                        AC_DEFINE(HAVE_SAMPLEEVH)
+                        JANUS_MANUAL_LIBS+=" -lcurl"
+                        enable_sample_event_handler=yes
                       ])
                   ],
                   [
-                    AC_MSG_NOTICE(libcurl not found. The TURN REST API client will not be built.)
-                    enable_turn_rest_api=no
+                    AS_IF([test "x$enable_turn_rest_api" = "xyes"],
+                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-turn-rest-api])])
+                    AS_IF([test "x$enable_sample_event_handler" = "xyes"],
+                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-sample-event-handler])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
+AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])
 
 AC_CHECK_PROG([DOXYGEN],
               [doxygen],
@@ -214,7 +265,10 @@ PKG_CHECK_MODULES([TRANSPORTS],
 
 PKG_CHECK_MODULES([MHD],
                   [libmicrohttpd],
-                  [],
+                  [
+                    AS_IF([test "x$enable_rest" = "xmaybe"],
+                          [enable_rest=yes])
+                  ],
                   [
                     AS_IF([test "x$enable_rest" = "xyes"],
                           [AC_MSG_ERROR([libmicrohttpd not found. See README.md for installation instructions or use --disable-rest])])
@@ -227,22 +281,24 @@ AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], false)
 AC_CHECK_LIB([websockets],
              [libwebsocket_create_context],
              [
-               AS_IF([test "x$enable_websockets" = "xyes"],
+               AS_IF([test "x$enable_websockets" != "xno"],
                [
                   AC_DEFINE(HAVE_WEBSOCKETS)
                   WS_MANUAL_LIBS="-lwebsockets"
+                  enable_websockets=yes
                ])
              ],
              [
 				AC_CHECK_LIB([websockets],
 							 [lws_create_context],
 							 [
-							   AS_IF([test "x$enable_websockets" = "xyes"],
+							   AS_IF([test "x$enable_websockets" != "xno"],
 							   [
 								  AC_DEFINE(HAVE_WEBSOCKETS)
 								  AC_DEFINE(HAVE_LIBWEBSOCKETS_NEWAPI)
 								  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], true)
 								  WS_MANUAL_LIBS="-lwebsockets"
+								  enable_websockets=yes
 							   ])
 							 ],
 							 [
@@ -256,9 +312,10 @@ AC_SUBST(WS_MANUAL_LIBS)
 AC_CHECK_LIB([rabbitmq],
              [amqp_error_string2],
              [
-               AS_IF([test "x$enable_rabbitmq" = "xyes"],
+               AS_IF([test "x$enable_rabbitmq" != "xno"],
                [
                   AC_DEFINE(HAVE_RABBITMQ)
+                  enable_rabbitmq=yes
                ])
              ],
              [
@@ -268,9 +325,10 @@ AC_CHECK_LIB([rabbitmq],
 AC_CHECK_LIB([paho-mqtt3a],
              [MQTTAsync_create],
              [
-               AS_IF([test "x$enable_mqtt" = "xyes"],
+               AS_IF([test "x$enable_mqtt" != "xno"],
                [
                   AC_DEFINE(HAVE_MQTT)
+                  enable_mqtt=yes
                ])
              ],
              [
@@ -291,16 +349,17 @@ AC_TRY_COMPILE([
                }],
                [],
                [
-                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                 AS_IF([test "x$enable_unix_sockets" != "xno"],
                  [
                     AC_DEFINE(HAVE_PFUNIX)
+                    enable_unix_sockets=yes
                  ])
                ],
                [
-                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                 AS_IF([test "x$enable_unix_sockets" = "xyes"],
                        [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
                ])
-AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_pfunix" = "xyes"])
+AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 
 
 ##
@@ -317,7 +376,7 @@ AC_ARG_ENABLE([plugin-audiobridge],
               [AS_HELP_STRING([--disable-plugin-audiobridge],
                               [Disable audiobridge plugin])],
               [],
-              [enable_plugin_audiobridge=yes])
+              [enable_plugin_audiobridge=maybe])
 
 AC_ARG_ENABLE([plugin-echotest],
               [AS_HELP_STRING([--disable-plugin-echotest],
@@ -335,7 +394,7 @@ AC_ARG_ENABLE([plugin-sip],
               [AS_HELP_STRING([--disable-plugin-sip],
                               [Disable sip plugin])],
               [],
-              [enable_plugin_sip=yes])
+              [enable_plugin_sip=maybe])
 
 AC_ARG_ENABLE([plugin-streaming],
               [AS_HELP_STRING([--disable-plugin-streaming],
@@ -359,7 +418,7 @@ AC_ARG_ENABLE([plugin-voicemail],
               [AS_HELP_STRING([--disable-plugin-voicemail],
                               [Disable voicemail plugin])],
               [],
-              [enable_plugin_voicemail=yes])
+              [enable_plugin_voicemail=maybe])
 
 AC_ARG_ENABLE([plugin-textroom],
               [AS_HELP_STRING([--disable-plugin-textroom],
@@ -369,30 +428,39 @@ AC_ARG_ENABLE([plugin-textroom],
 
 PKG_CHECK_MODULES([SOFIA],
                   [sofia-sip-ua],
-                  [],
                   [
-                    AC_MSG_NOTICE(sofia-sip-ua not found. The sip plugin will not be built.)
-                    enable_plugin_sip=no
+                    AS_IF([test "x$enable_plugin_sip" = "xmaybe"],
+                          [enable_plugin_sip=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_sip" = "xyes"],
+                          [AC_MSG_ERROR([sofia-sip-ua not found not found. See README.md for installation instructions or use --disable-plugin-sip])])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
 PKG_CHECK_MODULES([OPUS],
                   [opus],
-                  [],
                   [
-                    AC_MSG_NOTICE(libopus not found. The audiobridge plugin will not be built.)
-                    enable_plugin_audiobridge=no
+                    AS_IF([test "x$enable_plugin_audiobridge" = "xmaybe"],
+                          [enable_plugin_audiobridge=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
+                          [AC_MSG_ERROR([libopus not found not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
                   ])
 AC_SUBST([OPUS_CFLAGS])
 AC_SUBST([OPUS_LIBS])
 
 PKG_CHECK_MODULES([OGG],
                   [ogg],
-                  [],
                   [
-                    AC_MSG_NOTICE(libogg not found. The voicemail plugin will not be built.)
-                    enable_plugin_voicemail=no
+                    AS_IF([test "x$enable_plugin_voicemail" = "xmaybe"],
+                          [enable_plugin_voicemail=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_voicemail" = "xyes"],
+                          [AC_MSG_ERROR([libogg not found not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
                   ])
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
@@ -406,6 +474,18 @@ AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
+
+
+##
+# Event handlers
+##
+
+PKG_CHECK_MODULES([EVENTS],
+                  [
+                    glib-2.0 >= $glib_version
+                    jansson
+                  ])
+
 
 ##
 # Post-processing
@@ -446,12 +526,15 @@ AC_OUTPUT
 ##
 echo
 
+AM_COND_IF([ENABLE_LIBSRTP_2],
+	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           1.5.x"])
+AM_COND_IF([ENABLE_BORINGSSL],
+	[echo "SSL/crypto library:        BoringSSL"],
+	[echo "SSL/crypto library:        OpenSSL"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
-AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "BoringSSL (no OpenSSL):    yes"],
-	[echo "BoringSSL (no OpenSSL):    no"])
 AM_COND_IF([ENABLE_POST_PROCESSING],
 	[echo "Recordings post-processor: yes"],
 	[echo "Recordings post-processor: no"])
@@ -509,6 +592,10 @@ AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
 	[echo "    Text Room:             yes"],
 	[echo "    Text Room:             no"])
+echo "Event handlers:"
+AM_COND_IF([ENABLE_SAMPLEEVH],
+	[echo "    Sample event handler:  yes"],
+	[echo "    Sample event handler:  no"])
 
 echo
 echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."
