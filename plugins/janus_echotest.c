@@ -161,6 +161,7 @@ janus_plugin *create(void) {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -276,9 +277,15 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_ECHOTEST_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
-	if(config != NULL)
+	if(config != NULL) {
 		janus_config_print(config);
-	/* This plugin actually has nothing to configure... */
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_ECHOTEST_NAME);
+		}
+	}
 	janus_config_destroy(config);
 	config = NULL;
 	
@@ -929,6 +936,25 @@ static void *janus_echotest_handler(void *data) {
 			json_decref(jsep);
 		}
 		janus_echotest_message_free(msg);
+
+		if(notify_events && gateway->events_is_enabled()) {
+			/* Just to showcase how you can notify handlers, let's update them on our configuration */
+			json_t *info = json_object();
+			json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
+			json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
+			json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+			if(session->arc || session->vrc) {
+				json_t *recording = json_object();
+				if(session->arc && session->arc->filename)
+					json_object_set_new(recording, "audio", json_string(session->arc->filename));
+				if(session->vrc && session->vrc->filename)
+					json_object_set_new(recording, "video", json_string(session->vrc->filename));
+				json_object_set_new(info, "recording", recording);
+			}
+			gateway->notify_event(&janus_echotest_plugin, session->handle, info);
+		}
+
+		/* Done, on to the next request */
 		continue;
 		
 error:

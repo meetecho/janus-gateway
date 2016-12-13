@@ -43,7 +43,8 @@ A couple of plugins depend on a few more libraries:
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
 * [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
-interested in RTSP support in the Streaming plugin)
+interested in RTSP support in the Streaming plugin or in the sample
+Event Handler plugin)
 
 Additionally, you'll need the following libraries and tools:
 
@@ -73,6 +74,10 @@ On Ubuntu or Debian, it would require something like this:
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
+
+In case you're interested in compiling the sample Event Handler plugin,
+you'll need to install the development version of libcurl as well (usually
+`libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
 
 If your distro ships a pre-1.5 version of libsrtp, it may be better to
 uninstall that version and [install 1.5 or 2.0.0 manually](https://github.com/cisco/libsrtp/releases).
@@ -293,7 +298,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.2.1
+	janus 0.2.2
 
 	Usage: janus [OPTIONS]...
 
@@ -351,6 +356,7 @@ or on the command line:
                                   default)
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
+	-e, --event-handlers          Enable event handlers  (default=off)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:

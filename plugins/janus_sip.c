@@ -61,6 +61,7 @@
 #include <sofia-sip/sip_status.h>
 #include <sofia-sip/url.h>
 #include <sofia-sip/tport_tag.h>
+#include <sofia-sip/su_log.h>
 
 #include <srtp/srtp.h>
 #include <srtp/crypto_kernel.h>
@@ -174,6 +175,7 @@ static struct janus_json_parameter dtmf_info_parameters[] = {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
 static char local_ip[INET6_ADDRSTRLEN];
@@ -342,6 +344,7 @@ typedef struct janus_sip_session {
 	janus_sip_media media;
 	char *transaction;
 	char *callee;
+	char *callid;
 	janus_sdp *sdp;				/* The SDP this user sent */
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
@@ -354,6 +357,8 @@ typedef struct janus_sip_session {
 } janus_sip_session;
 static GHashTable *sessions;
 static GList *old_sessions;
+static GHashTable *identities;
+static GHashTable *callids;
 static janus_mutex sessions_mutex;
 
 
@@ -592,6 +597,7 @@ void *janus_sip_watchdog(void *data) {
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
 					if (session->account.identity) {
+					    g_hash_table_remove(identities, session->account.identity);
 					    g_free(session->account.identity);
 					    session->account.identity = NULL;
 					}
@@ -623,6 +629,11 @@ void *janus_sip_watchdog(void *data) {
 					if (session->callee) {
 					    g_free(session->callee);
 					    session->callee = NULL;
+					}
+					if (session->callid) {
+					    g_hash_table_remove(callids, session->callid);
+					    g_free(session->callid);
+					    session->callid = NULL;
 					}
 					if (session->sdp) {
 					    janus_sdp_free(session->sdp);
@@ -684,6 +695,126 @@ error:
 }
 
 
+/* Random string helper (for call-ids) */
+static char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+static void janus_sip_random_string(int length, char *buffer) {
+	if(length > 0 && buffer) {
+		int l = (int)(sizeof(charset)-1);
+		int i=0;
+		for(i=0; i<length; i++) {
+			int key = rand() % l;
+			buffer[i] = charset[key];
+		}
+		buffer[length-1] = '\0';
+	}
+}
+
+
+/* Sofia SIP logger function: when the Event Handlers mechanism is enabled,
+ * we use this to intercept SIP messages sent by the stack (received
+ * messages are more easily recoverable in janus_sip_sofia_callback) */
+char sofia_log[2048];
+char call_id[255];
+gboolean skip = FALSE, started = FALSE, append = FALSE;
+static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
+	if(!fmt)
+		return;
+	char line[255];
+	g_vsnprintf(line, sizeof(line), fmt, ap);
+	if(skip) {
+		/* This is a message we're not interested in: just check when it ends */
+		if(line[3] == '-') {
+			skip = FALSE;
+			append = FALSE;
+		}
+		return;
+	}
+	if(append) {
+		/* We're copying a message in our buffer: check if this is the end */
+		if(line[3] == '-') {
+			if(!started) {
+				/* Ok, start appending from now on */
+				started = TRUE;
+				sofia_log[0] = '\0';
+				call_id[0] = '\0';
+			} else {
+				/* Message ended, handle it */
+				skip = FALSE;
+				append = FALSE;
+				/* Look for the session this message belongs to */
+				janus_sip_session *session = NULL;
+				if(strlen(call_id))
+					session = g_hash_table_lookup(callids, call_id);
+				if(!session) {
+					/* Couldn't find any SIP session with that Call-ID, check the request */
+					if(strstr(sofia_log, "REGISTER") == sofia_log || strstr(sofia_log, "SIP/2.0 ") == sofia_log) {
+						/* FIXME This is a REGISTER or a response code:
+						 * check the To header and get the identity from there */
+						char *from = strstr(sofia_log, "To: ");
+						if(from) {
+							from = from+4;
+							char *start = strstr(from, "<");
+							if(start) {
+								start++;
+								char *end = strstr(from, ">");
+								if(end) {
+									*end = '\0';
+									g_snprintf(call_id, sizeof(call_id), "%s", start);
+									*end = '>';
+									session = g_hash_table_lookup(identities, call_id);
+								}
+							}
+						}
+					}
+				}
+				if(session) {
+					/* Notify event handlers about the content of the whole outgoing SIP message */
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("sip-out"));
+					json_object_set_new(info, "sip", json_string(sofia_log));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				} else {
+					JANUS_LOG(LOG_WARN, "Couldn't find a session associated to this message, dropping it...\n%s", sofia_log);
+				}
+				/* Done, reset the buffers */
+				sofia_log[0] = '\0';
+				call_id[0] = '\0';
+			}
+			return;
+		}
+		if(strlen(line) == 1) {
+			/* Append a carriage and return */
+			g_strlcat(sofia_log, "\r\n", sizeof(sofia_log));
+		} else {
+			/* If this is an OPTIONS, we don't care: drop it */
+			char *header = &line[3];
+			if(strstr(header, "OPTIONS") == header) {
+				skip = TRUE;
+				return;
+			}
+			/* Is this a Call-ID header? Keep note of it */
+			if(strstr(header, "Call-ID") == header) {
+				g_snprintf(call_id, sizeof(call_id), "%s", header+9);
+			}
+			/* Append the line to our buffer, skipping the indent */
+			g_strlcat(sofia_log, &line[3], sizeof(sofia_log));
+		}
+		return;
+	}
+	/* Still waiting to decide if this is a message we need */
+	if(line[0] == 's' && line[1] == 'e' && line[2] == 'n' && line[3] == 'd' && line[4] == ' ') {
+		/* An outgoing message is going to be logged, prepare for that */
+		skip = FALSE;
+		started = FALSE;
+		append = TRUE;
+		int length = atoi(&line[5]);
+		JANUS_LOG(LOG_HUGE, "Intercepting message (%d bytes)\n", length);
+		if(strstr(line, "-----"))
+			started = TRUE;
+	}
+}
+
+
 /* Plugin implementation */
 int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -700,82 +831,96 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	g_snprintf(filename, 255, "%s/%s.cfg", config_path, JANUS_SIP_PACKAGE);
 	JANUS_LOG(LOG_VERB, "Configuration file: %s\n", filename);
 	janus_config *config = janus_config_parse(filename);
-	if(config != NULL)
+	if(config != NULL) {
 		janus_config_print(config);
 
-	gboolean local_ip_set = FALSE;
-	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
-	if(item && item->value) {
-		int family;
-		if (!janus_is_ip_valid(item->value, &family)) {
-			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
-		} else {
-			/* Verify that we can actually bind to that address */
-			int fd = socket(family, SOCK_DGRAM, 0);
-			if (fd == -1) {
-				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+		gboolean local_ip_set = FALSE;
+		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
+		if(item && item->value) {
+			int family;
+			if (!janus_is_ip_valid(item->value, &family)) {
+				JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
 			} else {
-				int r;
-				struct sockaddr_storage ss;
-				socklen_t addrlen;
-				memset(&ss, 0, sizeof(ss));
-				if (family == AF_INET) {
-					struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
-					addr4->sin_family = AF_INET;
-					addr4->sin_port = 0;
-					inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
-					addrlen = sizeof(struct sockaddr_in);
+				/* Verify that we can actually bind to that address */
+				int fd = socket(family, SOCK_DGRAM, 0);
+				if (fd == -1) {
+					JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
 				} else {
-					struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
-					addr6->sin6_family = AF_INET6;
-					addr6->sin6_port = 0;
-					inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
-					addrlen = sizeof(struct sockaddr_in6);
-				}
-				r = bind(fd, (const struct sockaddr*)&ss, addrlen);
-				close(fd);
-				if (r < 0) {
-					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
-				} else {
-					g_strlcpy(local_ip, item->value, sizeof(local_ip));
-					local_ip_set = TRUE;
+					int r;
+					struct sockaddr_storage ss;
+					socklen_t addrlen;
+					memset(&ss, 0, sizeof(ss));
+					if (family == AF_INET) {
+						struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
+						addr4->sin_family = AF_INET;
+						addr4->sin_port = 0;
+						inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
+						addrlen = sizeof(struct sockaddr_in);
+					} else {
+						struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
+						addr6->sin6_family = AF_INET6;
+						addr6->sin6_port = 0;
+						inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
+						addrlen = sizeof(struct sockaddr_in6);
+					}
+					r = bind(fd, (const struct sockaddr*)&ss, addrlen);
+					close(fd);
+					if (r < 0) {
+						JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
+					} else {
+						g_strlcpy(local_ip, item->value, sizeof(local_ip));
+						local_ip_set = TRUE;
+					}
 				}
 			}
 		}
+		if (!local_ip_set)
+			janus_sip_detect_local_ip(local_ip, sizeof(local_ip));
+		JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
+
+		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
+		if(item && item->value)
+			keepalive_interval = atoi(item->value);
+		JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
+
+		item = janus_config_get_item_drilldown(config, "general", "register_ttl");
+		if(item && item->value)
+			register_ttl = atoi(item->value);
+		JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
+
+		item = janus_config_get_item_drilldown(config, "general", "behind_nat");
+		if(item && item->value)
+			behind_nat = janus_is_true(item->value);
+
+		item = janus_config_get_item_drilldown(config, "general", "user_agent");
+		if(item && item->value)
+			user_agent = g_strdup(item->value);
+		else
+			user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
+		JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
+
+		item = janus_config_get_item_drilldown(config, "general", "events");
+		if(item != NULL && item->value != NULL)
+			notify_events = janus_is_true(item->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_SIP_NAME);
+		}
+
+		janus_config_destroy(config);
 	}
-	if (!local_ip_set)
-		janus_sip_detect_local_ip(local_ip, sizeof(local_ip));
-	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
-
-	item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
-	if(item && item->value)
-		keepalive_interval = atoi(item->value);
-	JANUS_LOG(LOG_VERB, "SIP keep-alive interval set to %d seconds\n", keepalive_interval);
-
-	item = janus_config_get_item_drilldown(config, "general", "register_ttl");
-	if(item && item->value)
-		register_ttl = atoi(item->value);
-	JANUS_LOG(LOG_VERB, "SIP registration TTL set to %d seconds\n", register_ttl);
-
-	item = janus_config_get_item_drilldown(config, "general", "behind_nat");
-	if(item && item->value)
-		behind_nat = janus_is_true(item->value);
-
-	item = janus_config_get_item_drilldown(config, "general", "user_agent");
-	if(item && item->value)
-		user_agent = g_strdup(item->value);
-	else
-		user_agent = g_strdup("Janus WebRTC Gateway SIP Plugin "JANUS_SIP_VERSION_STRING);
-	JANUS_LOG(LOG_VERB, "SIP User-Agent set to %s\n", user_agent);
-
-	/* This plugin actually has nothing to configure... */
-	janus_config_destroy(config);
 	config = NULL;
 
 	/* Setup sofia */
 	su_init();
+	if(callback->events_is_enabled()) {
+		/* Enable the transport logging, as we want to have access to the SIP messages */
+		setenv("TPORT_LOG", "1", 1);
+		su_log_redirect(NULL, janus_sip_sofia_logger, NULL);
+	}
 
 	sessions = g_hash_table_new(NULL, NULL);
+	callids = g_hash_table_new(g_str_hash, g_str_equal);
+	identities = g_hash_table_new(g_str_hash, g_str_equal);
 	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
@@ -819,10 +964,14 @@ void janus_sip_destroy(void) {
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
+	g_hash_table_destroy(callids);
+	g_hash_table_destroy(identities);
+	sessions = NULL;
+	callids = NULL;
+	identities = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 	g_async_queue_unref(messages);
 	messages = NULL;
-	sessions = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 
@@ -883,6 +1032,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->stack = NULL;
 	session->transaction = NULL;
 	session->callee = NULL;
+	session->callid = NULL;
 	session->sdp = NULL;
 	session->media.remote_ip = NULL;
 	session->media.ready = 0;
@@ -1316,8 +1466,10 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			/* Cleanup old values */
-			if(session->account.identity != NULL)
+			if(session->account.identity != NULL) {
+				g_hash_table_remove(identities, session->account.identity);
 				g_free(session->account.identity);
+			}
 			session->account.identity = NULL;
 			session->account.sips = TRUE;
 			if(session->account.username != NULL)
@@ -1485,6 +1637,7 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			session->account.identity = g_strdup(username_text);
+			g_hash_table_insert(identities, session->account.identity, session);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
 			if (display_name_text) {
@@ -1556,6 +1709,14 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(result, "event", json_string("registered"));
 				json_object_set_new(result, "username", json_string(session->account.username));
 				json_object_set_new(result, "register_sent", json_false());
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("registered"));
+					json_object_set_new(info, "identity", json_string(session->account.identity));
+					json_object_set_new(info, "type", json_string("guest"));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
@@ -1717,11 +1878,27 @@ static void *janus_sip_handler(void *data) {
 			}
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_inviting;
+			/* Create a random call-id */
+			char callid[24];
+			janus_sip_random_string(24, (char *)&callid);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("calling"));
+				json_object_set_new(info, "callee", json_string(uri_text));
+				json_object_set_new(info, "call-id", json_string(callid));
+				json_object_set_new(info, "sdp", json_string(sdp));
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			}
 			/* Send INVITE */
+			session->callee = g_strdup(uri_text);
+			session->callid = g_strdup(callid);
+			g_hash_table_insert(callids, session->callid, session);
 			session->media.autoack = do_autoack;
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
 				SIPTAG_TO_STR(uri_text),
+				SIPTAG_CALL_ID_STR(callid),
 				SOATAG_USER_SDP_STR(sdp),
 				NUTAG_PROXY(session->account.proxy),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
@@ -1729,7 +1906,6 @@ static void *janus_sip_handler(void *data) {
 				NUTAG_AUTOACK(do_autoack),
 				TAG_END());
 			g_free(sdp);
-			session->callee = g_strdup(uri_text);
 			if(session->transaction)
 				g_free(session->transaction);
 			session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
@@ -1840,6 +2016,14 @@ static void *janus_sip_handler(void *data) {
 			janus_sdp_free(session->sdp);
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("accepted"));
+				if(session->callid)
+					json_object_set_new(info, "call-id", json_string(session->callid));
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			}
 			/* Send 200 OK */
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_incall;
@@ -1893,6 +2077,16 @@ static void *janus_sip_handler(void *data) {
 				response_code = 486;
 			}
 			nua_respond(session->stack->s_nh_i, response_code, sip_status_phrase(response_code), TAG_END());
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("declined"));
+				json_object_set_new(info, "callee", json_string(session->callee));
+				if(session->callid)
+					json_object_set_new(info, "call-id", json_string(session->callid));
+				json_object_set_new(info, "code", json_integer(response_code));
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			}
 			g_free(session->callee);
 			session->callee = NULL;
 			/* Notify the operation */
@@ -2211,6 +2405,21 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 {
 	janus_sip_session *session = (janus_sip_session *)magic;
 	ssip_t *ssip = session->stack;
+
+	/* Notify event handlers about the content of the whole incoming SIP message, if any */
+	if(gateway->events_is_enabled() && ssip) {
+		/* Print the incoming message */
+		size_t msg_size = 0;
+		msg_t* msg = nua_current_request(nua);
+		if(msg) {
+			char *msg_str = msg_as_string(ssip->s_home, msg, NULL, 0, &msg_size);
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("sip-in"));
+			json_object_set_new(info, "sip", json_string(msg_str));
+			gateway->notify_event(&janus_sip_plugin, session->handle, info);
+		}
+	}
+
 	switch (event) {
 	/* Status or Error Indications */
 		case nua_i_active:
@@ -2248,6 +2457,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("proceeding"));
+					if(session->callid)
+						json_object_set_new(info, "call-id", json_string(session->callid));
+					json_object_set_new(info, "code", json_integer(status));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
 			} else if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				session->status = janus_sip_call_status_idle;
@@ -2257,14 +2475,28 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				json_t *calling = json_object();
 				json_object_set_new(calling, "event", json_string("hangup"));
 				json_object_set_new(calling, "code", json_integer(status));
-				json_object_set_new(calling, "reason", json_string(phrase ? phrase : "???"));
+				json_object_set_new(calling, "reason", json_string(phrase ? phrase : ""));
 				json_object_set_new(call, "result", calling);
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("hangup"));
+					if(session->callid)
+						json_object_set_new(info, "call-id", json_string(session->callid));
+					json_object_set_new(info, "code", json_integer(status));
+					if(phrase)
+						json_object_set_new(info, "reason", json_string(phrase));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
 				/* Get rid of any PeerConnection that may have been set up */
-				if(session->transaction)
-					g_free(session->transaction);
+				if(session->callid)
+					g_hash_table_remove(callids, session->callid);
+				g_free(session->callid);
+				session->callid = NULL;
+				g_free(session->transaction);
 				session->transaction = NULL;
 				gateway->close_pc(session->handle);
 			}
@@ -2331,14 +2563,22 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, missed, NULL);
 					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 					json_decref(missed);
-					/* Done */
-					janus_sdp_free(sdp);
+					/* Also notify event handlers */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("missed_call"));
+						json_object_set_new(info, "caller", json_string(caller_text));
+						gateway->notify_event(&janus_sip_plugin, session->handle, info);
+					}
 					break;
 				}
 			}
 			if(!reinvite) {
 				/* New incoming call */
 				session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
+				session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
+				if(session->callid)
+					g_hash_table_insert(callids, session->callid, session);
 				session->status = janus_sip_call_status_invited;
 				/* Clean up SRTP stuff from before first, in case it's still needed */
 				janus_sip_srtp_cleanup(session);
@@ -2389,6 +2629,17 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_decref(jsep);
 			g_free(fixed_sdp);
 			janus_sdp_free(sdp);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("incomingcall"));
+				if(session->callid)
+					json_object_set_new(info, "call-id", json_string(session->callid));
+				json_object_set_new(info, "username", json_string(session->callee));
+				if(sip->sip_from && sip->sip_from->a_display)
+					json_object_set_new(info, "displayname", json_string(sip->sip_from->a_display));
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			}
 			/* Send a Ringing back */
 			nua_respond(nh, 180, sip_status_phrase(180), TAG_END());
 			session->stack->s_nh_i = nh;
@@ -2550,6 +2801,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			json_decref(jsep);
 			g_free(fixed_sdp);
 			janus_sdp_free(sdp);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("accepted"));
+				if(session->callid)
+					json_object_set_new(info, "call-id", json_string(session->callid));
+				json_object_set_new(info, "username", json_string(session->callee));
+				gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			}
 			break;
 		}
 		case nua_r_register: {
@@ -2569,6 +2829,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(call);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("registered"));
+					json_object_set_new(info, "identity", json_string(session->account.identity));
+					if(session->account.proxy)
+						json_object_set_new(info, "proxy", json_string(session->account.proxy));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
 			} else if(status == 401) {
 				/* Get scheme/realm from 401 error */
 				sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
@@ -2602,6 +2871,15 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, event, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 				json_decref(event);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("registration_failed"));
+					json_object_set_new(info, "code", json_integer(status));
+					if(phrase)
+						json_object_set_new(info, "reason", json_string(phrase ? phrase : ""));
+					gateway->notify_event(&janus_sip_plugin, session->handle, info);
+				}
 			}
 			break;
 		}

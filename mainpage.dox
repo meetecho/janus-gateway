@@ -41,7 +41,9 @@
  * makes available in your web application can be found in the \ref JS
  * and \ref rest pages. New API transports can be created referring to
  * the \ref transportapi page. If you're interested in monitoring Janus
- * resources, you can refer to the \ref admin page.
+ * resources, you can refer to the \ref admin page. Event handler plugins
+ * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
+ * page if you're interested in creating your own.
  *
  * Finally, some information on how to deploy Janus and your web
  * applications that want to make use of it are provided in the \ref deploy
@@ -94,7 +96,8 @@
  * - \b Sofia-SIP: http://sofia-sip.sourceforge.net/ (\c optional, only needed for the SIP plugin)
  * - \b libopus: http://opus-codec.org/ (\c optional, only needed for the bridge plugin)
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
- * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API and for RTSP support in the Streaming plugin)
+ * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
+ * RTSP support in the Streaming plugin and the sample Event Handler plugin)
  *
  */
 
@@ -2987,6 +2990,21 @@ ldd janus | grep asan
  * implement and make available in order to expose a new transport protocol
  * that can be used by the gateway for talking the Janus API.
  * \ingroup transports
+ */
+
+/*! \defgroup eventhandlers Event Handlers
+ * \brief Event handler plugins available out of the box
+ * \details In order to showcase how different plugins can handle events
+ * originated by the Janus core or any of its plugins, a sample plugin
+ * implementation is provided out of the box. The API for writing a new
+ * event handler plugin is specified in the \ref eventhandlerapi section.
+ */
+
+/*! \defgroup eventhandlerapi Event Handler API
+ * \brief Event Handler API (aka, how to write your own event handler plugin)
+ * \details The eventhandler.h header specifies the API a plugin needs to
+ * implement and make available in order to receive events from Janus.
+ * \ingroup eventhandlers
  */
 
 /*! \defgroup tools Tools and utilities
