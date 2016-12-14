@@ -386,7 +386,7 @@ int main(int argc, char *argv[])
 			janus_pp_rtp_header_extension *ext = (janus_pp_rtp_header_extension *)(prebuffer+12);
 			JANUS_LOG(LOG_VERB, "  -- -- RTP extension (type=%"SCNu16", length=%"SCNu16")\n",
 				ntohs(ext->type), ntohs(ext->length));
-			skip = 4 + ntohs(ext->length)*4;
+			skip += 4 + ntohs(ext->length)*4;
 		}
 		/* Generate frame packet and insert in the ordered list */
 		janus_pp_frame_packet *p = g_malloc0(sizeof(janus_pp_frame_packet));
