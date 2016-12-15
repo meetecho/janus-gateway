@@ -135,7 +135,6 @@ janus_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
-	-lsrtp \
 	$(NULL)
 
 BUILT_SOURCES = cmdline.c cmdline.h
