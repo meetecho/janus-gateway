@@ -1071,6 +1071,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	if (!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 		if(msg->acrh)
@@ -1092,6 +1093,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1108,6 +1110,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1143,6 +1146,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 		if(msg->acrh)
@@ -1189,6 +1193,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		if(strcasecmp(method, "GET")) {
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1214,6 +1219,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			JANUS_LOG(LOG_ERR, "Invalid session %s\n", session_path);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1249,6 +1255,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			if(!secret_authorized && !token_authorized) {
 				response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+        MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 				if(msg->acrm)
 					MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 				if(msg->acrh)
@@ -1278,6 +1285,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Location", location);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1294,6 +1302,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1447,6 +1456,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		JANUS_LOG(LOG_ERR, "Unsupported method...\n");
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 		if(msg->acrh)
@@ -1458,6 +1468,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	if (!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 		if(msg->acrh)
@@ -1479,6 +1490,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1495,6 +1507,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+      MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 			if(msg->acrm)
 				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 			if(msg->acrh)
@@ -1530,6 +1543,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 		if(msg->acrh)
@@ -1701,6 +1715,7 @@ int janus_http_notifier(janus_http_msg *msg, int max_events) {
 		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 		if(msg->acrm)
 			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 		if(msg->acrh)
@@ -1784,6 +1799,7 @@ int janus_http_return_success(janus_http_msg *msg, char *payload) {
 		MHD_RESPMEM_MUST_FREE);
 	MHD_add_response_header(response, "Content-Type", "application/json");
 	MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+  MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
 	if(msg->acrm)
 		MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
 	if(msg->acrh)
