@@ -63,9 +63,6 @@
 #include <sofia-sip/tport_tag.h>
 #include <sofia-sip/su_log.h>
 
-#include <srtp/srtp.h>
-#include <srtp/crypto_kernel.h>
-
 #include "../debug.h"
 #include "../apierror.h"
 #include "../config.h"
@@ -75,6 +72,35 @@
 #include "../rtcp.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
+
+#ifdef HAVE_SRTP_2
+#include <srtp2/srtp.h>
+#include <openssl/rand.h>
+#include <openssl/err.h>
+static int srtp_crypto_get_random(uint8_t *key, int len) {
+	/* libsrtp 2.0 doesn't have crypto_get_random, we use OpenSSL's RAND_* to replace it:
+	 * 		https://wiki.openssl.org/index.php/Random_Numbers */
+	int rc = RAND_bytes(key, len);
+	if(rc != 1) {
+		/* Error generating */
+		JANUS_LOG(LOG_ERR, "RAND_bytes failes: %s\n", ERR_reason_error_string(ERR_get_error()));
+		return -1;
+	}
+	return 0;
+}
+#else
+#include <srtp/srtp.h>
+#include <srtp/crypto_kernel.h>
+#define srtp_err_status_t err_status_t
+#define srtp_err_status_ok err_status_ok
+#define srtp_err_status_replay_fail err_status_replay_fail
+#define srtp_err_status_replay_old err_status_replay_old
+#define srtp_crypto_policy_set_rtp_default crypto_policy_set_rtp_default
+#define srtp_crypto_policy_set_rtcp_default crypto_policy_set_rtcp_default
+#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
+#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
+#define srtp_crypto_get_random crypto_get_random
+#endif
 
 
 /* Plugin information */
@@ -384,31 +410,31 @@ struct ssip_s {
 #define SRTP_MASTER_LENGTH (SRTP_MASTER_KEY_LENGTH + SRTP_MASTER_SALT_LENGTH)
 static const char *janus_sip_srtp_error[] =
 {
-	"err_status_ok",
-	"err_status_fail",
-	"err_status_bad_param",
-	"err_status_alloc_fail",
-	"err_status_dealloc_fail",
-	"err_status_init_fail",
-	"err_status_terminus",
-	"err_status_auth_fail",
-	"err_status_cipher_fail",
-	"err_status_replay_fail",
-	"err_status_replay_old",
-	"err_status_algo_fail",
-	"err_status_no_such_op",
-	"err_status_no_ctx",
-	"err_status_cant_check",
-	"err_status_key_expired",
-	"err_status_socket_err",
-	"err_status_signal_err",
-	"err_status_nonce_bad",
-	"err_status_read_fail",
-	"err_status_write_fail",
-	"err_status_parse_err",
-	"err_status_encode_err",
-	"err_status_semaphore_err",
-	"err_status_pfkey_err",
+	"srtp_err_status_ok",
+	"srtp_err_status_fail",
+	"srtp_err_status_bad_param",
+	"srtp_err_status_alloc_fail",
+	"srtp_err_status_dealloc_fail",
+	"srtp_err_status_init_fail",
+	"srtp_err_status_terminus",
+	"srtp_err_status_auth_fail",
+	"srtp_err_status_cipher_fail",
+	"srtp_err_status_replay_fail",
+	"srtp_err_status_replay_old",
+	"srtp_err_status_algo_fail",
+	"srtp_err_status_no_such_op",
+	"srtp_err_status_no_ctx",
+	"srtp_err_status_cant_check",
+	"srtp_err_status_key_expired",
+	"srtp_err_status_socket_err",
+	"srtp_err_status_signal_err",
+	"srtp_err_status_nonce_bad",
+	"srtp_err_status_read_fail",
+	"srtp_err_status_write_fail",
+	"srtp_err_status_parse_err",
+	"srtp_err_status_encode_err",
+	"srtp_err_status_semaphore_err",
+	"srtp_err_status_pfkey_err",
 };
 static const gchar *janus_sip_get_srtp_error(int error) {
 	if(error < 0 || error > 24)
@@ -420,17 +446,17 @@ static int janus_sip_srtp_set_local(janus_sip_session *session, gboolean video, 
 		return -1;
 	/* Generate key/salt */
 	uint8_t *key = g_malloc0(SRTP_MASTER_LENGTH);
-	crypto_get_random(key, SRTP_MASTER_LENGTH);
+	srtp_crypto_get_random(key, SRTP_MASTER_LENGTH);
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_local_policy : &session->media.audio_local_policy;
-	crypto_policy_set_rtp_default(&(policy->rtp));
-	crypto_policy_set_rtcp_default(&(policy->rtcp));
+	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
+	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = key;
 	policy->next = NULL;
 	/* Create SRTP context */
-	err_status_t res = srtp_create(video ? &session->media.video_srtp_out : &session->media.audio_srtp_out, policy);
-	if(res != err_status_ok) {
+	srtp_err_status_t res = srtp_create(video ? &session->media.video_srtp_out : &session->media.audio_srtp_out, policy);
+	if(res != srtp_err_status_ok) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "Oops, error creating outbound SRTP session: %d (%s)\n", res, janus_sip_get_srtp_error(res));
 		g_free(key);
@@ -457,21 +483,21 @@ static int janus_sip_srtp_set_remote(janus_sip_session *session, gboolean video,
 	}
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_remote_policy : &session->media.audio_remote_policy;
-	crypto_policy_set_rtp_default(&(policy->rtp));
-	crypto_policy_set_rtcp_default(&(policy->rtcp));
+	srtp_crypto_policy_set_rtp_default(&(policy->rtp));
+	srtp_crypto_policy_set_rtcp_default(&(policy->rtcp));
 	if(suite == 32) {
-		crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
-		crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtcp));
+		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtp));
+		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(policy->rtcp));
 	} else if(suite == 80) {
-		crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
-		crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
+		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtp));
+		srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(policy->rtcp));
 	}
 	policy->ssrc.type = ssrc_any_inbound;
 	policy->key = decoded;
 	policy->next = NULL;
 	/* Create SRTP context */
-	err_status_t res = srtp_create(video ? &session->media.video_srtp_in : &session->media.audio_srtp_in, policy);
-	if(res != err_status_ok) {
+	srtp_err_status_t res = srtp_create(video ? &session->media.video_srtp_in : &session->media.audio_srtp_in, policy);
+	if(res != srtp_err_status_ok) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "Oops, error creating inbound SRTP session: %d (%s)\n", res, janus_sip_get_srtp_error(res));
 		g_free(decoded);
@@ -910,6 +936,11 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	}
 	config = NULL;
 
+#ifdef HAVE_SRTP_2
+	/* Init randomizer (for randum numbers in SRTP) */
+	RAND_poll();
+#endif
+
 	/* Setup sofia */
 	su_init();
 	if(callback->events_is_enabled()) {
@@ -1230,7 +1261,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					memcpy(&sbuf, buf, len);
 					int protected = len;
 					int res = srtp_protect(session->media.video_srtp_out, &sbuf, &protected);
-					if(res != err_status_ok) {
+					if(res != srtp_err_status_ok) {
 						rtp_header *header = (rtp_header *)&sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
@@ -1264,7 +1295,7 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 					memcpy(&sbuf, buf, len);
 					int protected = len;
 					int res = srtp_protect(session->media.audio_srtp_out, &sbuf, &protected);
-					if(res != err_status_ok) {
+					if(res != srtp_err_status_ok) {
 						rtp_header *header = (rtp_header *)&sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
@@ -1307,7 +1338,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 					memcpy(&sbuf, buf, len);
 					int protected = len;
 					int res = srtp_protect_rtcp(session->media.video_srtp_out, &sbuf, &protected);
-					if(res != err_status_ok) {
+					if(res != srtp_err_status_ok) {
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTCP protect error... %s (len=%d-->%d)...\n",
 							session->account.username, janus_sip_get_srtp_error(res), len, protected);
 					} else {
@@ -1331,7 +1362,7 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 					memcpy(&sbuf, buf, len);
 					int protected = len;
 					int res = srtp_protect_rtcp(session->media.audio_srtp_out, &sbuf, &protected);
-					if(res != err_status_ok) {
+					if(res != srtp_err_status_ok) {
 						JANUS_LOG(LOG_ERR, "[SIP-%s] Audio SRTCP protect error... %s (len=%d-->%d)...\n",
 							session->account.username, janus_sip_get_srtp_error(res), len, protected);
 					} else {
@@ -3381,8 +3412,8 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Is this SRTP? */
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
-						err_status_t res = srtp_unprotect(session->media.audio_srtp_in, buffer, &buflen);
-						if(res != err_status_ok && res != err_status_replay_fail && res != err_status_replay_old) {
+						srtp_err_status_t res = srtp_unprotect(session->media.audio_srtp_in, buffer, &buflen);
+						if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_ERR, "[SIP-%s] Audio SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n",
@@ -3431,8 +3462,8 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Is this SRTCP? */
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
-						err_status_t res = srtp_unprotect_rtcp(session->media.audio_srtp_in, buffer, &buflen);
-						if(res != err_status_ok && res != err_status_replay_fail && res != err_status_replay_old) {
+						srtp_err_status_t res = srtp_unprotect_rtcp(session->media.audio_srtp_in, buffer, &buflen);
+						if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 							JANUS_LOG(LOG_ERR, "[SIP-%s] Audio SRTCP unprotect error: %s (len=%d-->%d)\n",
 								session->account.username, janus_sip_get_srtp_error(res), bytes, buflen);
 							continue;
@@ -3458,8 +3489,8 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Is this SRTP? */
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
-						err_status_t res = srtp_unprotect(session->media.video_srtp_in, buffer, &buflen);
-						if(res != err_status_ok && res != err_status_replay_fail && res != err_status_replay_old) {
+						srtp_err_status_t res = srtp_unprotect(session->media.video_srtp_in, buffer, &buflen);
+						if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n",
@@ -3507,8 +3538,8 @@ static void *janus_sip_relay_thread(void *data) {
 					/* Is this SRTCP? */
 					if(session->media.has_srtp_remote) {
 						int buflen = bytes;
-						err_status_t res = srtp_unprotect_rtcp(session->media.video_srtp_in, buffer, &buflen);
-						if(res != err_status_ok && res != err_status_replay_fail && res != err_status_replay_old) {
+						srtp_err_status_t res = srtp_unprotect_rtcp(session->media.video_srtp_in, buffer, &buflen);
+						if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 							JANUS_LOG(LOG_ERR, "[SIP-%s] Video SRTP unprotect error: %s (len=%d-->%d)\n",
 								session->account.username, janus_sip_get_srtp_error(res), bytes, buflen);
 							continue;
