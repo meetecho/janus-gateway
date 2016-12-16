@@ -820,6 +820,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : Janus.noop;
 		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : Janus.noop;
 		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : Janus.noop;
+		callbacks.slowLink = (typeof callbacks.slowLink == "function") ? callbacks.slowLink : Janus.noop;
 		callbacks.onmessage = (typeof callbacks.onmessage == "function") ? callbacks.onmessage : Janus.noop;
 		callbacks.onlocalstream = (typeof callbacks.onlocalstream == "function") ? callbacks.onlocalstream : Janus.noop;
 		callbacks.onremotestream = (typeof callbacks.onremotestream == "function") ? callbacks.onremotestream : Janus.noop;
@@ -900,6 +901,7 @@ function Janus(gatewayCallbacks) {
 						consentDialog : callbacks.consentDialog,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
+						slowLink : callbacks.slowLink,
 						onmessage : callbacks.onmessage,
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
@@ -981,6 +983,7 @@ function Janus(gatewayCallbacks) {
 						consentDialog : callbacks.consentDialog,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
+						slowLink : callbacks.slowLink,
 						onmessage : callbacks.onmessage,
 						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
 						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
