@@ -59,7 +59,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 	/* Prepare the event to notify as a Jansson json_t object */
 	json_t *event = json_object();
 	json_object_set_new(event, "type", json_integer(type));
-	json_object_set_new(event, "timestamp", json_integer(janus_get_monotonic_time()));
+	json_object_set_new(event, "timestamp", json_integer(janus_get_real_time()));
 	if(type != JANUS_EVENT_TYPE_CORE) {			/* Core events don't have a session ID */
 		if(session_id == 0 && (type == JANUS_EVENT_TYPE_PLUGIN || type == JANUS_EVENT_TYPE_TRANSPORT)) {
 			/* ... but plugin/transport events may not have one either */
