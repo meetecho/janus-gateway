@@ -1042,22 +1042,20 @@ static void janus_videoroom_notify_participants(janus_videoroom_participant *par
 }
 
 static void janus_videoroom_leave_or_unpublish(janus_videoroom_participant *participant, gboolean is_leaving) {
-	json_t *event = json_object();
-	json_object_set_new(event, "videoroom", json_string("event"));
-	json_object_set_new(event, "room", json_integer(participant->room->room_id));
-	json_object_set_new(event, is_leaving ? "leaving" : "unpublished", json_integer(participant->user_id));
 	/* we need to check if the room still exists, may have been destroyed already */
-	if(participant->room) {
-		if(!participant->room->destroyed) {
-			janus_mutex_lock(&participant->room->participants_mutex);
-			janus_videoroom_notify_participants(participant, event);
-			if(is_leaving) {
-				g_hash_table_remove(participant->room->participants, &participant->user_id);
-			}
-			janus_mutex_unlock(&participant->room->participants_mutex);
+	if(participant->room && !participant->room->destroyed) {
+		json_t *event = json_object();
+		json_object_set_new(event, "videoroom", json_string("event"));
+		json_object_set_new(event, "room", json_integer(participant->room->room_id));
+		json_object_set_new(event, is_leaving ? "leaving" : "unpublished", json_integer(participant->user_id));
+		janus_mutex_lock(&participant->room->participants_mutex);
+		janus_videoroom_notify_participants(participant, event);
+		if(is_leaving) {
+			g_hash_table_remove(participant->room->participants, &participant->user_id);
 		}
+		janus_mutex_unlock(&participant->room->participants_mutex);
+		json_decref(event);
 	}
-	json_decref(event);
 }
 
 void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
