@@ -2126,11 +2126,11 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 	if(session->participant_type == janus_videoroom_p_type_subscriber) {
 		/* A listener sent some RTCP, check what it is and if we need to forward it to the publisher */
 		janus_videoroom_listener *l = (janus_videoroom_listener *)session->participant;
-		if(!l->video)
+		if(!l || !l->video)
 			return;	/* The only feedback we handle is video related anyway... */
 		if(janus_rtcp_has_fir(buf, len)) {
 			/* We got a FIR, forward it to the publisher */
-			if(l && l->feed) {
+			if(l->feed) {
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
 					char rtcpbuf[20];
@@ -2143,7 +2143,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 		}
 		if(janus_rtcp_has_pli(buf, len)) {
 			/* We got a PLI, forward it to the publisher */
-			if(l && l->feed) {
+			if(l->feed) {
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
 					char rtcpbuf[12];
