@@ -186,8 +186,8 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	if(janus_rtp_header_extension_find(buf, len, id, NULL, &bytes) < 0)
 		return -1;
 	/* a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
-	uint16_t min = (bytes && 0x00FFF000) >> 12;
-	uint16_t max = bytes && 0x00000FFF;
+	uint16_t min = (bytes & 0x00FFF000) >> 12;
+	uint16_t max = bytes & 0x00000FFF;
 	JANUS_LOG(LOG_DBG, "%"SCNu32"x --> min=%"SCNu16", max=%"SCNu16"\n", bytes, min, max);
 	if(min_delay)
 		*min_delay = min;
