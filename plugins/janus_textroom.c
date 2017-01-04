@@ -824,6 +824,8 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 					} else {
 						JANUS_LOG(LOG_DBG, "Event sent!\n");
 					}
+					curl_easy_cleanup(curl);
+					curl_slist_free_all(headers);
 				}
 			}
 #endif

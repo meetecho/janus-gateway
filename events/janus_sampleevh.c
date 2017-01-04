@@ -547,13 +547,13 @@ static void *janus_sampleevh_handler(void *data) {
 		}
 		/* Whether we just prepared the event or this is a retransmission, send it via HTTP POST */
 		CURLcode res;
+		struct curl_slist *headers = NULL;
 		CURL *curl = curl_easy_init();
 		if(curl == NULL) {
 			JANUS_LOG(LOG_ERR, "Error initializing CURL context\n");
 			goto done;
 		}
 		curl_easy_setopt(curl, CURLOPT_URL, backend);
-		struct curl_slist *headers = NULL;
 		headers = curl_slist_append(headers, "Accept: application/json");
 		headers = curl_slist_append(headers, "Content-Type: application/json");
 		headers = curl_slist_append(headers, "charsets: utf-8");
@@ -593,6 +593,8 @@ done:
 		/* Cleanup */
 		if(curl)
 			curl_easy_cleanup(curl);
+		if(headers)
+			curl_slist_free_all(headers);
 		if(!retransmit)
 			g_free(event_text);
 
