@@ -7,6 +7,7 @@
 configs_folder = @confdir@		; Configuration files folder
 plugins_folder = @plugindir@		; Plugins folder
 transports_folder = @transportdir@	; Transports folder
+events_folder = @eventdir@		; Event handlers folder
 ;log_to_stdout = false			; Whether the Janus output should be written
 								; to stdout or not (default=true)
 ;log_to_file = /tmp/janus.log	; Whether to use a log file or not
