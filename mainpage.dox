@@ -363,7 +363,7 @@ janus.attach(
  * - \c handleRemoteJsep(callbacks): asks the library to handle an incoming WebRTC compliant session description;
  * - \c dtmf(parameters): sends a DTMF tone on the PeerConnection;
  * - \c data(parameters): sends data through the Data Channel, if available;
- * - \c getBitrate(): gets a verbose description of the currently received stream bitrate (only available on Chrome, for now);
+ * - \c getBitrate(): gets a verbose description of the currently received stream bitrate;
  * - \c hangup(sendRequest): tells the library to close the PeerConnection; if the optional \c sendRequest argument is
  * set to \c true, then a \c hangup Janus API request is sent to Janus as well (disabled by default, Janus can usually
  * figure this out via DTLS alerts and the like but it may be useful to enable it sometimes);
