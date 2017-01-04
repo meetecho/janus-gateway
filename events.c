@@ -53,8 +53,31 @@ gboolean janus_events_is_enabled(void) {
 }
 
 void janus_events_notify_handlers(int type, guint64 session_id, ...) {
-	if(!eventsenabled || eventhandlers == NULL || g_hash_table_size(eventhandlers) == 0)
+	/* This method has a variable list of arguments, depending on the event type */
+	va_list args;
+	va_start(args, session_id);
+
+	if(!eventsenabled || eventhandlers == NULL || g_hash_table_size(eventhandlers) == 0) {
+		/* Event handlers disabled, or no event handler plugins available: free resources, if needed */
+		if(type == JANUS_EVENT_TYPE_MEDIA || type == JANUS_EVENT_TYPE_WEBRTC) {
+			/* These events allocate a json_t object for their data, skip some arguments and unref it */
+			va_arg(args, guint64);
+			json_t *body = va_arg(args, json_t *);
+			json_decref(body);
+		} else if(type == JANUS_EVENT_TYPE_CORE) {
+			/* Core events also allocate a json_t object for its data, unref it */
+			json_t *body = va_arg(args, json_t *);
+			json_decref(body);
+		} else if(type == JANUS_EVENT_TYPE_PLUGIN || type == JANUS_EVENT_TYPE_TRANSPORT) {
+			/* Plugin originated events also allocate a json_t object for the plugin data, skip some arguments and unref it */
+			va_arg(args, guint64);
+			va_arg(args, char *);
+			json_t *data = va_arg(args, json_t *);
+			json_decref(data);
+		}
+		va_end(args);
 		return;
+	}
 
 	/* Prepare the event to notify as a Jansson json_t object */
 	json_t *event = json_object();
@@ -72,8 +95,6 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 		body = json_object();
 
 	/* Each type may require different arguments */
-	va_list args;
-	va_start(args, session_id);
 	switch(type) {
 		case JANUS_EVENT_TYPE_SESSION: {
 			/* For sessions, there's just a generic event name (what happened) */
