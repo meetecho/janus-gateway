@@ -186,9 +186,7 @@ Janus.init = function(options) {
 						return;
 					if(XHR.status !== 200) {
 						// Got an error?
-						if(XHR.status === 0)
-							XHR.status = "error";
-						params.error(XHR, XHR.status, "");
+						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
 						return;
 					}
 					// Got payload
@@ -200,9 +198,7 @@ Janus.init = function(options) {
 				if(!params.async) {
 					if(XHR.status !== 200) {
 						// Got an error?
-						if(XHR.status === 0)
-							XHR.status = "error";
-						params.error(XHR, XHR.status, "");
+						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
 						return;
 					}
 					// Got payload
