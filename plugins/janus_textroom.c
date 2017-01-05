@@ -815,6 +815,8 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 					} else {
 						JANUS_LOG(LOG_DBG, "Event sent!\n");
 					}
+					curl_easy_cleanup(curl);
+					curl_slist_free_all(headers);
 				}
 			}
 #endif
@@ -1421,7 +1423,7 @@ static void *janus_textroom_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining TextRoom handler thread\n");
 	janus_textroom_message *msg = NULL;
 	int error_code = 0;
-	char *error_cause = g_malloc0(512);
+	char error_cause[512];
 	json_t *root = NULL;
 	gboolean do_offer = FALSE;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -1529,7 +1531,6 @@ error:
 			janus_textroom_message_free(msg);
 		}
 	}
-	g_free(error_cause);
 	JANUS_LOG(LOG_VERB, "Leaving TextRoom handler thread\n");
 	return NULL;
 }
