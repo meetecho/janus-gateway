@@ -147,6 +147,8 @@ struct janus_transport_session {
 	/*! \brief Whether this mapping has been destroyed definitely or not: if so,
 	 * the transport shouldn't make use of it anymore */
 	volatile gint destroyed;
+	/*! \brief Mutex to protect changes to transport_p */
+	janus_mutex mutex;
 	/*! \brief Reference counter for this instance */
 	janus_refcount ref;
 };
