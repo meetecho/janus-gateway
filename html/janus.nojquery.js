@@ -2131,7 +2131,7 @@ function Janus(gatewayCallbacks) {
 					request["handle_id"] = handleId;
 					ws.send(JSON.stringify(request));
 				} else {
-					$.ajax({
+					Janus.ajax({
 						type: 'POST',
 						url: server + "/" + sessionId + "/" + handleId,
 						cache: false,
