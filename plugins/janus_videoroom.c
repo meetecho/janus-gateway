@@ -1494,13 +1494,14 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_mutex_unlock(&rooms_mutex);
 			goto plugin_response;
 		}
-		/* Remove room */
-		g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
+		/* Remove room, but add a reference until we're done */
+		janus_refcount_increase(&videoroom->ref);
+		g_hash_table_remove(rooms, &room_id);
 		/* Notify all participants that the fun is over, and that they'll be kicked */
 		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
 		json_t *destroyed = json_object();
 		json_object_set_new(destroyed, "videoroom", json_string("destroyed"));
-		json_object_set_new(destroyed, "room", json_integer(videoroom->room_id));
+		json_object_set_new(destroyed, "room", json_integer(room_id));
 		GHashTableIter iter;
 		gpointer value;
 		janus_mutex_lock(&videoroom->mutex);
@@ -1538,6 +1539,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE);
 			janus_mutex_unlock(&config_mutex);
 		}
+		janus_refcount_decrease(&videoroom->ref);
 		/* Done */
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("destroyed"));
