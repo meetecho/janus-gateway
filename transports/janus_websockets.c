@@ -827,7 +827,7 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 	if(message == NULL)
 		return -1;
 	if(transport == NULL) {
-		g_free(message);
+		json_decref(message);
 		return -1;
 	}
 	/* Make sure this is not related to a closed /freed WebSocket session */
@@ -838,7 +838,7 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 #else
 	if(g_list_find(old_wss, client) != NULL || !client->context || !client->wsi) {
 #endif
-		g_free(message);
+		json_decref(message);
 		message = NULL;
 		transport = NULL;
 		janus_mutex_unlock(&old_wss_mutex);
