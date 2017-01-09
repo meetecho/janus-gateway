@@ -365,7 +365,7 @@ int janus_pfunix_send_message(janus_transport_session *transport, void *request_
 	if(message == NULL)
 		return -1;
 	if(transport == NULL || transport->transport_p == NULL) {
-		g_free(message);
+		json_decref(message);
 		return -1;
 	}
 	/* Make sure this is related to a still valid Unix Sockets session */
@@ -374,7 +374,7 @@ int janus_pfunix_send_message(janus_transport_session *transport, void *request_
 	if(g_hash_table_lookup(clients, client) == NULL) {
 		janus_mutex_unlock(&clients_mutex);
 		JANUS_LOG(LOG_WARN, "Outgoing message for invalid client %p\n", client);
-		g_free(message);
+		json_decref(message);
 		message = NULL;
 		return -1;
 	}
