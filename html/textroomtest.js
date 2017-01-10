@@ -188,6 +188,19 @@ $(document).ready(function() {
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' left</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										delete participants[username];
+									} else if(what === "kicked") {
+										// Somebody was kicked
+										var username = json["username"];
+										var when = new Date();
+										$('#rp' + username).remove();
+										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' was kicked from the room</i></p>');
+										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
+										delete participants[username];
+										if(username === myid) {
+											bootbox.alert("You have been kicked from the room", function() {
+												window.location.reload();
+											});
+										}
 									} else if(what === "destroyed") {
 										// Room was destroyed, goodbye!
 										Janus.warn("The room has been destroyed!");
