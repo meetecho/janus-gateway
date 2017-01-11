@@ -265,6 +265,7 @@ static struct janus_json_parameter configure_parameters[] = {
 };
 static struct janus_json_parameter subscriber_parameters[] = {
 	{"feed", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"private_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
 	{"data", JANUS_JSON_BOOL, 0}
@@ -394,7 +395,8 @@ typedef struct janus_videoroom_publisher {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	guint64 user_id;	/* Unique ID in the room */
-	gchar *display;	/* Display name (just for fun) */
+	guint64 pvt_id;		/* This is sent to the publisher for mapping purposes, but shouldn't be shared with others */
+	gchar *display;		/* Display name (just for fun) */
 	gchar *sdp;			/* The SDP this publisher negotiated, if any */
 	gboolean audio, video, data;		/* Whether audio, video and/or data is going to be sent by this publisher */
 	guint32 audio_pt;		/* Audio payload type (Opus) */
@@ -440,6 +442,7 @@ typedef struct janus_videoroom_subscriber {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	janus_videoroom_publisher *feed;	/* Participant this subscriber is subscribed to */
+	guint64 pvt_id;		/* Private ID of the participant that is subscribing (if available/provided) */
 	janus_videoroom_subscriber_context context;	/* Needed in case there are publisher switches on this subscriber */
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this publisher */
 	gboolean paused;
@@ -2580,6 +2583,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&videoroom->mutex);
 				}
 				JANUS_LOG(LOG_VERB, "  -- Publisher ID: %"SCNu64"\n", user_id);
+				/* Process the request */
 				json_t *audio = NULL, *video = NULL, *bitrate = NULL, *record = NULL, *recfile = NULL;
 				if(!strcasecmp(request_text, "joinandconfigure")) {
 					/* Also configure (or publish a new feed) audio/video/bitrate for this new publisher */
@@ -2660,6 +2664,9 @@ static void *janus_videoroom_handler(void *data) {
 				janus_mutex_init(&publisher->rtp_forwarders_mutex);
 				publisher->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtp_forwarder_free_helper);
 				publisher->udp_sock = -1;
+				/* Finally, generate a private ID: this is only needed in case the participant
+				 * wants to allow the plugin to know which subscriptions belong to them */
+				publisher->pvt_id = janus_random_uint64();
 				g_atomic_int_set(&publisher->destroyed, 0);
 				janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
 				/* In case we also wanted to configure */
@@ -2712,6 +2719,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", json_integer(publisher->room->room_id));
 				json_object_set_new(event, "description", json_string(publisher->room->room_name));
 				json_object_set_new(event, "id", json_integer(user_id));
+				json_object_set_new(event, "private_id", json_integer(publisher->pvt_id));
 				json_object_set_new(event, "publishers", list);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
@@ -2719,6 +2727,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "event", json_string("joined"));
 					json_object_set_new(info, "room", json_integer(publisher->room->room_id));
 					json_object_set_new(info, "id", json_integer(user_id));
+					json_object_set_new(info, "private_id", json_integer(publisher->pvt_id));
 					if(display_text != NULL)
 						json_object_set_new(info, "display", json_string(display_text));
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
@@ -2734,6 +2743,8 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				json_t *feed = json_object_get(root, "feed");
 				guint64 feed_id = json_integer_value(feed);
+				json_t *pvt = json_object_get(root, "private_id");
+				guint64 pvt_id = json_integer_value(pvt);
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
@@ -2755,6 +2766,7 @@ static void *janus_videoroom_handler(void *data) {
 					subscriber->room = videoroom;
 					videoroom = NULL;
 					subscriber->feed = publisher;
+					subscriber->pvt_id = pvt_id;
 					/* Initialize the subscriber context */
 					subscriber->context.a_last_ssrc = 0;
 					subscriber->context.a_last_ssrc = 0;
@@ -2815,6 +2827,7 @@ static void *janus_videoroom_handler(void *data) {
 							json_object_set_new(info, "event", json_string("subscribing"));
 							json_object_set_new(info, "room", json_integer(subscriber->room->room_id));
 							json_object_set_new(info, "feed", json_integer(feed_id));
+							json_object_set_new(info, "private_id", json_integer(pvt_id));
 							gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 						}
 						continue;
