@@ -254,6 +254,8 @@ struct janus_ice_handle {
 	void *session;
 	/*! \brief Handle identifier, guaranteed to be non-zero */
 	guint64 handle_id;
+	/*! \brief Opaque identifier, e.g., to provide inter-handle relationships to external tools */
+	char *opaque_id;
 	/*! \brief Monotonic time of when the handle has been created */
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
@@ -461,8 +463,9 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 ///@{
 /*! \brief Method to create a new Janus ICE handle
  * @param[in] gateway_session The gateway/peer session this ICE handle will belong to
+ * @param[in] opaque_id The opaque identifier provided by the creator, if any (optional)
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session);
+janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opaque_id);
 /*! \brief Method to find an existing Janus ICE handle from its ID
  * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
