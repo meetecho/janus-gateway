@@ -832,7 +832,7 @@ void janus_ice_plugin_session_free(const janus_refcount *app_handle_ref);
 void janus_ice_stream_free(const janus_refcount *handle_ref);
 void janus_ice_component_free(const janus_refcount *handle_ref);
 
-janus_ice_handle *janus_ice_handle_create(void *core_session) {
+janus_ice_handle *janus_ice_handle_create(void *core_session, const char *opaque_id) {
 	if(core_session == NULL)
 		return NULL;
 	janus_session *session = (janus_session *)core_session;
@@ -856,6 +856,8 @@ janus_ice_handle *janus_ice_handle_create(void *core_session) {
 	janus_refcount_init(&handle->ref, janus_ice_free);
 	janus_refcount_increase(&session->ref);
 	handle->session = core_session;
+	if(opaque_id)
+		handle->opaque_id = g_strdup(opaque_id);
 	handle->created = janus_get_monotonic_time();
 	handle->handle_id = handle_id;
 	handle->app = NULL;
@@ -909,7 +911,8 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	janus_mutex_unlock(&session->mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle->handle_id, "attached", plugin->get_package());
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
+			session->session_id, handle->handle_id, "attached", plugin->get_package(), handle->opaque_id);
 	return 0;
 }
 
@@ -991,7 +994,8 @@ gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle) {
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle->handle_id, error);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle->handle_id, "detached", plugin_t->get_package());
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
+			session->session_id, handle->handle_id, "detached", plugin_t->get_package(), NULL);
 	/* Unref the handle: we only unref the session too when actually freeing the handle, so that it is freed before that */
 	janus_refcount_decrease(&handle->ref);
 	return error;
@@ -1011,6 +1015,7 @@ void janus_ice_free(const janus_refcount *handle_ref) {
 		janus_session *session = (janus_session *)handle->session;
 		janus_refcount_decrease(&session->ref);
 	}
+	g_free(handle->opaque_id);
 	g_free(handle);
 }
 

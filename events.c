@@ -111,6 +111,11 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			json_object_set_new(body, "name", json_string(name));
 			char *plugin = va_arg(args, char *);
 			json_object_set_new(body, "plugin", json_string(plugin));
+			/* Handle-related events may include an opaque ID provided by who's using the plugin:
+			 * in event handlers, it may be useful for inter-handle mappings or other things */
+			char *opaque_id = va_arg(args, char *);
+			if(opaque_id != NULL)
+				json_object_set_new(body, "opaque_id", json_string(opaque_id));
 			break;
 		}
 		case JANUS_EVENT_TYPE_JSEP: {
