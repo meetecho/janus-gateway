@@ -1946,7 +1946,6 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	g_atomic_int_set(&session->hangingup, 0);
 	/* We only start streaming towards this user when we get this event */
 	session->context.a_last_ssrc = 0;
-	session->context.a_last_ssrc = 0;
 	session->context.a_last_ts = 0;
 	session->context.a_base_ts = 0;
 	session->context.a_base_ts_prev = 0;

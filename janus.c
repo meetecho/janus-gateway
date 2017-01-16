@@ -80,7 +80,8 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter attach_parameters[] = {
-	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"opaque_id", JSON_STRING, 0}
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -785,8 +786,10 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 			}
 		}
+		json_t *opaque = json_object_get(root, "opaque_id");
+		const char *opaque_id = opaque ? json_string_value(opaque) : NULL;
 		/* Create handle */
-		handle = janus_ice_handle_create(session);
+		handle = janus_ice_handle_create(session, opaque_id);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -2085,6 +2088,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		if(session->source && session->source->transport)
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
+		if(handle->opaque_id)
+			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
 		json_object_set_new(info, "created", json_integer(handle->created));
 		json_object_set_new(info, "send_thread_created", g_atomic_int_get(&handle->send_thread_created) ? json_true() : json_false());
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));

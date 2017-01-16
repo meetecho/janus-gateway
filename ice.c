@@ -924,7 +924,7 @@ void janus_ice_stats_reset(janus_ice_stats *stats) {
 
 
 /* ICE Handles */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
+janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opaque_id) {
 	if(gateway_session == NULL)
 		return NULL;
 	janus_session *session = (janus_session *)gateway_session;
@@ -943,6 +943,8 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
 		return NULL;
 	}
 	handle->session = gateway_session;
+	if(opaque_id)
+		handle->opaque_id = g_strdup(opaque_id);
 	handle->created = janus_get_monotonic_time();
 	handle->handle_id = handle_id;
 	handle->app = NULL;
@@ -1009,7 +1011,8 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	janus_mutex_unlock(&session->mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "attached", plugin->get_package());
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
+			session->session_id, handle_id, "attached", plugin->get_package(), handle->opaque_id);
 	return 0;
 }
 
@@ -1092,7 +1095,8 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_mutex_unlock(&old_handles_mutex);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE, session->session_id, handle_id, "detached", plugin_t->get_package());
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
+			session->session_id, handle_id, "detached", plugin_t->get_package(), NULL);
 	return error;
 }
 
@@ -1115,6 +1119,7 @@ void janus_ice_free(janus_ice_handle *handle) {
 	janus_mutex_unlock(&handle->mutex);
 	janus_ice_webrtc_free(handle);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed\n", handle->handle_id);
+	g_free(handle->opaque_id);
 	g_free(handle);
 	handle = NULL;
 }

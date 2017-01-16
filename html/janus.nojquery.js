@@ -186,9 +186,7 @@ Janus.init = function(options) {
 						return;
 					if(XHR.status !== 200) {
 						// Got an error?
-						if(XHR.status === 0)
-							XHR.status = "error";
-						params.error(XHR, XHR.status, "");
+						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
 						return;
 					}
 					// Got payload
@@ -200,9 +198,7 @@ Janus.init = function(options) {
 				if(!params.async) {
 					if(XHR.status !== 200) {
 						// Got an error?
-						if(XHR.status === 0)
-							XHR.status = "error";
-						params.error(XHR, XHR.status, "");
+						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
 						return;
 					}
 					// Got payload
@@ -391,7 +387,6 @@ function Janus(gatewayCallbacks) {
 			success: handleEvent,
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
 				Janus.error(textStatus + ": " + errorThrown);
-				//~ clearTimeout(timeoutTimer);
 				retries++;
 				if(retries > 3) {
 					// Did we just lose the gateway? :-(
@@ -839,8 +834,9 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Invalid plugin");
 			return;
 		}
+		var opaqueId = callbacks.opaqueId;
 		var transaction = randomString(12);
-		var request = { "janus": "attach", "plugin": plugin, "transaction": transaction };
+		var request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "transaction": transaction };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
@@ -2135,7 +2131,7 @@ function Janus(gatewayCallbacks) {
 					request["handle_id"] = handleId;
 					ws.send(JSON.stringify(request));
 				} else {
-					$.ajax({
+					Janus.ajax({
 						type: 'POST',
 						url: server + "/" + sessionId + "/" + handleId,
 						cache: false,

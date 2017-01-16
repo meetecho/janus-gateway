@@ -345,7 +345,6 @@ function Janus(gatewayCallbacks) {
 			success: handleEvent,
 			error: function(XMLHttpRequest, textStatus, errorThrown) {
 				Janus.error(textStatus + ": " + errorThrown);
-				//~ clearTimeout(timeoutTimer);
 				retries++;
 				if(retries > 3) {
 					// Did we just lose the gateway? :-(
@@ -793,8 +792,9 @@ function Janus(gatewayCallbacks) {
 			callbacks.error("Invalid plugin");
 			return;
 		}
+		var opaqueId = callbacks.opaqueId;
 		var transaction = randomString(12);
-		var request = { "janus": "attach", "plugin": plugin, "transaction": transaction };
+		var request = { "janus": "attach", "plugin": plugin, "opaque_id": opaqueId, "transaction": transaction };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
