@@ -1119,6 +1119,7 @@ void janus_ice_free(janus_ice_handle *handle) {
 	janus_mutex_unlock(&handle->mutex);
 	janus_ice_webrtc_free(handle);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Handle and related resources freed\n", handle->handle_id);
+	g_free(handle->opaque_id);
 	g_free(handle);
 	handle = NULL;
 }
