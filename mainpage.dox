@@ -270,7 +270,8 @@ var janus = new Janus(
  * properties and callbacks:
  *
  * - \c plugin: the unique package name of the plugin (e.g., \c janus.plugin.echotest );
- * will be used if you skip this property)
+ * - \c opaqueId: an optional opaque string meaningful to your application (e.g., to map all the handles of the same user);
+ * - \c token , \c apisecret: optional parameters only needed in case you're \ref auth ;
  * - a set of callbacks to be notified about events, namely:
  * 		- \c success: the handle was successfully created and is ready to be used;
  * 		- \c error: the handle was NOT successfully created;
@@ -844,6 +845,9 @@ GET http://host:port/janus/<sessionid>?maxev=5
 }
 \endverbatim
  *
+ * Notice that you can also provide an optional \c opaque_id string
+ * identifier (for more details on why this might be useful, read more
+ * <a href="https://github.com/meetecho/janus-gateway/pull/748">here</a>).
  * If the request is successful, you'll receive the unique plugin handle
  * identifier in a response formatted the same way as the session create
  * one, that is like this:
