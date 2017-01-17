@@ -91,6 +91,9 @@ janus_transport *create(void) {
 static gboolean janus_mqtt_api_enabled_ = FALSE;
 static gboolean janus_mqtt_admin_api_enabled_ = FALSE;
 
+/* Event handlers */
+static gboolean notify_events = TRUE;
+
 /* JSON serialization options */
 static size_t json_format_ = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
@@ -202,6 +205,14 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", json_item->value);
 			json_format_ = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 		}
+	}
+
+	/* Check if we need to send events to handlers */
+	janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+	if(events != NULL && events->value != NULL)
+		notify_events = janus_is_true(events->value);
+	if(!notify_events && callback->events_is_enabled()) {
+		JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_MQTT_NAME);
 	}
 
 	/* Connect configuration */
@@ -409,6 +420,14 @@ void janus_mqtt_session_over(void *context, guint64 session_id, gboolean timeout
 void janus_mqtt_client_connection_lost(void *context, char *cause) {
 	JANUS_LOG(LOG_INFO, "MQTT connection lost cause of %s. Reconnecting...\n", cause);
 	/* Automatic reconnect */
+
+	/* Notify handlers about this transport being gone */
+	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
+	if(notify_events && ctx && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("reconnecting"));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
 }
 
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message) {
@@ -462,12 +481,28 @@ void janus_mqtt_client_connect_success(void *context, MQTTAsync_successData *res
 			JANUS_LOG(LOG_ERR, "Can't subscribe to MQTT admin topic: %s, return code: %d\n", ctx->admin.subscribe.topic, rc);
 		}
 	}
+
+	/* Notify handlers about this new transport */
+	if(notify_events && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("connected"));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
 }
 
 void janus_mqtt_client_connect_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = response ? response->code : 0;
 	JANUS_LOG(LOG_ERR, "MQTT client has been failed connecting to the broker, return code: %d. Reconnecting...\n", rc);
 	/* Automatic reconnect */
+
+	/* Notify handlers about this transport failure */
+	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
+	if(notify_events && ctx && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("failed"));
+		json_object_set_new(info, "code", json_integer(rc));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
 }
 
 int janus_mqtt_client_reconnect(janus_mqtt_context *ctx) {
@@ -505,7 +540,14 @@ int janus_mqtt_client_disconnect(janus_mqtt_context *ctx) {
 void janus_mqtt_client_disconnect_success(void *context, MQTTAsync_successData *response) {
 	JANUS_LOG(LOG_INFO, "MQTT client has been successfully disconnected. Destroying the client...\n");
 
+	/* Notify handlers about this transport being gone */
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
+	if(notify_events && ctx && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("disconnected"));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
+
 	janus_mqtt_client_destroy_context(&ctx);
 }
 
