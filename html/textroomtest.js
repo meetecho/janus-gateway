@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var textroom = null;
+var opaqueId = "textroomtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myroom = 1234;	// Demo room
@@ -81,6 +83,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.textroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									textroom = pluginHandle;

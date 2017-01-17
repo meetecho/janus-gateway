@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var streaming = null;
+var opaqueId = "streamingtest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -79,6 +81,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.streaming",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									streaming = pluginHandle;
