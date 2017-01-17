@@ -46,6 +46,8 @@ void janus_events_deinit(void) {
 		g_thread_join(events_thread);
 		events_thread = NULL;
 	}
+	if(events != NULL)
+		g_async_queue_unref(events);
 }
 
 gboolean janus_events_is_enabled(void) {

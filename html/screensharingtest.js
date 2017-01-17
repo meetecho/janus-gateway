@@ -51,6 +51,8 @@ else
 
 var janus = null;
 var screentest = null;
+var opaqueId = "screensharingtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myusername = null;
@@ -99,6 +101,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									screentest = pluginHandle;
@@ -394,6 +397,7 @@ function newRemoteFeed(id, display) {
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
+			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
