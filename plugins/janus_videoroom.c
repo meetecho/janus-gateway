@@ -83,8 +83,8 @@ rec_dir = <folder where recordings should be stored, when enabled>
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests. 
  * 
- * \c create , \c destroy , \c exists, \c list and \c listparticipants
- * are synchronous requests, which means you'll
+ * \c create , \c destroy , \c exists, \c list, \c allowed, \c kick and
+ * and \c listparticipants are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
  * \c create allows you to create a new video room dynamically, as an
  * alternative to using the configuration file; \c destroy removes a
@@ -217,6 +217,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"description", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
+	{"allowed", JSON_ARRAY, 0},
 	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -237,6 +238,17 @@ static struct janus_json_parameter room_parameters[] = {
 static struct janus_json_parameter destroy_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"permanent", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter allowed_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JSON_STRING, 0},
+	{"action", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"allowed", JSON_ARRAY, 0}
+};
+static struct janus_json_parameter kick_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JSON_STRING, 0},
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter join_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -397,6 +409,8 @@ typedef struct janus_videoroom {
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
 	gint64 destroyed;			/* Value to flag the room for destruction, done lazily */
 	GHashTable *participants;	/* Map of potential publishers (we get listeners from them) */
+	gboolean check_tokens;		/* Whether to check tokens when participants join (see below) */
+	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	janus_mutex participants_mutex;/* Mutex to protect room properties */
 } janus_videoroom;
 static GHashTable *rooms;
@@ -888,6 +902,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->destroyed = 0;
 			janus_mutex_init(&videoroom->participants_mutex);
 			videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+			videoroom->check_tokens = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
+			videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, janus_uint64_dup(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
@@ -1288,6 +1304,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *bitrate = json_object_get(root, "bitrate");
 		json_t *fir_freq = json_object_get(root, "fir_freq");
 		json_t *publishers = json_object_get(root, "publishers");
+		json_t *allowed = json_object_get(root, "allowed");
 		json_t *audiocodec = json_object_get(root, "audiocodec");
 		if(audiocodec) {
 			const char *audiocodec_value = json_string_value(audiocodec);
@@ -1314,6 +1331,26 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *record = json_object_get(root, "record");
 		json_t *rec_dir = json_object_get(root, "rec_dir");
 		json_t *permanent = json_object_get(root, "permanent");
+		if(allowed) {
+			/* Make sure the "allowed" array only contains strings */
+			gboolean ok = TRUE;
+			if(json_array_size(allowed) > 0) {
+				size_t i = 0;
+				for(i=0; i<json_array_size(allowed); i++) {
+					json_t *a = json_array_get(allowed, i);
+					if(!a || !json_is_string(a)) {
+						ok = FALSE;
+						break;
+					}
+				}
+			}
+			if(!ok) {
+				JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
+				error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
+				goto plugin_response;
+			}
+		}
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
 			JANUS_LOG(LOG_ERR, "No configuration file, can't create permanent room\n");
@@ -1425,6 +1462,19 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		videoroom->destroyed = 0;
 		janus_mutex_init(&videoroom->participants_mutex);
 		videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+		videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+		if(allowed != NULL) {
+			/* Populate the "allowed" list as an ACL for people trying to join */
+			if(json_array_size(allowed) > 0) {
+				size_t i = 0;
+				for(i=0; i<json_array_size(allowed); i++) {
+					const char *token = json_string_value(json_array_get(allowed, i));
+					if(!g_hash_table_lookup(videoroom->allowed, token))
+						g_hash_table_insert(videoroom->allowed, g_strdup(token), GINT_TO_POINTER(TRUE));
+				}
+			}
+			videoroom->check_tokens = TRUE;
+		}
 		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s)\n",
 			videoroom->room_id, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
@@ -1751,6 +1801,152 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_object_set_new(response, "videoroom", json_string("success"));
 		json_object_set_new(response, "room", json_integer(room_id));
 		json_object_set_new(response, "exists", room_exists ? json_true() : json_false());
+		goto plugin_response;
+	} else if(!strcasecmp(request_text, "allowed")) {
+		JANUS_LOG(LOG_VERB, "Attempt to edit the list of allowed participants in an existing videoroom room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, allowed_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto plugin_response;
+		json_t *action = json_object_get(root, "action");
+		json_t *room = json_object_get(root, "room");
+		json_t *allowed = json_object_get(root, "allowed");
+		const char *action_text = json_string_value(action);
+		if(strcasecmp(action_text, "enable") && strcasecmp(action_text, "disable") &&
+				strcasecmp(action_text, "add") && strcasecmp(action_text, "remove")) {
+			JANUS_LOG(LOG_ERR, "Unsupported action '%s' (allowed)\n", action_text);
+			error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Unsupported action '%s' (allowed)", action_text);
+			goto plugin_response;
+		}
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = g_hash_table_lookup(rooms, &room_id);
+		if(videoroom == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto plugin_response;
+		}
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto plugin_response;
+		}
+		if(!strcasecmp(action_text, "enable")) {
+			JANUS_LOG(LOG_VERB, "Enabling the check on allowed authorization tokens for room %"SCNu64"\n", room_id);
+			videoroom->check_tokens = TRUE;
+		} else if(!strcasecmp(action_text, "disable")) {
+			JANUS_LOG(LOG_VERB, "Disabling the check on allowed authorization tokens for room %"SCNu64" (free entry)\n", room_id);
+			videoroom->check_tokens = FALSE;
+		} else {
+			gboolean add = !strcasecmp(action_text, "add");
+			if(allowed) {
+				/* Make sure the "allowed" array only contains strings */
+				gboolean ok = TRUE;
+				if(json_array_size(allowed) > 0) {
+					size_t i = 0;
+					for(i=0; i<json_array_size(allowed); i++) {
+						json_t *a = json_array_get(allowed, i);
+						if(!a || !json_is_string(a)) {
+							ok = FALSE;
+							break;
+						}
+					}
+				}
+				if(!ok) {
+					JANUS_LOG(LOG_ERR, "Invalid element in the allowed array (not a string)\n");
+					error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT;
+					g_snprintf(error_cause, 512, "Invalid element in the allowed array (not a string)");
+					janus_mutex_unlock(&rooms_mutex);
+					goto plugin_response;
+				}
+				size_t i = 0;
+				for(i=0; i<json_array_size(allowed); i++) {
+					const char *token = json_string_value(json_array_get(allowed, i));
+					if(add) {
+						if(!g_hash_table_lookup(videoroom->allowed, token))
+							g_hash_table_insert(videoroom->allowed, g_strdup(token), GINT_TO_POINTER(TRUE));
+					} else {
+						g_hash_table_remove(videoroom->allowed, token);
+					}
+				}
+			}
+		}
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("success"));
+		json_object_set_new(response, "room", json_integer(videoroom->room_id));
+		json_t *list = json_array();
+		if(strcasecmp(action_text, "disable")) {
+			if(g_hash_table_size(videoroom->allowed) > 0) {
+				GHashTableIter iter;
+				gpointer key;
+				g_hash_table_iter_init(&iter, videoroom->allowed);
+				while(g_hash_table_iter_next(&iter, &key, NULL)) {
+					char *token = key;
+					json_array_append_new(list, json_string(token));
+				}
+			}
+			json_object_set_new(response, "allowed", list);
+		}
+		/* Done */
+		janus_mutex_unlock(&rooms_mutex);
+		JANUS_LOG(LOG_VERB, "VideoRoom room allowed list updated\n");
+		goto plugin_response;
+	} else if(!strcasecmp(request_text, "kick")) {
+		JANUS_LOG(LOG_VERB, "Attempt to kick a participant from an existing videoroom room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, kick_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto plugin_response;
+		json_t *room = json_object_get(root, "room");
+		json_t *id = json_object_get(root, "id");
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = g_hash_table_lookup(rooms, &room_id);
+		if(videoroom == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto plugin_response;
+		}
+		janus_mutex_lock(&videoroom->participants_mutex);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&videoroom->participants_mutex);
+			janus_mutex_unlock(&rooms_mutex);
+			goto plugin_response;
+		}
+		guint64 user_id = json_integer_value(id);
+		janus_videoroom_participant *participant = g_hash_table_lookup(videoroom->participants, &user_id);
+		if(participant == NULL) {
+			janus_mutex_unlock(&videoroom->participants_mutex);
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such user %"SCNu64" in room %"SCNu64"\n", user_id, room_id);
+			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
+			g_snprintf(error_cause, 512, "No such user %"SCNu64" in room %"SCNu64, user_id, room_id);
+			goto plugin_response;
+		}
+		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest
+		 * 	FIXME: this only kicks the publisher, but not the subscriptions it created */
+		if(participant && participant->session)
+			gateway->close_pc(participant->session->handle);
+		JANUS_LOG(LOG_VERB, "Kicked user %"SCNu64" from room %"SCNu64"\n", user_id, room_id);
+		/* Prepare response */
+		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("success"));
+		/* Done */
+		janus_mutex_unlock(&videoroom->participants_mutex);
+		janus_mutex_unlock(&rooms_mutex);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */	
@@ -2572,6 +2768,17 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
+				/* A token might be required to join */
+				if(videoroom->check_tokens) {
+					json_t *token = json_object_get(root, "token");
+					const char *token_text = token ? json_string_value(token) : NULL;
+					if(token_text == NULL || g_hash_table_lookup(videoroom->allowed, token_text) == NULL) {
+						JANUS_LOG(LOG_ERR, "Unauthorized (not in the allowed list)\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+						g_snprintf(error_cause, 512, "Unauthorized (not in the allowed list)");
+						goto error;
+					}
+				}
 				json_t *display = json_object_get(root, "display");
 				const char *display_text = display ? json_string_value(display) : NULL;
 				guint64 user_id = 0;
@@ -4135,6 +4342,7 @@ static void janus_videoroom_free(janus_videoroom *room) {
 		g_free(room->room_pin);
 		g_free(room->rec_dir);
 		g_hash_table_unref(room->participants);
+		g_hash_table_destroy(room->allowed);
 		janus_mutex_unlock(&room->participants_mutex);
 		janus_mutex_destroy(&room->participants_mutex);
 		g_free(room);
