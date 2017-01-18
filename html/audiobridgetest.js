@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var mixertest = null;
+var opaqueId = "audiobridgetest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -83,6 +85,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.audiobridge",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									mixertest = pluginHandle;

@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var vmailtest = null;
+var opaqueId = "voicemailtest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -81,6 +83,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.voicemail",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									vmailtest = pluginHandle;

@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var sipcall = null;
+var opaqueId = "siptest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -82,6 +84,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.sip",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									sipcall = pluginHandle;
