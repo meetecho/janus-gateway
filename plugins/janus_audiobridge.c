@@ -759,7 +759,6 @@ typedef struct janus_audiobridge_participant {
 	janus_audiobridge_room *room;	/* Room */
 	guint64 user_id;		/* Unique ID in the room */
 	gchar *display;			/* Display name (opaque value, only meaningful to application) */
-	gchar *token;			/* Invitation token, needed if the room has a list of people that can join */
 	gboolean prebuffering;	/* Whether this participant needs pre-buffering of a few packets (just joined) */
 	gboolean active;		/* Whether this participant can receive media at all */
 	gboolean working;		/* Whether this participant is currently encoding/decoding */
