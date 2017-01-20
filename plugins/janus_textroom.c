@@ -1425,7 +1425,8 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			if(textroom->http_backend)
 				janus_config_add_item(config, cat, "post", textroom->http_backend);
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the room is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Show updated rooms list */
@@ -1443,6 +1444,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 			json_object_set_new(reply, "textroom", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "room", json_integer(textroom->room_id));
+			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 			char *reply_text = json_dumps(reply, json_format);
 			json_decref(reply);
 			gateway->relay_data(handle, reply_text, strlen(reply_text));

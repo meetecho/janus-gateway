@@ -1574,13 +1574,15 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			if(mp->pin)
 				janus_config_add_item(config, mp->name, "pin", mp->pin);
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the mountpoint is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("created"));
 		json_object_set_new(response, "created", json_string(mp->name));
+		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", json_integer(mp->id));
 		json_object_set_new(ml, "description", json_string(mp->description));

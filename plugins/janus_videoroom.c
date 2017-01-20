@@ -1517,7 +1517,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			if(videoroom->rec_dir)
 				janus_config_add_item(config, cat, "rec_dir", videoroom->rec_dir);
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the room is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Show updated rooms list */
@@ -1534,6 +1535,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("created"));
 		json_object_set_new(response, "room", json_integer(videoroom->room_id));
+		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
 			json_t *info = json_object();

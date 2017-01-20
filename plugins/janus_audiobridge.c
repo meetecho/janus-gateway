@@ -96,9 +96,13 @@ record_file =	/path/to/recording.wav (where to save the recording)
 \verbatim
 {
 	"audiobridge" : "created",
-	"room" : <unique numeric ID>
+	"room" : <unique numeric ID>,
+	"permanent" : <true if saved to config file, false if not>
 }
 \endverbatim
+ *
+ * If you requested a permanent room but a \c false value is returned
+ * instead, good chances are that there are permission problems.
  *
  * An error instead (and the same applies to all other requests, so this
  * won't be repeated) would provide both an error code and a more verbose
@@ -1549,7 +1553,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				janus_config_add_item(config, cat, "record_file", audiobridge->record_file);
 			}
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_AUDIOBRIDGE_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_AUDIOBRIDGE_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the room is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Send info back */
@@ -1561,6 +1566,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_t *info = json_object();
 			json_object_set_new(info, "event", json_string("created"));
 			json_object_set_new(info, "room", json_integer(audiobridge->room_id));
+			json_object_set_new(info, "permanent", save ? json_true() : json_false());
 			gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 		}
 		janus_mutex_unlock(&rooms_mutex);
