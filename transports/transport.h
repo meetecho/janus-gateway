@@ -94,7 +94,7 @@ janus_transport *create(void) {
 
 
 /*! \brief Version of the API, to match the one transport plugins were compiled against */
-#define JANUS_TRANSPORT_API_VERSION	5
+#define JANUS_TRANSPORT_API_VERSION	6
 
 /*! \brief Initialization of all transport plugin properties to NULL
  * 
@@ -233,6 +233,14 @@ struct janus_transport_callbacks {
 	 * @returns TRUE if the auth token is valid, FALSE otherwise */
 	gboolean (* const is_auth_token_valid)(janus_transport *plugin, const char *token);
 
+	/*! \brief Callback to check whether the event handlers mechanism is enabled
+	 * @returns TRUE if it is, FALSE if it isn't (which means notify_event should NOT be called) */
+	gboolean (* const events_is_enabled)(void);
+	/*! \brief Callback to notify an event to the registered and subscribed event handlers
+	 * \note Don't unref the event object, the core will do that for you
+	 * @param[in] plugin The transport originating the event
+	 * @param[in] event The event to notify as a Jansson json_t object */
+	void (* const notify_event)(janus_transport *plugin, void *transport, json_t *event);
 };
 
 /*! \brief The hook that transport plugins need to implement to be created from the gateway */
