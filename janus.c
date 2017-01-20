@@ -705,7 +705,7 @@ static void janus_request_ice_disabled_m_line(janus_ice_handle *handle, int audi
 }
 
 static void janus_request_ice_remove_rtcp_component(janus_ice_handle *handle, guint stream_id, guint component_id, janus_ice_stream *media_stream) {
-	if(media_stream && media_stream->components != NULL) {
+	if(media_stream != NULL && media_stream->rtcp_component != NULL && media_stream->components != NULL) {
 		nice_agent_attach_recv(handle->agent, stream_id, component_id, g_main_loop_get_context(handle->iceloop), NULL, NULL);
 		/* Free the component */
 		janus_ice_component_destroy(media_stream->components, media_stream->rtcp_component);
