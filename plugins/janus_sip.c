@@ -3323,7 +3323,7 @@ static void *janus_sip_relay_thread(void *data) {
 
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(have_server_ip)
+			if(have_server_ip) && ((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0)
 				janus_sip_connect_sockets(session, &server_addr);
 			session->media.updated = FALSE;
 		}
