@@ -134,6 +134,11 @@ gboolean janus_is_ip_valid(const char *ip, int *family);
  * @returns A string containing the IP address, if successful, NULL otherwise */
 char *janus_address_to_ip(struct sockaddr *address);
 
+/*! \brief Get the port from a sockaddr address
+ * @param address The sockaddr address to get the port from
+ * @returns The port number, if successful, 0 otherwise */
+uint16_t janus_address_to_port(struct sockaddr *address);
+
 /*! \brief Create and lock a PID file
  * @param file Path to the PID file to use
  * @returns 0 if successful, a negative integer otherwise */

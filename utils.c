@@ -402,6 +402,26 @@ char *janus_address_to_ip(struct sockaddr *address) {
 	return addr ? g_strdup(addr) : NULL;
 }
 
+uint16_t janus_address_to_port(struct sockaddr *address) {
+	if(address == NULL)
+		return 0;
+	struct sockaddr_in *sin = NULL;
+	struct sockaddr_in6 *sin6 = NULL;
+
+	switch(address->sa_family) {
+		case AF_INET:
+			sin = (struct sockaddr_in *)address;
+			return ntohs(sin->sin_port);
+		case AF_INET6:
+			sin6 = (struct sockaddr_in6 *)address;
+			return ntohs(sin6->sin6_port);
+		default:
+			/* Unknown family */
+			break;
+	}
+	return 0;
+}
+
 /* PID file management */
 static char *pidfile = NULL;
 static int pidfd = -1;

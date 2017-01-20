@@ -97,6 +97,7 @@ static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
 static gboolean wss_janus_api_enabled = FALSE;
 static gboolean wss_admin_api_enabled = FALSE;
+static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -376,6 +377,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
 				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 			}
+		}
+
+		/* Check if we need to send events to handlers */
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_WEBSOCKETS_NAME);
 		}
 
 		item = janus_config_get_item_drilldown(config, "general", "ws_logging");
@@ -755,6 +764,12 @@ static void janus_websockets_destroy_client(
 	ws_client->context = NULL;
 #endif
 	ws_client->wsi = NULL;
+	/* Notify handlers about this transport being gone */
+	if(notify_events && gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("disconnected"));
+		gateway->notify_event(&janus_websockets_transport, ws_client->ts, info);
+	}
 	/* Notify core */
 	gateway->transport_gone(&janus_websockets_transport, ws_client->ts);
 	ws_client->ts->transport_p = NULL;
@@ -1024,6 +1039,14 @@ static int janus_websockets_common_callback(
 			libwebsocket_callback_on_writable(this, wsi);
 #endif
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- Ready to be used!\n", log_prefix, wsi);
+			/* Notify handlers about this new transport */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("connected"));
+				json_object_set_new(info, "admin_api", admin ? json_true() : json_false());
+				json_object_set_new(info, "ip", json_string(ip));
+				gateway->notify_event(&janus_websockets_transport, ws_client->ts, info);
+			}
 			return 0;
 		}
 		case LWS_CALLBACK_RECEIVE: {
