@@ -2137,6 +2137,7 @@ void *janus_ice_thread(void *data) {
 	JANUS_LOG(LOG_DBG, "[%"SCNu64"] Looping (ICE)...\n", handle->handle_id);
 	g_main_loop_run (loop);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
@@ -2462,6 +2463,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 
 	/* Note: in case this is not an OFFER, we don't know whether any medium are supported on the other side or not yet */
 	if(audio) {
@@ -3062,6 +3064,16 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 #endif
 	return 0;
+}
+
+void janus_ice_restart(janus_ice_handle *handle) {
+	if(!handle || !handle->agent || !handle->streams)
+		return;
+	/* FIXME Restart ICE */
+	if(nice_agent_restart(handle->agent) == FALSE) {
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE restart failed...\n", handle->handle_id);
+	}
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART);
 }
 
 void *janus_ice_send_thread(void *data) {

@@ -208,6 +208,10 @@ static struct janus_json_parameter id_parameters[] = {
 static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter watch_parameters[] = {
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"refresh", JANUS_JSON_BOOL, 0}
+};
 static struct janus_json_parameter create_parameters[] = {
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
@@ -432,6 +436,8 @@ typedef struct janus_streaming_context {
 typedef struct janus_streaming_session {
 	janus_plugin_session *handle;
 	janus_streaming_mountpoint *mountpoint;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
 	gboolean started;
 	gboolean paused;
 	janus_streaming_context context;
@@ -2066,15 +2072,20 @@ static void *janus_streaming_handler(void *data) {
 		json_t *result = NULL;
 		const char *sdp_type = NULL;
 		char *sdp = NULL;
+		gboolean sdp_update = FALSE;
+		if(json_object_get(msg->jsep, "update") != NULL)
+			sdp_update = json_is_true(json_object_get(msg->jsep, "update"));
 		/* All these requests can only be handled asynchronously */
 		if(!strcasecmp(request_text, "watch")) {
-			JANUS_VALIDATE_JSON_OBJECT(root, id_parameters,
+			JANUS_VALIDATE_JSON_OBJECT(root, watch_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
 			json_t *id = json_object_get(root, "id");
 			guint64 id_value = json_integer_value(id);
+			json_t *refresh = json_object_get(root, "refresh");
+			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
 			janus_mutex_lock(&mountpoints_mutex);
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints, &id_value);
 			if(mp == NULL) {
@@ -2094,36 +2105,47 @@ static void *janus_streaming_handler(void *data) {
 				goto error;
 			}
 			janus_mutex_unlock(&mountpoints_mutex);
-			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %"SCNu64"\n", id_value);
-			session->stopping = FALSE;
-			session->mountpoint = mp;
-			if(mp->streaming_type == janus_streaming_type_on_demand) {
-				GError *error = NULL;
-				char tname[16];
-				g_snprintf(tname, sizeof(tname), "mp %"SCNu64, id_value);
-				g_thread_try_new(tname, &janus_streaming_ondemand_thread, session, &error);
-				if(error != NULL) {
-					janus_refcount_decrease(&mp->ref);
-					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n", error->code, error->message ? error->message : "??");
-					error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
-					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the on-demand thread", error->code, error->message ? error->message : "??");
-					goto error;
+			/* Check if this is a new viewer, or if an update is taking place (i.e., ICE restart) */
+			if(sdp_update || do_refresh) {
+				/* Renegotiation: make sure the user provided an offer, and send answer */
+				JANUS_LOG(LOG_VERB, "Request to refresh mountpoint/stream %"SCNu64" subscription\n", id_value);
+				session->sdp_version++;		/* FIXME This needs to be increased when it changes */
+				/* If the user updated the session with an offer, we answer just this time */
+				sdp_type = sdp_update ? "answer" : "offer";
+				sdp_update = TRUE;
+			} else {
+				/* New viewer: we send an offer ourselves */
+				JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %"SCNu64"\n", id_value);
+				session->stopping = FALSE;
+				session->mountpoint = mp;
+				if(mp->streaming_type == janus_streaming_type_on_demand) {
+					GError *error = NULL;
+					char tname[16];
+					g_snprintf(tname, sizeof(tname), "mp %"SCNu64, id_value);
+					g_thread_try_new(tname, &janus_streaming_ondemand_thread, session, &error);
+					if(error != NULL) {
+						janus_refcount_decrease(&mp->ref);
+						JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n", error->code, error->message ? error->message : "??");
+						error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+						g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the on-demand thread", error->code, error->message ? error->message : "??");
+						goto error;
+					}
 				}
+				/* TODO Check if user is already watching a stream, if the video is active, etc. */
+				janus_mutex_lock(&mp->mutex);
+				mp->listeners = g_list_append(mp->listeners, session);
+				janus_mutex_unlock(&mp->mutex);
+				sdp_type = "offer";			/* We're always going to do the offer ourselves (unless there's an update later) */
+				session->sdp_version = 1;	/* FIXME This needs to be increased when it changes */
+				session->sdp_sessid = janus_get_real_time();
 			}
-			/* TODO Check if user is already watching a stream, if the video is active, etc. */
-			janus_mutex_lock(&mp->mutex);
-			mp->listeners = g_list_append(mp->listeners, session);
-			janus_mutex_unlock(&mp->mutex);
-			sdp_type = "offer";	/* We're always going to do the offer ourselves, never answer */
 			char sdptemp[2048];
 			memset(sdptemp, 0, 2048);
 			gchar buffer[512];
 			memset(buffer, 0, 512);
-			gint64 sessid = janus_get_real_time();
-			gint64 version = sessid;	/* FIXME This needs to be increased when it changes, so time should be ok */
 			g_snprintf(buffer, 512,
 				"v=0\r\no=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",
-					"-", sessid, version);
+					"-", session->sdp_sessid, session->sdp_version);
 			g_strlcat(sdptemp, buffer, 2048);
 			g_strlcat(sdptemp, "s=Streaming Test\r\nt=0 0\r\n", 2048);
 			if(mp->codecs.audio_pt >= 0) {
@@ -2177,9 +2199,9 @@ static void *janus_streaming_handler(void *data) {
 				g_strlcat(sdptemp, "a=sendonly\r\n", 2048);
 			}
 			sdp = g_strdup(sdptemp);
-			JANUS_LOG(LOG_VERB, "Going to offer this SDP:\n%s\n", sdp);
+			JANUS_LOG(LOG_VERB, "Going to %s this SDP:\n%s\n", sdp_type, sdp);
 			result = json_object();
-			json_object_set_new(result, "status", json_string("preparing"));
+			json_object_set_new(result, "status", json_string(sdp_update ? "refreshing" : "preparing"));
 		} else if(!strcasecmp(request_text, "start")) {
 			if(session->mountpoint == NULL) {
 				JANUS_LOG(LOG_VERB, "Can't start: no mountpoint set\n");
@@ -2336,11 +2358,14 @@ static void *janus_streaming_handler(void *data) {
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		if(msg_sdp) {
-			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (but we really don't care):\n%s\n", msg_sdp_type, msg_sdp);
+			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (%s):\n%s\n",
+				sdp_update ? "renegotiation occurring" : "but we really don't care", msg_sdp_type, msg_sdp);
 		}
 
 		/* Prepare JSON event */
 		json_t *jsep = json_pack("{ssss}", "type", sdp_type, "sdp", sdp);
+		if(sdp_update)
+			json_object_set_new(jsep, "update", json_true());
 		json_t *event = json_object();
 		json_object_set_new(event, "streaming", json_string("event"));
 		if(result != NULL)

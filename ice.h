@@ -171,6 +171,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO			(1 << 14)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
+#define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
 
 
 /*! \brief Janus media statistics
@@ -612,6 +613,9 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
  * @param[in] handle The Janus ICE handle this callback refers to
  * @param[in] component The Janus ICE component that is now ready to be used */
 void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component *component);
+/*! \brief Method to restart ICE and the connectivity checks
+ * @param[in] handle The Janus ICE handle this method refers to */
+void janus_ice_restart(janus_ice_handle *handle);
 ///@}
 
 #endif

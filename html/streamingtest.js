@@ -124,23 +124,28 @@ $(document).ready(function() {
 									if(jsep !== undefined && jsep !== null) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
-										// Answer
-										streaming.createAnswer(
-											{
-												jsep: jsep,
-												media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
-												success: function(jsep) {
-													Janus.debug("Got SDP!");
-													Janus.debug(jsep);
-													var body = { "request": "start" };
-													streaming.send({"message": body, "jsep": jsep});
-													$('#watch').html("Stop").removeAttr('disabled').click(stopStream);
-												},
-												error: function(error) {
-													Janus.error("WebRTC error:", error);
-													bootbox.alert("WebRTC error... " + JSON.stringify(error));
-												}
-											});
+										if(jsep.type === 'offer') {
+											// Offer from the plugin, let's answer
+											streaming.createAnswer(
+												{
+													jsep: jsep,
+													media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
+													success: function(jsep) {
+														Janus.debug("Got SDP!");
+														Janus.debug(jsep);
+														var body = { "request": "start" };
+														streaming.send({"message": body, "jsep": jsep});
+														$('#watch').html("Stop").removeAttr('disabled').click(stopStream);
+													},
+													error: function(error) {
+														Janus.error("WebRTC error:", error);
+														bootbox.alert("WebRTC error... " + JSON.stringify(error));
+													}
+												});
+										} else {
+											// Answer to our renegotiation attempt
+											streaming.handleRemoteJsep({jsep: jsep});
+										}
 									}
 								},
 								onremotestream: function(stream) {
