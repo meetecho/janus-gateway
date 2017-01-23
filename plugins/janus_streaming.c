@@ -2285,7 +2285,6 @@ static void *janus_streaming_handler(void *data) {
 			/* Done */
 			janus_refcount_decrease(&oldmp->ref);	/* This is for the request being done with it */
 			result = json_object();
-			json_object_set_new(result, "streaming", json_string("event"));
 			json_object_set_new(result, "switched", json_string("ok"));
 			json_object_set_new(result, "id", json_integer(id_value));
 			/* Also notify event handlers */
