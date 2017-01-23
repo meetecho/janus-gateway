@@ -333,6 +333,7 @@ gboolean janus_transport_is_api_secret_needed(janus_transport *plugin);
 gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
+void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event);
 
 static janus_transport_callbacks janus_handler_transport =
 	{
@@ -342,6 +343,8 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
+		.events_is_enabled = janus_events_is_enabled,
+		.notify_event = janus_transport_notify_event,
 	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -427,7 +430,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				}
 				/* Notify event handlers as well */
 				if(janus_events_is_enabled())
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session->session_id, "timeout");
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session->session_id, "timeout", NULL);
 
 				/* FIXME Is this safe? apparently it causes hash table errors on the console */
 				g_hash_table_iter_remove(&iter);
@@ -492,9 +495,6 @@ janus_session *janus_session_create(guint64 session_id) {
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session->session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
-	/* Notify event handlers */
-	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created");
 	return session;
 }
 
@@ -929,6 +929,17 @@ int janus_process_incoming_request(janus_request *request) {
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
 		/* Notify the source that a new session has been created */
 		request->transport->session_created(request->instance, session->session_id);
+		/* Notify event handlers */
+		if(janus_events_is_enabled()) {
+			/* Session created, add info on the transport that originated it */
+			json_t *transport = json_object();
+			json_object_set_new(transport, "transport", json_string(session->source->transport->get_package()));
+			char id[32];
+			memset(id, 0, sizeof(id));
+			g_snprintf(id, sizeof(id), "%p", session->source->instance);
+			json_object_set_new(transport, "id", json_string(id));
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created", transport);
+		}
 		/* Prepare JSON reply */
 		json_t *reply = janus_create_message("success", 0, transaction_text);
 		json_t *data = json_object();
@@ -1061,7 +1072,7 @@ int janus_process_incoming_request(janus_request *request) {
 		ret = janus_process_success(request, reply);
 		/* Notify event handlers as well */
 		if(janus_events_is_enabled())
-			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed");
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed", NULL);
 	} else if(!strcasecmp(message_text, "detach")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
@@ -2380,6 +2391,19 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 	if(!janus_auth_is_enabled())
 		return TRUE;
 	return token && janus_auth_check_token(token);
+}
+
+void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event) {
+	/* A plugin asked to notify an event to the handlers */
+	if(!plugin || !event || !json_is_object(event))
+		return;
+	/* Notify event handlers */
+	if(janus_events_is_enabled()) {
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_TRANSPORT,
+			0, plugin->get_package(), transport, event);
+	} else {
+		json_decref(event);
+	}
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {

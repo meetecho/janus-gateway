@@ -342,14 +342,24 @@ static void *janus_sampleevh_handler(void *data) {
 				switch(type) {
 					case JANUS_EVENT_TYPE_SESSION:
 						/* This is a session related event. The only info that is
-						 * provided is a name for the event itself. Here's an example
-						 * of a new session being created:
+						 * required is a name for the event itself: a "created"
+						 * event may also contain transport info, in the form of
+						 * the transport module that originated the session
+						 * (e.g., "janus.transport.http") and an internal unique
+						 * ID for the transport instance (which may be associated
+						 * to a connection or anything else within the specifics
+						 * of the transport module itself). Here's an example of
+						 * a new session being created:
 							{
 							   "type": 1,
 							   "timestamp": 3583879627,
 							   "session_id": 2004798115,
 							   "event": {
 								  "name": "created"
+							   },
+							   "transport": {
+							      "transport": "janus.transport.http",
+							      "id": "0x7fcb100008c0"
 							   }
 							}
 						*/

@@ -70,10 +70,22 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			/* Core events also allocate a json_t object for its data, unref it */
 			json_t *body = va_arg(args, json_t *);
 			json_decref(body);
-		} else if(type == JANUS_EVENT_TYPE_PLUGIN || type == JANUS_EVENT_TYPE_TRANSPORT) {
+		} else if(type == JANUS_EVENT_TYPE_SESSION) {
+			/* Session events may allocate a json_t object for transport-related info, unref it */
+			va_arg(args, char *);
+			json_t *transport = va_arg(args, json_t *);
+			if(transport != NULL)
+				json_decref(transport);
+		} else if(type == JANUS_EVENT_TYPE_PLUGIN) {
 			/* Plugin originated events also allocate a json_t object for the plugin data, skip some arguments and unref it */
 			va_arg(args, guint64);
 			va_arg(args, char *);
+			json_t *data = va_arg(args, json_t *);
+			json_decref(data);
+		} else if(type == JANUS_EVENT_TYPE_TRANSPORT) {
+			/* Transport originated events also allocate a json_t object for the transport data, skip some arguments and unref it */
+			va_arg(args, char *);
+			va_arg(args, void *);
 			json_t *data = va_arg(args, json_t *);
 			json_decref(data);
 		}
@@ -102,6 +114,9 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			/* For sessions, there's just a generic event name (what happened) */
 			char *name = va_arg(args, char *);
 			json_object_set_new(body, "name", json_string(name));
+			json_t *transport = va_arg(args, json_t *);
+			if(transport != NULL)
+				json_object_set(body, "transport", transport);
 			break;
 		}
 		case JANUS_EVENT_TYPE_HANDLE: {
@@ -143,14 +158,25 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			body = va_arg(args, json_t *);
 			break;
 		}
-		case JANUS_EVENT_TYPE_PLUGIN:
-		case JANUS_EVENT_TYPE_TRANSPORT: {
+		case JANUS_EVENT_TYPE_PLUGIN: {
 			/* For plugin-originated events, there's the handle ID, the plugin name, and a generic, plugin specific, json_t object */
 			guint64 handle_id = va_arg(args, guint64);
 			if(handle_id > 0)	/* Plugins and transports may not specify a session and handle ID for out of context events */
 				json_object_set_new(event, "handle_id", json_integer(handle_id));
 			char *name = va_arg(args, char *);
 			json_object_set_new(body, "plugin", json_string(name));
+			json_t *data = va_arg(args, json_t *);
+			json_object_set(body, "data", data);
+			break;
+		}
+		case JANUS_EVENT_TYPE_TRANSPORT: {
+			char *name = va_arg(args, char *);
+			json_object_set_new(body, "transport", json_string(name));
+			char *instance = va_arg(args, void *);
+			char id[32];
+			memset(id, 0, sizeof(id));
+			g_snprintf(id, sizeof(id), "%p", instance);
+			json_object_set_new(body, "id", json_string(id));
 			json_t *data = va_arg(args, json_t *);
 			json_object_set(body, "data", data);
 			break;
