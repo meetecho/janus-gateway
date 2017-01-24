@@ -1222,7 +1222,7 @@ int janus_process_incoming_request(janus_request *request) {
 							g_list_free(temp);
 							if(trickle == NULL)
 								continue;
-							if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+							if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 								/* FIXME Candidate is too old, discard it */
 								janus_ice_trickle_destroy(trickle);
 								/* FIXME We should report that */
@@ -2885,7 +2885,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					g_list_free(temp);
 					if(trickle == NULL)
 						continue;
-					if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+					if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 						/* FIXME Candidate is too old, discard it */
 						janus_ice_trickle_destroy(trickle);
 						/* FIXME We should report that */
