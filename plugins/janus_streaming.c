@@ -1574,13 +1574,15 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			if(mp->pin)
 				janus_config_add_item(config, mp->name, "pin", mp->pin);
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_STREAMING_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the mountpoint is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "streaming", json_string("created"));
 		json_object_set_new(response, "created", json_string(mp->name));
+		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", json_integer(mp->id));
 		json_object_set_new(ml, "description", json_string(mp->description));
@@ -1946,7 +1948,6 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	g_atomic_int_set(&session->hangingup, 0);
 	/* We only start streaming towards this user when we get this event */
 	session->context.a_last_ssrc = 0;
-	session->context.a_last_ssrc = 0;
 	session->context.a_last_ts = 0;
 	session->context.a_base_ts = 0;
 	session->context.a_base_ts_prev = 0;
@@ -2289,7 +2290,6 @@ static void *janus_streaming_handler(void *data) {
 			session->paused = FALSE;
 			/* Done */
 			result = json_object();
-			json_object_set_new(result, "streaming", json_string("event"));
 			json_object_set_new(result, "switched", json_string("ok"));
 			json_object_set_new(result, "id", json_integer(id_value));
 			/* Also notify event handlers */
@@ -2878,7 +2878,13 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
-		g_snprintf(uri, sizeof(uri), "%s/%s", url, vcontrol);
+		if(strstr(vcontrol, url) == vcontrol) {
+			/* The control attribute already contains the whole URL? */
+			g_snprintf(uri, sizeof(uri), "%s", vcontrol);
+		} else {
+			/* Append the control attribute to the URL */
+			g_snprintf(uri, sizeof(uri), "%s/%s", url, vcontrol);
+		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
 		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);

@@ -80,7 +80,8 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter attach_parameters[] = {
-	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"opaque_id", JSON_STRING, 0}
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -318,6 +319,7 @@ gboolean janus_transport_is_api_secret_needed(janus_transport *plugin);
 gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
+void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event);
 
 static janus_transport_callbacks janus_handler_transport =
 	{
@@ -327,6 +329,8 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
+		.events_is_enabled = janus_events_is_enabled,
+		.notify_event = janus_transport_notify_event,
 	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -406,7 +410,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				}
 				/* Notify event handlers as well */
 				if(janus_events_is_enabled())
-					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session->session_id, "timeout");
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session->session_id, "timeout", NULL);
 
 				/* Mark the session as over, we'll deal with it later */
 				session->timeout = 1;
@@ -469,9 +473,6 @@ janus_session *janus_session_create(guint64 session_id) {
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session->session_id), session);
 	janus_mutex_unlock(&sessions_mutex);
-	/* Notify event handlers */
-	if(janus_events_is_enabled())
-		janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created");
 	return session;
 }
 
@@ -674,6 +675,17 @@ int janus_process_incoming_request(janus_request *request) {
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
 		/* Notify the source that a new session has been created */
 		request->transport->session_created(request->instance, session->session_id);
+		/* Notify event handlers */
+		if(janus_events_is_enabled()) {
+			/* Session created, add info on the transport that originated it */
+			json_t *transport = json_object();
+			json_object_set_new(transport, "transport", json_string(session->source->transport->get_package()));
+			char id[32];
+			memset(id, 0, sizeof(id));
+			g_snprintf(id, sizeof(id), "%p", session->source->instance);
+			json_object_set_new(transport, "id", json_string(id));
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created", transport);
+		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -785,8 +797,10 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 			}
 		}
+		json_t *opaque = json_object_get(root, "opaque_id");
+		const char *opaque_id = opaque ? json_string_value(opaque) : NULL;
 		/* Create handle */
-		handle = janus_ice_handle_create(session);
+		handle = janus_ice_handle_create(session, opaque_id);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -843,7 +857,7 @@ int janus_process_incoming_request(janus_request *request) {
 		ret = janus_process_success(request, reply);
 		/* Notify event handlers as well */
 		if(janus_events_is_enabled())
-			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed");
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed", NULL);
 	} else if(!strcasecmp(message_text, "detach")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
@@ -1208,7 +1222,7 @@ int janus_process_incoming_request(janus_request *request) {
 							g_list_free(temp);
 							if(trickle == NULL)
 								continue;
-							if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+							if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 								/* FIXME Candidate is too old, discard it */
 								janus_ice_trickle_destroy(trickle);
 								/* FIXME We should report that */
@@ -2085,6 +2099,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		if(session->source && session->source->transport)
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
+		if(handle->opaque_id)
+			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
 		json_object_set_new(info, "created", json_integer(handle->created));
 		json_object_set_new(info, "send_thread_created", g_atomic_int_get(&handle->send_thread_created) ? json_true() : json_false());
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
@@ -2468,6 +2484,19 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 	if(!janus_auth_is_enabled())
 		return TRUE;
 	return token && janus_auth_check_token(token);
+}
+
+void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event) {
+	/* A plugin asked to notify an event to the handlers */
+	if(!plugin || !event || !json_is_object(event))
+		return;
+	/* Notify event handlers */
+	if(janus_events_is_enabled()) {
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_TRANSPORT,
+			0, plugin->get_package(), transport, event);
+	} else {
+		json_decref(event);
+	}
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {
@@ -2856,7 +2885,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					g_list_free(temp);
 					if(trickle == NULL)
 						continue;
-					if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+					if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 						/* FIXME Candidate is too old, discard it */
 						janus_ice_trickle_destroy(trickle);
 						/* FIXME We should report that */

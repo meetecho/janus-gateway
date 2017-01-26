@@ -941,7 +941,7 @@ static void *janus_videocall_handler(void *data) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("registered"));
 				json_object_set_new(info, "username", json_string(username_text));
-				gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+				gateway->notify_event(&janus_videocall_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
@@ -1282,7 +1282,7 @@ static void *janus_videocall_handler(void *data) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("hangup"));
 					json_object_set_new(info, "reason", json_string("Remote hangup"));
-					gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+					gateway->notify_event(&janus_videocall_plugin, peer->handle, info);
 				}
 			}
 		} else {

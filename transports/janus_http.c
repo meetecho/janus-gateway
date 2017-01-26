@@ -103,6 +103,7 @@ static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
 static gboolean http_janus_api_enabled = FALSE;
 static gboolean http_admin_api_enabled = FALSE;
+static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -570,6 +571,14 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
 				json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 			}
+		}
+
+		/* Check if we need to send events to handlers */
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_REST_NAME);
 		}
 
 		/* Check the base paths */
@@ -1060,6 +1069,21 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		*ptr = msg;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		ret = MHD_YES;
+		/* Notify handlers about this new transport instance */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("request"));
+			json_object_set_new(info, "admin_api", json_false());
+			const union MHD_ConnectionInfo *conninfo = MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
+			if(conninfo != NULL) {
+				char *ip = janus_address_to_ip((struct sockaddr *)conninfo->client_addr);
+				json_object_set_new(info, "ip", json_string(ip));
+				g_free(ip);
+				uint16_t port = janus_address_to_port((struct sockaddr *)conninfo->client_addr);
+				json_object_set_new(info, "port", json_integer(port));
+			}
+			gateway->notify_event(&janus_http_transport, msg, info);
+		}
 	} else {
 		JANUS_LOG(LOG_DBG, "Processing HTTP %s request on %s...\n", method, url);
 	}
@@ -1450,6 +1474,21 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		*ptr = msg;
 		MHD_get_connection_values(connection, MHD_HEADER_KIND, &janus_http_headers, msg);
 		ret = MHD_YES;
+		/* Notify handlers about this new transport instance */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("request"));
+			json_object_set_new(info, "admin_api", json_true());
+			const union MHD_ConnectionInfo *conninfo = MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
+			if(conninfo != NULL) {
+				char *ip = janus_address_to_ip((struct sockaddr *)conninfo->client_addr);
+				json_object_set_new(info, "ip", json_string(ip));
+				g_free(ip);
+				uint16_t port = janus_address_to_port((struct sockaddr *)conninfo->client_addr);
+				json_object_set_new(info, "port", json_integer(port));
+			}
+			gateway->notify_event(&janus_http_transport, msg, info);
+		}
 	}
 	/* Parse request */
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {

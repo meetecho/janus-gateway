@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var videocall = null;
+var opaqueId = "videocalltest-"+Janus.randomString(12);
+
 var started = false;
 var bitrateTimer = null;
 var spinner = null;
@@ -83,6 +85,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.videocall",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									videocall = pluginHandle;

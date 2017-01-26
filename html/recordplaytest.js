@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var recordplay = null;
+var opaqueId = "recordplaytest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 var bandwidth = 1024 * 1024;
@@ -85,6 +87,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.recordplay",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									recordplay = pluginHandle;

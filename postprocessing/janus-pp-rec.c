@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "       %s --parse source.mjr (only parse and re-order packets)\n", argv[0]);
 		return -1;
 	}
-	char *source = NULL, *destination = NULL;
+	char *source = NULL, *destination = NULL, *extension = NULL;
 	gboolean header_only = !strcmp(argv[1], "--header");
 	gboolean parse_only = !strcmp(argv[1], "--parse");
 	if(header_only || parse_only) {
@@ -122,6 +122,20 @@ int main(int argc, char *argv[])
 		source = argv[1];
 		destination = argv[2];
 		JANUS_LOG(LOG_INFO, "%s --> %s\n", source, destination);
+		/* Check the extension */
+		extension = strrchr(destination, '.');
+		if(extension == NULL) {
+			/* No extension? */
+			JANUS_LOG(LOG_ERR, "No extension? Unsupported target file\n");
+			exit(1);
+		}
+		if(strcasecmp(extension, ".opus") && strcasecmp(extension, ".wav") &&
+				strcasecmp(extension, ".webm") && strcasecmp(extension, ".mp4") &&
+				strcasecmp(extension, ".srt")) {
+			/* Unsupported extension? */
+			JANUS_LOG(LOG_ERR, "Unsupported extension '%s'\n", extension);
+			exit(1);
+		}
 	}
 	FILE *file = fopen(source, "rb");
 	if(file == NULL) {
@@ -180,15 +194,27 @@ int main(int argc, char *argv[])
 					video = 1;
 					data = 0;
 					vp8 = 1;
+					if(extension && strcasecmp(extension, ".webm")) {
+						JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
+						exit(1);
+					}
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_INFO, "This is an audio recording, assuming Opus\n");
 					video = 0;
 					data = 0;
 					opus = 1;
+					if(extension && strcasecmp(extension, ".opus")) {
+						JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to an .opus file\n");
+						exit(1);
+					}
 				} else if(prebuffer[0] == 'd') {
 					JANUS_LOG(LOG_INFO, "This is a text data recording, assuming SRT\n");
 					video = 0;
 					data = 1;
+					if(extension && strcasecmp(extension, ".srt")) {
+						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
+						exit(1);
+					}
 				} else {
 					JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
 					exit(1);
@@ -250,10 +276,22 @@ int main(int argc, char *argv[])
 				if(video) {
 					if(!strcasecmp(c, "vp8")) {
 						vp8 = 1;
+						if(extension && strcasecmp(extension, ".webm")) {
+							JANUS_LOG(LOG_ERR, "VP8 RTP packets can only be converted to a .webm file\n");
+							exit(1);
+						}
 					} else if(!strcasecmp(c, "vp9")) {
 						vp9 = 1;
+						if(extension && strcasecmp(extension, ".webm")) {
+							JANUS_LOG(LOG_ERR, "VP9 RTP packets can only be converted to a .webm file\n");
+							exit(1);
+						}
 					} else if(!strcasecmp(c, "h264")) {
 						h264 = 1;
+						if(extension && strcasecmp(extension, ".mp4")) {
+							JANUS_LOG(LOG_ERR, "H.264 RTP packets can only be converted to a .mp4 file\n");
+							exit(1);
+						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports VP8, VP9 and H.264 video for now (was '%s')...\n", c);
 						exit(1);
@@ -261,8 +299,16 @@ int main(int argc, char *argv[])
 				} else if(!video && !data) {
 					if(!strcasecmp(c, "opus")) {
 						opus = 1;
+						if(extension && strcasecmp(extension, ".opus")) {
+							JANUS_LOG(LOG_ERR, "Opus RTP packets can only be converted to a .opus file\n");
+							exit(1);
+						}
 					} else if(!strcasecmp(c, "g711")) {
 						g711 = 1;
+						if(extension && strcasecmp(extension, ".wav")) {
+							JANUS_LOG(LOG_ERR, "G.711 RTP packets can only be converted to a .wav file\n");
+							exit(1);
+						}
 					} else {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports Opus and G.711 audio for now (was '%s')...\n", c);
 						exit(1);
@@ -270,6 +316,10 @@ int main(int argc, char *argv[])
 				} else if(data) {
 					if(strcasecmp(c, "text")) {
 						JANUS_LOG(LOG_WARN, "The post-processor only supports text data for now (was '%s')...\n", c);
+						exit(1);
+					}
+					if(extension && strcasecmp(extension, ".srt")) {
+						JANUS_LOG(LOG_ERR, "Data channel packets can only be converted to a .srt file\n");
 						exit(1);
 					}
 				}

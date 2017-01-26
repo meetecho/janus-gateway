@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var echotest = null;
+var opaqueId = "echotest-"+Janus.randomString(12);
+
 var started = false;
 var bitrateTimer = null;
 var spinner = null;
@@ -89,6 +91,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.echotest",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									echotest = pluginHandle;

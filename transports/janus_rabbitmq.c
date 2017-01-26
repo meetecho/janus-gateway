@@ -104,6 +104,7 @@ static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
 static gboolean rmq_janus_api_enabled = FALSE;
 static gboolean rmq_admin_api_enabled = FALSE;
+static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -181,6 +182,14 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", item->value);
 			json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 		}
+	}
+
+	/* Check if we need to send events to handlers */
+	janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+	if(events != NULL && events->value != NULL)
+		notify_events = janus_is_true(events->value);
+	if(!notify_events && callback->events_is_enabled()) {
+		JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_RABBITMQ_NAME);
 	}
 
 	/* Handle configuration, starting from the server details */
@@ -369,6 +378,12 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		janus_mutex_init(&rmq_client->mutex);
 		/* Done */
 		JANUS_LOG(LOG_INFO, "Setup of RabbitMQ integration completed\n");
+		/* Notify handlers about this new transport */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("connected"));
+			gateway->notify_event(&janus_rabbitmq_transport, rmq_client, info);
+		}
 	}
 	g_free(rmqhost);
 	janus_config_destroy(config);
