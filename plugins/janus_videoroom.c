@@ -374,6 +374,7 @@ typedef struct janus_videoroom {
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
 	GHashTable *participants;	/* Map of potential publishers (we get subscribers from them) */
+	GHashTable *private_ids;	/* Map of existing private IDs */
 	volatile gint destroyed;	/* Whether this room has been destroyed */
 	gboolean check_tokens;		/* Whether to check tokens when participants join (see below) */
 	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
@@ -409,7 +410,7 @@ typedef struct janus_videoroom_publisher {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	guint64 user_id;	/* Unique ID in the room */
-	guint64 pvt_id;		/* This is sent to the publisher for mapping purposes, but shouldn't be shared with others */
+	guint32 pvt_id;		/* This is sent to the publisher for mapping purposes, but shouldn't be shared with others */
 	gchar *display;		/* Display name (just for fun) */
 	gchar *sdp;			/* The SDP this publisher negotiated, if any */
 	gboolean audio, video, data;		/* Whether audio, video and/or data is going to be sent by this publisher */
@@ -456,7 +457,7 @@ typedef struct janus_videoroom_subscriber {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	janus_videoroom_publisher *feed;	/* Participant this subscriber is subscribed to */
-	guint64 pvt_id;		/* Private ID of the participant that is subscribing (if available/provided) */
+	guint32 pvt_id;		/* Private ID of the participant that is subscribing (if available/provided) */
 	janus_videoroom_subscriber_context context;	/* Needed in case there are publisher switches on this subscriber */
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this publisher */
 	gboolean paused;
@@ -559,6 +560,7 @@ static void janus_videoroom_room_free(const janus_refcount *room_ref) {
 	g_free(room->room_pin);
 	g_free(room->rec_dir);
 	g_hash_table_destroy(room->participants);
+	g_hash_table_destroy(room->private_ids);
 	g_hash_table_destroy(room->allowed);
 }
 
@@ -880,6 +882,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_init(&videoroom->mutex);
 			janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
 			videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_videoroom_publisher_dereference);
+			videoroom->private_ids = g_hash_table_new(NULL, NULL);
 			videoroom->check_tokens = FALSE;	/* Static rooms can't have an "allowed" list yet, no hooks to the configuration file */
 			videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 			janus_mutex_lock(&rooms_mutex);
@@ -1060,6 +1063,7 @@ static void janus_videoroom_leave_or_unpublish(janus_videoroom_publisher *partic
 	janus_videoroom_notify_participants(participant, event);
 	if(is_leaving) {
 		g_hash_table_remove(participant->room->participants, &participant->user_id);
+		g_hash_table_remove(participant->room->private_ids, GUINT_TO_POINTER(participant->pvt_id));
 	}
 	json_decref(event);
 	janus_mutex_unlock(&participant->room->mutex);
@@ -1140,6 +1144,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				janus_videoroom *room = participant->room; 
 				json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
 				json_object_set_new(info, "id", json_integer(participant->user_id));
+				json_object_set_new(info, "private_id", json_integer(participant->pvt_id));
 				if(participant->display)
 					json_object_set_new(info, "display", json_string(participant->display));
 				if(participant->subscribers)
@@ -1168,6 +1173,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				if(feed) {
 					janus_videoroom *room = feed->room; 
 					json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
+					json_object_set_new(info, "private_id", json_integer(participant->pvt_id));
 					json_object_set_new(info, "feed_id", json_integer(feed->user_id));
 					if(feed->display)
 						json_object_set_new(info, "feed_display", json_string(feed->display));
@@ -1464,6 +1470,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		janus_mutex_init(&videoroom->mutex);
 		janus_refcount_init(&videoroom->ref, janus_videoroom_room_free);
 		videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+		videoroom->private_ids = g_hash_table_new(NULL, NULL);
 		videoroom->allowed = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 		if(allowed != NULL) {
 			/* Populate the "allowed" list as an ACL for people trying to join */
@@ -2795,9 +2802,9 @@ static void *janus_videoroom_handler(void *data) {
 				const char *display_text = display ? json_string_value(display) : NULL;
 				guint64 user_id = 0;
 				json_t *id = json_object_get(root, "id");
+				janus_mutex_lock(&videoroom->mutex);
 				if(id) {
 					user_id = json_integer_value(id);
-					janus_mutex_lock(&videoroom->mutex);
 					if(g_hash_table_lookup(videoroom->participants, &user_id) != NULL) {
 						janus_mutex_unlock(&videoroom->mutex);
 						/* User ID already taken */
@@ -2806,11 +2813,9 @@ static void *janus_videoroom_handler(void *data) {
 						g_snprintf(error_cause, 512, "User ID %"SCNu64" already exists", user_id);
 						goto error;
 					}
-					janus_mutex_unlock(&videoroom->mutex);
 				}
 				if(user_id == 0) {
 					/* Generate a random ID */
-					janus_mutex_lock(&videoroom->mutex);
 					while(user_id == 0) {
 						user_id = janus_random_uint64();
 						if(g_hash_table_lookup(videoroom->participants, &user_id) != NULL) {
@@ -2818,7 +2823,6 @@ static void *janus_videoroom_handler(void *data) {
 							user_id = 0;
 						}
 					}
-					janus_mutex_unlock(&videoroom->mutex);
 				}
 				JANUS_LOG(LOG_VERB, "  -- Publisher ID: %"SCNu64"\n", user_id);
 				/* Process the request */
@@ -2910,7 +2914,15 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->udp_sock = -1;
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
-				publisher->pvt_id = janus_random_uint64();
+				publisher->pvt_id = 0;
+				while(publisher->pvt_id == 0) {
+					publisher->pvt_id = janus_random_uint32();
+					if(g_hash_table_lookup(videoroom->private_ids, GUINT_TO_POINTER(publisher->pvt_id)) != NULL) {
+						/* Private ID already taken, try another one */
+						publisher->pvt_id = 0;
+					}
+					g_hash_table_insert(videoroom->private_ids, GUINT_TO_POINTER(publisher->pvt_id), publisher);
+				}
 				g_atomic_int_set(&publisher->destroyed, 0);
 				janus_refcount_init(&publisher->ref, janus_videoroom_publisher_free);
 				/* In case we also wanted to configure */
@@ -2943,7 +2955,6 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *list = json_array();
 				GHashTableIter iter;
 				gpointer value;
-				janus_mutex_lock(&publisher->room->mutex);
 				janus_refcount_increase(&publisher->ref);
 				g_hash_table_insert(publisher->room->participants, janus_uint64_dup(publisher->user_id), publisher);
 				g_hash_table_iter_init(&iter, publisher->room->participants);

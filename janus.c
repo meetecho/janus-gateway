@@ -796,7 +796,7 @@ static void janus_request_ice_handle_answer(janus_ice_handle *handle, int audio,
 			g_list_free(temp);
 			if(trickle == NULL)
 				continue;
-			if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+			if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 				/* FIXME Candidate is too old, discard it */
 				janus_ice_trickle_destroy(trickle);
 				/* FIXME We should report that */
