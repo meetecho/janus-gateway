@@ -23,6 +23,8 @@ static void janus_transport_session_free(const janus_refcount *transport_ref) {
 
 janus_transport_session *janus_transport_session_create(void *transport_p, void (*p_free)(void *)) {
 	janus_transport_session *tp = g_malloc0(sizeof(janus_transport_session));
+	if(tp == NULL)
+		return NULL;
 	tp->transport_p = transport_p;
 	tp->p_free = p_free;
 	g_atomic_int_set(&tp->destroyed, 0);

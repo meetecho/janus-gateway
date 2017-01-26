@@ -702,6 +702,10 @@ static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_publisher *p, cons
 		return 0;
 	}
 	rtp_forwarder *forward = g_malloc0(sizeof(rtp_forwarder));
+	if(forward == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return 0;
+	}
 	forward->is_video = is_video;
 	forward->serv_addr.sin_family = AF_INET;
 	inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
@@ -795,6 +799,11 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
 			janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
+			if(videoroom == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				cl = cl->next;
+				continue;
+			}
 			videoroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
@@ -985,6 +994,11 @@ void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}	
 	janus_videoroom_session *session = (janus_videoroom_session *)g_malloc0(sizeof(janus_videoroom_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		*error = -2;
+		return;
+	}
 	session->handle = handle;
 	session->participant_type = janus_videoroom_p_type_none;
 	session->participant = NULL;
@@ -1361,6 +1375,12 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		/* Create the room */
 		janus_videoroom *videoroom = g_malloc0(sizeof(janus_videoroom));
+		if(videoroom == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "Memory error");
+			goto plugin_response;
+		}
 		/* Generate a random ID */
 		if(room_id == 0) {
 			while(room_id == 0) {
@@ -2076,6 +2096,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		/* These messages are handled asynchronously */
 
 		janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
+		if(msg == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
+		}
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -2361,6 +2385,10 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	}
 	/* Get a string out of the data */
 	char *text = g_malloc0(len+1);
+	if(text == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
@@ -2805,6 +2833,12 @@ static void *janus_videoroom_handler(void *data) {
 					recfile = json_object_get(root, "filename");
 				}
 				janus_videoroom_publisher *publisher = g_malloc0(sizeof(janus_videoroom_publisher));
+				if(publisher == NULL) {
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+					g_snprintf(error_cause, 512, "Memory error");
+					goto error;
+				}
 				publisher->session = session;
 				publisher->room = videoroom;
 				videoroom = NULL;
@@ -2972,6 +3006,12 @@ static void *janus_videoroom_handler(void *data) {
 					janus_refcount_increase(&publisher->session->ref);
 					janus_mutex_unlock(&videoroom->mutex);
 					janus_videoroom_subscriber *subscriber = g_malloc0(sizeof(janus_videoroom_subscriber));
+					if(subscriber == NULL) {
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+						g_snprintf(error_cause, 512, "Memory error");
+						goto error;
+					}
 					subscriber->session = session;
 					subscriber->room = videoroom;
 					videoroom = NULL;

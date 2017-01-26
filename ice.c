@@ -445,6 +445,10 @@ janus_ice_trickle *janus_ice_trickle_new(janus_ice_handle *handle, const char *t
 	if(transaction == NULL || candidate == NULL)
 		return NULL;
 	janus_ice_trickle *trickle = g_malloc0(sizeof(janus_ice_trickle));
+	if(trickle == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
 	trickle->handle = handle;
 	janus_refcount_increase(&handle->ref);
 	trickle->received = janus_get_monotonic_time();
@@ -1819,43 +1823,47 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				if(buflen > 0) {
 					/* Update the last sec queue as well */
 					janus_ice_stats_item *s = g_malloc0(sizeof(janus_ice_stats_item));
-					s->bytes = buflen;
-					s->when = janus_get_monotonic_time();
-					janus_mutex_lock(&component->mutex);
-					if(!video) {
-						if(component->in_stats.audio_bytes == 0 || component->in_stats.audio_notified_lastsec) {
-							/* We either received our first audio packet, or we started receiving it again after missing more than a second */
-							component->in_stats.audio_notified_lastsec = FALSE;
-							janus_ice_notify_media(handle, FALSE, TRUE);
-						}
-						component->in_stats.audio_packets++;
-						component->in_stats.audio_bytes += buflen;
-						component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
-						if(g_list_length(component->in_stats.audio_bytes_lastsec) > 100) {
-							GList *first = g_list_first(component->in_stats.audio_bytes_lastsec);
-							s = (janus_ice_stats_item *)first->data;
-							first->data = NULL;
-							component->in_stats.audio_bytes_lastsec = g_list_delete_link(component->in_stats.audio_bytes_lastsec, first);
-							g_free(s);
-						}
+					if(s == NULL) {
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
 					} else {
-						if(component->in_stats.video_bytes == 0 || component->in_stats.video_notified_lastsec) {
-							/* We either received our first video packet, or we started receiving it again after missing more than a second */
-							component->in_stats.video_notified_lastsec = FALSE;
-							janus_ice_notify_media(handle, TRUE, TRUE);
+						s->bytes = buflen;
+						s->when = janus_get_monotonic_time();
+						janus_mutex_lock(&component->mutex);
+						if(!video) {
+							if(component->in_stats.audio_bytes == 0 || component->in_stats.audio_notified_lastsec) {
+								/* We either received our first audio packet, or we started receiving it again after missing more than a second */
+								component->in_stats.audio_notified_lastsec = FALSE;
+								janus_ice_notify_media(handle, FALSE, TRUE);
+							}
+							component->in_stats.audio_packets++;
+							component->in_stats.audio_bytes += buflen;
+							component->in_stats.audio_bytes_lastsec = g_list_append(component->in_stats.audio_bytes_lastsec, s);
+							if(g_list_length(component->in_stats.audio_bytes_lastsec) > 100) {
+								GList *first = g_list_first(component->in_stats.audio_bytes_lastsec);
+								s = (janus_ice_stats_item *)first->data;
+								first->data = NULL;
+								component->in_stats.audio_bytes_lastsec = g_list_delete_link(component->in_stats.audio_bytes_lastsec, first);
+								g_free(s);
+							}
+						} else {
+							if(component->in_stats.video_bytes == 0 || component->in_stats.video_notified_lastsec) {
+								/* We either received our first video packet, or we started receiving it again after missing more than a second */
+								component->in_stats.video_notified_lastsec = FALSE;
+								janus_ice_notify_media(handle, TRUE, TRUE);
+							}
+							component->in_stats.video_packets++;
+							component->in_stats.video_bytes += buflen;
+							component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
+							if(g_list_length(component->in_stats.video_bytes_lastsec) > 100) {
+								GList *first = g_list_first(component->in_stats.video_bytes_lastsec);
+								s = (janus_ice_stats_item *)first->data;
+								first->data = NULL;
+								component->in_stats.video_bytes_lastsec = g_list_delete_link(component->in_stats.video_bytes_lastsec, first);
+								g_free(s);
+							}
 						}
-						component->in_stats.video_packets++;
-						component->in_stats.video_bytes += buflen;
-						component->in_stats.video_bytes_lastsec = g_list_append(component->in_stats.video_bytes_lastsec, s);
-						if(g_list_length(component->in_stats.video_bytes_lastsec) > 100) {
-							GList *first = g_list_first(component->in_stats.video_bytes_lastsec);
-							s = (janus_ice_stats_item *)first->data;
-							first->data = NULL;
-							component->in_stats.video_bytes_lastsec = g_list_delete_link(component->in_stats.video_bytes_lastsec, first);
-							g_free(s);
-						}
+						janus_mutex_unlock(&component->mutex);
 					}
-					janus_mutex_unlock(&component->mutex);
 				}
 
 				/* Update the RTCP context as well */
@@ -1895,10 +1903,14 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					while(cur_seqn != new_seqn) {
 						cur_seqn += (guint16)1; /* can wrap */
 						seq_info_t *seq_obj = g_malloc0(sizeof(seq_info_t));
-						seq_obj->seq = cur_seqn;
-						seq_obj->ts = now;
-						seq_obj->state = (cur_seqn == new_seqn) ? SEQ_RECVED : SEQ_MISSING;
-						janus_seq_append(last_seqs, seq_obj);
+						if(seq_obj == NULL) {
+							JANUS_LOG(LOG_FATAL, "Memory error!\n");
+						} else {
+							seq_obj->seq = cur_seqn;
+							seq_obj->ts = now;
+							seq_obj->state = (cur_seqn == new_seqn) ? SEQ_RECVED : SEQ_MISSING;
+							janus_seq_append(last_seqs, seq_obj);
+						}
 						last_seqs_len++;
 					}
 				}
@@ -2050,7 +2062,16 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 									retransmits_cnt++;
 									/* Enqueue it */
 									janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+									if(pkt == NULL) {
+										JANUS_LOG(LOG_FATAL, "Memory error!\n");
+										break;
+									}
 									pkt->data = g_malloc0(p->length);
+									if(pkt->data == NULL) {
+										JANUS_LOG(LOG_FATAL, "Memory error!\n");
+										g_free(pkt);
+										break;
+									}
 									memcpy(pkt->data, p->data, p->length);
 									pkt->length = p->length;
 									pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -2666,8 +2687,16 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
 		audio_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
 		audio_stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+		if(audio_stream->audio_rtcp_ctx == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return -1;
+		}
 		audio_stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 		audio_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+		if(audio_stream->video_rtcp_ctx == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return -1;
+		}
 		audio_stream->video_rtcp_ctx->tb = 90000;
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
@@ -2829,6 +2858,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->audio_ssrc = 0;
 		video_stream->audio_ssrc_peer = 0;
 		video_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
+		if(video_stream->audio_rtcp_ctx == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return -1;
+		}
 		video_stream->video_rtcp_ctx->tb = 90000;
 		video_stream->components = g_hash_table_new(NULL, NULL);
 		janus_mutex_init(&video_stream->mutex);
@@ -3385,21 +3418,25 @@ void *janus_ice_send_thread(void *data) {
 					/* There's a REMB, prepend a RR as it won't work otherwise */
 					int rrlen = 32;
 					char *rtcpbuf = g_malloc0(rrlen+pkt->length);
-					rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
-					rr->header.version = 2;
-					rr->header.type = RTCP_RR;
-					rr->header.rc = 1;
-					rr->header.length = htons((rrlen/4)-1);
-					janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
-					if(stream && stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd)
-						janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
-					/* Append REMB */
-					memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
-					/* Free old packet and update */
-					char *prev_data = pkt->data;
-					pkt->data = rtcpbuf;
-					pkt->length = rrlen+pkt->length;
-					g_clear_pointer(&prev_data, g_free);
+					if(rtcpbuf == NULL) {
+						JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					} else {
+						rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
+						rr->header.version = 2;
+						rr->header.type = RTCP_RR;
+						rr->header.rc = 1;
+						rr->header.length = htons((rrlen/4)-1);
+						janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+						if(stream && stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd)
+							janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
+						/* Append REMB */
+						memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
+						/* Free old packet and update */
+						char *prev_data = pkt->data;
+						pkt->data = rtcpbuf;
+						pkt->length = rrlen+pkt->length;
+						g_clear_pointer(&prev_data, g_free);
+					}
 				}
 				/* FIXME Copy in a buffer and fix SSRC */
 				char sbuf[JANUS_BUFSIZE];
@@ -3547,14 +3584,23 @@ void *janus_ice_send_thread(void *data) {
 						if(max_nack_queue > 0) {
 							/* Save the packet for retransmissions that may be needed later */
 							janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
-							p->data = (char *)g_malloc0(protected);
-							memcpy(p->data, sbuf, protected);
-							p->length = protected;
-							p->created = janus_get_monotonic_time();
-							p->last_retransmit = 0;
-							janus_mutex_lock(&component->mutex);
-							component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
-							janus_mutex_unlock(&component->mutex);
+							if(p == NULL) {
+								JANUS_LOG(LOG_FATAL, "Memory error!\n");
+							} else {
+								p->data = (char *)g_malloc0(protected);
+								if(p->data == NULL) {
+									JANUS_LOG(LOG_FATAL, "Memory error!\n");
+									g_free(p);
+								} else {
+									memcpy(p->data, sbuf, protected);
+									p->length = protected;
+									p->created = janus_get_monotonic_time();
+									p->last_retransmit = 0;
+									janus_mutex_lock(&component->mutex);
+									component->retransmit_buffer = g_list_append(component->retransmit_buffer, p);
+									janus_mutex_unlock(&component->mutex);
+								}
+							}
 						}
 					}
 				}
@@ -3636,7 +3682,16 @@ void janus_ice_relay_rtp(janus_ice_handle *handle, int video, char *buf, int len
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+	if(pkt == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	pkt->data = g_malloc0(len);
+	if(pkt->data == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		g_free(pkt);
+		return;
+	}
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3664,7 +3719,16 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+	if(pkt == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	pkt->data = g_malloc0(len);
+	if(pkt->data == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		g_free(pkt);
+		return;
+	}
 	memcpy(pkt->data, rtcp_buf, rtcp_len);
 	pkt->length = rtcp_len;
 	pkt->type = video ? JANUS_ICE_PACKET_VIDEO : JANUS_ICE_PACKET_AUDIO;
@@ -3688,7 +3752,16 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len) {
 		return;
 	/* Queue this packet */
 	janus_ice_queued_packet *pkt = (janus_ice_queued_packet *)g_malloc0(sizeof(janus_ice_queued_packet));
+	if(pkt == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	pkt->data = g_malloc0(len);
+	if(pkt->data == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		g_free(pkt);
+		return;
+	}
 	memcpy(pkt->data, buf, len);
 	pkt->length = len;
 	pkt->type = JANUS_ICE_PACKET_DATA;

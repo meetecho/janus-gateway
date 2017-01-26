@@ -419,6 +419,10 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			size_t size = ftell(pem);
 			fseek(pem, 0L, SEEK_SET);
 			cert_pem_bytes = g_malloc0(size);
+			if(cert_pem_bytes == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				return NULL;
+			}
 			char *index = cert_pem_bytes;
 			int read = 0, tot = size;
 			while((read = fread(index, sizeof(char), tot, pem)) > 0) {
@@ -433,6 +437,10 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			size_t size = ftell(key);
 			fseek(key, 0L, SEEK_SET);
 			cert_key_bytes = g_malloc0(size);
+			if(cert_key_bytes == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				return NULL;
+			}
 			char *index = cert_key_bytes;
 			int read = 0, tot = size;
 			while((read = fread(index, sizeof(char), tot, key)) > 0) {
@@ -953,6 +961,11 @@ void janus_http_session_created(janus_transport_session *transport, guint64 sess
 		return;
 	}
 	janus_http_session *session = g_malloc0(sizeof(janus_http_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		janus_mutex_unlock(&sessions_mutex);
+		return;
+	}
 	session->session_id = session_id;
 	session->events = g_async_queue_new();
 	g_atomic_int_set(&session->destroyed, 0);

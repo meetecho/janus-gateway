@@ -481,6 +481,10 @@ int janus_sctp_send_open_request_message(struct socket *sock, uint16_t stream, u
 	JANUS_LOG(LOG_VERB, "Using label '%s' (%zu, %u with padding)\n", label, strlen(label), label_size);
 
 	req = g_malloc0(sizeof(janus_datachannel_open_request) + label_size);
+	if(req == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return -1;
+	}
 	memset(req, 0, sizeof(janus_datachannel_open_request) + label_size);
 	req->msg_type = DATA_CHANNEL_OPEN_REQUEST;
 	switch (pr_policy) {
@@ -838,8 +842,12 @@ void janus_sctp_handle_open_request_message(janus_sctp_association *sctp, janus_
 	guint len = ntohs(req->label_length);
 	if(len > 0 && len < length) {
 		label = g_malloc0(len+1);
-		memcpy(label, req->label, len);
-		label[len] = '\0'; 
+		if(label == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		} else {
+			memcpy(label, req->label, len);
+			label[len] = '\0';
+		}
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Opened channel '%s' (id=%"SCNu16") (%d/%d/%d)\n", sctp->handle_id,
 		label ? label : "??",

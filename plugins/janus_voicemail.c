@@ -412,6 +412,11 @@ void janus_voicemail_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}	
 	janus_voicemail_session *session = (janus_voicemail_session *)g_malloc0(sizeof(janus_voicemail_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		*error = -2;
+		return;
+	}
 	session->handle = handle;
 	session->recording_id = janus_random_uint64();
 	session->start_time = 0;
@@ -488,6 +493,10 @@ struct janus_plugin_result *janus_voicemail_handle_message(janus_plugin_session 
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 
 	janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
+	if(msg == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
+	}
 
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);

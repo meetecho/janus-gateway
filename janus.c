@@ -605,6 +605,10 @@ json_t *janus_session_handles_list_json(janus_session *session) {
 /* Requests management */
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
 	janus_request *request = (janus_request *)g_malloc0(sizeof(janus_request));
+	if(request == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
 	request->transport = transport;
 	request->instance = instance;
 	janus_refcount_increase(&instance->ref);

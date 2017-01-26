@@ -508,6 +508,11 @@ int janus_rabbitmq_send_message(janus_transport_session *transport, void *reques
 	JANUS_LOG(LOG_HUGE, "Sending %s API %s via RabbitMQ\n", admin ? "admin" : "Janus", request_id ? "response" : "event");
 	/* FIXME Add to the queue of outgoing messages */
 	janus_rabbitmq_response *response = (janus_rabbitmq_response *)g_malloc0(sizeof(janus_rabbitmq_response));
+	if(response == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		json_decref(message);
+		return -1;
+	}
 	response->admin = admin;
 	response->payload = message;
 	response->correlation_id = (char *)request_id;
@@ -585,6 +590,10 @@ void *janus_rmq_in_thread(void *data) {
 		char *correlation = NULL;
 		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
 			correlation = (char *)g_malloc0(p->correlation_id.len+1);
+			if(correlation == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				continue;
+			}
 			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
 			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
 		}
@@ -594,6 +603,10 @@ void *janus_rmq_in_thread(void *data) {
 		/* And the body */
 		uint64_t total = frame.payload.properties.body_size, received = 0;
 		char *payload = (char *)g_malloc0(total+1), *index = payload;
+		if(payload == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			continue;
+		}
 		while(received < total) {
 			amqp_simple_wait_frame(rmq_client->rmq_conn, &frame);
 			JANUS_LOG(LOG_VERB, "Frame type %d, channel %d\n", frame.frame_type, frame.channel);
