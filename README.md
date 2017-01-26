@@ -43,7 +43,8 @@ A couple of plugins depend on a few more libraries:
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
 * [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
-interested in RTSP support in the Streaming plugin)
+interested in RTSP support in the Streaming plugin or in the sample
+Event Handler plugin)
 
 Additionally, you'll need the following libraries and tools:
 
@@ -74,10 +75,14 @@ On Ubuntu or Debian, it would require something like this:
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
+In case you're interested in compiling the sample Event Handler plugin,
+you'll need to install the development version of libcurl as well (usually
+`libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
+
 If your distro ships a pre-1.5 version of libsrtp, it may be better to
-uninstall that version and [install 1.5 manually](https://github.com/cisco/libsrtp/releases).
+uninstall that version and [install 1.5 or 2.0.0 manually](https://github.com/cisco/libsrtp/releases).
 In fact, 1.4.x is known to cause several issues with WebRTC. Installation
-is quite straightforward:
+of version 1.5.4 is quite straightforward:
 
 	wget https://github.com/cisco/libsrtp/archive/v1.5.4.tar.gz
 	tar xfv v1.5.4.tar.gz
@@ -85,8 +90,21 @@ is quite straightforward:
 	./configure --prefix=/usr --enable-openssl
 	make shared_library && sudo make install
 
-* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
-script if you're installing on a x86_64 distribution.
+The instructions for version 2.0.0 is practically the same:
+
+	wget https://github.com/cisco/libsrtp/archive/v2.0.0.tar.gz
+	tar xfv v2.0.0.tar.gz
+	cd libsrtp-2.0.0
+	./configure --prefix=/usr --enable-openssl
+	make shared_library && sudo make install
+
+The Janus configure script autodetects which one you have installed and
+links to the correct library automatically, choosing v2.0.0 if both are
+installed. If you want v1.5.4 to be picked, pass `--disable-libsrtp2`
+when configuring Janus to force it to use the older version instead.
+
+* *Note:* when installing libsrtp, no matter which version, you may need to pass
+--libdir=/usr/lib64 to the configure script if you're installing on a x86_64 distribution.
 
 If you want to make use of BoringSSL instead of OpenSSL (e.g., because
 you want to take advantage of `--enable-dtls-settimeout`), you'll have
@@ -280,7 +298,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.2.1
+	janus 0.2.2
 
 	Usage: janus [OPTIONS]...
 
@@ -338,6 +356,7 @@ or on the command line:
                                   default)
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
+	-e, --event-handlers          Enable event handlers  (default=off)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:

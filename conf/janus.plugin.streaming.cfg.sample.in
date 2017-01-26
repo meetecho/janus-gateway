@@ -40,6 +40,8 @@
 [general]
 ;admin_key = supersecret		; If set, mountpoints can be created via API
 								; only if this key is provided in the request
+;events = no					; Whether events should be sent to event
+								; handlers (default is yes)
 
 [gstreamer-sample]
 type = rtp

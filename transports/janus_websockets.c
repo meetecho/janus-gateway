@@ -1202,9 +1202,9 @@ static int janus_websockets_common_callback(
 		}
 		default:
 			if(wsi != NULL) {
-				JANUS_LOG(LOG_VERB, "[%s-%p] %d (%s)\n", log_prefix, wsi, reason, janus_websockets_reason_string(reason));
+				JANUS_LOG(LOG_HUGE, "[%s-%p] %d (%s)\n", log_prefix, wsi, reason, janus_websockets_reason_string(reason));
 			} else {
-				JANUS_LOG(LOG_VERB, "[%s] %d (%s)\n", log_prefix, reason, janus_websockets_reason_string(reason));
+				JANUS_LOG(LOG_HUGE, "[%s] %d (%s)\n", log_prefix, reason, janus_websockets_reason_string(reason));
 			}
 			break;
 	}

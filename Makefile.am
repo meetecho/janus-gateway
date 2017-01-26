@@ -12,7 +12,7 @@ AM_CFLAGS = \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
 AM_CFLAGS += -Wno-undef  # sofiasip is not -Wundef--safe
 AM_CFLAGS += -Wno-redundant-decls  # sofiasip also contains redundant declarations
-AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT
+AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT and JANUS_EVENTHANDLER_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
@@ -29,8 +29,9 @@ bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
 header_HEADERS = \
-	plugins/plugin.h transports/transport.h apierror.h config.h debug.h dtls.h \
-	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h sdp-utils.h turnrest.h utils.h log.h
+	plugins/plugin.h transports/transport.h events/eventhandler.h \
+	apierror.h config.h debug.h dtls.h events.h janus.h ice.h mutex.h \
+	record.h rtcp.h rtp.h sctp.h sdp.h sdp-utils.h turnrest.h utils.h log.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -43,6 +44,9 @@ plugin_LTLIBRARIES = $(NULL)
 
 transportdir = $(libdir)/janus/transports
 transport_LTLIBRARIES = $(NULL)
+
+eventdir = $(libdir)/janus/events
+event_LTLIBRARIES = $(NULL)
 
 SUBDIRS = html
 html_DATA = README.md
@@ -60,6 +64,7 @@ recordings_DATA = $(NULL)
 	    s|[@]certdir[@]|$(certdir)|;\
 	    s|[@]plugindir[@]|$(plugindir)|;\
 	    s|[@]transportdir[@]|$(transportdir)|;\
+	    s|[@]eventdir[@]|$(eventdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
@@ -85,6 +90,8 @@ janus_SOURCES = \
 	dtls.h \
 	dtls-bio.c \
 	dtls-bio.h \
+	events.c \
+	events.h \
 	ice.c \
 	ice.h \
 	janus.c \
@@ -96,6 +103,7 @@ janus_SOURCES = \
 	record.h \
 	rtcp.c \
 	rtcp.h \
+	rtp.c \
 	rtp.h \
 	sctp.c \
 	sctp.h \
@@ -110,6 +118,7 @@ janus_SOURCES = \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
+	events/eventhandler.h \
 	$(NULL)
 
 janus_CFLAGS = \
@@ -117,6 +126,7 @@ janus_CFLAGS = \
 	$(JANUS_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
+	-DEVENTDIR=\"$(eventdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
@@ -125,7 +135,6 @@ janus_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
-	-lsrtp \
 	$(NULL)
 
 BUILT_SOURCES = cmdline.c cmdline.h
@@ -199,6 +208,29 @@ transports_libjanus_pfunix_la_LDFLAGS = $(transports_ldflags)
 transports_libjanus_pfunix_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.pfunix.cfg.sample
 EXTRA_DIST += conf/janus.transport.pfunix.cfg.sample
+endif
+
+##
+# Event handlers
+##
+
+events_cflags = \
+	$(AM_CFLAGS) \
+	$(EVENTS_CFLAGS) \
+	$(NULL)
+
+events_libadd = \
+	$(EVENTS_LIBS) \
+	$(NULL)
+
+if ENABLE_SAMPLEEVH
+event_LTLIBRARIES += events/libjanus_sampleevh.la
+events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
+events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl
+events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.sampleevh.cfg.sample
+EXTRA_DIST += conf/janus.eventhandler.sampleevh.cfg.sample
 endif
 
 ##

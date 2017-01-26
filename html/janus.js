@@ -167,7 +167,7 @@ Janus.init = function(options) {
 				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
 						Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy();
+					Janus.sessions[s].destroy({asyncRequest: false});
 				}
 			}
 			if(oldOBF && typeof oldOBF == "function")
@@ -670,12 +670,14 @@ function Janus(gatewayCallbacks) {
 	}
 
 	// Private method to destroy a session
-	function destroySession(callbacks, syncRequest) {
-		syncRequest = (syncRequest === true);
-		Janus.log("Destroying session " + sessionId + " (sync=" + syncRequest + ")");
+	function destroySession(callbacks) {
 		callbacks = callbacks || {};
 		// FIXME This method triggers a success even when we fail
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
+		var asyncRequest = true;
+		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
+			asyncRequest = (callbacks.asyncRequest === true);
+		Janus.log("Destroying session " + sessionId + " (async=" + asyncRequest + ")");
 		if(!connected) {
 			Janus.warn("Is the gateway down? (connected=false)");
 			callbacks.success();
@@ -692,7 +694,7 @@ function Janus(gatewayCallbacks) {
 		for(var ph in pluginHandles) {
 			var phv = pluginHandles[ph];
 			Janus.log("Destroying handle " + phv.id + " (" + phv.plugin + ")");
-			destroyHandle(phv.id, null, syncRequest);
+			destroyHandle(phv.id, {asyncRequest: asyncRequest});
 		}
 		// Ok, go on
 		var request = { "janus": "destroy", "transaction": randomString(12) };
@@ -737,7 +739,7 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId,
-			async: syncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1175,12 +1177,15 @@ function Janus(gatewayCallbacks) {
 	}
 
 	// Private method to destroy a plugin handle
-	function destroyHandle(handleId, callbacks, syncRequest) {
-		syncRequest = (syncRequest === true);
-		Janus.log("Destroying handle " + handleId + " (sync=" + syncRequest + ")");
+	function destroyHandle(handleId, callbacks) {
 		callbacks = callbacks || {};
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
+		Janus.warn(callbacks);
+		var asyncRequest = true;
+		if(callbacks.asyncRequest !== undefined && callbacks.asyncRequest !== null)
+			asyncRequest = (callbacks.asyncRequest === true);
+		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
 		if(!connected) {
 			Janus.warn("Is the gateway down? (connected=false)");
@@ -1203,7 +1208,7 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
-			async: syncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1624,7 +1629,9 @@ function Janus(gatewayCallbacks) {
 					// Check whether a missing device is really a problem
 					var audioSend = isAudioSendEnabled(media);
 					var videoSend = isVideoSendEnabled(media);
-					if(audioSend || videoSend) {
+					var needAudioDevice = isAudioSendRequired(media);
+					var needVideoDevice = isVideoSendRequired(media);
+					if(audioSend || videoSend || needAudioDevice || needVideoDevice) {
 						// We need to send either audio or video
 						var haveAudioDevice = audioSend ? audioExist : false;
 						var haveVideoDevice = videoSend ? videoExist : false;
@@ -1632,6 +1639,14 @@ function Janus(gatewayCallbacks) {
 							// FIXME Should we really give up, or just assume recvonly for both?
 							pluginHandle.consentDialog(false);
 							callbacks.error('No capture device found');
+							return false;
+						} else if(!haveAudioDevice && needAudioDevice) {
+							pluginHandle.consentDialog(false);
+							callbacks.error('Audio capture is required, but no capture device found');
+							return false;
+						} else if(!haveVideoDevice && needVideoDevice) {
+							pluginHandle.consentDialog(false);
+							callbacks.error('Video capture is required, but no capture device found');
 							return false;
 						}
 					}
@@ -2149,6 +2164,17 @@ function Janus(gatewayCallbacks) {
 		return (media.audioSend === true);
 	}
 
+	function isAudioSendRequired(media) {
+		Janus.debug("isAudioSendRequired:", media);
+		if(media === undefined || media === null)
+			return false;	// Default
+		if(media.audio === false || media.audioSend === false)
+			return false;	// If we're not asking to capture audio, it's not required
+		if(media.failIfNoAudio === undefined || media.failIfNoAudio === null)
+			return false;	// Default
+		return (media.failIfNoAudio === true);
+	}
+
 	function isAudioRecvEnabled(media) {
 		Janus.debug("isAudioRecvEnabled:", media);
 		if(media === undefined || media === null)
@@ -2169,6 +2195,17 @@ function Janus(gatewayCallbacks) {
 		if(media.videoSend === undefined || media.videoSend === null)
 			return true;	// Default
 		return (media.videoSend === true);
+	}
+
+	function isVideoSendRequired(media) {
+		Janus.debug("isVideoSendRequired:", media);
+		if(media === undefined || media === null)
+			return false;	// Default
+		if(media.video === false || media.videoSend === false)
+			return false;	// If we're not asking to capture video, it's not required
+		if(media.failIfNoVideo === undefined || media.failIfNoVideo === null)
+			return false;	// Default
+		return (media.failIfNoVideo === true);
 	}
 
 	function isVideoRecvEnabled(media) {

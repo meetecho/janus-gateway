@@ -2,9 +2,9 @@
  * \author   Lorenzo Miniero <lorenzo@meetecho.com>
  * \copyright GNU General Public License v3
  * \brief    RTP processing (headers)
- * \details  Implementation the RTP header. Since the gateway does not
+ * \details  Implementation of the RTP header. Since the gateway does not
  * much more than relaying frames around, the only thing we're interested
- * in is the RTP header and how to get its payload.
+ * in is the RTP header and how to get its payload, and parsing extensions.
  * 
  * \ingroup protocols
  * \ref protocols
@@ -16,11 +16,15 @@
 #include <arpa/inet.h>
 #ifdef __MACH__
 #include <machine/endian.h>
+#define __BYTE_ORDER BYTE_ORDER
+#define __BIG_ENDIAN BIG_ENDIAN
+#define __LITTLE_ENDIAN LITTLE_ENDIAN
 #else
 #include <endian.h>
 #endif
 #include <inttypes.h>
 #include <string.h>
+#include <glib.h>
 
 #define RTP_HEADER_SIZE	12
 
@@ -61,5 +65,68 @@ typedef struct janus_rtp_header_extension {
 	uint16_t type;
 	uint16_t length;
 } janus_rtp_header_extension;
+
+/*! \brief a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
+#define JANUS_RTP_EXTMAP_AUDIO_LEVEL		"urn:ietf:params:rtp-hdrext:ssrc-audio-level"
+/*! \brief a=extmap:2 urn:ietf:params:rtp-hdrext:toffset */
+#define JANUS_RTP_EXTMAP_TOFFSET			"urn:ietf:params:rtp-hdrext:toffset"
+/*! \brief a=extmap:3 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time */
+#define JANUS_RTP_EXTMAP_ABS_SEND_TIME		"http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
+/*! \brief a=extmap:4 urn:3gpp:video-orientation */
+#define JANUS_RTP_EXTMAP_VIDEO_ORIENTATION	"urn:3gpp:video-orientation"
+/*! \brief a=extmap:5 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01 */
+#define JANUS_RTP_EXTMAP_CC_EXTENSIONS		"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
+/*! \brief a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
+#define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+
+/*! \brief Helper to quickly access the RTP payload, skipping header and extensions
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[out] plen The payload data length in bytes
+ * @returns A pointer to where the payload data starts, or NULL otherwise; plen is also set accordingly */
+char *janus_rtp_payload(char *buf, int len, int *plen);
+
+/*! \brief Ugly and dirty helper to quickly get the id associated with an RTP extension (extmap) in an SDP
+ * @param sdp The SDP to parse
+ * @param extension The extension namespace to look for
+ * @returns The extension id, if found, -1 otherwise */
+int janus_rtp_header_extension_get_id(const char *sdp, const char *extension);
+
+/*! \brief Ugly and dirty helper to quickly get the RTP extension namespace associated with an id (extmap) in an SDP
+ * @note This only looks for the extensions we know about, those defined in rtp.h
+ * @param sdp The SDP to parse
+ * @param id The extension id to look for
+ * @returns The extension namespace, if found, NULL otherwise */
+const char *janus_rtp_header_extension_get_from_id(const char *sdp, int id);
+
+/*! \brief Helper to parse a ssrc-audio-level RTP extension (https://tools.ietf.org/html/rfc6464)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] level The level value in dBov (0=max, 127=min)
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int *level);
+
+/*! \brief Helper to parse a video-orientation RTP extension (http://www.3gpp.org/ftp/Specs/html-info/26114.htm)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] c The value of the Camera (C) bit
+ * @param[out] f The value of the Flip (F) bit
+ * @param[out] r1 The value of the first Rotation (R1) bit
+ * @param[out] r0 The value of the second Rotation (R0) bit
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int id,
+	gboolean *c, gboolean *f, gboolean *r1, gboolean *r0);
+
+/*! \brief Helper to parse a playout-delay RTP extension (https://webrtc.org/experiments/rtp-hdrext/playout-delay)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] min_delay The minimum delay value
+ * @param[out] max_delay The maximum delay value
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
+	uint16_t *min_delay, uint16_t *max_delay);
 
 #endif

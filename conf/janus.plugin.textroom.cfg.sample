@@ -10,6 +10,8 @@
 								; if this key is provided in the request
 json = indented					; Whether the data channel JSON messages should be indented (default),
 								; plain (no indentation) or compact (no indentation and no spaces)
+;events = no					; Whether events should be sent to event
+								; handlers (default is yes)
 
 [1234]
 description = Demo Room

@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.2.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -74,13 +74,25 @@ AC_ARG_ENABLE([unix-sockets],
               [AS_HELP_STRING([--disable-unix-sockets],
                               [Disable Unix Sockets integration])],
               [],
-              [enable_pfunix=maybe])
+              [enable_unix_sockets=maybe])
+
+AC_ARG_ENABLE([sample-event-handler],
+              [AS_HELP_STRING([--disable-sample-event-handler],
+                              [Disable sample event handler (HTTP POST) ])],
+              [],
+              [enable_sample_event_handler=maybe])
 
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
                               [Use BoringSSL instead of OpenSSL])],
               [],
               [enable_boringssl=no])
+
+AC_ARG_ENABLE([libsrtp2],
+              [AS_HELP_STRING([--enable-libsrtp2],
+                              [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
+              [],
+              [enable_libsrtp2=maybe])
 
 AC_ARG_ENABLE([dtls-settimeout],
               [AS_HELP_STRING([--enable-dtls-settimeout],
@@ -141,10 +153,42 @@ AC_CHECK_LIB([dl],
              [JANUS_MANUAL_LIBS+=" -ldl"],
              [AC_MSG_ERROR([libdl not found.])])
 
-AC_CHECK_LIB([srtp],
-             [srtp_init],
-             [JANUS_MANUAL_LIBS+=" -lsrtp"],
-             [AC_MSG_ERROR([libsrtp not found.])])
+AM_CONDITIONAL([ENABLE_LIBSRTP_2], false)
+AS_IF([test "x$enable_libsrtp2" != "xno"],
+      [AC_CHECK_LIB([srtp2],
+                    [srtp_init],
+                    [
+                      AC_CHECK_HEADER([srtp2/srtp.h],
+                                      [
+                                        AC_DEFINE(HAVE_SRTP_2)
+                                        JANUS_MANUAL_LIBS+=" -lsrtp2"
+                                        enable_libsrtp2=yes
+                                        AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                                      ],
+                                      [
+                                        AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                                              [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                                      ])
+                    ],
+                    [
+                      AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                            [AC_MSG_ERROR([libsrtp2 not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                    ])
+      ])
+AM_COND_IF([ENABLE_LIBSRTP_2],
+           [],
+           [AC_CHECK_LIB([srtp],
+                         [srtp_init],
+                         [
+                           AC_CHECK_HEADER([srtp/srtp.h],
+                                           [
+                                             JANUS_MANUAL_LIBS+=" -lsrtp"
+                                             enable_libsrtp2=no
+                                           ],
+                                           [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
+                         ],
+                         [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])])
+           ])
 
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
@@ -172,12 +216,21 @@ PKG_CHECK_MODULES([LIBCURL],
                         JANUS_MANUAL_LIBS+=" -lcurl"
                         enable_turn_rest_api=yes
                       ])
+                    AS_IF([test "x$enable_sample_event_handler" != "xno"],
+                      [
+                        AC_DEFINE(HAVE_SAMPLEEVH)
+                        JANUS_MANUAL_LIBS+=" -lcurl"
+                        enable_sample_event_handler=yes
+                      ])
                   ],
                   [
                     AS_IF([test "x$enable_turn_rest_api" = "xyes"],
                           [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-turn-rest-api])])
+                    AS_IF([test "x$enable_sample_event_handler" = "xyes"],
+                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-sample-event-handler])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
+AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])
 
 AC_CHECK_PROG([DOXYGEN],
               [doxygen],
@@ -296,17 +349,17 @@ AC_TRY_COMPILE([
                }],
                [],
                [
-                 AS_IF([test "x$enable_pfunix" != "xno"],
+                 AS_IF([test "x$enable_unix_sockets" != "xno"],
                  [
                     AC_DEFINE(HAVE_PFUNIX)
-                    enable_pfunix=yes
+                    enable_unix_sockets=yes
                  ])
                ],
                [
-                 AS_IF([test "x$enable_pfunix" = "xyes"],
+                 AS_IF([test "x$enable_unix_sockets" = "xyes"],
                        [AC_MSG_ERROR([SOCK_SEQPACKET not defined in your OS. Use --disable-unix-sockets])])
                ])
-AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_pfunix" = "xyes"])
+AM_CONDITIONAL([ENABLE_PFUNIX], [test "x$enable_unix_sockets" = "xyes"])
 
 
 ##
@@ -422,6 +475,18 @@ AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
 
+
+##
+# Event handlers
+##
+
+PKG_CHECK_MODULES([EVENTS],
+                  [
+                    glib-2.0 >= $glib_version
+                    jansson
+                  ])
+
+
 ##
 # Post-processing
 ##
@@ -461,12 +526,15 @@ AC_OUTPUT
 ##
 echo
 
+AM_COND_IF([ENABLE_LIBSRTP_2],
+	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           1.5.x"])
+AM_COND_IF([ENABLE_BORINGSSL],
+	[echo "SSL/crypto library:        BoringSSL"],
+	[echo "SSL/crypto library:        OpenSSL"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
-AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "BoringSSL (no OpenSSL):    yes"],
-	[echo "BoringSSL (no OpenSSL):    no"])
 AM_COND_IF([ENABLE_POST_PROCESSING],
 	[echo "Recordings post-processor: yes"],
 	[echo "Recordings post-processor: no"])
@@ -524,6 +592,10 @@ AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
 	[echo "    Text Room:             yes"],
 	[echo "    Text Room:             no"])
+echo "Event handlers:"
+AM_COND_IF([ENABLE_SAMPLEEVH],
+	[echo "    Sample event handler:  yes"],
+	[echo "    Sample event handler:  no"])
 
 echo
 echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."
