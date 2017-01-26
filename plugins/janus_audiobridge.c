@@ -296,8 +296,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 {
 	"request" : "rtp_forward",
 	"room" : <unique numeric ID of the room to add the forwarder to>,
-	"ssrc" : <SSRC to use to use when streaming (optional)>,
-	"ptype" : <payload type to use when streaming (optional)>,
+	"ssrc" : <SSRC to use to use when streaming (optional: stream_id used if missing)>,
+	"ptype" : <payload type to use when streaming (optional: 100 used if missing)>,
 	"host" : "<host address to forward the RTP packets to>",
 	"port" : <port to forward the RTP packets to>,
 	"always_on" : <true|false, whether silence should be forwarded when the room is empty>
@@ -358,7 +358,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 			"stream_id" : <unique numeric ID of the forwarder>,
 			"ip" : "<IP this forwarder is streaming to>",
 			"port" : <port this forwarder is streaming to>,
-			"ssrc" : <SSRC this forwarder is using, if any>
+			"ssrc" : <SSRC this forwarder is using, if any>,
 			"ptype" : <payload type this forwarder is using, if any>
 		},
 		// Other forwarders
