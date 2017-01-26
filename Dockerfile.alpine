@@ -1,0 +1,29 @@
+FROM alpine:3.5
+MAINTAINER Jeremy VAILLANT <jeremy.vaillant@dazzl.tv>
+
+WORKDIR /root
+
+RUN apk update \
+  && apk upgrade \
+  && apk add --no-cache \
+    git cmake ca-certificates curl wget automake libtool libssl1.0 autoconf libsrtp-dev \
+    libmicrohttpd-dev jansson-dev libnice-dev ffmpeg-dev pkgconf gengetopt glib-dev opus-dev \
+    libogg-dev go openssl build-base gawk libssl1.0 libcrypto1.0 file file-dev jansson glib \
+  && apk add rabbitmq-c-dev --no-cache -X http://dl-3.alpinelinux.org/alpine/edge/testing/
+
+# Boring SSL (go lang is needed)
+RUN git clone https://boringssl.googlesource.com/boringssl && cd boringssl \
+  && sed -i s/" -Werror"//g CMakeLists.txt && mkdir -p build && cd build \
+  && cmake -DCMAKE_CXX_FLAGS="-lrt" .. && make && cd .. \
+  && mkdir -p /opt/boringssl && cp -R include /opt/boringssl/ \
+  && mkdir -p /opt/boringssl/lib && cp build/ssl/libssl.a /opt/boringssl/lib/ \
+  && cp build/crypto/libcrypto.a /opt/boringssl/lib/ && cd
+
+# Install Janus itself
+COPY / janus-gateway
+RUN cd janus-gateway && sh autogen.sh && ./configure --prefix=/usr/local \
+  --enable-boringssl --enable-post-processing --disable-mqtt --disable-docs \
+  && make && make configs && make install && cd
+
+RUN apk del cmake ca-certificates curl wget \
+  && rm -rf /var/cache/apk/*
