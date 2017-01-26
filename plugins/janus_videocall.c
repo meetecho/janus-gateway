@@ -512,6 +512,11 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}	
 	janus_videocall_session *session = (janus_videocall_session *)g_malloc0(sizeof(janus_videocall_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		*error = -2;
+		return;
+	}
 	session->handle = handle;
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -597,6 +602,10 @@ struct janus_plugin_result *janus_videocall_handle_message(janus_plugin_session 
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 
 	janus_videocall_message *msg = g_malloc0(sizeof(janus_videocall_message));
+	if(msg == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
+	}
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);
 
@@ -689,6 +698,10 @@ void janus_videocall_incoming_data(janus_plugin_session *handle, char *buf, int 
 		if(buf == NULL || len <= 0)
 			return;
 		char *text = g_malloc0(len+1);
+		if(text == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return;
+		}
 		memcpy(text, buf, len);
 		*(text+len) = '\0';
 		JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
@@ -920,7 +933,7 @@ static void *janus_videocall_handler(void *data) {
 				json_t *info = json_object();
 				json_object_set_new(info, "event", json_string("registered"));
 				json_object_set_new(info, "username", json_string(username_text));
-				gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+				gateway->notify_event(&janus_videocall_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
@@ -1302,7 +1315,7 @@ static void *janus_videocall_handler(void *data) {
 					json_t *info = json_object();
 					json_object_set_new(info, "event", json_string("hangup"));
 					json_object_set_new(info, "reason", json_string("Remote hangup"));
-					gateway->notify_event(&janus_videocall_plugin, session->peer->handle, info);
+					gateway->notify_event(&janus_videocall_plugin, peer->handle, info);
 				}
 				/* Hangup the call on the peer, if it's still up */
 				gateway->close_pc(peer->handle);

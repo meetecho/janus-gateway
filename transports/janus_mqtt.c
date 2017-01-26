@@ -165,6 +165,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 
 	/* Initializing context */
 	janus_mqtt_context *ctx = g_malloc0(sizeof(struct janus_mqtt_context));
+	if(ctx == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return -1;
+	}
 	ctx->gateway = callback;
 	context_ = ctx;
 	/* Prepare the transport session (again, just one) */

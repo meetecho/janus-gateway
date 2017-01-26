@@ -419,6 +419,11 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *post = janus_config_get_item(cat, "post");
 			/* Create the text room */
 			janus_textroom_room *textroom = g_malloc0(sizeof(janus_textroom_room));
+			if(textroom == NULL) {
+				JANUS_LOG(LOG_FATAL, "Memory error!\n");
+				cl = cl->next;
+				continue;
+			}
 			textroom->room_id = g_ascii_strtoull(cat->name, NULL, 0);
 			char *description = NULL;
 			if(desc != NULL && desc->value != NULL && strlen(desc->value) > 0)
@@ -555,6 +560,11 @@ void janus_textroom_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	janus_textroom_session *session = (janus_textroom_session *)g_malloc0(sizeof(janus_textroom_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		*error = -2;
+		return;
+	}
 	session->handle = handle;
 	session->rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_participant_dereference);
 	session->destroyed = 0;
@@ -615,6 +625,10 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	if(!session)
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 	janus_textroom_message *msg = g_malloc0(sizeof(janus_textroom_message));
+	if(msg == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
+	}
 
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);
@@ -665,6 +679,10 @@ void janus_textroom_incoming_data(janus_plugin_session *handle, char *buf, int l
 	if(buf == NULL || len <= 0)
 		return;
 	char *text = g_malloc0(len+1);
+	if(text == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes): %s\n", strlen(text), text);
@@ -899,6 +917,12 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		const char *display_text = json_string_value(display);
 		/* Create a participant instance */
 		participant = g_malloc0(sizeof(janus_textroom_participant));
+		if(participant == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			error_code = JANUS_TEXTROOM_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "Memory error");
+			goto error;
+		}
 		participant->session = session;
 		participant->room = textroom;
 		participant->username = g_strdup(username_text);

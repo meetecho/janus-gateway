@@ -597,6 +597,10 @@ void *janus_pfunix_thread(void *data) {
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", cfd);
 							/* Allocate new client */
 							janus_pfunix_client *client = g_malloc0(sizeof(janus_pfunix_client));
+							if(client == NULL) {
+								JANUS_LOG(LOG_FATAL, "Memory error!\n");
+								continue;
+							}
 							client->fd = cfd;
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */
 							client->messages = g_async_queue_new();
@@ -643,6 +647,11 @@ void *janus_pfunix_thread(void *data) {
 								poll_fds[i].fd == pfd ? "Janus" : "Admin", uaddr->sun_path);
 							/* Allocate new client */
 							client = g_malloc0(sizeof(janus_pfunix_client));
+							if(client == NULL) {
+								JANUS_LOG(LOG_FATAL, "Memory error!\n");
+								janus_mutex_unlock(&clients_mutex);
+								continue;
+							}
 							client->fd = -1;
 							memcpy(&client->addr, uaddr, sizeof(struct sockaddr_un));
 							client->admin = (poll_fds[i].fd == admin_pfd);	/* API client type */

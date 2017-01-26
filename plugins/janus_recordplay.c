@@ -636,6 +636,11 @@ void janus_recordplay_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}	
 	janus_recordplay_session *session = (janus_recordplay_session *)g_malloc0(sizeof(janus_recordplay_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		*error = -2;
+		return;
+	}
 	session->handle = handle;
 	session->active = FALSE;
 	session->recorder = FALSE;
@@ -815,6 +820,10 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "stop")) {
 		/* These messages are handled asynchronously */
 		janus_recordplay_message *msg = g_malloc0(sizeof(janus_recordplay_message));
+		if(msg == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
+		}
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -1003,6 +1012,10 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_recordplay_message *msg = g_malloc0(sizeof(janus_recordplay_message));
+	if(msg == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	janus_refcount_increase(&session->ref);
 	msg->handle = handle;
 	msg->message = json_pack("{ss}", "request", "stop");

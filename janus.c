@@ -605,6 +605,10 @@ json_t *janus_session_handles_list_json(janus_session *session) {
 /* Requests management */
 janus_request *janus_request_new(janus_transport *transport, janus_transport_session *instance, void *request_id, gboolean admin, json_t *message) {
 	janus_request *request = (janus_request *)g_malloc0(sizeof(janus_request));
+	if(request == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
 	request->transport = transport;
 	request->instance = instance;
 	janus_refcount_increase(&instance->ref);
@@ -792,7 +796,7 @@ static void janus_request_ice_handle_answer(janus_ice_handle *handle, int audio,
 			g_list_free(temp);
 			if(trickle == NULL)
 				continue;
-			if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+			if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 				/* FIXME Candidate is too old, discard it */
 				janus_ice_trickle_destroy(trickle);
 				/* FIXME We should report that */

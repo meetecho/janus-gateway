@@ -989,6 +989,11 @@ void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	janus_streaming_session *session = (janus_streaming_session *)g_malloc0(sizeof(janus_streaming_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		*error = -2;
+		return;
+	}
 	session->handle = handle;
 	session->mountpoint = NULL;	/* This will happen later */
 	session->started = FALSE;	/* This will happen later */
@@ -1883,6 +1888,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			|| !strcasecmp(request_text, "switch")) {
 		/* These messages are handled asynchronously */
 		janus_streaming_message *msg = g_malloc0(sizeof(janus_streaming_message));
+		if(msg == NULL) {
+			JANUS_LOG(LOG_FATAL, "Memory error!\n");
+			return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
+		}
 		msg->handle = handle;
 		msg->transaction = transaction;
 		msg->message = root;
@@ -2013,6 +2022,10 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 		return;
 	/* FIXME Simulate a "stop" coming from the browser */
 	janus_streaming_message *msg = g_malloc0(sizeof(janus_streaming_message));
+	if(msg == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	msg->handle = handle;
 	msg->message = json_pack("{ss}", "request", "stop");
 	msg->transaction = NULL;
@@ -2307,7 +2320,6 @@ static void *janus_streaming_handler(void *data) {
 			/* Done */
 			janus_refcount_decrease(&oldmp->ref);	/* This is for the request being done with it */
 			result = json_object();
-			json_object_set_new(result, "streaming", json_string("event"));
 			json_object_set_new(result, "switched", json_string("ok"));
 			json_object_set_new(result, "id", json_integer(id_value));
 			/* Also notify event handlers */
@@ -2575,6 +2587,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	}
 	/* Create the mountpoint */
 	janus_streaming_mountpoint *live_rtp = g_malloc0(sizeof(janus_streaming_mountpoint));
+	if(live_rtp == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
 	live_rtp->id = id;
 	live_rtp->name = g_strdup(name ? name : tempname);
 	char *description = NULL;
@@ -2588,6 +2604,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp->streaming_type = janus_streaming_type_live;
 	live_rtp->streaming_source = janus_streaming_source_rtp;
 	janus_streaming_rtp_source *live_rtp_source = g_malloc0(sizeof(janus_streaming_rtp_source));
+	if(live_rtp_source == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
 	live_rtp_source->audio_mcast = doaudio ? (amcast ? inet_addr(amcast) : INADDR_ANY) : INADDR_ANY;
 	live_rtp_source->audio_port = doaudio ? aport : -1;
 	live_rtp_source->video_mcast = dovideo ? (vmcast ? inet_addr(vmcast) : INADDR_ANY) : INADDR_ANY;
@@ -2681,6 +2701,10 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		return NULL;
 	}
 	janus_streaming_mountpoint *file_source = g_malloc0(sizeof(janus_streaming_mountpoint));
+	if(file_source == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
 	file_source->id = id;
 	char tempname[255];
 	if(!name) {
@@ -2699,6 +2723,10 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	file_source->streaming_type = live ? janus_streaming_type_live : janus_streaming_type_on_demand;
 	file_source->streaming_source = janus_streaming_source_file;
 	janus_streaming_file_source *file_source_source = g_malloc0(sizeof(janus_streaming_file_source));
+	if(file_source_source == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return NULL;
+	}
 	file_source_source->filename = g_strdup(filename);
 	file_source->source = file_source_source;
 	file_source->source_destroy = (GDestroyNotify) janus_streaming_file_source_free;
@@ -2827,6 +2855,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	}
 	/* Send an RTSP DESCRIBE */
 	janus_streaming_buffer *curldata = g_malloc0(sizeof(janus_streaming_buffer));
+	if(curldata == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		curl_easy_cleanup(curl);
+		return NULL;
+	}
 	curldata->buffer = g_malloc0(1);
 	curldata->size = 0;
 	curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, url);
@@ -2961,6 +2994,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		description = g_strdup(name ? name : tempname);
 	}
 	janus_streaming_mountpoint *live_rtsp = g_malloc0(sizeof(janus_streaming_mountpoint));
+	if(live_rtsp == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		janus_mutex_unlock(&mountpoints_mutex);
+		return NULL;
+	}
 	live_rtsp->id = id ? id : janus_random_uint64();
 	live_rtsp->name = sourcename;
 	live_rtsp->description = description;
@@ -2969,6 +3007,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp->streaming_type = janus_streaming_type_live;
 	live_rtsp->streaming_source = janus_streaming_source_rtp;
 	janus_streaming_rtp_source *live_rtsp_source = g_malloc0(sizeof(janus_streaming_rtp_source));
+	if(live_rtsp_source == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		janus_mutex_unlock(&mountpoints_mutex);
+		return NULL;
+	}
 	live_rtsp_source->arc = NULL;
 	live_rtsp_source->vrc = NULL;
 	live_rtsp_source->audio_fd = audio_fd;
@@ -3000,7 +3043,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
 		janus_refcount_decrease(&live_rtsp->ref);
-		return NULL;	
+		return NULL;
 	}				
 	/* Send an RTSP PLAY */
 	janus_mutex_lock(&live_rtsp_source->rtsp_mutex);
@@ -3085,6 +3128,13 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%s] Streaming audio file: %s\n", mountpoint->name, source->filename);
 	/* Buffer */
 	char *buf = g_malloc0(1024);
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		janus_refcount_decrease(&session->ref);
+		janus_refcount_decrease(&mountpoint->ref);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
 	/* Set up RTP */
 	gint16 seq = 1;
@@ -3204,6 +3254,11 @@ static void *janus_streaming_filesource_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "[%s] Streaming audio file: %s\n", mountpoint->name, source->filename);
 	/* Buffer */
 	char *buf = g_malloc0(1024);
+	if(buf == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		janus_refcount_decrease(&mountpoint->ref);
+		return NULL;
+	}
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
 	/* Set up RTP */
 	gint16 seq = 1;
@@ -3483,34 +3538,52 @@ static void *janus_streaming_relay_thread(void *data) {
 							janus_mutex_lock(&source->keyframe.mutex);
 							JANUS_LOG(LOG_HUGE, "[%s] ... other part of keyframe received! ts=%"SCNu32"\n", name, source->keyframe.temp_ts);
 							janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-							pkt->data = g_malloc0(bytes);
-							memcpy(pkt->data, buffer, bytes);
-							pkt->data->ssrc = htons(1);
-							pkt->data->type = mountpoint->codecs.video_pt;
-							pkt->is_video = 1;
-							pkt->is_keyframe = 1;
-							pkt->length = bytes;
-							pkt->timestamp = source->keyframe.temp_ts;
-							pkt->seq_number = ntohs(rtp->seq_number);
-							source->keyframe.temp_keyframe = g_list_append(source->keyframe.temp_keyframe, pkt);
-							janus_mutex_unlock(&source->keyframe.mutex);
+							if(pkt == NULL) {
+								JANUS_LOG(LOG_FATAL, "Memory error!\n");
+							} else {
+								pkt->data = g_malloc0(bytes);
+								if(pkt->data == NULL) {
+									JANUS_LOG(LOG_FATAL, "Memory error!\n");
+									g_free(pkt);
+								} else {
+									memcpy(pkt->data, buffer, bytes);
+									pkt->data->ssrc = htons(1);
+									pkt->data->type = mountpoint->codecs.video_pt;
+									pkt->is_video = 1;
+									pkt->is_keyframe = 1;
+									pkt->length = bytes;
+									pkt->timestamp = source->keyframe.temp_ts;
+									pkt->seq_number = ntohs(rtp->seq_number);
+									source->keyframe.temp_keyframe = g_list_append(source->keyframe.temp_keyframe, pkt);
+									janus_mutex_unlock(&source->keyframe.mutex);
+								}
+							}
 						} else if(janus_streaming_is_keyframe(mountpoint->codecs.video_codec, buffer, bytes)) {
 							/* New keyframe, start saving it */
 							source->keyframe.temp_ts = ntohl(rtp->timestamp);
 							JANUS_LOG(LOG_HUGE, "[%s] New keyframe received! ts=%"SCNu32"\n", name, source->keyframe.temp_ts);
 							janus_mutex_lock(&source->keyframe.mutex);
 							janus_streaming_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-							pkt->data = g_malloc0(bytes);
-							memcpy(pkt->data, buffer, bytes);
-							pkt->data->ssrc = htons(1);
-							pkt->data->type = mountpoint->codecs.video_pt;
-							pkt->is_video = 1;
-							pkt->is_keyframe = 1;
-							pkt->length = bytes;
-							pkt->timestamp = source->keyframe.temp_ts;
-							pkt->seq_number = ntohs(rtp->seq_number);
-							source->keyframe.temp_keyframe = g_list_append(source->keyframe.temp_keyframe, pkt);
-							janus_mutex_unlock(&source->keyframe.mutex);
+							if(pkt == NULL) {
+								JANUS_LOG(LOG_FATAL, "Memory error!\n");
+							} else {
+								pkt->data = g_malloc0(bytes);
+								if(pkt->data == NULL) {
+									JANUS_LOG(LOG_FATAL, "Memory error!\n");
+									g_free(pkt);
+								} else {
+									memcpy(pkt->data, buffer, bytes);
+									pkt->data->ssrc = htons(1);
+									pkt->data->type = mountpoint->codecs.video_pt;
+									pkt->is_video = 1;
+									pkt->is_keyframe = 1;
+									pkt->length = bytes;
+									pkt->timestamp = source->keyframe.temp_ts;
+									pkt->seq_number = ntohs(rtp->seq_number);
+									source->keyframe.temp_keyframe = g_list_append(source->keyframe.temp_keyframe, pkt);
+									janus_mutex_unlock(&source->keyframe.mutex);
+								}
+							}
 						}
 					}
 					/* If paused, ignore this packet */

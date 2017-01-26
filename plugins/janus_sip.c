@@ -520,6 +520,10 @@ static int janus_sip_srtp_set_local(janus_sip_session *session, gboolean video, 
 		return -1;
 	/* Generate key/salt */
 	uint8_t *key = g_malloc0(SRTP_MASTER_LENGTH);
+	if(key == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return -1;
+	}
 	srtp_crypto_get_random(key, SRTP_MASTER_LENGTH);
 	/* Set SRTP policies */
 	srtp_policy_t *policy = video ? &session->media.video_local_policy : &session->media.audio_local_policy;
@@ -1018,6 +1022,11 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	janus_sip_session *session = g_malloc0(sizeof(janus_sip_session));
+	if(session == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		*error = -2;
+		return;
+	}
 	session->handle = handle;
 	session->account.identity = NULL;
 	session->account.sips = TRUE;
@@ -1180,6 +1189,10 @@ struct janus_plugin_result *janus_sip_handle_message(janus_plugin_session *handl
 	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
 	janus_refcount_increase(&session->ref);
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+	if(msg == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Memory error", NULL);
+	}
 	msg->handle = handle;
 	msg->transaction = transaction;
 	msg->message = message;
@@ -1401,6 +1414,10 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 	/* FIXME Simulate a "hangup" coming from the browser */
 	janus_refcount_increase(&session->ref);
 	janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+	if(msg == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		return;
+	}
 	msg->handle = handle;
 	msg->message = json_pack("{ss}", "request", "hangup");
 	msg->transaction = NULL;
@@ -3297,8 +3314,11 @@ static void *janus_sip_relay_thread(void *data) {
 
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(have_server_ip)
+			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {
 				janus_sip_connect_sockets(session, &server_addr);
+			} else {
+				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't update session details (missing or invalid remote IP address)\n", session->account.username);
+			}
 			session->media.updated = FALSE;
 		}
 
@@ -3360,6 +3380,10 @@ static void *janus_sip_relay_thread(void *data) {
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
 				/* FIXME Simulate a "hangup" coming from the browser */
 				janus_sip_message *msg = g_malloc0(sizeof(janus_sip_message));
+				if(msg == NULL) {
+					JANUS_LOG(LOG_FATAL, "Memory error!\n");
+					break;
+				}
 				msg->handle = session->handle;
 				msg->message = json_pack("{ss}", "request", "hangup");
 				msg->transaction = NULL;
@@ -3577,6 +3601,11 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	janus_refcount_increase(&session->ref);
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack = g_malloc0(sizeof(ssip_t));
+	if(session->stack == NULL) {
+		JANUS_LOG(LOG_FATAL, "Memory error!\n");
+		janus_refcount_decrease(&session->ref);
+		return NULL;
+	}
 	session->stack->session = session;
 	session->stack->s_nua = NULL;
 	session->stack->s_nh_r = NULL;
