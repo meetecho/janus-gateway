@@ -125,7 +125,7 @@ int janus_pp_h264_create(char *destination, char *metadata) {
 	vStream->codec->codec_id = CODEC_ID_H264;
 #endif
 	vStream->codec->codec_type = AVMEDIA_TYPE_VIDEO;
-	vStream->codec->time_base = (AVRational){1, fps};
+	vStream->codec->time_base = (AVRational){1, 90000};
 	vStream->time_base = (AVRational){1, 90000};
 	vStream->codec->width = max_width;
 	vStream->codec->height = max_height;
