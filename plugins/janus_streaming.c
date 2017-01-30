@@ -3725,12 +3725,10 @@ static void *janus_streaming_relay_thread(void *data) {
 					source->last_received_data = janus_get_monotonic_time();
 					addrlen = sizeof(remote);
 					bytes = recvfrom(data_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
-					JANUS_LOG(LOG_WARN, "Got %d bytes...\n", bytes);
 					/* Get a string out of the data */
 					char *text = g_malloc0(bytes+1);
 					memcpy(text, buffer, bytes);
 					*(text+bytes) = '\0';
-					JANUS_LOG(LOG_WARN, "Got data message to relay: %s\n", text);
 					/* Relay on all sessions */
 					packet.data = (rtp_header *)text;
 					packet.length = bytes+1;
