@@ -19,6 +19,7 @@
 ; audio = yes|no (do/don't stream audio)
 ; video = yes|no (do/don't stream video)
 ;    The following options are only valid for the 'rtp' type:
+; data = yes|no (do/don't stream text via datachannels)
 ; audioport = local port for receiving audio frames
 ; audiomcast = multicast group port for receiving audio frames, if any
 ; audiopt = <audio RTP payload type> (e.g., 111)
@@ -29,6 +30,8 @@
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
 ; videobufferkf = yes|no (whether the plugin should store the latest
 ;		keyframe and send it immediately for new viewers, EXPERIMENTAL)
+; databuffermsg = yes|no (whether the plugin should store the latest
+;		message and send it immediately for new viewers)
 ; url = RTSP stream URL (only for restreaming RTSP)
 ;
 ; To test the [gstreamer-sample] example, check the test_gstreamer.sh
