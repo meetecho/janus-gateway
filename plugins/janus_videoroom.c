@@ -462,6 +462,8 @@ typedef struct janus_videoroom_participant {
 	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
+	int audio_active_packets; /* number of packets received with audio_levl extmap sdp header */
+	int audio_dBov_sum;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
 	gint64 remb_startup;/* Incremental changes on REMB to reach the target at startup */
@@ -2267,6 +2269,28 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+	if(participant->audio_level_extmap_id > 0) {
+	    int level = 0;
+	    int audio_level = janus_rtp_header_extension_parse_audio_level_and_return(buf, len, participant->audio_level_extmap_id, &level);
+	    participant->audio_dBov_sum = participant->audio_dBov_sum + audio_level;
+	    participant->audio_active_packets = participant->audio_active_packets + 1;
+	        if(participant->audio_active_packets == 60) {
+	            if(participant->audio_dBov_sum < 1200) {
+	               float avg = (float)participant->audio_dBov_sum / participant->audio_active_packets;
+	               if(notify_events && gateway->events_is_enabled()) {
+	                  json_t *info = json_object();
+                      json_object_set_new(info, "event", json_string("talking"));
+                      json_object_set_new(info, "room", json_string(participant->room));
+                      json_object_set_new(info, "user", json_integer(participant->user_id));
+                      gateway->notify_event(&janus_videoroom_plugin, handle, info);
+                      json_decref(info);
+                   }
+	               JANUS_LOG(LOG_ERR, "Got audio_active_packets of 30 pkts from user: %" G_GUINT64_FORMAT" with average audio_dBov of: %f \n", participant->user_id, avg);
+	            }
+                participant->audio_active_packets = 0;
+                participant->audio_dBov_sum = 0;
+	        }
+    }
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		/* Update payload type and SSRC */
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
