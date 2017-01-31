@@ -296,7 +296,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 {
 	"request" : "rtp_forward",
 	"room" : <unique numeric ID of the room to add the forwarder to>,
-	"ptype" : <payload type to use when streaming>,
+	"ssrc" : <SSRC to use to use when streaming (optional: stream_id used if missing)>,
+	"ptype" : <payload type to use when streaming (optional: 100 used if missing)>,
 	"host" : "<host address to forward the RTP packets to>",
 	"port" : <port to forward the RTP packets to>,
 	"always_on" : <true|false, whether silence should be forwarded when the room is empty>
@@ -357,7 +358,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 			"stream_id" : <unique numeric ID of the forwarder>,
 			"ip" : "<IP this forwarder is streaming to>",
 			"port" : <port this forwarder is streaming to>,
-			"ptype" : <payload type this forwarder is using>
+			"ssrc" : <SSRC this forwarder is using, if any>,
+			"ptype" : <payload type this forwarder is using, if any>
 		},
 		// Other forwarders
 	]
@@ -656,6 +658,7 @@ static struct janus_json_parameter configure_parameters[] = {
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"ptype", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"port", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -801,12 +804,13 @@ typedef struct janus_audiobridge_rtp_relay_packet {
 /* RTP forwarder instance: address to send to, and current RTP header info */
 typedef struct janus_audiobridge_rtp_forwarder {
 	struct sockaddr_in serv_addr;
+	uint32_t ssrc;
 	int payload_type;
 	uint16_t seq_number;
 	uint32_t timestamp;
 	gboolean always_on;
 } janus_audiobridge_rtp_forwarder;
-static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room, const gchar* host, uint16_t port, int pt, gboolean always_on) {
+static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room, const gchar* host, uint16_t port, uint32_t ssrc, int pt, gboolean always_on) {
 	if(room == NULL || host == NULL)
 		return 0;
 	janus_audiobridge_rtp_forwarder *rf = g_malloc0(sizeof(janus_audiobridge_rtp_forwarder));
@@ -815,6 +819,7 @@ static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room
 	inet_pton(AF_INET, host, &(rf->serv_addr.sin_addr));
 	rf->serv_addr.sin_port = htons(port);
 	/* Setup RTP info (we'll use the stream ID as SSRC) */
+	rf->ssrc = ssrc;
 	rf->payload_type = pt;
 	rf->seq_number = 0;
 	rf->timestamp = 0;
@@ -1939,6 +1944,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			goto plugin_response;
 		/* Parse arguments */
 		guint64 room_id = json_integer_value(json_object_get(root, "room"));
+		guint32 ssrc_value = 0;
+		json_t *ssrc = json_object_get(root, "ssrc");
+		if(ssrc)
+			ssrc_value = json_integer_value(ssrc);
 		int ptype = 100;
 		json_t *pt = json_object_get(root, "ptype");
 		if(pt)
@@ -2013,7 +2022,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 				opus_encoder_ctl(audiobridge->rtp_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
 			}
 		}
-		guint32 stream_id = janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ptype, always_on);
+		guint32 stream_id = janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ssrc_value, ptype, always_on);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		/* Done, prepare response */
@@ -2113,6 +2122,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_object_set_new(fl, "stream_id", json_integer(stream_id));
 			json_object_set_new(fl, "ip", json_string(inet_ntoa(rf->serv_addr.sin_addr)));
 			json_object_set_new(fl, "port", json_integer(ntohs(rf->serv_addr.sin_port)));
+			json_object_set_new(fl, "ssrc", json_integer(rf->ssrc ? rf->ssrc : stream_id));
 			json_object_set_new(fl, "ptype", json_integer(rf->payload_type));
 			json_object_set_new(fl, "always_on", rf->always_on ? json_true() : json_false());
 			json_array_append_new(list, fl);
@@ -3580,7 +3590,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 							continue;
 						/* Update header */
 						rtph->type = forwarder->payload_type;
-						rtph->ssrc = htonl(stream_id);
+						rtph->ssrc = htonl(forwarder->ssrc ? forwarder->ssrc : stream_id);
 						forwarder->seq_number++;
 						rtph->seq_number = htons(forwarder->seq_number);
 						forwarder->timestamp += 960;
