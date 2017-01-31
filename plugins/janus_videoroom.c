@@ -2302,15 +2302,12 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	        if(participant->audio_active_packets == 60) {
 	            if(participant->audio_dBov_sum < 1200) {
 	               float avg = (float)participant->audio_dBov_sum / participant->audio_active_packets;
-	               if(notify_events && gateway->events_is_enabled()) {
-	                  json_t *info = json_object();
-                      json_object_set_new(info, "event", json_string("talking"));
-                      json_object_set_new(info, "room", json_string(participant->room));
-                      json_object_set_new(info, "user", json_integer(participant->user_id));
-                      gateway->notify_event(&janus_videoroom_plugin, handle, info);
-                      json_decref(info);
-                   }
-	               JANUS_LOG(LOG_ERR, "Got audio_active_packets of 30 pkts from user: %" G_GUINT64_FORMAT" with average audio_dBov of: %f \n", participant->user_id, avg);
+	               // Notify participants
+	               json_t *event = json_object();
+                   json_object_set_new(event, "event", json_string("talking"));
+                   json_object_set_new(event, "user", json_string(participant->display));
+                   gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+                   json_decref(event);
 	            }
                 participant->audio_active_packets = 0;
                 participant->audio_dBov_sum = 0;
