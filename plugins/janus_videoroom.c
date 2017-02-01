@@ -2269,25 +2269,25 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-	if(participant->audio_level_extmap_id > 0) {
-	    int level = 0;
-	    int audio_level = janus_rtp_header_extension_parse_audio_level_and_return(buf, len, participant->audio_level_extmap_id, &level);
-	    participant->audio_dBov_sum = participant->audio_dBov_sum + audio_level;
-	    participant->audio_active_packets = participant->audio_active_packets + 1;
-	        if(participant->audio_active_packets == 60) {
-	            if(participant->audio_dBov_sum < 1200) {
-	               float avg = (float)participant->audio_dBov_sum / participant->audio_active_packets;
-	               // Notify participants
-	               json_t *event = json_object();
-                   json_object_set_new(event, "event", json_string("talking"));
-                   json_object_set_new(event, "user", json_string(participant->display));
-                   gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-                   json_decref(event);
-	            }
-                participant->audio_active_packets = 0;
-                participant->audio_dBov_sum = 0;
-	        }
-    }
+	if(participant->audio_level_extmap_id > 0 && participant->audio_active) {
+		int level = 0;
+		int audio_level = janus_rtp_header_extension_parse_audio_level_and_return(buf, len, participant->audio_level_extmap_id, &level);
+		participant->audio_dBov_sum = participant->audio_dBov_sum + audio_level;
+		participant->audio_active_packets = participant->audio_active_packets + 1;
+		if(participant->audio_active_packets == 150) {
+			if(participant->audio_dBov_sum < 3000) {
+				// Notify participants
+				json_t *event = json_object();
+				json_object_set_new(event, "event", json_string("talking"));
+				json_object_set_new(event, "user", json_string(participant->display));
+				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+				json_decref(event);
+				JANUS_LOG(LOG_ERR, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets);
+			}
+			participant->audio_active_packets = 0;
+			participant->audio_dBov_sum = 0;
+		}
+	}
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		/* Update payload type and SSRC */
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
