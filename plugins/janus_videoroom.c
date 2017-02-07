@@ -258,7 +258,12 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"publisher_id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"data_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"host", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter stop_rtp_forward_parameters[] = {
@@ -399,12 +404,14 @@ typedef struct janus_videoroom_session {
 static GHashTable *sessions;
 static janus_mutex sessions_mutex;
 
-
 /* A host whose ports gets streamed rtp packets of the corresponding type. */
-typedef struct rtp_forwarder {
-	int is_video;
+typedef struct janus_videoroom_rtp_forwarder {
+	gboolean is_video;
+	gboolean is_data;
+	uint32_t ssrc;
+	int payload_type;
 	struct sockaddr_in serv_addr;
-} rtp_forwarder;
+} janus_videoroom_rtp_forwarder;
 
 typedef struct janus_videoroom_publisher {
 	janus_videoroom_session *session;
@@ -433,6 +440,7 @@ typedef struct janus_videoroom_publisher {
 	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr */
 	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this publisher's video, if enabled */
+	janus_recorder *drc;	/* The Janus recorder instance for this publisher's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	GSList *subscribers;
 	janus_mutex subscribers_mutex;
@@ -442,8 +450,9 @@ typedef struct janus_videoroom_publisher {
 	volatile gint destroyed;
 	janus_refcount ref;
 } janus_videoroom_publisher;
-static void janus_rtp_forwarder_free_helper(gpointer data);
-static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_publisher *p, const gchar* host, int port, int is_video);
+static void janus_videoroom_rtp_forwarder_free_helper(gpointer data);
+static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
+	const gchar* host, int port, int pt, uint32_t ssrc, gboolean is_video, gboolean is_data);
 typedef struct janus_videoroom_subscriber_context {
 	/* Needed to fix seq and ts in case of publisher switching */
 	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
@@ -468,7 +477,7 @@ typedef struct janus_videoroom_subscriber {
 typedef struct janus_videoroom_rtp_relay_packet {
 	rtp_header *data;
 	gint length;
-	gint is_video;
+	gboolean is_video;
 	uint32_t timestamp;
 	uint16_t seq_number;
 } janus_videoroom_rtp_relay_packet;
@@ -513,6 +522,7 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	g_free(p->recording_base);
 	janus_recorder_free(p->arc);
 	janus_recorder_free(p->vrc);
+	janus_recorder_free(p->drc);
 
 	if(p->udp_sock > 0)
 		close(p->udp_sock);
@@ -699,16 +709,16 @@ static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 #define JANUS_VIDEOROOM_ERROR_INVALID_SDP		437
 
 
-static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_publisher *p, const gchar* host, int port, int is_video) {
+static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
+		const gchar* host, int port, int pt, uint32_t ssrc, gboolean is_video, gboolean is_data) {
 	if(!p || !host) {
 		return 0;
 	}
-	rtp_forwarder *forward = g_malloc0(sizeof(rtp_forwarder));
-	if(forward == NULL) {
-		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		return 0;
-	}
+	janus_videoroom_rtp_forwarder *forward = g_malloc0(sizeof(janus_videoroom_rtp_forwarder));
 	forward->is_video = is_video;
+	forward->payload_type = pt;
+	forward->ssrc = ssrc;
+	forward->is_data = is_data;
 	forward->serv_addr.sin_family = AF_INET;
 	inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
 	forward->serv_addr.sin_port = htons(port);
@@ -719,13 +729,14 @@ static guint32 janus_rtp_forwarder_add_helper(janus_videoroom_publisher *p, cons
 	}
 	g_hash_table_insert(p->rtp_forwarders, GUINT_TO_POINTER(stream_id), forward);
 	janus_mutex_unlock(&p->rtp_forwarders_mutex);
-	JANUS_LOG(LOG_VERB, "Added %s rtp_forward to participant %"SCNu64" host: %s:%d stream_id: %"SCNu32"\n", is_video ? "video":"audio", p->user_id, host, port, stream_id);
+	JANUS_LOG(LOG_VERB, "Added %s rtp_forward to participant %"SCNu64" host: %s:%d stream_id: %"SCNu32"\n",
+		is_data ? "data" : (is_video ? "video" : "audio"), p->user_id, host, port, stream_id);
 	return stream_id;
 }
 
-static void janus_rtp_forwarder_free_helper(gpointer data) {
+static void janus_videoroom_rtp_forwarder_free_helper(gpointer data) {
 	if(data) {
-		rtp_forwarder* forward = (rtp_forwarder*)data;
+		janus_videoroom_rtp_forwarder* forward = (janus_videoroom_rtp_forwarder*)data;
 		g_free(forward);
 		forward = NULL;
 	}
@@ -1155,12 +1166,14 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(media, "data", json_integer(participant->data));
 				json_object_set_new(info, "media", media);
 				json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
-				if(participant->arc || participant->vrc) {
+				if(participant->arc || participant->vrc || participant->drc) {
 					json_t *recording = json_object();
 					if(participant->arc && participant->arc->filename)
 						json_object_set_new(recording, "audio", json_string(participant->arc->filename));
 					if(participant->vrc && participant->vrc->filename)
 						json_object_set_new(recording, "video", json_string(participant->vrc->filename));
+					if(participant->drc && participant->drc->filename)
+						json_object_set_new(recording, "data", json_string(participant->drc->filename));
 					json_object_set_new(info, "recording", recording);
 				}
 				g_clear_pointer(&participant, janus_videoroom_publisher_dereference);
@@ -1677,15 +1690,34 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto plugin_response;
 		json_t *room = json_object_get(root, "room");
 		json_t *pub_id = json_object_get(root, "publisher_id");
-		int video_port = -1;
-		int audio_port = -1;
+		int video_port = -1, video_pt = 0;
+		uint32_t video_ssrc = 0;
+		int audio_port = -1, audio_pt = 0;
+		uint32_t audio_ssrc = 0;
+		int data_port = -1;
 		json_t *vid_port = json_object_get(root, "video_port");
 		if(vid_port) {
 			video_port = json_integer_value(vid_port);
+			json_t *pt = json_object_get(root, "video_pt");
+			if(pt)
+				video_pt = json_integer_value(pt);
+			json_t *ssrc = json_object_get(root, "video_ssrc");
+			if(ssrc)
+				video_ssrc = json_integer_value(ssrc);
 		}
 		json_t *au_port = json_object_get(root, "audio_port");
 		if(au_port) {
 			audio_port = json_integer_value(au_port);
+			json_t *pt = json_object_get(root, "audio_pt");
+			if(pt)
+				audio_pt = json_integer_value(pt);
+			json_t *ssrc = json_object_get(root, "audio_ssrc");
+			if(ssrc)
+				audio_ssrc = json_integer_value(ssrc);
+		}
+		json_t *d_port = json_object_get(root, "data_port");
+		if(d_port) {
+			data_port = json_integer_value(d_port);
 		}
 		json_t *json_host = json_object_get(root, "host");
 		
@@ -1724,11 +1756,15 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		guint32 audio_handle = 0;
 		guint32 video_handle = 0;
+		guint32 data_handle = 0;
 		if(audio_port > 0) {
-			audio_handle = janus_rtp_forwarder_add_helper(publisher, host, audio_port, 0);
+			audio_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, audio_port, audio_pt, audio_ssrc, FALSE, FALSE);
 		}
 		if(video_port > 0) {
-			video_handle = janus_rtp_forwarder_add_helper(publisher, host, video_port, 1);
+			video_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port, video_pt, video_ssrc, TRUE, FALSE);
+		}
+		if(data_port > 0) {
+			data_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, data_port, 0, 0, FALSE, TRUE);
 		}
 		janus_mutex_unlock(&videoroom->mutex);
 		response = json_object();
@@ -1752,6 +1788,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			/* Done */
 			json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle));
 			json_object_set_new(rtp_stream, "video", json_integer(video_port));
+		}
+		if(data_handle > 0) {
+			json_object_set_new(rtp_stream, "data_stream_id", json_integer(data_handle));
+			json_object_set_new(rtp_stream, "data", json_integer(data_port));
 		}
 		/* These two unrefs are related to the message handling */
 		g_clear_pointer(&publisher, janus_videoroom_publisher_dereference);
@@ -2075,14 +2115,25 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			while(g_hash_table_iter_next(&iter_f, &key_f, &value_f)) {				
 				json_t *fl = json_object();
 				guint32 rpk = GPOINTER_TO_UINT(key_f);
-				rtp_forwarder *rpv = value_f;
+				janus_videoroom_rtp_forwarder *rpv = value_f;
 				json_object_set_new(fl, "ip", json_string(inet_ntoa(rpv->serv_addr.sin_addr)));
-				if(rpv->is_video > 0) {
+				if(rpv->is_data) {
+					json_object_set_new(fl, "data_stream_id", json_integer(rpk));
+					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
+				} else if(rpv->is_video) {
 					json_object_set_new(fl, "video_stream_id", json_integer(rpk));
 					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
+					if(rpv->payload_type)
+						json_object_set_new(fl, "pt", json_integer(rpv->payload_type));
+					if(rpv->ssrc)
+						json_object_set_new(fl, "ssrc", json_integer(rpv->ssrc));
 				} else {
 					json_object_set_new(fl, "audio_stream_id", json_integer(rpk));
 					json_object_set_new(fl, "port", json_integer(ntohs(rpv->serv_addr.sin_port)));
+					if(rpv->payload_type)
+						json_object_set_new(fl, "pt", json_integer(rpv->payload_type));
+					if(rpv->ssrc)
+						json_object_set_new(fl, "ssrc", json_integer(rpv->ssrc));
 				}
 				json_array_append_new(flist, fl);
 			}		
@@ -2254,13 +2305,23 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		gpointer value;
 		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
 		while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
-			rtp_forwarder* rtp_forward = (rtp_forwarder*)value;
+			janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
+			/* Check if payload type and/or SSRC need to be overwritten for this forwarder */
+			int pt = rtp->type;
+			uint32_t ssrc = ntohl(rtp->ssrc);
+			if(rtp_forward->payload_type > 0)
+				rtp->type = rtp_forward->payload_type;
+			if(rtp_forward->ssrc > 0)
+				rtp->ssrc = htonl(rtp_forward->ssrc);
 			if(video && rtp_forward->is_video) {
 				sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
 			}
-			else if(!video && !rtp_forward->is_video) {
+			else if(!video && !rtp_forward->is_video && !rtp_forward->is_data) {
 				sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
 			}
+			/* Restore original values of payload type and SSRC before going on */
+			rtp->type = pt;
+			rtp->ssrc = htonl(ssrc);
 		}
 		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
 		/* Save the frame if we're recording */
@@ -2390,6 +2451,19 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 		g_clear_pointer(&participant, janus_videoroom_publisher_dereference_nodebug);
 		return;
 	}
+	/* Any forwarder involved? */
+	janus_mutex_lock(&participant->rtp_forwarders_mutex);
+	/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, participant->rtp_forwarders);
+	while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
+		if(rtp_forward->is_data) {
+			sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
+		}
+	}
+	janus_mutex_unlock(&participant->rtp_forwarders_mutex);
 	/* Get a string out of the data */
 	char *text = g_malloc0(len+1);
 	if(text == NULL) {
@@ -2399,6 +2473,9 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	memcpy(text, buf, len);
 	*(text+len) = '\0';
 	JANUS_LOG(LOG_VERB, "Got a DataChannel message (%zu bytes) to forward: %s\n", strlen(text), text);
+	/* Save the message if we're recording */
+	janus_recorder_save_frame(participant->drc, text, strlen(text));
+	/* Relay to all listeners */
 	janus_mutex_lock(&participant->subscribers_mutex);
 	g_slist_foreach(participant->subscribers, janus_videoroom_relay_data_packet, text);
 	janus_mutex_unlock(&participant->subscribers_mutex);
@@ -2451,7 +2528,7 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 	}
 }
 
-static void janus_videoroom_recorder_create(janus_videoroom_publisher *participant, gboolean audio, gboolean video) {
+static void janus_videoroom_recorder_create(janus_videoroom_publisher *participant, gboolean audio, gboolean video, gboolean data) {
 	char filename[255];
 	gint64 now = janus_get_real_time();
 	if(audio) {
@@ -2496,6 +2573,27 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 			}
 		}
 	}
+	if(data) {
+		memset(filename, 0, 255);
+		if(participant->recording_base) {
+			/* Use the filename and path we have been provided */
+			g_snprintf(filename, 255, "%s-data", participant->recording_base);
+			participant->drc = janus_recorder_create(participant->room->rec_dir,
+				"text", filename);
+			if(participant->drc == NULL) {
+				JANUS_LOG(LOG_ERR, "Couldn't open an data recording file for this publisher!\n");
+			}
+		} else {
+			/* Build a filename */
+			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-data",
+				participant->room->room_id, participant->user_id, now);
+			participant->drc = janus_recorder_create(participant->room->rec_dir,
+				"text", filename);
+			if(participant->drc == NULL) {
+				JANUS_LOG(LOG_ERR, "Couldn't open an data recording file for this publisher!\n");
+			}
+		}
+	}
 }
 
 static void janus_videoroom_recorder_close(janus_videoroom_publisher *participant) {
@@ -2511,6 +2609,12 @@ static void janus_videoroom_recorder_close(janus_videoroom_publisher *participan
 		janus_recorder_free(participant->vrc);
 	}
 	participant->vrc = NULL;
+	if(participant->drc) {
+		janus_recorder_close(participant->drc);
+		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", participant->drc->filename ? participant->drc->filename : "??");
+		janus_recorder_free(participant->drc);
+	}
+	participant->drc = NULL;
 }
 
 void janus_videoroom_hangup_media(janus_plugin_session *handle) {
@@ -2858,6 +2962,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->recording_base = NULL;
 				publisher->arc = NULL;
 				publisher->vrc = NULL;
+				publisher->drc = NULL;
 				janus_mutex_init(&publisher->rec_mutex);
 				publisher->firefox = FALSE;
 				publisher->bitrate = publisher->room->bitrate;
@@ -2910,7 +3015,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->fir_latest = 0;
 				publisher->fir_seq = 0;
 				janus_mutex_init(&publisher->rtp_forwarders_mutex);
-				publisher->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_rtp_forwarder_free_helper);
+				publisher->rtp_forwarders = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_videoroom_rtp_forwarder_free_helper);
 				publisher->udp_sock = -1;
 				/* Finally, generate a private ID: this is only needed in case the participant
 				 * wants to allow the plugin to know which subscriptions belong to them */
@@ -3194,7 +3299,10 @@ static void *janus_videoroom_handler(void *data) {
 						janus_videoroom_recorder_close(participant);
 					} else if(participant->recording_active && participant->sdp) {
 						/* We've started recording, send a PLI/FIR and go on */
-						janus_videoroom_recorder_create(participant, strstr(participant->sdp, "m=audio") != NULL, strstr(participant->sdp, "m=video") != NULL);
+						janus_videoroom_recorder_create(
+							participant, strstr(participant->sdp, "m=audio") != NULL,
+							strstr(participant->sdp, "m=video") != NULL,
+							strstr(participant->sdp, "m=application") != NULL);
 						if(strstr(participant->sdp, "m=video")) {
 							/* Send a FIR */
 							char buf[20];
@@ -3227,12 +3335,14 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "audio_active", participant->audio_active ? json_true() : json_false());
 					json_object_set_new(info, "video_active", participant->video_active ? json_true() : json_false());
 					json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
-					if(participant->arc || participant->vrc) {
+					if(participant->arc || participant->vrc || participant->drc) {
 						json_t *recording = json_object();
 						if(participant->arc && participant->arc->filename)
 							json_object_set_new(recording, "audio", json_string(participant->arc->filename));
 						if(participant->vrc && participant->vrc->filename)
 							json_object_set_new(recording, "video", json_string(participant->vrc->filename));
+						if(participant->drc && participant->drc->filename)
+							json_object_set_new(recording, "data", json_string(participant->drc->filename));
 						json_object_set_new(info, "recording", recording);
 					}
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
@@ -3754,7 +3864,7 @@ static void *janus_videoroom_handler(void *data) {
 					/* Is this room recorded? */
 					janus_mutex_lock(&participant->rec_mutex);
 					if(videoroom->record || participant->recording_active) {
-						janus_videoroom_recorder_create(participant, audio, video);
+						janus_videoroom_recorder_create(participant, audio, video, data);
 					}
 					janus_mutex_unlock(&participant->rec_mutex);
 
