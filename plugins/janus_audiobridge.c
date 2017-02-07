@@ -3531,7 +3531,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				outBuffer[i] = sumBuffer[i];
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
-			if(pkt == NULL) {
+			if(mixedpkt == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			} else {
 				mixedpkt->data = g_malloc0(samples*2);
