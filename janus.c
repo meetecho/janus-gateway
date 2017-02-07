@@ -1326,7 +1326,9 @@ int janus_process_incoming_request(janus_request *request) {
 					}
 				}
 			}
+			char *tmp = handle->remote_sdp;
 			handle->remote_sdp = g_strdup(jsep_sdp);
+			g_free(tmp);
 			janus_mutex_unlock(&handle->mutex);
 			/* Anonymize SDP */
 			if(janus_sdp_anonymize(parsed_sdp) < 0) {
@@ -2661,7 +2663,9 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	json_t *jsep = json_object();
 	json_object_set_new(jsep, "type", json_string(sdp_type));
 	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
+	char *tmp = ice_handle->local_sdp;
 	ice_handle->local_sdp = sdp_merged;
+	g_free(tmp);
 	return jsep;
 }
 

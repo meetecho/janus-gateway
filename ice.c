@@ -2860,7 +2860,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->audio_ssrc = 0;
 		video_stream->audio_ssrc_peer = 0;
 		video_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
-		if(video_stream->audio_rtcp_ctx == NULL) {
+		if(video_stream->video_rtcp_ctx == NULL) {
 			JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			return -1;
 		}

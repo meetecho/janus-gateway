@@ -237,6 +237,7 @@
 #include "../mutex.h"
 #include "../record.h"
 #include "../rtcp.h"
+#include "../sdp-utils.h"
 #include "../utils.h"
 
 
@@ -335,7 +336,9 @@ static janus_videocall_message exit_message;
 
 typedef struct janus_videocall_session {
 	janus_plugin_session *handle;
+	gint64 sdp_version;
 	gchar *username;
+	gchar *sdp;
 	gboolean has_audio;
 	gboolean has_video;
 	gboolean audio_active;
@@ -524,7 +527,9 @@ void janus_videocall_create_session(janus_plugin_session *handle, int *error) {
 	session->video_active = TRUE;
 	session->bitrate = 0;	/* No limit */
 	session->peer = NULL;
+	session->sdp = NULL;
 	session->username = NULL;
+	session->sdp_version = -1;
 	janus_mutex_init(&session->rec_mutex);
 	g_atomic_int_set(&session->incall, 0);
 	g_atomic_int_set(&session->hangingup, 0);
@@ -816,6 +821,9 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 		}
 	}
 	session->peer = NULL;
+	g_free(session->sdp);
+	session->sdp = NULL;
+	session->sdp_version = -1;
 	/* Reset controls */
 	session->has_audio = FALSE;
 	session->has_video = FALSE;
@@ -876,7 +884,9 @@ static void *janus_videocall_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
-		char *sdp_type = NULL, *sdp = NULL;
+		gboolean sdp_update = FALSE;
+		if(json_object_get(msg->jsep, "update") != NULL)
+			sdp_update = json_is_true(json_object_get(msg->jsep, "update"));
 		if(!strcasecmp(request_text, "list")) {
 			result = json_object();
 			json_t *list = json_array();
@@ -1056,11 +1066,11 @@ static void *janus_videocall_handler(void *data) {
 					sdp = janus_string_replace(sdp, " 97", "");
 					sdp = janus_string_replace(sdp, " 98", "");
 				}
+				session->sdp = sdp;
 				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", sdp);
 				g_atomic_int_set(&session->hangingup, 0);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, jsep);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(sdp);
 				json_decref(call);
 				json_decref(jsep);
 				/* Send an ack back */
@@ -1095,6 +1105,7 @@ static void *janus_videocall_handler(void *data) {
 			session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
 			session->has_video = (strstr(msg_sdp, "m=video") != NULL);
 			/* Send SDP to our peer */
+			session->sdp = g_strdup(msg_sdp);
 			json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 			json_t *call = json_object();
 			json_object_set_new(call, "videocall", json_string("event"));
@@ -1261,6 +1272,36 @@ static void *janus_videocall_handler(void *data) {
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("set"));
+			/* If this is for an ICE restart, prepare the SDP to send back too */
+			if(sdp_update) {
+				if(session->peer != NULL && session->peer->sdp != NULL) {
+					janus_refcount_increase(&session->peer->ref);
+					char temp_error[512];
+					/* Parse the SDP our peer gave us and increase the version */
+					janus_sdp *parsed_sdp = janus_sdp_parse(session->peer->sdp, temp_error, sizeof(temp_error));
+					if(session->sdp_version == -1)
+						session->sdp_version = parsed_sdp->o_version;
+					session->sdp_version++;
+					parsed_sdp->o_version = session->sdp_version;
+					/* Generate a new SDP */
+					char *sdp = janus_sdp_write(parsed_sdp);
+					janus_sdp_free(parsed_sdp);
+					janus_refcount_decrease(&session->peer->ref);
+					/* Answer back */
+					json_t *event = json_object();
+					json_object_set_new(event, "videocall", json_string("event"));
+					json_object_set_new(event, "result", result);
+					json_t *jsep = json_pack("{ssss}", "type", "answer", "sdp", sdp);
+					json_object_set_new(jsep, "update", json_true());
+					int ret = gateway->push_event(session->handle, &janus_videocall_plugin, msg->transaction, event, jsep);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+					json_decref(event);
+					json_decref(jsep);
+					g_free(sdp);
+					janus_videocall_message_free(msg);
+					continue;
+				}
+			}
 		} else if(!strcasecmp(request_text, "hangup")) {
 			json_t *hangup = json_object_get(root, "reason");
 			if(hangup && !json_is_string(hangup)) {
@@ -1328,17 +1369,13 @@ static void *janus_videocall_handler(void *data) {
 		}
 
 		/* Prepare JSON event */
-		json_t *jsep = sdp ? json_pack("{ssss}", "type", sdp_type, "sdp", sdp) : NULL;
 		json_t *event = json_object();
 		json_object_set_new(event, "videocall", json_string("event"));
 		if(result != NULL)
 			json_object_set_new(event, "result", result);
-		int ret = gateway->push_event(msg->handle, &janus_videocall_plugin, msg->transaction, event, jsep);
+		int ret = gateway->push_event(msg->handle, &janus_videocall_plugin, msg->transaction, event, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
-		g_free(sdp);
 		json_decref(event);
-		if(jsep)
-			json_decref(jsep);
 		janus_videocall_message_free(msg);
 		continue;
 		

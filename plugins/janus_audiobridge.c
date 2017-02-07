@@ -654,7 +654,8 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"refresh", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -726,6 +727,8 @@ static char *admin_key = NULL;
 
 typedef struct janus_audiobridge_session {
 	janus_plugin_session *handle;
+	gint64 sdp_sessid;
+	gint64 sdp_version;
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
@@ -2434,6 +2437,9 @@ static void *janus_audiobridge_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
+		gboolean sdp_update = FALSE;
+		if(json_object_get(msg->jsep, "update") != NULL)
+			sdp_update = json_is_true(json_object_get(msg->jsep, "update"));
 		if(!strcasecmp(request_text, "join")) {
 			JANUS_LOG(LOG_VERB, "Configuring new participant\n");
 			janus_audiobridge_participant *participant = session->participant;
@@ -3222,6 +3228,15 @@ static void *janus_audiobridge_handler(void *data) {
 				type = "answer";
 			if(!strcasecmp(msg_sdp_type, "answer"))
 				type = "offer";
+			if(sdp_update) {
+				/* Renegotiation: make sure the user provided an offer, and send answer */
+				JANUS_LOG(LOG_VERB, "Request to refresh existing connection\n");
+				session->sdp_version++;		/* This needs to be increased when it changes */
+			} else {
+				/* New PeerConnection */
+				session->sdp_version = 1;	/* This needs to be increased when it changes */
+				session->sdp_sessid = janus_get_real_time();
+			}
 			/* Fill the SDP template and use that as our answer */
 			janus_audiobridge_participant *participant = (janus_audiobridge_participant *)session->participant;
 			char sdp[1024];
@@ -3242,8 +3257,8 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			/* Prepare the response */
 			g_snprintf(sdp, 1024, sdp_template,
-				janus_get_real_time(),			/* We need current time here */
-				janus_get_real_time(),			/* We need current time here */
+				session->sdp_sessid,
+				session->sdp_version,
 				participant->room->room_name,	/* Audio bridge name */
 				participant->opus_pt,			/* Opus payload type */
 				participant->opus_pt,			/* Opus payload type */
@@ -3266,6 +3281,8 @@ static void *janus_audiobridge_handler(void *data) {
 				g_strlcat(sdp, "m=application 0 DTLS/SCTP 0\r\n", 1024);
 			}
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
+			if(sdp_update)
+				json_object_set_new(jsep, "update", json_true());
 			/* How long will the gateway take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
 			gint64 start = janus_get_monotonic_time();
@@ -3531,7 +3548,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 				outBuffer[i] = sumBuffer[i];
 			/* Enqueue this mixed frame for encoding in the participant thread */
 			janus_audiobridge_rtp_relay_packet *mixedpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
-			if(pkt == NULL) {
+			if(mixedpkt == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 			} else {
 				mixedpkt->data = g_malloc0(samples*2);

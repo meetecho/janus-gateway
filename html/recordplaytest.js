@@ -132,10 +132,10 @@ $(document).ready(function() {
 									Janus.debug(" ::: Got a message :::");
 									Janus.debug(JSON.stringify(msg));
 									var result = msg["result"];
-									if(result !== null && result !== undefined) {
-										if(result["status"] !== undefined && result["status"] !== null) {
+									if(result) {
+										if(result["status"]) {
 											var event = result["status"];
-											if(event === 'preparing') {
+											if(event === 'preparing' || event === 'refreshing') {
 												Janus.log("Preparing the recording playout");
 												recordplay.createAnswer(
 													{
@@ -156,7 +156,7 @@ $(document).ready(function() {
 													bootbox.alert(result["warning"]);
 											} else if(event === 'recording') {
 												// Got an ANSWER to our recording OFFER
-												if(jsep !== null && jsep !== undefined)
+												if(jsep)
 													recordplay.handleRemoteJsep({jsep: jsep});
 												var id = result["id"];
 												if(id !== null && id !== undefined) {

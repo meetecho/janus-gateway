@@ -2241,9 +2241,8 @@ static void *janus_streaming_handler(void *data) {
 			if(sdp_update || do_refresh) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
 				JANUS_LOG(LOG_VERB, "Request to refresh mountpoint/stream %"SCNu64" subscription\n", id_value);
-				session->sdp_version++;		/* FIXME This needs to be increased when it changes */
-				/* If the user updated the session with an offer, we answer just this time */
-				sdp_type = sdp_update ? "answer" : "offer";
+				session->sdp_version++;	/* This needs to be increased when it changes */
+				sdp_type = "offer";		/* We're always going to do the offer ourselves, even for ICE restarts */
 				sdp_update = TRUE;
 			} else {
 				/* New viewer: we send an offer ourselves */
@@ -2263,12 +2262,12 @@ static void *janus_streaming_handler(void *data) {
 						goto error;
 					}
 				}
-				/* TODO Check if user is already watching a stream, if the video is active, etc. */
+				/* FIXME Check if user is already watching a stream, if the video is active, etc. */
 				janus_mutex_lock(&mp->mutex);
 				mp->listeners = g_list_append(mp->listeners, session);
 				janus_mutex_unlock(&mp->mutex);
-				sdp_type = "offer";			/* We're always going to do the offer ourselves (unless there's an update later) */
-				session->sdp_version = 1;	/* FIXME This needs to be increased when it changes */
+				sdp_type = "offer";			/* We're always going to do the offer ourselves */
+				session->sdp_version = 1;	/* This needs to be increased when it changes */
 				session->sdp_sessid = janus_get_real_time();
 			}
 			char sdptemp[2048];
