@@ -2652,7 +2652,8 @@ ldd janus | grep asan
  *    and <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">#vuc584</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=SFeWYewoL7Q">OpenSIPS summit</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=yvt-vMHW83c">Kamailio World</a>;
- *    - Presentation at <a href="https://www.youtube.com/watch?v=WfNciKbsP80">WebRTC Meetup Tokyo #12</a>. \n\n
+ *    - Presentation at <a href="https://www.youtube.com/watch?v=WfNciKbsP80">WebRTC Meetup Tokyo #12</a>;
+ *    - Presentation on Event Handlers at <a href="http://bofh.nikhef.nl/events/FOSDEM/2017/K.3.401/janus.vp8.webm">FOSDEM 2017</a>. \n\n
  *    .
  * -# <b>Why is Janus called like that?</b>\n
  *    .
