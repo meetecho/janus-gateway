@@ -546,6 +546,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((now-session->start_time) >= 10*G_USEC_PER_SEC) {
 		/* FIXME Simulate a "stop" coming from the browser */
 		session->started = FALSE;
+		janus_refcount_increase(&session->ref);
 		janus_voicemail_message *msg = g_malloc0(sizeof(janus_voicemail_message));
 		msg->handle = handle;
 		msg->message = json_pack("{ss}", "request", "stop");
