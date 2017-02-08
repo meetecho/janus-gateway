@@ -525,7 +525,11 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_private_key_filepath = server_key;
 				info.gid = -1;
 				info.uid = -1;
+#if LWS_LIBRARY_VERSION_MAJOR >= 2
+				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+#else
 				info.options = 0;
+#endif
 				/* Create the secure WebSocket context */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 				swss = lws_create_context(&info);
@@ -625,7 +629,11 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.ssl_private_key_filepath = server_key;
 				info.gid = -1;
 				info.uid = -1;
+#if LWS_LIBRARY_VERSION_MAJOR >= 2
+				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+#else
 				info.options = 0;
+#endif
 				/* Create the secure WebSocket context */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 				admin_swss = lws_create_context(&info);
