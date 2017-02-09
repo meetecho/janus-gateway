@@ -121,6 +121,9 @@ static struct janus_json_parameter colors_parameters[] = {
 static struct janus_json_parameter mnq_parameters[] = {
 	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter nmt_parameters[] = {
+	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -1532,6 +1535,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			json_object_set_new(reply, "status", status);
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
@@ -1661,6 +1665,26 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_no_media_timer")) {
+			/* Change the current value for the no-media timer */
+			JANUS_VALIDATE_JSON_OBJECT(root, nmt_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *nmt = json_object_get(root, "no_media_timer");
+			int nmt_num = json_integer_value(nmt);
+			janus_set_no_media_timer(nmt_num);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -3371,6 +3395,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(mnq, 20, "%d", args_info.max_nack_queue_arg);
 		janus_config_add_item(config, "media", "max_nack_queue", mnq);
 	}
+	if(args_info.no_media_timer_given) {
+		char nmt[20];
+		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
+		janus_config_add_item(config, "media", "no_media_timer", nmt);
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
@@ -3644,6 +3673,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's less than 200\n");
 		} else {
 			janus_set_max_nack_queue(mnq);
+		}
+	}
+	/* no-media timer */
+	item = janus_config_get_item_drilldown(config, "media", "no_media_timer");
+	if(item && item->value) {
+		int nmt = atoi(item->value);
+		if(nmt < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
+		} else {
+			janus_set_no_media_timer(nmt);
 		}
 	}
 

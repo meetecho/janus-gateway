@@ -53,7 +53,9 @@ cert_key = @certdir@/mycert.key
 ; range of ports to use for RTP and RTCP (by default, no range is envisaged), the
 ; starting MTU for DTLS (1472 by default, it adapts automatically),
 ; if BUNDLE should be forced (defaults to false) and if RTCP muxing should
-; be forced (defaults to false).
+; be forced (defaults to false), and finally how much time, in seconds,
+; should pass with no media (audio or video) being received before Janus
+; notifies you about this (default=1s, 0 disables these events entirely).
 [media]
 ;ipv6 = true
 ;max_nack_queue = 1000
@@ -61,6 +63,7 @@ cert_key = @certdir@/mycert.key
 ;dtls_mtu = 1200
 ;force-bundle = true
 ;force-rtcp-mux = true
+;no_media_timer = 1
 
 
 ; NAT-related stuff: specifically, you can configure the STUN/TURN
