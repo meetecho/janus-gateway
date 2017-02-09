@@ -289,6 +289,10 @@ function Janus(gatewayCallbacks) {
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
 		ipv6Support = false;
+	// Whether we should enable the withCredentials flag for XHR requests
+	var withCredentials = false;
+	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
+		withCredentials = gatewayCallbacks.withCredentials === true;
 	// Optional max events
 	var maxev = null;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
@@ -341,6 +345,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'GET',
 			url: longpoll,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			timeout: 60000,	// FIXME
 			success: handleEvent,
@@ -629,6 +636,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -740,6 +750,9 @@ function Janus(gatewayCallbacks) {
 			type: 'POST',
 			url: server + "/" + sessionId,
 			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -880,6 +893,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1023,6 +1039,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1086,6 +1105,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1213,6 +1235,9 @@ function Janus(gatewayCallbacks) {
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
 			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -2094,6 +2119,9 @@ function Janus(gatewayCallbacks) {
 					$.ajax({
 						type: 'POST',
 						url: server + "/" + sessionId + "/" + handleId,
+						xhrFields: {
+							withCredentials: withCredentials
+						},
 						cache: false,
 						contentType: "application/json",
 						data: JSON.stringify(request),

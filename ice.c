@@ -295,8 +295,8 @@ uint janus_get_no_media_timer(void) {
 }
 
 
-/* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=1000ms=1s) */
-#define DEFAULT_MAX_NACK_QUEUE	1000
+/* Maximum value, in milliseconds, for the NACK queue/retransmissions (default=300ms) */
+#define DEFAULT_MAX_NACK_QUEUE	300
 /* Maximum ignore count after retransmission (100ms) */
 #define MAX_NACK_IGNORE			100000
 
