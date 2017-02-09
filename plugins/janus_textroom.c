@@ -1441,7 +1441,7 @@ void janus_textroom_handle_incoming_request(janus_plugin_session *handle, char *
 		if(!internal) {
 			/* Send response back */
 			json_t *reply = json_object();
-			json_object_set_new(reply, "textroom", json_string("success"));
+			json_object_set_new(reply, "textroom", json_string("created"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "room", json_integer(textroom->room_id));
 			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
