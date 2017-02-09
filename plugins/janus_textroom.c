@@ -1525,7 +1525,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
-			json_object_set_new(reply, "textroom", json_string("success"));
+			/* Notice that we reply differently if the request came via Janus API */
+			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "created"));
 			json_object_set_new(reply, "room", json_integer(textroom->room_id));
 			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 		}
@@ -1635,7 +1636,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
-			json_object_set_new(reply, "textroom", json_string("success"));
+			/* Notice that we reply differently if the request came via Janus API */
+			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "destroyed"));
 		}
 		/* We'll let the watchdog worry about freeing resources */
 		old_rooms = g_list_append(old_rooms, textroom);
