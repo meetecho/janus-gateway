@@ -39,6 +39,15 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;								  in any of the available transports.
 ;server_name = MyJanusInstance	; Public name of this Janus instance
 ;								  as it will appear in an info request
+;session_timeout = 60		; How long (in seconds) we should wait before
+;							deciding a Janus session has timed out. A
+;							session times out when no request is received
+;							for session_timeout seconds (default=60s).
+;							Setting this to 0 will disable the timeout
+;							mechanism, which is NOT suggested as it may
+;							risk having orphaned sessions (sessions not
+;							controlled by any transport and never freed).
+;							To avoid timeouts, keep-alives can be used.
 
 
 ; Certificate and key to use for DTLS.
