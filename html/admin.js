@@ -199,6 +199,22 @@ function updateSettings() {
 							setMaxNackQueue(result);
 						});
 					});
+				} else if(k === 'no_media_timer') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit no-media timer value</button>');
+					$('#'+k + "_button").click(function() {
+						bootbox.prompt("Set the new desired no-media timer value (in seconds, currently " + settings["no_media_timer"] + ")", function(result) {
+							if(isNaN(result)) {
+								bootbox.alert("Invalid no-media timer (should be a positive integer)");
+								return;
+							}
+							result = parseInt(result);
+							if(result < 0) {
+								bootbox.alert("Invalid no-media timer (should be a positive integer)");
+								return;
+							}
+							setNoMediaTimer(result);
+						});
+					});
 				} else if(k === 'locking_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
@@ -294,6 +310,11 @@ function setLibniceDebug(enable) {
 
 function setMaxNackQueue(queue) {
 	var request = { "janus": "set_max_nack_queue", "max_nack_queue": queue, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
+}
+
+function setNoMediaTimer(timer) {
+	var request = { "janus": "set_no_media_timer", "no_media_timer": timer, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
 }
 
