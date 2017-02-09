@@ -33,6 +33,7 @@
 #include "debug.h"
 #include "rtcp.h"
 #include "auth.h"
+#include "record.h"
 #include "events.h"
 
 
@@ -3494,6 +3495,14 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "token_auth");
 	janus_auth_init(item && item->value && janus_is_true(item->value));
 
+	/* Initialize the recorder code */
+	item = janus_config_get_item_drilldown(config, "general", "recordings_tmp_ext");
+	if(item && item->value) {
+		janus_recorder_init(TRUE, item->value);
+	} else {
+		janus_recorder_init(FALSE, NULL);
+	}
+
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL, *turn_server = NULL;
 	uint16_t stun_port = 0, turn_port = 0;
@@ -4172,6 +4181,8 @@ gint main(int argc, char *argv[])
 		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
 		g_hash_table_destroy(eventhandlers_so);
 	}
+
+	janus_recorder_deinit();
 
 	JANUS_PRINT("Bye!\n");
 
