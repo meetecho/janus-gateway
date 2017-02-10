@@ -158,19 +158,6 @@ int janus_rtp_header_extension_parse_audio_level(char *buf, int len, int id, int
 	return 0;
 }
 
-int janus_rtp_header_extension_parse_audio_level_and_return(char *buf, int len, int id, int *level) {
-	uint8_t byte = 0;
-	if(janus_rtp_header_extension_find(buf, len, id, &byte, NULL) < 0)
-		return 0;
-	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
-	// int v = (byte & 0x80) >> 7;
-	int value = byte & 0x7F;
-	// JANUS_LOG(LOG_DBG, "%02x --> v=%d, level=%d\n", byte, v, value);
-	if(level)
-		*level = value;
-	return value;
-}
-
 int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int id,
 		gboolean *c, gboolean *f, gboolean *r1, gboolean *r0) {
 	uint8_t byte = 0;
