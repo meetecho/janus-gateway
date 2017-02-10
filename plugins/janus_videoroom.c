@@ -2269,24 +2269,27 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-	if(participant->audio_level_extmap_id > 0 && participant->audio_active) {
+	if(participant->audio_active) {
 		int level = 0;
-		int audio_level = janus_rtp_header_extension_parse_audio_level_and_return(buf, len, participant->audio_level_extmap_id, &level);
-		participant->audio_dBov_sum = participant->audio_dBov_sum + audio_level;
-		participant->audio_active_packets = participant->audio_active_packets + 1;
-		if(participant->audio_active_packets == 150) {
-			if(participant->audio_dBov_sum < 3000) {
-				// Notify participants
-				json_t *event = json_object();
-				json_object_set_new(event, "event", json_string("talking"));
-				json_object_set_new(event, "user", json_string(participant->display));
-				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
-				json_decref(event);
-				JANUS_LOG(LOG_ERR, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets);
-			}
-			participant->audio_active_packets = 0;
-			participant->audio_dBov_sum = 0;
-		}
+        if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->audio_level_extmap_id, &level) == 0) {
+            // JANUS_LOG(LOG_INFO, "Audio level is %d\n", level);
+            participant->audio_dBov_sum = participant->audio_dBov_sum + level;
+            participant->audio_active_packets = participant->audio_active_packets + 1;
+	    // 2 seconds of talking (100 packets) with average of ~25 dBow
+            if(participant->audio_active_packets == 100) {
+                if(participant->audio_dBov_sum < 2500) {
+                    // Notify participants
+                    json_t *event = json_object();
+                    json_object_set_new(event, "event", json_string("talking"));
+                    json_object_set_new(event, "user", json_string(participant->display));
+                    janus_videoroom_notify_participants(participant, event);
+                    json_decref(event);
+                    // JANUS_LOG(LOG_WARN, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets);
+                }
+                participant->audio_active_packets = 0;
+                participant->audio_dBov_sum = 0;
+            }
+        }
 	}
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		/* Update payload type and SSRC */
