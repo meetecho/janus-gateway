@@ -1085,10 +1085,11 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "Removing streaming session...\n");
-	if(session->mountpoint) {
-		janus_mutex_lock(&session->mountpoint->mutex);
-		session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
-		janus_mutex_unlock(&session->mountpoint->mutex);
+	janus_streaming_mountpoint *mp = session->mountpoint;
+	if(mp) {
+		janus_mutex_lock(&mp->mutex);
+		mp->listeners = g_list_remove_all(mp->listeners, session);
+		janus_mutex_unlock(&mp->mutex);
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
@@ -1112,10 +1113,11 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 	}
 	/* What is this user watching, if anything? */
 	json_t *info = json_object();
-	json_object_set_new(info, "state", json_string(session->mountpoint ? "watching" : "idle"));
-	if(session->mountpoint) {
-		json_object_set_new(info, "mountpoint_id", json_integer(session->mountpoint->id));
-		json_object_set_new(info, "mountpoint_name", session->mountpoint->name ? json_string(session->mountpoint->name) : NULL);
+	janus_streaming_mountpoint *mp = session->mountpoint;
+	json_object_set_new(info, "state", json_string(mp ? "watching" : "idle"));
+	if(mp) {
+		json_object_set_new(info, "mountpoint_id", json_integer(mp->id));
+		json_object_set_new(info, "mountpoint_name", mp->name ? json_string(mp->name) : NULL);
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
 	return info;
@@ -2338,7 +2340,8 @@ static void *janus_streaming_handler(void *data) {
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("starting"));
-				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
+				if(session->mountpoint != NULL)
+					json_object_set_new(info, "id", json_integer(session->mountpoint->id));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "pause")) {
@@ -2356,7 +2359,8 @@ static void *janus_streaming_handler(void *data) {
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("pausing"));
-				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
+				if(session->mountpoint != NULL)
+					json_object_set_new(info, "id", json_integer(session->mountpoint->id));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 		} else if(!strcasecmp(request_text, "switch")) {
@@ -2438,20 +2442,22 @@ static void *janus_streaming_handler(void *data) {
 			session->paused = FALSE;
 			result = json_object();
 			json_object_set_new(result, "status", json_string("stopping"));
-			if(session->mountpoint) {
-				janus_mutex_lock(&session->mountpoint->mutex);
+			janus_streaming_mountpoint *mp = session->mountpoint;
+			if(mp) {
+				janus_mutex_lock(&mp->mutex);
 				JANUS_LOG(LOG_VERB, "  -- Removing the session from the mountpoint listeners\n");
-				if(g_list_find(session->mountpoint->listeners, session) != NULL) {
+				if(g_list_find(mp->listeners, session) != NULL) {
 					JANUS_LOG(LOG_VERB, "  -- -- Found!\n");
 				}
-				session->mountpoint->listeners = g_list_remove_all(session->mountpoint->listeners, session);
-				janus_mutex_unlock(&session->mountpoint->mutex);
+				mp->listeners = g_list_remove_all(mp->listeners, session);
+				janus_mutex_unlock(&mp->mutex);
 			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
 				json_object_set_new(info, "status", json_string("stopping"));
-				json_object_set_new(info, "id", json_integer(session->mountpoint->id));
+				if(mp)
+					json_object_set_new(info, "id", json_integer(mp->id));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
 			session->mountpoint = NULL;
