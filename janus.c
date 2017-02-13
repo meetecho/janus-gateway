@@ -110,6 +110,9 @@ static struct janus_json_parameter admin_parameters[] = {
 static struct janus_json_parameter debug_parameters[] = {
 	{"debug", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter timeout_parameters[] = {
+	{"timeout", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter level_parameters[] = {
 	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
@@ -121,6 +124,9 @@ static struct janus_json_parameter colors_parameters[] = {
 };
 static struct janus_json_parameter mnq_parameters[] = {
 	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter nmt_parameters[] = {
+	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Admin/Monitor helpers */
@@ -155,6 +161,22 @@ gint janus_is_stopping(void) {
 static gchar *server_name = NULL;
 
 
+/* The default timeout for sessions is 60 seconds: this means that, if
+ * we don't get any activity (i.e., no request) on this session for more
+ * than 60 seconds, then it's considered expired and we destroy it. That's
+ * why we have a keep-alive method in the API. This can be overridden in
+ * either janus.cfg or from the command line. Setting this to 0 will
+ * disable the timeout mechanism, which is NOT suggested as it may risk
+ * having orphaned sessions (sessions not controlled by any transport
+ * and never freed). Besides, notice that if you make this shorter than
+ * 30s, you'll have to update the timers in janus.js when the long
+ * polling mechanism is used and shorten them as well, or you'll risk
+ * incurring in unexpected timeouts (when HTTP is used in janus.js, the
+ * long poll is used as a keepalive mechanism). */
+#define DEFAULT_SESSION_TIMEOUT		60
+static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
+
+
 /* Information */
 json_t *janus_info(const char *transaction);
 json_t *janus_info(const char *transaction) {
@@ -176,6 +198,7 @@ json_t *janus_info(const char *transaction) {
 #else
 	json_object_set_new(info, "data_channels", json_false());
 #endif
+	json_object_set_new(info, "session-timeout", json_integer(session_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
@@ -372,8 +395,6 @@ static GHashTable *sessions = NULL, *old_sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
 
 
-#define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
-
 static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
 
@@ -384,6 +405,8 @@ static gboolean janus_cleanup_session(gpointer user_data) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
+	if(session_timeout < 1)		/* Session timeouts are disabled */
+		return G_SOURCE_CONTINUE;
 	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -396,7 +419,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
+			if (now - session->last_activity >= session_timeout * G_USEC_PER_SEC && !session->timeout) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 
 				/* Notify the transport */
@@ -1527,13 +1550,39 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
+			json_object_set_new(status, "session_timeout", json_integer(session_timeout));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			json_object_set_new(reply, "status", status);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_session_timeout")) {
+			/* Change the session timeout value */
+			JANUS_VALIDATE_JSON_OBJECT(root, timeout_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *timeout = json_object_get(root, "timeout");
+			int timeout_num = json_integer_value(timeout);
+			if(timeout_num < 0) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timeout should be a positive integer)");
+				goto jsondone;
+			}
+			session_timeout = timeout_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "timeout", json_integer(session_timeout));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1662,6 +1711,26 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_no_media_timer")) {
+			/* Change the current value for the no-media timer */
+			JANUS_VALIDATE_JSON_OBJECT(root, nmt_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *nmt = json_object_get(root, "no_media_timer");
+			int nmt_num = json_integer_value(nmt);
+			janus_set_no_media_timer(nmt_num);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -3306,6 +3375,11 @@ gint main(int argc, char *argv[])
 	if(args_info.server_name_given) {
 		janus_config_add_item(config, "general", "server_name", args_info.server_name_arg);
 	}
+	if(args_info.session_timeout_given) {
+		char st[20];
+		g_snprintf(st, 20, "%d", args_info.session_timeout_arg);
+		janus_config_add_item(config, "general", "session_timeout", st);
+	}
  	if(args_info.interface_given) {
 		janus_config_add_item(config, "general", "interface", args_info.interface_arg);
 	}
@@ -3371,6 +3445,11 @@ gint main(int argc, char *argv[])
 		char mnq[20];
 		g_snprintf(mnq, 20, "%d", args_info.max_nack_queue_arg);
 		janus_config_add_item(config, "media", "max_nack_queue", mnq);
+	}
+	if(args_info.no_media_timer_given) {
+		char nmt[20];
+		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
+		janus_config_add_item(config, "media", "no_media_timer", nmt);
 	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
@@ -3477,6 +3556,19 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "server_name");
 	if(item && item->value) {
 		server_name = g_strdup(item->value);
+	}
+
+	/* Check if a custom session timeout value was specified */
+	item = janus_config_get_item_drilldown(config, "general", "session_timeout");
+	if(item && item->value) {
+		int st = atoi(item->value);
+		if(st < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring session_timeout value as it's not a positive integer\n");
+		} else if(st == 0) {
+			JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
+		} else {
+			session_timeout = st;
+		}
 	}
 
 	/* Is there any API secret to consider? */
@@ -3653,6 +3745,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's less than 200\n");
 		} else {
 			janus_set_max_nack_queue(mnq);
+		}
+	}
+	/* no-media timer */
+	item = janus_config_get_item_drilldown(config, "media", "no_media_timer");
+	if(item && item->value) {
+		int nmt = atoi(item->value);
+		if(nmt < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
+		} else {
+			janus_set_no_media_timer(nmt);
 		}
 	}
 
