@@ -205,6 +205,8 @@ $(document).ready(function() {
 											});
 										}
 									} else if(what === "destroyed") {
+										if(json["room"] !== myroom)
+											return;
 										// Room was destroyed, goodbye!
 										Janus.warn("The room has been destroyed!");
 										bootbox.alert("The room has been destroyed", function() {

@@ -194,6 +194,17 @@ Janus.init({
  * automatic for fallback/failover during setup;
  * - \c iceServers: a list of STUN/TURN servers to use (a default STUN server
  * will be used if you skip this property);
+ * - \c ipv6: whether IPv6 candidates should ge gathered or not;
+ * - \c withCredentials: whether the \c withCredentials property of XHR requests
+ * should be enabled or not (false by default, and only valid when using HTTP
+ * as a transport, ignored for WebSockets);
+ * - \c max_poll_events: the number of events that should be returned when polling;
+ * the default is 1 (polling returns an object), passing a higher number will
+ * have the backend return an array of objects instead (again, only valid for
+ HTTP usage as this is strictly related to long polling, ignored for WebSockets);
+ * - \c destroyOnUnload: whether we should destroy automatically try and
+ * destroy this session via Janus API when \c onbeforeunload is called (true by default);
+ * - \c token , \c apisecret: optional parameters only needed in case you're \ref auth ;
  * - a set of callbacks to be notified about events, namely:
  * 		- \c success: the session was successfully created and is ready to be used;
  * 		- \c error: the session was NOT successfully created;
@@ -271,7 +282,6 @@ var janus = new Janus(
  *
  * - \c plugin: the unique package name of the plugin (e.g., \c janus.plugin.echotest );
  * - \c opaqueId: an optional opaque string meaningful to your application (e.g., to map all the handles of the same user);
- * - \c token , \c apisecret: optional parameters only needed in case you're \ref auth ;
  * - a set of callbacks to be notified about events, namely:
  * 		- \c success: the handle was successfully created and is ready to be used;
  * 		- \c error: the handle was NOT successfully created;
@@ -2652,7 +2662,9 @@ ldd janus | grep asan
  *    and <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">#vuc584</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=SFeWYewoL7Q">OpenSIPS summit</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=yvt-vMHW83c">Kamailio World</a>;
- *    - Presentation at <a href="https://www.youtube.com/watch?v=WfNciKbsP80">WebRTC Meetup Tokyo #12</a>. \n\n
+ *    - Presentation at <a href="https://www.youtube.com/watch?v=WfNciKbsP80">WebRTC Meetup Tokyo #12</a>;
+ *    - Presentation at <a href="https://www.youtube.com/watch?v=gArqopeNQY0">DevDay Napoli</a> (in Italian);
+ *    - Presentation on Event Handlers at <a href="http://bofh.nikhef.nl/events/FOSDEM/2017/K.3.401/janus.vp8.webm">FOSDEM 2017</a>. \n\n
  *    .
  * -# <b>Why is Janus called like that?</b>\n
  *    .

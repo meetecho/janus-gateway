@@ -718,6 +718,9 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 	if(!session)
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 
+	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
+	janus_refcount_increase(&session->ref);
+
 	/* Pre-parse the message */
 	int error_code = 0;
 	char error_cause[512];
@@ -737,9 +740,6 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		g_snprintf(error_cause, 512, "%s", "Session has already been destroyed...");
 		goto plugin_response;
 	}
-
-	/* Increase the reference counter for this session: we'll decrease it after we handle the message */
-	janus_refcount_increase(&session->ref);
 
 	if(!json_is_object(root)) {
 		JANUS_LOG(LOG_ERR, "JSON error: not an object\n");

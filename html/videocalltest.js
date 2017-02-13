@@ -159,32 +159,56 @@ $(document).ready(function() {
 											} else if(event === 'calling') {
 												Janus.log("Waiting for the peer to answer...");
 												// TODO Any ringtone?
+												bootbox.alert("Waiting for the peer to answer...");
 											} else if(event === 'incomingcall') {
 												Janus.log("Incoming call from " + result["username"] + "!");
-												$('#peer').val(result["username"]).attr('disabled');
 												yourusername = result["username"];
-												// TODO Enable buttons to answer
-												videocall.createAnswer(
-													{
-														jsep: jsep,
-														// No media provided: by default, it's sendrecv for audio and video
-														media: { data: true },	// Let's negotiate data channels as well
-														success: function(jsep) {
-															Janus.debug("Got SDP!");
-															Janus.debug(jsep);
-															var body = { "request": "accept" };
-															videocall.send({"message": body, "jsep": jsep});
-															$('#peer').attr('disabled', true);
-															$('#call').removeAttr('disabled').html('Hangup')
-																.removeClass("btn-success").addClass("btn-danger")
-																.unbind('click').click(doHangup);
+												// Notify user
+												bootbox.hideAll();
+												incoming = bootbox.dialog({
+													message: "Incoming call from " + yourusername + "!",
+													title: "Incoming call",
+													closeButton: false,
+													buttons: {
+														success: {
+															label: "Answer",
+															className: "btn-success",
+															callback: function() {
+																incoming = null;
+																$('#peer').val(result["username"]).attr('disabled', true);
+																videocall.createAnswer(
+																	{
+																		jsep: jsep,
+																		// No media provided: by default, it's sendrecv for audio and video
+																		media: { data: true },	// Let's negotiate data channels as well
+																		success: function(jsep) {
+																			Janus.debug("Got SDP!");
+																			Janus.debug(jsep);
+																			var body = { "request": "accept" };
+																			videocall.send({"message": body, "jsep": jsep});
+																			$('#peer').attr('disabled', true);
+																			$('#call').removeAttr('disabled').html('Hangup')
+																				.removeClass("btn-success").addClass("btn-danger")
+																				.unbind('click').click(doHangup);
+																		},
+																		error: function(error) {
+																			Janus.error("WebRTC error:", error);
+																			bootbox.alert("WebRTC error... " + JSON.stringify(error));
+																		}
+																	});
+															}
 														},
-														error: function(error) {
-															Janus.error("WebRTC error:", error);
-															bootbox.alert("WebRTC error... " + JSON.stringify(error));
+														danger: {
+															label: "Decline",
+															className: "btn-danger",
+															callback: function() {
+																doHangup();
+															}
 														}
-													});
+													}
+												});
 											} else if(event === 'accepted') {
+												bootbox.hideAll();
 												var peer = result["username"];
 												if(peer === null || peer === undefined) {
 													Janus.log("Call started!");
@@ -192,15 +216,16 @@ $(document).ready(function() {
 													Janus.log(peer + " accepted the call!");
 													yourusername = peer;
 												}
-												// TODO Video call can start
-												if(jsep !== null && jsep !== undefined)
+												// Video call can start
+												if(jsep)
 													videocall.handleRemoteJsep({jsep: jsep});
 												$('#call').removeAttr('disabled').html('Hangup')
 													.removeClass("btn-success").addClass("btn-danger")
 													.unbind('click').click(doHangup);
 											} else if(event === 'hangup') {
 												Janus.log("Call hung up by " + result["username"] + " (" + result["reason"] + ")!");
-												// TODO Reset status
+												// Reset status
+												bootbox.hideAll();
 												videocall.hangup();
 												if(spinner !== null && spinner !== undefined)
 													spinner.stop();
