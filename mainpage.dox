@@ -1676,6 +1676,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * - \c list_handles: list all the ICE handles currently active in a Janus
  * session (returns an array of handle identifiers);
  * - \c handle_info: list all the available info on a specific ICE handle;
+ * - \c set_session_timeout: change the session timeout value in Janus on the fly;
  * - \c set_log_level: change the log level in Janus on the fly;
  * - \c set_locking_debug: selectively enable/disable a live debugging of
  * the locks in Janus on the fly (useful if you're experiencing deadlocks

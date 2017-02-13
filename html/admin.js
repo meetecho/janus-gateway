@@ -164,7 +164,25 @@ function updateSettings() {
 					'	<td>' + settings[k] + '</td>' +
 					'	<td id="' + k + '"></td>' +
 					'</tr>');
-				if(k === 'log_level') {
+				if(k === 'session_timeout') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit session timeout value</button>');
+					$('#'+k + "_button").click(function() {
+						bootbox.prompt("Set the new session timeout value (in seconds, currently " + settings["session_timeout"] + ")", function(result) {
+							if(isNaN(result)) {
+								bootbox.alert("Invalid session timeout value");
+								return;
+							}
+							result = parseInt(result);
+							if(result < 0) {
+								console.log(isNaN(result));
+								console.log(result < 0);
+								bootbox.alert("Invalid session timeout value");
+								return;
+							}
+							setSessionTimeoutValue(result);
+						});
+					});
+				} else if(k === 'log_level') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit log level</button>');
 					$('#'+k + "_button").click(function() {
 						bootbox.prompt("Set the new desired log level (0-7, currently " + settings["log_level"] + ")", function(result) {
@@ -281,6 +299,11 @@ function updateSettings() {
 		},
 		dataType: "json"
 	});
+}
+
+function setSessionTimeoutValue(timeout) {
+	var request = { "janus": "set_session_timeout", "timeout": timeout, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
 }
 
 function setLogLevel(level) {
