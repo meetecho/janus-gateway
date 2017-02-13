@@ -1680,6 +1680,15 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * - \c set_locking_debug: selectively enable/disable a live debugging of
  * the locks in Janus on the fly (useful if you're experiencing deadlocks
  * and want to investigate them);
+ * - \c set_libnice_debug: selectively enable/disable libnice debugging;
+ * - \c set_log_timestamps: selectively enable/disable adding a timestamp
+ * to all log lines Janus writes on the console and/or to file;
+ * - \c set_log_colors: selectively enable/disable using colors in all
+ * log lines Janus writes on the console and/or to file;
+ * - \c set_max_nack_queue: change the value of the max NACK queue window
+ * on the fly;
+ * - \c set_no_media_timer: change the value of the no-media timer value
+ * on the fly;
  * - \c add_token: add a valid token (only available if you enabled the \ref token);
  * - \c allow_token: give a token access to a plugin (only available if you enabled the \ref token);
  * - \c disallow_token: remove a token access from a plugin (only available if you enabled the \ref token);

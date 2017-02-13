@@ -342,8 +342,11 @@ or on the command line:
                                   (default=off)
 	-u, --rtcp-mux                Whether to force rtcp-mux or not (whether RTP
                                   and RTCP will always be muxed)  (default=off)
-	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for
-                                  retransmissions
+	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
+                                  for retransmissions
+	-t, --no-media-timer=number   Time (in s) that should pass with no media
+                                  (audio or video) being received before Janus
+                                  notifies you about this
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-d, --debug-level=1-7         Debug/logging level (0=disable debugging,
