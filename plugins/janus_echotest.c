@@ -93,6 +93,7 @@
 #include "../mutex.h"
 #include "../record.h"
 #include "../rtcp.h"
+#include "../sdp-utils.h"
 #include "../utils.h"
 
 
@@ -219,6 +220,7 @@ static void janus_echotest_message_free(janus_echotest_message *msg) {
 #define JANUS_ECHOTEST_ERROR_NO_MESSAGE			411
 #define JANUS_ECHOTEST_ERROR_INVALID_JSON		412
 #define JANUS_ECHOTEST_ERROR_INVALID_ELEMENT	413
+#define JANUS_ECHOTEST_ERROR_INVALID_SDP		414
 
 
 /* EchoTest watchdog/garbage collector (sort of) */
@@ -890,39 +892,21 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(event);
 		} else {
-			/* Forward the same offer to the gateway, to start the echo test */
-			const char *type = NULL;
-			if(!strcasecmp(msg_sdp_type, "offer"))
-				type = "answer";
-			if(!strcasecmp(msg_sdp_type, "answer"))
-				type = "offer";
-			/* Any media direction that needs to be fixed? */
-			char *sdp = g_strdup(msg_sdp);
-			if(strstr(sdp, "a=recvonly")) {
-				/* Turn recvonly to inactive, as we simply bounce media back */
-				sdp = janus_string_replace(sdp, "a=recvonly", "a=inactive");
-			} else if(strstr(sdp, "a=sendonly")) {
-				/* Turn sendonly to recvonly */
-				sdp = janus_string_replace(sdp, "a=sendonly", "a=recvonly");
-				/* FIXME We should also actually not echo this media back, though... */
+			/* Answer the offer and send it to the gateway, to start the echo test */
+			const char *type = "answer";
+			char error_str[512];
+			janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
+			if(offer == NULL) {
+				json_decref(event);
+				JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
+				error_code = JANUS_ECHOTEST_ERROR_INVALID_SDP;
+				g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
+				goto error;
 			}
-			/* Make also sure we get rid of ULPfec, red, etc. */
-			if(strstr(sdp, "ulpfec")) {
-				/* FIXME This really needs some better code */
-				sdp = janus_string_replace(sdp, "a=rtpmap:116 red/90000\r\n", "");
-				sdp = janus_string_replace(sdp, "a=rtpmap:117 ulpfec/90000\r\n", "");
-				sdp = janus_string_replace(sdp, "a=rtpmap:96 rtx/90000\r\n", "");
-				sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
-				sdp = janus_string_replace(sdp, "a=rtpmap:97 rtx/90000\r\n", "");
-				sdp = janus_string_replace(sdp, "a=fmtp:97 apt=101\r\n", "");
-				sdp = janus_string_replace(sdp, "a=rtpmap:98 rtx/90000\r\n", "");
-				sdp = janus_string_replace(sdp, "a=fmtp:98 apt=116\r\n", "");
-				sdp = janus_string_replace(sdp, " 116", "");
-				sdp = janus_string_replace(sdp, " 117", "");
-				sdp = janus_string_replace(sdp, " 96", "");
-				sdp = janus_string_replace(sdp, " 97", "");
-				sdp = janus_string_replace(sdp, " 98", "");
-			}
+			janus_sdp *answer = janus_sdp_generate_answer(offer, JANUS_SDP_OA_DONE);
+			char *sdp = janus_sdp_write(answer);
+			janus_sdp_free(offer);
+			janus_sdp_free(answer);
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
 			/* How long will the gateway take to push the event? */
 			g_atomic_int_set(&session->hangingup, 0);
