@@ -3297,6 +3297,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *bitrate = json_object_get(root, "bitrate");
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
+				json_t *display = json_object_get(root, "display");
 				if(audio) {
 					gboolean audio_active = json_is_true(audio);
 					if(session->started && audio_active && !participant->audio_active) {
@@ -3386,6 +3387,22 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				janus_mutex_unlock(&participant->rec_mutex);
+				if(display) {
+					const char *display_text = json_string_value(display);
+					participant->display = g_strdup(display_text);
+					janus_mutex_lock(&participant->room->participants_mutex);
+					json_t *display_event = json_object();
+					json_object_set_new(display_event, "videoroom", json_string("event"));
+					json_object_set_new(display_event, "id", json_integer(participant->user_id));
+					json_object_set_new(display_event, "display", json_string(participant->display));
+					if(participant->room) {
+						if(!participant->room->destroyed) {
+							janus_videoroom_notify_participants(participant, display_event);
+						}
+					}
+					janus_mutex_unlock(&participant->room->participants_mutex);
+					json_decref(display_event);
+				}
 				/* Done */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
