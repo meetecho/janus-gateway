@@ -81,6 +81,7 @@ databuffermsg = yes|no (whether the plugin should store the latest
 	message and send it immediately for new viewers)
 audiortpnetwork = network interface IP address or device name to listen on when receiving audio
 videortpnetwork = network interface IP address or device name to listen on when receiving video
+datasctpnetwork = network interface IP address or device name to listen on when receiving data
 
 The following options are only valid for the 'rstp' type:
 url = RTSP stream URL (only if type=rtsp)
@@ -286,7 +287,8 @@ static struct janus_json_parameter rtp_video_parameters[] = {
 };
 static struct janus_json_parameter rtp_data_parameters[] = {
 	{"dataport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
-	{"databuffermsg", JANUS_JSON_BOOL, 0}
+	{"databuffermsg", JANUS_JSON_BOOL, 0},
+	{"datasctpnetwork", JSON_STRING, 0}
 };
 static struct janus_json_parameter destroy_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -383,6 +385,7 @@ typedef struct janus_streaming_rtp_source {
 	janus_mutex buffermsg_mutex;
 	janus_network_address audio_iface;
 	janus_network_address video_iface;
+	janus_network_address data_iface;
 } janus_streaming_rtp_source;
 
 typedef struct janus_streaming_file_source {
@@ -433,7 +436,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
 		gboolean doaudio, char* amcast, const janus_network_address *aiface, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, char* vmcast, const janus_network_address *viface, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
-		gboolean dodata, uint16_t dport, gboolean buffermsg);
+		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean buffermsg);
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
 		uint64_t id, char *name, char *desc, char *filename,
@@ -668,7 +671,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				continue;
 			}
 			if(!strcasecmp(type->value, "rtp")) {
-				janus_network_address video_iface, audio_iface;
+				janus_network_address video_iface, audio_iface, data_iface;
 				/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 				janus_config_item *id = janus_config_get_item(cat, "id");
 				janus_config_item *desc = janus_config_get_item(cat, "description");
@@ -678,6 +681,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				janus_config_item *data = janus_config_get_item(cat, "data");
+				janus_config_item *diface = janus_config_get_item(cat, "datasctpnetwork");
 				janus_config_item *amcast = janus_config_get_item(cat, "audiomcast");
 				janus_config_item *aiface = janus_config_get_item(cat, "audiortpnetwork");
 				janus_config_item *aport = janus_config_get_item(cat, "audioport");
@@ -699,7 +703,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				gboolean dodata = data && data->value && janus_is_true(data->value);
 				gboolean bufferkf = video && vkf && vkf->value && janus_is_true(vkf->value);
 				gboolean buffermsg = data && dbm && dbm->value && janus_is_true(dbm->value);
-				if(!doaudio && !dovideo && !dovideo) {
+				if(!doaudio && !dovideo && !dodata) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', no audio, video or data have to be streamed...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -732,7 +736,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					cl = cl->next;
 					continue;
 				}
-
 				if(dodata && (dport == NULL || dport->value == NULL)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for data...\n", cat->name);
 					cl = cl->next;
@@ -745,6 +748,18 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 #endif
+				if(dodata && diface) {
+					if(!ifas) {
+						JANUS_LOG(LOG_ERR, "Skipping 'rtp' stream '%s', it relies on network configuration but network device information is unavailable...\n", cat->name);
+						cl = cl->next;
+						continue;
+					}
+					if(janus_streaming_lookup_network_interface(ifas, diface->value, &data_iface)) {
+						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for data...\n", cat->name);
+						cl = cl->next;
+						continue;
+					}
+				}
 				if(dovideo && viface) {
 					if(!ifas) {
 						JANUS_LOG(LOG_ERR, "Skipping 'rtp' stream '%s', it relies on network configuration but network device information is unavailable...\n", cat->name);
@@ -795,6 +810,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						vfmtp ? (char *)vfmtp->value : NULL,
 						bufferkf,
 						dodata,
+						dodata && diface && diface->value ? &data_iface : NULL,
 						(dport && dport->value) ? atoi(dport->value) : 0,
 						buffermsg)) == NULL) {
 					JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream '%s'...\n", cat->name);
@@ -1382,7 +1398,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		janus_streaming_mountpoint *mp = NULL;
 		if(!strcasecmp(type_text, "rtp")) {
-			janus_network_address audio_iface, video_iface;
+			janus_network_address audio_iface, video_iface, data_iface;
 			/* RTP live source (e.g., from gstreamer/ffmpeg/vlc/etc.) */
 			JANUS_VALIDATE_JSON_OBJECT(root, rtp_parameters,
 				error_code, error_cause, TRUE,
@@ -1485,6 +1501,18 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				dport = json_integer_value(dataport);
 				json_t *dbm = json_object_get(root, "databuffermsg");
 				buffermsg = dbm ? json_is_true(dbm) : FALSE;
+				json_t *diface = json_object_get(root, "datasctpnetwork");
+				if(diface) {
+					const char *miface = (const char *)json_string_value(diface);
+					if(janus_streaming_lookup_network_interface(ifas, miface, &data_iface)) {
+						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for data...\n", (const char *)json_string_value(name));
+						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for data" : "Unable to query network device information");
+						goto plugin_response;
+					}
+				} else {
+					janus_network_address_nullify(&data_iface);
+				}
 #else
 				JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream: no datachannels support...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -1513,7 +1541,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					desc ? (char *)json_string_value(desc) : NULL,
 					doaudio, amcast, &audio_iface, aport, acodec, artpmap, afmtp,
 					dovideo, vmcast, &video_iface, vport, vcodec, vrtpmap, vfmtp, bufferkf,
-					dodata, dport, buffermsg);
+					dodata, &data_iface, dport, buffermsg);
 			if(mp == NULL) {
 				JANUS_LOG(LOG_ERR, "Error creating 'rtp' stream...\n");
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
@@ -2820,7 +2848,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		uint64_t id, char *name, char *desc,
 		gboolean doaudio, char *amcast, const janus_network_address *aiface, uint16_t aport, uint8_t acodec, char *artpmap, char *afmtp,
 		gboolean dovideo, char *vmcast, const janus_network_address *viface, uint16_t vport, uint8_t vcodec, char *vrtpmap, char *vfmtp, gboolean bufferkf,
-		gboolean dodata, uint16_t dport, gboolean buffermsg) {
+		gboolean dodata, const janus_network_address *diface, uint16_t dport, gboolean buffermsg) {
 	janus_mutex_lock(&mountpoints_mutex);
 	if(id == 0) {
 		JANUS_LOG(LOG_VERB, "Missing id, will generate a random one...\n");
@@ -2888,7 +2916,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	int data_fd = -1;
 	if(dodata) {
 #ifdef HAVE_SCTP
-		data_fd = janus_streaming_create_fd(dport, INADDR_ANY, NULL
+		data_fd = janus_streaming_create_fd(dport, INADDR_ANY, diface,
 			"Data", "data", name ? name : tempname);
 		if(data_fd < 0) {
 			JANUS_LOG(LOG_ERR, "Can't bind to port %d for data...\n", dport);
@@ -2929,6 +2957,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->video_port = dovideo ? vport : -1;
 	live_rtp_source->video_iface = dovideo && !janus_network_address_is_null(viface) ? *viface : nil;
 	live_rtp_source->data_port = dodata ? dport : -1;
+	live_rtp_source->data_iface = dodata && !janus_network_address_is_null(diface) ? *diface : nil;
 	live_rtp_source->arc = NULL;
 	live_rtp_source->vrc = NULL;
 	live_rtp_source->drc = NULL;
@@ -3334,6 +3363,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->audio_iface = iface ? *iface : nil;
 	live_rtsp_source->video_fd = video_fd;
 	live_rtsp_source->video_iface = iface ? *iface : nil;
+	live_rtsp_source->data_fd = -1;
+	live_rtsp_source->data_iface = nil;
 	live_rtsp_source->curl = curl;
 	live_rtsp_source->curldata = curldata;
 	live_rtsp_source->rtsp_url = g_strdup(url);
