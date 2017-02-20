@@ -75,6 +75,15 @@ On Ubuntu or Debian, it would require something like this:
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
+* *Note:* distribution versions of libnice may not be up to date with
+the latest releases, and older releases of the library are not as stable.
+You can [install it manually](https://nice.freedesktop.org/wiki). For
+custom installations of libnice, you can run
+```pkg-config --cflags --libs nice``` to make sure Janus can find the
+installation. If not, you may need to set the ```PKG_CONFIG_PATH```
+environment variable prior to compiling Janus, eg.
+```export PKG_CONFIG_PATH=/path/to/libnice/lib/pkgconfig```
+
 In case you're interested in compiling the sample Event Handler plugin,
 you'll need to install the development version of libcurl as well (usually
 `libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
