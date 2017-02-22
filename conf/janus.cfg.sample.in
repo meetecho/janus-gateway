@@ -48,6 +48,16 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;							risk having orphaned sessions (sessions not
 ;							controlled by any transport and never freed).
 ;							To avoid timeouts, keep-alives can be used.
+;recordings_tmp_ext = tmp	; The extension for recordings, in Janus, is
+;							.mjr, a custom format we devised ourselves.
+;							By default, we save to .mjr directly. If you'd
+;							rather the recording filename have a temporary
+;							extension while it's being saved, and only
+;							have the .mjr extension when the recording
+;							is over (e.g., to automatically trigger some
+;							external scripts), then uncomment and set the
+;							recordings_tmp_ext property to the extension
+;							to add to the base (e.g., tmp --> .mjr.tmp).
 
 
 ; Certificate and key to use for DTLS.
