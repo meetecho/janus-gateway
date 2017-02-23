@@ -22,249 +22,29 @@
 	OTHER DEALINGS IN THE SOFTWARE.
  */
 
-// List of sessions
-Janus.sessions = {};
-
-// Screensharing Chrome Extension ID
-Janus.extensionId = "hapfgfdkleiggjjpfpenajgdnfckjpaj";
-Janus.isExtensionEnabled = function() {
-	if(window.navigator.userAgent.match('Chrome')) {
-		var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
-		var maxver = 33;
-		if(window.navigator.userAgent.match('Linux'))
-			maxver = 35;	// "known" crash in chrome 34 and 35 on linux
-		if(chromever >= 26 && chromever <= maxver) {
-			// Older versions of Chrome don't support this extension-based approach, so lie
-			return true;
-		}
-		return (document.getElementById('janus-extension-installed') !== null);
+/**
+ * UMD wrapper.
+ */
+(function (root, factory) {
+	if (typeof define === "function" && define.amd) {
+		define([
+			"adapter",
+		], function(adapter) {
+			return (root.Janus = factory(adapter));
+		});
+	} else if (typeof module === "object" && module.exports) {
+		module.exports = (root.Janus = factory(require("adapter")));
 	} else {
-		// Firefox of others, no need for the extension (but this doesn't mean it will work)
-		return true;
+		root.Janus = factory(root.adapter);
 	}
-};
-
-Janus.noop = function() {};
-
-// Initialization
-Janus.init = function(options) {
-	options = options || {};
-	options.callback = (typeof options.callback == "function") ? options.callback : Janus.noop;
-	if(Janus.initDone === true) {
-		// Already initialized
-		options.callback();
-	} else {
-		if(typeof console == "undefined" || typeof console.log == "undefined")
-			console = { log: function() {} };
-		// Console logging (all debugging disabled by default)
-		Janus.trace = Janus.noop;
-		Janus.debug = Janus.noop;
-		Janus.vdebug = Janus.noop;
-		Janus.log = Janus.noop;
-		Janus.warn = Janus.noop;
-		Janus.error = Janus.noop;
-		if(options.debug === true || options.debug === "all") {
-			// Enable all debugging levels
-			Janus.trace = console.trace.bind(console);
-			Janus.debug = console.debug.bind(console);
-			Janus.vdebug = console.debug.bind(console);
-			Janus.log = console.log.bind(console);
-			Janus.warn = console.warn.bind(console);
-			Janus.error = console.error.bind(console);
-		} else if(Array.isArray(options.debug)) {
-			for(var i in options.debug) {
-				var d = options.debug[i];
-				switch(d) {
-					case "trace":
-						Janus.trace = console.trace.bind(console);
-						break;
-					case "debug":
-						Janus.debug = console.debug.bind(console);
-						break;
-					case "vdebug":
-						Janus.vdebug = console.debug.bind(console);
-						break;
-					case "log":
-						Janus.log = console.log.bind(console);
-						break;
-					case "warn":
-						Janus.warn = console.warn.bind(console);
-						break;
-					case "error":
-						Janus.error = console.error.bind(console);
-						break;
-					default:
-						console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'vdebug', 'log', warn', 'error')");
-						break;
-				}
-			}
-		}
-		Janus.log("Initializing library");
-		// Helper method to enumerate devices
-		Janus.listDevices = function(callback, config) {
-			callback = (typeof callback == "function") ? callback : Janus.noop;
-			if (config == null) config = { audio: true, video: true };
-			if(navigator.mediaDevices) {
-				navigator.mediaDevices.getUserMedia(config)
-				.then(function(stream) {
-					navigator.mediaDevices.enumerateDevices().then(function(devices) {
-						Janus.debug(devices);
-						callback(devices);
-						// Get rid of the now useless stream
-						try {
-							stream.stop();
-						} catch(e) {}
-						try {
-							var tracks = stream.getTracks();
-							for(var i in tracks) {
-								var mst = tracks[i];
-								if(mst !== null && mst !== undefined)
-									mst.stop();
-							}
-						} catch(e) {}
-					});
-				})
-				.catch(function(err) {
-					Janus.error(err);
-					callback([]);
-				});
-			} else {
-				Janus.warn("navigator.mediaDevices unavailable");
-				callback([]);
-			}
-		}
-		// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
-		Janus.attachMediaStream = function(element, stream) {
-			if(adapter.browserDetails.browser === 'chrome') {
-				var chromever = adapter.browserDetails.version;
-				if(chromever >= 43) {
-					element.srcObject = stream;
-				} else if(typeof element.src !== 'undefined') {
-					element.src = URL.createObjectURL(stream);
-				} else {
-					Janus.error("Error attaching stream to element");
-				}
-			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
-				element.src = URL.createObjectURL(stream);
-			}
-			else {
-				element.srcObject = stream;
-			}
-		};
-		Janus.reattachMediaStream = function(to, from) {
-			if(adapter.browserDetails.browser === 'chrome') {
-				var chromever = adapter.browserDetails.version;
-				if(chromever >= 43) {
-					to.srcObject = from.srcObject;
-				} else if(typeof to.src !== 'undefined') {
-					to.src = from.src;
-				}
-			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
-				to.src = from.src;
-			}
-			else {
-				to.srcObject = from.srcObject;
-			}
-		};
-		// Prepare a helper method to send AJAX requests in a syntax similar to jQuery (at least for what we care)
-		Janus.ajax = function(params) {
-			// Check params
-			if(params === null || params === undefined)
-				return;
-			params.success = (typeof params.success == "function") ? params.success : Janus.noop;
-			params.error = (typeof params.error == "function") ? params.error : Janus.noop;
-			// Make sure there's an URL
-			if(params.url === null || params.url === undefined) {
-				Janus.error('Missing url', params.url);
-				params.error(null, -1, 'Missing url');
-				return;
-			}
-			// Validate async
-			params.async = (params.async === null || params.async === undefined) ? true : (params.async === true);
-			Janus.log(params);
-			// IE doesn't even know what WebRTC is, so no polyfill needed
-			var XHR = new XMLHttpRequest();
-			XHR.open(params.type, params.url, params.async);
-			if(params.contentType !== null && params.contentType !== undefined)
-				XHR.setRequestHeader('Content-type', params.contentType);
-			if(params.withCredentials !== null && params.withCredentials !== undefined)
-				XHR.withCredentials = params.withCredentials;
-			if(params.async) {
-				XHR.onreadystatechange = function () {
-					if(XHR.readyState != 4)
-						return;
-					if(XHR.status !== 200) {
-						// Got an error?
-						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
-						return;
-					}
-					// Got payload
-					try {
-						params.success(JSON.parse(XHR.responseText));
-					} catch(e) {
-						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
-					}
-				};
-			}
-			try {
-				XHR.send(params.data);
-				if(!params.async) {
-					if(XHR.status !== 200) {
-						// Got an error?
-						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
-						return;
-					}
-					// Got payload
-					try {
-						params.success(JSON.parse(XHR.responseText));
-					} catch(e) {
-						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
-					}
-				}
-			} catch(e) {
-				// Something broke up
-				params.error(XHR, 'error', '');
-			};
-		};
-		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
-		var oldOBF = window.onbeforeunload;
-		window.onbeforeunload = function() {
-			Janus.log("Closing window");
-			for(var s in Janus.sessions) {
-				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
-						Janus.sessions[s].destroyOnUnload) {
-					Janus.log("Destroying session " + s);
-					Janus.sessions[s].destroy({asyncRequest: false});
-				}
-			}
-			if(oldOBF && typeof oldOBF == "function")
-				oldOBF();
-		}
-		Janus.initDone = true;
-		options.callback();
-	}
-};
-
-// Helper method to check whether WebRTC is supported by this browser
-Janus.isWebrtcSupported = function() {
-	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null &&
-		navigator.getUserMedia !== undefined && navigator.getUserMedia !== null;
-};
-
-// Helper method to create random identifiers (e.g., transaction)
-Janus.randomString = function(len) {
-	var charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	var randomString = '';
-	for (var i = 0; i < len; i++) {
-		var randomPoz = Math.floor(Math.random() * charSet.length);
-		randomString += charSet.substring(randomPoz,randomPoz+1);
-	}
-	return randomString;
-}
-
+}(this, function(adapter) {
+var Janus;
+/**
+ * UMD wrapper.
+ */
 
 // Janus session object
-function Janus(gatewayCallbacks) {
+Janus = function(gatewayCallbacks) {
 	if(Janus.initDone === undefined) {
 		gatewayCallbacks.error("Library not initialized");
 		return {};
@@ -2293,3 +2073,251 @@ function Janus(gatewayCallbacks) {
 		return (trickle === true);
 	}
 };
+
+// List of sessions
+Janus.sessions = {};
+
+// Screensharing Chrome Extension ID
+Janus.extensionId = "hapfgfdkleiggjjpfpenajgdnfckjpaj";
+Janus.isExtensionEnabled = function() {
+	if(window.navigator.userAgent.match('Chrome')) {
+		var chromever = parseInt(window.navigator.userAgent.match(/Chrome\/(.*) /)[1], 10);
+		var maxver = 33;
+		if(window.navigator.userAgent.match('Linux'))
+			maxver = 35;	// "known" crash in chrome 34 and 35 on linux
+		if(chromever >= 26 && chromever <= maxver) {
+			// Older versions of Chrome don't support this extension-based approach, so lie
+			return true;
+		}
+		return (document.getElementById('janus-extension-installed') !== null);
+	} else {
+		// Firefox of others, no need for the extension (but this doesn't mean it will work)
+		return true;
+	}
+};
+
+Janus.noop = function() {};
+
+// Initialization
+Janus.init = function(options) {
+	options = options || {};
+	options.callback = (typeof options.callback == "function") ? options.callback : Janus.noop;
+	if(Janus.initDone === true) {
+		// Already initialized
+		options.callback();
+	} else {
+		if(typeof console == "undefined" || typeof console.log == "undefined")
+			console = { log: function() {} };
+		// Console logging (all debugging disabled by default)
+		Janus.trace = Janus.noop;
+		Janus.debug = Janus.noop;
+		Janus.vdebug = Janus.noop;
+		Janus.log = Janus.noop;
+		Janus.warn = Janus.noop;
+		Janus.error = Janus.noop;
+		if(options.debug === true || options.debug === "all") {
+			// Enable all debugging levels
+			Janus.trace = console.trace.bind(console);
+			Janus.debug = console.debug.bind(console);
+			Janus.vdebug = console.debug.bind(console);
+			Janus.log = console.log.bind(console);
+			Janus.warn = console.warn.bind(console);
+			Janus.error = console.error.bind(console);
+		} else if(Array.isArray(options.debug)) {
+			for(var i in options.debug) {
+				var d = options.debug[i];
+				switch(d) {
+					case "trace":
+						Janus.trace = console.trace.bind(console);
+						break;
+					case "debug":
+						Janus.debug = console.debug.bind(console);
+						break;
+					case "vdebug":
+						Janus.vdebug = console.debug.bind(console);
+						break;
+					case "log":
+						Janus.log = console.log.bind(console);
+						break;
+					case "warn":
+						Janus.warn = console.warn.bind(console);
+						break;
+					case "error":
+						Janus.error = console.error.bind(console);
+						break;
+					default:
+						console.error("Unknown debugging option '" + d + "' (supported: 'trace', 'debug', 'vdebug', 'log', warn', 'error')");
+						break;
+				}
+			}
+		}
+		Janus.log("Initializing library");
+		// Helper method to enumerate devices
+		Janus.listDevices = function(callback, config) {
+			callback = (typeof callback == "function") ? callback : Janus.noop;
+			if(navigator.mediaDevices) {
+				navigator.mediaDevices.getUserMedia(config)
+				.then(function(stream) {
+					navigator.mediaDevices.enumerateDevices().then(function(devices) {
+						Janus.debug(devices);
+						callback(devices);
+						// Get rid of the now useless stream
+						try {
+							stream.stop();
+						} catch(e) {}
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst !== null && mst !== undefined)
+									mst.stop();
+							}
+						} catch(e) {}
+					});
+				})
+				.catch(function(err) {
+					Janus.error(err);
+					callback([]);
+				});
+			} else {
+				Janus.warn("navigator.mediaDevices unavailable");
+				callback([]);
+			}
+		}
+		// Helper methods to attach/reattach a stream to a video element (previously part of adapter.js)
+		Janus.attachMediaStream = function(element, stream) {
+			if(adapter.browserDetails.browser === 'chrome') {
+				var chromever = adapter.browserDetails.version;
+				if(chromever >= 43) {
+					element.srcObject = stream;
+				} else if(typeof element.src !== 'undefined') {
+					element.src = URL.createObjectURL(stream);
+				} else {
+					Janus.error("Error attaching stream to element");
+				}
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
+				element.src = URL.createObjectURL(stream);
+			}
+			else {
+				element.srcObject = stream;
+			}
+		};
+		Janus.reattachMediaStream = function(to, from) {
+			if(adapter.browserDetails.browser === 'chrome') {
+				var chromever = adapter.browserDetails.version;
+				if(chromever >= 43) {
+					to.srcObject = from.srcObject;
+				} else if(typeof to.src !== 'undefined') {
+					to.src = from.src;
+				}
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
+				to.src = from.src;
+			}
+			else {
+				to.srcObject = from.srcObject;
+			}
+		};
+		// Prepare a helper method to send AJAX requests in a syntax similar to jQuery (at least for what we care)
+		Janus.ajax = function(params) {
+			// Check params
+			if(params === null || params === undefined)
+				return;
+			params.success = (typeof params.success == "function") ? params.success : Janus.noop;
+			params.error = (typeof params.error == "function") ? params.error : Janus.noop;
+			// Make sure there's an URL
+			if(params.url === null || params.url === undefined) {
+				Janus.error('Missing url', params.url);
+				params.error(null, -1, 'Missing url');
+				return;
+			}
+			// Validate async
+			params.async = (params.async === null || params.async === undefined) ? true : (params.async === true);
+			Janus.log(params);
+			// IE doesn't even know what WebRTC is, so no polyfill needed
+			var XHR = new XMLHttpRequest();
+			XHR.open(params.type, params.url, params.async);
+			if(params.contentType !== null && params.contentType !== undefined)
+				XHR.setRequestHeader('Content-type', params.contentType);
+			if(params.withCredentials !== null && params.withCredentials !== undefined)
+				XHR.withCredentials = params.withCredentials;
+			if(params.async) {
+				XHR.onreadystatechange = function () {
+					if(XHR.readyState != 4)
+						return;
+					if(XHR.status !== 200) {
+						// Got an error?
+						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
+						return;
+					}
+					// Got payload
+					try {
+						params.success(JSON.parse(XHR.responseText));
+					} catch(e) {
+						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
+					}
+				};
+			}
+			try {
+				XHR.send(params.data);
+				if(!params.async) {
+					if(XHR.status !== 200) {
+						// Got an error?
+						params.error(XHR, XHR.status !== 0 ? XHR.status : 'error', "");
+						return;
+					}
+					// Got payload
+					try {
+						params.success(JSON.parse(XHR.responseText));
+					} catch(e) {
+						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
+					}
+				}
+			} catch(e) {
+				// Something broke up
+				params.error(XHR, 'error', '');
+			};
+		};
+		// Detect tab close: make sure we don't loose existing onbeforeunload handlers
+		var oldOBF = window.onbeforeunload;
+		window.onbeforeunload = function() {
+			Janus.log("Closing window");
+			for(var s in Janus.sessions) {
+				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
+						Janus.sessions[s].destroyOnUnload) {
+					Janus.log("Destroying session " + s);
+					Janus.sessions[s].destroy({asyncRequest: false});
+				}
+			}
+			if(oldOBF && typeof oldOBF == "function")
+				oldOBF();
+		}
+		Janus.initDone = true;
+		options.callback();
+	}
+};
+
+// Helper method to check whether WebRTC is supported by this browser
+Janus.isWebrtcSupported = function() {
+	return window.RTCPeerConnection !== undefined && window.RTCPeerConnection !== null &&
+		navigator.getUserMedia !== undefined && navigator.getUserMedia !== null;
+};
+
+// Helper method to create random identifiers (e.g., transaction)
+Janus.randomString = function(len) {
+	var charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+	var randomString = '';
+	for (var i = 0; i < len; i++) {
+		var randomPoz = Math.floor(Math.random() * charSet.length);
+		randomString += charSet.substring(randomPoz,randomPoz+1);
+	}
+	return randomString;
+}
+
+/**
+ * UMD wrapper.
+ */
+return Janus;
+}));
+/**
+ * UMD wrapper.
+ */
