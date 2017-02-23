@@ -266,7 +266,8 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"data", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"display", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -3395,10 +3396,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(display_event, "videoroom", json_string("event"));
 					json_object_set_new(display_event, "id", json_integer(participant->user_id));
 					json_object_set_new(display_event, "display", json_string(participant->display));
-					if(participant->room) {
-						if(!participant->room->destroyed) {
-							janus_videoroom_notify_participants(participant, display_event);
-						}
+					if(participant->room && !participant->room->destroyed) {
+						janus_videoroom_notify_participants(participant, display_event);
 					}
 					janus_mutex_unlock(&participant->room->participants_mutex);
 					json_decref(display_event);
