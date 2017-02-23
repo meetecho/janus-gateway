@@ -3389,8 +3389,8 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				janus_mutex_unlock(&participant->rec_mutex);
 				if(display) {
-					const char *display_text = json_string_value(display);
-					participant->display = g_strdup(display_text);
+				  g_free(participant->display);
+					participant->display = g_strdup(json_string_value(display));
 					janus_mutex_lock(&participant->room->participants_mutex);
 					json_t *display_event = json_object();
 					json_object_set_new(display_event, "videoroom", json_string("event"));

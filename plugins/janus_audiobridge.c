@@ -2771,8 +2771,8 @@ static void *janus_audiobridge_handler(void *data) {
 					}
 				}
 				if (display) {
-					const char *display_text = json_string_value(display);
-					participant->display = g_strdup(display_text);
+				  g_free(participant->display);
+					participant->display = g_strdup(json_string_value(display));
 					JANUS_LOG(LOG_VERB, "Setting display property: %s (room %"SCNu64", user %"SCNu64")\n", participant->display, participant->room->room_id, participant->user_id);
 				}
 				/* Notify all other participants about the mute/unmute */
