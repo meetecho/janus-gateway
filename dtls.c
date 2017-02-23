@@ -375,7 +375,7 @@ error:
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-	JANUS_LOG(LOG_WARN, "OpenSSL pre-1.1.0\n");
+	JANUS_LOG(LOG_INFO, "OpenSSL pre-1.1.0\n");
 	/* First of all make OpenSSL thread safe (see note above on issue #316) */
 	janus_dtls_locks = g_malloc0(sizeof(*janus_dtls_locks) * CRYPTO_num_locks());
 	int l=0;
@@ -385,7 +385,10 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	CRYPTO_THREADID_set_callback(janus_dtls_cb_openssl_threadid);
 	CRYPTO_set_locking_callback(janus_dtls_cb_openssl_lock);
 #else
-	JANUS_LOG(LOG_WARN, "OpenSSL >= 1.1.0\n");
+	JANUS_LOG(LOG_INFO, "OpenSSL >= 1.1.0\n");
+#endif
+#ifdef HAVE_BORINGSSL
+	JANUS_LOG(LOG_INFO, "BoringSSL in use\n");
 #endif
 
 	/* Go on and create the DTLS context */

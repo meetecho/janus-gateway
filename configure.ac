@@ -125,7 +125,7 @@ AS_IF([test "x$enable_boringssl" = "xyes"],
 	   BORINGSSL_LIBS=" -L/opt/boringssl/lib";
        AC_SUBST(BORINGSSL_LIBS)
 	   AC_CHECK_HEADERS([openssl/opensslconf.h],
-	                    [],
+	                    [AC_DEFINE(HAVE_BORINGSSL)],
 	                    [AC_MSG_ERROR([BoringSSL headers not found in /opt/boringssl, use --disable-boringssl if you want to use OpenSSL instead])])
       ])
 AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x$enable_boringssl" = "xyes"])
