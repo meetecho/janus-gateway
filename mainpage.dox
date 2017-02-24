@@ -2547,6 +2547,19 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
+ * \section monitoring Event Handlers (monitoring/troubleshooting)
+ *
+ * <table class="table table-striped">
+ * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/thehunmonkgroup">Chad Phillips</a></td>
+ * 		<td><a href="https://github.com/thehunmonkgroup/janus-event-server">janus-event-server</a></td>
+ * 		<td>Simple plugin-based server to receive/process events from Janus.</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
  * \section thirdplugins Third-party plugins
  *
  * <table class="table table-striped">
