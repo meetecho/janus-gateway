@@ -250,7 +250,10 @@ Janus.init = function(options) {
 					done();
 					return;
 				}
-			} catch(e) {};
+			} catch(e) {
+        Janus.error('Init error:', e);
+        return;
+			};
 			var oHead = document.getElementsByTagName('head').item(0);
 			var oScript = document.createElement("script");
 			oScript.type = "text/javascript";
