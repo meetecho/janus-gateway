@@ -135,7 +135,10 @@ to manually install it to a specific location. Use the following steps:
 
 Once the library is installed, you'll have to pass an additional
 ```--enable-boringssl``` flag to the configure script, as by default
-Janus will be build assuming OpenSSL will be used. If you were using
+Janus will be built assuming OpenSSL will be used. By default, Janus
+expects BoringSSL to be installed in ```/opt/boringssl``` -- if it's
+installed in another location, pass the path to the configure script
+as such: ```--enable-boringssl=/path/to/boringssl``` If you were using
 OpenSSL and want to switch to BoringSSL, make sure you also do a
 ```make clean``` in the Janus folder before compiling with the new
 BoringSSL support.
