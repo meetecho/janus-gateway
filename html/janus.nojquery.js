@@ -424,7 +424,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.webrtcState(true);
@@ -440,7 +440,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.webrtcState(false);
@@ -472,7 +472,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.mediaState(json["type"], json["receiving"]);
@@ -487,7 +487,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.slowLink(json["uplink"], json["nacks"]);
