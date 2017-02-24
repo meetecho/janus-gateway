@@ -75,6 +75,12 @@ On Ubuntu or Debian, it would require something like this:
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
+* *Note:* For custom installations of libnice, you can run
+```pkg-config --cflags --libs nice``` to make sure Janus can find the
+installation. If not, you may need to set the ```PKG_CONFIG_PATH```
+environment variable prior to compiling Janus, eg.
+```export PKG_CONFIG_PATH=/path/to/libnice/lib/pkgconfig```
+
 In case you're interested in compiling the sample Event Handler plugin,
 you'll need to install the development version of libcurl as well (usually
 `libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
@@ -129,7 +135,10 @@ to manually install it to a specific location. Use the following steps:
 
 Once the library is installed, you'll have to pass an additional
 ```--enable-boringssl``` flag to the configure script, as by default
-Janus will be build assuming OpenSSL will be used. If you were using
+Janus will be built assuming OpenSSL will be used. By default, Janus
+expects BoringSSL to be installed in ```/opt/boringssl``` -- if it's
+installed in another location, pass the path to the configure script
+as such: ```--enable-boringssl=/path/to/boringssl``` If you were using
 OpenSSL and want to switch to BoringSSL, make sure you also do a
 ```make clean``` in the Janus folder before compiling with the new
 BoringSSL support.
