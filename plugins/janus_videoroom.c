@@ -253,6 +253,7 @@ static struct janus_json_parameter join_parameters[] = {
 	{"ptype", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
@@ -260,6 +261,7 @@ static struct janus_json_parameter join_parameters[] = {
 static struct janus_json_parameter publish_parameters[] = {
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
+	{"data", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
@@ -504,6 +506,7 @@ typedef struct janus_videoroom_participant {
 	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
+	gboolean data_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
 	gint64 remb_startup;/* Incremental changes on REMB to reach the target at startup */
@@ -1061,6 +1064,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			participant->data = FALSE;
 			participant->audio_active = FALSE;
 			participant->video_active = FALSE;
+			participant->data_active = FALSE;
 			participant->recording_active = FALSE;
 			if(participant->recording_base)
 				g_free(participant->recording_base);
@@ -2348,6 +2352,8 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+	if(!participant->data_active)
+		return;
 	/* Any forwarder involved? */
 	janus_mutex_lock(&participant->rtp_forwarders_mutex);
 	/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
@@ -2528,6 +2534,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->firefox = FALSE;
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
+		participant->data_active = FALSE;
 		participant->remb_startup = 4;
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
@@ -2699,12 +2706,14 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				JANUS_LOG(LOG_VERB, "  -- Publisher ID: %"SCNu64"\n", user_id);
 				/* Process the request */
-				json_t *audio = NULL, *video = NULL, *bitrate = NULL, *record = NULL, *recfile = NULL;
+				json_t *audio = NULL, *video = NULL, *data = NULL,
+					*bitrate = NULL, *record = NULL, *recfile = NULL;
 				if(!strcasecmp(request_text, "joinandconfigure")) {
 					/* Also configure (or publish a new feed) audio/video/bitrate for this new publisher */
 					/* join_parameters were validated earlier. */
 					audio = json_object_get(root, "audio");
 					video = json_object_get(root, "video");
+					data = json_object_get(root, "data");
 					bitrate = json_object_get(root, "bitrate");
 					record = json_object_get(root, "record");
 					recfile = json_object_get(root, "filename");
@@ -2720,6 +2729,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->data = FALSE;	/* We'll deal with this later */
 				publisher->audio_active = FALSE;
 				publisher->video_active = FALSE;
+				publisher->data_active = FALSE;
 				publisher->recording_active = FALSE;
 				publisher->recording_base = NULL;
 				publisher->arc = NULL;
@@ -2801,6 +2811,10 @@ static void *janus_videoroom_handler(void *data) {
 				if(video) {
 					publisher->video_active = json_is_true(video);
 					JANUS_LOG(LOG_VERB, "Setting video property: %s (room %"SCNu64", user %"SCNu64")\n", publisher->video_active ? "true" : "false", publisher->room->room_id, publisher->user_id);
+				}
+				if(data) {
+					publisher->data_active = json_is_true(data);
+					JANUS_LOG(LOG_VERB, "Setting data property: %s (room %"SCNu64", user %"SCNu64")\n", publisher->data_active ? "true" : "false", publisher->room->room_id, publisher->user_id);
 				}
 				if(bitrate) {
 					publisher->bitrate = json_integer_value(bitrate);
@@ -2979,6 +2993,7 @@ static void *janus_videoroom_handler(void *data) {
 					goto error;
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
+				json_t *data = json_object_get(root, "data");
 				json_t *bitrate = json_object_get(root, "bitrate");
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
@@ -3015,6 +3030,11 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					participant->video_active = video_active;
 					JANUS_LOG(LOG_VERB, "Setting video property: %s (room %"SCNu64", user %"SCNu64")\n", participant->video_active ? "true" : "false", participant->room->room_id, participant->user_id);
+				}
+				if(data) {
+					gboolean data_active = json_is_true(data);
+					participant->data_active = data_active;
+					JANUS_LOG(LOG_VERB, "Setting data property: %s (room %"SCNu64", user %"SCNu64")\n", participant->data_active ? "true" : "false", participant->room->room_id, participant->user_id);
 				}
 				if(bitrate) {
 					participant->bitrate = json_integer_value(bitrate);
@@ -3079,6 +3099,7 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "id", json_integer(participant->user_id));
 					json_object_set_new(info, "audio_active", participant->audio_active ? json_true() : json_false());
 					json_object_set_new(info, "video_active", participant->video_active ? json_true() : json_false());
+					json_object_set_new(info, "data_active", participant->data_active ? json_true() : json_false());
 					json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
 					if(participant->arc || participant->vrc || participant->drc) {
 						json_t *recording = json_object();
@@ -3118,6 +3139,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Done */
 				participant->audio_active = FALSE;
 				participant->video_active = FALSE;
+				participant->data_active = FALSE;
 				session->started = FALSE;
 				//~ session->destroy = TRUE;
 			} else {
@@ -3359,6 +3381,7 @@ static void *janus_videoroom_handler(void *data) {
 				if(count == videoroom->max_publishers) {
 					participant->audio_active = FALSE;
 					participant->video_active = FALSE;
+					participant->data_active = FALSE;
 					JANUS_LOG(LOG_ERR, "Maximum number of publishers (%d) already reached\n", videoroom->max_publishers);
 					error_code = JANUS_VIDEOROOM_ERROR_PUBLISHERS_FULL;
 					g_snprintf(error_cause, 512, "Maximum number of publishers (%d) already reached", videoroom->max_publishers);
