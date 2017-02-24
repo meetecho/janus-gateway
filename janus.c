@@ -3957,6 +3957,7 @@ gint main(int argc, char *argv[])
 
 	janus_recorder_deinit();
 
+#ifdef REFCOUNT_DEBUG
 	/* Any reference counters that are still up while we're leaving? (debug-mode only) */
 	janus_mutex_lock(&counters_mutex);
 	JANUS_PRINT("Debugging reference counters: %d still allocated\n", g_hash_table_size(counters));
@@ -3967,6 +3968,7 @@ gint main(int argc, char *argv[])
 		JANUS_PRINT("  -- %p\n", value);
 	}
 	janus_mutex_unlock(&counters_mutex);
+#endif
 
 	JANUS_PRINT("Bye!\n");
 
