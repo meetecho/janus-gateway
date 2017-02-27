@@ -111,6 +111,8 @@ janus_SOURCES = \
 	sdp.h \
 	sdp-utils.c \
 	sdp-utils.h \
+	ip-utils.c \
+	ip-utils.h \
 	turnrest.c \
 	turnrest.h \
 	utils.c \

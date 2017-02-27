@@ -434,12 +434,14 @@ record_file =	/path/to/recording.wav (where to save the recording)
  *
  * At this point, the media-related settings of the participant can be
  * modified by means of a \c configure request. The \c configure request
- * has to be formatted as follows:
+ * has to be formatted as follows (notice that all parameters except
+ * \c request are optional, depending on what you want to change):
  *
 \verbatim
 {
 	"request" : "configure",
 	"muted" : <true|false, whether to unmute or mute>,
+	"display" : "<new display name to have in the room>",
 	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
@@ -655,7 +657,8 @@ static struct janus_json_parameter configure_parameters[] = {
 	{"quality", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"volume", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"display", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -2721,6 +2724,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *gain = json_object_get(root, "volume");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
+			json_t *display = json_object_get(root, "display");
 			if(gain)
 				participant->volume_gain = json_integer_value(gain);
 			if(quality) {
@@ -2735,26 +2739,35 @@ static void *janus_audiobridge_handler(void *data) {
 				if(participant->encoder)
 					opus_encoder_ctl(participant->encoder, OPUS_SET_COMPLEXITY(participant->opus_complexity));
 			}
-			if(muted) {
-				participant->muted = json_is_true(muted);
-				JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %"SCNu64", user %"SCNu64")\n", participant->muted ? "true" : "false", participant->room->room_id, participant->user_id);
-				if(participant->muted) {
-					/* Clear the queued packets waiting to be handled */
-					janus_mutex_lock(&participant->qmutex);
-					while(participant->inbuf) {
-						GList *first = g_list_first(participant->inbuf);
-						janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
-						participant->inbuf = g_list_remove_link(participant->inbuf, first);
-						first = NULL;
-						if(pkt == NULL)
-							continue;
-						if(pkt->data)
-							g_free(pkt->data);
-						pkt->data = NULL;
-						g_free(pkt);
-						pkt = NULL;
+			if(muted || display) {
+				if (muted) {
+					participant->muted = json_is_true(muted);
+					JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %"SCNu64", user %"SCNu64")\n", participant->muted ? "true" : "false", participant->room->room_id, participant->user_id);
+					if(participant->muted) {
+						/* Clear the queued packets waiting to be handled */
+						janus_mutex_lock(&participant->qmutex);
+						while(participant->inbuf) {
+							GList *first = g_list_first(participant->inbuf);
+							janus_audiobridge_rtp_relay_packet *pkt = (janus_audiobridge_rtp_relay_packet *)first->data;
+							participant->inbuf = g_list_remove_link(participant->inbuf, first);
+							first = NULL;
+							if(pkt == NULL)
+								continue;
+							if(pkt->data)
+								g_free(pkt->data);
+							pkt->data = NULL;
+							g_free(pkt);
+							pkt = NULL;
+						}
+						janus_mutex_unlock(&participant->qmutex);
 					}
-					janus_mutex_unlock(&participant->qmutex);
+				}
+				if(display) {
+					char *old_display = participant->display;
+					char *new_display = g_strdup(json_string_value(display));
+					participant->display = new_display;
+					g_free(old_display);
+					JANUS_LOG(LOG_VERB, "Setting display property: %s (room %"SCNu64", user %"SCNu64")\n", participant->display, participant->room->room_id, participant->user_id);
 				}
 				/* Notify all other participants about the mute/unmute */
 				janus_mutex_lock(&rooms_mutex);

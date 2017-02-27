@@ -264,7 +264,8 @@ static struct janus_json_parameter publish_parameters[] = {
 	{"data", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"display", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -2997,6 +2998,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *bitrate = json_object_get(root, "bitrate");
 				json_t *record = json_object_get(root, "record");
 				json_t *recfile = json_object_get(root, "filename");
+				json_t *display = json_object_get(root, "display");
 				if(audio) {
 					gboolean audio_active = json_is_true(audio);
 					if(session->started && audio_active && !participant->audio_active) {
@@ -3086,6 +3088,22 @@ static void *janus_videoroom_handler(void *data) {
 					}
 				}
 				janus_mutex_unlock(&participant->rec_mutex);
+				if(display) {
+					janus_mutex_lock(&participant->room->participants_mutex);
+					char *old_display = participant->display;
+					char *new_display = g_strdup(json_string_value(display));
+					participant->display = new_display;
+					g_free(old_display);
+					json_t *display_event = json_object();
+					json_object_set_new(display_event, "videoroom", json_string("event"));
+					json_object_set_new(display_event, "id", json_integer(participant->user_id));
+					json_object_set_new(display_event, "display", json_string(participant->display));
+					if(participant->room && !participant->room->destroyed) {
+						janus_videoroom_notify_participants(participant, display_event);
+					}
+					janus_mutex_unlock(&participant->room->participants_mutex);
+					json_decref(display_event);
+				}
 				/* Done */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
