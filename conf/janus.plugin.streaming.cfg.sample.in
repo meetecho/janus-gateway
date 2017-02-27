@@ -22,14 +22,18 @@
 ; data = yes|no (do/don't stream text via datachannels)
 ; audioport = local port for receiving audio frames
 ; audiomcast = multicast group port for receiving audio frames, if any
+; audioiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; audiopt = <audio RTP payload type> (e.g., 111)
 ; audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 ; videoport = local port for receiving video frames
 ; videomcast = multicast group port for receiving video frames, if any
+; videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; videopt = <video RTP payload type> (e.g., 100)
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
 ; videobufferkf = yes|no (whether the plugin should store the latest
 ;		keyframe and send it immediately for new viewers, EXPERIMENTAL)
+; dataport = local port for receiving data messages to relay
+; dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; databuffermsg = yes|no (whether the plugin should store the latest
 ;		message and send it immediately for new viewers)
 ; url = RTSP stream URL (only for restreaming RTSP)

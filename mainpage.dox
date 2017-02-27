@@ -293,7 +293,11 @@ var janus = new Janus(
  * everything else succeeded) from the Janus perspective, while <b>false</b> is
  * triggered when the PeerConnection goes down instead; useful to figure out
  * when WebRTC is actually up and running between you and Janus (e.g., to notify
- * a user they're actually now active in a conference);
+ * a user they're actually now active in a conference); notice that in case
+ * of <b>false</b> a reason string may be present as an optional parameter;
+ * 		- \c iceState: this callback is triggered when the ICE state for the
+ * PeerConnection associated to the handle changes: the argument of the callback
+ * is the new state as a string (e.g., "connected" or "failed");
  * 		- \c mediaState: this callback is triggered when Janus starts or stops
  * receiving your media: for instance, a \c mediaState with type=<b>audio</b> and
  * on=<b>true</b> means Janus started receiving your audio stream (or started
@@ -2543,6 +2547,19 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/krull">Brendan Jocson</a></td>
  * 		<td><a href="https://github.com/krull/docker-janus">docker-janus</a></td>
  *		<td>Debian 8 based docker image for Meetecho's Janus Gateway</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
+ * \section monitoring Event Handlers (monitoring/troubleshooting)
+ *
+ * <table class="table table-striped">
+ * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/thehunmonkgroup">Chad Phillips</a></td>
+ * 		<td><a href="https://github.com/thehunmonkgroup/janus-event-server">janus-event-server</a></td>
+ * 		<td>Simple plugin-based server to receive/process events from Janus.</td>
  * </tr>
  * </table>
  * <br/>

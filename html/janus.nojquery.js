@@ -443,7 +443,7 @@ function Janus(gatewayCallbacks) {
 				Janus.debug("This handle is not attached to this session");
 				return;
 			}
-			pluginHandle.webrtcState(false);
+			pluginHandle.webrtcState(false, json["reason"]);
 			pluginHandle.hangup();
 		} else if(json["janus"] === "detached") {
 			// A plugin asked the core to detach one of our handles
@@ -786,6 +786,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : Janus.noop;
+		callbacks.iceState = (typeof callbacks.iceState == "function") ? callbacks.iceState : Janus.noop;
 		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : Janus.noop;
 		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : Janus.noop;
 		callbacks.slowLink = (typeof callbacks.slowLink == "function") ? callbacks.slowLink : Janus.noop;
@@ -868,6 +869,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						iceState : callbacks.iceState,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
 						slowLink : callbacks.slowLink,
@@ -951,6 +953,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						iceState : callbacks.iceState,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
 						slowLink : callbacks.slowLink,
@@ -1287,6 +1290,9 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.value = "0 kbits/sec";
 		}
 		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
+		config.pc.oniceconnectionstatechange = function(e) {
+			pluginHandle.iceState(config.pc.iceConnectionState);
+		};
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
 					(adapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
