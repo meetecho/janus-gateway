@@ -85,8 +85,14 @@ AC_ARG_ENABLE([sample-event-handler],
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
                               [Use BoringSSL instead of OpenSSL])],
-              [],
-              [enable_boringssl=no])
+              [
+                case "${enableval}" in
+                  yes) boringssl_dir=/opt/boringssl ;;
+                  no)  boringssl_dir= ;;
+                  *) boringssl_dir=${enableval} ;;
+                esac
+              ],
+              [boringssl_dir=])
 
 AC_ARG_ENABLE([libsrtp2],
               [AS_HELP_STRING([--enable-libsrtp2],
@@ -117,18 +123,19 @@ PKG_CHECK_MODULES([JANUS],
 JANUS_MANUAL_LIBS+=" -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 
-AS_IF([test "x$enable_boringssl" = "xyes"],
+AS_IF([test "x${boringssl_dir}" != "x"],
 	  [echo "Trying to use BoringSSL instead of OpenSSL...";
-	   CFLAGS="$CFLAGS -I/opt/boringssl/include";
-	   BORINGSSL_CFLAGS=" -I/opt/boringssl/include";
+	   AC_MSG_NOTICE([BoringSSL directory is ${boringssl_dir}])
+	   CFLAGS="$CFLAGS -I${boringssl_dir}/include";
+	   BORINGSSL_CFLAGS=" -I${boringssl_dir}/include";
        AC_SUBST(BORINGSSL_CFLAGS)
-	   BORINGSSL_LIBS=" -L/opt/boringssl/lib";
+	   BORINGSSL_LIBS=" -L${boringssl_dir}/lib";
        AC_SUBST(BORINGSSL_LIBS)
-	   AC_CHECK_HEADERS([openssl/opensslconf.h],
-	                    [],
-	                    [AC_MSG_ERROR([BoringSSL headers not found in /opt/boringssl, use --disable-boringssl if you want to use OpenSSL instead])])
+	   AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
+	                    [AC_DEFINE(HAVE_BORINGSSL)],
+	                    [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}, use --disable-boringssl if you want to use OpenSSL instead])])
       ])
-AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x$enable_boringssl" = "xyes"])
+AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x${boringssl_dir}" != "x"])
 
 AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       [
