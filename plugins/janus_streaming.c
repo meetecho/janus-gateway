@@ -67,21 +67,22 @@ video = yes|no (do/don't stream video)
 data = yes|no (do/don't stream text via datachannels)
 audioport = local port for receiving audio frames
 audiomcast = multicast group port for receiving audio frames, if any
+audioiface = network interface or IP address to bind to, if any (binds to all otherwise)
 audiopt = <audio RTP payload type> (e.g., 111)
 audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 audiofmtp = Codec specific parameters, if any
 videoport = local port for receiving video frames (only for rtp)
 videomcast = multicast group port for receiving video frames, if any
+videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
 videopt = <video RTP payload type> (e.g., 100)
 videortpmap = RTP map of the video codec (e.g., VP8/90000)
 videofmtp = Codec specific parameters, if any
 videobufferkf = yes|no (whether the plugin should store the latest
 	keyframe and send it immediately for new viewers, EXPERIMENTAL)
+dataport = local port for receiving data messages to relay
+dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
 databuffermsg = yes|no (whether the plugin should store the latest
 	message and send it immediately for new viewers)
-audiortpnetwork = network interface IP address or device name to listen on when receiving audio
-videortpnetwork = network interface IP address or device name to listen on when receiving video
-datasctpnetwork = network interface IP address or device name to listen on when receiving data
 
 The following options are only valid for the 'rstp' type:
 url = RTSP stream URL (only if type=rtsp)
@@ -274,7 +275,7 @@ static struct janus_json_parameter rtp_audio_parameters[] = {
 	{"audiopt", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"audiortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"audiofmtp", JSON_STRING, 0},
-	{"audiortpnetwork", JSON_STRING, 0}
+	{"audioiface", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_video_parameters[] = {
 	{"videomcast", JSON_STRING, 0},
@@ -283,12 +284,12 @@ static struct janus_json_parameter rtp_video_parameters[] = {
 	{"videortpmap", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"videofmtp", JSON_STRING, 0},
 	{"videobufferkf", JANUS_JSON_BOOL, 0},
-	{"videortpnetwork", JSON_STRING, 0}
+	{"videoiface", JSON_STRING, 0}
 };
 static struct janus_json_parameter rtp_data_parameters[] = {
 	{"dataport", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
 	{"databuffermsg", JANUS_JSON_BOOL, 0},
-	{"datasctpnetwork", JSON_STRING, 0}
+	{"dataiface", JSON_STRING, 0}
 };
 static struct janus_json_parameter destroy_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -598,10 +599,10 @@ static int janus_streaming_lookup_network_interface(const struct ifaddrs *ifas, 
 		} else {
 			const struct ifaddrs *found = janus_query_network_devices(ifas, &q);
 			if(!found || janus_get_network_device_address(found, result)) {
-				JANUS_LOG(LOG_INFO, "Unable to retrieve address from matching network device for: %s\n", iface);
+				JANUS_LOG(LOG_ERR, "Unable to retrieve address from matching network device for: %s\n", iface);
 				return -1;
 			} else {
-				JANUS_LOG(LOG_INFO, "Successfully retrieved address from matching network device for: %s\n", iface);
+				JANUS_LOG(LOG_VERB, "Successfully retrieved address from matching network device for: %s\n", iface);
 				return 0;
 			}
 		}
@@ -681,15 +682,15 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
 				janus_config_item *data = janus_config_get_item(cat, "data");
-				janus_config_item *diface = janus_config_get_item(cat, "datasctpnetwork");
+				janus_config_item *diface = janus_config_get_item(cat, "dataiface");
 				janus_config_item *amcast = janus_config_get_item(cat, "audiomcast");
-				janus_config_item *aiface = janus_config_get_item(cat, "audiortpnetwork");
+				janus_config_item *aiface = janus_config_get_item(cat, "audioiface");
 				janus_config_item *aport = janus_config_get_item(cat, "audioport");
 				janus_config_item *acodec = janus_config_get_item(cat, "audiopt");
 				janus_config_item *artpmap = janus_config_get_item(cat, "audiortpmap");
 				janus_config_item *afmtp = janus_config_get_item(cat, "audiofmtp");
 				janus_config_item *vmcast = janus_config_get_item(cat, "videomcast");
-				janus_config_item *viface = janus_config_get_item(cat, "videortpnetwork");
+				janus_config_item *viface = janus_config_get_item(cat, "videoiface");
 				janus_config_item *vport = janus_config_get_item(cat, "videoport");
 				janus_config_item *vcodec = janus_config_get_item(cat, "videopt");
 				janus_config_item *vrtpmap = janus_config_get_item(cat, "videortpmap");
@@ -1440,7 +1441,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				artpmap = (char *)json_string_value(audiortpmap);
 				json_t *audiofmtp = json_object_get(root, "audiofmtp");
 				afmtp = (char *)json_string_value(audiofmtp);
-				json_t *aiface = json_object_get(root, "audiortpnetwork");
+				json_t *aiface = json_object_get(root, "audioiface");
 				if(aiface) {
 					const char *miface = (const char *)json_string_value(aiface);
 					if(janus_streaming_lookup_network_interface(ifas, miface, &audio_iface)) {
@@ -1475,7 +1476,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				vfmtp = (char *)json_string_value(videofmtp);
 				json_t *vkf = json_object_get(root, "videobufferkf");
 				bufferkf = vkf ? json_is_true(vkf) : FALSE;
-				json_t *viface = json_object_get(root, "videortpnetwork");
+				json_t *viface = json_object_get(root, "videoiface");
 				if(viface) {
 					const char *miface = (const char *)json_string_value(viface);
 					if(janus_streaming_lookup_network_interface(ifas, miface, &video_iface)) {
@@ -1501,7 +1502,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				dport = json_integer_value(dataport);
 				json_t *dbm = json_object_get(root, "databuffermsg");
 				buffermsg = dbm ? json_is_true(dbm) : FALSE;
-				json_t *diface = json_object_get(root, "datasctpnetwork");
+				json_t *diface = json_object_get(root, "dataiface");
 				if(diface) {
 					const char *miface = (const char *)json_string_value(diface);
 					if(janus_streaming_lookup_network_interface(ifas, miface, &data_iface)) {
