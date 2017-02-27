@@ -1107,12 +1107,15 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			json_t *refresh = json_object_get(root, "refresh");
 			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
+			if(do_refresh && !sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
+			}
 			/* Check if this is a new recorder, or if an update is taking place (i.e., ICE restart) */
 			guint64 id = 0;
-			if(sdp_update || do_refresh) {
+			if(sdp_update) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
 				JANUS_LOG(LOG_VERB, "Request to refresh existing recorder\n");
-				if(!session->recorder) {
+				if(!session->recorder || !session->recording) {
 					JANUS_LOG(LOG_ERR, "Not a recording session, can't refresh\n");
 					error_code = JANUS_RECORDPLAY_ERROR_INVALID_STATE;
 					g_snprintf(error_cause, 512, "Not a recording session, can't refresh");

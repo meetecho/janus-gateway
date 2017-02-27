@@ -315,7 +315,8 @@ static struct janus_json_parameter set_parameters[] = {
 	{"video", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"refresh", JANUS_JSON_BOOL, 0}
 };
 
 /* Useful stuff */
@@ -1139,6 +1140,7 @@ static void *janus_videocall_handler(void *data) {
 			json_t *bitrate = json_object_get(root, "bitrate");
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
+			json_t *refresh = json_object_get(root, "refresh");
 			if(audio) {
 				session->audio_active = json_is_true(audio);
 				JANUS_LOG(LOG_VERB, "Setting audio property: %s\n", session->audio_active ? "true" : "false");
@@ -1273,6 +1275,10 @@ static void *janus_videocall_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("set"));
 			/* If this is for an ICE restart, prepare the SDP to send back too */
+			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
+			if(do_refresh && !sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
+			}
 			if(sdp_update) {
 				if(session->peer != NULL && session->peer->sdp != NULL) {
 					janus_refcount_increase(&session->peer->ref);

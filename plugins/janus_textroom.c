@@ -1838,8 +1838,11 @@ static void *janus_textroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "PeerConnection not setup");
 				goto error;
 			}
-			do_offer = TRUE;
-			sdp_update = TRUE;
+			if(!sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
+			} else {
+				do_offer = TRUE;
+			}
 		} else if(!strcasecmp(request_text, "ack")) {
 			/* The peer sent their answer back: do nothing */
 		} else {

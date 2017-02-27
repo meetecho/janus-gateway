@@ -2723,6 +2723,7 @@ static void *janus_audiobridge_handler(void *data) {
 			json_t *record = json_object_get(root, "record");
 			json_t *recfile = json_object_get(root, "filename");
 			json_t *display = json_object_get(root, "display");
+			json_t *refresh = json_object_get(root, "refresh");
 			if(gain)
 				participant->volume_gain = json_integer_value(gain);
 			if(quality) {
@@ -2843,6 +2844,10 @@ static void *janus_audiobridge_handler(void *data) {
 					participant->arc = NULL;
 				}
 				janus_mutex_unlock(&participant->rec_mutex);
+			}
+			gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
+			if(do_refresh && !sdp_update) {
+				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
 			}
 			/* Done */
 			event = json_object();

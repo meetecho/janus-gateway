@@ -3369,8 +3369,9 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				/* A renegotiation may be taking place */
 				gboolean do_refresh = refresh ? json_is_true(refresh) : FALSE;
-				if(sdp_update || do_refresh)
-					sdp_update = TRUE;	/* We'll need this later */
+				if(do_refresh && !sdp_update) {
+					JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
+				}
 				/* Done */
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
