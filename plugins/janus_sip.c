@@ -322,14 +322,6 @@ typedef struct janus_sip_account {
 	janus_sip_registration_status registration_status;
 } janus_sip_account;
 
-typedef struct janus_sip_rtp_context {
-	/* Needed to fix seq and ts in case of re-INVITEs/UPDATEs that result in a RTP stream */
-	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
-			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
-	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
-			v_last_seq, v_base_seq, v_base_seq_prev;
-} janus_sip_rtp_context;
-
 typedef struct janus_sip_media {
 	char *remote_ip;
 	int ready:1;
@@ -357,7 +349,7 @@ typedef struct janus_sip_media {
 	srtp_policy_t video_remote_policy, video_local_policy;
 	int video_srtp_suite_in, video_srtp_suite_out;
 	gboolean video_send;
-	janus_sip_rtp_context context;
+	janus_rtp_switching_context context;
 	int pipefd[2];
 	gboolean updated;
 } janus_sip_media;
@@ -1100,21 +1092,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_srtp_suite_out = 0;
 	session->media.video_send = TRUE;
 	/* Initialize the RTP context */
-	session->media.context.a_last_ssrc = 0;
-	session->media.context.a_last_ssrc = 0;
-	session->media.context.a_last_ts = 0;
-	session->media.context.a_base_ts = 0;
-	session->media.context.a_base_ts_prev = 0;
-	session->media.context.v_last_ssrc = 0;
-	session->media.context.v_last_ts = 0;
-	session->media.context.v_base_ts = 0;
-	session->media.context.v_base_ts_prev = 0;
-	session->media.context.a_last_seq = 0;
-	session->media.context.a_base_seq = 0;
-	session->media.context.a_base_seq_prev = 0;
-	session->media.context.v_last_seq = 0;
-	session->media.context.v_base_seq = 0;
-	session->media.context.v_base_seq_prev = 0;
+	janus_rtp_switching_context_reset(&session->media.context);
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
@@ -3426,25 +3404,8 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					guint32 ssrc = ntohl(header->ssrc);
 					guint32 timestamp = ntohl(header->timestamp);
-					guint16 seq = ntohs(header->seq_number);
-					if(ssrc != session->media.context.a_last_ssrc) {
-						JANUS_LOG(LOG_VERB, "Audio SSRC changed (re-INVITE?), %"SCNu32" --> %"SCNu32"\n",
-							session->media.context.a_last_ssrc, ssrc);
-						session->media.context.a_last_ssrc = ssrc;
-						session->media.context.a_base_ts_prev = session->media.context.a_last_ts;
-						session->media.context.a_base_ts = timestamp;
-						session->media.context.a_base_seq_prev = session->media.context.a_last_seq;
-						session->media.context.a_base_seq = seq;
-					}
-					/* Compute a coherent timestamp and sequence number */
-					session->media.context.a_last_ts = (timestamp-session->media.context.a_base_ts)
-						+ session->media.context.a_base_ts_prev+(astep ? astep : 960);	/* FIXME */
-					session->media.context.a_last_seq = (seq-session->media.context.a_base_seq)+session->media.context.a_base_seq_prev+1;
-					/* Update the timestamp and sequence number in the RTP packet, and send it */
-					header->timestamp = htonl(session->media.context.a_last_ts);
-					header->seq_number = htons(session->media.context.a_last_seq);
+					janus_rtp_header_update(header, &session->media.context, FALSE, astep ? astep : 960);
 					if(ats == 0) {
 						ats = timestamp;
 					} else if(astep == 0) {
@@ -3503,24 +3464,8 @@ static void *janus_sip_relay_thread(void *data) {
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					guint32 ssrc = ntohl(header->ssrc);
+					janus_rtp_header_update(header, &session->media.context, TRUE, vstep ? vstep : 4500);
 					guint32 timestamp = ntohl(header->timestamp);
-					guint16 seq = ntohs(header->seq_number);
-					if(ssrc != session->media.context.v_last_ssrc) {
-						JANUS_LOG(LOG_VERB, "Video SSRC changed (re-INVITE?)\n");
-						session->media.context.v_last_ssrc = ssrc;
-						session->media.context.v_base_ts_prev = session->media.context.v_last_ts;
-						session->media.context.v_base_ts = timestamp;
-						session->media.context.v_base_seq_prev = session->media.context.v_last_seq;
-						session->media.context.v_base_seq = seq;
-					}
-					/* Compute a coherent timestamp and sequence number */
-					session->media.context.v_last_ts = (timestamp-session->media.context.v_base_ts)
-						+ session->media.context.v_base_ts_prev+(vstep ? vstep : 4500);	/* FIXME */
-					session->media.context.v_last_seq = (seq-session->media.context.v_base_seq)+session->media.context.v_base_seq_prev+1;
-					/* Update the timestamp and sequence number in the RTP packet, and send it */
-					header->timestamp = htonl(session->media.context.v_last_ts);
-					header->seq_number = htons(session->media.context.v_last_seq);
 					if(vts == 0) {
 						vts = timestamp;
 					} else if(vstep == 0) {
