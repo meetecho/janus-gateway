@@ -434,12 +434,14 @@ record_file =	/path/to/recording.wav (where to save the recording)
  *
  * At this point, the media-related settings of the participant can be
  * modified by means of a \c configure request. The \c configure request
- * has to be formatted as follows:
+ * has to be formatted as follows (notice that all parameters except
+ * \c request are optional, depending on what you want to change):
  *
 \verbatim
 {
 	"request" : "configure",
 	"muted" : <true|false, whether to unmute or mute>,
+	"display" : "<new display name to have in the room>",
 	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>,
 	"record": <true|false, whether to record this user's contribution to a .mjr file (mixer not involved),
@@ -2770,9 +2772,11 @@ static void *janus_audiobridge_handler(void *data) {
 						janus_mutex_unlock(&participant->qmutex);
 					}
 				}
-				if (display) {
-				  g_free(participant->display);
-					participant->display = g_strdup(json_string_value(display));
+				if(display) {
+					char *old_display = participant->display;
+					char *new_display = g_strdup(json_string_value(display));
+					participant->display = new_display;
+					g_free(old_display);
 					JANUS_LOG(LOG_VERB, "Setting display property: %s (room %"SCNu64", user %"SCNu64")\n", participant->display, participant->room->room_id, participant->user_id);
 				}
 				/* Notify all other participants about the mute/unmute */
