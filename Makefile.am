@@ -297,6 +297,16 @@ conf_DATA += conf/janus.plugin.sip.cfg.sample
 EXTRA_DIST += conf/janus.plugin.sip.cfg.sample
 endif
 
+if ENABLE_PLUGIN_NOSIP
+plugin_LTLIBRARIES += plugins/libjanus_nosip.la
+plugins_libjanus_nosip_la_SOURCES = plugins/janus_nosip.c
+plugins_libjanus_nosip_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_nosip_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_nosip_la_LIBADD = $(plugins_libadd)
+conf_DATA += conf/janus.plugin.nosip.cfg.sample
+EXTRA_DIST += conf/janus.plugin.nosip.cfg.sample
+endif
+
 if ENABLE_PLUGIN_STREAMING
 plugin_LTLIBRARIES += plugins/libjanus_streaming.la
 plugins_libjanus_streaming_la_SOURCES = plugins/janus_streaming.c
