@@ -173,54 +173,8 @@ Janus.init = function(options) {
 			if(oldOBF && typeof oldOBF == "function")
 				oldOBF();
 		}
-		function addJsList(srcArray) {
-			if (!srcArray || !Array.isArray(srcArray) || srcArray.length == 0) {
-				options.callback();
-			}
-			var count = 0;
-			addJs(srcArray[count],next);
-
-			function next() {
-				count++;
-				if (count<srcArray.length) {
-					addJs(srcArray[count],next);
-				}
-				else {
-					options.callback();
-				}
-			}
-		}
-		function addJs(src,done) {
-			if(src === 'jquery.min.js') {
-				if(window.jQuery) {
-					// Already loaded
-					Janus.debug(src + " already loaded, skipping");
-					done();
-					return;
-				}
-			}
-			if(src === 'adapter.js') {
-				try {
-					if(adapter) {
-						// Already loaded
-						Janus.debug(src + " already loaded, skipping");
-						done();
-						return;
-					}
-				} catch(e) {};
-			}
-			var oHead = document.getElementsByTagName('head').item(0);
-			var oScript = document.createElement("script");
-			oScript.type = "text/javascript";
-			oScript.src = src;
-			oScript.onload = function() {
-				Janus.log("Library " + src + " loaded");
-				done();
-			}
-			oHead.appendChild(oScript);
-		}
 		Janus.initDone = true;
-		addJsList(["adapter.js", "jquery.min.js"]);
+		options.callback();
 	}
 };
 
@@ -1299,7 +1253,8 @@ function Janus(gatewayCallbacks) {
 		}
 		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
 		config.pc.oniceconnectionstatechange = function(e) {
-			pluginHandle.iceState(config.pc.iceConnectionState);
+			if(config.pc)
+				pluginHandle.iceState(config.pc.iceConnectionState);
 		};
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
