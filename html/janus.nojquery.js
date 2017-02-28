@@ -1291,7 +1291,9 @@ function Janus(gatewayCallbacks) {
 		}
 		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
 		config.pc.oniceconnectionstatechange = function(e) {
-			pluginHandle.iceState(config.pc.iceConnectionState);
+			if(config.pc !== undefined && config.pc !== null) {
+				pluginHandle.iceState(config.pc.iceConnectionState);
+			}
 		};
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
