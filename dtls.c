@@ -141,6 +141,7 @@ static void janus_dtls_notify_state_change(janus_dtls_srtp *dtls) {
 	json_object_set_new(info, "dtls", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 	json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
 	json_object_set_new(info, "component_id", json_integer(component->component_id));
+	json_object_set_new(info, "retransmissions", json_integer(dtls->retransmissions));
 	janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
 }
 
@@ -568,6 +569,7 @@ janus_dtls_srtp *janus_dtls_srtp_create(void *ice_component, janus_dtls_role rol
 	DTLSv1_set_initial_timeout_duration(dtls->ssl, ms);
 #endif
 	dtls->ready = 0;
+	dtls->retransmissions = 0;
 #ifdef HAVE_SCTP
 	dtls->sctp = NULL;
 #endif
@@ -825,6 +827,7 @@ void janus_dtls_srtp_destroy(janus_dtls_srtp *dtls) {
 	if(dtls == NULL)
 		return;
 	dtls->ready = 0;
+	dtls->retransmissions = 0;
 #ifdef HAVE_SCTP
 	/* Destroy the SCTP association if this is a DataChannel */
 	if(dtls->sctp != NULL) {
@@ -1024,7 +1027,11 @@ gboolean janus_dtls_retry(gpointer stack) {
 	guint64 timeout_value = timeout.tv_sec*1000 + timeout.tv_usec/1000;
 	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] DTLSv1_get_timeout: %"SCNu64"\n", handle->handle_id, timeout_value);
 	if(timeout_value == 0) {
+		dtls->retransmissions++;
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS timeout on component %d of stream %d, retransmitting\n", handle->handle_id, component->component_id, stream->stream_id);
+		/* Notify event handlers */
+		janus_dtls_notify_state_change(dtls);
+		/* Retransmit the packet */
 		DTLSv1_handle_timeout(dtls->ssl);
 		janus_dtls_fd_bridge(dtls);
 	}

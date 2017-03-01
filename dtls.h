@@ -91,6 +91,8 @@ typedef struct janus_dtls_srtp {
 	janus_mutex srtp_mutex;
 	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
 	int ready;
+	/*! \brief The number of retransmissions that have occurred for this DTLS instance so far */
+	int retransmissions;
 #ifdef HAVE_SCTP
 	/*! \brief SCTP association, if DataChannels are involved */
 	janus_sctp_association *sctp;
