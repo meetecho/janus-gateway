@@ -1,25 +1,25 @@
 /*
- The MIT License (MIT)
+	The MIT License (MIT)
 
- Copyright (c) 2016 Meetecho
+	Copyright (c) 2016 Meetecho
 
- Permission is hereby granted, free of charge, to any person obtaining
- a copy of this software and associated documentation files (the "Software"),
- to deal in the Software without restriction, including without limitation
- the rights to use, copy, modify, merge, publish, distribute, sublicense,
- and/or sell copies of the Software, and to permit persons to whom the
- Software is furnished to do so, subject to the following conditions:
+	Permission is hereby granted, free of charge, to any person obtaining
+	a copy of this software and associated documentation files (the "Software"),
+	to deal in the Software without restriction, including without limitation
+	the rights to use, copy, modify, merge, publish, distribute, sublicense,
+	and/or sell copies of the Software, and to permit persons to whom the
+	Software is furnished to do so, subject to the following conditions:
 
- The above copyright notice and this permission notice shall be included
- in all copies or substantial portions of the Software.
+	The above copyright notice and this permission notice shall be included
+	in all copies or substantial portions of the Software.
 
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
- OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- OTHER DEALINGS IN THE SOFTWARE.
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+	OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+	THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+	ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+	OTHER DEALINGS IN THE SOFTWARE.
  */
 
 // List of sessions
@@ -105,28 +105,28 @@ Janus.init = function(options) {
 			callback = (typeof callback == "function") ? callback : Janus.noop;
 			if(navigator.mediaDevices) {
 				navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-					.then(function(stream) {
-						navigator.mediaDevices.enumerateDevices().then(function(devices) {
-							Janus.debug(devices);
-							callback(devices);
-							// Get rid of the now useless stream
-							try {
-								stream.stop();
-							} catch(e) {}
-							try {
-								var tracks = stream.getTracks();
-								for(var i in tracks) {
-									var mst = tracks[i];
-									if(mst !== null && mst !== undefined)
-										mst.stop();
-								}
-							} catch(e) {}
-						});
-					})
-					.catch(function(err) {
-						Janus.error(err);
-						callback([]);
+				.then(function(stream) {
+					navigator.mediaDevices.enumerateDevices().then(function(devices) {
+						Janus.debug(devices);
+						callback(devices);
+						// Get rid of the now useless stream
+						try {
+							stream.stop();
+						} catch(e) {}
+						try {
+							var tracks = stream.getTracks();
+							for(var i in tracks) {
+								var mst = tracks[i];
+								if(mst !== null && mst !== undefined)
+									mst.stop();
+							}
+						} catch(e) {}
 					});
+				})
+				.catch(function(err) {
+					Janus.error(err);
+					callback([]);
+				});
 			} else {
 				Janus.warn("navigator.mediaDevices unavailable");
 				callback([]);
@@ -165,7 +165,7 @@ Janus.init = function(options) {
 			Janus.log("Closing window");
 			for(var s in Janus.sessions) {
 				if(Janus.sessions[s] !== null && Janus.sessions[s] !== undefined &&
-					Janus.sessions[s].destroyOnUnload) {
+						Janus.sessions[s].destroyOnUnload) {
 					Janus.log("Destroying session " + s);
 					Janus.sessions[s].destroy({asyncRequest: false});
 				}
@@ -173,54 +173,8 @@ Janus.init = function(options) {
 			if(oldOBF && typeof oldOBF == "function")
 				oldOBF();
 		}
-		function addJsList(srcArray) {
-			if (!srcArray || !Array.isArray(srcArray) || srcArray.length == 0) {
-				options.callback();
-			}
-			var count = 0;
-			addJs(srcArray[count],next);
-
-			function next() {
-				count++;
-				if (count<srcArray.length) {
-					addJs(srcArray[count],next);
-				}
-				else {
-					options.callback();
-				}
-			}
-		}
-		function addJs(src,done) {
-			if(src === 'jquery.min.js') {
-				if(window.jQuery) {
-					// Already loaded
-					Janus.debug(src + " already loaded, skipping");
-					done();
-					return;
-				}
-			}
-			if(src === 'adapter.js') {
-				try {
-					if(adapter) {
-						// Already loaded
-						Janus.debug(src + " already loaded, skipping");
-						done();
-						return;
-					}
-				} catch(e) {};
-			}
-			var oHead = document.getElementsByTagName('head').item(0);
-			var oScript = document.createElement("script");
-			oScript.type = "text/javascript";
-			oScript.src = src;
-			oScript.onload = function() {
-				Janus.log("Library " + src + " loaded");
-				done();
-			}
-			oHead.appendChild(oScript);
-		}
 		Janus.initDone = true;
-		addJsList(["adapter.js", "jquery.min.js"]);
+		options.callback();
 	}
 };
 
@@ -289,6 +243,10 @@ function Janus(gatewayCallbacks) {
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
 		ipv6Support = false;
+	// Whether we should enable the withCredentials flag for XHR requests
+	var withCredentials = false;
+	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
+		withCredentials = gatewayCallbacks.withCredentials === true;
 	// Optional max events
 	var maxev = null;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
@@ -341,6 +299,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'GET',
 			url: longpoll,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			timeout: 60000,	// FIXME
 			success: handleEvent,
@@ -412,7 +373,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.webrtcState(true);
@@ -428,10 +389,10 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
-			pluginHandle.webrtcState(false);
+			pluginHandle.webrtcState(false, json["reason"]);
 			pluginHandle.hangup();
 		} else if(json["janus"] === "detached") {
 			// A plugin asked the core to detach one of our handles
@@ -460,7 +421,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.mediaState(json["type"], json["receiving"]);
@@ -475,7 +436,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.slowLink(json["uplink"], json["nacks"]);
@@ -629,6 +590,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -740,6 +704,9 @@ function Janus(gatewayCallbacks) {
 			type: 'POST',
 			url: server + "/" + sessionId,
 			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -772,6 +739,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : jQuery.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : jQuery.noop;
+		callbacks.iceState = (typeof callbacks.iceState == "function") ? callbacks.iceState : jQuery.noop;
 		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : jQuery.noop;
 		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : jQuery.noop;
 		callbacks.slowLink = (typeof callbacks.slowLink == "function") ? callbacks.slowLink : jQuery.noop;
@@ -811,65 +779,66 @@ function Janus(gatewayCallbacks) {
 				var handleId = json.data["id"];
 				Janus.log("Created handle: " + handleId);
 				var pluginHandle =
-						{
-							session : that,
-							plugin : plugin,
-							id : handleId,
-							webrtcStuff : {
-								started : false,
-								myStream : null,
-								streamExternal : false,
-								remoteStream : null,
-								mySdp : null,
-								pc : null,
-								dataChannel : null,
-								dtmfSender : null,
-								trickle : true,
-								iceDone : false,
-								sdpSent : false,
-								volume : {
-									value : null,
-									timer : null
-								},
-								bitrate : {
-									value : null,
-									bsnow : null,
-									bsbefore : null,
-									tsnow : null,
-									tsbefore : null,
-									timer : null
-								}
+					{
+						session : that,
+						plugin : plugin,
+						id : handleId,
+						webrtcStuff : {
+							started : false,
+							myStream : null,
+							streamExternal : false,
+							remoteStream : null,
+							mySdp : null,
+							pc : null,
+							dataChannel : null,
+							dtmfSender : null,
+							trickle : true,
+							iceDone : false,
+							sdpSent : false,
+							volume : {
+								value : null,
+								timer : null
 							},
-							getId : function() { return handleId; },
-							getPlugin : function() { return plugin; },
-							getVolume : function() { return getVolume(handleId); },
-							isAudioMuted : function() { return isMuted(handleId, false); },
-							muteAudio : function() { return mute(handleId, false, true); },
-							unmuteAudio : function() { return mute(handleId, false, false); },
-							isVideoMuted : function() { return isMuted(handleId, true); },
-							muteVideo : function() { return mute(handleId, true, true); },
-							unmuteVideo : function() { return mute(handleId, true, false); },
-							getBitrate : function() { return getBitrate(handleId); },
-							send : function(callbacks) { sendMessage(handleId, callbacks); },
-							data : function(callbacks) { sendData(handleId, callbacks); },
-							dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
-							consentDialog : callbacks.consentDialog,
-							mediaState : callbacks.mediaState,
-							webrtcState : callbacks.webrtcState,
-							slowLink : callbacks.slowLink,
-							onmessage : callbacks.onmessage,
-							createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
-							createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
-							handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
-							onlocalstream : callbacks.onlocalstream,
-							onremotestream : callbacks.onremotestream,
-							ondata : callbacks.ondata,
-							ondataopen : callbacks.ondataopen,
-							oncleanup : callbacks.oncleanup,
-							ondetached : callbacks.ondetached,
-							hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
-							detach : function(callbacks) { destroyHandle(handleId, callbacks); }
-						}
+							bitrate : {
+								value : null,
+								bsnow : null,
+								bsbefore : null,
+								tsnow : null,
+								tsbefore : null,
+								timer : null
+							}
+						},
+						getId : function() { return handleId; },
+						getPlugin : function() { return plugin; },
+						getVolume : function() { return getVolume(handleId); },
+						isAudioMuted : function() { return isMuted(handleId, false); },
+						muteAudio : function() { return mute(handleId, false, true); },
+						unmuteAudio : function() { return mute(handleId, false, false); },
+						isVideoMuted : function() { return isMuted(handleId, true); },
+						muteVideo : function() { return mute(handleId, true, true); },
+						unmuteVideo : function() { return mute(handleId, true, false); },
+						getBitrate : function() { return getBitrate(handleId); },
+						send : function(callbacks) { sendMessage(handleId, callbacks); },
+						data : function(callbacks) { sendData(handleId, callbacks); },
+						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
+						consentDialog : callbacks.consentDialog,
+						iceState : callbacks.iceState,
+						mediaState : callbacks.mediaState,
+						webrtcState : callbacks.webrtcState,
+						slowLink : callbacks.slowLink,
+						onmessage : callbacks.onmessage,
+						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
+						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
+						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
+						onlocalstream : callbacks.onlocalstream,
+						onremotestream : callbacks.onremotestream,
+						ondata : callbacks.ondata,
+						ondataopen : callbacks.ondataopen,
+						oncleanup : callbacks.oncleanup,
+						ondetached : callbacks.ondetached,
+						hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
+						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
+					}
 				pluginHandles[handleId] = pluginHandle;
 				callbacks.success(pluginHandle);
 			};
@@ -880,6 +849,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -893,65 +865,66 @@ function Janus(gatewayCallbacks) {
 				var handleId = json.data["id"];
 				Janus.log("Created handle: " + handleId);
 				var pluginHandle =
-						{
-							session : that,
-							plugin : plugin,
-							id : handleId,
-							webrtcStuff : {
-								started : false,
-								myStream : null,
-								streamExternal : false,
-								remoteStream : null,
-								mySdp : null,
-								pc : null,
-								dataChannel : null,
-								dtmfSender : null,
-								trickle : true,
-								iceDone : false,
-								sdpSent : false,
-								volume : {
-									value : null,
-									timer : null
-								},
-								bitrate : {
-									value : null,
-									bsnow : null,
-									bsbefore : null,
-									tsnow : null,
-									tsbefore : null,
-									timer : null
-								}
+					{
+						session : that,
+						plugin : plugin,
+						id : handleId,
+						webrtcStuff : {
+							started : false,
+							myStream : null,
+							streamExternal : false,
+							remoteStream : null,
+							mySdp : null,
+							pc : null,
+							dataChannel : null,
+							dtmfSender : null,
+							trickle : true,
+							iceDone : false,
+							sdpSent : false,
+							volume : {
+								value : null,
+								timer : null
 							},
-							getId : function() { return handleId; },
-							getPlugin : function() { return plugin; },
-							getVolume : function() { return getVolume(handleId); },
-							isAudioMuted : function() { return isMuted(handleId, false); },
-							muteAudio : function() { return mute(handleId, false, true); },
-							unmuteAudio : function() { return mute(handleId, false, false); },
-							isVideoMuted : function() { return isMuted(handleId, true); },
-							muteVideo : function() { return mute(handleId, true, true); },
-							unmuteVideo : function() { return mute(handleId, true, false); },
-							getBitrate : function() { return getBitrate(handleId); },
-							send : function(callbacks) { sendMessage(handleId, callbacks); },
-							data : function(callbacks) { sendData(handleId, callbacks); },
-							dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
-							consentDialog : callbacks.consentDialog,
-							mediaState : callbacks.mediaState,
-							webrtcState : callbacks.webrtcState,
-							slowLink : callbacks.slowLink,
-							onmessage : callbacks.onmessage,
-							createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
-							createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
-							handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
-							onlocalstream : callbacks.onlocalstream,
-							onremotestream : callbacks.onremotestream,
-							ondata : callbacks.ondata,
-							ondataopen : callbacks.ondataopen,
-							oncleanup : callbacks.oncleanup,
-							ondetached : callbacks.ondetached,
-							hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
-							detach : function(callbacks) { destroyHandle(handleId, callbacks); }
-						}
+							bitrate : {
+								value : null,
+								bsnow : null,
+								bsbefore : null,
+								tsnow : null,
+								tsbefore : null,
+								timer : null
+							}
+						},
+						getId : function() { return handleId; },
+						getPlugin : function() { return plugin; },
+						getVolume : function() { return getVolume(handleId); },
+						isAudioMuted : function() { return isMuted(handleId, false); },
+						muteAudio : function() { return mute(handleId, false, true); },
+						unmuteAudio : function() { return mute(handleId, false, false); },
+						isVideoMuted : function() { return isMuted(handleId, true); },
+						muteVideo : function() { return mute(handleId, true, true); },
+						unmuteVideo : function() { return mute(handleId, true, false); },
+						getBitrate : function() { return getBitrate(handleId); },
+						send : function(callbacks) { sendMessage(handleId, callbacks); },
+						data : function(callbacks) { sendData(handleId, callbacks); },
+						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
+						consentDialog : callbacks.consentDialog,
+						iceState : callbacks.iceState,
+						mediaState : callbacks.mediaState,
+						webrtcState : callbacks.webrtcState,
+						slowLink : callbacks.slowLink,
+						onmessage : callbacks.onmessage,
+						createOffer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
+						createAnswer : function(callbacks) { prepareWebrtc(handleId, callbacks); },
+						handleRemoteJsep : function(callbacks) { prepareWebrtcPeer(handleId, callbacks); },
+						onlocalstream : callbacks.onlocalstream,
+						onremotestream : callbacks.onremotestream,
+						ondata : callbacks.ondata,
+						ondataopen : callbacks.ondataopen,
+						oncleanup : callbacks.oncleanup,
+						ondetached : callbacks.ondetached,
+						hangup : function(sendRequest) { cleanupWebrtc(handleId, sendRequest === true); },
+						detach : function(callbacks) { destroyHandle(handleId, callbacks); }
+					}
 				pluginHandles[handleId] = pluginHandle;
 				callbacks.success(pluginHandle);
 			},
@@ -1023,6 +996,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1086,6 +1062,9 @@ function Janus(gatewayCallbacks) {
 		$.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1111,7 +1090,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
@@ -1135,7 +1114,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
@@ -1213,6 +1192,9 @@ function Janus(gatewayCallbacks) {
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
 			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			xhrFields: {
+				withCredentials: withCredentials
+			},
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1239,7 +1221,7 @@ function Janus(gatewayCallbacks) {
 	function streamsDone(handleId, jsep, media, callbacks, stream) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
@@ -1270,9 +1252,13 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.value = "0 kbits/sec";
 		}
 		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
+		config.pc.oniceconnectionstatechange = function(e) {
+			if(config.pc)
+				pluginHandle.iceState(config.pc.iceConnectionState);
+		};
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
-				(adapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
+					(adapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
 				Janus.log("End of candidates.");
 				config.iceDone = true;
 				if(config.trickle === true) {
@@ -1341,11 +1327,11 @@ function Janus(gatewayCallbacks) {
 				jsep.sdp += "a=end-of-candidates\r\n";
 			}
 			config.pc.setRemoteDescription(
-				new RTCSessionDescription(jsep),
-				function() {
-					Janus.log("Remote description accepted!");
-					createAnswer(handleId, media, callbacks);
-				}, callbacks.error);
+					new RTCSessionDescription(jsep),
+					function() {
+						Janus.log("Remote description accepted!");
+						createAnswer(handleId, media, callbacks);
+					}, callbacks.error);
 		}
 	}
 
@@ -1357,7 +1343,7 @@ function Janus(gatewayCallbacks) {
 		var media = callbacks.media;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
@@ -1375,11 +1361,11 @@ function Janus(gatewayCallbacks) {
 					jsep.sdp += "a=end-of-candidates\r\n";
 				}
 				config.pc.setRemoteDescription(
-					new RTCSessionDescription(jsep),
-					function() {
-						Janus.log("Remote description accepted!");
-						createAnswer(handleId, media, callbacks);
-					}, callbacks.error);
+						new RTCSessionDescription(jsep),
+						function() {
+							Janus.log("Remote description accepted!");
+							createAnswer(handleId, media, callbacks);
+						}, callbacks.error);
 			}
 			return;
 		}
@@ -1468,13 +1454,13 @@ function Janus(gatewayCallbacks) {
 						}
 					} else {
 						videoSupport = {
-							'mandatory': {
-								'maxHeight': maxHeight,
-								'minHeight': height,
-								'maxWidth':  width,
-								'minWidth':  width
-							},
-							'optional': []
+						    'mandatory': {
+						        'maxHeight': maxHeight,
+						        'minHeight': height,
+						        'maxWidth':  width,
+						        'minWidth':  width
+						    },
+						    'optional': []
 						};
 					}
 					if(typeof media.video === 'object') {
@@ -1606,7 +1592,7 @@ function Janus(gatewayCallbacks) {
 											maxWidth: window.screen.width,
 											maxHeight: window.screen.height,
 											minFrameRate: media.screenshareFrameRate,
-											maxFrameRate: media.screenshareFrameRate
+											maxFrameRate: media.screenshareFrameRate,
 										},
 										optional: [
 											{googLeakyBucket: true},
@@ -1628,49 +1614,49 @@ function Janus(gatewayCallbacks) {
 			if(media === null || media === undefined || media.video !== 'screen') {
 				// Check whether all media sources are actually available or not
 				navigator.mediaDevices.enumerateDevices().then(function(devices) {
-						var audioExist = devices.some(function(device) {
-									return device.kind === 'audioinput';
-								}),
-								videoExist = devices.some(function(device) {
-									return device.kind === 'videoinput';
-								});
-
-						// Check whether a missing device is really a problem
-						var audioSend = isAudioSendEnabled(media);
-						var videoSend = isVideoSendEnabled(media);
-						var needAudioDevice = isAudioSendRequired(media);
-						var needVideoDevice = isVideoSendRequired(media);
-						if(audioSend || videoSend || needAudioDevice || needVideoDevice) {
-							// We need to send either audio or video
-							var haveAudioDevice = audioSend ? audioExist : false;
-							var haveVideoDevice = videoSend ? videoExist : false;
-							if(!haveAudioDevice && !haveVideoDevice) {
-								// FIXME Should we really give up, or just assume recvonly for both?
-								pluginHandle.consentDialog(false);
-								callbacks.error('No capture device found');
-								return false;
-							} else if(!haveAudioDevice && needAudioDevice) {
-								pluginHandle.consentDialog(false);
-								callbacks.error('Audio capture is required, but no capture device found');
-								return false;
-							} else if(!haveVideoDevice && needVideoDevice) {
-								pluginHandle.consentDialog(false);
-								callbacks.error('Video capture is required, but no capture device found');
-								return false;
-							}
-						}
-
-						navigator.mediaDevices.getUserMedia({
-								audio: audioExist ? audioSupport : false,
-								video: videoExist ? videoSupport : false
-							})
-							.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
-							.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
-					})
-					.catch(function(error) {
-						pluginHandle.consentDialog(false);
-						callbacks.error('enumerateDevices error', error);
+					var audioExist = devices.some(function(device) {
+						return device.kind === 'audioinput';
+					}),
+					videoExist = devices.some(function(device) {
+						return device.kind === 'videoinput';
 					});
+
+					// Check whether a missing device is really a problem
+					var audioSend = isAudioSendEnabled(media);
+					var videoSend = isVideoSendEnabled(media);
+					var needAudioDevice = isAudioSendRequired(media);
+					var needVideoDevice = isVideoSendRequired(media);
+					if(audioSend || videoSend || needAudioDevice || needVideoDevice) {
+						// We need to send either audio or video
+						var haveAudioDevice = audioSend ? audioExist : false;
+						var haveVideoDevice = videoSend ? videoExist : false;
+						if(!haveAudioDevice && !haveVideoDevice) {
+							// FIXME Should we really give up, or just assume recvonly for both?
+							pluginHandle.consentDialog(false);
+							callbacks.error('No capture device found');
+							return false;
+						} else if(!haveAudioDevice && needAudioDevice) {
+							pluginHandle.consentDialog(false);
+							callbacks.error('Audio capture is required, but no capture device found');
+							return false;
+						} else if(!haveVideoDevice && needVideoDevice) {
+							pluginHandle.consentDialog(false);
+							callbacks.error('Video capture is required, but no capture device found');
+							return false;
+						}
+					}
+
+					navigator.mediaDevices.getUserMedia({
+						audio: audioExist ? audioSupport : false,
+						video: videoExist ? videoSupport : false
+					})
+					.then(function(stream) { pluginHandle.consentDialog(false); streamsDone(handleId, jsep, media, callbacks, stream); })
+					.catch(function(error) { pluginHandle.consentDialog(false); callbacks.error({code: error.code, name: error.name, message: error.message}); });
+				})
+				.catch(function(error) {
+					pluginHandle.consentDialog(false);
+					callbacks.error('enumerateDevices error', error);
+				});
 			}
 		} else {
 			// No need to do a getUserMedia, create offer/answer right away
@@ -1685,7 +1671,7 @@ function Janus(gatewayCallbacks) {
 		var jsep = callbacks.jsep;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
@@ -1702,11 +1688,11 @@ function Janus(gatewayCallbacks) {
 				jsep.sdp += "a=end-of-candidates\r\n";
 			}
 			config.pc.setRemoteDescription(
-				new RTCSessionDescription(jsep),
-				function() {
-					Janus.log("Remote description accepted!");
-					callbacks.success();
-				}, callbacks.error);
+					new RTCSessionDescription(jsep),
+					function() {
+						Janus.log("Remote description accepted!");
+						callbacks.success();
+					}, callbacks.error);
 		} else {
 			callbacks.error("Invalid JSEP");
 		}
@@ -1718,7 +1704,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
@@ -1777,7 +1763,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			callbacks.error("Invalid handle");
 			return;
@@ -1833,7 +1819,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : jQuery.noop;
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle, not sending anything");
 			return;
 		}
@@ -1861,7 +1847,7 @@ function Janus(gatewayCallbacks) {
 	function getVolume(handleId) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			return 0;
 		}
@@ -1898,7 +1884,7 @@ function Janus(gatewayCallbacks) {
 	function isMuted(handleId, video) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			return true;
 		}
@@ -1914,8 +1900,8 @@ function Janus(gatewayCallbacks) {
 		if(video) {
 			// Check video track
 			if(config.myStream.getVideoTracks() === null
-				|| config.myStream.getVideoTracks() === undefined
-				|| config.myStream.getVideoTracks().length === 0) {
+					|| config.myStream.getVideoTracks() === undefined
+					|| config.myStream.getVideoTracks().length === 0) {
 				Janus.warn("No video track");
 				return true;
 			}
@@ -1923,8 +1909,8 @@ function Janus(gatewayCallbacks) {
 		} else {
 			// Check audio track
 			if(config.myStream.getAudioTracks() === null
-				|| config.myStream.getAudioTracks() === undefined
-				|| config.myStream.getAudioTracks().length === 0) {
+					|| config.myStream.getAudioTracks() === undefined
+					|| config.myStream.getAudioTracks().length === 0) {
 				Janus.warn("No audio track");
 				return true;
 			}
@@ -1935,7 +1921,7 @@ function Janus(gatewayCallbacks) {
 	function mute(handleId, video, mute) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			return false;
 		}
@@ -1951,8 +1937,8 @@ function Janus(gatewayCallbacks) {
 		if(video) {
 			// Mute/unmute video track
 			if(config.myStream.getVideoTracks() === null
-				|| config.myStream.getVideoTracks() === undefined
-				|| config.myStream.getVideoTracks().length === 0) {
+					|| config.myStream.getVideoTracks() === undefined
+					|| config.myStream.getVideoTracks().length === 0) {
 				Janus.warn("No video track");
 				return false;
 			}
@@ -1961,8 +1947,8 @@ function Janus(gatewayCallbacks) {
 		} else {
 			// Mute/unmute audio track
 			if(config.myStream.getAudioTracks() === null
-				|| config.myStream.getAudioTracks() === undefined
-				|| config.myStream.getAudioTracks().length === 0) {
+					|| config.myStream.getAudioTracks() === undefined
+					|| config.myStream.getAudioTracks().length === 0) {
 				Janus.warn("No audio track");
 				return false;
 			}
@@ -1974,7 +1960,7 @@ function Janus(gatewayCallbacks) {
 	function getBitrate(handleId) {
 		var pluginHandle = pluginHandles[handleId];
 		if(pluginHandle === null || pluginHandle === undefined ||
-			pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
 			Janus.warn("Invalid handle");
 			return "Invalid handle";
 		}
@@ -2021,7 +2007,7 @@ function Janus(gatewayCallbacks) {
 		} else if(config.pc.getStats && adapter.browserDetails.browser == "firefox") {
 			// Do it the Firefox way
 			if(config.remoteStream === null || config.remoteStream === undefined
-				|| config.remoteStream.stream === null || config.remoteStream.stream === undefined) {
+					|| config.remoteStream.stream === null || config.remoteStream.stream === undefined) {
 				Janus.warn("Remote stream unavailable");
 				return "Remote stream unavailable";
 			}
@@ -2037,7 +2023,7 @@ function Janus(gatewayCallbacks) {
 					// We need a helper callback
 					var cb = function(res) {
 						if(res === null || res === undefined ||
-							res.inbound_rtp_video_1 == null || res.inbound_rtp_video_1 == null) {
+								res.inbound_rtp_video_1 == null || res.inbound_rtp_video_1 == null) {
 							config.bitrate.value = "Missing inbound_rtp_video_1";
 							return;
 						}
@@ -2099,6 +2085,9 @@ function Janus(gatewayCallbacks) {
 					$.ajax({
 						type: 'POST',
 						url: server + "/" + sessionId + "/" + handleId,
+						xhrFields: {
+							withCredentials: withCredentials
+						},
 						cache: false,
 						contentType: "application/json",
 						data: JSON.stringify(request),
