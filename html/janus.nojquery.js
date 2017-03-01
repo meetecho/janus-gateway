@@ -1629,8 +1629,8 @@ function Janus(gatewayCallbacks) {
 											chromeMediaSource: 'desktop',
 											maxWidth: window.screen.width,
 											maxHeight: window.screen.height,
-                      minFrameRate: media.screenshareFrameRate,
-                      maxFrameRate: media.screenshareFrameRate,
+											minFrameRate: media.screenshareFrameRate,
+											maxFrameRate: media.screenshareFrameRate,
 										},
 										optional: [
 											{googLeakyBucket: true},
