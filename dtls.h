@@ -18,18 +18,7 @@
 #include <inttypes.h>
 #include <glib.h>
 
-#ifdef HAVE_SRTP_2
-#include <srtp2/srtp.h>
-#else
-#include <srtp/srtp.h>
-#define srtp_err_status_t err_status_t
-#define srtp_err_status_ok err_status_ok
-#define srtp_err_status_replay_fail err_status_replay_fail
-#define srtp_err_status_replay_old err_status_replay_old
-#define srtp_crypto_policy_set_rtp_default crypto_policy_set_rtp_default
-#define srtp_crypto_policy_set_rtcp_default crypto_policy_set_rtcp_default
-#endif
-
+#include "rtp.h"
 #include "sctp.h"
 #include "dtls-bio.h"
 
@@ -163,12 +152,6 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
  * @param[in] stack Opaque pointer to the janus_dtls_srtp instance to use
  * @returns true if a retransmission is still needed, false otherwise */
 gboolean janus_dtls_retry(gpointer stack);
-
-
-/*! \brief Helper method to get a string representation of a libsrtp error code
- * @param[in] error The libsrtp error code
- * @returns A string representation of the error code */
-const gchar *janus_get_srtp_error(int error);
 
 /*! \brief Helper method to get a string representation of a Janus DTLS state
  * @param[in] state The Janus DTLS state
