@@ -106,8 +106,7 @@ $(document).ready(function() {
 													// the SIP plugin uses (mandatory vs. optional). We'll
 													// get the result in an event called "generated" here.
 													var body = {
-														request: "generate",
-														info: "something-meaningful-about-the-caller"
+														request: "generate"
 													};
 													caller.send({message: body, jsep: jsep});
 												},
@@ -173,11 +172,10 @@ $(document).ready(function() {
 											// the callee handle it as if it arrived via signalling
 											var sdp = result["sdp"];
 											$('#localsdp').text(
-												"[" + result["type"] + "][" + result["info"] + "]\n" + sdp);
+												"[" + result["type"] + "]\n" + sdp);
 											// This will result in a "processed" event on the callee handle
 											var processOffer = {
 												request: "process",
-												info: "something-meaningful-about-the-callee",
 												type: result["type"],
 												sdp: result["sdp"]
 											}
@@ -362,7 +360,7 @@ $(document).ready(function() {
 											// the caller handle it as if it arrived via signalling
 											var sdp = result["sdp"];
 											$('#remotesdp').text(
-												"[" + result["type"] + "][" + result["info"] + "]\n" + sdp);
+												"[" + result["type"] + "]\n" + sdp);
 											// This will result in a "processed" event on the caller handle
 											var processAnswer = {
 												request: "process",
