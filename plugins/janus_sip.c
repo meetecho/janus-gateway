@@ -72,6 +72,7 @@
 #include "../rtcp.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
+#include "../ip-utils.h"
 
 #ifdef HAVE_SRTP_2
 #include <srtp2/srtp.h>
@@ -690,37 +691,6 @@ void *janus_sip_watchdog(void *data) {
 }
 
 
-static void janus_sip_detect_local_ip(char *buf, size_t buflen) {
-	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
-
-	struct sockaddr_in addr;
-	socklen_t len;
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd == -1)
-		goto error;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(1);
-	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
-	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
-		goto error;
-	len = sizeof(addr);
-	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
-		goto error;
-	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
-			buf, buflen,
-			NULL, 0, NI_NUMERICHOST) != 0)
-		goto error;
-	close(fd);
-	return;
-
-error:
-	if (fd != -1)
-		close(fd);
-	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-	g_strlcpy(buf, "127.0.0.1", buflen);
-}
-
-
 /* Random string helper (for call-ids) */
 static char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 static void janus_sip_random_string(int length, char *buffer) {
@@ -900,8 +870,8 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 				}
 			}
 		}
-		if (!local_ip_set)
-			janus_sip_detect_local_ip(local_ip, sizeof(local_ip));
+		if(!local_ip_set)
+			janus_network_detect_local_ip(local_ip, sizeof(local_ip));
 		JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");

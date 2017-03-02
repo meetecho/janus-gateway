@@ -31,6 +31,7 @@
 #include "apierror.h"
 #include "log.h"
 #include "debug.h"
+#include "ip-utils.h"
 #include "rtcp.h"
 #include "auth.h"
 #include "record.h"
@@ -178,8 +179,7 @@ static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
 
 
 /* Information */
-json_t *janus_info(const char *transaction);
-json_t *janus_info(const char *transaction) {
+static json_t *janus_info(const char *transaction) {
 	/* Prepare a summary on the gateway */
 	json_t *info = json_object();
 	json_object_set_new(info, "janus", json_string("server_info"));
@@ -3127,35 +3127,6 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 }
 
 
-static void janus_detect_local_ip(gchar *buf, size_t buflen) {
-	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
-	struct sockaddr_in addr;
-	socklen_t len;
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd == -1)
-		goto error;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(1);
-	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
-	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
-		goto error;
-	len = sizeof(addr);
-	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
-		goto error;
-	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
-			buf, buflen,
-			NULL, 0, NI_NUMERICHOST) != 0)
-		goto error;
-	close(fd);
-	return;
-error:
-	if (fd != -1)
-		close(fd);
-	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-	g_strlcpy(buf, "127.0.0.1", buflen);
-}
-
-
 /* Main */
 gint main(int argc, char *argv[])
 {
@@ -3549,8 +3520,8 @@ gint main(int argc, char *argv[])
 			}
 		}
 	}
-	if (!local_ip_set)
-		janus_detect_local_ip(local_ip, sizeof(local_ip));
+	if(!local_ip_set)
+		janus_network_detect_local_ip(local_ip, sizeof(local_ip));
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Was a custom instance name provided? */

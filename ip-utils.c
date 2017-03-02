@@ -12,12 +12,44 @@
  */
 
 #include <errno.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <net/if.h>
 #include <string.h>
+#include <unistd.h>
+
+#include <glib.h>
 
 #include "ip-utils.h"
+
+int janus_network_detect_local_ip(char *buf, size_t buflen) {
+	struct sockaddr_in addr;
+	socklen_t len;
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(fd == -1)
+		goto error;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(1);
+	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
+	if(connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
+		goto error;
+	len = sizeof(addr);
+	if(getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
+		goto error;
+	if(getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
+			buf, buflen,
+			NULL, 0, NI_NUMERICHOST) != 0)
+		goto error;
+	close(fd);
+	return 0;
+error:
+	if(fd != -1)
+		close(fd);
+	g_strlcpy(buf, "127.0.0.1", buflen);
+	return -1;
+}
 
 static int janus_ip_compare_byte_arrays(const uint8_t *b1, const uint8_t *b2, const size_t size) {
 	size_t i;
@@ -57,16 +89,16 @@ static int janus_ip_iface_matches_ipv6(const struct ifaddrs *ifa, const struct i
 static int janus_ip_iface_matches(const struct ifaddrs *ifa, const janus_network_query_config *query) {
 	if(ifa && query) {
 		return
-			((query->mode & janus_ip_network_query_options_ipv4) && janus_ip_iface_matches_ipv4(ifa, &query->ipv4) == 1) ||
-			((query->mode & janus_ip_network_query_options_ipv6) && janus_ip_iface_matches_ipv6(ifa, &query->ipv6) == 1) ||
-			((query->mode & janus_ip_network_query_options_name) && janus_ip_iface_matches_name(ifa, query->device_name) == 1) ? 1 : 0;
+			((query->mode & janus_network_query_options_ipv4) && janus_ip_iface_matches_ipv4(ifa, &query->ipv4) == 1) ||
+			((query->mode & janus_network_query_options_ipv6) && janus_ip_iface_matches_ipv6(ifa, &query->ipv6) == 1) ||
+			((query->mode & janus_network_query_options_name) && janus_ip_iface_matches_name(ifa, query->device_name) == 1) ? 1 : 0;
 	}
 	else {
 		return -EINVAL;
 	}
 }
 
-const struct ifaddrs *janus_query_network_devices(const struct ifaddrs *ifa, const janus_network_query_config *query) {
+const struct ifaddrs *janus_network_query_devices(const struct ifaddrs *ifa, const janus_network_query_config *query) {
 	while(ifa) {
 		if(janus_ip_iface_matches(ifa, query) == 1) {
 			return ifa;
@@ -76,32 +108,32 @@ const struct ifaddrs *janus_query_network_devices(const struct ifaddrs *ifa, con
 	return NULL;
 }
 
-int janus_prepare_network_device_query(const char *user_value, const janus_ip_network_query_options query_mode, janus_network_query_config *query) {
+int janus_network_prepare_device_query(const char *user_value, const janus_network_query_options query_mode, janus_network_query_config *query) {
 	if(user_value && query) {
-		query->mode = janus_ip_network_query_options_none;
+		query->mode = janus_network_query_options_none;
 
-		if((query_mode & janus_ip_network_query_options_ipv4) && inet_pton(AF_INET, user_value, &query->ipv4) > 0) {
-			query->mode |= janus_ip_network_query_options_ipv4;
+		if((query_mode & janus_network_query_options_ipv4) && inet_pton(AF_INET, user_value, &query->ipv4) > 0) {
+			query->mode |= janus_network_query_options_ipv4;
 		}
 
-		if((query_mode & janus_ip_network_query_options_ipv6) && inet_pton(AF_INET6, user_value, &query->ipv6) > 0) {
-			query->mode |= janus_ip_network_query_options_ipv6;
+		if((query_mode & janus_network_query_options_ipv6) && inet_pton(AF_INET6, user_value, &query->ipv6) > 0) {
+			query->mode |= janus_network_query_options_ipv6;
 		}
 
-		if(query_mode & janus_ip_network_query_options_name) {
+		if(query_mode & janus_network_query_options_name) {
 			query->device_name = user_value;
-			query->mode |= janus_ip_network_query_options_name;
+			query->mode |= janus_network_query_options_name;
 		}
 
-		return ((query_mode == janus_ip_network_query_options_none) == (query->mode == janus_ip_network_query_options_none)) ? 0 : -EINVAL;
+		return ((query_mode == janus_network_query_options_none) == (query->mode == janus_network_query_options_none)) ? 0 : -EINVAL;
 	}
 	else {
 		return -EINVAL;
 	}
 }
 
-int janus_prepare_network_device_query_default(const char *user_value, janus_network_query_config *query) {
-	return janus_prepare_network_device_query(user_value, janus_ip_network_query_options_any, query);
+int janus_network_prepare_device_query_default(const char *user_value, janus_network_query_config *query) {
+	return janus_network_prepare_device_query(user_value, janus_network_query_options_any, query);
 }
 
 static int janus_ip_copy_ipv4(const struct sockaddr_in *iface, struct in_addr *result) {
@@ -109,8 +141,8 @@ static int janus_ip_copy_ipv4(const struct sockaddr_in *iface, struct in_addr *r
 	return 0;
 }
 
-int janus_get_network_devices_ipv4(const struct ifaddrs *ifa, const janus_network_query_config *query, struct in_addr *result) {
-	if(ifa && ifa->ifa_addr && (ifa->ifa_addr->sa_family == AF_INET) && result && query && (query->mode & janus_ip_network_query_options_ipv4)) {
+int janus_network_get_devices_ipv4(const struct ifaddrs *ifa, const janus_network_query_config *query, struct in_addr *result) {
+	if(ifa && ifa->ifa_addr && (ifa->ifa_addr->sa_family == AF_INET) && result && query && (query->mode & janus_network_query_options_ipv4)) {
 		return janus_ip_copy_ipv4((struct sockaddr_in *) ifa->ifa_addr, result);
 	}
 	else {
@@ -128,8 +160,8 @@ static int janus_ip_copy_ipv6(const struct sockaddr_in6 *iface, struct in6_addr 
 	return 0;
 }
 
-int janus_get_network_devices_ipv6(const struct ifaddrs *ifa, const janus_network_query_config *query, struct in6_addr *result) {
-	if(ifa && ifa->ifa_addr && (ifa->ifa_addr->sa_family == AF_INET6) && result && query && (query->mode & janus_ip_network_query_options_ipv6)) {
+int janus_network_get_devices_ipv6(const struct ifaddrs *ifa, const janus_network_query_config *query, struct in6_addr *result) {
+	if(ifa && ifa->ifa_addr && (ifa->ifa_addr->sa_family == AF_INET6) && result && query && (query->mode & janus_network_query_options_ipv6)) {
 		return janus_ip_copy_ipv6((struct sockaddr_in6 *) ifa->ifa_addr, result);
 	}
 	else {
@@ -137,7 +169,7 @@ int janus_get_network_devices_ipv6(const struct ifaddrs *ifa, const janus_networ
 	}
 }
 
-int janus_get_network_device_address(const struct ifaddrs *ifa, janus_network_address *result) {
+int janus_network_get_device_address(const struct ifaddrs *ifa, janus_network_address *result) {
 	if(ifa && ifa->ifa_addr && result) {
 		switch(ifa->ifa_addr->sa_family) {
 			case AF_INET:
@@ -191,10 +223,32 @@ int janus_network_address_string_buffer_is_null(const janus_network_address_stri
 	return !b || b->family == AF_UNSPEC;
 }
 
-const char * janus_network_address_string_from_buffer(const janus_network_address_string_buffer *b) {
+const char *janus_network_address_string_from_buffer(const janus_network_address_string_buffer *b) {
 	if(janus_network_address_string_buffer_is_null(b)) {
 		return NULL;
 	} else {
 		return b->family == AF_INET ? b->ipv4 : b->ipv6;
 	}
+}
+
+int janus_network_lookup_interface(const struct ifaddrs *ifas, const char *iface, janus_network_address *result) {
+	if(result == NULL)
+		return -1;
+	janus_network_address_nullify(result);
+	if(iface == NULL)
+		return -1;
+	janus_network_query_config q;
+	/* Let's see if iface is an IPv4 address, an IPv6 address, or possibly an interface name */
+	if(janus_network_prepare_device_query(iface,
+			janus_network_query_options_ipv4 | janus_network_query_options_ipv6 | janus_network_query_options_name, &q)) {
+		/* None of them..? */
+		return -1;
+	}
+	const struct ifaddrs *found = janus_network_query_devices(ifas, &q);
+	if(!found || janus_network_get_device_address(found, result)) {
+		/* Couldn't find anything on iface */
+		return -1;
+	}
+	/* Done */
+	return 0;
 }
