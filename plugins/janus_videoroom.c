@@ -490,21 +490,13 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p);
 static void janus_videoroom_rtp_forwarder_free_helper(gpointer data);
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_participant *p,
 	const gchar* host, int port, int pt, uint32_t ssrc, gboolean is_video, gboolean is_data);
-typedef struct janus_videoroom_listener_context {
-	/* Needed to fix seq and ts in case of publisher switching */
-	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
-			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
-	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
-			v_last_seq, v_base_seq, v_base_seq_prev;
-	gboolean a_seq_reset, v_seq_reset;
-} janus_videoroom_listener_context;
 
 typedef struct janus_videoroom_listener {
 	janus_videoroom_session *session;
 	janus_videoroom *room;	/* Room */
 	janus_videoroom_participant *feed;	/* Participant this listener is subscribed to */
 	guint32 pvt_id;		/* Private ID of the participant that is subscribing (if available/provided) */
-	janus_videoroom_listener_context context;	/* Needed in case there are publisher switches on this listener */
+	janus_rtp_switching_context context;	/* Needed in case there are publisher switches on this listener */
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this publisher */
 	struct janus_videoroom_listener_muxed *parent;	/* Overall subscriber, if this is a sub-listener in a Multiplexed one */
 	gboolean paused;
@@ -3119,22 +3111,7 @@ static void *janus_videoroom_handler(void *data) {
 					listener->feed = publisher;
 					listener->pvt_id = pvt_id;
 					/* Initialize the listener context */
-					listener->context.a_last_ssrc = 0;
-					listener->context.a_last_ts = 0;
-					listener->context.a_base_ts = 0;
-					listener->context.a_base_ts_prev = 0;
-					listener->context.v_last_ssrc = 0;
-					listener->context.v_last_ts = 0;
-					listener->context.v_base_ts = 0;
-					listener->context.v_base_ts_prev = 0;
-					listener->context.a_last_seq = 0;
-					listener->context.a_base_seq = 0;
-					listener->context.a_base_seq_prev = 0;
-					listener->context.v_last_seq = 0;
-					listener->context.v_base_seq = 0;
-					listener->context.v_base_seq_prev = 0;
-					listener->context.a_seq_reset = FALSE;
-					listener->context.v_seq_reset = FALSE;
+					janus_rtp_switching_context_reset(&listener->context);
 					listener->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
 					if(!publisher->audio)
 						listener->audio = FALSE;	/* ... unless the publisher isn't sending any audio */
@@ -4417,27 +4394,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Nope, don't relay */
 			return;
 		}
-		if(ntohl(packet->data->ssrc) != listener->context.v_last_ssrc) {
-			/* Publisher switch? Fix sequence numbers and timestamps */
-			listener->context.v_last_ssrc = ntohl(packet->data->ssrc);
-			listener->context.v_base_ts_prev = listener->context.v_last_ts;
-			listener->context.v_base_ts = packet->timestamp;
-			listener->context.v_base_seq_prev = listener->context.v_last_seq;
-			listener->context.v_base_seq = packet->seq_number;
-		}
-		if(listener->context.v_seq_reset) {
-			/* video_active false-->true? Fix sequence numbers */
-			listener->context.v_seq_reset = FALSE;
-			listener->context.v_base_seq_prev = listener->context.v_last_seq;
-			listener->context.v_base_seq = packet->seq_number;
-		}
-		/* Compute a coherent timestamp and sequence number */
-		listener->context.v_last_ts = (packet->timestamp-listener->context.v_base_ts)
-			+ listener->context.v_base_ts_prev+4500;	/* FIXME When switching, we assume 15fps */
-		listener->context.v_last_seq = (packet->seq_number-listener->context.v_base_seq)+listener->context.v_base_seq_prev+1;
-		/* Update the timestamp and sequence number in the RTP packet, and send it */
-		packet->data->timestamp = htonl(listener->context.v_last_ts);
-		packet->data->seq_number = htons(listener->context.v_last_seq);
+		/* Fix sequence number and timestamp (publisher switching may be involved) */
+		janus_rtp_header_update(packet->data, &listener->context, TRUE, 4500);
 		if(gateway != NULL)
 			gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
 		/* Restore the timestamp and sequence number to what the publisher set them to */
@@ -4449,27 +4407,8 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			/* Nope, don't relay */
 			return;
 		}
-		if(ntohl(packet->data->ssrc) != listener->context.a_last_ssrc) {
-			/* Publisher switch? Fix sequence numbers and timestamps */
-			listener->context.a_last_ssrc = ntohl(packet->data->ssrc);
-			listener->context.a_base_ts_prev = listener->context.a_last_ts;
-			listener->context.a_base_ts = packet->timestamp;
-			listener->context.a_base_seq_prev = listener->context.a_last_seq;
-			listener->context.a_base_seq = packet->seq_number;
-		}
-		if(listener->context.a_seq_reset) {
-			/* audio_active false-->true? Fix sequence numbers */
-			listener->context.a_seq_reset = FALSE;
-			listener->context.a_base_seq_prev = listener->context.a_last_seq;
-			listener->context.a_base_seq = packet->seq_number;
-		}
-		/* Compute a coherent timestamp and sequence number */
-		listener->context.a_last_ts = (packet->timestamp-listener->context.a_base_ts)
-			+ listener->context.a_base_ts_prev+960;	/* FIXME When switching, we assume Opus and so a 960 ts step */
-		listener->context.a_last_seq = (packet->seq_number-listener->context.a_base_seq)+listener->context.a_base_seq_prev+1;
-		/* Update the timestamp and sequence number in the RTP packet, and send it */
-		packet->data->timestamp = htonl(listener->context.a_last_ts);
-		packet->data->seq_number = htons(listener->context.a_last_seq);
+		/* Fix sequence number and timestamp (publisher switching may be involved) */
+		janus_rtp_header_update(packet->data, &listener->context, FALSE, 960);
 		if(gateway != NULL)
 			gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
 		/* Restore the timestamp and sequence number to what the publisher set them to */
