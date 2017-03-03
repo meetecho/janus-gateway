@@ -191,6 +191,11 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
                                            [
                                              JANUS_MANUAL_LIBS+=" -lsrtp"
                                              enable_libsrtp2=no
+                                             PKG_CHECK_MODULES([SRTP15X],
+                                                               [
+                                                                 libsrtp >= 1.5.0
+                                                               ])
+
                                            ],
                                            [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
                          ],
