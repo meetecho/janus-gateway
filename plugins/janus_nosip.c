@@ -69,35 +69,6 @@
 #include "../sdp-utils.h"
 #include "../utils.h"
 
-#ifdef HAVE_SRTP_2
-#include <srtp2/srtp.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
-static int srtp_crypto_get_random(uint8_t *key, int len) {
-	/* libsrtp 2.0 doesn't have crypto_get_random, we use OpenSSL's RAND_* to replace it:
-	 * 		https://wiki.openssl.org/index.php/Random_Numbers */
-	int rc = RAND_bytes(key, len);
-	if(rc != 1) {
-		/* Error generating */
-		JANUS_LOG(LOG_ERR, "RAND_bytes failes: %s\n", ERR_reason_error_string(ERR_get_error()));
-		return -1;
-	}
-	return 0;
-}
-#else
-#include <srtp/srtp.h>
-#include <srtp/crypto_kernel.h>
-#define srtp_err_status_t err_status_t
-#define srtp_err_status_ok err_status_ok
-#define srtp_err_status_replay_fail err_status_replay_fail
-#define srtp_err_status_replay_old err_status_replay_old
-#define srtp_crypto_policy_set_rtp_default crypto_policy_set_rtp_default
-#define srtp_crypto_policy_set_rtcp_default crypto_policy_set_rtcp_default
-#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
-#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
-#define srtp_crypto_get_random crypto_get_random
-#endif
-
 
 /* Plugin information */
 #define JANUS_NOSIP_VERSION			1
@@ -219,14 +190,6 @@ static void janus_nosip_message_free(janus_nosip_message *msg) {
 }
 
 
-typedef struct janus_nosip_rtp_context {
-	/* Needed to fix seq and ts in case RTP sources change */
-	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
-			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
-	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
-			v_last_seq, v_base_seq, v_base_seq_prev;
-} janus_nosip_rtp_context;
-
 typedef struct janus_nosip_media {
 	char *remote_ip;
 	int ready:1;
@@ -254,7 +217,7 @@ typedef struct janus_nosip_media {
 	srtp_policy_t video_remote_policy, video_local_policy;
 	int video_srtp_suite_in, video_srtp_suite_out;
 	gboolean video_send;
-	janus_nosip_rtp_context context;
+	janus_rtp_switching_context context;
 	int pipefd[2];
 	gboolean updated;
 } janus_nosip_media;
@@ -278,42 +241,6 @@ static janus_mutex sessions_mutex;
 
 
 /* SRTP stuff (in case we need SDES) */
-#define SRTP_MASTER_KEY_LENGTH	16
-#define SRTP_MASTER_SALT_LENGTH	14
-#define SRTP_MASTER_LENGTH (SRTP_MASTER_KEY_LENGTH + SRTP_MASTER_SALT_LENGTH)
-static const char *janus_nosip_srtp_error[] =
-{
-	"srtp_err_status_ok",
-	"srtp_err_status_fail",
-	"srtp_err_status_bad_param",
-	"srtp_err_status_alloc_fail",
-	"srtp_err_status_dealloc_fail",
-	"srtp_err_status_init_fail",
-	"srtp_err_status_terminus",
-	"srtp_err_status_auth_fail",
-	"srtp_err_status_cipher_fail",
-	"srtp_err_status_replay_fail",
-	"srtp_err_status_replay_old",
-	"srtp_err_status_algo_fail",
-	"srtp_err_status_no_such_op",
-	"srtp_err_status_no_ctx",
-	"srtp_err_status_cant_check",
-	"srtp_err_status_key_expired",
-	"srtp_err_status_socket_err",
-	"srtp_err_status_signal_err",
-	"srtp_err_status_nonce_bad",
-	"srtp_err_status_read_fail",
-	"srtp_err_status_write_fail",
-	"srtp_err_status_parse_err",
-	"srtp_err_status_encode_err",
-	"srtp_err_status_semaphore_err",
-	"srtp_err_status_pfkey_err",
-};
-static const gchar *janus_nosip_get_srtp_error(int error) {
-	if(error < 0 || error > 24)
-		return NULL;
-	return janus_nosip_srtp_error[error];
-}
 static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean video, char **crypto) {
 	if(session == NULL)
 		return -1;
@@ -331,7 +258,7 @@ static int janus_nosip_srtp_set_local(janus_nosip_session *session, gboolean vid
 	srtp_err_status_t res = srtp_create(video ? &session->media.video_srtp_out : &session->media.audio_srtp_out, policy);
 	if(res != srtp_err_status_ok) {
 		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Oops, error creating outbound SRTP session: %d (%s)\n", res, janus_nosip_get_srtp_error(res));
+		JANUS_LOG(LOG_ERR, "Oops, error creating outbound SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
 		g_free(key);
 		policy->key = NULL;
 		return -2;
@@ -372,7 +299,7 @@ static int janus_nosip_srtp_set_remote(janus_nosip_session *session, gboolean vi
 	srtp_err_status_t res = srtp_create(video ? &session->media.video_srtp_in : &session->media.audio_srtp_in, policy);
 	if(res != srtp_err_status_ok) {
 		/* Something went wrong... */
-		JANUS_LOG(LOG_ERR, "Oops, error creating inbound SRTP session: %d (%s)\n", res, janus_nosip_get_srtp_error(res));
+		JANUS_LOG(LOG_ERR, "Oops, error creating inbound SRTP session: %d (%s)\n", res, janus_srtp_error_str(res));
 		g_free(decoded);
 		policy->key = NULL;
 		return -2;
@@ -721,21 +648,7 @@ void janus_nosip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_srtp_suite_out = 0;
 	session->media.video_send = TRUE;
 	/* Initialize the RTP context */
-	session->media.context.a_last_ssrc = 0;
-	session->media.context.a_last_ssrc = 0;
-	session->media.context.a_last_ts = 0;
-	session->media.context.a_base_ts = 0;
-	session->media.context.a_base_ts_prev = 0;
-	session->media.context.v_last_ssrc = 0;
-	session->media.context.v_last_ts = 0;
-	session->media.context.v_base_ts = 0;
-	session->media.context.v_base_ts_prev = 0;
-	session->media.context.a_last_seq = 0;
-	session->media.context.a_base_seq = 0;
-	session->media.context.a_base_seq_prev = 0;
-	session->media.context.v_last_seq = 0;
-	session->media.context.v_base_seq = 0;
-	session->media.context.v_base_seq_prev = 0;
+	janus_rtp_switching_context_reset(&session->media.context);
 	session->media.pipefd[0] = -1;
 	session->media.pipefd[1] = -1;
 	session->media.updated = FALSE;
@@ -879,7 +792,7 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);
 					JANUS_LOG(LOG_ERR, "[NoSIP-%p] %s SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-						session, video ? "Video" : "Audio", janus_nosip_get_srtp_error(res), len, protected, timestamp, seq);
+						session, video ? "Video" : "Audio", janus_srtp_error_str(res), len, protected, timestamp, seq);
 				} else {
 					/* Forward the frame to the peer */
 					send((video ? session->media.video_rtp_fd : session->media.audio_rtp_fd), sbuf, protected, 0);
@@ -916,7 +829,7 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 					int res = srtp_protect_rtcp(session->media.video_srtp_out, &sbuf, &protected);
 					if(res != srtp_err_status_ok) {
 						JANUS_LOG(LOG_ERR, "[NoSIP-%p] Video SRTCP protect error... %s (len=%d-->%d)...\n",
-							session, janus_nosip_get_srtp_error(res), len, protected);
+							session, janus_srtp_error_str(res), len, protected);
 					} else {
 						/* Forward the message to the peer */
 						send(session->media.video_rtcp_fd, sbuf, protected, 0);
@@ -940,7 +853,7 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 					int res = srtp_protect_rtcp(session->media.audio_srtp_out, &sbuf, &protected);
 					if(res != srtp_err_status_ok) {
 						JANUS_LOG(LOG_ERR, "[NoSIP-%p] Audio SRTCP protect error... %s (len=%d-->%d)...\n",
-							session, janus_nosip_get_srtp_error(res), len, protected);
+							session, janus_srtp_error_str(res), len, protected);
 					} else {
 						/* Forward the message to the peer */
 						send(session->media.audio_rtcp_fd, sbuf, protected, 0);
@@ -1979,48 +1892,15 @@ static void *janus_nosip_relay_thread(void *data) {
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_ERR, "[NoSIP-%p] %s SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n",
-								session, video ? "Video" : "Audio", janus_nosip_get_srtp_error(res), bytes, buflen, timestamp, seq);
+								session, video ? "Video" : "Audio", janus_srtp_error_str(res), bytes, buflen, timestamp, seq);
 							continue;
 						}
 						bytes = buflen;
 					}
 					/* Check if the SSRC changed (e.g., after a re-INVITE or UPDATE) */
-					guint32 ssrc = ntohl(header->ssrc);
 					guint32 timestamp = ntohl(header->timestamp);
-					guint16 seq = ntohs(header->seq_number);
-					if((video && ssrc != session->media.context.v_last_ssrc) ||
-							(!video && ssrc != session->media.context.a_last_ssrc)) {
-						JANUS_LOG(LOG_VERB, "[NoSIP-%p] %s SSRC changed (re-INVITE?), %"SCNu32" --> %"SCNu32"\n",
-							session, video ? "Video" : "Audio",
-							video ? session->media.context.v_last_ssrc : session->media.context.a_last_ssrc,
-							ssrc);
-						if(video) {
-							session->media.context.v_last_ssrc = ssrc;
-							session->media.context.v_base_ts_prev = session->media.context.v_last_ts;
-							session->media.context.v_base_ts = timestamp;
-							session->media.context.v_base_seq_prev = session->media.context.v_last_seq;
-							session->media.context.v_base_seq = seq;
-						} else {
-							session->media.context.a_last_ssrc = ssrc;
-							session->media.context.a_base_ts_prev = session->media.context.a_last_ts;
-							session->media.context.a_base_ts = timestamp;
-							session->media.context.a_base_seq_prev = session->media.context.a_last_seq;
-							session->media.context.a_base_seq = seq;
-						}
-					}
-					/* Compute a coherent timestamp and sequence number */
-					if(video) {
-						session->media.context.v_last_ts = (timestamp-session->media.context.v_base_ts)
-							+ session->media.context.v_base_ts_prev+(vstep ? vstep : 4500);	/* FIXME */
-						session->media.context.v_last_seq = (seq-session->media.context.v_base_seq)+session->media.context.v_base_seq_prev+1;
-					} else {
-						session->media.context.a_last_ts = (timestamp-session->media.context.a_base_ts)
-							+ session->media.context.a_base_ts_prev+(astep ? astep : 960);	/* FIXME */
-						session->media.context.a_last_seq = (seq-session->media.context.a_base_seq)+session->media.context.a_base_seq_prev+1;
-					}
-					/* Update the timestamp and sequence number in the RTP packet, and send it */
-					header->timestamp = htonl(video ? session->media.context.v_last_ts: session->media.context.a_last_ts);
-					header->seq_number = htons(video ? session->media.context.v_last_seq : session->media.context.a_last_seq);
+					janus_rtp_header_update(header, &session->media.context, video,
+						(video ? (vstep ? vstep : 4500) : (astep ? astep : 960)));
 					if(video) {
 						if(vts == 0) {
 							vts = timestamp;
@@ -2054,7 +1934,7 @@ static void *janus_nosip_relay_thread(void *data) {
 							buffer, &buflen);
 						if(res != srtp_err_status_ok && res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 							JANUS_LOG(LOG_ERR, "[NoSIP-%p] %s SRTCP unprotect error: %s (len=%d-->%d)\n",
-								session, video ? "Video" : "Audio", janus_nosip_get_srtp_error(res), bytes, buflen);
+								session, video ? "Video" : "Audio", janus_srtp_error_str(res), bytes, buflen);
 							continue;
 						}
 						bytes = buflen;
