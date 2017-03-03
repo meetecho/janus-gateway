@@ -477,20 +477,12 @@ static void janus_streaming_message_free(janus_streaming_message *msg) {
 }
 
 
-typedef struct janus_streaming_context {
-	/* Needed to fix seq and ts in case of stream switching */
-	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
-			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
-	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
-			v_last_seq, v_base_seq, v_base_seq_prev;
-} janus_streaming_context;
-
 typedef struct janus_streaming_session {
 	janus_plugin_session *handle;
 	janus_streaming_mountpoint *mountpoint;
 	gboolean started;
 	gboolean paused;
-	janus_streaming_context context;
+	janus_rtp_switching_context context;
 	gboolean stopping;
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
@@ -2224,20 +2216,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 		return;
 	g_atomic_int_set(&session->hangingup, 0);
 	/* We only start streaming towards this user when we get this event */
-	session->context.a_last_ssrc = 0;
-	session->context.a_last_ts = 0;
-	session->context.a_base_ts = 0;
-	session->context.a_base_ts_prev = 0;
-	session->context.v_last_ssrc = 0;
-	session->context.v_last_ts = 0;
-	session->context.v_base_ts = 0;
-	session->context.v_base_ts_prev = 0;
-	session->context.a_last_seq = 0;
-	session->context.a_base_seq = 0;
-	session->context.a_base_seq_prev = 0;
-	session->context.v_last_seq = 0;
-	session->context.v_base_seq = 0;
-	session->context.v_base_seq_prev = 0;
+	janus_rtp_switching_context_reset(&session->context);
 	/* If this is related to a live RTP mountpoint, any keyframe we can shoot already? */
 	janus_streaming_mountpoint *mountpoint = session->mountpoint;
 	if(mountpoint->streaming_source == janus_streaming_source_rtp) {
@@ -4020,40 +3999,16 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 	if(packet->is_rtp) {
 		/* Make sure there hasn't been a publisher switch by checking the SSRC */
 		if(packet->is_video) {
-			if(ntohl(packet->data->ssrc) != session->context.v_last_ssrc) {
-				session->context.v_last_ssrc = ntohl(packet->data->ssrc);
-				session->context.v_base_ts_prev = session->context.v_last_ts;
-				session->context.v_base_ts = packet->timestamp;
-				session->context.v_base_seq_prev = session->context.v_last_seq;
-				session->context.v_base_seq = packet->seq_number;
-			}
-			/* Compute a coherent timestamp and sequence number */
-			session->context.v_last_ts = (packet->timestamp-session->context.v_base_ts)
-				+ session->context.v_base_ts_prev+4500;	/* FIXME When switching, we assume 15fps */
-			session->context.v_last_seq = (packet->seq_number-session->context.v_base_seq)+session->context.v_base_seq_prev+1;
-			/* Update the timestamp and sequence number in the RTP packet, and send it */
-			packet->data->timestamp = htonl(session->context.v_last_ts);
-			packet->data->seq_number = htons(session->context.v_last_seq);
+			/* Fix sequence number and timestamp (switching may be involved) */
+			janus_rtp_header_update(packet->data, &session->context, TRUE, 4500);
 			if(gateway != NULL)
 				gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
 		} else {
-			if(ntohl(packet->data->ssrc) != session->context.a_last_ssrc) {
-				session->context.a_last_ssrc = ntohl(packet->data->ssrc);
-				session->context.a_base_ts_prev = session->context.a_last_ts;
-				session->context.a_base_ts = packet->timestamp;
-				session->context.a_base_seq_prev = session->context.a_last_seq;
-				session->context.a_base_seq = packet->seq_number;
-			}
-			/* Compute a coherent timestamp and sequence number */
-			session->context.a_last_ts = (packet->timestamp-session->context.a_base_ts)
-				+ session->context.a_base_ts_prev+960;	/* FIXME When switching, we assume Opus and so a 960 ts step */
-			session->context.a_last_seq = (packet->seq_number-session->context.a_base_seq)+session->context.a_base_seq_prev+1;
-			/* Update the timestamp and sequence number in the RTP packet, and send it */
-			packet->data->timestamp = htonl(session->context.a_last_ts);
-			packet->data->seq_number = htons(session->context.a_last_seq);
+			/* Fix sequence number and timestamp (switching may be involved) */
+			janus_rtp_header_update(packet->data, &session->context, FALSE, 960);
 			if(gateway != NULL)
 				gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
 			/* Restore the timestamp and sequence number to what the publisher set them to */
