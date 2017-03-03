@@ -153,6 +153,26 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
 int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	uint16_t *min_delay, uint16_t *max_delay);
 
+/*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
+typedef struct janus_rtp_switching_context {
+	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev,
+			v_last_ssrc, v_last_ts, v_base_ts, v_base_ts_prev;
+	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
+			v_last_seq, v_base_seq, v_base_seq_prev;
+	gboolean a_seq_reset, v_seq_reset;
+} janus_rtp_switching_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
+
+/*! \brief Use the context info to update the RTP header of a packet, if needed
+ * @param[in] header The RTP header to update
+ * @param[in] context The context to use as a reference
+ * @param[in] video Whether this is an audio or a video packet
+ * @param[in] step The expected timestamp step */
+void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
+
 /*! \brief Helper method to get a string representation of a libsrtp error code
  * @param[in] error The libsrtp error code
  * @returns A string representation of the error code */

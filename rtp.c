@@ -196,6 +196,86 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	return 0;
 }
 
+
+/* RTP context related methods */
+void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	context->a_last_ssrc = 0;
+	context->a_last_ts = 0;
+	context->a_base_ts = 0;
+	context->a_base_ts_prev = 0;
+	context->v_last_ssrc = 0;
+	context->v_last_ts = 0;
+	context->v_base_ts = 0;
+	context->v_base_ts_prev = 0;
+	context->a_last_seq = 0;
+	context->a_base_seq = 0;
+	context->a_base_seq_prev = 0;
+	context->v_last_seq = 0;
+	context->v_base_seq = 0;
+	context->v_base_seq_prev = 0;
+	context->a_seq_reset = FALSE;
+	context->v_seq_reset = FALSE;
+}
+
+void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
+	if(header == NULL || context == NULL || step < 1)
+		return;
+	uint32_t ssrc = ntohl(header->ssrc);
+	uint32_t timestamp = ntohl(header->timestamp);
+	uint16_t seq = ntohs(header->seq_number);
+	if(video) {
+		if(ssrc != context->v_last_ssrc) {
+			/* Video SSRC changed: update both sequence number and timestamp */
+			JANUS_LOG(LOG_VERB, "Video SSRC changed, %"SCNu32" --> %"SCNu32"\n",
+				context->v_last_ssrc, ssrc);
+			context->v_last_ssrc = ssrc;
+			context->v_base_ts_prev = context->v_last_ts;
+			context->v_base_ts = timestamp;
+			context->v_base_seq_prev = context->v_last_seq;
+			context->v_base_seq = seq;
+		}
+		if(context->v_seq_reset) {
+			/* Video sequence number was paused for a while: just update that */
+			context->v_seq_reset = FALSE;
+			context->v_base_seq_prev = context->v_last_seq;
+			context->v_base_seq = header->seq_number;
+		}
+		/* Compute a coherent timestamp and sequence number */
+		context->v_last_ts = (timestamp-context->v_base_ts) + context->v_base_ts_prev+step;
+		context->v_last_seq = (seq-context->v_base_seq)+context->v_base_seq_prev+1;
+		/* Update the timestamp and sequence number in the RTP packet */
+		header->timestamp = htonl(context->v_last_ts);
+		header->seq_number = htons(context->v_last_seq);
+	} else {
+		if(ssrc != context->a_last_ssrc) {
+			/* Audio SSRC changed: update both sequence number and timestamp */
+			JANUS_LOG(LOG_VERB, "Audio SSRC changed, %"SCNu32" --> %"SCNu32"\n",
+				context->a_last_ssrc, ssrc);
+			context->a_last_ssrc = ssrc;
+			context->a_base_ts_prev = context->a_last_ts;
+			context->a_base_ts = timestamp;
+			context->a_base_seq_prev = context->a_last_seq;
+			context->a_base_seq = seq;
+		}
+		if(context->a_seq_reset) {
+			/* Audio sequence number was paused for a while: just update that */
+			context->a_seq_reset = FALSE;
+			context->a_base_seq_prev = context->a_last_seq;
+			context->a_base_seq = header->seq_number;
+		}
+		/* Compute a coherent timestamp and sequence number */
+		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev+step;
+		context->a_last_seq = (seq-context->a_base_seq)+context->a_base_seq_prev+1;
+		/* Update the timestamp and sequence number in the RTP packet */
+		header->timestamp = htonl(context->a_last_ts);
+		header->seq_number = htons(context->a_last_seq);
+	}
+}
+
+
 /* SRTP stuff: we may need our own randomizer */
 #ifdef HAVE_SRTP_2
 int srtp_crypto_get_random(uint8_t *key, int len) {
