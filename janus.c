@@ -2416,6 +2416,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
 		json_object_set_new(d, "dtls-role", json_string(janus_get_dtls_srtp_role(component->stream->dtls_role)));
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
+		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
 		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
 		if(dtls->dtls_connected > 0)
