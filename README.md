@@ -85,7 +85,7 @@ In case you're interested in compiling the sample Event Handler plugin,
 you'll need to install the development version of libcurl as well (usually
 `libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
 
-If your distro ships a pre-1.5 version of libsrtp, it may be better to
+If your distro ships a pre-1.5 version of libsrtp, you'll have to
 uninstall that version and [install 1.5 or 2.0.0 manually](https://github.com/cisco/libsrtp/releases).
 In fact, 1.4.x is known to cause several issues with WebRTC. Installation
 of version 1.5.4 is quite straightforward:

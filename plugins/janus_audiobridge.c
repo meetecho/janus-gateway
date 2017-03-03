@@ -802,12 +802,6 @@ static void janus_audiobridge_message_free(janus_audiobridge_message *msg) {
 }
 
 
-typedef struct janus_audiobridge_rtp_context {
-	/* Needed to fix seq and ts in case of publisher switching */
-	uint32_t a_last_ssrc, a_last_ts, a_base_ts, a_base_ts_prev;
-	uint16_t a_last_seq, a_base_seq, a_base_seq_prev;
-} janus_audiobridge_rtp_context;
-
 typedef struct janus_audiobridge_participant {
 	janus_audiobridge_session *session;
 	janus_audiobridge_room *room;	/* Room */
@@ -827,7 +821,7 @@ typedef struct janus_audiobridge_participant {
 	int opus_pt;			/* Opus payload type */
 	int extmap_id;			/* Audio level RTP extension id, if any */
 	int dBov_level;			/* Value in dBov of the audio level (last value from extension) */
-	janus_audiobridge_rtp_context context;	/* Needed in case the participant changes room */
+	janus_rtp_switching_context context;	/* Needed in case the participant changes room */
 	/* Opus stuff */
 	OpusEncoder *encoder;		/* Opus encoder instance */
 	OpusDecoder *decoder;		/* Opus decoder instance */
@@ -2562,13 +2556,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->active = session->started;
 			if(!session->started) {
 				/* Initialize the RTP context only if we're renegotiating */
-				participant->context.a_last_ssrc = 0;
-				participant->context.a_last_ts = 0;
-				participant->context.a_base_ts = 0;
-				participant->context.a_base_ts_prev = 0;
-				participant->context.a_last_seq = 0;
-				participant->context.a_base_seq = 0;
-				participant->context.a_base_seq_prev = 0;
+				janus_rtp_switching_context_reset(&participant->context);
 				participant->opus_pt = 0;
 				participant->extmap_id = 0;
 				participant->dBov_level = 0;
@@ -3790,20 +3778,7 @@ static void janus_audiobridge_relay_rtp_packet(gpointer data, gpointer user_data
 	/* Set the payload type */
 	packet->data->type = participant->opus_pt;
 	/* Fix sequence number and timestamp (room switching may be involved) */
-	if(ntohl(packet->data->ssrc) != participant->context.a_last_ssrc) {
-		participant->context.a_last_ssrc = ntohl(packet->data->ssrc);
-		participant->context.a_base_ts_prev = participant->context.a_last_ts;
-		participant->context.a_base_ts = packet->timestamp;
-		participant->context.a_base_seq_prev = participant->context.a_last_seq;
-		participant->context.a_base_seq = packet->seq_number;
-	}
-	/* Compute a coherent timestamp and sequence number */
-	participant->context.a_last_ts = (packet->timestamp-participant->context.a_base_ts)
-		+ participant->context.a_base_ts_prev+960;	/* FIXME When switching, we assume Opus and so a 960 ts step */
-	participant->context.a_last_seq = (packet->seq_number-participant->context.a_base_seq)+participant->context.a_base_seq_prev+1;
-	/* Update the timestamp and sequence number in the RTP packet, and send it */
-	packet->data->timestamp = htonl(participant->context.a_last_ts);
-	packet->data->seq_number = htons(participant->context.a_last_seq);
+	janus_rtp_header_update(packet->data, &participant->context, FALSE, 960);
 	if(gateway != NULL)
 		gateway->relay_rtp(session->handle, 0, (char *)packet->data, packet->length);
 	/* Restore the timestamp and sequence number to what the publisher set them to */
