@@ -815,53 +815,35 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 			return;
 		}
 		/* Forward to our NoSIP peer */
-		if(video) {
-			if(session->media.has_video && session->media.video_rtcp_fd) {
-				/* Fix SSRCs as the gateway does */
-				JANUS_LOG(LOG_HUGE, "[NoSIP] Fixing SSRCs (local %u, peer %u)\n",
-					session->media.video_ssrc, session->media.video_ssrc_peer);
-				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.video_ssrc, session->media.video_ssrc_peer);
-				/* Is SRTP involved? */
-				if(session->media.has_srtp_local) {
-					char sbuf[2048];
-					memcpy(&sbuf, buf, len);
-					int protected = len;
-					int res = srtp_protect_rtcp(session->media.video_srtp_out, &sbuf, &protected);
-					if(res != srtp_err_status_ok) {
-						JANUS_LOG(LOG_ERR, "[NoSIP-%p] Video SRTCP protect error... %s (len=%d-->%d)...\n",
-							session, janus_srtp_error_str(res), len, protected);
-					} else {
-						/* Forward the message to the peer */
-						send(session->media.video_rtcp_fd, sbuf, protected, 0);
-					}
+		if((video && session->media.has_video && session->media.video_rtcp_fd) ||
+				(!video && session->media.has_audio && session->media.audio_rtcp_fd)) {
+			/* Fix SSRCs as the gateway does */
+			JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Fixing %s SSRCs (local %u, peer %u)\n",
+				session, video ? "video" : "audio",
+				(video ? session->media.video_ssrc : session->media.audio_ssrc),
+				(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer));
+			janus_rtcp_fix_ssrc(NULL, (char *)buf, len, video,
+				(video ? session->media.video_ssrc : session->media.audio_ssrc),
+				(video ? session->media.video_ssrc_peer : session->media.audio_ssrc_peer));
+			/* Is SRTP involved? */
+			if(session->media.has_srtp_local) {
+				char sbuf[2048];
+				memcpy(&sbuf, buf, len);
+				int protected = len;
+				int res = srtp_protect_rtcp(
+					(video ? session->media.video_srtp_out : session->media.audio_srtp_out),
+					&sbuf, &protected);
+				if(res != srtp_err_status_ok) {
+					JANUS_LOG(LOG_ERR, "[NoSIP-%p] %s SRTCP protect error... %s (len=%d-->%d)...\n",
+						session, video ? "Video" : "Audio",
+						janus_srtp_error_str(res), len, protected);
 				} else {
 					/* Forward the message to the peer */
-					send(session->media.video_rtcp_fd, buf, len, 0);
+					send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), sbuf, protected, 0);
 				}
-			}
-		} else {
-			if(session->media.has_audio && session->media.audio_rtcp_fd) {
-				/* Fix SSRCs as the gateway does */
-				JANUS_LOG(LOG_HUGE, "[NoSIP] Fixing SSRCs (local %u, peer %u)\n",
-					session->media.audio_ssrc, session->media.audio_ssrc_peer);
-				janus_rtcp_fix_ssrc(NULL, (char *)buf, len, 1, session->media.audio_ssrc, session->media.audio_ssrc_peer);
-				/* Is SRTP involved? */
-				if(session->media.has_srtp_local) {
-					char sbuf[2048];
-					memcpy(&sbuf, buf, len);
-					int protected = len;
-					int res = srtp_protect_rtcp(session->media.audio_srtp_out, &sbuf, &protected);
-					if(res != srtp_err_status_ok) {
-						JANUS_LOG(LOG_ERR, "[NoSIP-%p] Audio SRTCP protect error... %s (len=%d-->%d)...\n",
-							session, janus_srtp_error_str(res), len, protected);
-					} else {
-						/* Forward the message to the peer */
-						send(session->media.audio_rtcp_fd, sbuf, protected, 0);
-					}
-				} else {
-					/* Forward the message to the peer */
-					send(session->media.audio_rtcp_fd, buf, len, 0);
-				}
+			} else {
+				/* Forward the message to the peer */
+				send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), buf, len, 0);
 			}
 		}
 	}
