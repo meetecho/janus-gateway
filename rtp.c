@@ -227,7 +227,7 @@ void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *co
 	if(video) {
 		if(ssrc != context->v_last_ssrc) {
 			/* Video SSRC changed: update both sequence number and timestamp */
-			JANUS_LOG(LOG_WARN, "Video SSRC changed, %"SCNu32" --> %"SCNu32"\n",
+			JANUS_LOG(LOG_VERB, "Video SSRC changed, %"SCNu32" --> %"SCNu32"\n",
 				context->v_last_ssrc, ssrc);
 			context->v_last_ssrc = ssrc;
 			context->v_base_ts_prev = context->v_last_ts;
@@ -250,7 +250,7 @@ void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *co
 	} else {
 		if(ssrc != context->a_last_ssrc) {
 			/* Audio SSRC changed: update both sequence number and timestamp */
-			JANUS_LOG(LOG_WARN, "Audio SSRC changed, %"SCNu32" --> %"SCNu32"\n",
+			JANUS_LOG(LOG_VERB, "Audio SSRC changed, %"SCNu32" --> %"SCNu32"\n",
 				context->a_last_ssrc, ssrc);
 			context->a_last_ssrc = ssrc;
 			context->a_base_ts_prev = context->a_last_ts;
