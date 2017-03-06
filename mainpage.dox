@@ -446,6 +446,7 @@ janus.attach(
  *     - \c data: \c true/false (do or do not use Data Channels, default is false)
  *     - \c failIfNoAudio: \c true/false (whether a getUserMedia should fail if audio send is asked, but no audio device is available, default is false)
  *     - \c failIfNoVideo: \c true/false (whether a getUserMedia should fail if video send is asked, but no video device is available, default is false)
+ *     - \c screenshareFrameRate: in case you're sharing a screen/application, allows you to specify the framerate (default=3);
  *   - \c trickle: \c true/false, to tell the library whether you want
  * Trickle ICE to be used (true, the default) or not (false);
  *   - \c stream: optional, only to be passed in case you obtained a MediaStream object yourself with a \c getUserMedia
