@@ -143,7 +143,7 @@ Janus.init = function(options) {
 				} else {
 					Janus.error("Error attaching stream to element");
 				}
-			} else if(navigator.userAgent.match(/iPad/i) || navigator.userAgent.match(/iPhone/i)) {
+			} else if(adapter.browserDetails.browser === 'safari') {
 				element.src = URL.createObjectURL(stream);
 			}
 			else {
@@ -158,7 +158,7 @@ Janus.init = function(options) {
 				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
 				}
-			} else if(navigator.userAgent.match(/iPad/i) || navigator.userAgent.match(/iPhone/i)) {
+			} else if(adapter.browserDetails.browser === 'safari') {
 				to.src = from.src;
 			}
 			else {
