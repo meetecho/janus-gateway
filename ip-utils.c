@@ -276,7 +276,7 @@ int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_n
 char *janus_network_detect_local_ip_as_string(janus_network_query_options addr_type) {
 	janus_network_address addr;
 	janus_network_address_string_buffer buf;
-    int res = janus_network_detect_local_ip(addr_type, &addr) || janus_network_address_to_string_buffer(&addr, &buf);
+	int res = janus_network_detect_local_ip(addr_type, &addr) || janus_network_address_to_string_buffer(&addr, &buf);
 	if(res != 0)
 		return NULL;
 	return g_strdup(janus_network_address_string_from_buffer(&buf));
