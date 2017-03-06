@@ -122,12 +122,6 @@ int janus_get_codec_pt(const char *sdp, const char *codec);
  * @returns The codec name, if found, NULL otherwise */
 const char *janus_get_codec_from_pt(const char *sdp, int pt);
 
-/*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
- * @param ip The IP address to check
- * @param[in,out] family The address family of the address, set by the method if valid
- * @returns true if the address is valid, false otherwise */
-gboolean janus_is_ip_valid(const char *ip, int *family);
-
 /*! \brief Convert a sockaddr address to an IP string
  * \note The resulting string is allocated, which means the caller must free it itself when done
  * @param address The sockaddr address to convert

@@ -21,12 +21,6 @@
 #include <netinet/in.h>
 
 
-/*! \brief Helper method to find a valid local IP address, that is an address that can be used to communicate
- * @param[in] buf An input/output buffer over which the IP address will be printed
- * @param[in] buflen The size of the input/output buffer
- * @returns 0 if found, a negative integer otherwise */
-int janus_network_detect_local_ip(char *buf, size_t buflen);
-
 /** @name Janus helper methods to match names and addresses with network interfaces/devices.
  */
 ///@{
@@ -88,7 +82,7 @@ typedef struct janus_network_address_string_buffer {
 /*!
  * \brief Initialise a network device query.
  * \param user_value The user-supplied string which is supposed to describe either the device name or its IP address.
- * \param query_mode (A mask of) Options describing the supoorted types of matches which should be accepted when performing a look up with this query.
+ * \param query_mode (A mask of) Options describing the supported types of matches which should be accepted when performing a look up with this query.
  * This can be used to restrict the query to 'by device name' or 'IPv4 only' type searches.
  * \param query The query object to configure.
  * \return 0 on success or -EINVAL if any of the arguments are NULL or the given value to look for does not correspond to a valid IPv4/IPv6 address and
@@ -197,13 +191,31 @@ int janus_network_address_string_buffer_is_null(const janus_network_address_stri
 const char *janus_network_address_string_from_buffer(const janus_network_address_string_buffer *b);
 
 /*!
- * \brief Look for an interface name to prepare a janus_network_address instance
- * \param ifas The list of interfaces to lookup into (e.g., as returned from getifaddrs)
+ * \brief Convert an interface name or IP address to a janus_network_address instance
+ * \param ifas The list of interfaces to look into (e.g., as returned from getifaddrs)
  * \param iface The interface name or IP address to look for
  * \param result Pointer to a valid janus_network_address instance that will contain the result
- * \return 0 in case of success, a negative integer otherwise
+ * \return 0 in case of success, -EINVAL otherwise otherwise
  */
 int janus_network_lookup_interface(const struct ifaddrs *ifas, const char *iface, janus_network_address *result);
+
+/*!
+ * \brief Helper method to find a valid local IP address, that is an address that can be used to communicate
+ * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
+ * \param result Pointer to a valid janus_network_address instance that will contain the result
+ * \return 0 in case of success, -EINVAL otherwise otherwise
+ */
+int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_network_address *result);
+
+/*!
+ * \brief Wrapper to janus_network_detect_local_ip that returns a string instead
+ * \note The string is allocated with g_strdup and so needs to be freed by the caller
+ * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
+ * \return 0 in case of success, -EINVAL otherwise otherwise
+ */
+char *janus_network_detect_local_ip_as_string(janus_network_query_options addr_type);
 ///@}
 
 #endif

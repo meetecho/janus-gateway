@@ -136,7 +136,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
 /* IP addresses */
-static gchar local_ip[INET6_ADDRSTRLEN];
+static gchar *local_ip;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
@@ -3483,45 +3483,32 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "general", "interface");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "  -- Will try to use %s\n", item->value);
-		int family;
-		if (!janus_is_ip_valid(item->value, &family)) {
-			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+		/* Verify that the address is valid */
+		struct ifaddrs *ifas = NULL;
+		janus_network_address iface;
+		janus_network_address_string_buffer ibuf;
+		if(getifaddrs(&ifas) || ifas == NULL) {
+			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 		} else {
-			/* Verify that we can actually bind to that address */
-			int fd = socket(family, SOCK_DGRAM, 0);
-			if (fd == -1) {
-				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
+				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
 			} else {
-				int r;
-				struct sockaddr_storage ss;
-				socklen_t addrlen;
-				memset(&ss, 0, sizeof(ss));
-				if (family == AF_INET) {
-					struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
-					addr4->sin_family = AF_INET;
-					addr4->sin_port = 0;
-					inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
-					addrlen = sizeof(struct sockaddr_in);
+				if(janus_network_address_to_string_buffer(&iface, &ibuf) != 0 || janus_network_address_string_buffer_is_null(&ibuf)) {
+					JANUS_LOG(LOG_WARN, "Error getting local IP address from %s, falling back to detecting IP address...\n", item->value);
 				} else {
-					struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
-					addr6->sin6_family = AF_INET6;
-					addr6->sin6_port = 0;
-					inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
-					addrlen = sizeof(struct sockaddr_in6);
-				}
-				r = bind(fd, (const struct sockaddr*)&ss, addrlen);
-				close(fd);
-				if (r < 0) {
-					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
-				} else {
-					g_strlcpy(local_ip, item->value, sizeof(local_ip));
+					local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
 					local_ip_set = TRUE;
 				}
 			}
 		}
 	}
-	if(!local_ip_set)
-		janus_network_detect_local_ip(local_ip, sizeof(local_ip));
+	if(!local_ip_set) {
+		local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+		if(local_ip == NULL) {
+			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+			local_ip = g_strdup("127.0.0.1");
+		}
+	}
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Was a custom instance name provided? */
@@ -3680,6 +3667,7 @@ gint main(int argc, char *argv[])
 		gboolean private_address = FALSE;
 		const char *test_ip = nat_1_1_mapping ? nat_1_1_mapping : local_ip;
 		struct sockaddr_in addr;
+		/* FIXME This ugly check only works with IPv4... */
 		if(inet_pton(AF_INET, test_ip, &addr) > 0) {
 			unsigned short int ip[4];
 			sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
@@ -4257,6 +4245,7 @@ gint main(int argc, char *argv[])
 	}
 
 	janus_recorder_deinit();
+	g_free(local_ip);
 
 	JANUS_PRINT("Bye!\n");
 
