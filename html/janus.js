@@ -1468,6 +1468,9 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
+					if (!media.screenshareFrameRate) {
+						media.screenshareFrameRate = 3;
+					}
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
 						// Screen sharing mandates HTTPS
@@ -1507,7 +1510,8 @@ function Janus(gatewayCallbacks) {
 										googLeakyBucket: true,
 										maxWidth: window.screen.width,
 										maxHeight: window.screen.height,
-										maxFrameRate: 3,
+										minFrameRate: media.screenshareFrameRate,
+										maxFrameRate: media.screenshareFrameRate,
 										chromeMediaSource: 'screen'
 									}
 								},
@@ -1587,7 +1591,8 @@ function Janus(gatewayCallbacks) {
 											chromeMediaSource: 'desktop',
 											maxWidth: window.screen.width,
 											maxHeight: window.screen.height,
-											maxFrameRate: 3
+											minFrameRate: media.screenshareFrameRate,
+											maxFrameRate: media.screenshareFrameRate,
 										},
 										optional: [
 											{googLeakyBucket: true},
