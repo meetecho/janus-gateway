@@ -2655,7 +2655,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			if(!janus_network_address_is_null(iface)) {
 				if(iface->family == AF_INET) {
 					mreq.imr_interface = iface->ipv4;
-					(void) janus_network_address_to_string_buffer(iface, &address_representation); // this is OK: if we get here iface must be non-NULL
+					(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
 					JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
 				} else {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);
@@ -2690,7 +2690,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 		if(!IN_MULTICAST(ntohl(mcast)) && !janus_network_address_is_null(iface)) {
 			if(iface->family == AF_INET) {
 				address.sin_addr = iface->ipv4;
-				(void) janus_network_address_to_string_buffer(iface, &address_representation); // this is OK: if we get here iface must be non-NULL
+				(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
 				JANUS_LOG(LOG_INFO, "[%s] %s listener restricted to interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
 			} else {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid address/restriction type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);

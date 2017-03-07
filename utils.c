@@ -14,10 +14,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <arpa/inet.h>
 #include <sys/file.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 #include "utils.h"
@@ -356,50 +354,6 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 		line = next ? (next+1) : NULL;
 	}
 	return NULL;
-}
-
-char *janus_address_to_ip(struct sockaddr *address) {
-	if(address == NULL)
-		return NULL;
-	char addr_buf[INET6_ADDRSTRLEN];
-	const char *addr = NULL;
-	struct sockaddr_in *sin = NULL;
-	struct sockaddr_in6 *sin6 = NULL;
-
-	switch(address->sa_family) {
-		case AF_INET:
-			sin = (struct sockaddr_in *)address;
-			addr = inet_ntop(AF_INET, &sin->sin_addr, addr_buf, INET_ADDRSTRLEN);
-			break;
-		case AF_INET6:
-			sin6 = (struct sockaddr_in6 *)address;
-			addr = inet_ntop(AF_INET6, &sin6->sin6_addr, addr_buf, INET6_ADDRSTRLEN);
-			break;
-		default:
-			/* Unknown family */
-			break;
-	}
-	return addr ? g_strdup(addr) : NULL;
-}
-
-uint16_t janus_address_to_port(struct sockaddr *address) {
-	if(address == NULL)
-		return 0;
-	struct sockaddr_in *sin = NULL;
-	struct sockaddr_in6 *sin6 = NULL;
-
-	switch(address->sa_family) {
-		case AF_INET:
-			sin = (struct sockaddr_in *)address;
-			return ntohs(sin->sin_port);
-		case AF_INET6:
-			sin6 = (struct sockaddr_in6 *)address;
-			return ntohs(sin6->sin6_port);
-		default:
-			/* Unknown family */
-			break;
-	}
-	return 0;
 }
 
 /* PID file management */

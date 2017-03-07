@@ -166,6 +166,23 @@ int janus_network_address_is_null(const janus_network_address *a) {
 	return !a || a->family == AF_UNSPEC;
 }
 
+int janus_network_address_from_sockaddr(struct sockaddr *s, janus_network_address *a) {
+	if(!s || !a)
+		return -EINVAL;
+	if(s->sa_family == AF_INET) {
+		a->family = AF_INET;
+		struct sockaddr_in *addr = (struct sockaddr_in *)s;
+		a->ipv4 = addr->sin_addr;
+		return 0;
+	} else if(s->sa_family == AF_INET6) {
+		a->family = AF_INET6;
+		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)s;
+		a->ipv6 = addr->sin6_addr;
+		return 0;
+	}
+	return -EINVAL;
+}
+
 int janus_network_address_to_string_buffer(const janus_network_address *a, janus_network_address_string_buffer *buf) {
 	if(buf && !janus_network_address_is_null(a)) {
 		janus_network_address_string_buffer_nullify(buf);
@@ -197,6 +214,28 @@ const char *janus_network_address_string_from_buffer(const janus_network_address
 	} else {
 		return b->family == AF_INET ? b->ipv4 : b->ipv6;
 	}
+}
+
+int janus_network_string_is_valid_address(janus_network_query_options addr_type, const char *user_value) {
+	janus_network_address a;
+	return janus_network_string_to_address(addr_type, user_value, &a) == 0;
+}
+
+int janus_network_string_to_address(janus_network_query_options addr_type, const char *user_value, janus_network_address *result) {
+	if((addr_type != janus_network_query_options_ipv4 &&
+			addr_type != janus_network_query_options_ipv6 &&
+			addr_type != janus_network_query_options_any_ip) || !user_value || !result) {
+		return -EINVAL;
+	}
+	if((addr_type & janus_network_query_options_ipv4) && inet_pton(AF_INET, user_value, &result->ipv4) > 0) {
+		result->family = AF_INET;
+		return 0;
+	}
+	if((addr_type & janus_network_query_options_ipv6) && inet_pton(AF_INET6, user_value, &result->ipv6) > 0) {
+		result->family = AF_INET6;
+		return 0;
+	}
+	return -EINVAL;
 }
 
 int janus_network_lookup_interface(const struct ifaddrs *ifas, const char *iface, janus_network_address *result) {

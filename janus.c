@@ -136,7 +136,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
 /* IP addresses */
-static gchar *local_ip;
+static gchar *local_ip = NULL;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
@@ -3479,7 +3479,6 @@ gint main(int argc, char *argv[])
 	}
 	/* What is the local IP? */
 	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");
-	gboolean local_ip_set = FALSE;
 	item = janus_config_get_item_drilldown(config, "general", "interface");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "  -- Will try to use %s\n", item->value);
@@ -3497,12 +3496,11 @@ gint main(int argc, char *argv[])
 					JANUS_LOG(LOG_WARN, "Error getting local IP address from %s, falling back to detecting IP address...\n", item->value);
 				} else {
 					local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
-					local_ip_set = TRUE;
 				}
 			}
 		}
 	}
-	if(!local_ip_set) {
+	if(local_ip == NULL) {
 		local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
 		if(local_ip == NULL) {
 			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
@@ -3605,9 +3603,13 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "nat_1_1_mapping");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public ip - %s\n", item->value);
-		nat_1_1_mapping = item->value;
-		janus_set_public_ip(item->value);
-		janus_ice_enable_nat_1_1();
+		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
+			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
+		} else {
+			nat_1_1_mapping = item->value;
+			janus_set_public_ip(item->value);
+			janus_ice_enable_nat_1_1();
+		}
 	}
 	/* Any TURN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "turn_server");
@@ -3666,20 +3668,25 @@ gint main(int argc, char *argv[])
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		gboolean private_address = FALSE;
 		const char *test_ip = nat_1_1_mapping ? nat_1_1_mapping : local_ip;
-		struct sockaddr_in addr;
-		/* FIXME This ugly check only works with IPv4... */
-		if(inet_pton(AF_INET, test_ip, &addr) > 0) {
-			unsigned short int ip[4];
-			sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
-			if(ip[0] == 10) {
-				/* Class A private address */
-				private_address = TRUE;
-			} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
-				/* Class B private address */
-				private_address = TRUE;
-			} else if(ip[0] == 192 && ip[1] == 168) {
-				/* Class C private address */
-				private_address = TRUE;
+		janus_network_address addr;
+		if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
+			JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
+		} else {
+			if(addr.family == AF_INET) {
+				unsigned short int ip[4];
+				sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
+				if(ip[0] == 10) {
+					/* Class A private address */
+					private_address = TRUE;
+				} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
+					/* Class B private address */
+					private_address = TRUE;
+				} else if(ip[0] == 192 && ip[1] == 168) {
+					/* Class C private address */
+					private_address = TRUE;
+				}
+			} else {
+				/* TODO Similar check for IPv6... */
 			}
 		}
 		if(private_address) {

@@ -156,6 +156,14 @@ void janus_network_address_nullify(janus_network_address *a);
 int janus_network_address_is_null(const janus_network_address *a);
 
 /*!
+ * \brief Convert a struct sockaddr to a janus_network_address
+ * \param s The struct sockaddr to convert
+ * \param a The address to write to
+ * \return 0 on success, or -EINVAL otherwise.
+ */
+int janus_network_address_from_sockaddr(struct sockaddr *s, janus_network_address *a);
+
+/*!
  * \brief Convert the given network address to a form which can be used to extract a human readable network address from.
  * \param a The address to convert
  * \param buf A buffer to contain the human readable form.
@@ -189,6 +197,25 @@ int janus_network_address_string_buffer_is_null(const janus_network_address_stri
  * \see \c janus_network_address_to_string_buffer
  */
 const char *janus_network_address_string_from_buffer(const janus_network_address_string_buffer *b);
+
+/*!
+ * \brief Test if a given IP address string is a valid address of the specified type
+ * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
+ * \param user_value The IP address string to check
+ * \return A positive integer if the given string is a valid address, 0 otherwise.
+ */
+int janus_network_string_is_valid_address(janus_network_query_options addr_type, const char *user_value);
+
+/*!
+ * \brief Convert an IP address string to a janus_network_address instance
+ * \param addr The type of address you're interested in (janus_network_query_options_ipv4,
+ * janus_network_query_options_ipv6 or janus_network_query_options_any_ip)
+ * \param user_value The IP address string to check
+ * \param result Pointer to a valid janus_network_address instance that will contain the result
+ * \return 0 in case of success, -EINVAL otherwise otherwise
+ */
+int janus_network_string_to_address(janus_network_query_options addr_type, const char *user_value, janus_network_address *result);
 
 /*!
  * \brief Convert an interface name or IP address to a janus_network_address instance

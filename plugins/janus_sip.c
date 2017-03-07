@@ -176,7 +176,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char *local_ip;
+static char *local_ip = NULL;
 static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
@@ -757,7 +757,6 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL) {
 		janus_config_print(config);
 
-		gboolean local_ip_set = FALSE;
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
 		if(item && item->value) {
 			/* Verify that the address is valid */
@@ -774,12 +773,11 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 						JANUS_LOG(LOG_WARN, "Error getting local IP address from %s, falling back to detecting IP address...\n", item->value);
 					} else {
 						local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
-						local_ip_set = TRUE;
 					}
 				}
 			}
 		}
-		if(!local_ip_set) {
+		if(local_ip == NULL) {
 			local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
 			if(local_ip == NULL) {
 				JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");

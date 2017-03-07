@@ -31,6 +31,7 @@
 #include "rtp.h"
 #include "rtcp.h"
 #include "apierror.h"
+#include "ip-utils.h"
 #include "events.h"
 
 /* STUN server/port, if any */
@@ -738,14 +739,18 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	JANUS_LOG(LOG_INFO, "STUN server to use: %s:%u\n", stun_server, stun_port);
 	/* Resolve address to get an IP */
 	struct addrinfo *res = NULL;
-	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0) {
+	janus_network_address addr;
+	janus_network_address_string_buffer addr_buf;
+	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0 ||
+			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		if(res)
 			freeaddrinfo(res);
 		return -1;
 	}
-	janus_stun_server = janus_address_to_ip(res->ai_addr);
 	freeaddrinfo(res);
+	janus_stun_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	if(janus_stun_server == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		return -1;
@@ -759,6 +764,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	uint8_t buf[1500];
 	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
 	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
+	/* TODO Use the janus_network_address info to drive the socket creation */
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
 	struct sockaddr_in address, remote;
 	address.sin_family = AF_INET;
@@ -809,21 +815,29 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-		janus_set_public_ip(public_ip);
-		g_free(public_ip);
-		close(fd);
+		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
+		} else {
+			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+			janus_set_public_ip(public_ip);
+			close(fd);
+		}
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-		janus_set_public_ip(public_ip);
-		g_free(public_ip);
-		close(fd);
+		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
+		} else {
+			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+			janus_set_public_ip(public_ip);
+			close(fd);
+		}
 		return 0;
 	}
 	close(fd);
@@ -850,16 +864,18 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	}
 	/* Resolve address to get an IP */
 	struct addrinfo *res = NULL;
-	if(getaddrinfo(turn_server, NULL, NULL, &res) != 0) {
+	janus_network_address addr;
+	janus_network_address_string_buffer addr_buf;
+	if(getaddrinfo(turn_server, NULL, NULL, &res) != 0 ||
+			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
 		if(res)
 			freeaddrinfo(res);
 		return -1;
 	}
-	if(janus_turn_server != NULL)
-		g_free(janus_turn_server);
-	janus_turn_server = janus_address_to_ip(res->ai_addr);
 	freeaddrinfo(res);
+	janus_turn_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	if(janus_turn_server == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
 		return -1;
