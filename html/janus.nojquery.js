@@ -198,7 +198,13 @@ Janus.init = function(options) {
 						return;
 					}
 					// Got payload
-					params.success(JSON.parse(XHR.responseText));
+					try {
+						params.success(JSON.parse(XHR.responseText));
+					} catch(e) {
+						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e +
+									 ', text: ' + XHR.responseText);
+						return;
+					}
 				};
 			}
 			try {
