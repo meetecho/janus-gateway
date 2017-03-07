@@ -1590,7 +1590,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 \endverbatim
  *
  * \section secret Shared static secret
- * Several deployers showed an interested in wrapping the Janus API on
+ * Several deployers showed an interest in wrapping the Janus API on
  * their server side: this allows them to keep the interaction with their
  * users the way it was before, while still benefiting from the features
  * Janus provides. This is an easy enough step, as it just needs developers
