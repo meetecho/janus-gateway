@@ -110,7 +110,7 @@ installed. If you want v1.5.4 to be picked, pass `--disable-libsrtp2`
 when configuring Janus to force it to use the older version instead.
 
 * *Note:* when installing libsrtp, no matter which version, you may need to pass
---libdir=/usr/lib64 to the configure script if you're installing on a x86_64 distribution.
+`--libdir=/usr/lib64` to the configure script if you're installing on a x86_64 distribution.
 
 If you want to make use of BoringSSL instead of OpenSSL (e.g., because
 you want to take advantage of `--enable-dtls-settimeout`), you'll have
@@ -153,7 +153,7 @@ pretty easy and standard process:
 	./bootstrap
 	./configure --prefix=/usr && make && sudo make install
 
-* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+* *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
 
 The same applies for libwebsockets, which is needed for the optional
@@ -204,7 +204,7 @@ following steps:
 	autoreconf -i
 	./configure --prefix=/usr && make && sudo make install
 
-* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+* *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
 
 To conclude, should you be interested in building the gateway
