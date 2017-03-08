@@ -816,13 +816,13 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		error_code, error_cause, TRUE,
 		JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 	const char *transaction_text = NULL;
+	json_t *reply = NULL;
 	if(error_code != 0)
 		goto msg_response;
 	json_t *request = json_object_get(root, "textroom");
 	json_t *transaction = json_object_get(root, "transaction");
 	const char *request_text = json_string_value(request);
 	transaction_text = json_string_value(transaction);
-	json_t *reply = NULL;
 	if(!strcasecmp(request_text, "message")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, message_parameters,
 			error_code, error_cause, TRUE,
