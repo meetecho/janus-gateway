@@ -66,6 +66,7 @@
 #include "../record.h"
 #include "../rtp.h"
 #include "../rtcp.h"
+#include "../ip-utils.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
 
@@ -156,7 +157,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char local_ip[INET6_ADDRSTRLEN];
+static char *local_ip = NULL;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -412,37 +413,6 @@ static void *janus_nosip_watchdog(void *data) {
 }
 
 
-static void janus_nosip_detect_local_ip(char *buf, size_t buflen) {
-	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
-
-	struct sockaddr_in addr;
-	socklen_t len;
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if(fd == -1)
-		goto error;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(1);
-	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
-	if(connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
-		goto error;
-	len = sizeof(addr);
-	if(getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
-		goto error;
-	if(getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
-			buf, buflen,
-			NULL, 0, NI_NUMERICHOST) != 0)
-		goto error;
-	close(fd);
-	return;
-
-error:
-	if(fd != -1)
-		close(fd);
-	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-	g_strlcpy(buf, "127.0.0.1", buflen);
-}
-
-
 /* Plugin implementation */
 int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -462,49 +432,34 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL) {
 		janus_config_print(config);
 
-		gboolean local_ip_set = FALSE;
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
 		if(item && item->value) {
-			int family;
-			if(!janus_is_ip_valid(item->value, &family)) {
-				JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+			/* Verify that the address is valid */
+			struct ifaddrs *ifas = NULL;
+			janus_network_address iface;
+			janus_network_address_string_buffer ibuf;
+			if(getifaddrs(&ifas) || ifas == NULL) {
+				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 			} else {
-				/* Verify that we can actually bind to that address */
-				int fd = socket(family, SOCK_DGRAM, 0);
-				if(fd == -1) {
-					JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+				if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
+					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
 				} else {
-					int r;
-					struct sockaddr_storage ss;
-					socklen_t addrlen;
-					memset(&ss, 0, sizeof(ss));
-					if(family == AF_INET) {
-						struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
-						addr4->sin_family = AF_INET;
-						addr4->sin_port = 0;
-						inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
-						addrlen = sizeof(struct sockaddr_in);
+					if(janus_network_address_to_string_buffer(&iface, &ibuf) != 0 || janus_network_address_string_buffer_is_null(&ibuf)) {
+						JANUS_LOG(LOG_WARN, "Error getting local IP address from %s, falling back to detecting IP address...\n", item->value);
 					} else {
-						struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
-						addr6->sin6_family = AF_INET6;
-						addr6->sin6_port = 0;
-						inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
-						addrlen = sizeof(struct sockaddr_in6);
-					}
-					r = bind(fd, (const struct sockaddr*)&ss, addrlen);
-					close(fd);
-					if(r < 0) {
-						JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
-					} else {
-						g_strlcpy(local_ip, item->value, sizeof(local_ip));
-						local_ip_set = TRUE;
+						local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
 					}
 				}
 			}
 		}
-		if(!local_ip_set)
-			janus_nosip_detect_local_ip(local_ip, sizeof(local_ip));
-		JANUS_LOG(LOG_WARN, "Local IP set to %s\n", local_ip);
+		if(local_ip == NULL) {
+			local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+			if(local_ip == NULL) {
+				JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+				local_ip = g_strdup("127.0.0.1");
+			}
+		}
+		JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 		item = janus_config_get_item_drilldown(config, "general", "events");
 		if(item != NULL && item->value != NULL)
