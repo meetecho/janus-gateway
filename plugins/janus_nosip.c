@@ -528,6 +528,8 @@ void janus_nosip_destroy(void) {
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 
+	g_free(local_ip);
+
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_NOSIP_NAME);
 }
 
