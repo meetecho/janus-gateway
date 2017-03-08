@@ -39,8 +39,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			22
-#define JANUS_VERSION_STRING	"0.2.2"
+#define JANUS_VERSION			23
+#define JANUS_VERSION_STRING	"0.2.3"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
