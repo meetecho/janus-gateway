@@ -36,7 +36,12 @@
 ; dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; databuffermsg = yes|no (whether the plugin should store the latest
 ;		message and send it immediately for new viewers)
+;
+; The following options are only valid for the 'rstp' type:
 ; url = RTSP stream URL (only for restreaming RTSP)
+; rtsp_user = RTSP authorization username (only if type=rtsp)
+; rtsp_pwd = RTSP authorization password (only if type=rtsp)
+; rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
 ;
 ; To test the [gstreamer-sample] example, check the test_gstreamer.sh
 ; script in the plugins/streams folder. To test the live and on-demand
