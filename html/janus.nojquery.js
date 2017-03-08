@@ -143,7 +143,10 @@ Janus.init = function(options) {
 				} else {
 					Janus.error("Error attaching stream to element");
 				}
-			} else {
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.match(/iPad/i) || window.navigator.match(/iPhone/i)) {
+				element.src = URL.createObjectURL(stream);
+			}
+			else {
 				element.srcObject = stream;
 			}
 		};
@@ -155,7 +158,10 @@ Janus.init = function(options) {
 				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
 				}
-			} else {
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.match(/iPad/i) || window.navigator.match(/iPhone/i)) {
+				to.src = from.src;
+			}
+			else {
 				to.srcObject = from.srcObject;
 			}
 		};
@@ -192,7 +198,11 @@ Janus.init = function(options) {
 						return;
 					}
 					// Got payload
-					params.success(JSON.parse(XHR.responseText));
+					try {
+						params.success(JSON.parse(XHR.responseText));
+					} catch(e) {
+						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
+					}
 				};
 			}
 			try {
@@ -204,7 +214,11 @@ Janus.init = function(options) {
 						return;
 					}
 					// Got payload
-					params.success(JSON.parse(XHR.responseText));
+					try {
+						params.success(JSON.parse(XHR.responseText));
+					} catch(e) {
+						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
+					}
 				}
 			} catch(e) {
 				// Something broke up
@@ -619,7 +633,11 @@ function Janus(gatewayCallbacks) {
 				},
 
 				'message': function(event) {
-					handleEvent(JSON.parse(event.data));
+					try {
+						handleEvent(JSON.parse(event.data));
+					} catch(e) {
+						Janus.error('Error processing event:', e);
+					}
 				},
 
 				'close': function() {
@@ -1506,6 +1524,9 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
+					if (!media.screenshareFrameRate) {
+						media.screenshareFrameRate = 3;
+					}
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
 						// Screen sharing mandates HTTPS
@@ -1545,7 +1566,8 @@ function Janus(gatewayCallbacks) {
 										googLeakyBucket: true,
 										maxWidth: window.screen.width,
 										maxHeight: window.screen.height,
-										maxFrameRate: 3,
+										minFrameRate: media.screenshareFrameRate,
+										maxFrameRate: media.screenshareFrameRate,
 										chromeMediaSource: 'screen'
 									}
 								},
@@ -1625,7 +1647,8 @@ function Janus(gatewayCallbacks) {
 											chromeMediaSource: 'desktop',
 											maxWidth: window.screen.width,
 											maxHeight: window.screen.height,
-											maxFrameRate: 3
+											minFrameRate: media.screenshareFrameRate,
+											maxFrameRate: media.screenshareFrameRate,
 										},
 										optional: [
 											{googLeakyBucket: true},
