@@ -142,6 +142,7 @@ AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       AC_DEFINE(HAVE_DTLS_SETTIMEOUT)
       AC_MSG_NOTICE([Assuming DTLSv1_set_initial_timeout_duration is available])
       ])
+AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
 
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
@@ -542,8 +543,13 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
 	[echo "libsrtp version:           2.0.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "SSL/crypto library:        BoringSSL"],
-	[echo "SSL/crypto library:        OpenSSL"])
+	[echo "SSL/crypto library:        BoringSSL"
+	 AM_COND_IF([ENABLE_DTLS_SETTIMEOUT],
+		[echo "DTLS set-timeout:          yes"],
+		[echo "DTLS set-timeout:          no"])
+	],
+	[echo "SSL/crypto library:        OpenSSL"
+	 echo "DTLS set-timeout:          not available"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
