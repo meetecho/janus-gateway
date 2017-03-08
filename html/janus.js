@@ -143,7 +143,10 @@ Janus.init = function(options) {
 				} else {
 					Janus.error("Error attaching stream to element");
 				}
-			} else {
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.match(/iPad/i) || window.navigator.match(/iPhone/i)) {
+				element.src = URL.createObjectURL(stream);
+			}
+			else {
 				element.srcObject = stream;
 			}
 		};
@@ -155,7 +158,10 @@ Janus.init = function(options) {
 				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
 				}
-			} else {
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.match(/iPad/i) || window.navigator.match(/iPhone/i)) {
+				to.src = from.src;
+			}
+			else {
 				to.srcObject = from.srcObject;
 			}
 		};
@@ -1468,6 +1474,9 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
+					if (!media.screenshareFrameRate) {
+						media.screenshareFrameRate = 3;
+					}
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
 						// Screen sharing mandates HTTPS
@@ -1507,7 +1516,8 @@ function Janus(gatewayCallbacks) {
 										googLeakyBucket: true,
 										maxWidth: window.screen.width,
 										maxHeight: window.screen.height,
-										maxFrameRate: 3,
+										minFrameRate: media.screenshareFrameRate,
+										maxFrameRate: media.screenshareFrameRate,
 										chromeMediaSource: 'screen'
 									}
 								},
@@ -1587,7 +1597,8 @@ function Janus(gatewayCallbacks) {
 											chromeMediaSource: 'desktop',
 											maxWidth: window.screen.width,
 											maxHeight: window.screen.height,
-											maxFrameRate: 3
+											minFrameRate: media.screenshareFrameRate,
+											maxFrameRate: media.screenshareFrameRate,
 										},
 										optional: [
 											{googLeakyBucket: true},
