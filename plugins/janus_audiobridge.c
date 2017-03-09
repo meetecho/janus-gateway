@@ -902,8 +902,7 @@ typedef struct wav_header {
 
 
 /* AudioBridge watchdog/garbage collector (sort of) */
-void *janus_audiobridge_watchdog(void *data);
-void *janus_audiobridge_watchdog(void *data) {
+static void *janus_audiobridge_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "AudioBridge watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -3273,6 +3272,7 @@ static void *janus_audiobridge_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 			json_decref(event);
 			json_decref(jsep);
+			g_free(sdp);
 			if(res != JANUS_OK) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			} else {

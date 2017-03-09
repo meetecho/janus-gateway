@@ -637,8 +637,7 @@ static gboolean session_hash_table_remove(gpointer key, gpointer value, gpointer
 }
 
 /* VideoRoom watchdog/garbage collector (sort of) */
-void *janus_videoroom_watchdog(void *data);
-void *janus_videoroom_watchdog(void *data) {
+static void *janus_videoroom_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VideoRoom watchdog started\n");
 	gint64 now = 0, room_now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {

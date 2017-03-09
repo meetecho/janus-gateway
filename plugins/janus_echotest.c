@@ -224,8 +224,7 @@ static void janus_echotest_message_free(janus_echotest_message *msg) {
 
 
 /* EchoTest watchdog/garbage collector (sort of) */
-void *janus_echotest_watchdog(void *data);
-void *janus_echotest_watchdog(void *data) {
+static void *janus_echotest_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "EchoTest watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
