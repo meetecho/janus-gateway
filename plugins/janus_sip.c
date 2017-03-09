@@ -362,11 +362,11 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_free(session->account.username);
 		session->account.username = NULL;
 	}
-	if (session->account.display_name) {
+	if(session->account.display_name) {
 		g_free(session->account.display_name);
 		session->account.display_name = NULL;
 	}
-	if (session->account.user_agent) {
+	if(session->account.user_agent) {
 		g_free(session->account.user_agent);
 		session->account.user_agent = NULL;
 	}
@@ -378,12 +378,12 @@ static void janus_sip_session_free(const janus_refcount *session_ref) {
 		g_free(session->callee);
 		session->callee = NULL;
 	}
-	if (session->callid) {
+	if(session->callid) {
 		g_hash_table_remove(callids, session->callid);
 		g_free(session->callid);
 		session->callid = NULL;
 	}
-	if (session->sdp) {
+	if(session->sdp) {
 		janus_sdp_free(session->sdp);
 		session->sdp = NULL;
 	}
@@ -574,7 +574,7 @@ typedef struct {
 /* Parses a SIP URI (SIPS is not supported), returns 0 on success, -1 otherwise */
 static int janus_sip_parse_uri(janus_sip_uri_t *sip_uri, const char *data) {
 	g_strlcpy(sip_uri->data, data, JANUS_SIP_URI_MAXLEN);
-	if (url_d(sip_uri->url, sip_uri->data) < 0 || sip_uri->url->url_type != url_sip)
+	if(url_d(sip_uri->url, sip_uri->data) < 0 || sip_uri->url->url_type != url_sip)
 		return -1;
 	return 0;
 }
@@ -582,7 +582,7 @@ static int janus_sip_parse_uri(janus_sip_uri_t *sip_uri, const char *data) {
 /* Similar to the above function, but it also accepts SIPS URIs */
 static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data) {
 	g_strlcpy(sip_uri->data, data, JANUS_SIP_URI_MAXLEN);
-	if (url_d(sip_uri->url, sip_uri->data) < 0 || (sip_uri->url->url_type != url_sip && sip_uri->url->url_type != url_sips))
+	if(url_d(sip_uri->url, sip_uri->data) < 0 || (sip_uri->url->url_type != url_sip && sip_uri->url->url_type != url_sips))
 		return -1;
 	return 0;
 }
@@ -602,6 +602,7 @@ static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data)
 #define JANUS_SIP_ERROR_IO_ERROR			450
 #define JANUS_SIP_ERROR_RECORDING_ERROR		451
 #define JANUS_SIP_ERROR_TOO_STRICT			452
+
 
 
 /* Random string helper (for call-ids) */
@@ -1421,7 +1422,7 @@ static void *janus_sip_handler(void *data) {
 			json_t *proxy = json_object_get(root, "proxy");
 			const char *proxy_text = NULL;
 
-			if (proxy && !json_is_null(proxy)) {
+			if(proxy && !json_is_null(proxy)) {
 				/* Has to be validated separately because it could be null */
 				JANUS_VALIDATE_JSON_OBJECT(root, proxy_parameters,
 					error_code, error_cause, TRUE,
@@ -1430,7 +1431,7 @@ static void *janus_sip_handler(void *data) {
 					goto error;
 				proxy_text = json_string_value(proxy);
 				janus_sip_uri_t proxy_uri;
-				if (janus_sip_parse_proxy_uri(&proxy_uri, proxy_text) < 0) {
+				if(janus_sip_parse_proxy_uri(&proxy_uri, proxy_text) < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
 					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 					g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
@@ -1441,21 +1442,21 @@ static void *janus_sip_handler(void *data) {
 			/* Parse register TTL */
 			int ttl = register_ttl;
 			json_t *reg_ttl = json_object_get(root, "register_ttl");
-			if (reg_ttl && json_is_integer(reg_ttl))
+			if(reg_ttl && json_is_integer(reg_ttl))
 				ttl = json_integer_value(reg_ttl);
-			if (ttl <= 0)
+			if(ttl <= 0)
 				ttl = JANUS_DEFAULT_REGISTER_TTL;
 
 			/* Parse display name */
 			const char* display_name_text = NULL;
 			json_t *display_name = json_object_get(root, "display_name");
-			if (display_name && json_is_string(display_name))
+			if(display_name && json_is_string(display_name))
 				display_name_text = json_string_value(display_name);
 
 			/* Parse user agent */
 			const char* user_agent_text = NULL;
 			json_t *user_agent = json_object_get(root, "user_agent");
-			if (user_agent && json_is_string(user_agent))
+			if(user_agent && json_is_string(user_agent))
 				user_agent_text = json_string_value(user_agent);
 
 			/* Now the user part, if needed */
@@ -1473,7 +1474,7 @@ static void *janus_sip_handler(void *data) {
 			if(username) {
 				/* Parse address */
 				username_text = json_string_value(username);
-				if (janus_sip_parse_uri(&username_uri, username_text) < 0) {
+				if(janus_sip_parse_uri(&username_uri, username_text) < 0) {
 					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
 					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 					g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
@@ -1513,7 +1514,7 @@ static void *janus_sip_handler(void *data) {
 					session->account.secret = g_strdup(secret_text);
 					session->account.secret_type = janus_sip_secret_type_hashed;
 				}
-				if (authuser) {
+				if(authuser) {
 					const char *authuser_text;
 					authuser_text = json_string_value(authuser);
 					session->account.authuser = g_strdup(authuser_text);
@@ -1529,13 +1530,13 @@ static void *janus_sip_handler(void *data) {
 			g_hash_table_insert(identities, session->account.identity, session);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
-			if (display_name_text) {
+			if(display_name_text) {
 				session->account.display_name = g_strdup(display_name_text);
 			}
-			if (user_agent_text) {
+			if(user_agent_text) {
 				session->account.user_agent = g_strdup(user_agent_text);
 			}
-			if (proxy_text) {
+			if(proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
 			}
 
@@ -1572,7 +1573,7 @@ static void *janus_sip_handler(void *data) {
 				session->stack->s_nh_r = NULL;
 			}
 
-			if (send_register) {
+			if(send_register) {
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -1679,7 +1680,7 @@ static void *janus_sip_handler(void *data) {
 			/* Parse address */
 			const char *uri_text = json_string_value(uri);
 			janus_sip_uri_t target_uri;
-			if (janus_sip_parse_uri(&target_uri, uri_text) < 0) {
+			if(janus_sip_parse_uri(&target_uri, uri_text) < 0) {
 				JANUS_LOG(LOG_ERR, "Invalid user address %s\n", uri_text);
 				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 				g_snprintf(error_cause, 512, "Invalid user address %s\n", uri_text);
@@ -1748,7 +1749,7 @@ static void *janus_sip_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
 			/* Prepare the From header */
 			char from_hdr[1024];
-			if (session->account.display_name) {
+			if(session->account.display_name) {
 				g_snprintf(from_hdr, sizeof(from_hdr), "\"%s\" <%s>", session->account.display_name, session->account.identity);
 			} else {
 				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
@@ -1960,9 +1961,9 @@ static void *janus_sip_handler(void *data) {
 			}
 			int response_code = 486;
 			json_t *code_json = json_object_get(root, "code");
-			if (code_json && json_is_integer(code_json))
+			if(code_json && json_is_integer(code_json))
 				response_code = json_integer_value(code_json);
-			if (response_code <= 399) {
+			if(response_code <= 399) {
 				JANUS_LOG(LOG_WARN, "Invalid SIP response code specified, using 486 to decline call\n");
 				response_code = 486;
 			}
@@ -2244,7 +2245,7 @@ static void *janus_sip_handler(void *data) {
 			int duration_ms = 0;
 			json_t *duration = json_object_get(root, "duration");
 			duration_ms = duration ? json_integer_value(duration) : 0;
-			if (duration_ms <= 0 || duration_ms > 5000) {
+			if(duration_ms <= 0 || duration_ms > 5000) {
 				duration_ms = 160; /* default value */
 			}
 
@@ -2336,7 +2337,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			 * the user since we don't send early media. (assuming this is the right session, of course).
 			 * http://sofia-sip.sourceforge.net/refdocs/nua/nua__tag_8h.html#a516dc237722dc8ca4f4aa3524b2b444b
 			 */
-			if (callstate == nua_callstate_proceeding &&
+			if(callstate == nua_callstate_proceeding &&
 				    (session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
 				json_t *call = json_object();
 				json_object_set_new(call, "sip", json_string("event"));
@@ -2446,7 +2447,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
 					json_object_set_new(result, "caller", json_string(caller_text));
 					su_free(session->stack->s_home, caller_text);
-					if (sip->sip_from && sip->sip_from->a_display) {
+					if(sip->sip_from && sip->sip_from->a_display) {
 						json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
 					}
 					json_object_set_new(missed, "result", result);
@@ -2480,13 +2481,13 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			gboolean changed = FALSE;
 			janus_sip_sdp_process(session, sdp, FALSE, reinvite, &changed);
 			/* Check if offer has neither audio nor video, fail with 488 */
-			if (!session->media.has_audio && !session->media.has_video) {
+			if(!session->media.has_audio && !session->media.has_video) {
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 				janus_sdp_free(sdp);
 				break;
 			}
 			/* Also fail with 488 if there's no remote IP address that can be used for RTP */
-			if (!session->media.remote_ip) {
+			if(!session->media.remote_ip) {
 				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 				janus_sdp_free(sdp);
 				break;
@@ -3480,7 +3481,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_root = NULL;
 	su_home_deinit(session->stack->s_home);
 	su_home_unref(session->stack->s_home);
-	if (session->stack) {
+	if(session->stack) {
 		g_free(session->stack);
 		session->stack = NULL;
 	}

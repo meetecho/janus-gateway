@@ -1162,6 +1162,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		janus_mutex_unlock(&textroom->mutex);
 		janus_refcount_decrease(&textroom->ref);
 		janus_refcount_decrease(&participant->ref);
+		janus_textroom_participant_destroy(participant);
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
