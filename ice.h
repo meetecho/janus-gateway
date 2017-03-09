@@ -321,6 +321,10 @@ struct janus_ice_handle {
 	GThread *send_thread;
 	/*! \brief Atomic flag to make sure we only create the thread once */
 	volatile gint send_thread_created;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	guint srtp_errors_count;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	gint last_srtp_error;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
@@ -380,7 +384,7 @@ struct janus_ice_stream {
 	/*! \brief RTCP component */
 	janus_ice_component *rtcp_component;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
@@ -435,7 +439,7 @@ struct janus_ice_component {
 	/*! \brief Stats for outgoing data (audio/video/data) */
 	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
