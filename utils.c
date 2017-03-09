@@ -244,6 +244,11 @@ int janus_get_codec_pt(const char *sdp, const char *codec) {
 		video = 0;
 		format = "pcma/8000";
 		format2 = "PCMA/8000";
+	} else if(!strcasecmp(codec, "g722")) {
+		/* We know the payload type is 9: we just need to make sure it's there */
+		video = 0;
+		format = "g722/8000";
+		format2 = "G722/8000";
 	} else if(!strcasecmp(codec, "isac16")) {
 		video = 0;
 		format = "isac/16000";
@@ -316,6 +321,8 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 		return "pcmu";
 	if(pt == 8)
 		return "pcma";
+	if(pt == 9)
+		return "g722";
 	/* Look for the mapping */
 	char rtpmap[50];
 	g_snprintf(rtpmap, 50, "a=rtpmap:%d ", pt);
@@ -341,6 +348,8 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt) {
 						return "pcmu";
 					if(strstr(name, "pcma") || strstr(name, "PMCA"))
 						return "pcma";
+					if(strstr(name, "g722") || strstr(name, "G722"))
+						return "g722";
 					if(strstr(name, "isac/16") || strstr(name, "ISAC/16"))
 						return "isac16";
 					if(strstr(name, "isac/32") || strstr(name, "ISAC/32"))
