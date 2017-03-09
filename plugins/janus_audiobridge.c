@@ -3272,6 +3272,7 @@ static void *janus_audiobridge_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
 			json_decref(event);
 			json_decref(jsep);
+			g_free(sdp);
 			if(res != JANUS_OK) {
 				/* TODO Failed to negotiate? We should remove this participant */
 			} else {
