@@ -517,8 +517,7 @@ typedef struct janus_streaming_rtp_relay_packet {
 
 
 /* Streaming watchdog/garbage collector (sort of) */
-void *janus_streaming_watchdog(void *data);
-void *janus_streaming_watchdog(void *data) {
+static void *janus_streaming_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "Streaming watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {

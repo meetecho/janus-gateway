@@ -256,6 +256,7 @@
 #include "../config.h"
 #include "../mutex.h"
 #include "../record.h"
+#include "../sdp-utils.h"
 #include "../rtp.h"
 #include "../rtcp.h"
 #include "../utils.h"
@@ -378,6 +379,7 @@ typedef struct janus_recordplay_recording {
 	char *arc_file;		/* Audio file name */
 	char *vrc_file;		/* Video file name */
 	gboolean completed;	/* Whether this recording was completed or still going on */
+	char *offer;		/* The SDP offer that will be sent to watchers */
 	GList *viewers;		/* List of users watching this recording */
 	gint64 destroyed;	/* Lazy timestamp to mark recordings as destroyed */
 	janus_mutex mutex;	/* Mutex for this recording */
@@ -417,31 +419,34 @@ static void *janus_recordplay_playout_thread(void *data);
 /* Helper to send RTCP feedback back to recorders, if needed */
 void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len);
 
-
-/* SDP offer/answer templates for the playout */
+/* To make things easier, we use static payload types for viewers */
 #define OPUS_PT		111
 #define VP8_PT		100
-#define sdp_template \
-		"v=0\r\n" \
-		"o=- %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n"	/* We need current time here */ \
-		"s=%s\r\n"							/* Recording playout id */ \
-		"t=0 0\r\n" \
-		"%s%s"								/* Audio and/or video m-lines */
-#define sdp_a_template \
-		"m=audio 1 RTP/SAVPF %d\r\n"		/* Opus payload type */ \
-		"c=IN IP4 1.1.1.1\r\n" \
-		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d opus/48000/2\r\n"		/* Opus payload type */
-#define sdp_v_template \
-		"m=video 1 RTP/SAVPF %d\r\n"		/* VP8 payload type */ \
-		"c=IN IP4 1.1.1.1\r\n" \
-		"a=%s\r\n"							/* Media direction */ \
-		"a=rtpmap:%d VP8/90000\r\n"			/* VP8 payload type */ \
-		"a=rtcp-fb:%d ccm fir\r\n"			/* VP8 payload type */ \
-		"a=rtcp-fb:%d nack\r\n"				/* VP8 payload type */ \
-		"a=rtcp-fb:%d nack pli\r\n"			/* VP8 payload type */ \
-		"a=rtcp-fb:%d goog-remb\r\n"		/* VP8 payload type */
 
+/* Helper method to prepare an SDP offer when a recording is available */
+static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
+	if(rec == NULL)
+		return -1;
+	/* Prepare an SDP offer we'll send to playout viewers */
+	gboolean offer_audio = (rec->arc_file != NULL),
+		offer_video = (rec->vrc_file != NULL);
+	janus_sdp *offer = janus_sdp_generate_offer(
+		rec->name, "1.1.1.1",
+		JANUS_SDP_OA_AUDIO, offer_audio,
+		JANUS_SDP_OA_AUDIO_CODEC, "opus",
+		JANUS_SDP_OA_AUDIO_PT, OPUS_PT,
+		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_VIDEO, offer_video,
+		JANUS_SDP_OA_VIDEO_CODEC, "vp8",
+		JANUS_SDP_OA_VIDEO_PT, VP8_PT,
+		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
+		JANUS_SDP_OA_DATA, FALSE,
+		JANUS_SDP_OA_DONE);
+	g_free(rec->offer);
+	rec->offer = janus_sdp_write(offer);
+	janus_sdp_free(offer);
+	return 0;
+}
 
 static void janus_recordplay_message_free(janus_recordplay_message *msg) {
 	if(!msg || msg == &exit_message)
@@ -464,19 +469,19 @@ static void janus_recordplay_message_free(janus_recordplay_message *msg) {
 
 /* Error codes */
 #define JANUS_RECORDPLAY_ERROR_NO_MESSAGE			411
-#define JANUS_RECORDPLAY_ERROR_INVALID_JSON		412
-#define JANUS_RECORDPLAY_ERROR_INVALID_REQUEST	413
-#define JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT	414
-#define JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT	415
-#define JANUS_RECORDPLAY_ERROR_NOT_FOUND	416
+#define JANUS_RECORDPLAY_ERROR_INVALID_JSON			412
+#define JANUS_RECORDPLAY_ERROR_INVALID_REQUEST		413
+#define JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT		414
+#define JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT		415
+#define JANUS_RECORDPLAY_ERROR_NOT_FOUND			416
 #define JANUS_RECORDPLAY_ERROR_INVALID_RECORDING	417
-#define JANUS_RECORDPLAY_ERROR_INVALID_STATE	418
-#define JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR	499
+#define JANUS_RECORDPLAY_ERROR_INVALID_STATE		418
+#define JANUS_RECORDPLAY_ERROR_INVALID_SDP			419
+#define JANUS_RECORDPLAY_ERROR_UNKNOWN_ERROR		499
 
 
 /* Record&Play watchdog/garbage collector (sort of) */
-void *janus_recordplay_watchdog(void *data);
-void *janus_recordplay_watchdog(void *data) {
+static void *janus_recordplay_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "Record&Play watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -1086,6 +1091,15 @@ static void *janus_recordplay_handler(void *data) {
 				JANUS_RECORDPLAY_ERROR_MISSING_ELEMENT, JANUS_RECORDPLAY_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
+			char error_str[512];
+			janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
+			if(offer == NULL) {
+				json_decref(event);
+				JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
+				error_code = JANUS_RECORDPLAY_ERROR_INVALID_SDP;
+				g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
+				goto error;
+			}
 			json_t *name = json_object_get(root, "name");
 			const char *name_text = json_string_value(name);
 			json_t *filename = json_object_get(root, "filename");
@@ -1107,6 +1121,7 @@ static void *janus_recordplay_handler(void *data) {
 			rec->viewers = NULL;
 			rec->destroyed = 0;
 			rec->completed = FALSE;
+			rec->offer = NULL;
 			janus_mutex_init(&rec->mutex);
 			/* Create a date string */
 			time_t t = time(NULL);
@@ -1142,39 +1157,18 @@ static void *janus_recordplay_handler(void *data) {
 			g_hash_table_insert(recordings, janus_uint64_dup(rec->id), rec);
 			janus_mutex_unlock(&recordings_mutex);
 			/* We need to prepare an answer */
-			int opus_pt = 0, vp8_pt = 0;
-			opus_pt = janus_get_codec_pt(msg_sdp, "opus");
-			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", opus_pt);
-			vp8_pt = janus_get_codec_pt(msg_sdp, "vp8");
-			JANUS_LOG(LOG_VERB, "VP8 payload type is %d\n", vp8_pt);
-			char sdptemp[1024], audio_mline[256], video_mline[512];
-			if(opus_pt > 0) {
-				g_snprintf(audio_mline, 256, sdp_a_template,
-					opus_pt,						/* Opus payload type */
-					"recvonly",						/* Recording is recvonly */
-					opus_pt); 						/* Opus payload type */
-			} else {
-				audio_mline[0] = '\0';
-			}
-			if(vp8_pt > 0) {
-				g_snprintf(video_mline, 512, sdp_v_template,
-					vp8_pt,							/* VP8 payload type */
-					"recvonly",						/* Recording is recvonly */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt, 						/* VP8 payload type */
-					vp8_pt); 						/* VP8 payload type */
-			} else {
-				video_mline[0] = '\0';
-			}
-			g_snprintf(sdptemp, 1024, sdp_template,
-				janus_get_real_time(),			/* We need current time here */
-				janus_get_real_time(),			/* We need current time here */
-				session->recording->name,		/* Playout session */
-				audio_mline,					/* Audio m-line, if any */
-				video_mline);					/* Video m-line, if any */
-			sdp = g_strdup(sdptemp);
+			janus_sdp *answer = janus_sdp_generate_answer(offer,
+				JANUS_SDP_OA_AUDIO_CODEC, "opus",
+				JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_RECVONLY,
+				JANUS_SDP_OA_VIDEO_CODEC, "vp8",
+				JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
+				JANUS_SDP_OA_DATA, FALSE,
+				JANUS_SDP_OA_DONE);
+			g_free(answer->s_name);
+			answer->s_name = g_strdup(session->recording->name);
+			sdp = janus_sdp_write(answer);
+			janus_sdp_free(offer);
+			janus_sdp_free(answer);
 			JANUS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
 			/* Done! */
 			result = json_object();
@@ -1208,7 +1202,7 @@ static void *janus_recordplay_handler(void *data) {
 			janus_mutex_lock(&recordings_mutex);
 			janus_recordplay_recording *rec = g_hash_table_lookup(recordings, &id_value);
 			janus_mutex_unlock(&recordings_mutex);
-			if(rec == NULL || rec->destroyed) {
+			if(rec == NULL || rec->destroyed || rec->offer == NULL) {
 				JANUS_LOG(LOG_ERR, "No such recording\n");
 				error_code = JANUS_RECORDPLAY_ERROR_NOT_FOUND;
 				g_snprintf(error_cause, 512, "No such recording");
@@ -1238,35 +1232,8 @@ static void *janus_recordplay_handler(void *data) {
 			session->recording = rec;
 			session->recorder = FALSE;
 			rec->viewers = g_list_append(rec->viewers, session);
-			/* We need to prepare an offer */
-			char sdptemp[1024], audio_mline[256], video_mline[512];
-			if(session->aframes) {
-				g_snprintf(audio_mline, 256, sdp_a_template,
-					OPUS_PT,						/* Opus payload type */
-					"sendonly",						/* Playout is sendonly */
-					OPUS_PT); 						/* Opus payload type */
-			} else {
-				audio_mline[0] = '\0';
-			}
-			if(session->vframes) {
-				g_snprintf(video_mline, 512, sdp_v_template,
-					VP8_PT,							/* VP8 payload type */
-					"sendonly",						/* Playout is sendonly */
-					VP8_PT, 						/* VP8 payload type */
-					VP8_PT, 						/* VP8 payload type */
-					VP8_PT, 						/* VP8 payload type */
-					VP8_PT, 						/* VP8 payload type */
-					VP8_PT); 						/* VP8 payload type */
-			} else {
-				video_mline[0] = '\0';
-			}
-			g_snprintf(sdptemp, 1024, sdp_template,
-				janus_get_real_time(),			/* We need current time here */
-				janus_get_real_time(),			/* We need current time here */
-				session->recording->name,		/* Playout session */
-				audio_mline,					/* Audio m-line, if any */
-				video_mline);					/* Video m-line, if any */
-			sdp = g_strdup(sdptemp);
+			/* Send this viewer the prepared offer  */
+			sdp = g_strdup(rec->offer);
 			JANUS_LOG(LOG_VERB, "Going to offer this SDP:\n%s\n", sdp);
 			/* Done! */
 			result = json_object();
@@ -1361,6 +1328,10 @@ static void *janus_recordplay_handler(void *data) {
 					/* Write to the file now */
 					fwrite(nfo, strlen(nfo), sizeof(char), file);
 					fclose(file);
+					/* Generate the offer */
+					if(janus_recordplay_generate_offer(session->recording) < 0) {
+						JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", session->recording->id);
+					}
 					session->recording->completed = TRUE;
 				}
 			}
@@ -1530,6 +1501,9 @@ void janus_recordplay_update_recordings_list(void) {
 		rec->viewers = NULL;
 		rec->destroyed = 0;
 		rec->completed = TRUE;
+		if(janus_recordplay_generate_offer(rec) < 0) {
+			JANUS_LOG(LOG_WARN, "Could not generate offer for recording %"SCNu64"...\n", rec->id);
+		}
 		janus_mutex_init(&rec->mutex);
 		
 		janus_config_destroy(nfo);
@@ -1557,6 +1531,7 @@ void janus_recordplay_update_recordings_list(void) {
 					g_free(old_rec->date);
 					g_free(old_rec->arc_file);
 					g_free(old_rec->vrc_file);
+					g_free(old_rec->offer);
 					g_free(old_rec);
 				} else {
 					JANUS_LOG(LOG_VERB, "Recording %"SCNu64" still has viewers, delaying its destruction until later\n", id);
@@ -2116,6 +2091,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 			g_free(session->recording->date);
 			g_free(session->recording->arc_file);
 			g_free(session->recording->vrc_file);
+			g_free(session->recording->offer);
 			g_free(session->recording);
 			session->recording = NULL;
 		} else {

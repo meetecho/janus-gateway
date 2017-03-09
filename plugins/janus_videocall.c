@@ -391,8 +391,7 @@ static janus_mutex sessions_mutex;
 
 
 /* VideoCall watchdog/garbage collector (sort of) */
-void *janus_videocall_watchdog(void *data);
-void *janus_videocall_watchdog(void *data) {
+static void *janus_videocall_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VideoCall watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {

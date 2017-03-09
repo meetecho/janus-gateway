@@ -527,8 +527,7 @@ static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data)
 
 
 /* SIP watchdog/garbage collector (sort of) */
-void *janus_sip_watchdog(void *data);
-void *janus_sip_watchdog(void *data) {
+static void *janus_sip_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "SIP watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
