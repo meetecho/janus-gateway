@@ -248,8 +248,16 @@ int janus_recorder_close(janus_recorder *recorder) {
 		/* We need to rename the file, to remove the temporary extension */
 		char newname[1024];
 		memset(newname, 0, 1024);
-		g_snprintf(newname, strlen(recorder->filename)-strlen(rec_tempext), "%s", recorder->filename);
-		if(rename(recorder->filename, newname) != 0) {
+		char tmpname[1024];
+		memset(tmpname, 0, 1024);
+		if(recorder->dir) {
+			g_snprintf(newname, strlen(recorder->filename)-strlen(rec_tempext), "%s/%s", recorder->dir, recorder->filename);
+			g_snprintf(tmpname, strlen(recorder->filename), "%s/%s", recorder->dir, recorder->filename);
+		}else{
+			g_snprintf(newname, strlen(recorder->filename)-strlen(rec_tempext), "%s", recorder->filename);
+			g_snprintf(tmpname, strlen(recorder->filename), "%s", recorder->filename);
+		}
+		if(rename(tmpname, newname) != 0) {
 			JANUS_LOG(LOG_ERR, "Error renaming %s to %s...\n", recorder->filename, newname);
 		} else {
 			JANUS_LOG(LOG_INFO, "Recording renamed: %s\n", newname);
