@@ -260,7 +260,7 @@ int janus_recorder_close(janus_recorder *recorder) {
 			g_snprintf(newpath, 1024, "%s", newname);
 			g_snprintf(oldpath, 1024, "%s", recorder->filename);
 		}
-		if(rename(tmpname, newname) != 0) {
+		if(rename(oldpath, newpath) != 0) {
 			JANUS_LOG(LOG_ERR, "Error renaming %s to %s...\n", recorder->filename, newname);
 		} else {
 			JANUS_LOG(LOG_INFO, "Recording renamed: %s\n", newname);
