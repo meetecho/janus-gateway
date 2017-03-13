@@ -28,10 +28,17 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
-header_HEADERS = \
-	plugins/plugin.h transports/transport.h events/eventhandler.h \
-	apierror.h config.h debug.h dtls.h events.h janus.h ice.h mutex.h \
-	record.h rtcp.h rtp.h sctp.h sdp.h sdp-utils.h turnrest.h utils.h log.h
+header_HEADERS = log.h debug.h mutex.h record.h rtcp.h rtp.h \
+	sdp-utils.h ip-utils.h utils.h
+
+pluginsheaderdir = $(includedir)/janus/plugins
+pluginsheader_HEADERS = plugins/plugin.h
+
+transportsheaderdir = $(includedir)/janus/transports
+transportsheader_HEADERS = transports/transport.h
+
+eventsheaderdir = $(includedir)/janus/events
+eventsheader_HEADERS = events/eventhandler.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
