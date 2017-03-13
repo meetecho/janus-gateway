@@ -28,7 +28,7 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
-header_HEADERS = apierror.h log.h debug.h mutex.h record.h \
+header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
 	rtcp.h rtp.h sdp-utils.h ip-utils.h utils.h
 
 pluginsheaderdir = $(includedir)/janus/plugins
