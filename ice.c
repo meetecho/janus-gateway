@@ -3206,6 +3206,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 	g_object_set(G_OBJECT(handle->agent), "upnp", FALSE, NULL);
 	g_object_set(G_OBJECT(handle->agent), "controlling-mode", handle->controlling, NULL);
+  JANUS_LOG(LOG_VERB, "[CONNCHECK] Setting keepalive_conncheck to TRUE\n");
+  g_object_set(G_OBJECT(handle->agent), "keepalive-conncheck", TRUE, NULL);
 	g_signal_connect (G_OBJECT (handle->agent), "candidate-gathering-done",
 		G_CALLBACK (janus_ice_cb_candidate_gathering_done), handle);
 	g_signal_connect (G_OBJECT (handle->agent), "component-state-changed",
