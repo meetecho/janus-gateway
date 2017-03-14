@@ -2040,7 +2040,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 				if(cur_seq) {
 					/* Scan old seq objs backwards */
-					for (;;) {
+					while(cur_seq != NULL) {
 						last_seqs_len++;
 						if(cur_seq->seq == new_seqn) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Received missed sequence number %"SCNu16"\n", handle->handle_id, cur_seq->seq);
