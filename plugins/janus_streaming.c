@@ -513,6 +513,7 @@ typedef struct janus_streaming_rtp_relay_packet {
 #define JANUS_STREAMING_ERROR_CANT_CREATE			456
 #define JANUS_STREAMING_ERROR_UNAUTHORIZED			457
 #define JANUS_STREAMING_ERROR_CANT_SWITCH			458
+#define JANUS_STREAMING_ERROR_CANT_RECORD			459
 #define JANUS_STREAMING_ERROR_UNKNOWN_ERROR			470
 
 
@@ -1955,6 +1956,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			json_t *data = json_object_get(root, "data");
+			janus_recorder *arc = NULL, *vrc = NULL, *drc = NULL;
 			if((audio && source->arc) || (video && source->vrc) || (data && source->drc)) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Recording for audio, video and/or data already started for this stream\n");
@@ -1975,13 +1977,18 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					codec = "opus";
 				else if(strstr(mp->codecs.audio_rtpmap, "pcm") || strstr(mp->codecs.audio_rtpmap, "PCM"))
 					codec = "g711";
+				else if(strstr(mp->codecs.audio_rtpmap, "g722") || strstr(mp->codecs.audio_rtpmap, "G722"))
+					codec = "g722";
 				const char *audiofile = json_string_value(audio);
-				source->arc = janus_recorder_create(NULL, codec, (char *)audiofile);
-				if(source->arc == NULL) {
-					JANUS_LOG(LOG_ERR, "Error starting recorder for audio\n");
-				} else {
-					JANUS_LOG(LOG_INFO, "[%s] Audio recording started\n", mp->name);
+				arc = janus_recorder_create(NULL, codec, (char *)audiofile);
+				if(arc == NULL) {
+					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for audio\n", mp->name);
+					janus_mutex_unlock(&mountpoints_mutex);
+					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
+					g_snprintf(error_cause, 512, "Error starting recorder for audio");
+					goto plugin_response;
 				}
+				JANUS_LOG(LOG_INFO, "[%s] Audio recording started\n", mp->name);
 			}
 			if(video) {
 				const char *codec = NULL;
@@ -1992,22 +1999,49 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				else if(strstr(mp->codecs.video_rtpmap, "h264") || strstr(mp->codecs.video_rtpmap, "H264"))
 					codec = "h264";
 				const char *videofile = json_string_value(video);
-				source->vrc = janus_recorder_create(NULL, codec, (char *)videofile);
-				if(source->vrc == NULL) {
-					JANUS_LOG(LOG_ERR, "Error starting recorder for video\n");
-				} else {
-					JANUS_LOG(LOG_INFO, "[%s] Video recording started\n", mp->name);
+				vrc = janus_recorder_create(NULL, codec, (char *)videofile);
+				if(vrc == NULL) {
+					if(arc != NULL) {
+						janus_recorder_close(arc);
+						janus_recorder_free(arc);
+						arc = NULL;
+					}
+					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for video\n", mp->name);
+					janus_mutex_unlock(&mountpoints_mutex);
+					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
+					g_snprintf(error_cause, 512, "Error starting recorder for video");
+					goto plugin_response;
 				}
+				JANUS_LOG(LOG_INFO, "[%s] Video recording started\n", mp->name);
 			}
 			if(data) {
 				const char *datafile = json_string_value(data);
-				source->drc = janus_recorder_create(NULL, "text", (char *)datafile);
-				if(source->drc == NULL) {
-					JANUS_LOG(LOG_ERR, "Error starting recorder for data\n");
-				} else {
-					JANUS_LOG(LOG_INFO, "[%s] Data recording started\n", mp->name);
+				drc = janus_recorder_create(NULL, "text", (char *)datafile);
+				if(drc == NULL) {
+					if(arc != NULL) {
+						janus_recorder_close(arc);
+						janus_recorder_free(arc);
+						arc = NULL;
+					}
+					if(vrc != NULL) {
+						janus_recorder_close(vrc);
+						janus_recorder_free(vrc);
+						vrc = NULL;
+					}
+					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for data\n", mp->name);
+					janus_mutex_unlock(&mountpoints_mutex);
+					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
+					g_snprintf(error_cause, 512, "Error starting recorder for data");
+					goto plugin_response;
 				}
+				JANUS_LOG(LOG_INFO, "[%s] Data recording started\n", mp->name);
 			}
+			if(arc != NULL)
+				source->arc = arc;
+			if(vrc != NULL)
+				source->vrc = vrc;
+			if(drc != NULL)
+				source->drc = drc;
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Send a success response back */
 			response = json_object();
