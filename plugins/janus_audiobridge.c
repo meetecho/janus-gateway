@@ -3186,10 +3186,14 @@ static void *janus_audiobridge_handler(void *data) {
 				gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 			}
 			/* Done */
-			if(audiobridge) {
+			event = json_object();
+			json_object_set_new(event, "audiobridge", json_string("left"));
+			if(audiobridge != NULL) {
+				json_object_set_new(event, "room", json_integer(audiobridge->room_id));
 				janus_mutex_unlock(&audiobridge->mutex);
 				janus_refcount_decrease(&audiobridge->ref);
 			}
+			json_object_set_new(event, "id", json_integer(participant->user_id));
 			janus_mutex_unlock(&rooms_mutex);
 			if(removed) {
 				/* Only decrease the counter if we were still there */

@@ -41,7 +41,7 @@
  * makes available in your web application can be found in the \ref JS
  * and \ref rest pages. New API transports can be created referring to
  * the \ref transportapi page. If you're interested in monitoring Janus
- * resources, you can refer to the \ref admin page. Event handler plugins
+ * resources, you can refer to the \ref admin page. Event handler
  * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
  * page if you're interested in creating your own.
  *
@@ -55,15 +55,13 @@
  *
  * This is only the first version of the gateway, and as such it is a bit
  * rough at the edges: there is definitely room for improvement, there are
- * bugs, limitations, and things that need to be done. For a quick glance
- * on the most relevant pending stuff check our \ref todo (and, if you're
- * willing to help on any of those, get in touch with us!). Make also
+ * bugs, limitations, and things that need to be done. Make also
  * sure you read the \ref debug page for info on how you can help us
  * fixing issues you might encounter along the road.
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -2598,7 +2596,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
