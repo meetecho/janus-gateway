@@ -1531,8 +1531,12 @@ function Janus(gatewayCallbacks) {
 									pluginHandle.consentDialog(false);
 									return callbacks.error(error);
 								}, 1000);
-							cache[pending] = [callbackUserMedia, null];
-							window.postMessage({ type: 'janusGetScreen', id: pending }, '*');
+							cache[pending] = [callbackUserMedia, null];							var options = ['screen', 'window'];
+							if(chromever >= 50) {
+								options.push('audio');
+								options.push('tab');
+							}
+							window.postMessage({ type: 'janusGetScreen', id: pending, options: options }, '*');
 						}
 					} else if (window.navigator.userAgent.match('Firefox')) {
 						var ffver = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
