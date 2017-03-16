@@ -1531,7 +1531,8 @@ function Janus(gatewayCallbacks) {
 									pluginHandle.consentDialog(false);
 									return callbacks.error(error);
 								}, 1000);
-							cache[pending] = [callbackUserMedia, null];							var options = ['screen', 'window'];
+							cache[pending] = [callbackUserMedia, null];
+							var options = ['screen', 'window'];
 							if(chromever >= 50) {
 								options.push('audio');
 								options.push('tab');
