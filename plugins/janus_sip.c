@@ -776,14 +776,6 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 				}
 			}
 		}
-		if(local_ip == NULL) {
-			local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
-			if(local_ip == NULL) {
-				JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-				local_ip = g_strdup("127.0.0.1");
-			}
-		}
-		JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
 		if(item && item->value)
@@ -816,6 +808,15 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_destroy(config);
 	}
 	config = NULL;
+
+	if(local_ip == NULL) {
+		local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+		if(local_ip == NULL) {
+			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+			local_ip = g_strdup("127.0.0.1");
+		}
+	}
+	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 #ifdef HAVE_SRTP_2
 	/* Init randomizer (for randum numbers in SRTP) */
