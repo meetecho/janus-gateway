@@ -729,12 +729,29 @@ void *janus_pfunix_thread(void *data) {
 		}
 	}
 
-	if(pfd > -1)
+	socklen_t addrlen = sizeof(struct sockaddr_un);
+	void *addr = g_malloc0(addrlen+1);
+	if(pfd > -1) {
+		/* Unlink the path name first */
+		if(getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
+			unlink(((struct sockaddr_un *)addr)->sun_path);
+		}
+		/* Close the socket */
 		close(pfd);
+	}
 	pfd = -1;
-	if(admin_pfd > -1)
+	if(admin_pfd > -1) {
+		/* Unlink the path name first */
+		if(getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
+			unlink(((struct sockaddr_un *)addr)->sun_path);
+		}
+		/* Close the socket */
 		close(admin_pfd);
+	}
 	admin_pfd = -1;
+	g_free(addr);
 
 	g_hash_table_destroy(clients_by_path);
 	g_hash_table_destroy(clients_by_fd);
