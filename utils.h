@@ -14,7 +14,6 @@
 
 #include <stdint.h>
 #include <glib.h>
-#include <netinet/in.h>
 #include <jansson.h>
 
 #define JANUS_JSON_STRING			JSON_STRING
@@ -124,23 +123,6 @@ int janus_get_codec_pt(const char *sdp, const char *codec);
  * @param pt The payload type to look for
  * @returns The codec name, if found, NULL otherwise */
 const char *janus_get_codec_from_pt(const char *sdp, int pt);
-
-/*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
- * @param ip The IP address to check
- * @param[in,out] family The address family of the address, set by the method if valid
- * @returns true if the address is valid, false otherwise */
-gboolean janus_is_ip_valid(const char *ip, int *family);
-
-/*! \brief Convert a sockaddr address to an IP string
- * \note The resulting string is allocated, which means the caller must free it itself when done
- * @param address The sockaddr address to convert
- * @returns A string containing the IP address, if successful, NULL otherwise */
-char *janus_address_to_ip(struct sockaddr *address);
-
-/*! \brief Get the port from a sockaddr address
- * @param address The sockaddr address to get the port from
- * @returns The port number, if successful, 0 otherwise */
-uint16_t janus_address_to_port(struct sockaddr *address);
 
 /*! \brief Create and lock a PID file
  * @param file Path to the PID file to use

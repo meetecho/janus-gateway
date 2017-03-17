@@ -72,6 +72,7 @@
 #include "../rtcp.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
+#include "../ip-utils.h"
 
 
 /* Plugin information */
@@ -175,7 +176,7 @@ static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
-static char local_ip[INET6_ADDRSTRLEN];
+static char *local_ip = NULL;
 static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
@@ -526,8 +527,7 @@ static int janus_sip_parse_proxy_uri(janus_sip_uri_t *sip_uri, const char *data)
 
 
 /* SIP watchdog/garbage collector (sort of) */
-void *janus_sip_watchdog(void *data);
-void *janus_sip_watchdog(void *data) {
+static void *janus_sip_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "SIP watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -614,37 +614,6 @@ void *janus_sip_watchdog(void *data) {
 	}
 	JANUS_LOG(LOG_INFO, "SIP watchdog stopped\n");
 	return NULL;
-}
-
-
-static void janus_sip_detect_local_ip(char *buf, size_t buflen) {
-	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
-
-	struct sockaddr_in addr;
-	socklen_t len;
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd == -1)
-		goto error;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(1);
-	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
-	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
-		goto error;
-	len = sizeof(addr);
-	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
-		goto error;
-	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
-			buf, buflen,
-			NULL, 0, NI_NUMERICHOST) != 0)
-		goto error;
-	close(fd);
-	return;
-
-error:
-	if (fd != -1)
-		close(fd);
-	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-	g_strlcpy(buf, "127.0.0.1", buflen);
 }
 
 
@@ -787,48 +756,33 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL) {
 		janus_config_print(config);
 
-		gboolean local_ip_set = FALSE;
 		janus_config_item *item = janus_config_get_item_drilldown(config, "general", "local_ip");
 		if(item && item->value) {
-			int family;
-			if (!janus_is_ip_valid(item->value, &family)) {
-				JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+			/* Verify that the address is valid */
+			struct ifaddrs *ifas = NULL;
+			janus_network_address iface;
+			janus_network_address_string_buffer ibuf;
+			if(getifaddrs(&ifas) || ifas == NULL) {
+				JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 			} else {
-				/* Verify that we can actually bind to that address */
-				int fd = socket(family, SOCK_DGRAM, 0);
-				if (fd == -1) {
-					JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+				if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
+					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
 				} else {
-					int r;
-					struct sockaddr_storage ss;
-					socklen_t addrlen;
-					memset(&ss, 0, sizeof(ss));
-					if (family == AF_INET) {
-						struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
-						addr4->sin_family = AF_INET;
-						addr4->sin_port = 0;
-						inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
-						addrlen = sizeof(struct sockaddr_in);
+					if(janus_network_address_to_string_buffer(&iface, &ibuf) != 0 || janus_network_address_string_buffer_is_null(&ibuf)) {
+						JANUS_LOG(LOG_WARN, "Error getting local IP address from %s, falling back to detecting IP address...\n", item->value);
 					} else {
-						struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
-						addr6->sin6_family = AF_INET6;
-						addr6->sin6_port = 0;
-						inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
-						addrlen = sizeof(struct sockaddr_in6);
-					}
-					r = bind(fd, (const struct sockaddr*)&ss, addrlen);
-					close(fd);
-					if (r < 0) {
-						JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
-					} else {
-						g_strlcpy(local_ip, item->value, sizeof(local_ip));
-						local_ip_set = TRUE;
+						local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
 					}
 				}
 			}
 		}
-		if (!local_ip_set)
-			janus_sip_detect_local_ip(local_ip, sizeof(local_ip));
+		if(local_ip == NULL) {
+			local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+			if(local_ip == NULL) {
+				JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+				local_ip = g_strdup("127.0.0.1");
+			}
+		}
 		JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
@@ -935,6 +889,8 @@ void janus_sip_destroy(void) {
 
 	/* Deinitialize sofia */
 	su_deinit();
+
+	g_free(local_ip);
 
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_SIP_NAME);
 }
@@ -3200,7 +3156,7 @@ static void *janus_sip_relay_thread(void *data) {
 	struct sockaddr_in server_addr;
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
-	if((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {	/* Not a numeric IP... */
+	if(inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
 		struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
 		if(!host) {
 			JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
@@ -3236,10 +3192,11 @@ static void *janus_sip_relay_thread(void *data) {
 
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {
+			if(session->media.remote_ip != NULL && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
 				janus_sip_connect_sockets(session, &server_addr);
 			} else {
-				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't update session details (missing or invalid remote IP address)\n", session->account.username);
+				JANUS_LOG(LOG_ERR, "[SIP-%p] Couldn't update session details: missing or invalid remote IP address? (%s)\n",
+					session->account.username, session->media.remote_ip);
 			}
 			session->media.updated = FALSE;
 		}
@@ -3297,6 +3254,10 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
 					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
+				if(errno == 0) {
+					/* Maybe not a breaking error? */
+					continue;
+				}
 				if(session->media.updated)
 					break;
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */

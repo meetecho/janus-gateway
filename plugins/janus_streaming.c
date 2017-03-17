@@ -88,7 +88,7 @@ The following options are only valid for the 'rstp' type:
 url = RTSP stream URL (only if type=rtsp)
 rtsp_user = RTSP authorization username (only if type=rtsp)
 rtsp_pwd = RTSP authorization password (only if type=rtsp)
-rtspnetwork = network interface IP address or device name to listen on when receiving RTSP streams
+rtspiface = network interface IP address or device name to listen on when receiving RTSP streams
 \endverbatim
  *
  * \section streamapi Streaming API
@@ -266,7 +266,7 @@ static struct janus_json_parameter rtsp_parameters[] = {
 	{"rtsp_pwd", JSON_STRING, 0},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
-	{"rtspnetwork", JSON_STRING, 0}
+	{"rtspiface", JSON_STRING, 0}
 };
 #endif
 static struct janus_json_parameter rtp_audio_parameters[] = {
@@ -513,12 +513,12 @@ typedef struct janus_streaming_rtp_relay_packet {
 #define JANUS_STREAMING_ERROR_CANT_CREATE			456
 #define JANUS_STREAMING_ERROR_UNAUTHORIZED			457
 #define JANUS_STREAMING_ERROR_CANT_SWITCH			458
+#define JANUS_STREAMING_ERROR_CANT_RECORD			459
 #define JANUS_STREAMING_ERROR_UNKNOWN_ERROR			470
 
 
 /* Streaming watchdog/garbage collector (sort of) */
-void *janus_streaming_watchdog(void *data);
-void *janus_streaming_watchdog(void *data) {
+static void *janus_streaming_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "Streaming watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -578,30 +578,6 @@ void *janus_streaming_watchdog(void *data) {
 	}
 	JANUS_LOG(LOG_INFO, "Streaming watchdog stopped\n");
 	return NULL;
-}
-
-static int janus_streaming_lookup_network_interface(const struct ifaddrs *ifas, const char *iface, janus_network_address *result) {
-	if(!result) {
-		return -1;
-	} else if(iface) {
-		janus_network_query_config q;
-		if(janus_prepare_network_device_query(iface, janus_ip_network_query_options_ipv4 | janus_ip_network_query_options_name, &q)) {
-			JANUS_LOG(LOG_ERR, "Unable to prepare query of network devices by name and/or IPv4 address for values matching: %s\n", iface);
-			return -1;
-		} else {
-			const struct ifaddrs *found = janus_query_network_devices(ifas, &q);
-			if(!found || janus_get_network_device_address(found, result)) {
-				JANUS_LOG(LOG_ERR, "Unable to retrieve address from matching network device for: %s\n", iface);
-				return -1;
-			} else {
-				JANUS_LOG(LOG_VERB, "Successfully retrieved address from matching network device for: %s\n", iface);
-				return 0;
-			}
-		}
-	} else {
-		janus_network_address_nullify(result);
-		return 0;
-	}
 }
 
 /* Plugin implementation */
@@ -715,7 +691,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						cl = cl->next;
 						continue;
 					}
-					if(janus_streaming_lookup_network_interface(ifas, aiface->value, &audio_iface)) {
+					if(janus_network_lookup_interface(ifas, aiface->value, &audio_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for audio...\n", cat->name);
 						cl = cl->next;
 						continue;
@@ -747,7 +723,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						cl = cl->next;
 						continue;
 					}
-					if(janus_streaming_lookup_network_interface(ifas, diface->value, &data_iface)) {
+					if(janus_network_lookup_interface(ifas, diface->value, &data_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for data...\n", cat->name);
 						cl = cl->next;
 						continue;
@@ -759,7 +735,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						cl = cl->next;
 						continue;
 					}
-					if(janus_streaming_lookup_network_interface(ifas, viface->value, &video_iface)) {
+					if(janus_network_lookup_interface(ifas, viface->value, &video_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for video...\n", cat->name);
 						cl = cl->next;
 						continue;
@@ -961,7 +937,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *password = janus_config_get_item(cat, "rtsp_pwd");
 				janus_config_item *audio = janus_config_get_item(cat, "audio");
 				janus_config_item *video = janus_config_get_item(cat, "video");
-				janus_config_item *iface = janus_config_get_item(cat, "rtspnetwork");
+				janus_config_item *iface = janus_config_get_item(cat, "rtspiface");
 				janus_network_address iface_value;
 				if(file == NULL || file->value == NULL) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', missing mandatory information...\n", cat->name);
@@ -978,7 +954,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						cl = cl->next;
 						continue;
 					}
-					if(janus_streaming_lookup_network_interface(ifas, iface->value, &iface_value)) {
+					if(janus_network_lookup_interface(ifas, iface->value, &iface_value) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', invalid network interface configuration for stream...\n", cat->name);
 						cl = cl->next;
 						continue;
@@ -1436,7 +1412,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				json_t *aiface = json_object_get(root, "audioiface");
 				if(aiface) {
 					const char *miface = (const char *)json_string_value(aiface);
-					if(janus_streaming_lookup_network_interface(ifas, miface, &audio_iface)) {
+					if(janus_network_lookup_interface(ifas, miface, &audio_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for audio...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for audio" : "Unable to query network device information");
@@ -1471,7 +1447,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				json_t *viface = json_object_get(root, "videoiface");
 				if(viface) {
 					const char *miface = (const char *)json_string_value(viface);
-					if(janus_streaming_lookup_network_interface(ifas, miface, &video_iface)) {
+					if(janus_network_lookup_interface(ifas, miface, &video_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for video...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for video" : "Unable to query network device information");
@@ -1497,7 +1473,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				json_t *diface = json_object_get(root, "dataiface");
 				if(diface) {
 					const char *miface = (const char *)json_string_value(diface);
-					if(janus_streaming_lookup_network_interface(ifas, miface, &data_iface)) {
+					if(janus_network_lookup_interface(ifas, miface, &data_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', invalid network interface configuration for data...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for data" : "Unable to query network device information");
@@ -1703,10 +1679,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				g_snprintf(error_cause, 512, "Can't add 'rtsp' stream, no audio or video have to be streamed...");
 				goto plugin_response;
 			} else {
-				json_t *iface = json_object_get(root, "rtspnetwork");
+				json_t *iface = json_object_get(root, "rtspiface");
 				if(iface) {
 					const char *miface = (const char *)json_string_value(iface);
-					if(janus_streaming_lookup_network_interface(ifas, miface, &multicast_iface)) {
+					if(janus_network_lookup_interface(ifas, miface, &multicast_iface) != 0) {
 						JANUS_LOG(LOG_ERR, "Can't add 'rtsp' stream '%s', invalid network interface configuration for stream...\n", (const char *)json_string_value(name));
 						error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for stream" : "Unable to query network device information");
@@ -1980,6 +1956,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			json_t *audio = json_object_get(root, "audio");
 			json_t *video = json_object_get(root, "video");
 			json_t *data = json_object_get(root, "data");
+			janus_recorder *arc = NULL, *vrc = NULL, *drc = NULL;
 			if((audio && source->arc) || (video && source->vrc) || (data && source->drc)) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				JANUS_LOG(LOG_ERR, "Recording for audio, video and/or data already started for this stream\n");
@@ -2000,13 +1977,18 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					codec = "opus";
 				else if(strstr(mp->codecs.audio_rtpmap, "pcm") || strstr(mp->codecs.audio_rtpmap, "PCM"))
 					codec = "g711";
+				else if(strstr(mp->codecs.audio_rtpmap, "g722") || strstr(mp->codecs.audio_rtpmap, "G722"))
+					codec = "g722";
 				const char *audiofile = json_string_value(audio);
-				source->arc = janus_recorder_create(NULL, codec, (char *)audiofile);
-				if(source->arc == NULL) {
-					JANUS_LOG(LOG_ERR, "Error starting recorder for audio\n");
-				} else {
-					JANUS_LOG(LOG_INFO, "[%s] Audio recording started\n", mp->name);
+				arc = janus_recorder_create(NULL, codec, (char *)audiofile);
+				if(arc == NULL) {
+					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for audio\n", mp->name);
+					janus_mutex_unlock(&mountpoints_mutex);
+					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
+					g_snprintf(error_cause, 512, "Error starting recorder for audio");
+					goto plugin_response;
 				}
+				JANUS_LOG(LOG_INFO, "[%s] Audio recording started\n", mp->name);
 			}
 			if(video) {
 				const char *codec = NULL;
@@ -2017,22 +1999,49 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				else if(strstr(mp->codecs.video_rtpmap, "h264") || strstr(mp->codecs.video_rtpmap, "H264"))
 					codec = "h264";
 				const char *videofile = json_string_value(video);
-				source->vrc = janus_recorder_create(NULL, codec, (char *)videofile);
-				if(source->vrc == NULL) {
-					JANUS_LOG(LOG_ERR, "Error starting recorder for video\n");
-				} else {
-					JANUS_LOG(LOG_INFO, "[%s] Video recording started\n", mp->name);
+				vrc = janus_recorder_create(NULL, codec, (char *)videofile);
+				if(vrc == NULL) {
+					if(arc != NULL) {
+						janus_recorder_close(arc);
+						janus_recorder_free(arc);
+						arc = NULL;
+					}
+					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for video\n", mp->name);
+					janus_mutex_unlock(&mountpoints_mutex);
+					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
+					g_snprintf(error_cause, 512, "Error starting recorder for video");
+					goto plugin_response;
 				}
+				JANUS_LOG(LOG_INFO, "[%s] Video recording started\n", mp->name);
 			}
 			if(data) {
 				const char *datafile = json_string_value(data);
-				source->drc = janus_recorder_create(NULL, "text", (char *)datafile);
-				if(source->drc == NULL) {
-					JANUS_LOG(LOG_ERR, "Error starting recorder for data\n");
-				} else {
-					JANUS_LOG(LOG_INFO, "[%s] Data recording started\n", mp->name);
+				drc = janus_recorder_create(NULL, "text", (char *)datafile);
+				if(drc == NULL) {
+					if(arc != NULL) {
+						janus_recorder_close(arc);
+						janus_recorder_free(arc);
+						arc = NULL;
+					}
+					if(vrc != NULL) {
+						janus_recorder_close(vrc);
+						janus_recorder_free(vrc);
+						vrc = NULL;
+					}
+					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for data\n", mp->name);
+					janus_mutex_unlock(&mountpoints_mutex);
+					error_code = JANUS_STREAMING_ERROR_CANT_RECORD;
+					g_snprintf(error_cause, 512, "Error starting recorder for data");
+					goto plugin_response;
 				}
+				JANUS_LOG(LOG_INFO, "[%s] Data recording started\n", mp->name);
 			}
+			if(arc != NULL)
+				source->arc = arc;
+			if(vrc != NULL)
+				source->vrc = vrc;
+			if(drc != NULL)
+				source->drc = drc;
 			janus_mutex_unlock(&mountpoints_mutex);
 			/* Send a success response back */
 			response = json_object();
@@ -2679,7 +2688,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 			if(!janus_network_address_is_null(iface)) {
 				if(iface->family == AF_INET) {
 					mreq.imr_interface = iface->ipv4;
-					(void) janus_network_address_to_string_buffer(iface, &address_representation); // this is OK: if we get here iface must be non-NULL
+					(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
 					JANUS_LOG(LOG_INFO, "[%s] %s listener using interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
 				} else {
 					JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid multicast address type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);
@@ -2714,7 +2723,7 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 		if(!IN_MULTICAST(ntohl(mcast)) && !janus_network_address_is_null(iface)) {
 			if(iface->family == AF_INET) {
 				address.sin_addr = iface->ipv4;
-				(void) janus_network_address_to_string_buffer(iface, &address_representation); // this is OK: if we get here iface must be non-NULL
+				(void) janus_network_address_to_string_buffer(iface, &address_representation); /* This is OK: if we get here iface must be non-NULL */
 				JANUS_LOG(LOG_INFO, "[%s] %s listener restricted to interface address: %s\n", mountpointname, listenername, janus_network_address_string_from_buffer(&address_representation));
 			} else {
 				JANUS_LOG(LOG_ERR, "[%s] %s listener: invalid address/restriction type (only IPv4 is currently supported by this plugin)\n", mountpointname, listenername);

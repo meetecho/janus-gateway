@@ -80,6 +80,9 @@ Whether to force rtcp-mux or not (whether RTP and RTCP will always be muxed) (de
 .BR \-q ", " \-\-max-nack-queue=\fInumber\fR
 Maximum size of the NACK queue per user for retransmissions
 .TP
+.BR \-t ", " \-\-no-media-timer=\fInumber\fR
+Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this
+.TP
 .BR \-r ", " \-\-rtp-port-range=\fImin\-max\fR
 Port range to use for RTP/RTCP
 .TP

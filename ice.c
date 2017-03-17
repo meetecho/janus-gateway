@@ -17,6 +17,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netdb.h>
 #include <fcntl.h>
 #include <stun/usages/bind.h>
@@ -31,6 +32,7 @@
 #include "rtp.h"
 #include "rtcp.h"
 #include "apierror.h"
+#include "ip-utils.h"
 #include "events.h"
 
 /* STUN server/port, if any */
@@ -738,14 +740,18 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	JANUS_LOG(LOG_INFO, "STUN server to use: %s:%u\n", stun_server, stun_port);
 	/* Resolve address to get an IP */
 	struct addrinfo *res = NULL;
-	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0) {
+	janus_network_address addr;
+	janus_network_address_string_buffer addr_buf;
+	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0 ||
+			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		if(res)
 			freeaddrinfo(res);
 		return -1;
 	}
-	janus_stun_server = janus_address_to_ip(res->ai_addr);
 	freeaddrinfo(res);
+	janus_stun_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	if(janus_stun_server == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
 		return -1;
@@ -759,6 +765,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	uint8_t buf[1500];
 	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
 	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
+	/* TODO Use the janus_network_address info to drive the socket creation */
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
 	struct sockaddr_in address, remote;
 	address.sin_family = AF_INET;
@@ -809,21 +816,29 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-		janus_set_public_ip(public_ip);
-		g_free(public_ip);
-		close(fd);
+		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
+		} else {
+			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+			janus_set_public_ip(public_ip);
+			close(fd);
+		}
 		return 0;
 	}
 	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		char *public_ip = janus_address_to_ip((struct sockaddr *)&address);
-		JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
-		janus_set_public_ip(public_ip);
-		g_free(public_ip);
-		close(fd);
+		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
+			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
+		} else {
+			const char *public_ip = janus_network_address_string_from_buffer(&addr_buf);
+			JANUS_LOG(LOG_INFO, "  >> Our public address is %s\n", public_ip);
+			janus_set_public_ip(public_ip);
+			close(fd);
+		}
 		return 0;
 	}
 	close(fd);
@@ -850,16 +865,18 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 	}
 	/* Resolve address to get an IP */
 	struct addrinfo *res = NULL;
-	if(getaddrinfo(turn_server, NULL, NULL, &res) != 0) {
+	janus_network_address addr;
+	janus_network_address_string_buffer addr_buf;
+	if(getaddrinfo(turn_server, NULL, NULL, &res) != 0 ||
+			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
+			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
 		if(res)
 			freeaddrinfo(res);
 		return -1;
 	}
-	if(janus_turn_server != NULL)
-		g_free(janus_turn_server);
-	janus_turn_server = janus_address_to_ip(res->ai_addr);
 	freeaddrinfo(res);
+	janus_turn_server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 	if(janus_turn_server == NULL) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", turn_server);
 		return -1;
@@ -2024,7 +2041,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				}
 				if(cur_seq) {
 					/* Scan old seq objs backwards */
-					for (;;) {
+					while(cur_seq != NULL) {
 						last_seqs_len++;
 						if(cur_seq->seq == new_seqn) {
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Received missed sequence number %"SCNu16"\n", handle->handle_id, cur_seq->seq);
@@ -2650,6 +2667,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 #endif
 		NULL);
 	handle->agent_created = janus_get_monotonic_time();
+	handle->srtp_errors_count = 0;
+	handle->last_srtp_error = 0;
 	/* Any STUN server to use? */
 	if(janus_stun_server != NULL && janus_stun_port > 0) {
 		g_object_set(G_OBJECT(handle->agent),
@@ -2784,6 +2803,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 		audio_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 		audio_stream->video_rtcp_ctx->tb = 90000;
+		audio_stream->noerrorlog = FALSE;
 		janus_mutex_init(&audio_stream->mutex);
 		audio_stream->components = g_hash_table_new(NULL, NULL);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->audio_id), audio_stream);
@@ -2937,6 +2957,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 		video_stream->video_rtcp_ctx->tb = 90000;
 		video_stream->components = g_hash_table_new(NULL, NULL);
+		video_stream->noerrorlog = FALSE;
 		janus_mutex_init(&video_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->video_id), video_stream);
 		if(!have_turnrest_credentials) {
@@ -3115,6 +3136,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		/* FIXME By default, if we're being called we're DTLS clients, but this may be changed by ICE... */
 		data_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 		data_stream->components = g_hash_table_new(NULL, NULL);
+		data_stream->noerrorlog = FALSE;
 		janus_mutex_init(&data_stream->mutex);
 		g_hash_table_insert(handle->streams, GUINT_TO_POINTER(handle->data_id), data_stream);
 		handle->data_stream = data_stream;
@@ -3166,7 +3188,7 @@ void *janus_ice_send_thread(void *data) {
 	gint64 before = janus_get_monotonic_time(),
 		audio_rtcp_last_rr = before, audio_rtcp_last_sr = before, audio_last_event = before,
 		video_rtcp_last_rr = before, video_rtcp_last_sr = before, video_last_event = before,
-		last_nack_cleanup = before;
+		last_srtp_summary = before, last_nack_cleanup = before;
 	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 		if(handle->queued_packets != NULL) {
 			pkt = g_async_queue_timeout_pop(handle->queued_packets, 500000);
@@ -3385,6 +3407,16 @@ void *janus_ice_send_thread(void *data) {
 			janus_cleanup_nack_buffer(now, handle->video_stream);
 			last_nack_cleanup = now;
 		}
+		/* Check if we should also print a summary of SRTP-related errors */
+		if(now-last_srtp_summary >= (2*G_USEC_PER_SEC)) {
+			if(handle->srtp_errors_count > 0) {
+				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got %d SRTP/SRTCP errors in the last few seconds (last error: %s)\n",
+					handle->handle_id, handle->srtp_errors_count, janus_srtp_error_str(handle->last_srtp_error));
+				handle->srtp_errors_count = 0;
+				handle->last_srtp_error = 0;
+			}
+			last_srtp_summary = now;
+		}
 
 		/* Now let's get on with the packets */
 		if(pkt == NULL) {
@@ -3444,7 +3476,7 @@ void *janus_ice_send_thread(void *data) {
 			if(!stream->cdone) {
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s candidates not gathered yet for stream??\n", handle->handle_id, video ? "video" : "audio");
-					stream->noerrorlog = 1;	/* Don't flood with the same error all over again */
+					stream->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 				}
 				g_free(pkt->data);
 				pkt->data = NULL;
@@ -3452,11 +3484,11 @@ void *janus_ice_send_thread(void *data) {
 				pkt = NULL;
 				continue;
 			}
-			stream->noerrorlog = 0;
+			stream->noerrorlog = FALSE;
 			if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out) {
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"]     %s stream (#%u) component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio", stream->stream_id);
-					component->noerrorlog = 1;	/* Don't flood with the same error all over again */
+					component->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 				}
 				g_free(pkt->data);
 				pkt->data = NULL;
@@ -3464,7 +3496,7 @@ void *janus_ice_send_thread(void *data) {
 				pkt = NULL;
 				continue;
 			}
-			component->noerrorlog = 0;
+			component->noerrorlog = FALSE;
 			if(pkt->encrypted) {
 				/* Already SRTCP */
 				int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, pkt->length, (const gchar *)pkt->data);
@@ -3523,13 +3555,14 @@ void *janus_ice_send_thread(void *data) {
 					res = srtp_protect_rtcp(component->dtls->srtp_out, sbuf, &protected);
 					janus_mutex_unlock(&component->dtls->srtp_mutex);
 				}
-				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTCP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected);
 				if(res != srtp_err_status_ok) {
-					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTCP protect error... %s (len=%d-->%d)...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected);
+					/* We don't spam the logs for every SRTP error: just take note of this, and print a summary later */
+					handle->srtp_errors_count++;
+					handle->last_srtp_error = res;
+					/* If we're debugging, though, print every occurrence */
+					JANUS_LOG(LOG_DBG, "[%"SCNu64"] ... SRTCP protect error... %s (len=%d-->%d)...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected);
 				} else {
 					/* Shoot! */
-					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... Sending SRTCP packet (pt=%u, seq=%u, ts=%u)...\n", handle->handle_id,
-						//~ header->paytype, ntohs(header->seq_number), ntohl(header->timestamp));
 					int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, sbuf);
 					if(sent < protected) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
@@ -3563,7 +3596,7 @@ void *janus_ice_send_thread(void *data) {
 				if(!stream->cdone) {
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"]     %s candidates not gathered yet for stream??\n", handle->handle_id, video ? "video" : "audio");
-						stream->noerrorlog = 1;	/* Don't flood with the same error all over again */
+						stream->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 					}
 					g_free(pkt->data);
 					pkt->data = NULL;
@@ -3571,11 +3604,11 @@ void *janus_ice_send_thread(void *data) {
 					pkt = NULL;
 					continue;
 				}
-				stream->noerrorlog = 0;
+				stream->noerrorlog = FALSE;
 				if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_out) {
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"]     %s stream component has no valid SRTP session (yet?)\n", handle->handle_id, video ? "video" : "audio");
-						component->noerrorlog = 1;	/* Don't flood with the same error all over again */
+						component->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 					}
 					g_free(pkt->data);
 					pkt->data = NULL;
@@ -3583,7 +3616,7 @@ void *janus_ice_send_thread(void *data) {
 					pkt = NULL;
 					continue;
 				}
-				component->noerrorlog = 0;
+				component->noerrorlog = FALSE;
 				if(pkt->encrypted) {
 					/* Already RTP (probably a retransmission?) */
 					rtp_header *header = (rtp_header *)pkt->data;
@@ -3603,16 +3636,17 @@ void *janus_ice_send_thread(void *data) {
 					}
 					int protected = pkt->length;
 					int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
-					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected);
 					if(res != srtp_err_status_ok) {
+						/* We don't spam the logs for every SRTP error: just take note of this, and print a summary later */
+						handle->srtp_errors_count++;
+						handle->last_srtp_error = res;
+						/* If we're debugging, though, print every occurrence */
 						rtp_header *header = (rtp_header *)sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
-						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
+						JANUS_LOG(LOG_DBG, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
 					} else {
 						/* Shoot! */
-						//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... Sending SRTP packet (pt=%u, ssrc=%u, seq=%u, ts=%u)...\n", handle->handle_id,
-							//~ header->type, ntohl(header->ssrc), ntohs(header->seq_number), ntohl(header->timestamp));
 						int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, sbuf);
 						if(sent < protected) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
@@ -3680,7 +3714,7 @@ void *janus_ice_send_thread(void *data) {
 				if(!stream->cdone) {
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !stream->noerrorlog) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SCTP candidates not gathered yet for stream??\n", handle->handle_id);
-						stream->noerrorlog = 1;	/* Don't flood with the same error all over again */
+						stream->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 					}
 					g_free(pkt->data);
 					pkt->data = NULL;
@@ -3688,11 +3722,11 @@ void *janus_ice_send_thread(void *data) {
 					pkt = NULL;
 					continue;
 				}
-				stream->noerrorlog = 0;
+				stream->noerrorlog = FALSE;
 				if(!component->dtls) {
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT) && !component->noerrorlog) {
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"]     SCTP stream component has no valid DTLS session (yet?)\n", handle->handle_id);
-						component->noerrorlog = 1;	/* Don't flood with the same error all over again */
+						component->noerrorlog = TRUE;	/* Don't flood with the same error all over again */
 					}
 					g_free(pkt->data);
 					pkt->data = NULL;
@@ -3700,7 +3734,7 @@ void *janus_ice_send_thread(void *data) {
 					pkt = NULL;
 					continue;
 				}
-				component->noerrorlog = 0;
+				component->noerrorlog = FALSE;
 				janus_dtls_wrap_sctp_data(component->dtls, pkt->data, pkt->length);
 #endif
 			}

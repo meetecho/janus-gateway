@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.2.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -142,6 +142,7 @@ AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       AC_DEFINE(HAVE_DTLS_SETTIMEOUT)
       AC_MSG_NOTICE([Assuming DTLSv1_set_initial_timeout_duration is available])
       ])
+AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
 
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
@@ -237,9 +238,9 @@ PKG_CHECK_MODULES([LIBCURL],
                   ],
                   [
                     AS_IF([test "x$enable_turn_rest_api" = "xyes"],
-                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-turn-rest-api])])
+                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-turn-rest-api])])
                     AS_IF([test "x$enable_sample_event_handler" = "xyes"],
-                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-sample-event-handler])])
+                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-sample-event-handler])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
 AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])
@@ -452,7 +453,7 @@ PKG_CHECK_MODULES([SOFIA],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_sip" = "xyes"],
-                          [AC_MSG_ERROR([sofia-sip-ua not found not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                          [AC_MSG_ERROR([sofia-sip-ua not found. See README.md for installation instructions or use --disable-plugin-sip])])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
@@ -478,7 +479,7 @@ PKG_CHECK_MODULES([OPUS],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
-                          [AC_MSG_ERROR([libopus not found not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
+                          [AC_MSG_ERROR([libopus not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
                   ])
 AC_SUBST([OPUS_CFLAGS])
 AC_SUBST([OPUS_LIBS])
@@ -491,7 +492,7 @@ PKG_CHECK_MODULES([OGG],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_voicemail" = "xyes"],
-                          [AC_MSG_ERROR([libogg not found not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
+                          [AC_MSG_ERROR([libogg not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
                   ])
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
@@ -562,8 +563,13 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
 	[echo "libsrtp version:           2.0.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "SSL/crypto library:        BoringSSL"],
-	[echo "SSL/crypto library:        OpenSSL"])
+	[echo "SSL/crypto library:        BoringSSL"
+	 AM_COND_IF([ENABLE_DTLS_SETTIMEOUT],
+		[echo "DTLS set-timeout:          yes"],
+		[echo "DTLS set-timeout:          no"])
+	],
+	[echo "SSL/crypto library:        OpenSSL"
+	 echo "DTLS set-timeout:          not available"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])

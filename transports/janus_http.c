@@ -40,6 +40,7 @@
 #include "../apierror.h"
 #include "../config.h"
 #include "../mutex.h"
+#include "../ip-utils.h"
 #include "../utils.h"
 
 
@@ -203,6 +204,27 @@ static gboolean janus_http_is_allowed(const char *ip, gboolean admin) {
 	}
 	janus_mutex_unlock(&access_list_mutex);
 	return FALSE;
+}
+
+/* Helper method to get the port from a struct sockaddr */
+static uint16_t janus_http_sockaddr_to_port(struct sockaddr *address) {
+	if(address == NULL)
+		return 0;
+	struct sockaddr_in *sin = NULL;
+	struct sockaddr_in6 *sin6 = NULL;
+
+	switch(address->sa_family) {
+		case AF_INET:
+			sin = (struct sockaddr_in *)address;
+			return ntohs(sin->sin_port);
+		case AF_INET6:
+			sin6 = (struct sockaddr_in6 *)address;
+			return ntohs(sin6->sin6_port);
+		default:
+			/* Unknown family */
+			break;
+	}
+	return 0;
 }
 
 /* Random string helper (for transactions) */
@@ -1002,28 +1024,40 @@ void janus_http_session_over(void *transport, guint64 session_id, gboolean timeo
 
 /* Connection notifiers */
 int janus_http_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	char *ip = janus_address_to_ip((struct sockaddr *)addr);
+	janus_network_address naddr;
+	janus_network_address_string_buffer naddr_buf;
+	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
+			janus_network_address_to_string_buffer(&naddr, &naddr_buf) != 0) {
+		JANUS_LOG(LOG_WARN, "Error trying to resolve connection address...\n");
+		/* Should this be MHD_NO instead? */
+		return MHD_YES;
+	}
+	const char *ip = janus_network_address_string_from_buffer(&naddr_buf);
 	JANUS_LOG(LOG_HUGE, "New connection on REST API: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_http_is_allowed(ip, FALSE)) {
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the Janus API interface\n", ip);
-		g_free(ip);
 		return MHD_NO;
 	}
-	g_free(ip);
 	return MHD_YES;
 }
 
 int janus_http_admin_client_connect(void *cls, const struct sockaddr *addr, socklen_t addrlen) {
-	char *ip = janus_address_to_ip((struct sockaddr *)addr);
+	janus_network_address naddr;
+	janus_network_address_string_buffer naddr_buf;
+	if(janus_network_address_from_sockaddr((struct sockaddr *)addr, &naddr) != 0 ||
+			janus_network_address_to_string_buffer(&naddr, &naddr_buf) != 0) {
+		JANUS_LOG(LOG_WARN, "Error trying to resolve Admin connection address...\n");
+		/* Should this be MHD_NO instead? */
+		return MHD_YES;
+	}
+	const char *ip = janus_network_address_string_from_buffer(&naddr_buf);
 	JANUS_LOG(LOG_HUGE, "New connection on admin/monitor: %s\n", ip);
 	/* Any access limitation based on this IP address? */
 	if(!janus_http_is_allowed(ip, TRUE)) {
 		JANUS_LOG(LOG_ERR, "IP %s is unauthorized to connect to the admin/monitor interface\n", ip);
-		g_free(ip);
 		return MHD_NO;
 	}
-	g_free(ip);
 	return MHD_YES;
 }
 
@@ -1076,10 +1110,14 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			json_object_set_new(info, "admin_api", json_false());
 			const union MHD_ConnectionInfo *conninfo = MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
 			if(conninfo != NULL) {
-				char *ip = janus_address_to_ip((struct sockaddr *)conninfo->client_addr);
-				json_object_set_new(info, "ip", json_string(ip));
-				g_free(ip);
-				uint16_t port = janus_address_to_port((struct sockaddr *)conninfo->client_addr);
+				janus_network_address addr;
+				janus_network_address_string_buffer addr_buf;
+				if(janus_network_address_from_sockaddr((struct sockaddr *)conninfo->client_addr, &addr) == 0 &&
+						janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+					const char *ip = janus_network_address_string_from_buffer(&addr_buf);
+					json_object_set_new(info, "ip", json_string(ip));
+				}
+				uint16_t port = janus_http_sockaddr_to_port((struct sockaddr *)conninfo->client_addr);
 				json_object_set_new(info, "port", json_integer(port));
 			}
 			gateway->notify_event(&janus_http_transport, msg, info);
@@ -1472,10 +1510,14 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 			json_object_set_new(info, "admin_api", json_true());
 			const union MHD_ConnectionInfo *conninfo = MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
 			if(conninfo != NULL) {
-				char *ip = janus_address_to_ip((struct sockaddr *)conninfo->client_addr);
-				json_object_set_new(info, "ip", json_string(ip));
-				g_free(ip);
-				uint16_t port = janus_address_to_port((struct sockaddr *)conninfo->client_addr);
+				janus_network_address addr;
+				janus_network_address_string_buffer addr_buf;
+				if(janus_network_address_from_sockaddr((struct sockaddr *)conninfo->client_addr, &addr) == 0 &&
+						janus_network_address_to_string_buffer(&addr, &addr_buf) == 0) {
+					const char *ip = janus_network_address_string_from_buffer(&addr_buf);
+					json_object_set_new(info, "ip", json_string(ip));
+				}
+				uint16_t port = janus_http_sockaddr_to_port((struct sockaddr *)conninfo->client_addr);
 				json_object_set_new(info, "port", json_integer(port));
 			}
 			gateway->notify_event(&janus_http_transport, msg, info);
