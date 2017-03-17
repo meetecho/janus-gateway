@@ -64,6 +64,9 @@ stream_DATA = $(NULL)
 recordingsdir = $(datadir)/janus/recordings
 recordings_DATA = $(NULL)
 
+demosdir = $(datadir)/janus/demos
+demos_DATA = $(NULL)
+
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
@@ -73,6 +76,7 @@ recordings_DATA = $(NULL)
 	    s|[@]transportdir[@]|$(transportdir)|;\
 	    s|[@]eventdir[@]|$(eventdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
+	    s|[@]demosdir[@]|$(demosdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
@@ -349,7 +353,7 @@ plugins_libjanus_voicemail_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
 plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.voicemail.cfg.sample
-EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample
+EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample.in
 endif
 
 if ENABLE_PLUGIN_TEXTROOM

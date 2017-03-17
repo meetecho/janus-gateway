@@ -553,8 +553,8 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		config = NULL;
 	}
 	if(recordings_path == NULL) {
-		recordings_path = g_strdup("/tmp");
-		JANUS_LOG(LOG_WARN, "No recordings path specified, using /tmp...\n");
+		JANUS_LOG(LOG_FATAL, "No recordings path specified, giving up...\n");
+		return -1;
 	}
 	/* Create the folder, if needed */
 	struct stat st = {0};
