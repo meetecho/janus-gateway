@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<title>Janus WebRTC Gateway: SIP Gateway Demo (Sofia)</title>
+<title>Janus WebRTC Gateway: SIP Gateway Demo (libre)</title>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/3.1.5/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
@@ -13,7 +13,7 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.6.0/js/md5.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
-<script type="text/javascript" src="siptest.js"></script>
+<script type="text/javascript" src="sipretest.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
@@ -38,7 +38,7 @@
 	<div class="row">
 		<div class="col-md-12">
 			<div class="page-header">
-				<h1>Plugin Demo: SIP Gateway (Sofia)
+				<h1>Plugin Demo: SIP Gateway (libre)
 					<button class="btn btn-default" autocomplete="off" id="start">Start</button>
 				</h1>
 			</div>
@@ -48,9 +48,9 @@
 						<h3>Demo details</h3>
 						<p>This demo shows how you can make use of the SIP plugin to interact with a
 						SIP Proxy (e.g., Kamailio) or PBX (e.g., Asterisk) in order to place or
-						receive calls to and from other SIP clients. Specifically, it uses the Sofia-based
-						SIP plugin: in case you're interested in the libre-based one, check
-						<a href="sipretest.html">this other demo</a> instead. Notice that both
+						receive calls to and from other SIP clients. Specifically, it uses the libre-based
+						SIP plugin: in case you're interested in the Sofia-based one, check
+						<a href="siptest.html">this other demo</a> instead. Notice that both
 						plugins only exchange SIP messages from within the plugin itself: no SIP
 						is done in JavaScript, except for references to SIP URIs.</p>
 						<p>When started, the demo will allow you to insert a minimum set of information
