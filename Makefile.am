@@ -10,9 +10,9 @@ AM_CFLAGS = \
 	-Wcast-align -Wformat-nonliteral -Wformat-security -Wswitch-default \
 	-Wmissing-include-dirs -Wno-aggregate-return -Wunused-but-set-variable \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
-AM_CFLAGS += -Wno-undef  # sophiasip is not -Wundef--safe
-AM_CFLAGS += -Wno-redundant-decls  # sophiasip also contains redundant declarations
-AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT
+AM_CFLAGS += -Wno-undef  # sofiasip is not -Wundef--safe
+AM_CFLAGS += -Wno-redundant-decls  # sofiasip also contains redundant declarations
+AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT and JANUS_EVENTHANDLER_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
@@ -28,9 +28,17 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
-header_HEADERS = \
-	plugins/plugin.h transports/transport.h apierror.h config.h debug.h dtls.h \
-	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h turnrest.h utils.h log.h
+header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
+	rtcp.h rtp.h sdp-utils.h ip-utils.h utils.h
+
+pluginsheaderdir = $(includedir)/janus/plugins
+pluginsheader_HEADERS = plugins/plugin.h
+
+transportsheaderdir = $(includedir)/janus/transports
+transportsheader_HEADERS = transports/transport.h
+
+eventsheaderdir = $(includedir)/janus/events
+eventsheader_HEADERS = events/eventhandler.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -44,6 +52,9 @@ plugin_LTLIBRARIES = $(NULL)
 transportdir = $(libdir)/janus/transports
 transport_LTLIBRARIES = $(NULL)
 
+eventdir = $(libdir)/janus/events
+event_LTLIBRARIES = $(NULL)
+
 SUBDIRS = html
 html_DATA = README.md
 
@@ -53,6 +64,9 @@ stream_DATA = $(NULL)
 recordingsdir = $(datadir)/janus/recordings
 recordings_DATA = $(NULL)
 
+demosdir = $(datadir)/janus/demos
+demos_DATA = $(NULL)
+
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
@@ -60,7 +74,9 @@ recordings_DATA = $(NULL)
 	    s|[@]certdir[@]|$(certdir)|;\
 	    s|[@]plugindir[@]|$(plugindir)|;\
 	    s|[@]transportdir[@]|$(transportdir)|;\
+	    s|[@]eventdir[@]|$(eventdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
+	    s|[@]demosdir[@]|$(demosdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
@@ -85,6 +101,8 @@ janus_SOURCES = \
 	dtls.h \
 	dtls-bio.c \
 	dtls-bio.h \
+	events.c \
+	events.h \
 	ice.c \
 	ice.h \
 	janus.c \
@@ -96,11 +114,16 @@ janus_SOURCES = \
 	record.h \
 	rtcp.c \
 	rtcp.h \
+	rtp.c \
 	rtp.h \
 	sctp.c \
 	sctp.h \
 	sdp.c \
 	sdp.h \
+	sdp-utils.c \
+	sdp-utils.h \
+	ip-utils.c \
+	ip-utils.h \
 	turnrest.c \
 	turnrest.h \
 	utils.c \
@@ -108,6 +131,7 @@ janus_SOURCES = \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
+	events/eventhandler.h \
 	$(NULL)
 
 janus_CFLAGS = \
@@ -115,6 +139,7 @@ janus_CFLAGS = \
 	$(JANUS_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
+	-DEVENTDIR=\"$(eventdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
@@ -123,8 +148,9 @@ janus_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
-	-lsrtp \
 	$(NULL)
+
+man1_MANS = janus.1
 
 BUILT_SOURCES = cmdline.c cmdline.h
 
@@ -150,9 +176,9 @@ transports_libadd = \
 if ENABLE_REST
 transport_LTLIBRARIES += transports/libjanus_http.la
 transports_libjanus_http_la_SOURCES = transports/janus_http.c
-transports_libjanus_http_la_CFLAGS = $(transports_cflags)
-transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) -lmicrohttpd
-transports_libjanus_http_la_LIBADD = $(transports_libadd)
+transports_libjanus_http_la_CFLAGS = $(transports_cflags) $(MHD_CFLAGS)
+transports_libjanus_http_la_LDFLAGS = $(transports_ldflags) $(MHD_LDFLAGS) $(MHD_LIBS)
+transports_libjanus_http_la_LIBADD = $(transports_libadd) $(MHD_LDFLAGS)
 conf_DATA += conf/janus.transport.http.cfg.sample
 EXTRA_DIST += conf/janus.transport.http.cfg.sample.in
 CLEANFILES += conf/janus.transport.http.cfg.sample
@@ -179,6 +205,49 @@ conf_DATA += conf/janus.transport.rabbitmq.cfg.sample
 EXTRA_DIST += conf/janus.transport.rabbitmq.cfg.sample
 endif
 
+if ENABLE_MQTT
+transport_LTLIBRARIES += transports/libjanus_mqtt.la
+transports_libjanus_mqtt_la_SOURCES = transports/janus_mqtt.c
+transports_libjanus_mqtt_la_CFLAGS = $(transports_cflags)
+transports_libjanus_mqtt_la_LDFLAGS = $(transports_ldflags) -lpaho-mqtt3a
+transports_libjanus_mqtt_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.mqtt.cfg.sample
+EXTRA_DIST += conf/janus.transport.mqtt.cfg.sample
+endif
+
+if ENABLE_PFUNIX
+transport_LTLIBRARIES += transports/libjanus_pfunix.la
+transports_libjanus_pfunix_la_SOURCES = transports/janus_pfunix.c
+transports_libjanus_pfunix_la_CFLAGS = $(transports_cflags)
+transports_libjanus_pfunix_la_LDFLAGS = $(transports_ldflags)
+transports_libjanus_pfunix_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.pfunix.cfg.sample
+EXTRA_DIST += conf/janus.transport.pfunix.cfg.sample
+endif
+
+##
+# Event handlers
+##
+
+events_cflags = \
+	$(AM_CFLAGS) \
+	$(EVENTS_CFLAGS) \
+	$(NULL)
+
+events_libadd = \
+	$(EVENTS_LIBS) \
+	$(NULL)
+
+if ENABLE_SAMPLEEVH
+event_LTLIBRARIES += events/libjanus_sampleevh.la
+events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
+events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl
+events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.sampleevh.cfg.sample
+EXTRA_DIST += conf/janus.eventhandler.sampleevh.cfg.sample
+endif
+
 ##
 # Plugins
 ##
@@ -195,9 +264,9 @@ plugins_libadd = \
 if ENABLE_PLUGIN_AUDIOBRIDGE
 plugin_LTLIBRARIES += plugins/libjanus_audiobridge.la
 plugins_libjanus_audiobridge_la_SOURCES = plugins/janus_audiobridge.c
-plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags)
-plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) -lopus
-plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd)
+plugins_libjanus_audiobridge_la_CFLAGS = $(plugins_cflags) $(OPUS_CFLAGS)
+plugins_libjanus_audiobridge_la_LDFLAGS = $(plugins_ldflags) $(OPUS_LDFLAGS) $(OPUS_LIBS)
+plugins_libjanus_audiobridge_la_LIBADD = $(plugins_libadd) $(OPUS_LIBADD)
 conf_DATA += conf/janus.plugin.audiobridge.cfg.sample
 EXTRA_DIST += conf/janus.plugin.audiobridge.cfg.sample
 endif
@@ -232,9 +301,9 @@ endif
 if ENABLE_PLUGIN_SIP
 plugin_LTLIBRARIES += plugins/libjanus_sip.la
 plugins_libjanus_sip_la_SOURCES = plugins/janus_sip.c
-plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(PLUGIN_SIP_CFLAGS)
-plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(PLUGIN_SIP_LDFLAGS)
-plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(PLUGIN_SIP_LIBADD)
+plugins_libjanus_sip_la_CFLAGS = $(plugins_cflags) $(SOFIA_CFLAGS)
+plugins_libjanus_sip_la_LDFLAGS = $(plugins_ldflags) $(SOFIA_LDFLAGS) $(SOFIA_LIBS)
+plugins_libjanus_sip_la_LIBADD = $(plugins_libadd) $(SOFIA_LIBADD)
 conf_DATA += conf/janus.plugin.sip.cfg.sample
 EXTRA_DIST += conf/janus.plugin.sip.cfg.sample
 endif
@@ -284,7 +353,17 @@ plugins_libjanus_voicemail_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
 plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.voicemail.cfg.sample
-EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample
+EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample.in
+endif
+
+if ENABLE_PLUGIN_TEXTROOM
+plugin_LTLIBRARIES += plugins/libjanus_textroom.la
+plugins_libjanus_textroom_la_SOURCES = plugins/janus_textroom.c
+plugins_libjanus_textroom_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_textroom_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_textroom_la_LIBADD = $(plugins_libadd)
+conf_DATA += conf/janus.plugin.textroom.cfg.sample
+EXTRA_DIST += conf/janus.plugin.textroom.cfg.sample
 endif
 
 ##
@@ -293,12 +372,19 @@ endif
 
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
+man1_MANS += postprocessing/janus-pp-rec.1
 
 janus_pp_rec_SOURCES = \
+	postprocessing/pp-g711.c \
+	postprocessing/pp-g711.h \
+	postprocessing/pp-h264.c \
+	postprocessing/pp-h264.h \
 	postprocessing/pp-opus.c \
 	postprocessing/pp-opus.h \
 	postprocessing/pp-opus-silence.h \
 	postprocessing/pp-rtp.h \
+	postprocessing/pp-srt.c \
+	postprocessing/pp-srt.h \
 	postprocessing/pp-webm.c \
 	postprocessing/pp-webm.h \
 	postprocessing/janus-pp-rec.c \

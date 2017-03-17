@@ -33,6 +33,7 @@
 #include "ice.h"
 #include "sctp.h"
 #include "transports/transport.h"
+#include "events/eventhandler.h"
 #include "plugins/plugin.h"
 
 
@@ -113,6 +114,7 @@ struct janus_request {
  * @param[in] transport Pointer to the transport
  * @param[in] instance Opaque pointer to the transport-provided instance
  * @param[in] request_id Opaque pointer to the request ID, if available
+ * @param[in] admin Whether this is a Janus API or Admin API request
  * @param[in] message Opaque pointer to the original request, if available
  * @returns A pointer to a janus_request instance if successful, NULL otherwise */
 janus_request *janus_request_new(janus_transport *transport, void *instance, void *request_id, gboolean admin, json_t *message);
@@ -121,7 +123,6 @@ janus_request *janus_request_new(janus_transport *transport, void *instance, voi
  * @note The opaque pointers in the instance are not destroyed, that's up to you */
 void janus_request_destroy(janus_request *request);
 /*! \brief Helper to process an incoming request, no matter where it comes from
- * @param[in] source The request instance and its source
  * @param[in] request The JSON request
  * @returns 0 on success, a negative integer otherwise
  */
@@ -133,6 +134,7 @@ int janus_process_incoming_request(janus_request *request);
 int janus_process_incoming_admin_request(janus_request *request);
 /*! \brief Method to return a successful Janus response message (JSON) to the browser
  * @param[in] request The request instance and its source
+ * @param[in] payload The payload to return as a JSON object
  * @returns 0 on success, a negative integer otherwise
  */
 int janus_process_success(janus_request *request, json_t *payload);
@@ -146,7 +148,7 @@ int janus_process_success(janus_request *request, json_t *payload);
  * associated with the error code is used
  * @returns 0 on success, a negative integer otherwise
  */
-int janus_process_error(janus_request *source, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
+int janus_process_error(janus_request *request, uint64_t session_id, const char *transaction, gint error, const char *format, ...) G_GNUC_PRINTF(5, 6);
 ///@}
 
 
@@ -165,11 +167,33 @@ int janus_process_error(janus_request *source, uint64_t session_id, const char *
  * @param[in] value The janus_transport instance to destroy
  * @param[in] user_data User provided data (unused) */
 void janus_transport_close(void *key, void *value, void *user_data);
-/*! \brief Callback (g_hash_table_foreach) invoked when it's time to close a transport plugin 
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to close a transport plugin
  * @param[in] key Key of the transports hash table (package name)
  * @param[in] value The janus_transport instance to close
  * @param[in] user_data User provided data (unused) */
 void janus_transportso_close(void *key, void *value, void *user_data);
+///@}
+
+/** @name Janus event handler plugin management
+ * The core doesn't notify anyone, except session originators, and only
+ * then only about stuff relevant to them. In order to allow for a more
+ * apt management of core and plugin related events on a broader sense,
+ * event handler plugins are needed. These event handler plugins are
+ * shared objects that need to implement the interfaces defined in
+ * eventhandler.h and as such are dynamically loaded by the gateway at
+ * startup, and unloaded when the gateway closes.
+ */
+///@{
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to destroy an eventhandler instance
+ * @param[in] key Key of the events hash table (package name)
+ * @param[in] value The janus_eventhandler instance to destroy
+ * @param[in] user_data User provided data (unused) */
+void janus_eventhandler_close(void *key, void *value, void *user_data);
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to close an eventhandler plugin
+ * @param[in] key Key of the events hash table (package name)
+ * @param[in] value The janus_eventhandler instance to close
+ * @param[in] user_data User provided data (unused) */
+void janus_eventhandlerso_close(void *key, void *value, void *user_data);
 ///@}
 
 /** @name Janus plugin management

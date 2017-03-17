@@ -116,7 +116,7 @@ function updateServerInfo() {
 				}
 			});
 			// Only check tokens if the mechanism is enabled
-			if(json["auth_token"] !== "true") {
+			if(!json["auth_token"]) {
 				$('a[href=#tokens]').parent().addClass('disabled');
 				$('a[href=#tokens]').attr('href', '#').unbind('click').click(function (e) { e.preventDefault(); return false; });
 			} else {
@@ -164,7 +164,25 @@ function updateSettings() {
 					'	<td>' + settings[k] + '</td>' +
 					'	<td id="' + k + '"></td>' +
 					'</tr>');
-				if(k === 'log_level') {
+				if(k === 'session_timeout') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit session timeout value</button>');
+					$('#'+k + "_button").click(function() {
+						bootbox.prompt("Set the new session timeout value (in seconds, currently " + settings["session_timeout"] + ")", function(result) {
+							if(isNaN(result)) {
+								bootbox.alert("Invalid session timeout value");
+								return;
+							}
+							result = parseInt(result);
+							if(result < 0) {
+								console.log(isNaN(result));
+								console.log(result < 0);
+								bootbox.alert("Invalid session timeout value");
+								return;
+							}
+							setSessionTimeoutValue(result);
+						});
+					});
+				} else if(k === 'log_level') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit log level</button>');
 					$('#'+k + "_button").click(function() {
 						bootbox.prompt("Set the new desired log level (0-7, currently " + settings["log_level"] + ")", function(result) {
@@ -199,60 +217,76 @@ function updateSettings() {
 							setMaxNackQueue(result);
 						});
 					});
+				} else if(k === 'no_media_timer') {
+					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs btn-primary">Edit no-media timer value</button>');
+					$('#'+k + "_button").click(function() {
+						bootbox.prompt("Set the new desired no-media timer value (in seconds, currently " + settings["no_media_timer"] + ")", function(result) {
+							if(isNaN(result)) {
+								bootbox.alert("Invalid no-media timer (should be a positive integer)");
+								return;
+							}
+							result = parseInt(result);
+							if(result < 0) {
+								bootbox.alert("Invalid no-media timer (should be a positive integer)");
+								return;
+							}
+							setNoMediaTimer(result);
+						});
+					});
 				} else if(k === 'locking_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable locking debug" : "Disable locking debug");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable locking debug" : "Disable locking debug");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["locking_debug"] === 0 ?
+						var text = (!settings["locking_debug"] ?
 							"Are you sure you want to enable the locking debug?<br/>This will print a line on the console any time a mutex is locked/unlocked"
 								: "Are you sure you want to disable the locking debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLockingDebug(settings["locking_debug"] === 0 ? 1 : 0);
+								setLockingDebug(!settings["locking_debug"]);
 						});
 					});
 				} else if(k === 'log_timestamps') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable log timestamps" : "Disable log timestamps");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable log timestamps" : "Disable log timestamps");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["log_timestamps"] === 0 ?
+						var text = (!settings["log_timestamps"] ?
 							"Are you sure you want to enable the log timestamps?<br/>This will print the current date/time for each new line on the console"
 								: "Are you sure you want to disable the log timestamps?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLogTimestamps(settings["log_timestamps"] === 0 ? 1 : 0);
+								setLogTimestamps(!settings["log_timestamps"]);
 						});
 					});
 				} else if(k === 'log_colors') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable log colors" : "Disable log colors");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable log colors" : "Disable log colors");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["log_colors"] === 0 ?
+						var text = (!settings["log_colors"] ?
 							"Are you sure you want to enable the log colors?<br/>This will strip the colors from events like warnings, errors, etc. on the console"
 								: "Are you sure you want to disable the log colors?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLogColors(settings["log_colors"] === 0 ? 1 : 0);
+								setLogColors(!settings["log_colors"]);
 						});
 					});
 				} else if(k === 'libnice_debug') {
 					$('#'+k).append('<button id="' + k + '_button" type="button" class="btn btn-xs"></button>');
 					$('#'+k + "_button")
-						.addClass(settings[k] === 0 ? "btn-success" : "btn-danger")
-						.html(settings[k] === 0 ? "Enable libnice debug" : "Disable libnice debug");
+						.addClass(!settings[k] ? "btn-success" : "btn-danger")
+						.html(!settings[k] ? "Enable libnice debug" : "Disable libnice debug");
 					$('#'+k + "_button").click(function() {
-						var text = (settings["libnice_debug"] === 0 ?
+						var text = (!settings["libnice_debug"] ?
 							"Are you sure you want to enable the libnice debug?<br/>This will print the a very verbose debug of every libnice-related operation on the console"
 								: "Are you sure you want to disable the libnice debug?");
 						bootbox.confirm(text, function(result) {
 							if(result)
-								setLibniceDebug(settings["libnice_debug"] === 0 ? 1 : 0);
+								setLibniceDebug(!settings["libnice_debug"]);
 						});
 					});
 				}
@@ -265,6 +299,11 @@ function updateSettings() {
 		},
 		dataType: "json"
 	});
+}
+
+function setSessionTimeoutValue(timeout) {
+	var request = { "janus": "set_session_timeout", "timeout": timeout, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
 }
 
 function setLogLevel(level) {
@@ -294,6 +333,11 @@ function setLibniceDebug(enable) {
 
 function setMaxNackQueue(queue) {
 	var request = { "janus": "set_max_nack_queue", "max_nack_queue": queue, "transaction": randomString(12), "admin_secret": secret };
+	sendSettingsRequest(request);
+}
+
+function setNoMediaTimer(timer) {
+	var request = { "janus": "set_no_media_timer", "no_media_timer": timer, "transaction": randomString(12), "admin_secret": secret };
 	sendSettingsRequest(request);
 }
 

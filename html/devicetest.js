@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var echotest = null;
+var opaqueId = "devicetest-"+Janus.randomString(12);
+
 var started = false;
 var bitrateTimer = null;
 var spinner = null;
@@ -159,6 +161,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.echotest",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									echotest = pluginHandle;
@@ -237,7 +240,7 @@ $(document).ready(function() {
 										$('#videos').removeClass('hide').show();
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
 									}
-									attachMediaStream($('#myvideo').get(0), stream);
+									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									// No remote video yet
 									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
@@ -277,7 +280,7 @@ $(document).ready(function() {
 											var width = this.videoWidth;
 											var height = this.videoHeight;
 											$('#curres').removeClass('hide').text(width+'x'+height).show();
-											if(webrtcDetectedBrowser == "firefox") {
+											if(adapter.browserDetails.browser === "firefox") {
 												// Firefox Stable has a bug: width and height are not immediately available after a playing
 												setTimeout(function() {
 													var width = $("#peervideo").get(0).videoWidth;
@@ -287,7 +290,7 @@ $(document).ready(function() {
 											}
 										});
 									}
-									attachMediaStream($('#peervideo').get(0), stream);
+									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
 										// No remote video
@@ -332,7 +335,7 @@ $(document).ready(function() {
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
-									if(webrtcDetectedBrowser == "chrome" || webrtcDetectedBrowser == "firefox") {
+									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported

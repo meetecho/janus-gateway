@@ -7,18 +7,18 @@
  * the gateway, and sets the proper SRTP and SRTCP context up accordingly.
  * A DTLS alert from a peer is notified to the plugin handling him/her
  * by means of the hangup_media callback.
- * 
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #ifndef _JANUS_DTLS_H
 #define _JANUS_DTLS_H
 
 #include <inttypes.h>
 #include <glib.h>
-#include <srtp/srtp.h>
 
+#include "rtp.h"
 #include "sctp.h"
 #include "dtls-bio.h"
 
@@ -26,9 +26,9 @@
  * @param[in] server_pem Path to the certificate to use
  * @param[in] server_key Path to the key to use
  * @returns 0 in case of success, a negative integer on errors */
-gint janus_dtls_srtp_init(gchar *server_pem, gchar *server_key);
-/*! \brief Method to return the shared SSL_CTX instance */
-SSL_CTX *janus_dtls_get_ssl_ctx(void);
+gint janus_dtls_srtp_init(const char* server_pem, const char* server_key);
+/*! \brief Method to cleanup DTLS stuff before exiting */
+void janus_dtls_srtp_cleanup(void);
 /*! \brief Method to return a string representation (SHA-256) of the certificate fingerprint */
 gchar *janus_dtls_get_local_fingerprint(void);
 
@@ -80,6 +80,8 @@ typedef struct janus_dtls_srtp {
 	janus_mutex srtp_mutex;
 	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
 	int ready;
+	/*! \brief The number of retransmissions that have occurred for this DTLS instance so far */
+	int retransmissions;
 #ifdef HAVE_SCTP
 	/*! \brief SCTP association, if DataChannels are involved */
 	janus_sctp_association *sctp;
@@ -150,12 +152,6 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
  * @param[in] stack Opaque pointer to the janus_dtls_srtp instance to use
  * @returns true if a retransmission is still needed, false otherwise */
 gboolean janus_dtls_retry(gpointer stack);
-
-
-/*! \brief Helper method to get a string representation of a libsrtp error code
- * @param[in] error The libsrtp error code
- * @returns A string representation of the error code */
-const gchar *janus_get_srtp_error(int error);
 
 /*! \brief Helper method to get a string representation of a Janus DTLS state
  * @param[in] state The Janus DTLS state

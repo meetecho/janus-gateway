@@ -6,6 +6,7 @@ docs/html/
 /janus-pp-rec
 /plugins/*.so
 /transports/*.so
+/events/*.so
 
 Makefile
 Makefile.in
@@ -35,11 +36,16 @@ Makefile.in
 /transports/*.lo
 /transports/*.la
 /transports/.libs
+/events/*.o
+/events/*.lo
+/events/*.la
+/events/.libs
 /postprocessing/*.o
 
 /conf/janus.cfg.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample
+/conf/janus.plugin.voicemail.cfg.sample
 /conf/janus.transport.http.cfg.sample
 /conf/janus.transport.websockets.cfg.sample
 

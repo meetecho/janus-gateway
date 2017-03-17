@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Gateway: Demo Tests</title>
-<script type="text/javascript" src="jquery.min.js" ></script>
-<script type="text/javascript" src="js/bootstrap.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
 <script>
 	$(function() {
 		$(".navbar-static-top").load("navbar.html", function() {
@@ -16,7 +16,7 @@
 		$(".footer").load("footer.html");
 	});
 </script>
-<link rel="stylesheet" href="css/cerulean/bootstrap.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 </head>
 <body>
@@ -61,14 +61,18 @@
 					<td>An audio mixing/bridge demo, allowing you join an Audio Room room.</td>
 				</tr>
 				<tr class="active">
+					<td><a href="textroomtest.html">Text Room</a></td>
+					<td>A text room demo, using DataChannels only.</td>
+				</tr>
+				<tr>
 					<td><a href="voicemailtest.html">Voice Mail</a></td>
 					<td>A simple audio recorder demo, returning an .opus file after 10 seconds.</td>
 				</tr>
-				<tr>
+				<tr class="active">
 					<td><a href="recordplaytest.html">Recorder/Playout</a></td>
 					<td>A demo to record audio/video messages, and subsequently replay them through WebRTC.</td>
 				</tr>
-				<tr class="active">
+				<tr>
 					<td><a href="screensharingtest.html">Screen Sharing</a></td>
 					<td>A webinar-like screen sharing session, based on the Video Room plugin.</td>
 				</tr>

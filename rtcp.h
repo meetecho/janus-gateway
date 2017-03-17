@@ -35,6 +35,7 @@ typedef enum {
     RTCP_APP = 204,
     RTCP_RTPFB = 205,
     RTCP_PSFB = 206,
+    RTCP_XR = 207,
 } rtcp_type;
  
  
@@ -181,12 +182,34 @@ typedef struct rtcp_fb
 	char fci[1];
 } rtcp_fb;
 
+/*! \brief RTCP Extended Report Block (https://tools.ietf.org/html/rfc3611#section-3) */
+typedef struct extended_report_block
+{
+	/*! \brief Block type (BT) */
+	uint8_t blocktype;
+	/*! \brief Type-specific */
+	uint8_t typesp;
+	/*! \brief Block length */
+	uint16_t length;
+	/*! \brief Content (variable length) */
+	char content[1];
+
+} extended_report_block;
+
+/*! \brief RTCP Extended Report (https://tools.ietf.org/html/rfc3611#section-2) */
+typedef struct rtcp_xr
+{
+	rtcp_header header;
+	uint32_t ssrc;
+	extended_report_block erb[1];
+} rtcp_xr;
+
 
 /*! \brief Internal RTCP state context (for RR/SR) */
 typedef struct rtcp_context
 {
 	/* Whether we received any RTP packet at all (don't send RR otherwise) */
-	uint8_t enabled:1;
+	uint8_t rtp_recvd:1;
 
 	uint16_t last_seq_nr;
 	uint16_t seq_cycle;
@@ -196,7 +219,7 @@ typedef struct rtcp_context
 
 	/* RFC 3550 A.8 Interarrival Jitter */
 	uint64_t transit;
-	double jitter;
+	double jitter, jitter_remote;
 	/* Timestamp base (e.g., 48000 for opus audio, or 90000 for video) */
 	uint32_t tb;
 
@@ -204,6 +227,8 @@ typedef struct rtcp_context
 	uint32_t lsr;
 	/* Monotonic time of last SR received */
 	int64_t lsr_ts;
+	/* Monotonic time of first SR sent */
+	int64_t fsr_ts;
 
 	/* Last RR/SR we sent */
 	int64_t last_sent;
@@ -213,32 +238,22 @@ typedef struct rtcp_context
 	uint32_t received_prior;
 	uint32_t expected;
 	uint32_t expected_prior;
-	int32_t lost;
+	uint32_t lost, lost_remote;
 } rtcp_context;
 /*! \brief Method to retrieve the LSR from an existing RTCP context
  * @param[in] ctx The RTCP context to query
  * @returns The last SR received */
 uint32_t janus_rtcp_context_get_lsr(rtcp_context *ctx);
-/*! \brief Method to retrieve the number of received packets from an existing RTCP context
+/*! \brief Method to retrieve the total number of lost packets from an existing RTCP context
  * @param[in] ctx The RTCP context to query
- * @returns The number of received packets */
-uint32_t janus_rtcp_context_get_received(rtcp_context *ctx);
-/*! \brief Method to retrieve the number of lost packets from an existing RTCP context
- * @param[in] ctx The RTCP context to query
- * @returns The number of lost packets */
-uint32_t janus_rtcp_context_get_lost(rtcp_context *ctx);
-/*! \brief Method to compute the fraction of lost packets from an existing RTCP context
- * @param[in] ctx The RTCP context to query
- * @returns The fraction of lost packets */
-uint32_t janus_rtcp_context_get_lost_fraction(rtcp_context *ctx);
-/*! \brief Method to conpute the number of lost packets (pro mille) from an existing RTCP context
- * @param[in] ctx The RTCP context to query
- * @returns The number of lost packets (pro mille) */
-uint32_t janus_rtcp_context_get_lost_promille(rtcp_context *ctx);
+ * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
+ * @returns The total number of lost packets */
+uint32_t janus_rtcp_context_get_lost_all(rtcp_context *ctx, gboolean remote);
 /*! \brief Method to retrieve the jitter from an existing RTCP context
  * @param[in] ctx The RTCP context to query
+ * @param[in] remote Whether we're quering the remote (provided by peer) or local (computed by Janus) info
  * @returns The computed jitter */
-uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx);
+uint32_t janus_rtcp_context_get_jitter(rtcp_context *ctx, gboolean remote);
 
 
 /*! \brief Method to quickly retrieve the sender SSRC (needed for demuxing RTCP in BUNDLE)
@@ -281,9 +296,8 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen);
  * @param[in] ctx RTCP context to update, if needed (optional)
  * @param[in] packet The RTP packet
  * @param[in] len The packet data length in bytes
- * @param[in] max_nack_queue Current value of the max NACK value in the handle stack
  * @returns 0 in case of success, -1 on errors */
-int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len, int max_nack_queue);
+int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len);
 
 /*! \brief Method to fill in a Report Block in a Receiver Report
  * @param[in] ctx The RTCP context to use for the report

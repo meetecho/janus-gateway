@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var mixertest = null;
+var opaqueId = "audiobridgetest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -83,6 +85,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.audiobridge",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									mixertest = pluginHandle;
@@ -254,7 +257,7 @@ $(document).ready(function() {
 									if($('#roomaudio').length === 0) {
 										$('#mixedaudio').append('<audio class="rounded centered" id="roomaudio" width="100%" height="100%" autoplay/>');
 									}
-									attachMediaStream($('#roomaudio').get(0), stream);
+									Janus.attachMediaStream($('#roomaudio').get(0), stream);
 									// Mute button
 									audioenabled = true;
 									$('#toggleaudio').click(

@@ -20,6 +20,7 @@
 #include <glib.h>
 #include <agent.h>
 
+#include "sdp.h"
 #include "dtls.h"
 #include "sctp.h"
 #include "rtcp.h"
@@ -54,8 +55,9 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
  * @note Requires libcurl to be available, and a working TURN REST API backend (see turnrest.h)
  * @param[in] api_server TURN REST API backend (NULL to disable the API)
  * @param[in] api_key API key to use, if required
+ * @param[in] api_method HTTP method to use (POST by default)
  * @returns 0 in case of success, a negative integer on errors */
-int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key);
+int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method);
 /*! \brief Method to get the STUN server IP address
  * @returns The currently used STUN server IP address, if available, or NULL if not */
 char *janus_ice_get_stun_server(void);
@@ -126,6 +128,12 @@ void janus_set_max_nack_queue(uint mnq);
 /*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @returns The current max NACK value */
 uint janus_get_max_nack_queue(void);
+/*! \brief Method to modify the no-media event timer (i.e., the number of seconds where no media arrives before Janus notifies this)
+ * @param[in] timer The new timer value, in seconds */
+void janus_set_no_media_timer(uint timer);
+/*! \brief Method to get the current no-media event timer (see above)
+ * @returns The current no-media event timer */
+uint janus_get_no_media_timer(void);
 /*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
  * @returns True if libnice debugging is enabled, FALSE otherwise */
 gboolean janus_ice_is_ice_debugging_enabled(void);
@@ -197,6 +205,12 @@ typedef struct janus_ice_stats {
 	guint32 data_packets;
 	/*! \brief Data bytes sent or received */
 	guint64 data_bytes;
+	/*! \brief Last time the slow_link callback (of the plugin) was called */
+	gint64 last_slowlink_time;
+	/*! \brief Start time of recent NACKs (for slow_link) */
+	gint64 sl_nack_period_ts;
+	/*! \brief Count of recent NACKs (for slow_link) */
+	guint sl_nack_recent_cnt;
 } janus_ice_stats;
 
 /*! \brief Janus media statistics: received packet info
@@ -246,6 +260,8 @@ struct janus_ice_handle {
 	void *session;
 	/*! \brief Handle identifier, guaranteed to be non-zero */
 	guint64 handle_id;
+	/*! \brief Opaque identifier, e.g., to provide inter-handle relationships to external tools */
+	char *opaque_id;
 	/*! \brief Monotonic time of when the handle has been created */
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
@@ -304,6 +320,10 @@ struct janus_ice_handle {
 	GThread *send_thread;
 	/*! \brief Atomic flag to make sure we only create the thread once */
 	volatile gint send_thread_created;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	guint srtp_errors_count;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	gint last_srtp_error;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };
@@ -328,6 +348,10 @@ struct janus_ice_stream {
 	guint32 video_ssrc_peer;
 	/*! \brief Video retransmissions SSRC of the peer for this stream (may be bundled) */
 	guint32 video_ssrc_peer_rtx;
+	/*! \brief List of payload types we can expect for audio */
+	GList *audio_payload_types;
+	/*! \brief List of payload types we can expect for video */
+	GList *video_payload_types;
 	/*! \brief RTP payload type of this stream */
 	gint payload_type;
 	/*! \brief RTCP context for the audio stream (may be bundled) */
@@ -355,7 +379,7 @@ struct janus_ice_stream {
 	/*! \brief RTCP component */
 	janus_ice_component *rtcp_component;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 };
@@ -401,18 +425,12 @@ struct janus_ice_component {
 	seq_info_t *last_seqs_audio;
 	/*! \brief List of recently received video sequence numbers (as a support to NACK generation) */
 	seq_info_t *last_seqs_video;
-	/*! \brief Last time the slow_link callback (of the plugin) was called */
-	gint64 last_slowlink_time;
-	/*! \brief Start time of recent NACKs (for slow_link) */
-	gint64 sl_nack_period_ts;
-	/*! \brief Count of recent NACKs (for slow_link) */
-	guint sl_nack_recent_cnt;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */
 	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
 };
@@ -455,8 +473,9 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 ///@{
 /*! \brief Method to create a new Janus ICE handle
  * @param[in] gateway_session The gateway/peer session this ICE handle will belong to
+ * @param[in] opaque_id The opaque identifier provided by the creator, if any (optional)
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session);
+janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opaque_id);
 /*! \brief Method to find an existing Janus ICE handle from its ID
  * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
@@ -523,9 +542,7 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 #endif
 /*! \brief libnice callback to notify when a new remote candidate has been discovered for an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] component_id The component ID for which the callback applies
- * @param[in] foundation Candidate (or foundation)
+ * @param[in] candidate The libnice candidate that has been discovered
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
 #ifndef HAVE_LIBNICE_TCP
 void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
@@ -584,12 +601,12 @@ void *janus_ice_send_thread(void *data);
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int bundle, int rtcpmux, int trickle);
-/*! \brief Method to add local candidates to the gateway SDP
+/*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus ICE handle this method refers to
- * @param[in,out] sdp The handle description the gateway is preparing
+ * @param[in] mline The Janus SDP m-line object to add candidates to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
-void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id);
+void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP

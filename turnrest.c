@@ -25,10 +25,11 @@
 #include "turnrest.h"
 #include "debug.h"
 #include "mutex.h"
-#include "utils.h"
+#include "ip-utils.h"
 
 static const char *api_server = NULL;
 static const char *api_key = NULL;
+static gboolean api_http_get = FALSE;
 static janus_mutex api_mutex;
 
 
@@ -39,12 +40,11 @@ typedef struct janus_turnrest_buffer {
 } janus_turnrest_buffer;
  
 /* Callback we use to progressively receive the whole response via libcurl in the buffer */
-static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, void *data);
 static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, void *data) {
 	size_t realsize = size * nmemb;
 	janus_turnrest_buffer *buf = (struct janus_turnrest_buffer *)data;
 	/* (Re)allocate if needed */
-	buf->buffer = realloc(buf->buffer, buf->size+realsize+1);
+	buf->buffer = g_realloc(buf->buffer, buf->size+realsize+1);
 	if(buf->buffer == NULL) {
 		/* Memory error! */ 
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -76,7 +76,7 @@ void janus_turnrest_deinit(void) {
 	janus_mutex_unlock(&api_mutex);
 }
 
-void janus_turnrest_set_backend(const char *server, const char *key) {
+void janus_turnrest_set_backend(const char *server, const char *key, const char *method) {
 	janus_mutex_lock(&api_mutex);
 	
 	/* Get rid of the old values first */
@@ -92,6 +92,16 @@ void janus_turnrest_set_backend(const char *server, const char *key) {
 		api_server = g_strdup(server);
 		if(key != NULL)
 			api_key = g_strdup(key);
+		if(method != NULL) {
+			if(!strcasecmp(method, "get")) {
+				api_http_get = TRUE;
+			} else if(!strcasecmp(method, "post")) {
+				api_http_get = FALSE;
+			} else {
+				JANUS_LOG(LOG_WARN, "Unknown method '%s' for TURN REST API, assuming POST\n", method);
+				api_http_get = FALSE;
+			}
+		}
 	}
 	janus_mutex_unlock(&api_mutex);
 }
@@ -100,8 +110,7 @@ const char *janus_turnrest_get_backend(void) {
 	return api_server;
 }
 
-void janus_turnrest_instance_destroy(gpointer data);
-void janus_turnrest_instance_destroy(gpointer data) {
+static void janus_turnrest_instance_destroy(gpointer data) {
 	janus_turnrest_instance *instance = (janus_turnrest_instance *)data;
 	if(instance == NULL)
 		return;
@@ -143,9 +152,11 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		return NULL;
 	}
 	curl_easy_setopt(curl, CURLOPT_URL, request_uri);
-	curl_easy_setopt(curl, CURLOPT_POST, 1);
-	/* FIXME Some servers don't like a POST with no data */
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
+	curl_easy_setopt(curl, api_http_get ? CURLOPT_HTTPGET : CURLOPT_POST, 1);
+	if(!api_http_get) {
+		/* FIXME Some servers don't like a POST with no data */
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_string);
+	}
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);	/* FIXME Max 10 seconds */
 	/* For getting data, we use an helper struct and the libcurl callback */
 	janus_turnrest_buffer data;
@@ -238,16 +249,15 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		}
 		gchar **uri_parts = g_strsplit(turn_uri, ":", -1);
 		/* Resolve the TURN URI address */
-		struct addrinfo *res = NULL;
-		if(getaddrinfo(uri_parts[1], NULL, NULL, &res) != 0) {
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		if(janus_network_string_to_address(janus_network_query_options_any_ip, uri_parts[1], &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
-			if(res)
-				freeaddrinfo(res);
 			g_strfreev(uri_parts);
 			continue;
 		}
-		instance->server = janus_address_to_ip(res->ai_addr);
-		freeaddrinfo(res);
+		instance->server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 		if(instance->server == NULL) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
 			g_strfreev(uri_parts);

@@ -8,12 +8,18 @@
 ; pool instead. Since long polls are involved, make sure you choose a
 ; value that doesn't keep new connections waiting.
 [general]
+json = indented				; Whether the JSON messages should be indented (default),
+							; plain (no indentation) or compact (no indentation and no spaces)
 base_path = /janus			; Base path to bind to in the web server (plain HTTP only)
 threads = unlimited			; unlimited=thread per connection, number=thread pool
 http = yes					; Whether to enable the plain HTTP interface
 port = 8088					; Web server HTTP port
+;interface = eth0			; Whether we should bind this server to a specific interface only
+;ip = 192.168.0.1			; Whether we should bind this server to a specific IP address (v4 or v6) only
 https = no					; Whether to enable HTTPS (default=no)
-;secure_port = 8889			; Web server HTTPS port, if enabled
+;secure_port = 8089			; Web server HTTPS port, if enabled
+;secure_interface = eth0	; Whether we should bind this server to a specific interface only
+;secure_ip = 192.168.0.1	; Whether we should bind this server to a specific IP address (v4 or v6) only
 ;acl = 127.,192.168.0.		; Only allow requests coming from this comma separated list of addresses
 
 ; Janus can also expose an admin/monitor endpoint, to allow you to check
@@ -32,8 +38,12 @@ admin_base_path = /admin		; Base path to bind to in the admin/monitor web server
 admin_threads = unlimited		; unlimited=thread per connection, number=thread pool
 admin_http = no					; Whether to enable the plain HTTP interface
 admin_port = 7088				; Admin/monitor web server HTTP port
+;admin_interface = eth0			; Whether we should bind this server to a specific interface only
+;admin_ip = 192.168.0.1			; Whether we should bind this server to a specific IP address (v4 or v6) only
 admin_https = no				; Whether to enable HTTPS (default=no)
 ;admin_secure_port = 7889		; Admin/monitor web server HTTPS port, if enabled
+;admin_secure_interface = eth0	; Whether we should bind this server to a specific interface only
+;admin_secure_ip = 192.168.0.1	; Whether we should bind this server to a specific IP address (v4 or v6) only
 ;admin_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
 
 

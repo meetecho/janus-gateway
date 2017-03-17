@@ -4,12 +4,20 @@
 ; secret = <optional password needed for manipulating (e.g. destroying) the room>
 ; pin = <optional password needed for joining the room>
 ; sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
+; audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must
+;		be negotiated/used or not for new joins, default=yes)
 ; record = true|false (whether this room should be recorded, default=false)
 ; record_file = /path/to/recording.wav (where to save the recording)
+
+[general]
+;admin_key = supersecret		; If set, rooms can be created via API only
+								; if this key is provided in the request
+;events = no					; Whether events should be sent to event
+								; handlers (default is yes)
 
 [1234]
 description = Demo Room
 secret = adminpwd
 sampling_rate = 16000
 record = false
-;record_file = /tmp/janus-audioroom-1234.wav
+;record_file = /path/to/recording.wav

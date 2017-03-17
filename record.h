@@ -27,6 +27,13 @@
 #include "mutex.h"
 
 
+/*! \brief Media types we can record */
+typedef enum janus_recorder_medium {
+	JANUS_RECORDER_AUDIO,
+	JANUS_RECORDER_VIDEO,
+	JANUS_RECORDER_DATA
+} janus_recorder_medium;
+
 /*! \brief Structure that represents a recorder */
 typedef struct janus_recorder {
 	/*! \brief Absolute path to the directory where the recorder file is stored */ 
@@ -35,10 +42,12 @@ typedef struct janus_recorder {
 	char *filename;
 	/*! \brief Recording file */
 	FILE *file;
+	/*! \brief Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9") */
+	char *codec;
 	/*! \brief When the recording file has been created */
 	gint64 created;
-	/*! \brief Whether this recorder instance is going to record video or audio */ 
-	int video:1;
+	/*! \brief Media this instance is recording */
+	janus_recorder_medium type;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
 	int header:1;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
@@ -47,21 +56,27 @@ typedef struct janus_recorder {
 	janus_mutex mutex;
 } janus_recorder;
 
+/*! \brief Initialize the recorder code
+ * @param[in] tempnames Whether the filenames should have a temporary extension, while saving, or not
+ * @param[in] extension Extension to add in case tempnames is true */
+void janus_recorder_init(gboolean tempnames, const char *extension);
+/*! \brief De-initialize the recorder code */
+void janus_recorder_deinit(void);
 
 /*! \brief Create a new recorder
  * \note If no target directory is provided, the current directory will be used. If no filename
  * is passed, a random filename will be used.
  * @param[in] dir Path of the directory to save the recording into (will try to create it if it doesn't exist)
- * @param[in] video If this recorder is for video or audio
+ * @param[in] codec Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9")
  * @param[in] filename Filename to use for the recording
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
-janus_recorder *janus_recorder_create(const char *dir, int video, const char *filename);
+janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save
  * @param[in] length The frame data length
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, int length);
+int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length);
 /*! \brief Close the recorder
  * @param[in] recorder The janus_recorder instance to close
  * @returns 0 in case of success, a negative integer otherwise */

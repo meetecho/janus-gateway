@@ -51,6 +51,8 @@ else
 
 var janus = null;
 var screentest = null;
+var opaqueId = "screensharingtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myusername = null;
@@ -99,6 +101,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									screentest = pluginHandle;
@@ -136,6 +139,11 @@ $(document).ready(function() {
 										// Restore screen
 										$.unblockUI();
 									}
+								},
+								webrtcState: function(on) {
+									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
+									$("#screencapture").parent().unblock();
+									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -219,8 +227,15 @@ $(document).ready(function() {
 									if($('#screenvideo').length === 0) {
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 									}
-									attachMediaStream($('#screenvideo').get(0), stream);
-									bootbox.alert("Your screen sharing session just started: pass the <b>" + room + "</b> session identifier to those who want to attend.");
+									Janus.attachMediaStream($('#screenvideo').get(0), stream);
+									$("#screencapture").parent().block({
+										message: '<b>Publishing...</b>',
+										css: {
+											border: 'none',
+											backgroundColor: 'transparent',
+											color: 'white'
+										}
+									});
 								},
 								onremotestream: function(stream) {
 									// The publisher stream is sendonly, we don't expect anything here
@@ -228,6 +243,7 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#screencapture').empty();
+									$("#screencapture").parent().unblock();
 									$('#room').hide();
 								}
 							});
@@ -381,6 +397,7 @@ function newRemoteFeed(id, display) {
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
+			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
@@ -452,7 +469,7 @@ function newRemoteFeed(id, display) {
 						spinner.stop();
 					spinner = null;
 				});
-				attachMediaStream($('#screenvideo').get(0), stream);
+				Janus.attachMediaStream($('#screenvideo').get(0), stream);
 			},
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");

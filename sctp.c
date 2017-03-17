@@ -15,13 +15,13 @@
  * \note If you want/need to debug SCTP messages for any reason, you can
  * do so by uncommenting the definition of \c DEBUG_SCTP in sctp.h. This
  * will force this code to save all the SCTP messages being exchanged to
- * a separate file for each session. You can choose what folder to save
+ * a separate file for each session. You must choose what folder to save
  * these files in by modifying the \c debug_folder variable. Once a file
  * has been saved, you need to process it using the \c text2pcap tool
  * that is usually shipped with Wireshark, e.g.:
  * 
 \verbatim
-cd /tmp/sctp
+cd /path/to/sctp
 /usr/sbin/text2pcap -n -l 248 -D -t '%H:%M:%S.' sctp-debug-XYZ.txt sctp-debug-XYZ.pcapng
 /usr/sbin/wireshark sctp-debug-XYZ.pcapng
 \endverbatim
@@ -39,8 +39,8 @@ cd /tmp/sctp
 #include "debug.h"
 
 #ifdef DEBUG_SCTP
-/* If we're debugging the SCTP messaging, save the files here */
-const char *debug_folder = "/tmp/sctp";
+/* If we're debugging the SCTP messaging, save the files here (edit path) */
+const char *debug_folder = "/path/to/sctp";
 #endif
 
 
@@ -240,7 +240,9 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	sctp->sock = sock;
 	sctp->messages = g_async_queue_new_full((GDestroyNotify) janus_sctp_message_destroy);
 	GError *error = NULL;
-	sctp->thread = g_thread_try_new("JanusSCTP", &janus_sctp_thread, sctp, &error);
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "sctp %"SCNu64, sctp->handle_id);
+	sctp->thread = g_thread_try_new(tname, &janus_sctp_thread, sctp, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
@@ -298,7 +300,7 @@ void janus_sctp_association_destroy(janus_sctp_association *sctp) {
 void janus_sctp_data_from_dtls(janus_sctp_association *sctp, char *buf, int len) {
 	if(sctp == NULL || sctp->dtls == NULL || buf == NULL || len <= 0)
 		return;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data from DTLS to SCTP stack: %d bytes\n", sctp->handle_id, len);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Data from DTLS to SCTP stack: %d bytes\n", sctp->handle_id, len);
 	janus_mutex_lock(&sctp->mutex);
 	if(sctp->messages != NULL)
 		g_async_queue_push(sctp->messages, janus_sctp_message_create(TRUE, buf, len));
@@ -309,7 +311,7 @@ int janus_sctp_data_to_dtls(void *instance, void *buffer, size_t length, uint8_t
 	janus_sctp_association *sctp = (janus_sctp_association *)instance;
 	if(sctp == NULL || sctp->dtls == NULL)
 		return -1;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Data from SCTP to DTLS stack: %zu bytes\n", sctp->handle_id, length);
+	JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Data from SCTP to DTLS stack: %zu bytes\n", sctp->handle_id, length);
 	janus_mutex_lock(&sctp->mutex);
 	if(sctp->messages != NULL)
 		g_async_queue_push(sctp->messages, janus_sctp_message_create(FALSE, buffer, length));
