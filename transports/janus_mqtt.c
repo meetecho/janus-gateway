@@ -671,6 +671,8 @@ void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
 		MQTTAsync_destroy(&ctx->client);
 		g_free(ctx->subscribe.topic);
 		g_free(ctx->publish.topic);
+		g_free(ctx->connect.username);
+		g_free(ctx->connect.password);
 		g_free(ctx->admin.subscribe.topic);
 		g_free(ctx->admin.publish.topic);
 		g_free(ctx);
