@@ -2133,30 +2133,32 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_INFO, "[%s] Stream disabled\n", mp->name);
 			mp->enabled = FALSE;
 			/* Any recording to close? */
-			janus_streaming_rtp_source *source = mp->source;
-			janus_mutex_lock(&source->rec_mutex);
-			if(source->arc) {
-				janus_recorder_close(source->arc);
-				JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mp->name, source->arc->filename ? source->arc->filename : "??");
-				janus_recorder *tmp = source->arc;
-				source->arc = NULL;
-				janus_recorder_free(tmp);
+			if(mp->streaming_source == janus_streaming_source_rtp) {
+				janus_streaming_rtp_source *source = mp->source;
+				janus_mutex_lock(&source->rec_mutex);
+				if(source->arc) {
+					janus_recorder_close(source->arc);
+					JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mp->name, source->arc->filename ? source->arc->filename : "??");
+					janus_recorder *tmp = source->arc;
+					source->arc = NULL;
+					janus_recorder_free(tmp);
+				}
+				if(source->vrc) {
+					janus_recorder_close(source->vrc);
+					JANUS_LOG(LOG_INFO, "[%s] Closed video recording %s\n", mp->name, source->vrc->filename ? source->vrc->filename : "??");
+					janus_recorder *tmp = source->vrc;
+					source->vrc = NULL;
+					janus_recorder_free(tmp);
+				}
+				if(source->drc) {
+					janus_recorder_close(source->drc);
+					JANUS_LOG(LOG_INFO, "[%s] Closed data recording %s\n", mp->name, source->drc->filename ? source->drc->filename : "??");
+					janus_recorder *tmp = source->drc;
+					source->drc = NULL;
+					janus_recorder_free(tmp);
+				}
+				janus_mutex_unlock(&source->rec_mutex);
 			}
-			if(source->vrc) {
-				janus_recorder_close(source->vrc);
-				JANUS_LOG(LOG_INFO, "[%s] Closed video recording %s\n", mp->name, source->vrc->filename ? source->vrc->filename : "??");
-				janus_recorder *tmp = source->vrc;
-				source->vrc = NULL;
-				janus_recorder_free(tmp);
-			}
-			if(source->drc) {
-				janus_recorder_close(source->drc);
-				JANUS_LOG(LOG_INFO, "[%s] Closed data recording %s\n", mp->name, source->drc->filename ? source->drc->filename : "??");
-				janus_recorder *tmp = source->drc;
-				source->drc = NULL;
-				janus_recorder_free(tmp);
-			}
-			janus_mutex_unlock(&source->rec_mutex);
 			/* FIXME: Should we notify the listeners, or is this up to the controller application? */
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
