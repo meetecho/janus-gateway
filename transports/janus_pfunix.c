@@ -281,7 +281,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	janus_config_destroy(config);
 	config = NULL;
 	if(pfd < 0 && admin_pfd < 0) {
-		JANUS_LOG(LOG_FATAL, "No Unix Sockets server started, giving up...\n");
+		JANUS_LOG(LOG_WARN, "No Unix Sockets server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
 
