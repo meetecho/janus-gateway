@@ -408,7 +408,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			fseek(pem, 0L, SEEK_END);
 			size_t size = ftell(pem);
 			fseek(pem, 0L, SEEK_SET);
-			cert_pem_bytes = g_malloc0(size);
+			cert_pem_bytes = g_malloc0(size+1);
 			char *index = cert_pem_bytes;
 			int read = 0, tot = size;
 			while((read = fread(index, sizeof(char), tot, pem)) > 0) {
@@ -416,6 +416,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				index += read;
 			}
 			fclose(pem);
+			cert_pem_bytes[size] = '\0';
 		}
 		FILE *key = fopen(server_key, "rb");
 		if(key) {
