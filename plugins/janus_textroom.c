@@ -1167,6 +1167,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_t *rl = json_object();
 			json_object_set_new(rl, "room", json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
+			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
 			/* TODO: Possibly list participant details... or make it a separate API call for a specific room */
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 			json_array_append_new(list, rl);

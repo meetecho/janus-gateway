@@ -1592,6 +1592,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_t *rl = json_object();
 				json_object_set_new(rl, "room", json_integer(room->room_id));
 				json_object_set_new(rl, "description", json_string(room->room_name));
+				json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
 				json_object_set_new(rl, "max_publishers", json_integer(room->max_publishers));
 				json_object_set_new(rl, "bitrate", json_integer(room->bitrate));
 				json_object_set_new(rl, "fir_freq", json_integer(room->fir_freq));

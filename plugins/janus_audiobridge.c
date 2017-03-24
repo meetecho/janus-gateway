@@ -1684,6 +1684,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			json_object_set_new(rl, "room", json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "sampling_rate", json_integer(room->sampling_rate));
+			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
 			json_object_set_new(rl, "record", room->record ? json_true() : json_false());
 			/* TODO: Possibly list participant details... or make it a separate API call for a specific room */
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
