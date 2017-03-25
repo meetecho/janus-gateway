@@ -217,14 +217,26 @@ static struct tls *tls = NULL;
 GThread *sipstack_thread = NULL;
 
 /* Message queue */
+static struct mqueue *mq = NULL;
+void janus_sipre_mqueue_handler(int id, void *data, void *arg);
 typedef enum janus_sipre_mqueue_event {
 	janus_sipre_mqueue_event_do_init,
 	janus_sipre_mqueue_event_do_register,
 	/* TODO Add other events here */
 	janus_sipre_mqueue_event_do_exit
 } janus_sipre_mqueue_event;
-static struct mqueue *mq = NULL;
-void janus_sipre_mqueue_handler(int id, void *data, void *arg);
+static const char *janus_sipre_mqueue_event_string(janus_sipre_mqueue_event event) {
+	switch(event) {
+		case janus_sipre_mqueue_event_do_init:
+			return "init";
+		case janus_sipre_mqueue_event_do_register:
+			return "register";
+		case janus_sipre_mqueue_event_do_exit:
+			return "exit";
+		default:
+			return "unknown";
+	}
+}
 
 /* Registration info */
 typedef enum {
@@ -815,6 +827,8 @@ void janus_sipre_destroy(void) {
 		handler_thread = NULL;
 	}
 
+	/* Break the libre loop */
+	mqueue_push(mq, janus_sipre_mqueue_event_do_exit, NULL);
 	if(sipstack_thread != NULL) {
 		g_thread_join(sipstack_thread);
 		sipstack_thread = NULL;
@@ -836,11 +850,6 @@ void janus_sipre_destroy(void) {
 	messages = NULL;
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
-
-	/* Deinitialize libre */
-	libre_close();
-	tmr_debug();
-	mem_debug();
 
 	g_free(local_ip);
 
@@ -2796,6 +2805,8 @@ gpointer janus_sipre_stack_thread(gpointer user_data) {
 	/* Done here */
 	JANUS_LOG(LOG_WARN, "Leaving libre loop thread...\n");
 	re_thread_close();
+	/* Deinitialize libre */
+	libre_close();
 
 done:
 	g_atomic_int_set(&libre_inited, -1);
@@ -2806,23 +2817,76 @@ done:
 /* Called when challenged for credentials */
 int janus_sipre_cb_auth(char **user, char **pass, const char *realm, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_auth (realm=%s)\n", session->account.username, realm);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_auth (realm=%s)\n", session->account.username, realm);
 	/* TODO How do we handle hashed secrets? */
 	int err = 0;
 	err |= str_dup(user, session->account.authuser);
 	err |= str_dup(pass, session->account.secret);
-	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- %s / %s\n", session->account.username, *user, *pass);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- %s / %s\n", session->account.username, *user, *pass);
 	return err;
 }
 
 /* Called when REGISTER responses are received */
 void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_register\n", session->account.username);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_register\n", session->account.username);
 	if(err) {
 		JANUS_LOG(LOG_ERR, "[SIPre-%s] REGISTER error: %s\n", session->account.username, strerror(err));
 	} else {
-		JANUS_LOG(LOG_INFO, "[SIPre-%s] REGISTER reply: %u %s\n", session->account.username, msg->scode, (char *)&msg->reason.p);
+		JANUS_LOG(LOG_VERB, "[SIPre-%s] REGISTER reply: %u\n", session->account.username, msg->scode);
+		if(msg->scode == 200) {
+			if(session->account.registration_status < janus_sipre_registration_status_registered)
+				session->account.registration_status = janus_sipre_registration_status_registered;
+			/* Notify the browser */
+			json_t *call = json_object();
+			json_object_set_new(call, "sip", json_string("event"));
+			json_t *calling = json_object();
+			json_object_set_new(calling, "event", json_string("registered"));
+			json_object_set_new(calling, "username", json_string(session->account.username));
+			json_object_set_new(calling, "register_sent", json_true());
+			json_object_set_new(call, "result", calling);
+			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(call);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("registered"));
+				json_object_set_new(info, "identity", json_string(session->account.identity));
+				if(session->account.proxy)
+					json_object_set_new(info, "proxy", json_string(session->account.proxy));
+				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+			}
+		} else {
+			/* Authentication failed? */
+			session->account.registration_status = janus_sipre_registration_status_failed;
+			/* Tell the browser... */
+			json_t *event = json_object();
+			json_object_set_new(event, "sip", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("registration_failed"));
+			json_object_set_new(result, "code", json_integer(msg->scode));
+			char reason[256];
+			reason[0] = '\0';
+			if(msg->reason.l > 0) {
+				g_snprintf(reason, (msg->reason.l < 255 ? msg->reason.l+1 : 255), "%s", msg->reason.p);
+				json_object_set_new(result, "reason", json_string(reason));
+			}
+			json_object_set_new(event, "result", result);
+			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(event);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("registration_failed"));
+				json_object_set_new(info, "code", json_integer(msg->scode));
+				if(msg->reason.l > 0) {
+					json_object_set_new(info, "reason", json_string(reason));
+				}
+				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+			}
+		}
 	}
 	/* TODO Send result back to user */
 }
@@ -2907,13 +2971,14 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 
 /* Called when all SIP transactions are completed */
 void janus_sipre_cb_exit(void *arg) {
+	JANUS_LOG(LOG_INFO, "janus_sipre_cb_exit\n");
 	/* Stop libre main loop */
 	re_cancel();
 }
 
 /* Callback to implement SIP requests in the re_main loop thread */
 void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
-	JANUS_LOG(LOG_FATAL, "janus_sipre_mqueue_handler: %d\n", id);
+	JANUS_LOG(LOG_HUGE, "janus_sipre_mqueue_handler: %d (%s)\n", id, janus_sipre_mqueue_event_string((janus_sipre_mqueue_event)id));
 	switch((janus_sipre_mqueue_event)id) {
 		case janus_sipre_mqueue_event_do_init: {
 			JANUS_LOG(LOG_INFO, "Initializing SIP transports\n");
@@ -2940,7 +3005,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		}
 		case janus_sipre_mqueue_event_do_register: {
 			janus_sipre_session *session = (janus_sipre_session *)data;
-			JANUS_LOG(LOG_INFO, "[SIPre-%s] Sending REGISTER\n", session->account.username);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending REGISTER\n", session->account.username);
 			int err = sipreg_register(&session->stack.reg, sipstack,
 				session->account.proxy,
 				session->account.identity, session->account.identity, 3600,
