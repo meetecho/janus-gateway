@@ -211,6 +211,7 @@ static void janus_sipre_message_free(janus_sipre_message *msg) {
 }
 
 /* libre SIP stack */
+static volatile int libre_inited = 0;
 static struct sip *sipstack;
 static struct tls *tls = NULL;
 GThread *sipstack_thread = NULL;
@@ -757,26 +758,6 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 	RAND_poll();
 #endif
 
-	/* Setup libre */
-	int err = libre_init();
-	if(err) {
-		JANUS_LOG(LOG_ERR, "libre_init() failed: %d (%s)\n", err, strerror(err));
-		return -1;
-	}
-	err = sip_alloc(&sipstack, NULL, 32, 32, 32, JANUS_SIPRE_NAME, janus_sipre_cb_exit, NULL);
-	if(err) {
-		JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP stack: %d (%s)\n", err, strerror(err));
-		return -1;
-	}
-	err = mqueue_alloc(&mq, janus_sipre_mqueue_handler, NULL);
-	if(err) {
-		mem_deref(sipstack);
-		JANUS_LOG(LOG_ERR, "Failed to initialize message queue: %d (%s)\n", err, strerror(err));
-		return -1;
-	}
-	/* We initialize in the loop */
-	mqueue_push(mq, janus_sipre_mqueue_event_do_init, NULL);
-
 	sessions = g_hash_table_new(NULL, NULL);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
@@ -802,13 +783,23 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIPre handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
-	/* Launch the thread that will handle the libre event loop */
+	/* Launch the thread that will handle the libre initialization and event loop */
+	g_atomic_int_set(&libre_inited, 0);
 	sipstack_thread = g_thread_try_new("sipre loop", janus_sipre_stack_thread, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIPre loop thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
+	/* Let's wait for the libre initialization to complete */
+	while(g_atomic_int_get(&libre_inited) == 0)
+		g_usleep(100000);
+	if(g_atomic_int_get(&libre_inited) == -1) {
+		g_atomic_int_set(&initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error trying to initialize libre...\n");
+		return -1;
+	}
+
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SIPRE_NAME);
 	return 0;
 }
@@ -2769,14 +2760,33 @@ static void *janus_sipre_relay_thread(void *data) {
 gpointer janus_sipre_stack_thread(gpointer user_data) {
 	JANUS_LOG(LOG_INFO, "Joining libre loop thread...\n");
 
+	/* Setup libre */
+	int err = libre_init();
+	if(err) {
+		JANUS_LOG(LOG_ERR, "libre_init() failed: %d (%s)\n", err, strerror(err));
+		goto done;
+	}
 	/* Initialize this thread as a worker */
-	int err = 0;
 	err = re_thread_init();
 	if(err != 0) {
 		printf("re_thread_init failed: %d (%s)\n", err, strerror(err));
-		g_thread_unref(g_thread_self());
-		return NULL;
+		goto done;
 	}
+	err = sip_alloc(&sipstack, NULL, 32, 32, 32, JANUS_SIPRE_NAME, janus_sipre_cb_exit, NULL);
+	if(err) {
+		JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP stack: %d (%s)\n", err, strerror(err));
+		goto done;
+	}
+	err = mqueue_alloc(&mq, janus_sipre_mqueue_handler, NULL);
+	if(err) {
+		mem_deref(sipstack);
+		JANUS_LOG(LOG_ERR, "Failed to initialize message queue: %d (%s)\n", err, strerror(err));
+		goto done;
+	}
+	/* We initialize in the loop */
+	mqueue_push(mq, janus_sipre_mqueue_event_do_init, NULL);
+	g_atomic_int_set(&libre_inited, 1);
+
 	/* Enter loop */
 	err = re_main(NULL);
 	if(err != 0) {
@@ -2787,6 +2797,8 @@ gpointer janus_sipre_stack_thread(gpointer user_data) {
 	JANUS_LOG(LOG_WARN, "Leaving libre loop thread...\n");
 	re_thread_close();
 
+done:
+	g_atomic_int_set(&libre_inited, -1);
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
