@@ -217,6 +217,7 @@ GThread *sipstack_thread = NULL;
 
 /* Message queue */
 typedef enum janus_sipre_mqueue_event {
+	janus_sipre_mqueue_event_do_init,
 	janus_sipre_mqueue_event_do_register,
 	/* TODO Add other events here */
 	janus_sipre_mqueue_event_do_exit
@@ -762,36 +763,19 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_ERR, "libre_init() failed: %d (%s)\n", err, strerror(err));
 		return -1;
 	}
-	poll_method_set(poll_method_best());
 	err = sip_alloc(&sipstack, NULL, 32, 32, 32, JANUS_SIPRE_NAME, janus_sipre_cb_exit, NULL);
 	if(err) {
 		JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP stack: %d (%s)\n", err, strerror(err));
 		return -1;
 	}
-	struct sa laddr, laddrs;
-	sa_set_str(&laddr, local_ip, 0);
-	sa_set_str(&laddrs, local_ip, 0);
-	err |= sip_transp_add(sipstack, SIP_TRANSP_UDP, &laddr);
-	err |= sip_transp_add(sipstack, SIP_TRANSP_TCP, &laddr);
-	if(err) {
-		JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP transports: %d (%s)\n", err, strerror(err));
-		return -1;
-	}
-	err = tls_alloc(&tls, TLS_METHOD_SSLV23, NULL, NULL);
-	err |= sip_transp_add(sipstack, SIP_TRANSP_TLS, &laddrs, tls);
-	if(err) {
-		mem_deref(sipstack);
-		mem_deref(tls);
-		JANUS_LOG(LOG_ERR, "Failed to initialize libre SIPS transports: %d (%s)\n", err, strerror(err));
-		return -1;
-	}
-	mem_deref(tls);
 	err = mqueue_alloc(&mq, janus_sipre_mqueue_handler, NULL);
 	if(err) {
 		mem_deref(sipstack);
 		JANUS_LOG(LOG_ERR, "Failed to initialize message queue: %d (%s)\n", err, strerror(err));
 		return -1;
 	}
+	/* We initialize in the loop */
+	mqueue_push(mq, janus_sipre_mqueue_event_do_init, NULL);
 
 	sessions = g_hash_table_new(NULL, NULL);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
@@ -2783,13 +2767,26 @@ static void *janus_sipre_relay_thread(void *data) {
 
 /* libre loop thread */
 gpointer janus_sipre_stack_thread(gpointer user_data) {
-	JANUS_LOG(LOG_FATAL, "Joining libre loop thread...\n");
+	JANUS_LOG(LOG_INFO, "Joining libre loop thread...\n");
+
+	/* Initialize this thread as a worker */
+	int err = 0;
+	err = re_thread_init();
+	if(err != 0) {
+		printf("re_thread_init failed: %d (%s)\n", err, strerror(err));
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
 	/* Enter loop */
-	int err = re_main(NULL);
+	err = re_main(NULL);
 	if(err != 0) {
 		JANUS_LOG(LOG_ERR, "re_main() failed: %d (%s)\n", err, strerror(err));
 	}
-	JANUS_LOG(LOG_FATAL, "Leaving libre loop thread...\n");
+
+	/* Done here */
+	JANUS_LOG(LOG_WARN, "Leaving libre loop thread...\n");
+	re_thread_close();
+
 	g_thread_unref(g_thread_self());
 	return NULL;
 }
@@ -2904,15 +2901,35 @@ void janus_sipre_cb_exit(void *arg) {
 
 /* Callback to implement SIP requests in the re_main loop thread */
 void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
-	janus_sipre_mqueue_event event = (janus_sipre_mqueue_event)id;
-	janus_sipre_session *session = (janus_sipre_session *)data;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] event %d\n", session->account.username, id);
-
-	int err = 0;
-
-	switch(event) {
-		case janus_sipre_mqueue_event_do_register:
-			err = sipreg_register(&session->stack.reg, sipstack,
+	JANUS_LOG(LOG_FATAL, "janus_sipre_mqueue_handler: %d\n", id);
+	switch((janus_sipre_mqueue_event)id) {
+		case janus_sipre_mqueue_event_do_init: {
+			JANUS_LOG(LOG_INFO, "Initializing SIP transports\n");
+			struct sa laddr, laddrs;
+			sa_set_str(&laddr, local_ip, 0);
+			sa_set_str(&laddrs, local_ip, 0);
+			int err = 0;
+			err |= sip_transp_add(sipstack, SIP_TRANSP_UDP, &laddr);
+			err |= sip_transp_add(sipstack, SIP_TRANSP_TCP, &laddr);
+			if(err) {
+				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP transports: %d (%s)\n", err, strerror(err));
+				return;
+			}
+			err = tls_alloc(&tls, TLS_METHOD_SSLV23, NULL, NULL);
+			err |= sip_transp_add(sipstack, SIP_TRANSP_TLS, &laddrs, tls);
+			if(err) {
+				mem_deref(sipstack);
+				mem_deref(tls);
+				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIPS transports: %d (%s)\n", err, strerror(err));
+				return;
+			}
+			mem_deref(tls);
+			break;
+		}
+		case janus_sipre_mqueue_event_do_register: {
+			janus_sipre_session *session = (janus_sipre_session *)data;
+			JANUS_LOG(LOG_INFO, "[SIPre-%s] Sending REGISTER\n", session->account.username);
+			int err = sipreg_register(&session->stack.reg, sipstack,
 				session->account.proxy,
 				session->account.identity, session->account.identity, 3600,
 				session->account.display_name ? session->account.display_name : session->account.username, NULL, 0, 0,
@@ -2923,6 +2940,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				JANUS_LOG(LOG_ERR, "Error attempting to REGISTER...\n");
 			}
 			break;
+		}
 		case janus_sipre_mqueue_event_do_exit:
 			/* We're done, here, break the loop */
 			re_cancel();
