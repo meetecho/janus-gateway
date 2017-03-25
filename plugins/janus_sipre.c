@@ -49,6 +49,7 @@
 #include <re_sa.h>
 #include <re_main.h>
 #include <re_mem.h>
+#include <re_mqueue.h>
 #include <re_sdp.h>
 #include <re_uri.h>
 #include <re_sip.h>
@@ -213,6 +214,15 @@ static void janus_sipre_message_free(janus_sipre_message *msg) {
 static struct sip *sipstack;
 static struct tls *tls = NULL;
 GThread *sipstack_thread = NULL;
+
+/* Message queue */
+typedef enum janus_sipre_mqueue_event {
+	janus_sipre_mqueue_event_do_register,
+	/* TODO Add other events here */
+	janus_sipre_mqueue_event_do_exit
+} janus_sipre_mqueue_event;
+static struct mqueue *mq = NULL;
+void janus_sipre_mqueue_handler(int id, void *data, void *arg);
 
 /* Registration info */
 typedef enum {
@@ -776,6 +786,12 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	mem_deref(tls);
+	err = mqueue_alloc(&mq, janus_sipre_mqueue_handler, NULL);
+	if(err) {
+		mem_deref(sipstack);
+		JANUS_LOG(LOG_ERR, "Failed to initialize message queue: %d (%s)\n", err, strerror(err));
+		return -1;
+	}
 
 	sessions = g_hash_table_new(NULL, NULL);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
@@ -823,8 +839,7 @@ void janus_sipre_destroy(void) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
 	}
-	re_cancel();
-	JANUS_LOG(LOG_ERR, "re_cancel() called\n");
+
 	if(sipstack_thread != NULL) {
 		g_thread_join(sipstack_thread);
 		sipstack_thread = NULL;
@@ -1487,16 +1502,11 @@ static void *janus_sipre_handler(void *data) {
 				char ttl_text[20];
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 					/* TODO Any way to specify TTL in sipreg_register? */
-				int err = sipreg_register(&session->stack.reg, sipstack,
-					session->account.proxy,
-					session->account.identity, session->account.identity, 3600,
-					session->account.display_name ? session->account.display_name : session->account.username, NULL, 0, 0,
-					janus_sipre_cb_auth, session, FALSE,
-					janus_sipre_cb_register, session, NULL, NULL);
-				if(err < 0) {
-					/* TODO Handle accordingly */
-					JANUS_LOG(LOG_ERR, "Error attempting to REGISTER...\n");
-				}
+				/* We enqueue this REGISTER attempt, to be sure it's done in the re_main loop thread
+				 * FIXME Maybe passing a key to the session is better than passing the session object
+				 * itself? it may be gone when it gets handled... won't be an issue with the
+				 * reference counter branch but needs to be taken into account until then */
+				mqueue_push(mq, janus_sipre_mqueue_event_do_register, session);
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
 			} else {
@@ -2890,4 +2900,35 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 void janus_sipre_cb_exit(void *arg) {
 	/* Stop libre main loop */
 	re_cancel();
+}
+
+/* Callback to implement SIP requests in the re_main loop thread */
+void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
+	janus_sipre_mqueue_event event = (janus_sipre_mqueue_event)id;
+	janus_sipre_session *session = (janus_sipre_session *)data;
+	JANUS_LOG(LOG_INFO, "[SIPre-%s] event %d\n", session->account.username, id);
+
+	int err = 0;
+
+	switch(event) {
+		case janus_sipre_mqueue_event_do_register:
+			err = sipreg_register(&session->stack.reg, sipstack,
+				session->account.proxy,
+				session->account.identity, session->account.identity, 3600,
+				session->account.display_name ? session->account.display_name : session->account.username, NULL, 0, 0,
+				janus_sipre_cb_auth, session, FALSE,
+				janus_sipre_cb_register, session, NULL, NULL);
+			if(err < 0) {
+				/* TODO Send event and handle accordingly */
+				JANUS_LOG(LOG_ERR, "Error attempting to REGISTER...\n");
+			}
+			break;
+		case janus_sipre_mqueue_event_do_exit:
+			/* We're done, here, break the loop */
+			re_cancel();
+			break;
+		default:
+			/* Shouldn't happen */
+			break;
+	}
 }
