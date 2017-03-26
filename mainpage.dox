@@ -2438,6 +2438,12 @@ ldd janus | grep asan
  * <table class="table table-striped">
  * <tr><th>Distro</th><th>Author</th><th>Repo</th><th>Description</th></tr>
  * <tr>
+ * 		<td>Debian</td>
+ * 		<td>Debian VoIP Team</td>
+ * 		<td><a href="https://packages.debian.org/source/sid/janus">Janus packages (sid)</a></td>
+ *		<td>Debian Sid</td>
+ * </tr>
+ * <tr>
  * 		<td>Debian/Ubuntu</td>
  * 		<td><a href="https://github.com/saghul">Saúl Ibarra Corretgé </a></td>
  * 		<td><a href="http://projects.ag-projects.com/projects/documentation/wiki/Repositories">AG Projects Repo</a></td>

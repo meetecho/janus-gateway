@@ -440,7 +440,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			fseek(pem, 0L, SEEK_END);
 			size_t size = ftell(pem);
 			fseek(pem, 0L, SEEK_SET);
-			cert_pem_bytes = g_malloc0(size);
+			cert_pem_bytes = g_malloc0(size+1);
 			if(cert_pem_bytes == NULL) {
 				JANUS_LOG(LOG_FATAL, "Memory error!\n");
 				return NULL;
@@ -452,6 +452,7 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				index += read;
 			}
 			fclose(pem);
+			cert_pem_bytes[size] = '\0';
 		}
 		FILE *key = fopen(server_key, "rb");
 		if(key) {
@@ -822,7 +823,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	janus_config_destroy(config);
 	config = NULL;
 	if(!ws && !sws && !admin_ws && !admin_sws) {
-		JANUS_LOG(LOG_FATAL, "No HTTP/HTTPS server started, giving up...\n"); 
+		JANUS_LOG(LOG_WARN, "No HTTP/HTTPS server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
 	http_janus_api_enabled = ws || sws;

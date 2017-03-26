@@ -15,13 +15,13 @@
  * \note If you want/need to debug SCTP messages for any reason, you can
  * do so by uncommenting the definition of \c DEBUG_SCTP in sctp.h. This
  * will force this code to save all the SCTP messages being exchanged to
- * a separate file for each session. You can choose what folder to save
+ * a separate file for each session. You must choose what folder to save
  * these files in by modifying the \c debug_folder variable. Once a file
  * has been saved, you need to process it using the \c text2pcap tool
  * that is usually shipped with Wireshark, e.g.:
  * 
 \verbatim
-cd /tmp/sctp
+cd /path/to/sctp
 /usr/sbin/text2pcap -n -l 248 -D -t '%H:%M:%S.' sctp-debug-XYZ.txt sctp-debug-XYZ.pcapng
 /usr/sbin/wireshark sctp-debug-XYZ.pcapng
 \endverbatim
@@ -39,8 +39,8 @@ cd /tmp/sctp
 #include "debug.h"
 
 #ifdef DEBUG_SCTP
-/* If we're debugging the SCTP messaging, save the files here */
-const char *debug_folder = "/tmp/sctp";
+/* If we're debugging the SCTP messaging, save the files here (edit path) */
+const char *debug_folder = "/path/to/sctp";
 #endif
 
 

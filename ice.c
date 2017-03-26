@@ -18,6 +18,7 @@
 #include <poll.h>
 #include <net/if.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netdb.h>
 #include <fcntl.h>
 #include <stun/usages/bind.h>
