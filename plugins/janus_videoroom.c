@@ -527,7 +527,6 @@ typedef struct janus_videoroom_participant {
 } janus_videoroom_participant;
 static void janus_videoroom_participant_free(janus_videoroom_participant *p);
 static void janus_videoroom_rtp_forwarder_free_helper(gpointer data);
-
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_participant *p,
 	const gchar* host, int port, int pt, uint32_t ssrc, gboolean is_video, gboolean is_data);
 
@@ -570,8 +569,6 @@ typedef struct janus_videoroom_rtp_relay_packet {
 #define JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED		435
 #define JANUS_VIDEOROOM_ERROR_ID_EXISTS			436
 #define JANUS_VIDEOROOM_ERROR_INVALID_SDP		437
-
-
 
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_participant *p,
 		const gchar* host, int port, int pt, uint32_t ssrc, gboolean is_video, gboolean is_data) {
@@ -2181,10 +2178,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(participant->audio_active) {
 		int level = 0;
 		if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->audio_level_extmap_id, &level) == 0) {
-			// JANUS_LOG(LOG_INFO, "Audio level is %d\n", level);
+			/* JANUS_LOG(LOG_INFO, "Audio level is %d\n", level); */
 			participant->audio_dBov_sum = participant->audio_dBov_sum + level;
 			participant->audio_active_packets = participant->audio_active_packets + 1;
-		// 2 seconds of talking (100 packets) with average of ~25 dBow
+			/* 2 seconds of talking (100 packets) with average of ~25 dBow */
 			if(participant->audio_active_packets == 100) {
 				if(participant->audio_dBov_sum < 2500) {
 					// Notify participants
@@ -2356,7 +2353,21 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-
+	if(!participant->data_active)
+		return;
+	/* Any forwarder involved? */
+	janus_mutex_lock(&participant->rtp_forwarders_mutex);
+	/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, participant->rtp_forwarders);
+	while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
+		if(rtp_forward->is_data) {
+			sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
+		}
+	}
+	janus_mutex_unlock(&participant->rtp_forwarders_mutex);
 	/* Get a string out of the data */
 	char *text = g_malloc0(len+1);
 	memcpy(text, buf, len);
