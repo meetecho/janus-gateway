@@ -41,7 +41,7 @@
  * makes available in your web application can be found in the \ref JS
  * and \ref rest pages. New API transports can be created referring to
  * the \ref transportapi page. If you're interested in monitoring Janus
- * resources, you can refer to the \ref admin page. Event handler plugins
+ * resources, you can refer to the \ref admin page. Event handler
  * plugins can also be used for the purpose: refer to the \ref eventhandlerapi
  * page if you're interested in creating your own.
  *
@@ -55,15 +55,13 @@
  *
  * This is only the first version of the gateway, and as such it is a bit
  * rough at the edges: there is definitely room for improvement, there are
- * bugs, limitations, and things that need to be done. For a quick glance
- * on the most relevant pending stuff check our \ref todo (and, if you're
- * willing to help on any of those, get in touch with us!). Make also
+ * bugs, limitations, and things that need to be done. Make also
  * sure you read the \ref debug page for info on how you can help us
  * fixing issues you might encounter along the road.
  *
  * \section copyright Copyright and author
  *
- * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref CREDITS )
  *
@@ -293,7 +291,11 @@ var janus = new Janus(
  * everything else succeeded) from the Janus perspective, while <b>false</b> is
  * triggered when the PeerConnection goes down instead; useful to figure out
  * when WebRTC is actually up and running between you and Janus (e.g., to notify
- * a user they're actually now active in a conference);
+ * a user they're actually now active in a conference); notice that in case
+ * of <b>false</b> a reason string may be present as an optional parameter;
+ * 		- \c iceState: this callback is triggered when the ICE state for the
+ * PeerConnection associated to the handle changes: the argument of the callback
+ * is the new state as a string (e.g., "connected" or "failed");
  * 		- \c mediaState: this callback is triggered when Janus starts or stops
  * receiving your media: for instance, a \c mediaState with type=<b>audio</b> and
  * on=<b>true</b> means Janus started receiving your audio stream (or started
@@ -442,6 +444,7 @@ janus.attach(
  *     - \c data: \c true/false (do or do not use Data Channels, default is false)
  *     - \c failIfNoAudio: \c true/false (whether a getUserMedia should fail if audio send is asked, but no audio device is available, default is false)
  *     - \c failIfNoVideo: \c true/false (whether a getUserMedia should fail if video send is asked, but no video device is available, default is false)
+ *     - \c screenshareFrameRate: in case you're sharing a screen/application, allows you to specify the framerate (default=3);
  *   - \c trickle: \c true/false, to tell the library whether you want
  * Trickle ICE to be used (true, the default) or not (false);
  *   - \c stream: optional, only to be passed in case you obtained a MediaStream object yourself with a \c getUserMedia
@@ -1585,7 +1588,7 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
 \endverbatim
  *
  * \section secret Shared static secret
- * Several deployers showed an interested in wrapping the Janus API on
+ * Several deployers showed an interest in wrapping the Janus API on
  * their server side: this allows them to keep the interaction with their
  * users the way it was before, while still benefiting from the features
  * Janus provides. This is an easy enough step, as it just needs developers
@@ -1676,10 +1679,20 @@ var websocket = new WebSocket('ws://1.2.3.4:8188', 'janus-protocol');
  * - \c list_handles: list all the ICE handles currently active in a Janus
  * session (returns an array of handle identifiers);
  * - \c handle_info: list all the available info on a specific ICE handle;
+ * - \c set_session_timeout: change the session timeout value in Janus on the fly;
  * - \c set_log_level: change the log level in Janus on the fly;
  * - \c set_locking_debug: selectively enable/disable a live debugging of
  * the locks in Janus on the fly (useful if you're experiencing deadlocks
  * and want to investigate them);
+ * - \c set_libnice_debug: selectively enable/disable libnice debugging;
+ * - \c set_log_timestamps: selectively enable/disable adding a timestamp
+ * to all log lines Janus writes on the console and/or to file;
+ * - \c set_log_colors: selectively enable/disable using colors in all
+ * log lines Janus writes on the console and/or to file;
+ * - \c set_max_nack_queue: change the value of the max NACK queue window
+ * on the fly;
+ * - \c set_no_media_timer: change the value of the no-media timer value
+ * on the fly;
  * - \c add_token: add a valid token (only available if you enabled the \ref token);
  * - \c allow_token: give a token access to a plugin (only available if you enabled the \ref token);
  * - \c disallow_token: remove a token access from a plugin (only available if you enabled the \ref token);
@@ -2425,6 +2438,12 @@ ldd janus | grep asan
  * <table class="table table-striped">
  * <tr><th>Distro</th><th>Author</th><th>Repo</th><th>Description</th></tr>
  * <tr>
+ * 		<td>Debian</td>
+ * 		<td>Debian VoIP Team</td>
+ * 		<td><a href="https://packages.debian.org/source/sid/janus">Janus packages (sid)</a></td>
+ *		<td>Debian Sid</td>
+ * </tr>
+ * <tr>
  * 		<td>Debian/Ubuntu</td>
  * 		<td><a href="https://github.com/saghul">Saúl Ibarra Corretgé </a></td>
  * 		<td><a href="http://projects.ag-projects.com/projects/documentation/wiki/Repositories">AG Projects Repo</a></td>
@@ -2537,6 +2556,19 @@ ldd janus | grep asan
  * </table>
  * <br/>
  *
+ * \section monitoring Event Handlers (monitoring/troubleshooting)
+ *
+ * <table class="table table-striped">
+ * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
+ * <tr>
+ * 		<td>node-js</td>
+ * 		<td><a href="https://github.com/thehunmonkgroup">Chad Phillips</a></td>
+ * 		<td><a href="https://github.com/thehunmonkgroup/janus-event-server">janus-event-server</a></td>
+ * 		<td>Simple plugin-based server to receive/process events from Janus.</td>
+ * </tr>
+ * </table>
+ * <br/>
+ *
  * \section thirdplugins Third-party plugins
  *
  * <table class="table table-striped">
@@ -2570,7 +2602,7 @@ ldd janus | grep asan
 
 /*! \page CREDITS Credits
  *
- * Janus WebRTC Gateway © 2014-2016 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
+ * Janus WebRTC Gateway © 2014-2017 <a href="http://www.meetecho.com/">Meetecho</a> (http://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>

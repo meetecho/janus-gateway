@@ -208,3 +208,159 @@ int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 		*max_delay = max;
 	return 0;
 }
+
+
+/* RTP context related methods */
+void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
+	if(context == NULL)
+		return;
+	/* Reset the context values */
+	context->a_last_ssrc = 0;
+	context->a_last_ts = 0;
+	context->a_base_ts = 0;
+	context->a_base_ts_prev = 0;
+	context->v_last_ssrc = 0;
+	context->v_last_ts = 0;
+	context->v_base_ts = 0;
+	context->v_base_ts_prev = 0;
+	context->a_last_seq = 0;
+	context->a_base_seq = 0;
+	context->a_base_seq_prev = 0;
+	context->v_last_seq = 0;
+	context->v_base_seq = 0;
+	context->v_base_seq_prev = 0;
+	context->a_seq_reset = FALSE;
+	context->v_seq_reset = FALSE;
+}
+
+void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
+	if(header == NULL || context == NULL || step < 1)
+		return;
+	uint32_t ssrc = ntohl(header->ssrc);
+	uint32_t timestamp = ntohl(header->timestamp);
+	uint16_t seq = ntohs(header->seq_number);
+	if(video) {
+		if(ssrc != context->v_last_ssrc) {
+			/* Video SSRC changed: update both sequence number and timestamp */
+			JANUS_LOG(LOG_VERB, "Video SSRC changed, %"SCNu32" --> %"SCNu32"\n",
+				context->v_last_ssrc, ssrc);
+			context->v_last_ssrc = ssrc;
+			context->v_base_ts_prev = context->v_last_ts;
+			context->v_base_ts = timestamp;
+			context->v_base_seq_prev = context->v_last_seq;
+			context->v_base_seq = seq;
+		}
+		if(context->v_seq_reset) {
+			/* Video sequence number was paused for a while: just update that */
+			context->v_seq_reset = FALSE;
+			context->v_base_seq_prev = context->v_last_seq;
+			context->v_base_seq = header->seq_number;
+		}
+		/* Compute a coherent timestamp and sequence number */
+		context->v_last_ts = (timestamp-context->v_base_ts) + context->v_base_ts_prev+step;
+		context->v_last_seq = (seq-context->v_base_seq)+context->v_base_seq_prev+1;
+		/* Update the timestamp and sequence number in the RTP packet */
+		header->timestamp = htonl(context->v_last_ts);
+		header->seq_number = htons(context->v_last_seq);
+	} else {
+		if(ssrc != context->a_last_ssrc) {
+			/* Audio SSRC changed: update both sequence number and timestamp */
+			JANUS_LOG(LOG_VERB, "Audio SSRC changed, %"SCNu32" --> %"SCNu32"\n",
+				context->a_last_ssrc, ssrc);
+			context->a_last_ssrc = ssrc;
+			context->a_base_ts_prev = context->a_last_ts;
+			context->a_base_ts = timestamp;
+			context->a_base_seq_prev = context->a_last_seq;
+			context->a_base_seq = seq;
+		}
+		if(context->a_seq_reset) {
+			/* Audio sequence number was paused for a while: just update that */
+			context->a_seq_reset = FALSE;
+			context->a_base_seq_prev = context->a_last_seq;
+			context->a_base_seq = header->seq_number;
+		}
+		/* Compute a coherent timestamp and sequence number */
+		context->a_last_ts = (timestamp-context->a_base_ts) + context->a_base_ts_prev+step;
+		context->a_last_seq = (seq-context->a_base_seq)+context->a_base_seq_prev+1;
+		/* Update the timestamp and sequence number in the RTP packet */
+		header->timestamp = htonl(context->a_last_ts);
+		header->seq_number = htons(context->a_last_seq);
+	}
+}
+
+
+/* SRTP stuff: we may need our own randomizer */
+#ifdef HAVE_SRTP_2
+int srtp_crypto_get_random(uint8_t *key, int len) {
+	/* libsrtp 2.0 doesn't have crypto_get_random, we use OpenSSL's RAND_* to replace it:
+	 * 		https://wiki.openssl.org/index.php/Random_Numbers */
+	int rc = RAND_bytes(key, len);
+	if(rc != 1) {
+		/* Error generating */
+		return -1;
+	}
+	return 0;
+}
+#endif
+/* SRTP error codes as a string array */
+static const char *janus_srtp_error[] =
+{
+#ifdef HAVE_SRTP_2
+	"srtp_err_status_ok",
+	"srtp_err_status_fail",
+	"srtp_err_status_bad_param",
+	"srtp_err_status_alloc_fail",
+	"srtp_err_status_dealloc_fail",
+	"srtp_err_status_init_fail",
+	"srtp_err_status_terminus",
+	"srtp_err_status_auth_fail",
+	"srtp_err_status_cipher_fail",
+	"srtp_err_status_replay_fail",
+	"srtp_err_status_replay_old",
+	"srtp_err_status_algo_fail",
+	"srtp_err_status_no_such_op",
+	"srtp_err_status_no_ctx",
+	"srtp_err_status_cant_check",
+	"srtp_err_status_key_expired",
+	"srtp_err_status_socket_err",
+	"srtp_err_status_signal_err",
+	"srtp_err_status_nonce_bad",
+	"srtp_err_status_read_fail",
+	"srtp_err_status_write_fail",
+	"srtp_err_status_parse_err",
+	"srtp_err_status_encode_err",
+	"srtp_err_status_semaphore_err",
+	"srtp_err_status_pfkey_err",
+#else
+	"err_status_ok",
+	"err_status_fail",
+	"err_status_bad_param",
+	"err_status_alloc_fail",
+	"err_status_dealloc_fail",
+	"err_status_init_fail",
+	"err_status_terminus",
+	"err_status_auth_fail",
+	"err_status_cipher_fail",
+	"err_status_replay_fail",
+	"err_status_replay_old",
+	"err_status_algo_fail",
+	"err_status_no_such_op",
+	"err_status_no_ctx",
+	"err_status_cant_check",
+	"err_status_key_expired",
+	"err_status_socket_err",
+	"err_status_signal_err",
+	"err_status_nonce_bad",
+	"err_status_read_fail",
+	"err_status_write_fail",
+	"err_status_parse_err",
+	"err_status_encode_err",
+	"err_status_semaphore_err",
+	"err_status_pfkey_err",
+#endif
+};
+const char *janus_srtp_error_str(int error) {
+	if(error < 0 || error > 24)
+		return NULL;
+	return janus_srtp_error[error];
+}

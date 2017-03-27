@@ -28,6 +28,10 @@
 
 #include "transport.h"
 
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <ifaddrs.h>
+
 #include <libwebsockets.h>
 
 #include "../debug.h"
@@ -294,6 +298,31 @@ static const char *janus_websockets_reason_string(enum libwebsocket_callback_rea
 	return NULL;
 }
 
+/* Helper method to return the interface associated with a local IP address */
+static char *janus_websockets_get_interface_name(const char *ip) {
+	struct ifaddrs *addrs = NULL, *iap = NULL;
+	getifaddrs(&addrs);
+	for(iap = addrs; iap != NULL; iap = iap->ifa_next) {
+		if(iap->ifa_addr && (iap->ifa_flags & IFF_UP)) {
+			if(iap->ifa_addr->sa_family == AF_INET) {
+				struct sockaddr_in *sa = (struct sockaddr_in *)(iap->ifa_addr);
+				char buffer[16];
+				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin_addr), buffer, sizeof(buffer));
+				if(!strcmp(ip, buffer))
+					return g_strdup(iap->ifa_name);
+			} else if(iap->ifa_addr->sa_family == AF_INET6) {
+				struct sockaddr_in6 *sa = (struct sockaddr_in6 *)(iap->ifa_addr);
+				char buffer[48];
+				inet_ntop(iap->ifa_addr->sa_family, (void *)&(sa->sin6_addr), buffer, sizeof(buffer));
+				if(!strcmp(ip, buffer))
+					return g_strdup(iap->ifa_name);
+			}
+		}
+	}
+	freeifaddrs(addrs);
+	return NULL;
+}
+
 /* WebSockets ACL list for both Janus and Admin API */
 GList *janus_websockets_access_list = NULL, *janus_websockets_admin_access_list = NULL;
 janus_mutex access_list_mutex;
@@ -454,8 +483,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				interface = (char *)item->value;
 			char *ip = NULL;
 			item = janus_config_get_item_drilldown(config, "general", "ws_ip");
-			if(item && item->value)
+			if(item && item->value) {
 				ip = (char *)item->value;
+				char *iface = janus_websockets_get_interface_name(ip);
+				if(iface == NULL) {
+					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
+				}
+				ip = iface;
+			}
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
@@ -483,6 +518,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			} else {
 				JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
 			}
+			g_free(ip);
 		}
 		item = janus_config_get_item_drilldown(config, "general", "wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
@@ -498,8 +534,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				interface = (char *)item->value;
 			char *ip = NULL;
 			item = janus_config_get_item_drilldown(config, "general", "wss_ip");
-			if(item && item->value)
+			if(item && item->value) {
 				ip = (char *)item->value;
+				char *iface = janus_websockets_get_interface_name(ip);
+				if(iface == NULL) {
+					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
+				}
+				ip = iface;
+			}
 			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -541,6 +583,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure WebSockets server started (port %d)...\n", wsport);
 				}
+				g_free(ip);
 			}
 		}
 		/* Do the same for the Admin API, if enabled */
@@ -558,8 +601,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				interface = (char *)item->value;
 			char *ip = NULL;
 			item = janus_config_get_item_drilldown(config, "admin", "admin_ws_ip");
-			if(item && item->value)
+			if(item && item->value) {
 				ip = (char *)item->value;
+				char *iface = janus_websockets_get_interface_name(ip);
+				if(iface == NULL) {
+					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
+				}
+				ip = iface;
+			}
 			/* Prepare context */
 			struct lws_context_creation_info info;
 			memset(&info, 0, sizeof info);
@@ -587,6 +636,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			} else {
 				JANUS_LOG(LOG_INFO, "Admin WebSockets server started (port %d)...\n", wsport);
 			}
+			g_free(ip);
 		}
 		item = janus_config_get_item_drilldown(config, "admin", "admin_wss");
 		if(!item || !item->value || !janus_is_true(item->value)) {
@@ -602,8 +652,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				interface = (char *)item->value;
 			char *ip = NULL;
 			item = janus_config_get_item_drilldown(config, "admin", "admin_wss_ip");
-			if(item && item->value)
+			if(item && item->value) {
 				ip = (char *)item->value;
+				char *iface = janus_websockets_get_interface_name(ip);
+				if(iface == NULL) {
+					JANUS_LOG(LOG_WARN, "No interface associated with %s? Falling back to no interface...\n", ip);
+				}
+				ip = iface;
+			}
 			item = janus_config_get_item_drilldown(config, "certificates", "cert_pem");
 			if(!item || !item->value) {
 				JANUS_LOG(LOG_FATAL, "Missing certificate/key path\n");
@@ -645,13 +701,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				} else {
 					JANUS_LOG(LOG_INFO, "Secure Admin WebSockets server started (port %d)...\n", wsport);
 				}
+				g_free(ip);
 			}
 		}
 	}
 	janus_config_destroy(config);
 	config = NULL;
 	if(!wss && !swss && !admin_wss && !admin_swss) {
-		JANUS_LOG(LOG_FATAL, "No WebSockets server started, giving up...\n");
+		JANUS_LOG(LOG_WARN, "No WebSockets server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
 	wss_janus_api_enabled = wss || swss;
