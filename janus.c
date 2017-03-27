@@ -31,15 +31,17 @@
 #include "apierror.h"
 #include "log.h"
 #include "debug.h"
+#include "ip-utils.h"
 #include "rtcp.h"
 #include "auth.h"
+#include "record.h"
 #include "events.h"
 
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			22
-#define JANUS_VERSION_STRING	"0.2.2"
+#define JANUS_VERSION			23
+#define JANUS_VERSION_STRING	"0.2.3"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -109,6 +111,9 @@ static struct janus_json_parameter admin_parameters[] = {
 static struct janus_json_parameter debug_parameters[] = {
 	{"debug", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter timeout_parameters[] = {
+	{"timeout", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter level_parameters[] = {
 	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
@@ -121,6 +126,9 @@ static struct janus_json_parameter colors_parameters[] = {
 static struct janus_json_parameter mnq_parameters[] = {
 	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter nmt_parameters[] = {
+	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -128,7 +136,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
 /* IP addresses */
-static gchar local_ip[INET6_ADDRSTRLEN];
+static gchar *local_ip = NULL;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
@@ -154,9 +162,24 @@ gint janus_is_stopping(void) {
 static gchar *server_name = NULL;
 
 
+/* The default timeout for sessions is 60 seconds: this means that, if
+ * we don't get any activity (i.e., no request) on this session for more
+ * than 60 seconds, then it's considered expired and we destroy it. That's
+ * why we have a keep-alive method in the API. This can be overridden in
+ * either janus.cfg or from the command line. Setting this to 0 will
+ * disable the timeout mechanism, which is NOT suggested as it may risk
+ * having orphaned sessions (sessions not controlled by any transport
+ * and never freed). Besides, notice that if you make this shorter than
+ * 30s, you'll have to update the timers in janus.js when the long
+ * polling mechanism is used and shorten them as well, or you'll risk
+ * incurring in unexpected timeouts (when HTTP is used in janus.js, the
+ * long poll is used as a keepalive mechanism). */
+#define DEFAULT_SESSION_TIMEOUT		60
+static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
+
+
 /* Information */
-json_t *janus_info(const char *transaction);
-json_t *janus_info(const char *transaction) {
+static json_t *janus_info(const char *transaction) {
 	/* Prepare a summary on the gateway */
 	json_t *info = json_object();
 	json_object_set_new(info, "janus", json_string("server_info"));
@@ -175,11 +198,13 @@ json_t *janus_info(const char *transaction) {
 #else
 	json_object_set_new(info, "data_channels", json_false());
 #endif
+	json_object_set_new(info, "session-timeout", json_integer(session_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
 		json_object_set_new(info, "public-ip", json_string(public_ip));
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
@@ -371,8 +396,6 @@ static GHashTable *sessions = NULL, *old_sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
 
 
-#define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
-
 static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
 
@@ -383,6 +406,8 @@ static gboolean janus_cleanup_session(gpointer user_data) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
+	if(session_timeout < 1)		/* Session timeouts are disabled */
+		return G_SOURCE_CONTINUE;
 	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -395,7 +420,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
+			if (now - session->last_activity >= session_timeout * G_USEC_PER_SEC && !session->timeout) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 
 				/* Notify the transport */
@@ -1526,13 +1551,39 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
+			json_object_set_new(status, "session_timeout", json_integer(session_timeout));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			json_object_set_new(reply, "status", status);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_session_timeout")) {
+			/* Change the session timeout value */
+			JANUS_VALIDATE_JSON_OBJECT(root, timeout_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *timeout = json_object_get(root, "timeout");
+			int timeout_num = json_integer_value(timeout);
+			if(timeout_num < 0) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timeout should be a positive integer)");
+				goto jsondone;
+			}
+			session_timeout = timeout_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "timeout", json_integer(session_timeout));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1661,6 +1712,26 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_no_media_timer")) {
+			/* Change the current value for the no-media timer */
+			JANUS_VALIDATE_JSON_OBJECT(root, nmt_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *nmt = json_object_get(root, "no_media_timer");
+			int nmt_num = json_integer_value(nmt);
+			janus_set_no_media_timer(nmt_num);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2346,6 +2417,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
 		json_object_set_new(d, "dtls-role", json_string(janus_get_dtls_srtp_role(component->stream->dtls_role)));
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
+		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
 		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
 		if(dtls->dtls_connected > 0)
@@ -3056,35 +3128,6 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 }
 
 
-static void janus_detect_local_ip(gchar *buf, size_t buflen) {
-	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
-	struct sockaddr_in addr;
-	socklen_t len;
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd == -1)
-		goto error;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(1);
-	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
-	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
-		goto error;
-	len = sizeof(addr);
-	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
-		goto error;
-	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
-			buf, buflen,
-			NULL, 0, NI_NUMERICHOST) != 0)
-		goto error;
-	close(fd);
-	return;
-error:
-	if (fd != -1)
-		close(fd);
-	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-	g_strlcpy(buf, "127.0.0.1", buflen);
-}
-
-
 /* Main */
 gint main(int argc, char *argv[])
 {
@@ -3305,6 +3348,11 @@ gint main(int argc, char *argv[])
 	if(args_info.server_name_given) {
 		janus_config_add_item(config, "general", "server_name", args_info.server_name_arg);
 	}
+	if(args_info.session_timeout_given) {
+		char st[20];
+		g_snprintf(st, 20, "%d", args_info.session_timeout_arg);
+		janus_config_add_item(config, "general", "session_timeout", st);
+	}
  	if(args_info.interface_given) {
 		janus_config_add_item(config, "general", "interface", args_info.interface_arg);
 	}
@@ -3371,6 +3419,11 @@ gint main(int argc, char *argv[])
 		g_snprintf(mnq, 20, "%d", args_info.max_nack_queue_arg);
 		janus_config_add_item(config, "media", "max_nack_queue", mnq);
 	}
+	if(args_info.no_media_timer_given) {
+		char nmt[20];
+		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
+		janus_config_add_item(config, "media", "no_media_timer", nmt);
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
 	}
@@ -3427,55 +3480,53 @@ gint main(int argc, char *argv[])
 	}
 	/* What is the local IP? */
 	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");
-	gboolean local_ip_set = FALSE;
 	item = janus_config_get_item_drilldown(config, "general", "interface");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "  -- Will try to use %s\n", item->value);
-		int family;
-		if (!janus_is_ip_valid(item->value, &family)) {
-			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+		/* Verify that the address is valid */
+		struct ifaddrs *ifas = NULL;
+		janus_network_address iface;
+		janus_network_address_string_buffer ibuf;
+		if(getifaddrs(&ifas) || ifas == NULL) {
+			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 		} else {
-			/* Verify that we can actually bind to that address */
-			int fd = socket(family, SOCK_DGRAM, 0);
-			if (fd == -1) {
-				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
+				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
 			} else {
-				int r;
-				struct sockaddr_storage ss;
-				socklen_t addrlen;
-				memset(&ss, 0, sizeof(ss));
-				if (family == AF_INET) {
-					struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
-					addr4->sin_family = AF_INET;
-					addr4->sin_port = 0;
-					inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
-					addrlen = sizeof(struct sockaddr_in);
+				if(janus_network_address_to_string_buffer(&iface, &ibuf) != 0 || janus_network_address_string_buffer_is_null(&ibuf)) {
+					JANUS_LOG(LOG_WARN, "Error getting local IP address from %s, falling back to detecting IP address...\n", item->value);
 				} else {
-					struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
-					addr6->sin6_family = AF_INET6;
-					addr6->sin6_port = 0;
-					inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
-					addrlen = sizeof(struct sockaddr_in6);
-				}
-				r = bind(fd, (const struct sockaddr*)&ss, addrlen);
-				close(fd);
-				if (r < 0) {
-					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
-				} else {
-					g_strlcpy(local_ip, item->value, sizeof(local_ip));
-					local_ip_set = TRUE;
+					local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
 				}
 			}
 		}
 	}
-	if (!local_ip_set)
-		janus_detect_local_ip(local_ip, sizeof(local_ip));
+	if(local_ip == NULL) {
+		local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+		if(local_ip == NULL) {
+			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+			local_ip = g_strdup("127.0.0.1");
+		}
+	}
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Was a custom instance name provided? */
 	item = janus_config_get_item_drilldown(config, "general", "server_name");
 	if(item && item->value) {
 		server_name = g_strdup(item->value);
+	}
+
+	/* Check if a custom session timeout value was specified */
+	item = janus_config_get_item_drilldown(config, "general", "session_timeout");
+	if(item && item->value) {
+		int st = atoi(item->value);
+		if(st < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring session_timeout value as it's not a positive integer\n");
+		} else if(st == 0) {
+			JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
+		} else {
+			session_timeout = st;
+		}
 	}
 
 	/* Is there any API secret to consider? */
@@ -3493,6 +3544,14 @@ gint main(int argc, char *argv[])
 	/* Also check if the token based authentication mechanism needs to be enabled */
 	item = janus_config_get_item_drilldown(config, "general", "token_auth");
 	janus_auth_init(item && item->value && janus_is_true(item->value));
+
+	/* Initialize the recorder code */
+	item = janus_config_get_item_drilldown(config, "general", "recordings_tmp_ext");
+	if(item && item->value) {
+		janus_recorder_init(TRUE, item->value);
+	} else {
+		janus_recorder_init(FALSE, NULL);
+	}
 
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL, *turn_server = NULL;
@@ -3545,9 +3604,13 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "nat_1_1_mapping");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public ip - %s\n", item->value);
-		nat_1_1_mapping = item->value;
-		janus_set_public_ip(item->value);
-		janus_ice_enable_nat_1_1();
+		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
+			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
+		} else {
+			nat_1_1_mapping = item->value;
+			janus_set_public_ip(item->value);
+			janus_ice_enable_nat_1_1();
+		}
 	}
 	/* Any TURN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "turn_server");
@@ -3606,19 +3669,25 @@ gint main(int argc, char *argv[])
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		gboolean private_address = FALSE;
 		const char *test_ip = nat_1_1_mapping ? nat_1_1_mapping : local_ip;
-		struct sockaddr_in addr;
-		if(inet_pton(AF_INET, test_ip, &addr) > 0) {
-			unsigned short int ip[4];
-			sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
-			if(ip[0] == 10) {
-				/* Class A private address */
-				private_address = TRUE;
-			} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
-				/* Class B private address */
-				private_address = TRUE;
-			} else if(ip[0] == 192 && ip[1] == 168) {
-				/* Class C private address */
-				private_address = TRUE;
+		janus_network_address addr;
+		if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
+			JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
+		} else {
+			if(addr.family == AF_INET) {
+				unsigned short int ip[4];
+				sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
+				if(ip[0] == 10) {
+					/* Class A private address */
+					private_address = TRUE;
+				} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
+					/* Class B private address */
+					private_address = TRUE;
+				} else if(ip[0] == 192 && ip[1] == 168) {
+					/* Class C private address */
+					private_address = TRUE;
+				}
+			} else {
+				/* TODO Similar check for IPv6... */
 			}
 		}
 		if(private_address) {
@@ -3644,6 +3713,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's less than 200\n");
 		} else {
 			janus_set_max_nack_queue(mnq);
+		}
+	}
+	/* no-media timer */
+	item = janus_config_get_item_drilldown(config, "media", "no_media_timer");
+	if(item && item->value) {
+		int nmt = atoi(item->value);
+		if(nmt < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
+		} else {
+			janus_set_no_media_timer(nmt);
 		}
 	}
 
@@ -4172,6 +4251,9 @@ gint main(int argc, char *argv[])
 		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
 		g_hash_table_destroy(eventhandlers_so);
 	}
+
+	janus_recorder_deinit();
+	g_free(local_ip);
 
 	JANUS_PRINT("Bye!\n");
 

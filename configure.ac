@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.2],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.2.3],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -85,8 +85,14 @@ AC_ARG_ENABLE([sample-event-handler],
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
                               [Use BoringSSL instead of OpenSSL])],
-              [],
-              [enable_boringssl=no])
+              [
+                case "${enableval}" in
+                  yes) boringssl_dir=/opt/boringssl ;;
+                  no)  boringssl_dir= ;;
+                  *) boringssl_dir=${enableval} ;;
+                esac
+              ],
+              [boringssl_dir=])
 
 AC_ARG_ENABLE([libsrtp2],
               [AS_HELP_STRING([--enable-libsrtp2],
@@ -117,24 +123,26 @@ PKG_CHECK_MODULES([JANUS],
 JANUS_MANUAL_LIBS+=" -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 
-AS_IF([test "x$enable_boringssl" = "xyes"],
+AS_IF([test "x${boringssl_dir}" != "x"],
 	  [echo "Trying to use BoringSSL instead of OpenSSL...";
-	   CFLAGS="$CFLAGS -I/opt/boringssl/include";
-	   BORINGSSL_CFLAGS=" -I/opt/boringssl/include";
+	   AC_MSG_NOTICE([BoringSSL directory is ${boringssl_dir}])
+	   CFLAGS="$CFLAGS -I${boringssl_dir}/include";
+	   BORINGSSL_CFLAGS=" -I${boringssl_dir}/include";
        AC_SUBST(BORINGSSL_CFLAGS)
-	   BORINGSSL_LIBS=" -L/opt/boringssl/lib";
+	   BORINGSSL_LIBS=" -L${boringssl_dir}/lib";
        AC_SUBST(BORINGSSL_LIBS)
-	   AC_CHECK_HEADERS([openssl/opensslconf.h],
-	                    [],
-	                    [AC_MSG_ERROR([BoringSSL headers not found in /opt/boringssl, use --disable-boringssl if you want to use OpenSSL instead])])
+	   AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
+	                    [AC_DEFINE(HAVE_BORINGSSL)],
+	                    [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}, use --disable-boringssl if you want to use OpenSSL instead])])
       ])
-AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x$enable_boringssl" = "xyes"])
+AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x${boringssl_dir}" != "x"])
 
 AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       [
       AC_DEFINE(HAVE_DTLS_SETTIMEOUT)
       AC_MSG_NOTICE([Assuming DTLSv1_set_initial_timeout_duration is available])
       ])
+AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
 
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
@@ -184,6 +192,11 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
                                            [
                                              JANUS_MANUAL_LIBS+=" -lsrtp"
                                              enable_libsrtp2=no
+                                             PKG_CHECK_MODULES([SRTP15X],
+                                                               [
+                                                                 libsrtp >= 1.5.0
+                                                               ])
+
                                            ],
                                            [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
                          ],
@@ -225,9 +238,9 @@ PKG_CHECK_MODULES([LIBCURL],
                   ],
                   [
                     AS_IF([test "x$enable_turn_rest_api" = "xyes"],
-                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-turn-rest-api])])
+                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-turn-rest-api])])
                     AS_IF([test "x$enable_sample_event_handler" = "xyes"],
-                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-sample-event-handler])])
+                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-sample-event-handler])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
 AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])
@@ -434,7 +447,7 @@ PKG_CHECK_MODULES([SOFIA],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_sip" = "xyes"],
-                          [AC_MSG_ERROR([sofia-sip-ua not found not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                          [AC_MSG_ERROR([sofia-sip-ua not found. See README.md for installation instructions or use --disable-plugin-sip])])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
@@ -447,7 +460,7 @@ PKG_CHECK_MODULES([OPUS],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
-                          [AC_MSG_ERROR([libopus not found not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
+                          [AC_MSG_ERROR([libopus not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
                   ])
 AC_SUBST([OPUS_CFLAGS])
 AC_SUBST([OPUS_LIBS])
@@ -460,7 +473,7 @@ PKG_CHECK_MODULES([OGG],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_voicemail" = "xyes"],
-                          [AC_MSG_ERROR([libogg not found not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
+                          [AC_MSG_ERROR([libogg not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
                   ])
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
@@ -530,8 +543,13 @@ AM_COND_IF([ENABLE_LIBSRTP_2],
 	[echo "libsrtp version:           2.0.x"],
 	[echo "libsrtp version:           1.5.x"])
 AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "SSL/crypto library:        BoringSSL"],
-	[echo "SSL/crypto library:        OpenSSL"])
+	[echo "SSL/crypto library:        BoringSSL"
+	 AM_COND_IF([ENABLE_DTLS_SETTIMEOUT],
+		[echo "DTLS set-timeout:          yes"],
+		[echo "DTLS set-timeout:          no"])
+	],
+	[echo "SSL/crypto library:        OpenSSL"
+	 echo "DTLS set-timeout:          not available"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])

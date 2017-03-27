@@ -145,6 +145,9 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
 								mediaState: function(medium, on) {
 									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
 								},

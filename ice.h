@@ -128,6 +128,12 @@ void janus_set_max_nack_queue(uint mnq);
 /*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @returns The current max NACK value */
 uint janus_get_max_nack_queue(void);
+/*! \brief Method to modify the no-media event timer (i.e., the number of seconds where no media arrives before Janus notifies this)
+ * @param[in] timer The new timer value, in seconds */
+void janus_set_no_media_timer(uint timer);
+/*! \brief Method to get the current no-media event timer (see above)
+ * @returns The current no-media event timer */
+uint janus_get_no_media_timer(void);
 /*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
  * @returns True if libnice debugging is enabled, FALSE otherwise */
 gboolean janus_ice_is_ice_debugging_enabled(void);
@@ -314,6 +320,10 @@ struct janus_ice_handle {
 	GThread *send_thread;
 	/*! \brief Atomic flag to make sure we only create the thread once */
 	volatile gint send_thread_created;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	guint srtp_errors_count;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	gint last_srtp_error;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };
@@ -369,7 +379,7 @@ struct janus_ice_stream {
 	/*! \brief RTCP component */
 	janus_ice_component *rtcp_component;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 };
@@ -420,7 +430,7 @@ struct janus_ice_component {
 	/*! \brief Stats for outgoing data (audio/video/data) */
 	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
 };
