@@ -1096,7 +1096,6 @@ static void *janus_videocall_handler(void *data) {
 					/* Send a PLI */
 					JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
 					char buf[12];
-					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					gateway->relay_rtcp(session->handle, 1, buf, 12);
 				}
@@ -1109,7 +1108,6 @@ static void *janus_videocall_handler(void *data) {
 				if(session->bitrate > 0) {
 					/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
 					char buf[24];
-					memset(buf, 0, 24);
 					janus_rtcp_remb((char *)&buf, 24, session->bitrate);
 					JANUS_LOG(LOG_VERB, "Sending REMB\n");
 					gateway->relay_rtcp(session->handle, 1, buf, 24);
@@ -1193,7 +1191,6 @@ static void *janus_videocall_handler(void *data) {
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						char buf[12];
-						memset(buf, 0, 12);
 						janus_rtcp_pli((char *)&buf, 12);
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 					}

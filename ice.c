@@ -3239,6 +3239,7 @@ void *janus_ice_send_thread(void *data) {
 				/* Create a RR */
 				int rrlen = 32;
 				char rtcpbuf[32];
+				memset(rtcpbuf, 0, sizeof(rtcpbuf));
 				rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
 				rr->header.version = 2;
 				rr->header.type = RTCP_RR;
@@ -3257,6 +3258,7 @@ void *janus_ice_send_thread(void *data) {
 					/* Create a RR */
 					int rrlen = 32;
 					char rtcpbuf[32];
+					memset(rtcpbuf, 0, sizeof(rtcpbuf));
 					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;
@@ -3277,6 +3279,7 @@ void *janus_ice_send_thread(void *data) {
 				int srlen = 28;
 				int sdeslen = 20;
 				char rtcpbuf[srlen+sdeslen];
+				memset(rtcpbuf, 0, sizeof(rtcpbuf));
 				rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 				sr->header.version = 2;
 				sr->header.type = RTCP_SR;
@@ -3316,6 +3319,7 @@ void *janus_ice_send_thread(void *data) {
 				int srlen = 28;
 				int sdeslen = 20;
 				char rtcpbuf[srlen+sdeslen];
+				memset(rtcpbuf, 0, sizeof(rtcpbuf));
 				rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 				sr->header.version = 2;
 				sr->header.type = RTCP_SR;
@@ -3510,6 +3514,7 @@ void *janus_ice_send_thread(void *data) {
 					/* There's a REMB, prepend a RR as it won't work otherwise */
 					int rrlen = 32;
 					char *rtcpbuf = g_malloc0(rrlen+pkt->length);
+					memset(rtcpbuf, 0, rrlen+pkt->length);
 					rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;

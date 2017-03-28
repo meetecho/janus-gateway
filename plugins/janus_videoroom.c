@@ -1699,12 +1699,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		if(video_handle > 0) {
 			/* Send a FIR to the new RTP forward publisher */
 			char buf[20];
-			memset(buf, 0, 20);
 			janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 			gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 			/* Send a PLI too, just in case... */
-			memset(buf, 0, 12);
 			janus_rtcp_pli((char *)&buf, 12);
 			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 			gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
@@ -2167,12 +2165,10 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 				if(p && p->session) {
 					/* Send a FIR */
 					char buf[20];
-					memset(buf, 0, 20);
 					janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
 					JANUS_LOG(LOG_VERB, "New listener available, sending FIR to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, buf, 20);
 					/* Send a PLI too, just in case... */
-					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					JANUS_LOG(LOG_VERB, "New listener available, sending PLI to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, buf, 12);
@@ -2273,12 +2269,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					/* FIXME We send a FIR every tot seconds */
 					participant->fir_latest = now;
 					char rtcpbuf[24];
-					memset(rtcpbuf, 0, 24);
 					janus_rtcp_fir((char *)&rtcpbuf, 20, &participant->fir_seq);
 					JANUS_LOG(LOG_VERB, "Sending FIR to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
 					gateway->relay_rtcp(handle, video, rtcpbuf, 20);
 					/* Send a PLI too, just in case... */
-					memset(rtcpbuf, 0, 12);
 					janus_rtcp_pli((char *)&rtcpbuf, 12);
 					JANUS_LOG(LOG_VERB, "Sending PLI to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
 					gateway->relay_rtcp(handle, video, rtcpbuf, 12);
@@ -2309,7 +2303,6 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
 					char rtcpbuf[20];
-					memset(rtcpbuf, 0, 20);
 					janus_rtcp_fir((char *)&rtcpbuf, 20, &p->fir_seq);
 					JANUS_LOG(LOG_VERB, "Got a FIR from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 20);
@@ -2322,7 +2315,6 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
 					char rtcpbuf[12];
-					memset(rtcpbuf, 0, 12);
 					janus_rtcp_pli((char *)&rtcpbuf, 12);
 					JANUS_LOG(LOG_VERB, "Got a PLI from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 12);
@@ -3056,7 +3048,6 @@ static void *janus_videoroom_handler(void *data) {
 								participant->user_id, participant->display ? participant->display : "??");
 							gateway->relay_rtcp(participant->session->handle, 1, buf, 20);
 							/* Send a PLI too, just in case... */
-							memset(buf, 0, 12);
 							janus_rtcp_pli((char *)&buf, 12);
 							JANUS_LOG(LOG_VERB, "Recording video, sending PLI to %"SCNu64" (%s)\n",
 								participant->user_id, participant->display ? participant->display : "??");
@@ -3168,12 +3159,10 @@ static void *janus_videoroom_handler(void *data) {
 				if(publisher) {
 					/* Send a FIR */
 					char buf[20];
-					memset(buf, 0, 20);
 					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 					JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 					gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 					/* Send a PLI too, just in case... */
-					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					JANUS_LOG(LOG_VERB, "Resuming publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 					gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
@@ -3267,12 +3256,10 @@ static void *janus_videoroom_handler(void *data) {
 				listener->feed = publisher;
 				/* Send a FIR to the new publisher */
 				char buf[20];
-				memset(buf, 0, 20);
 				janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 				gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 				/* Send a PLI too, just in case... */
-				memset(buf, 0, 12);
 				janus_rtcp_pli((char *)&buf, 12);
 				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 				gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
