@@ -66,6 +66,9 @@ audiocodec = opus|isac32|isac16|pcmu|pcma|g722 (audio codec to force on publishe
 videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8)
 audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
+audiolevel_event = yes|no (whether to emit event to other users or not)
+audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
+audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 videoorientation_ext = yes|no (whether the video-orientation RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
@@ -224,6 +227,9 @@ static struct janus_json_parameter create_parameters[] = {
 	{"audiocodec", JSON_STRING, 0},
 	{"videocodec", JSON_STRING, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
+	{"audiolevel_event", JANUS_JSON_BOOL, 0},
+	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"videoorient_ext", JANUS_JSON_BOOL, 0},
 	{"playoutdelay_ext", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
@@ -451,6 +457,9 @@ typedef struct janus_videoroom {
 	janus_videoroom_audiocodec acodec;	/* Audio codec to force on publishers*/
 	janus_videoroom_videocodec vcodec;	/* Video codec to force on publishers*/
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new publishers */
+	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
+	int audio_active_packets;	/* amount of packets with audio level for checkup */
+	int audio_level_average;	/* average audio level */
 	gboolean videoorient_ext;	/* Whether the video-orientation extension must be negotiated or not for new publishers */
 	gboolean playoutdelay_ext;	/* Whether the playout-delay extension must be negotiated or not for new publishers */
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
@@ -507,8 +516,8 @@ typedef struct janus_videoroom_participant {
 	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
-	int audio_active_packets; /* number of packets received with audio_levl extmap sdp header */
-	int audio_dBov_sum;
+	int audio_active_packets; /* participants number of audio packets to aqumulate*/
+	int audio_dBov_sum;	/* participants aqumulated dBov value for audio level*/
 	gboolean data_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
@@ -767,6 +776,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *audiocodec = janus_config_get_item(cat, "audiocodec");
 			janus_config_item *videocodec = janus_config_get_item(cat, "videocodec");
 			janus_config_item *audiolevel_ext = janus_config_get_item(cat, "audiolevel_ext");
+			janus_config_item *audiolevel_event = janus_config_get_item(cat, "audiolevel_event");
+			janus_config_item *audio_active_packets = janus_config_get_item(cat, "audio_active_packets");
+			janus_config_item *audio_level_average = janus_config_get_item(cat, "audio_level_average");
 			janus_config_item *videoorient_ext = janus_config_get_item(cat, "videoorient_ext");
 			janus_config_item *playoutdelay_ext = janus_config_get_item(cat, "playoutdelay_ext");
 			janus_config_item *record = janus_config_get_item(cat, "record");
@@ -835,6 +847,15 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->audiolevel_ext = TRUE;
 			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
 				videoroom->audiolevel_ext = janus_is_true(audiolevel_ext->value);
+			videoroom->audiolevel_event = FALSE;
+			if(audiolevel_event != NULL && audiolevel_event->value != NULL)
+				videoroom->audiolevel_event = janus_is_true(audiolevel_event->value);
+			videoroom->audio_active_packets = 100;
+			if(audio_active_packets != NULL && audio_active_packets->value != NULL)
+				videoroom->audio_active_packets = janus_is_true(audio_active_packets->value);
+			videoroom->audio_level_average = 25;
+			if(audio_level_average != NULL && audio_level_average->value != NULL)
+				videoroom->audio_level_average = janus_is_true(audio_level_average->value);
 			videoroom->videoorient_ext = TRUE;
 			if(videoorient_ext != NULL && videoorient_ext->value != NULL)
 				videoroom->videoorient_ext = janus_is_true(videoorient_ext->value);
@@ -1278,6 +1299,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
+		json_t *audiolevel_event = json_object_get(root, "audiolevel_event");
+		json_t *audio_active_packets = json_object_get(root, "audio_active_packets");
+		json_t *audio_level_average = json_object_get(root, "audio_level_average");
 		json_t *videoorient_ext = json_object_get(root, "videoorient_ext");
 		json_t *playoutdelay_ext = json_object_get(root, "playoutdelay_ext");
 		json_t *record = json_object_get(root, "record");
@@ -1405,6 +1429,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		videoroom->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
+		videoroom->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
+		videoroom->audio_active_packets = audio_active_packets ? json_integer_value(audio_active_packets) : 100;
+		videoroom->audio_level_average = audio_level_average ? json_integer_value(audio_level_average) : 25;
 		videoroom->videoorient_ext = videoorient_ext ? json_is_true(videoorient_ext) : TRUE;
 		videoroom->playoutdelay_ext = playoutdelay_ext ? json_is_true(playoutdelay_ext) : TRUE;
 		if(record) {
@@ -1701,12 +1728,10 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		if(video_handle > 0) {
 			/* Send a FIR to the new RTP forward publisher */
 			char buf[20];
-			memset(buf, 0, 20);
 			janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 			gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 			/* Send a PLI too, just in case... */
-			memset(buf, 0, 12);
 			janus_rtcp_pli((char *)&buf, 12);
 			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 			gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
@@ -2169,12 +2194,10 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 				if(p && p->session) {
 					/* Send a FIR */
 					char buf[20];
-					memset(buf, 0, 20);
 					janus_rtcp_fir((char *)&buf, 20, &p->fir_seq);
 					JANUS_LOG(LOG_VERB, "New listener available, sending FIR to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, buf, 20);
 					/* Send a PLI too, just in case... */
-					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					JANUS_LOG(LOG_VERB, "New listener available, sending PLI to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, buf, 12);
@@ -2199,22 +2222,24 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-	if(participant->audio_active) {
+	janus_videoroom *videoroom = participant->room;
+
+	if(videoroom->audiolevel_event) {
 		int level = 0;
 		if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->audio_level_extmap_id, &level) == 0) {
 			/* JANUS_LOG(LOG_INFO, "Audio level is %d\n", level); */
 			participant->audio_dBov_sum = participant->audio_dBov_sum + level;
 			participant->audio_active_packets = participant->audio_active_packets + 1;
 			/* 2 seconds of talking (100 packets) with average of ~25 dBow */
-			if(participant->audio_active_packets == 100) {
-				if(participant->audio_dBov_sum < 2500) {
+			if(participant->audio_active_packets == videoroom->audio_active_packets) {
+				if((float)participant->audio_dBov_sum/(float)participant->audio_active_packets < videoroom->audio_level_average) {
 					// Notify participants
 					json_t *event = json_object();
 					json_object_set_new(event, "event", json_string("talking"));
 					json_object_set_new(event, "user", json_string(participant->display));
 					janus_videoroom_notify_participants(participant, event);
 					json_decref(event);
-					JANUS_LOG(LOG_ERR, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets);
+					/* JANUS_LOG(LOG_ERR, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets); */
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
@@ -2305,12 +2330,10 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					/* FIXME We send a FIR every tot seconds */
 					participant->fir_latest = now;
 					char rtcpbuf[24];
-					memset(rtcpbuf, 0, 24);
 					janus_rtcp_fir((char *)&rtcpbuf, 20, &participant->fir_seq);
 					JANUS_LOG(LOG_VERB, "Sending FIR to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
 					gateway->relay_rtcp(handle, video, rtcpbuf, 20);
 					/* Send a PLI too, just in case... */
-					memset(rtcpbuf, 0, 12);
 					janus_rtcp_pli((char *)&rtcpbuf, 12);
 					JANUS_LOG(LOG_VERB, "Sending PLI to %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
 					gateway->relay_rtcp(handle, video, rtcpbuf, 12);
@@ -2341,7 +2364,6 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
 					char rtcpbuf[20];
-					memset(rtcpbuf, 0, 20);
 					janus_rtcp_fir((char *)&rtcpbuf, 20, &p->fir_seq);
 					JANUS_LOG(LOG_VERB, "Got a FIR from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 20);
@@ -2354,7 +2376,6 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 				janus_videoroom_participant *p = l->feed;
 				if(p && p->session) {
 					char rtcpbuf[12];
-					memset(rtcpbuf, 0, 12);
 					janus_rtcp_pli((char *)&rtcpbuf, 12);
 					JANUS_LOG(LOG_VERB, "Got a PLI from a listener, forwarding it to %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
 					gateway->relay_rtcp(p->session->handle, 1, rtcpbuf, 12);
@@ -3088,7 +3109,6 @@ static void *janus_videoroom_handler(void *data) {
 								participant->user_id, participant->display ? participant->display : "??");
 							gateway->relay_rtcp(participant->session->handle, 1, buf, 20);
 							/* Send a PLI too, just in case... */
-							memset(buf, 0, 12);
 							janus_rtcp_pli((char *)&buf, 12);
 							JANUS_LOG(LOG_VERB, "Recording video, sending PLI to %"SCNu64" (%s)\n",
 								participant->user_id, participant->display ? participant->display : "??");
@@ -3200,12 +3220,10 @@ static void *janus_videoroom_handler(void *data) {
 				if(publisher) {
 					/* Send a FIR */
 					char buf[20];
-					memset(buf, 0, 20);
 					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 					JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 					gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 					/* Send a PLI too, just in case... */
-					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					JANUS_LOG(LOG_VERB, "Resuming publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 					gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
@@ -3299,12 +3317,10 @@ static void *janus_videoroom_handler(void *data) {
 				listener->feed = publisher;
 				/* Send a FIR to the new publisher */
 				char buf[20];
-				memset(buf, 0, 20);
 				janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
 				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 				gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
 				/* Send a PLI too, just in case... */
-				memset(buf, 0, 12);
 				janus_rtcp_pli((char *)&buf, 12);
 				JANUS_LOG(LOG_VERB, "Switching existing listener to new publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 				gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
