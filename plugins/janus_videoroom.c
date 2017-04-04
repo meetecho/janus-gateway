@@ -1061,6 +1061,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			if(participant->recording_base)
 				g_free(participant->recording_base);
 			participant->recording_base = NULL;
+			session->participant_type = janus_videoroom_p_type_none;
 			janus_videoroom_leave_or_unpublish(participant, TRUE);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Detaching this listener from its publisher is already done by hangup_media */
@@ -3121,6 +3122,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
+				session->participant_type = janus_videoroom_p_type_none;
 				janus_videoroom_leave_or_unpublish(participant, TRUE);
 				/* Done */
 				participant->audio_active = FALSE;
@@ -3288,6 +3290,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&publisher->listeners_mutex);
 					listener->feed = NULL;
 				}
+				session->participant_type = janus_videoroom_p_type_none;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(listener->room->room_id));
