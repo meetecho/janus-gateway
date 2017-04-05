@@ -3129,9 +3129,9 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 	return realsize;
 }
 
-multiple_fds *janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
-		char *transport, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface) {
-	multiple_fds *fds = g_malloc0(sizeof(multiple_fds));
+int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
+		char *transport, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
+
 	int port = -1;
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
@@ -3139,14 +3139,14 @@ multiple_fds *janus_streaming_rtsp_parse_sdp(const char *buffer, const char *nam
 	if(m == NULL) {
 		JANUS_LOG(LOG_VERB, "[%s] no media %s...\n", name, media);
 		fds->fd = -1;
-		return fds;
+		return -1;
 	}
 	sscanf(m, "m=%*s %d %*s %d", &port, pt);
 	char *s = strstr(m, "a=control:");
 	if(s == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] no control for %s...\n", name, media);
 		fds->fd = -1;
-		return fds;
+		return -1;
 	}
 	sscanf(s, "a=control:%2047s", control);
 	char *r = strstr(m, "a=rtpmap:");
@@ -3168,7 +3168,7 @@ multiple_fds *janus_streaming_rtsp_parse_sdp(const char *buffer, const char *nam
 	int fd = janus_streaming_create_fd(port, mcast, iface, media, media, name);
 	if(fd < 0) {
 		fds->fd = -1;
-		return fds;
+		return -1;
 	}
 	struct sockaddr_in address;
 	socklen_t len = sizeof(address);
@@ -3176,19 +3176,22 @@ multiple_fds *janus_streaming_rtsp_parse_sdp(const char *buffer, const char *nam
 		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (%d)...\n", name, media, port);
 		close(fd);
 		fds->fd = -1;
-		return fds;
+		return -1;
 	}
 	port = ntohs(address.sin_port);
 	int rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
 	fds->fd = fd;
 	fds->rtcp_fd = rtcp_fd;
+	if(rtcp_fd < 0) {
+		JANUS_LOG(LOG_WARN, "[%s] Bind failed for %s RTCP port (%d)...\n", name, media, port+1);
+	}
 	if(IN_MULTICAST(ntohl(mcast))) {
 		g_snprintf(transport, 1024, "RTP/AVP;multicast;client_port=%d-%d", port, port+1);
 	} else {
 		g_snprintf(transport, 1024, "RTP/AVP;unicast;client_port=%d-%d", port, port+1);
 	}
 
-	return fds;
+	return 0;
 }
 
 /* Helper to create an RTSP source */
@@ -3264,10 +3267,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char vcontrol[2048];
 	char uri[1024];
 	char transport[1024];
-	multiple_fds *video_fds = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
-		transport, vrtpmap, vfmtp, vcontrol, iface);
-	int video_fd = video_fds->fd;
-	if(video_fd != -1) {
+	multiple_fds video_fds = {0, 0};
+	janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
+		transport, vrtpmap, vfmtp, vcontrol, iface, &video_fds);
+	if(video_fds.fd != -1) {
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
@@ -3303,10 +3306,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char artpmap[2048];
 	char afmtp[2048];
 	char acontrol[2048];
-	multiple_fds *audio_fds = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
-		transport, artpmap, afmtp, acontrol, iface);
-	int audio_fd = audio_fds->fd;
-	if(audio_fd != -1) {
+	multiple_fds audio_fds = {0, 0};
+	janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
+		transport, artpmap, afmtp, acontrol, iface, &audio_fds);
+	if(audio_fds.fd != -1) {
 		/* Send an RTSP SETUP for audio */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
@@ -3376,11 +3379,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp_source->arc = NULL;
 	live_rtsp_source->vrc = NULL;
 	live_rtsp_source->drc = NULL;
-	live_rtsp_source->audio_fd = audio_fd;
-	live_rtsp_source->audio_rtcp_fd = audio_fds->rtcp_fd;
+	live_rtsp_source->audio_fd = audio_fds.fd;
+	live_rtsp_source->audio_rtcp_fd = audio_fds.rtcp_fd;
 	live_rtsp_source->audio_iface = iface ? *iface : nil;
-	live_rtsp_source->video_fd = video_fd;
-	live_rtsp_source->video_rtcp_fd = video_fds->rtcp_fd;
+	live_rtsp_source->video_fd = video_fds.fd;
+	live_rtsp_source->video_rtcp_fd = video_fds.rtcp_fd;
 	live_rtsp_source->video_iface = iface ? *iface : nil;
 	live_rtsp_source->data_fd = -1;
 	live_rtsp_source->data_iface = nil;
