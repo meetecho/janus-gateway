@@ -221,7 +221,12 @@ static struct mqueue *mq = NULL;
 void janus_sipre_mqueue_handler(int id, void *data, void *arg);
 typedef enum janus_sipre_mqueue_event {
 	janus_sipre_mqueue_event_do_init,
+	janus_sipre_mqueue_event_do_listen,
 	janus_sipre_mqueue_event_do_register,
+	janus_sipre_mqueue_event_do_call,
+	janus_sipre_mqueue_event_do_accept,
+	janus_sipre_mqueue_event_do_rcode,
+	janus_sipre_mqueue_event_do_bye,
 	/* TODO Add other events here */
 	janus_sipre_mqueue_event_do_exit
 } janus_sipre_mqueue_event;
@@ -229,8 +234,18 @@ static const char *janus_sipre_mqueue_event_string(janus_sipre_mqueue_event even
 	switch(event) {
 		case janus_sipre_mqueue_event_do_init:
 			return "init";
+		case janus_sipre_mqueue_event_do_listen:
+			return "listen";
 		case janus_sipre_mqueue_event_do_register:
 			return "register";
+		case janus_sipre_mqueue_event_do_call:
+			return "call";
+		case janus_sipre_mqueue_event_do_accept:
+			return "accept";
+		case janus_sipre_mqueue_event_do_rcode:
+			return "rcode";
+		case janus_sipre_mqueue_event_do_bye:
+			return "bye";
 		case janus_sipre_mqueue_event_do_exit:
 			return "exit";
 		default:
@@ -318,8 +333,7 @@ typedef struct janus_sipre_stack {
 	struct sipsess *sess;				/* SIP session */
 	struct sipsess_sock *sess_sock;		/* SIP session socket */
 	struct sipreg *reg;					/* SIP registration */
-	struct sdp_session *sdp;			/* SDP session */
-	struct sdp_media *sdp_media;		/* SDP media */
+	struct sip_msg *invite;				/* Current INVITE */
 	void *session;						/* Opaque pointer to the plugin session */
 } janus_sipre_stack;
 
@@ -364,6 +378,8 @@ typedef struct janus_sipre_session {
 	char *transaction;
 	char *callee;
 	char *callid;
+	int temp_rcode;
+	char *temp_sdp, *temp_headers;
 	janus_sdp *sdp;				/* The SDP this user sent */
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
@@ -954,11 +970,7 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
 
-	int err = sipsess_listen(&session->stack.sess_sock, sipstack, 32, janus_sipre_cb_established, session);
-	if(err < 0) {
-		/* TODO Anything we should do? */
-		JANUS_LOG(LOG_ERR, "Error listening: %d (%s)\n", err, strerror(err));
-	}
+	mqueue_push(mq, janus_sipre_mqueue_event_do_listen, session);
 
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1511,12 +1523,12 @@ static void *janus_sipre_handler(void *data) {
 			}
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
-			//~ if(session->stack == NULL) {
-				//~ JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
-				//~ error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
-				//~ g_snprintf(error_cause, 512, "Wrong state (register first)");
-				//~ goto error;
-			//~ }
+			if(session->account.registration_status < janus_sipre_registration_status_registered) {
+				JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (register first)");
+				goto error;
+			}
 			if(session->status >= janus_sipre_call_status_inviting) {
 				JANUS_LOG(LOG_ERR, "Wrong state (already in a call? status=%s)\n", janus_sipre_call_status_string(session->status));
 				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
@@ -1653,8 +1665,6 @@ static void *janus_sipre_handler(void *data) {
 			} else {
 				g_snprintf(from_hdr, sizeof(from_hdr), "%s", session->account.identity);
 			}
-			/* Prepare the stack */
-				/* TODO */
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sipre_call_status_inviting;
 			/* Create a random call-id */
@@ -1669,13 +1679,16 @@ static void *janus_sipre_handler(void *data) {
 				json_object_set_new(info, "sdp", json_string(sdp));
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 			}
-			/* Send INVITE */
+			/* Enqueue the INVITE */
 			session->callee = g_strdup(uri_text);
 			session->callid = g_strdup(callid);
 			g_hash_table_insert(callids, session->callid, session);
 			session->media.autoack = do_autoack;
-				/* TODO Use re to send INVITE */
-			g_free(sdp);
+			session->temp_sdp = sdp;
+			if(strlen(custom_headers) > 0)
+				session->temp_headers = g_strdup(custom_headers);
+			mqueue_push(mq, janus_sipre_mqueue_event_do_call, session);
+			/* Done for now */
 			if(session->transaction)
 				g_free(session->transaction);
 			session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
@@ -1794,11 +1807,11 @@ static void *janus_sipre_handler(void *data) {
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 			}
-			/* Send 200 OK */
+			/* Enqueue the 200 OK */
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sipre_call_status_incall;
-				/* TODO Use re to send 200 OK */
-			g_free(sdp);
+			session->temp_sdp = sdp;
+			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, session);
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("accepted"));
@@ -1837,7 +1850,9 @@ static void *janus_sipre_handler(void *data) {
 				JANUS_LOG(LOG_WARN, "Invalid SIPre response code specified, using 486 to decline call\n");
 				response_code = 486;
 			}
-				/* TODO Use re to send error */
+			/* Enqueue the response */
+			session->temp_rcode = response_code;
+			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, session);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -1848,8 +1863,6 @@ static void *janus_sipre_handler(void *data) {
 				json_object_set_new(info, "code", json_integer(response_code));
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 			}
-			g_free(session->callee);
-			session->callee = NULL;
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("declining"));
@@ -1871,9 +1884,8 @@ static void *janus_sipre_handler(void *data) {
 				goto error;
 			}
 			session->status = janus_sipre_call_status_closing;
-				/* TODO Use re to send BYE */
-			g_free(session->callee);
-			session->callee = NULL;
+			/* Enqueue the BYE */
+			mqueue_push(mq, janus_sipre_mqueue_event_do_bye, session);
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("hangingup"));
@@ -2894,7 +2906,12 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 /* Called when SIP progress (e.g., 180 Ringing) responses are received */
 void janus_sipre_cb_progress(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] session progress: %u %s\n", session->account.username, msg->scode, (char *)&msg->reason.p);
+	char reason[256];
+	reason[0] = '\0';
+	if(msg->reason.l > 0) {
+		g_snprintf(reason, (msg->reason.l < 255 ? msg->reason.l+1 : 255), "%s", msg->reason.p);
+	}
+	JANUS_LOG(LOG_INFO, "[SIPre-%s] Session progress: %u %s\n", session->account.username, msg->scode, reason);
 
 	/* TODO Handle */
 }
@@ -2930,25 +2947,94 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 }
 
 
-/* called when an SDP answer is received */
+/* Called when an SDP answer is received */
 int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_answer\n", session->account.username);
 
-	JANUS_LOG(LOG_INFO, "SDP answer received\n");
+	const char *sdp_answer = (const char *)mbuf_buf(msg->mb);
+	JANUS_LOG(LOG_INFO, "SDP answer received\n%s", sdp_answer);
 
-	struct sdp_session *sdp = NULL;
-	int err = sdp_decode(sdp, msg->mb, false);
-	if(err) {
-		JANUS_LOG(LOG_ERR, "unable to decode SDP answer: %s\n", strerror(err));
-		return err;
+	/* Parse the SDP */
+	char sdperror[100];
+	janus_sdp *sdp = janus_sdp_parse(sdp_answer, sdperror, sizeof(sdperror));
+	if(!sdp) {
+		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
+		return EINVAL;
+	}
+	/* Parse SDP */
+	JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sdp_answer);
+	session->status = janus_sipre_call_status_incall;
+	char *fixed_sdp = g_strdup(sdp_answer);
+	janus_sipre_sdp_process(session, sdp, TRUE, FALSE, NULL);
+	/* If we asked for SRTP and are not getting it, fail */
+	if(session->media.require_srtp && !session->media.has_srtp_remote) {
+		JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
+		janus_sdp_free(sdp);
+		g_free(fixed_sdp);
+		/* Hangup immediately */
+		session->status = janus_sipre_call_status_closing;
+		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, session);
+		g_free(session->callee);
+		session->callee = NULL;
+		return EINVAL;
+	}
+	if(!session->media.remote_ip) {
+		/* No remote address parsed? Give up */
+		JANUS_LOG(LOG_ERR, "\tNo remote IP address found for RTP, something's wrong with the SDP!\n");
+		janus_sdp_free(sdp);
+		g_free(fixed_sdp);
+		/* Hangup immediately */
+		session->status = janus_sipre_call_status_closing;
+		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, session);
+		g_free(session->callee);
+		session->callee = NULL;
+		return EINVAL;
+	}
+	if(session->media.audio_pt > -1) {
+		session->media.audio_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.audio_pt);
+		JANUS_LOG(LOG_VERB, "Detected audio codec: %d (%s)\n", session->media.audio_pt, session->media.audio_pt_name);
+	}
+	if(session->media.video_pt > -1) {
+		session->media.video_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.video_pt);
+		JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
+	}
+	session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
+	GError *error = NULL;
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+	g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+	}
+	/* Send SDP to the browser */
+	json_t *jsep = json_pack("{ssss}", "type", "answer", "sdp", fixed_sdp);
+	json_t *call = json_object();
+	json_object_set_new(call, "sip", json_string("event"));
+	json_t *calling = json_object();
+	json_object_set_new(calling, "event", json_string("accepted"));
+	json_object_set_new(calling, "username", json_string(session->callee));
+	json_object_set_new(call, "result", calling);
+	int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(call);
+	json_decref(jsep);
+	g_free(fixed_sdp);
+	janus_sdp_free(sdp);
+	/* Also notify event handlers */
+	if(notify_events && gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("accepted"));
+		if(session->callid)
+			json_object_set_new(info, "call-id", json_string(session->callid));
+		json_object_set_new(info, "username", json_string(session->callee));
+		gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 	}
 
-	/* TODO Handle */
 	return 0;
 }
 
-/* called when the session is established */
+/* Called when the session is established */
 void janus_sipre_cb_established(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_established\n", session->account.username);
@@ -2966,7 +3052,34 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_closed: %u %s\n", session->account.username, msg->scode, (char *)&msg->reason.p);
 	}
 
-	/* TODO Handle */
+	/* Tell the browser... */
+	json_t *event = json_object();
+	json_object_set_new(event, "sip", json_string("event"));
+	json_t *result = json_object();
+	json_object_set_new(result, "event", json_string("hangup"));
+	json_object_set_new(result, "code", json_integer(err ? err : msg->scode));
+	char reason[256];
+	reason[0] = '\0';
+	if(!err && msg->reason.l > 0) {
+		g_snprintf(reason, (msg->reason.l < 255 ? msg->reason.l+1 : 255), "%s", msg->reason.p);
+	}
+	json_object_set_new(result, "reason", json_string(err ? strerror(err) : reason));
+	json_object_set_new(event, "result", result);
+	int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(event);
+	/* Also notify event handlers */
+	if(notify_events && gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("hangup"));
+		json_object_set_new(info, "code", json_integer(err ? err : msg->scode));
+		json_object_set_new(info, "reason", json_string(err ? strerror(err) : reason));
+		gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+	}
+
+	/* Cleanup */
+	session->stack.sess = mem_deref(session->stack.sess);
+	session->stack.reg = mem_deref(session->stack.reg);
 }
 
 /* Called when all SIP transactions are completed */
@@ -2978,7 +3091,7 @@ void janus_sipre_cb_exit(void *arg) {
 
 /* Callback to implement SIP requests in the re_main loop thread */
 void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
-	JANUS_LOG(LOG_HUGE, "janus_sipre_mqueue_handler: %d (%s)\n", id, janus_sipre_mqueue_event_string((janus_sipre_mqueue_event)id));
+	JANUS_LOG(LOG_WARN, "janus_sipre_mqueue_handler: %d (%s)\n", id, janus_sipre_mqueue_event_string((janus_sipre_mqueue_event)id));
 	switch((janus_sipre_mqueue_event)id) {
 		case janus_sipre_mqueue_event_do_init: {
 			JANUS_LOG(LOG_INFO, "Initializing SIP transports\n");
@@ -3003,19 +3116,161 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			mem_deref(tls);
 			break;
 		}
+		case janus_sipre_mqueue_event_do_listen: {
+			janus_sipre_session *session = (janus_sipre_session *)data;
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Listening\n", session->account.username);
+			int err = sipsess_listen(&session->stack.sess_sock, sipstack, 32, janus_sipre_cb_incoming, session);
+			if(err != 0) {
+				/* TODO Anything we should do? */
+				JANUS_LOG(LOG_ERR, "Error listening: %d (%s)\n", err, strerror(err));
+			}
+			break;
+		}
 		case janus_sipre_mqueue_event_do_register: {
 			janus_sipre_session *session = (janus_sipre_session *)data;
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending REGISTER\n", session->account.username);
+			/* Send the REGISTER */
 			int err = sipreg_register(&session->stack.reg, sipstack,
 				session->account.proxy,
 				session->account.identity, session->account.identity, 3600,
 				session->account.display_name ? session->account.display_name : session->account.username, NULL, 0, 0,
 				janus_sipre_cb_auth, session, FALSE,
 				janus_sipre_cb_register, session, NULL, NULL);
-			if(err < 0) {
-				/* TODO Send event and handle accordingly */
-				JANUS_LOG(LOG_ERR, "Error attempting to REGISTER...\n");
+			if(err != 0) {
+				JANUS_LOG(LOG_ERR, "Error attempting to REGISTER: %d (%s)\n", err, strerror(err));
+				/* Tell the browser... */
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("registration_failed"));
+				json_object_set_new(result, "code", json_integer(err));
+				json_object_set_new(result, "reason", json_string(strerror(err)));
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(event);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("registration_failed"));
+					json_object_set_new(info, "code", json_integer(err));
+					json_object_set_new(info, "reason", json_string(strerror(err)));
+					gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+				}
 			}
+			break;
+		}
+		case janus_sipre_mqueue_event_do_call: {
+			janus_sipre_session *session = (janus_sipre_session *)data;
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending INVITE\n%s", session->account.username, session->temp_sdp);
+			/* Convert the SDP into a struct mbuf */
+			struct mbuf *mb = mbuf_alloc(strlen(session->temp_sdp)+1);
+			mbuf_printf(mb, "%s", session->temp_sdp);
+			mbuf_set_pos(mb, 0);
+			/* Send the INVITE */
+			int err = sipsess_connect(&session->stack.sess, session->stack.sess_sock,
+				session->callee,
+				session->account.display_name, session->account.identity,
+				session->account.display_name ? session->account.display_name : session->account.username,
+				NULL, 0, "application/sdp", mb,
+				janus_sipre_cb_auth, session, FALSE,
+				janus_sipre_cb_offer, janus_sipre_cb_answer,
+				janus_sipre_cb_progress, janus_sipre_cb_established,
+				NULL, NULL, janus_sipre_cb_closed, session,
+				"%s", (session->temp_headers ? session->temp_headers : ""));
+			if(err != 0) {
+				JANUS_LOG(LOG_ERR, "Error attempting to INVITE: %d (%s)\n", err, strerror(err));
+				/* Tell the browser... */
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("hangup"));
+				json_object_set_new(result, "code", json_integer(err));
+				json_object_set_new(result, "reason", json_string(strerror(err)));
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(event);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("hangup"));
+					json_object_set_new(info, "code", json_integer(err));
+					json_object_set_new(info, "reason", json_string(strerror(err)));
+					gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+				}
+			}
+			mem_deref(mb);
+			g_free(session->temp_sdp);
+			session->temp_sdp = NULL;
+			g_free(session->temp_headers);
+			session->temp_headers = NULL;
+			break;
+		}
+		case janus_sipre_mqueue_event_do_accept: {
+			janus_sipre_session *session = (janus_sipre_session *)data;
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending 200 OK\n%s", session->account.username, session->temp_sdp);
+			/* Convert the SDP into a struct mbuf */
+			struct mbuf *mb = mbuf_alloc(strlen(session->temp_sdp)+1);
+			mbuf_printf(mb, "%s", session->temp_sdp);
+			mbuf_set_pos(mb, 0);
+			/* Send the 200 OK */
+			int err = sipsess_accept(&session->stack.sess, session->stack.sess_sock,
+				session->stack.invite, 200, "OK",
+				session->account.display_name ? session->account.display_name : session->account.username,
+				"application/sdp", mb,
+				janus_sipre_cb_auth, session, FALSE,
+				janus_sipre_cb_offer, janus_sipre_cb_answer,
+				janus_sipre_cb_established, NULL, NULL,
+				janus_sipre_cb_closed, NULL, NULL);
+			if(err != 0) {
+				JANUS_LOG(LOG_ERR, "Error attempting to send the 200 OK: %d (%s)\n", err, strerror(err));
+				/* Tell the browser... */
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("hangup"));
+				json_object_set_new(result, "code", json_integer(err));
+				json_object_set_new(result, "reason", json_string(strerror(err)));
+				json_object_set_new(event, "result", result);
+				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				json_decref(event);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("hangup"));
+					json_object_set_new(info, "code", json_integer(err));
+					json_object_set_new(info, "reason", json_string(strerror(err)));
+					gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+				}
+			}
+			mem_deref(mb);
+			g_free(session->temp_sdp);
+			session->temp_sdp = NULL;
+			g_free(session->temp_headers);
+			session->temp_headers = NULL;
+			break;
+		}
+		case janus_sipre_mqueue_event_do_rcode: {
+			janus_sipre_session *session = (janus_sipre_session *)data;
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending response code %d\n", session->account.username, session->temp_rcode);
+			/* Send the response code */
+			struct sip_msg *msg = NULL;	/* TODO Needs to be the message to reply to */
+			sip_treply(NULL, sipstack, msg, session->temp_rcode, NULL);
+			if(session->temp_rcode > 399) {
+				g_free(session->callee);
+				session->callee = NULL;
+			}
+			break;
+		}
+		case janus_sipre_mqueue_event_do_bye: {
+			janus_sipre_session *session = (janus_sipre_session *)data;
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending BYE\n", session->account.username);
+			/* TODO */
+			sipsess_close_all(session->stack.sess_sock);
+			g_free(session->callee);
+			session->callee = NULL;
 			break;
 		}
 		case janus_sipre_mqueue_event_do_exit:
