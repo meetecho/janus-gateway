@@ -3129,7 +3129,7 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 	return realsize;
 }
 
-int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
+static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
 		char *transport, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
 
 	int port = -1;
