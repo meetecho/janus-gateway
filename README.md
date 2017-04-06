@@ -203,8 +203,9 @@ following steps:
 	cd rabbitmq-c
 	git submodule init
 	git submodule update
-	autoreconf -i
-	./configure --prefix=/usr && make && sudo make install
+	mkdir build && cd build
+	cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+	make -j$(nproc) && sudo make install
 
 * *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
