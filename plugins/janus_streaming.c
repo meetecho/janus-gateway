@@ -3161,31 +3161,33 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			mcast = inet_addr(ip);
 		}
 	}
-	int fd = janus_streaming_create_fd(0, mcast, iface, media, media, name);
-	if(fd < 0) {
-		return -1;
-	}
+	int port;
 	struct sockaddr_in address;
 	socklen_t len = sizeof(address);
-	if(getsockname(fd, (struct sockaddr *)&address, &len) < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
-		close(fd);
-		return -1;
-	}
-	int port = ntohs(address.sin_port);
-	int rtcp_fd = janus_streaming_create_fd(0, mcast, iface, media, media, name);
-	if(getsockname(rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] RTCP Bind failed for %s...\n", name, media);
-		close(rtcp_fd);
-		return -1;
-	}
-	int rtcp_port = ntohs(address.sin_port);
-	fds->fd = fd;
-	fds->rtcp_fd = rtcp_fd;
+	/* loop until can bind two adjacent ports for RTP and RTCP */
+	do {
+		fds->fd = janus_streaming_create_fd(0, mcast, iface, media, media, name);
+		if(fds->fd < 0) {
+			return -1;
+		}
+		if(getsockname(fds->fd, (struct sockaddr *)&address, &len) < 0) {
+			JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
+			close(fds->fd);
+			return -1;
+		}
+		port = ntohs(address.sin_port);
+		fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
+		if(getsockname(fds->rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
+			close(fds->fd);
+			close(fds->rtcp_fd);
+			port = -1;
+		}
+	} while(port == -1);
+
 	if(IN_MULTICAST(ntohl(mcast))) {
-		g_snprintf(transport, 1024, "RTP/AVP;multicast;client_port=%d-%d", port, rtcp_port);
+		g_snprintf(transport, 1024, "RTP/AVP;multicast;client_port=%d-%d", port, port+1);
 	} else {
-		g_snprintf(transport, 1024, "RTP/AVP;unicast;client_port=%d-%d", port, rtcp_port);
+		g_snprintf(transport, 1024, "RTP/AVP;unicast;client_port=%d-%d", port, port+1);
 	}
 
 	return 0;
