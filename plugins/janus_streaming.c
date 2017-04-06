@@ -3131,21 +3131,17 @@ static size_t janus_streaming_rtsp_curl_callback(void *payload, size_t size, siz
 
 static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, const char *media, int *pt,
 		char *transport, char *rtpmap, char *fmtp, char *control, const janus_network_address *iface, multiple_fds *fds) {
-
-	int port = -1;
 	char pattern[256];
 	g_snprintf(pattern, sizeof(pattern), "m=%s", media);
 	char *m = strstr(buffer, pattern);
 	if(m == NULL) {
 		JANUS_LOG(LOG_VERB, "[%s] no media %s...\n", name, media);
-		fds->fd = -1;
 		return -1;
 	}
-	sscanf(m, "m=%*s %d %*s %d", &port, pt);
+	sscanf(m, "m=%*s %*d %*s %d", pt);
 	char *s = strstr(m, "a=control:");
 	if(s == NULL) {
 		JANUS_LOG(LOG_ERR, "[%s] no control for %s...\n", name, media);
-		fds->fd = -1;
 		return -1;
 	}
 	sscanf(s, "a=control:%2047s", control);
@@ -3165,30 +3161,31 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 			mcast = inet_addr(ip);
 		}
 	}
-	int fd = janus_streaming_create_fd(port, mcast, iface, media, media, name);
+	int fd = janus_streaming_create_fd(0, mcast, iface, media, media, name);
 	if(fd < 0) {
-		fds->fd = -1;
 		return -1;
 	}
 	struct sockaddr_in address;
 	socklen_t len = sizeof(address);
 	if(getsockname(fd, (struct sockaddr *)&address, &len) < 0) {
-		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s (%d)...\n", name, media, port);
+		JANUS_LOG(LOG_ERR, "[%s] Bind failed for %s...\n", name, media);
 		close(fd);
-		fds->fd = -1;
 		return -1;
 	}
-	port = ntohs(address.sin_port);
-	int rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
+	int port = ntohs(address.sin_port);
+	int rtcp_fd = janus_streaming_create_fd(0, mcast, iface, media, media, name);
+	if(getsockname(rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
+		JANUS_LOG(LOG_ERR, "[%s] RTCP Bind failed for %s...\n", name, media);
+		close(rtcp_fd);
+		return -1;
+	}
+	int rtcp_port = ntohs(address.sin_port);
 	fds->fd = fd;
 	fds->rtcp_fd = rtcp_fd;
-	if(rtcp_fd < 0) {
-		JANUS_LOG(LOG_WARN, "[%s] Bind failed for %s RTCP port (%d)...\n", name, media, port+1);
-	}
 	if(IN_MULTICAST(ntohl(mcast))) {
-		g_snprintf(transport, 1024, "RTP/AVP;multicast;client_port=%d-%d", port, port+1);
+		g_snprintf(transport, 1024, "RTP/AVP;multicast;client_port=%d-%d", port, rtcp_port);
 	} else {
-		g_snprintf(transport, 1024, "RTP/AVP;unicast;client_port=%d-%d", port, port+1);
+		g_snprintf(transport, 1024, "RTP/AVP;unicast;client_port=%d-%d", port, rtcp_port);
 	}
 
 	return 0;
@@ -3267,10 +3264,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char vcontrol[2048];
 	char uri[1024];
 	char transport[1024];
-	multiple_fds video_fds = {0, 0};
-	janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
+	multiple_fds video_fds = {-1, -1};
+	int result;
+	result = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
 		transport, vrtpmap, vfmtp, vcontrol, iface, &video_fds);
-	if(video_fds.fd != -1) {
+	if(result != -1) {
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
@@ -3306,10 +3304,10 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	char artpmap[2048];
 	char afmtp[2048];
 	char acontrol[2048];
-	multiple_fds audio_fds = {0, 0};
-	janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
+	multiple_fds audio_fds = {-1, -1};
+	result = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
 		transport, artpmap, afmtp, acontrol, iface, &audio_fds);
-	if(audio_fds.fd != -1) {
+	if(result != -1) {
 		/* Send an RTSP SETUP for audio */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
