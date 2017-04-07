@@ -25,6 +25,13 @@ host = localhost			; The address of the RabbitMQ server
 ;vhost = /					; Virtual host to specify when logging in, if needed
 to_janus = to-janus			; Name of the queue for incoming messages
 from_janus = from-janus		; Name of the queue for outgoing messages
+;ssl_enable = no			; Whether ssl support must be enabled
+;ssl_verify_peer = yes		; Whether peer verification must be enabled
+;ssl_verify_hostname = yes	; Whether hostname verification must be enabled
+; certificates to use when SSL support is enabled, if needed
+;ssl_cacert = /path/to/cacert.pem
+;ssl_cert = /path/to/cert.pem
+;ssl_key = /path/to/key.pem
 
 ; If you want to expose the Admin API via RabbitMQ as well, you need to
 ; specify a different set of queues, as you cannot mix Janus API and

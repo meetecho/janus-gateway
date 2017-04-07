@@ -15,7 +15,7 @@ you can use. If you encounter issues, though, please submit an issue
 on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 
 
-##Dependencies
+## Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
@@ -224,7 +224,7 @@ On Ubuntu/Debian:
 	aptitude install doxygen graphviz
 
 
-##Compile
+## Compile
 Once you have installed all the dependencies, get the code:
 
 	git clone https://github.com/meetecho/janus-gateway.git
@@ -299,7 +299,7 @@ when configuring Janus as well:
 
 Everything else works exactly the same way as on Linux.
 
-##Configure and start
+## Configure and start
 To start the gateway, you can use the janus executable. There are several
 things you can configure, either in a configuration file:
 
@@ -406,7 +406,7 @@ edit the transport/port details in the demo JavaScript files if you
 changed any transport-related configuration from its defaults.
 
 
-##Help us!
+## Help us!
 Any thought, feedback or (hopefully not!) insult is welcome!
 
 Developed by [@meetecho](https://github.com/meetecho)

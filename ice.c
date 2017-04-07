@@ -339,25 +339,25 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream) {
 
 #define SEQ_MISSING_WAIT 12000 /*  12ms */
 #define SEQ_NACKED_WAIT 155000 /* 155ms */
-/* seq_info_t list functions */
-static void janus_seq_append(seq_info_t **head, seq_info_t *new_seq) {
+/* janus_seq_info list functions */
+static void janus_seq_append(janus_seq_info **head, janus_seq_info *new_seq) {
 	if(*head == NULL) {
 		new_seq->prev = new_seq;
 		new_seq->next = new_seq;
 		*head = new_seq;
 	} else {
-		seq_info_t *last_seq = (*head)->prev;
+		janus_seq_info *last_seq = (*head)->prev;
 		new_seq->prev = last_seq;
 		new_seq->next = *head;
 		(*head)->prev = new_seq;
 		last_seq->next = new_seq;
 	}
 }
-static seq_info_t *janus_seq_pop_head(seq_info_t **head) {
-	seq_info_t *pop_seq = *head;
+static janus_seq_info *janus_seq_pop_head(janus_seq_info **head) {
+	janus_seq_info *pop_seq = *head;
 	if(pop_seq) {
-		seq_info_t *new_head = pop_seq->next;
-		if (pop_seq == new_head) {
+		janus_seq_info *new_head = pop_seq->next;
+		if(pop_seq == new_head || new_head == NULL) {
 			*head = NULL;
 		} else {
 			*head = new_head;
@@ -367,11 +367,12 @@ static seq_info_t *janus_seq_pop_head(seq_info_t **head) {
 	}
 	return pop_seq;
 }
-static void janus_seq_list_free(seq_info_t **head) {
-	if(!*head) return;
-	seq_info_t *cur = *head;
+static void janus_seq_list_free(janus_seq_info **head) {
+	if(!*head)
+		return;
+	janus_seq_info *cur = *head;
 	do {
-		seq_info_t *next = cur->next;
+		janus_seq_info *next = cur->next;
 		g_free(cur);
 		cur = next;
 	} while(cur != *head);
@@ -2005,8 +2006,8 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				guint16 cur_seqn;
 				int last_seqs_len = 0;
 				janus_mutex_lock(&component->mutex);
-				seq_info_t **last_seqs = video ? &component->last_seqs_video : &component->last_seqs_audio;
-				seq_info_t *cur_seq = *last_seqs;
+				janus_seq_info **last_seqs = video ? &component->last_seqs_video : &component->last_seqs_audio;
+				janus_seq_info *cur_seq = *last_seqs;
 				if(cur_seq) {
 					cur_seq = cur_seq->prev;
 					cur_seqn = cur_seq->seq;
@@ -2031,7 +2032,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					/* Add new seq objs forward */
 					while(cur_seqn != new_seqn) {
 						cur_seqn += (guint16)1; /* can wrap */
-						seq_info_t *seq_obj = g_malloc0(sizeof(seq_info_t));
+						janus_seq_info *seq_obj = g_malloc0(sizeof(janus_seq_info));
 						seq_obj->seq = cur_seqn;
 						seq_obj->ts = now;
 						seq_obj->state = (cur_seqn == new_seqn) ? SEQ_RECVED : SEQ_MISSING;
@@ -2063,7 +2064,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 					}
 				}
 				while(last_seqs_len > LAST_SEQS_MAX_LEN) {
-					seq_info_t *node = janus_seq_pop_head(last_seqs);
+					janus_seq_info *node = janus_seq_pop_head(last_seqs);
 					g_free(node);
 					last_seqs_len--;
 				}
@@ -3239,6 +3240,7 @@ void *janus_ice_send_thread(void *data) {
 				/* Create a RR */
 				int rrlen = 32;
 				char rtcpbuf[32];
+				memset(rtcpbuf, 0, sizeof(rtcpbuf));
 				rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
 				rr->header.version = 2;
 				rr->header.type = RTCP_RR;
@@ -3257,6 +3259,7 @@ void *janus_ice_send_thread(void *data) {
 					/* Create a RR */
 					int rrlen = 32;
 					char rtcpbuf[32];
+					memset(rtcpbuf, 0, sizeof(rtcpbuf));
 					rtcp_rr *rr = (rtcp_rr *)&rtcpbuf;
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;
@@ -3277,6 +3280,7 @@ void *janus_ice_send_thread(void *data) {
 				int srlen = 28;
 				int sdeslen = 20;
 				char rtcpbuf[srlen+sdeslen];
+				memset(rtcpbuf, 0, sizeof(rtcpbuf));
 				rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 				sr->header.version = 2;
 				sr->header.type = RTCP_SR;
@@ -3316,6 +3320,7 @@ void *janus_ice_send_thread(void *data) {
 				int srlen = 28;
 				int sdeslen = 20;
 				char rtcpbuf[srlen+sdeslen];
+				memset(rtcpbuf, 0, sizeof(rtcpbuf));
 				rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
 				sr->header.version = 2;
 				sr->header.type = RTCP_SR;
@@ -3510,6 +3515,7 @@ void *janus_ice_send_thread(void *data) {
 					/* There's a REMB, prepend a RR as it won't work otherwise */
 					int rrlen = 32;
 					char *rtcpbuf = g_malloc0(rrlen+pkt->length);
+					memset(rtcpbuf, 0, rrlen+pkt->length);
 					rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;

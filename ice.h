@@ -245,7 +245,7 @@ typedef struct janus_seq_info {
 	guint16 state;
 	struct janus_seq_info *next;
 	struct janus_seq_info *prev;
-} seq_info_t;
+} janus_seq_info;
 enum {
 	SEQ_MISSING,
 	SEQ_NACKED,
@@ -422,9 +422,9 @@ struct janus_ice_component {
 	/*! \brief Number of NACKs sent since last log message */
 	guint nack_sent_recent_cnt;
 	/*! \brief List of recently received audio sequence numbers (as a support to NACK generation) */
-	seq_info_t *last_seqs_audio;
+	janus_seq_info *last_seqs_audio;
 	/*! \brief List of recently received video sequence numbers (as a support to NACK generation) */
-	seq_info_t *last_seqs_video;
+	janus_seq_info *last_seqs_video;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */

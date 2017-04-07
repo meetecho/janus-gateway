@@ -536,6 +536,7 @@ typedef struct janus_videoroom_participant {
 	GHashTable *rtp_forwarders;
 	janus_mutex rtp_forwarders_mutex;
 	int udp_sock; /* The udp socket on which to forward rtp packets */
+	gboolean kicked;	/* Whether this participant has been kicked */
 } janus_videoroom_participant;
 static void janus_videoroom_participant_free(janus_videoroom_participant *p);
 static void janus_videoroom_rtp_forwarder_free_helper(gpointer data);
@@ -1030,13 +1031,14 @@ static void janus_videoroom_notify_participants(janus_videoroom_participant *par
 	}
 }
 
-static void janus_videoroom_leave_or_unpublish(janus_videoroom_participant *participant, gboolean is_leaving) {
+static void janus_videoroom_leave_or_unpublish(janus_videoroom_participant *participant, gboolean is_leaving, gboolean kicked) {
 	/* we need to check if the room still exists, may have been destroyed already */
 	if(participant->room && !participant->room->destroyed) {
 		json_t *event = json_object();
 		json_object_set_new(event, "videoroom", json_string("event"));
 		json_object_set_new(event, "room", json_integer(participant->room->room_id));
-		json_object_set_new(event, is_leaving ? "leaving" : "unpublished", json_integer(participant->user_id));
+		json_object_set_new(event, is_leaving ? (kicked ? "kicked" : "leaving") : "unpublished",
+			json_integer(participant->user_id));
 		janus_mutex_lock(&participant->room->participants_mutex);
 		janus_videoroom_notify_participants(participant, event);
 		if(is_leaving) {
@@ -1084,7 +1086,8 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 			if(participant->recording_base)
 				g_free(participant->recording_base);
 			participant->recording_base = NULL;
-			janus_videoroom_leave_or_unpublish(participant, TRUE);
+			session->participant_type = janus_videoroom_p_type_none;
+			janus_videoroom_leave_or_unpublish(participant, TRUE, FALSE);
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Detaching this listener from its publisher is already done by hangup_media */
 		}
@@ -1946,6 +1949,23 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such user %"SCNu64" in room %"SCNu64, user_id, room_id);
 			goto plugin_response;
 		}
+		participant->audio_active = FALSE;
+		participant->video_active = FALSE;
+		participant->data_active = FALSE;
+		/* Prepare an event for this */
+		json_t *kicked = json_object();
+		json_object_set_new(kicked, "videoroom", json_string("event"));
+		json_object_set_new(kicked, "room", json_integer(participant->room->room_id));
+		json_object_set_new(kicked, "leaving", json_string("ok"));
+		json_object_set_new(kicked, "reason", json_string("kicked"));
+		int ret = gateway->push_event(participant->session->handle, &janus_videoroom_plugin, NULL, kicked, NULL);
+		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+		json_decref(kicked);
+		participant->kicked = TRUE;
+		participant->session->started = FALSE;
+		janus_mutex_unlock(&videoroom->participants_mutex);
+		/* This publisher is leaving, tell everybody */
+		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
 		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest
 		 * 	FIXME: this only kicks the publisher, but not the subscriptions it created */
 		if(participant && participant->session)
@@ -1955,7 +1975,6 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		/* Done */
-		janus_mutex_unlock(&videoroom->participants_mutex);
 		janus_mutex_unlock(&rooms_mutex);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
@@ -2254,6 +2273,8 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			}
 		}
 	}
+	if(participant->kicked)
+		return;
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		/* Update payload type and SSRC */
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
@@ -2398,7 +2419,7 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
-	if(!participant->data_active)
+	if(!participant->data_active || participant->kicked)
 		return;
 	/* Any forwarder involved? */
 	janus_mutex_lock(&participant->rtp_forwarders_mutex);
@@ -2598,7 +2619,7 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 			}
 		}
 		janus_mutex_unlock(&participant->listeners_mutex);
-		janus_videoroom_leave_or_unpublish(participant, FALSE);
+		janus_videoroom_leave_or_unpublish(participant, FALSE, FALSE);
 		/* Also notify event handlers */
 		if(participant->room && gateway->events_is_enabled()) {
 			json_t *info = json_object();
@@ -3016,6 +3037,12 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "Can't publish, already published");
 					goto error;
 				}
+				if(participant->kicked) {
+					JANUS_LOG(LOG_ERR, "Unauthorized, you have been kicked\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized, you have been kicked");
+					goto error;
+				}
 				/* Configure (or publish a new feed) audio/video/bitrate for this publisher */
 				JANUS_VALIDATE_JSON_OBJECT(root, publish_parameters,
 					error_code, error_cause, TRUE,
@@ -3182,7 +3209,8 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
 				json_object_set_new(event, "leaving", json_string("ok"));
 				/* This publisher is leaving, tell everybody */
-				janus_videoroom_leave_or_unpublish(participant, TRUE);
+				session->participant_type = janus_videoroom_p_type_none;
+				janus_videoroom_leave_or_unpublish(participant, TRUE, FALSE);
 				/* Done */
 				participant->audio_active = FALSE;
 				participant->video_active = FALSE;
@@ -3349,6 +3377,7 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_unlock(&publisher->listeners_mutex);
 					listener->feed = NULL;
 				}
+				session->participant_type = janus_videoroom_p_type_none;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(listener->room->room_id));
