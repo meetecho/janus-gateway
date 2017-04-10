@@ -86,6 +86,9 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"allowed" : [ array of string tokens users can use to join this room, optional],
 	"sampling" : <sampling rate of the room, optional, 16000 by default>,
 	"audiolevel_ext" : <true|false, whether the ssrc-audio-level RTP extension must be negotiated for new joins, default true>,
+	"audiolevel_event" : yes|no (whether to emit event to other users or not),
+    "audio_active_packets" : 100 (number of packets with audio level, default=100, 2 seconds),
+    "audio_level_average" : 25 (average value of audio level, 127=muted, 0='too loud', default=25),
 	"record" : <true|false, whether to record the room or not, default false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
 }
@@ -623,6 +626,9 @@ static struct janus_json_parameter create_parameters[] = {
 	{"record_file", JSON_STRING, 0},
 	{"permanent", JANUS_JSON_BOOL, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
+	{"audiolevel_event", JANUS_JSON_BOOL, 0},
+    {"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+    {"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter destroy_parameters[] = {
@@ -725,6 +731,9 @@ typedef struct janus_audiobridge_room {
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	uint32_t sampling_rate;		/* Sampling rate of the mix (e.g., 16000 for wideband; can be 8, 12, 16, 24 or 48kHz) */
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new joins */
+	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
+    int audio_active_packets;	/* amount of packets with audio level for checkup */
+    int audio_level_average;	/* average audio level */
 	gboolean record;			/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file */
 	FILE *recording;			/* File to record the room into */
@@ -778,6 +787,8 @@ typedef struct janus_audiobridge_participant {
 	int opus_pt;			/* Opus payload type */
 	int extmap_id;			/* Audio level RTP extension id, if any */
 	int dBov_level;			/* Value in dBov of the audio level (last value from extension) */
+	int audio_active_packets;   /* participants number of audio packets to accumulate */
+	int audio_dBov_sum;	    /* participants accumulated dBov value for audio level */
 	janus_rtp_switching_context context;	/* Needed in case the participant changes room */
 	/* Opus stuff */
 	OpusEncoder *encoder;		/* Opus encoder instance */
@@ -1034,6 +1045,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *priv = janus_config_get_item(cat, "is_private");
 			janus_config_item *sampling = janus_config_get_item(cat, "sampling_rate");
 			janus_config_item *audiolevel_ext = janus_config_get_item(cat, "audiolevel_ext");
+			janus_config_item *audiolevel_event = janus_config_get_item(cat, "audiolevel_event");
+            janus_config_item *audio_active_packets = janus_config_get_item(cat, "audio_active_packets");
+            janus_config_item *audio_level_average = janus_config_get_item(cat, "audio_level_average");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
 			janus_config_item *pin = janus_config_get_item(cat, "pin");
 			janus_config_item *record = janus_config_get_item(cat, "record");
@@ -1070,6 +1084,15 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->audiolevel_ext = TRUE;
 			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
 				audiobridge->audiolevel_ext = janus_is_true(audiolevel_ext->value);
+			audiobridge->audiolevel_event = FALSE;
+            if(audiolevel_event != NULL && audiolevel_event->value != NULL)
+            	audiobridge->audiolevel_event = janus_is_true(audiolevel_event->value);
+            audiobridge->audio_active_packets = 100;
+            if(audio_active_packets != NULL && audio_active_packets->value != NULL)
+                audiobridge->audio_active_packets = atol(audio_active_packets->value);
+            audiobridge->audio_level_average = 25;
+            if(audio_level_average != NULL && audio_level_average->value != NULL)
+                audiobridge->audio_level_average = atol(audio_level_average->value);
 			if(secret != NULL && secret->value != NULL) {
 				audiobridge->room_secret = g_strdup(secret->value);
 			}
@@ -1256,6 +1279,21 @@ void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error)
 	return;
 }
 
+static void janus_audiobridge_notify_participants(janus_audiobridge_participant *participant, json_t *msg) {
+	/* participant->room->participants_mutex has to be locked. */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, participant->room->participants);
+	while (!participant->room->destroyed && g_hash_table_iter_next(&iter, NULL, &value)) {
+		janus_audiobridge_participant *p = value;
+		if(p && p->session && p != participant) {
+			JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+			int ret = gateway->push_event(p->session->handle, &janus_audiobridge_plugin, NULL, msg, NULL);
+			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+		}
+	}
+}
+
 json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
@@ -1372,6 +1410,9 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		json_t *allowed = json_object_get(root, "allowed");
 		json_t *sampling = json_object_get(root, "sampling");
 		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
+		json_t *audiolevel_event = json_object_get(root, "audiolevel_event");
+        json_t *audio_active_packets = json_object_get(root, "audio_active_packets");
+        json_t *audio_level_average = json_object_get(root, "audio_level_average");
 		json_t *record = json_object_get(root, "record");
 		json_t *recfile = json_object_get(root, "record_file");
 		json_t *permanent = json_object_get(root, "permanent");
@@ -1452,6 +1493,9 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		else
 			audiobridge->sampling_rate = 16000;
 		audiobridge->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
+		audiobridge->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
+        audiobridge->audio_active_packets = audio_active_packets ? json_integer_value(audio_active_packets) : 100;
+        audiobridge->audio_level_average = audio_level_average ? json_integer_value(audio_level_average) : 25;
 		switch(audiobridge->sampling_rate) {
 			case 8000:
 			case 12000:
@@ -2219,11 +2263,42 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		pkt->seq_number = ntohs(rtp->seq_number);
 		/* Any audio level extension to quickly check if this is silence? */
 		pkt->silence = FALSE;
+
 		if(participant->extmap_id > 0) {
 			int level = 0;
-			if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->extmap_id, &level) == 0) {
+			if (janus_rtp_header_extension_parse_audio_level(buf, len, participant->extmap_id, &level) == 0) {
+				participant->audio_dBov_sum = participant->audio_dBov_sum + level;
+				participant->audio_active_packets = participant->audio_active_packets + 1;
 				pkt->silence = (level == 127);
 				participant->dBov_level = level;
+				if (participant->room->audiolevel_event) {
+					if (participant->audio_active_packets == participant->room->audio_active_packets) {
+
+						if ((float) participant->audio_dBov_sum / (float) participant->audio_active_packets <
+							participant->room->audio_level_average) {
+							// Notify participants
+							json_t *event = json_object();
+							json_object_set_new(event, "event", json_string("talking"));
+							json_object_set_new(event, "user", json_string(participant->display));
+							janus_audiobridge_notify_participants(participant, event);
+							json_decref(event);
+							/* JANUS_LOG(LOG_ERR, "AVG audio_level %f\n",
+									  (float) participant->audio_dBov_sum / (float) participant->audio_active_packets); */
+							/* Also notify event handlers */
+							if (notify_events && gateway->events_is_enabled()) {
+								json_t *info = json_object();
+								json_object_set_new(info, "event", json_string("talking"));
+								json_object_set_new(info, "room", json_integer(participant->room->room_id));
+								json_object_set_new(info, "user", json_string(participant->display));
+								gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
+							}
+						}
+						participant->audio_active_packets = 0;
+						participant->audio_dBov_sum = 0;
+					}
+				} else {
+					JANUS_LOG(LOG_ERR, "Room audiolevel_event %d\n", participant->room->audiolevel_event);
+				}
 			}
 		}
 		participant->working = TRUE;
