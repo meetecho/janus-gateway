@@ -22,8 +22,5 @@
 description = Demo Room
 secret = adminpwd
 sampling_rate = 16000
-audiolevel_event = no
-audio_active_packets = 100
-audio_level_average = 25
 record = false
 ;record_file = /path/to/recording.wav

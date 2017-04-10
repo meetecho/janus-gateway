@@ -853,10 +853,10 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->audiolevel_event = janus_is_true(audiolevel_event->value);
 			videoroom->audio_active_packets = 100;
 			if(audio_active_packets != NULL && audio_active_packets->value != NULL)
-				videoroom->audio_active_packets = atol(audio_active_packets->value);
+				videoroom->audio_active_packets = atoi(audio_active_packets->value);
 			videoroom->audio_level_average = 25;
 			if(audio_level_average != NULL && audio_level_average->value != NULL)
-				videoroom->audio_level_average = atol(audio_level_average->value);
+				videoroom->audio_level_average = atoi(audio_level_average->value);
 			videoroom->videoorient_ext = TRUE;
 			if(videoorient_ext != NULL && videoorient_ext->value != NULL)
 				videoroom->videoorient_ext = janus_is_true(videoorient_ext->value);
@@ -2249,15 +2249,17 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			/* JANUS_LOG(LOG_INFO, "Audio level is %d\n", level); */
 			participant->audio_dBov_sum = participant->audio_dBov_sum + level;
 			participant->audio_active_packets = participant->audio_active_packets + 1;
-			if(participant->audio_active_packets == videoroom->audio_active_packets) {
+			if(participant->audio_active_packets > 0 && participant->audio_active_packets == videoroom->audio_active_packets) {
 				if((float)participant->audio_dBov_sum/(float)participant->audio_active_packets < videoroom->audio_level_average) {
 					// Notify participants
+					janus_mutex_lock(&participant->room->participants_mutex);
 					json_t *event = json_object();
 					json_object_set_new(event, "event", json_string("talking"));
 					json_object_set_new(event, "room", json_integer(participant->room->room_id));
 					json_object_set_new(event, "user", json_integer(participant->user_id));
 					janus_videoroom_notify_participants(participant, event);
 					json_decref(event);
+					janus_mutex_unlock(&participant->room->participants_mutex);
 					/* JANUS_LOG(LOG_ERR, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets); */
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
