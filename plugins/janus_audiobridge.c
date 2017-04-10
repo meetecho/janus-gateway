@@ -2279,7 +2279,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 							// Notify participants
 							json_t *event = json_object();
 							json_object_set_new(event, "event", json_string("talking"));
-							json_object_set_new(event, "user", json_string(participant->display));
+							json_object_set_new(event, "room", json_integer(participant->room->room_id));
+							json_object_set_new(event, "user", json_integer(participant->user_id));
 							janus_audiobridge_notify_participants(participant, event);
 							json_decref(event);
 							/* JANUS_LOG(LOG_ERR, "AVG audio_level %f\n",
@@ -2289,7 +2290,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 								json_t *info = json_object();
 								json_object_set_new(info, "event", json_string("talking"));
 								json_object_set_new(info, "room", json_integer(participant->room->room_id));
-								json_object_set_new(info, "user", json_string(participant->display));
+								json_object_set_new(info, "user", json_integer(participant->user_id));
 								gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 							}
 						}
