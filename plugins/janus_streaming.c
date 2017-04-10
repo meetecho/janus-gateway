@@ -2424,7 +2424,10 @@ static void *janus_streaming_handler(void *data) {
 				"v=0\r\no=%s %"SCNu64" %"SCNu64" IN IP4 127.0.0.1\r\n",
 					"-", sessid, version);
 			g_strlcat(sdptemp, buffer, 2048);
-			g_strlcat(sdptemp, "s=Streaming Test\r\nt=0 0\r\n", 2048);
+			g_snprintf(buffer, 512,
+				"s=%s\r\n", (mp->name ? mp->name : "Streaming Test"));
+			g_strlcat(sdptemp, buffer, 2048);
+			g_strlcat(sdptemp, "t=0 0\r\n", 2048);
 			if(mp->codecs.audio_pt >= 0) {
 				/* Add audio line */
 				g_snprintf(buffer, 512,
@@ -2762,14 +2765,14 @@ static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) 
 	if(source->data_fd > 0) {
 		close(source->data_fd);
 	}
-	#ifdef HAVE_LIBCURL
+#ifdef HAVE_LIBCURL
 	if(source->audio_rtcp_fd > 0) {
 		close(source->audio_rtcp_fd);
 	}
 	if(source->video_rtcp_fd > 0) {
 		close(source->video_rtcp_fd);
 	}
-	#endif
+#endif
 	janus_mutex_lock(&source->keyframe.mutex);
 	GList *temp = NULL;
 	while(source->keyframe.latest_keyframe) {
@@ -3151,7 +3154,7 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 	}
 	char *f = strstr(m, "a=fmtp:");
 	if(f != NULL) {
-		sscanf(f, "a=fmtp:%*d %2047s", fmtp);
+		sscanf(f, "a=fmtp:%*d %2047[^\r\n]s", fmtp);
 	}
 	char *c = strstr(m, "c=IN IP4");
 	char ip[256];
