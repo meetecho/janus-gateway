@@ -776,14 +776,6 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 				}
 			}
 		}
-		if(local_ip == NULL) {
-			local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
-			if(local_ip == NULL) {
-				JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-				local_ip = g_strdup("127.0.0.1");
-			}
-		}
-		JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
 		if(item && item->value)
@@ -816,6 +808,15 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_destroy(config);
 	}
 	config = NULL;
+
+	if(local_ip == NULL) {
+		local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+		if(local_ip == NULL) {
+			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+			local_ip = g_strdup("127.0.0.1");
+		}
+	}
+	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 #ifdef HAVE_SRTP_2
 	/* Init randomizer (for randum numbers in SRTP) */
@@ -2179,7 +2180,6 @@ static void *janus_sip_handler(void *data) {
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						char buf[12];
-						memset(buf, 0, 12);
 						janus_rtcp_pli((char *)&buf, 12);
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 					}
@@ -3156,7 +3156,7 @@ static void *janus_sip_relay_thread(void *data) {
 	struct sockaddr_in server_addr;
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
-	if((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {	/* Not a numeric IP... */
+	if(inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
 		struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
 		if(!host) {
 			JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
@@ -3192,10 +3192,11 @@ static void *janus_sip_relay_thread(void *data) {
 
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {
+			if(session->media.remote_ip != NULL && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
 				janus_sip_connect_sockets(session, &server_addr);
 			} else {
-				JANUS_LOG(LOG_ERR, "[SIP-%s] Couldn't update session details (missing or invalid remote IP address)\n", session->account.username);
+				JANUS_LOG(LOG_ERR, "[SIP-%p] Couldn't update session details: missing or invalid remote IP address? (%s)\n",
+					session->account.username, session->media.remote_ip);
 			}
 			session->media.updated = FALSE;
 		}
@@ -3253,6 +3254,10 @@ static void *janus_sip_relay_thread(void *data) {
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling: %s...\n", session->account.username,
 					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 				JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
+				if(errno == 0) {
+					/* Maybe not a breaking error? */
+					continue;
+				}
 				if(session->media.updated)
 					break;
 				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */

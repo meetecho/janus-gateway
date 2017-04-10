@@ -234,7 +234,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Janus API)\n");
 		} else {
 			item = janus_config_get_item_drilldown(config, "general", "path");
-			char *pfname = (char *)(item && item->value ? item->value : "/tmp/ux-janusapi");
+			char *pfname = (char *)(item && item->value ? item->value : NULL);
 			item = janus_config_get_item_drilldown(config, "general", "type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			dgram = FALSE;
@@ -246,8 +246,12 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "Unknown type %s, assuming SOCK_SEQPACKET\n", type);
 				type = "SOCK_SEQPACKET";
 			}
-			JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Janus API)\n", type);
-			pfd = janus_pfunix_create_socket(pfname, dgram);
+			if(pfname == NULL) {
+				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Janus API)\n");
+			} else {
+				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Janus API)\n", type);
+				pfd = janus_pfunix_create_socket(pfname, dgram);
+			}
 		}
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get_item_drilldown(config, "admin", "admin_enabled");
@@ -255,7 +259,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Admin API)\n");
 		} else {
 			item = janus_config_get_item_drilldown(config, "admin", "admin_path");
-			char *pfname = (char *)(item && item->value ? item->value : "/tmp/ux-janusadmin");
+			char *pfname = (char *)(item && item->value ? item->value : NULL);
 			item = janus_config_get_item_drilldown(config, "admin", "admin_type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			if(!strcasecmp(type, "SOCK_SEQPACKET")) {
@@ -266,14 +270,18 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "Unknown type %s, assuming SOCK_SEQPACKET\n", type);
 				type = "SOCK_SEQPACKET";
 			}
-			JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Admin API)\n", type);
-			admin_pfd = janus_pfunix_create_socket(pfname, admin_dgram);
+			if(pfname == NULL) {
+				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Admin API)\n");
+			} else {
+				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Admin API)\n", type);
+				admin_pfd = janus_pfunix_create_socket(pfname, admin_dgram);
+			}
 		}
 	}
 	janus_config_destroy(config);
 	config = NULL;
 	if(pfd < 0 && admin_pfd < 0) {
-		JANUS_LOG(LOG_FATAL, "No Unix Sockets server started, giving up...\n");
+		JANUS_LOG(LOG_WARN, "No Unix Sockets server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
 
@@ -729,12 +737,29 @@ void *janus_pfunix_thread(void *data) {
 		}
 	}
 
-	if(pfd > -1)
+	socklen_t addrlen = sizeof(struct sockaddr_un);
+	void *addr = g_malloc0(addrlen+1);
+	if(pfd > -1) {
+		/* Unlink the path name first */
+		if(getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
+			unlink(((struct sockaddr_un *)addr)->sun_path);
+		}
+		/* Close the socket */
 		close(pfd);
+	}
 	pfd = -1;
-	if(admin_pfd > -1)
+	if(admin_pfd > -1) {
+		/* Unlink the path name first */
+		if(getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
+			unlink(((struct sockaddr_un *)addr)->sun_path);
+		}
+		/* Close the socket */
 		close(admin_pfd);
+	}
 	admin_pfd = -1;
+	g_free(addr);
 
 	g_hash_table_destroy(clients_by_path);
 	g_hash_table_destroy(clients_by_fd);

@@ -104,6 +104,8 @@ typedef struct janus_mqtt_context {
 	struct {
 		int keep_alive_interval;
 		int cleansession;
+		char *username;
+		char *password;
 	} connect;
 	struct {
 		int timeout;
@@ -184,10 +186,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	const char *client_id = g_strdup((client_id_item && client_id_item->value) ? client_id_item->value : "guest");
 
 	janus_config_item *username_item = janus_config_get_item_drilldown(config, "general", "username");
-	const char *username = g_strdup((username_item && username_item->value) ? username_item->value : "guest");
+	ctx->connect.username = g_strdup((username_item && username_item->value) ? username_item->value : "guest");
 	
 	janus_config_item *password_item = janus_config_get_item_drilldown(config, "general", "password");
-	const char *password = g_strdup((password_item && password_item->value) ? password_item->value : "guest");
+	ctx->connect.password = g_strdup((password_item && password_item->value) ? password_item->value : "guest");
 
 	janus_config_item *json_item = janus_config_get_item_drilldown(config, "general", "json");
 	if(json_item && json_item->value) {
@@ -338,8 +340,6 @@ error:
 	janus_mqtt_client_destroy_context(&ctx);
 	g_free((char *)url);
 	g_free((char *)client_id);
-	g_free((char *)username);
-	g_free((char *)password);
 	g_free(config);
 
 	return -1;
@@ -457,6 +457,8 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	MQTTAsync_connectOptions options = MQTTAsync_connectOptions_initializer;
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
 	options.cleansession = ctx->connect.cleansession;
+	options.username = ctx->connect.username;
+	options.password = ctx->connect.password;
 	options.automaticReconnect = TRUE;
 	options.onSuccess = janus_mqtt_client_connect_success;
 	options.onFailure = janus_mqtt_client_connect_failure;
@@ -669,6 +671,8 @@ void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
 		MQTTAsync_destroy(&ctx->client);
 		g_free(ctx->subscribe.topic);
 		g_free(ctx->publish.topic);
+		g_free(ctx->connect.username);
+		g_free(ctx->connect.password);
 		g_free(ctx->admin.subscribe.topic);
 		g_free(ctx->admin.publish.topic);
 		g_free(ctx);

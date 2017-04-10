@@ -553,8 +553,8 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		config = NULL;
 	}
 	if(recordings_path == NULL) {
-		recordings_path = g_strdup("/tmp");
-		JANUS_LOG(LOG_WARN, "No recordings path specified, using /tmp...\n");
+		JANUS_LOG(LOG_FATAL, "No recordings path specified, giving up...\n");
+		return -1;
 	}
 	/* Create the folder, if needed */
 	struct stat st = {0};
@@ -930,10 +930,8 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 
 	if(elapsed >= interval) {
 		/* Send both a FIR and a PLI, just to be sure */
-		memset(rtcpbuf, 0, 20);
 		janus_rtcp_fir((char *)&rtcpbuf, 20, &session->video_fir_seq);
 		gateway->relay_rtcp(handle, video, rtcpbuf, 20);
-		memset(rtcpbuf, 0, 12);
 		janus_rtcp_pli((char *)&rtcpbuf, 12);
 		gateway->relay_rtcp(handle, video, rtcpbuf, 12);
 		session->video_keyframe_request_last = now;

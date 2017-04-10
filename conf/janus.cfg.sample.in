@@ -4,17 +4,17 @@
 ; and, if needed, shared apisecret and/or token authentication mechanism
 ; between application(s) and Janus.
 [general]
-configs_folder = @confdir@		; Configuration files folder
+configs_folder = @confdir@			; Configuration files folder
 plugins_folder = @plugindir@		; Plugins folder
 transports_folder = @transportdir@	; Transports folder
-events_folder = @eventdir@		; Event handlers folder
-;log_to_stdout = false			; Whether the Janus output should be written
-								; to stdout or not (default=true)
-;log_to_file = /tmp/janus.log	; Whether to use a log file or not
-;daemonize = true				; Whether Janus should run as a daemon
-								; or not (default=run in foreground)
-;pid_file = /tmp/janus.pid		; PID file to create when Janus has been
-								; started, and to destroy at shutdown
+events_folder = @eventdir@			; Event handlers folder
+;log_to_stdout = false				; Whether the Janus output should be written
+									; to stdout or not (default=true)
+;log_to_file = /path/to/janus.log	; Whether to use a log file or not
+;daemonize = true					; Whether Janus should run as a daemon
+									; or not (default=run in foreground)
+;pid_file = /path/to/janus.pid		; PID file to create when Janus has been
+									; started, and to destroy at shutdown
 ;interface = 1.2.3.4		; Interface to use (will be used in SDP)
 debug_level = 4				; Debug/logging level, valid values are 0-7
 ;debug_timestamps = yes		; Whether to show a timestamp for each log line
