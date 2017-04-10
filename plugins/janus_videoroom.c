@@ -516,8 +516,8 @@ typedef struct janus_videoroom_participant {
 	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
-	int audio_active_packets; /* participants number of audio packets to aqumulate*/
-	int audio_dBov_sum;	/* participants aqumulated dBov value for audio level*/
+	int audio_active_packets; /* participants number of audio packets to accumulate */
+	int audio_dBov_sum;	/* participants accumulated dBov value for audio level*/
 	gboolean data_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
@@ -853,10 +853,10 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->audiolevel_event = janus_is_true(audiolevel_event->value);
 			videoroom->audio_active_packets = 100;
 			if(audio_active_packets != NULL && audio_active_packets->value != NULL)
-				videoroom->audio_active_packets = janus_is_true(audio_active_packets->value);
+				videoroom->audio_active_packets = atol(audio_active_packets->value);
 			videoroom->audio_level_average = 25;
 			if(audio_level_average != NULL && audio_level_average->value != NULL)
-				videoroom->audio_level_average = janus_is_true(audio_level_average->value);
+				videoroom->audio_level_average = atol(audio_level_average->value);
 			videoroom->videoorient_ext = TRUE;
 			if(videoorient_ext != NULL && videoorient_ext->value != NULL)
 				videoroom->videoorient_ext = janus_is_true(videoorient_ext->value);
@@ -2249,7 +2249,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			/* JANUS_LOG(LOG_INFO, "Audio level is %d\n", level); */
 			participant->audio_dBov_sum = participant->audio_dBov_sum + level;
 			participant->audio_active_packets = participant->audio_active_packets + 1;
-			/* 2 seconds of talking (100 packets) with average of ~25 dBow */
 			if(participant->audio_active_packets == videoroom->audio_active_packets) {
 				if((float)participant->audio_dBov_sum/(float)participant->audio_active_packets < videoroom->audio_level_average) {
 					// Notify participants
