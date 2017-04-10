@@ -1244,7 +1244,6 @@ static void *janus_nosip_handler(void *data) {
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						char buf[12];
-						memset(buf, 0, 12);
 						janus_rtcp_pli((char *)&buf, 12);
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 					}
