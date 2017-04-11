@@ -2299,9 +2299,9 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 							janus_mutex_lock(&participant->room->mutex);
 							// Notify participants
 							json_t *event = json_object();
-							json_object_set_new(event, "event", json_string("talking"));
+							json_object_set_new(event, "audiobridge", json_string("talking"));
 							json_object_set_new(event, "room", json_integer(participant->room->room_id));
-							json_object_set_new(event, "user", json_integer(participant->user_id));
+							json_object_set_new(event, "id", json_integer(participant->user_id));
 							janus_audiobridge_notify_participants(participant, event);
 							json_decref(event);
 							janus_mutex_unlock(&participant->room->mutex);
@@ -2310,9 +2310,9 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 							/* Also notify event handlers */
 							if (notify_events && gateway->events_is_enabled()) {
 								json_t *info = json_object();
-								json_object_set_new(info, "event", json_string("talking"));
+								json_object_set_new(info, "audiobridge", json_string("talking"));
 								json_object_set_new(info, "room", json_integer(participant->room->room_id));
-								json_object_set_new(info, "user", json_integer(participant->user_id));
+								json_object_set_new(info, "id", json_integer(participant->user_id));
 								gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 							}
 						}
