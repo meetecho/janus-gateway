@@ -2282,22 +2282,25 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 		pkt->ssrc = 0;
 		pkt->timestamp = ntohl(rtp->timestamp);
 		pkt->seq_number = ntohs(rtp->seq_number);
-		/* Any audio level extension to quickly check if this is silence? */
+		/* We might check the audio level extension to see if this is silence */
 		pkt->silence = FALSE;
 
 		if(participant->extmap_id > 0) {
+			/* Check the audio levels, in case we need to notify participants about who's talking */
 			int level = 0;
-			if (janus_rtp_header_extension_parse_audio_level(buf, len, participant->extmap_id, &level) == 0) {
-				participant->audio_dBov_sum = participant->audio_dBov_sum + level;
-				participant->audio_active_packets = participant->audio_active_packets + 1;
+			if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->extmap_id, &level) == 0) {
+				/* Is this silence? */
 				pkt->silence = (level == 127);
-				participant->dBov_level = level;
-				if (participant->room->audiolevel_event) {
-					if (participant->audio_active_packets > 0 && participant->audio_active_packets == participant->room->audio_active_packets) {
-						if ((float) participant->audio_dBov_sum / (float) participant->audio_active_packets <
-							participant->room->audio_level_average) {
+				if(participant->room->audiolevel_event) {
+					/* We also need to detect who's talking: update our monitoring stuff */
+					participant->audio_dBov_sum += level;
+					participant->audio_active_packets++;
+					participant->dBov_level = level;
+					if(participant->audio_active_packets > 0 && participant->audio_active_packets == participant->room->audio_active_packets) {
+						if((float) participant->audio_dBov_sum / (float) participant->audio_active_packets <
+								participant->room->audio_level_average) {
 							janus_mutex_lock(&participant->room->mutex);
-							// Notify participants
+							/* Notify all participants */
 							json_t *event = json_object();
 							json_object_set_new(event, "audiobridge", json_string("talking"));
 							json_object_set_new(event, "room", json_integer(participant->room->room_id));
@@ -2305,10 +2308,8 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 							janus_audiobridge_notify_participants(participant, event);
 							json_decref(event);
 							janus_mutex_unlock(&participant->room->mutex);
-							/* JANUS_LOG(LOG_ERR, "AVG audio_level %f\n",
-									  (float) participant->audio_dBov_sum / (float) participant->audio_active_packets); */
 							/* Also notify event handlers */
-							if (notify_events && gateway->events_is_enabled()) {
+							if(notify_events && gateway->events_is_enabled()) {
 								json_t *info = json_object();
 								json_object_set_new(info, "audiobridge", json_string("talking"));
 								json_object_set_new(info, "room", json_integer(participant->room->room_id));
@@ -3046,6 +3047,8 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			JANUS_LOG(LOG_VERB, "  -- Participant ID in new room %"SCNu64": %"SCNu64"\n", room_id, user_id);
 			participant->prebuffering = TRUE;
+			participant->audio_active_packets = 0;
+			participant->audio_dBov_sum = 0;
 			/* Is the sampling rate of the new room the same as the one in the old room, or should we update the decoder/encoder? */
 			janus_audiobridge_room *old_audiobridge = participant->room;
 			/* Leave the old room first... */

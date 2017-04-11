@@ -2263,15 +2263,17 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
 	janus_videoroom *videoroom = participant->room;
 
+	if(participant->kicked)
+		return;
+	/* In case this is an audio packet and we're doing talk detection, check the audio level extension */
 	if(!video && videoroom->audiolevel_event && participant->audio_active) {
 		int level = 0;
 		if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->audio_level_extmap_id, &level) == 0) {
-			/* JANUS_LOG(LOG_INFO, "Audio level is %d\n", level); */
-			participant->audio_dBov_sum = participant->audio_dBov_sum + level;
-			participant->audio_active_packets = participant->audio_active_packets + 1;
+			participant->audio_dBov_sum += level;
+			participant->audio_active_packets++;
 			if(participant->audio_active_packets > 0 && participant->audio_active_packets == videoroom->audio_active_packets) {
 				if((float)participant->audio_dBov_sum/(float)participant->audio_active_packets < videoroom->audio_level_average) {
-					// Notify participants
+					/* Notify all participants */
 					janus_mutex_lock(&participant->room->participants_mutex);
 					json_t *event = json_object();
 					json_object_set_new(event, "videoroom", json_string("talking"));
@@ -2280,7 +2282,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					janus_videoroom_notify_participants(participant, event);
 					json_decref(event);
 					janus_mutex_unlock(&participant->room->participants_mutex);
-					/* JANUS_LOG(LOG_ERR, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets); */
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
@@ -2295,8 +2296,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			}
 		}
 	}
-	if(participant->kicked)
-		return;
+
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		/* Update payload type and SSRC */
 		janus_mutex_lock(&participant->rtp_forwarders_mutex);
