@@ -66,6 +66,9 @@ audiocodec = opus|isac32|isac16|pcmu|pcma|g722 (audio codec to force on publishe
 videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8)
 audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
+audiolevel_event = yes|no (whether to emit event to other users or not)
+audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
+audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 videoorientation_ext = yes|no (whether the video-orientation RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
@@ -224,6 +227,9 @@ static struct janus_json_parameter create_parameters[] = {
 	{"audiocodec", JSON_STRING, 0},
 	{"videocodec", JSON_STRING, 0},
 	{"audiolevel_ext", JANUS_JSON_BOOL, 0},
+	{"audiolevel_event", JANUS_JSON_BOOL, 0},
+	{"audio_active_packets", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"audio_level_average", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"videoorient_ext", JANUS_JSON_BOOL, 0},
 	{"playoutdelay_ext", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
@@ -451,6 +457,9 @@ typedef struct janus_videoroom {
 	janus_videoroom_audiocodec acodec;	/* Audio codec to force on publishers*/
 	janus_videoroom_videocodec vcodec;	/* Video codec to force on publishers*/
 	gboolean audiolevel_ext;	/* Whether the ssrc-audio-level extension must be negotiated or not for new publishers */
+	gboolean audiolevel_event;	/* Whether to emit event to other users about audiolevel */
+	int audio_active_packets;	/* amount of packets with audio level for checkup */
+	int audio_level_average;	/* average audio level */
 	gboolean videoorient_ext;	/* Whether the video-orientation extension must be negotiated or not for new publishers */
 	gboolean playoutdelay_ext;	/* Whether the playout-delay extension must be negotiated or not for new publishers */
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
@@ -507,6 +516,8 @@ typedef struct janus_videoroom_participant {
 	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
+	int audio_active_packets; /* participants number of audio packets to accumulate */
+	int audio_dBov_sum;	/* participants accumulated dBov value for audio level*/
 	gboolean data_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
@@ -766,6 +777,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *audiocodec = janus_config_get_item(cat, "audiocodec");
 			janus_config_item *videocodec = janus_config_get_item(cat, "videocodec");
 			janus_config_item *audiolevel_ext = janus_config_get_item(cat, "audiolevel_ext");
+			janus_config_item *audiolevel_event = janus_config_get_item(cat, "audiolevel_event");
+			janus_config_item *audio_active_packets = janus_config_get_item(cat, "audio_active_packets");
+			janus_config_item *audio_level_average = janus_config_get_item(cat, "audio_level_average");
 			janus_config_item *videoorient_ext = janus_config_get_item(cat, "videoorient_ext");
 			janus_config_item *playoutdelay_ext = janus_config_get_item(cat, "playoutdelay_ext");
 			janus_config_item *record = janus_config_get_item(cat, "record");
@@ -834,6 +848,25 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			videoroom->audiolevel_ext = TRUE;
 			if(audiolevel_ext != NULL && audiolevel_ext->value != NULL)
 				videoroom->audiolevel_ext = janus_is_true(audiolevel_ext->value);
+			videoroom->audiolevel_event = FALSE;
+			if(audiolevel_event != NULL && audiolevel_event->value != NULL)
+				videoroom->audiolevel_event = janus_is_true(audiolevel_event->value);
+			videoroom->audio_active_packets = 100;
+			if(audio_active_packets != NULL && audio_active_packets->value != NULL){
+				if(atoi(audio_active_packets->value) > 0) {
+					videoroom->audio_active_packets = atoi(audio_active_packets->value);
+				} else {
+					JANUS_LOG(LOG_WARN, "audio_active_packets shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_active_packets);
+				}
+			}
+			videoroom->audio_level_average = 25;
+			if(audio_level_average != NULL && audio_level_average->value != NULL) {
+				if(atoi(audio_level_average->value) > 0) {
+					videoroom->audio_level_average = atoi(audio_level_average->value);
+				} else {
+					JANUS_LOG(LOG_WARN, "audio_level_average shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_level_average);
+				}
+			}
 			videoroom->videoorient_ext = TRUE;
 			if(videoorient_ext != NULL && videoorient_ext->value != NULL)
 				videoroom->videoorient_ext = janus_is_true(videoorient_ext->value);
@@ -1279,6 +1312,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		json_t *audiolevel_ext = json_object_get(root, "audiolevel_ext");
+		json_t *audiolevel_event = json_object_get(root, "audiolevel_event");
+		json_t *audio_active_packets = json_object_get(root, "audio_active_packets");
+		json_t *audio_level_average = json_object_get(root, "audio_level_average");
 		json_t *videoorient_ext = json_object_get(root, "videoorient_ext");
 		json_t *playoutdelay_ext = json_object_get(root, "playoutdelay_ext");
 		json_t *record = json_object_get(root, "record");
@@ -1406,6 +1442,19 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		videoroom->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
+		videoroom->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
+		videoroom->audio_active_packets = 100;
+		if(json_integer_value(audio_active_packets) > 0) {
+			videoroom->audio_active_packets = json_integer_value(audio_active_packets);
+		} else {
+			JANUS_LOG(LOG_WARN, "audio_active_packets shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_active_packets);
+		}
+		videoroom->audio_level_average = 25;
+		if(json_integer_value(audio_level_average) > 0) {
+			videoroom->audio_level_average = json_integer_value(audio_level_average);
+		} else {
+			JANUS_LOG(LOG_WARN, "audio_level_average shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_level_average);
+		}
 		videoroom->videoorient_ext = videoorient_ext ? json_is_true(videoorient_ext) : TRUE;
 		videoroom->playoutdelay_ext = playoutdelay_ext ? json_is_true(playoutdelay_ext) : TRUE;
 		if(record) {
@@ -2212,6 +2261,40 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if(!session || session->destroyed || !session->participant || session->participant_type != janus_videoroom_p_type_publisher)
 		return;
 	janus_videoroom_participant *participant = (janus_videoroom_participant *)session->participant;
+	janus_videoroom *videoroom = participant->room;
+
+	if(!video && videoroom->audiolevel_event && participant->audio_active) {
+		int level = 0;
+		if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->audio_level_extmap_id, &level) == 0) {
+			/* JANUS_LOG(LOG_INFO, "Audio level is %d\n", level); */
+			participant->audio_dBov_sum = participant->audio_dBov_sum + level;
+			participant->audio_active_packets = participant->audio_active_packets + 1;
+			if(participant->audio_active_packets > 0 && participant->audio_active_packets == videoroom->audio_active_packets) {
+				if((float)participant->audio_dBov_sum/(float)participant->audio_active_packets < videoroom->audio_level_average) {
+					// Notify participants
+					janus_mutex_lock(&participant->room->participants_mutex);
+					json_t *event = json_object();
+					json_object_set_new(event, "videoroom", json_string("talking"));
+					json_object_set_new(event, "room", json_integer(participant->room->room_id));
+					json_object_set_new(event, "id", json_integer(participant->user_id));
+					janus_videoroom_notify_participants(participant, event);
+					json_decref(event);
+					janus_mutex_unlock(&participant->room->participants_mutex);
+					/* JANUS_LOG(LOG_ERR, "AVG audio_level %f\n", (float)participant->audio_dBov_sum/(float)participant->audio_active_packets); */
+					/* Also notify event handlers */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "videoroom", json_string("talking"));
+						json_object_set_new(info, "room", json_integer(participant->room->room_id));
+						json_object_set_new(info, "id", json_integer(participant->user_id));
+						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
+					}
+				}
+				participant->audio_active_packets = 0;
+				participant->audio_dBov_sum = 0;
+			}
+		}
+	}
 	if(participant->kicked)
 		return;
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
@@ -2541,6 +2624,8 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
 		participant->data_active = FALSE;
+		participant->audio_active_packets = 0;
+		participant->audio_dBov_sum = 0;
 		participant->remb_startup = 4;
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
