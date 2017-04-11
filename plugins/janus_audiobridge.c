@@ -3161,6 +3161,8 @@ static void *janus_audiobridge_handler(void *data) {
 			}
 			participant->room = audiobridge;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
+			participant->audio_active_packets = 0;
+			participant->audio_dBov_sum = 0;
 			participant->volume_gain = volume;
 			if(quality) {
 				participant->opus_complexity = complexity;
