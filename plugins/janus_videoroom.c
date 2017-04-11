@@ -852,11 +852,21 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			if(audiolevel_event != NULL && audiolevel_event->value != NULL)
 				videoroom->audiolevel_event = janus_is_true(audiolevel_event->value);
 			videoroom->audio_active_packets = 100;
-			if(audio_active_packets != NULL && audio_active_packets->value != NULL)
-				videoroom->audio_active_packets = atoi(audio_active_packets->value);
+			if(audio_active_packets != NULL && audio_active_packets->value != NULL){
+				if(atoi(audio_active_packets->value) > 0) {
+					videoroom->audio_active_packets = atoi(audio_active_packets->value);
+				} else {
+					JANUS_LOG(LOG_WARN, "audio_active_packets shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_active_packets);
+				}
+			}
 			videoroom->audio_level_average = 25;
-			if(audio_level_average != NULL && audio_level_average->value != NULL)
-				videoroom->audio_level_average = atoi(audio_level_average->value);
+			if(audio_level_average != NULL && audio_level_average->value != NULL) {
+				if(atoi(audio_level_average->value) > 0) {
+					videoroom->audio_level_average = atoi(audio_level_average->value);
+				} else {
+					JANUS_LOG(LOG_WARN, "audio_level_average shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_level_average);
+				}
+			}
 			videoroom->videoorient_ext = TRUE;
 			if(videoorient_ext != NULL && videoorient_ext->value != NULL)
 				videoroom->videoorient_ext = janus_is_true(videoorient_ext->value);
@@ -1433,8 +1443,18 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		videoroom->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		videoroom->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
-		videoroom->audio_active_packets = audio_active_packets ? json_integer_value(audio_active_packets) : 100;
-		videoroom->audio_level_average = audio_level_average ? json_integer_value(audio_level_average) : 25;
+		videoroom->audio_active_packets = 100;
+		if(json_integer_value(audio_active_packets) > 0) {
+			videoroom->audio_active_packets = json_integer_value(audio_active_packets);
+		} else {
+			JANUS_LOG(LOG_WARN, "audio_active_packets shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_active_packets);
+		}
+		videoroom->audio_level_average = 25;
+		if(json_integer_value(audio_level_average) > 0) {
+			videoroom->audio_level_average = json_integer_value(audio_level_average);
+		} else {
+			JANUS_LOG(LOG_WARN, "audio_level_average shouldn't be <= 0, will use default value: %d!!!\n", videoroom->audio_level_average);
+		}
 		videoroom->videoorient_ext = videoorient_ext ? json_is_true(videoorient_ext) : TRUE;
 		videoroom->playoutdelay_ext = playoutdelay_ext ? json_is_true(playoutdelay_ext) : TRUE;
 		if(record) {
@@ -2604,6 +2624,8 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
 		participant->data_active = FALSE;
+		participant->audio_active_packets = 0;
+		participant->audio_dBov_sum = 0;
 		participant->remb_startup = 4;
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
