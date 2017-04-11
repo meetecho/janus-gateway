@@ -5,6 +5,6 @@
 ; events = yes|no, whether events should be sent to event handlers
 
 [general]
-path = /tmp/voicemail/
+path = @demosdir@/voicemail/
 base = /voicemail/
 events = yes

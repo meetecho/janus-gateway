@@ -391,8 +391,7 @@ static janus_mutex sessions_mutex;
 
 
 /* VideoCall watchdog/garbage collector (sort of) */
-void *janus_videocall_watchdog(void *data);
-void *janus_videocall_watchdog(void *data) {
+static void *janus_videocall_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VideoCall watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -1018,25 +1017,7 @@ static void *janus_videocall_handler(void *data) {
 				json_object_set_new(calling, "event", json_string("incomingcall"));
 				json_object_set_new(calling, "username", json_string(session->username));
 				json_object_set_new(call, "result", calling);
-				/* Make also sure we get rid of ULPfec, red, etc. */
-				char *sdp = g_strdup(msg_sdp);
-				if(strstr(sdp, "ulpfec")) {
-					/* FIXME This really needs some better code */
-					sdp = janus_string_replace(sdp, "a=rtpmap:116 red/90000\r\n", "");
-					sdp = janus_string_replace(sdp, "a=rtpmap:117 ulpfec/90000\r\n", "");
-					sdp = janus_string_replace(sdp, "a=rtpmap:96 rtx/90000\r\n", "");
-					sdp = janus_string_replace(sdp, "a=fmtp:96 apt=100\r\n", "");
-					sdp = janus_string_replace(sdp, "a=rtpmap:97 rtx/90000\r\n", "");
-					sdp = janus_string_replace(sdp, "a=fmtp:97 apt=101\r\n", "");
-					sdp = janus_string_replace(sdp, "a=rtpmap:98 rtx/90000\r\n", "");
-					sdp = janus_string_replace(sdp, "a=fmtp:98 apt=116\r\n", "");
-					sdp = janus_string_replace(sdp, " 116", "");
-					sdp = janus_string_replace(sdp, " 117", "");
-					sdp = janus_string_replace(sdp, " 96", "");
-					sdp = janus_string_replace(sdp, " 97", "");
-					sdp = janus_string_replace(sdp, " 98", "");
-				}
-				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", sdp);
+				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 				g_atomic_int_set(&session->hangingup, 0);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, jsep);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
@@ -1115,7 +1096,6 @@ static void *janus_videocall_handler(void *data) {
 					/* Send a PLI */
 					JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
 					char buf[12];
-					memset(buf, 0, 12);
 					janus_rtcp_pli((char *)&buf, 12);
 					gateway->relay_rtcp(session->handle, 1, buf, 12);
 				}
@@ -1128,7 +1108,6 @@ static void *janus_videocall_handler(void *data) {
 				if(session->bitrate > 0) {
 					/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
 					char buf[24];
-					memset(buf, 0, 24);
 					janus_rtcp_remb((char *)&buf, 24, session->bitrate);
 					JANUS_LOG(LOG_VERB, "Sending REMB\n");
 					gateway->relay_rtcp(session->handle, 1, buf, 24);
@@ -1212,7 +1191,6 @@ static void *janus_videocall_handler(void *data) {
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						char buf[12];
-						memset(buf, 0, 12);
 						janus_rtcp_pli((char *)&buf, 12);
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 					}

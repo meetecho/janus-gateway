@@ -20,4 +20,4 @@ description = Demo Room
 secret = adminpwd
 sampling_rate = 16000
 record = false
-;record_file = /tmp/janus-audioroom-1234.wav
+;record_file = /path/to/recording.wav

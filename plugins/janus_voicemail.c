@@ -266,8 +266,7 @@ int ogg_flush(janus_voicemail_session *session);
 
 
 /* VoiceMail watchdog/garbage collector (sort of) */
-void *janus_voicemail_watchdog(void *data);
-void *janus_voicemail_watchdog(void *data) {
+static void *janus_voicemail_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VoiceMail watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {

@@ -143,7 +143,10 @@ Janus.init = function(options) {
 				} else {
 					Janus.error("Error attaching stream to element");
 				}
-			} else {
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
+				element.src = URL.createObjectURL(stream);
+			}
+			else {
 				element.srcObject = stream;
 			}
 		};
@@ -155,7 +158,10 @@ Janus.init = function(options) {
 				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
 				}
-			} else {
+			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
+				to.src = from.src;
+			}
+			else {
 				to.srcObject = from.srcObject;
 			}
 		};
@@ -180,6 +186,8 @@ Janus.init = function(options) {
 			XHR.open(params.type, params.url, params.async);
 			if(params.contentType !== null && params.contentType !== undefined)
 				XHR.setRequestHeader('Content-type', params.contentType);
+			if(params.withCredentials !== null && params.withCredentials !== undefined)
+				XHR.withCredentials = params.withCredentials;
 			if(params.async) {
 				XHR.onreadystatechange = function () {
 					if(XHR.readyState != 4)
@@ -190,7 +198,11 @@ Janus.init = function(options) {
 						return;
 					}
 					// Got payload
-					params.success(JSON.parse(XHR.responseText));
+					try {
+						params.success(JSON.parse(XHR.responseText));
+					} catch(e) {
+						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
+					}
 				};
 			}
 			try {
@@ -202,7 +214,11 @@ Janus.init = function(options) {
 						return;
 					}
 					// Got payload
-					params.success(JSON.parse(XHR.responseText));
+					try {
+						params.success(JSON.parse(XHR.responseText));
+					} catch(e) {
+						params.error(XHR, XHR.status, 'Could not parse response, error: ' + e + ', text: ' + XHR.responseText);
+					}
 				}
 			} catch(e) {
 				// Something broke up
@@ -223,44 +239,8 @@ Janus.init = function(options) {
 			if(oldOBF && typeof oldOBF == "function")
 				oldOBF();
 		}
-		function addJsList(srcArray) {
-			if (!srcArray || !Array.isArray(srcArray) || srcArray.length == 0) {
-				options.callback();
-			}
-			var count = 0;
-			addJs(srcArray[count],next);
-
-			function next() {
-				count++;
-				if (count<srcArray.length) {
-					addJs(srcArray[count],next);
-				}
-				else {
-					options.callback();
-				}
-			}
-		}
-		function addJs(src,done) {
-			try {
-				if(adapter) {
-					// Already loaded
-					Janus.debug(src + " already loaded, skipping");
-					done();
-					return;
-				}
-			} catch(e) {};
-			var oHead = document.getElementsByTagName('head').item(0);
-			var oScript = document.createElement("script");
-			oScript.type = "text/javascript";
-			oScript.src = src;
-			oScript.onload = function() {
-				Janus.log("Library " + src + " loaded");
-				done();
-			}
-			oHead.appendChild(oScript);
-		}
 		Janus.initDone = true;
-		addJsList(["adapter.js"]);	// We may need others in the future
+		options.callback();
 	}
 };
 
@@ -330,6 +310,10 @@ function Janus(gatewayCallbacks) {
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
 		ipv6Support = false;
+	// Whether we should enable the withCredentials flag for XHR requests
+	var withCredentials = false;
+	if(gatewayCallbacks.withCredentials !== undefined && gatewayCallbacks.withCredentials !== null)
+		withCredentials = gatewayCallbacks.withCredentials === true;
 	// Optional max events
 	var maxev = null;
 	if(gatewayCallbacks.max_poll_events !== undefined && gatewayCallbacks.max_poll_events !== null)
@@ -382,6 +366,7 @@ function Janus(gatewayCallbacks) {
 		Janus.ajax({
 			type: 'GET',
 			url: longpoll,
+			withCredentials: withCredentials,
 			cache: false,
 			timeout: 60000,	// FIXME
 			success: handleEvent,
@@ -453,7 +438,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.webrtcState(true);
@@ -469,10 +454,10 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
-			pluginHandle.webrtcState(false);
+			pluginHandle.webrtcState(false, json["reason"]);
 			pluginHandle.hangup();
 		} else if(json["janus"] === "detached") {
 			// A plugin asked the core to detach one of our handles
@@ -501,7 +486,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.mediaState(json["type"], json["receiving"]);
@@ -516,7 +501,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var pluginHandle = pluginHandles[sender];
 			if(pluginHandle === undefined || pluginHandle === null) {
-				Janus.warn("This handle is not attached to this session");
+				Janus.debug("This handle is not attached to this session");
 				return;
 			}
 			pluginHandle.slowLink(json["uplink"], json["nacks"]);
@@ -648,7 +633,11 @@ function Janus(gatewayCallbacks) {
 				},
 
 				'message': function(event) {
-					handleEvent(JSON.parse(event.data));
+					try {
+						handleEvent(JSON.parse(event.data));
+					} catch(e) {
+						Janus.error('Error processing event:', e);
+					}
 				},
 
 				'close': function() {
@@ -670,6 +659,7 @@ function Janus(gatewayCallbacks) {
 		Janus.ajax({
 			type: 'POST',
 			url: server,
+			withCredentials: withCredentials,
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -781,6 +771,7 @@ function Janus(gatewayCallbacks) {
 			type: 'POST',
 			url: server + "/" + sessionId,
 			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			withCredentials: withCredentials,
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -813,6 +804,7 @@ function Janus(gatewayCallbacks) {
 		callbacks.success = (typeof callbacks.success == "function") ? callbacks.success : Janus.noop;
 		callbacks.error = (typeof callbacks.error == "function") ? callbacks.error : Janus.noop;
 		callbacks.consentDialog = (typeof callbacks.consentDialog == "function") ? callbacks.consentDialog : Janus.noop;
+		callbacks.iceState = (typeof callbacks.iceState == "function") ? callbacks.iceState : Janus.noop;
 		callbacks.mediaState = (typeof callbacks.mediaState == "function") ? callbacks.mediaState : Janus.noop;
 		callbacks.webrtcState = (typeof callbacks.webrtcState == "function") ? callbacks.webrtcState : Janus.noop;
 		callbacks.slowLink = (typeof callbacks.slowLink == "function") ? callbacks.slowLink : Janus.noop;
@@ -895,6 +887,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						iceState : callbacks.iceState,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
 						slowLink : callbacks.slowLink,
@@ -921,6 +914,7 @@ function Janus(gatewayCallbacks) {
 		Janus.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId,
+			withCredentials: withCredentials,
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -977,6 +971,7 @@ function Janus(gatewayCallbacks) {
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
 						consentDialog : callbacks.consentDialog,
+						iceState : callbacks.iceState,
 						mediaState : callbacks.mediaState,
 						webrtcState : callbacks.webrtcState,
 						slowLink : callbacks.slowLink,
@@ -1064,6 +1059,7 @@ function Janus(gatewayCallbacks) {
 		Janus.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
+			withCredentials: withCredentials,
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1127,6 +1123,7 @@ function Janus(gatewayCallbacks) {
 		Janus.ajax({
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
+			withCredentials: withCredentials,
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1253,6 +1250,7 @@ function Janus(gatewayCallbacks) {
 			type: 'POST',
 			url: server + "/" + sessionId + "/" + handleId,
 			async: asyncRequest,	// Sometimes we need false here, or destroying in onbeforeunload won't work
+			withCredentials: withCredentials,
 			cache: false,
 			contentType: "application/json",
 			data: JSON.stringify(request),
@@ -1310,6 +1308,10 @@ function Janus(gatewayCallbacks) {
 			config.bitrate.value = "0 kbits/sec";
 		}
 		Janus.log("Preparing local SDP and gathering candidates (trickle=" + config.trickle + ")");
+		config.pc.oniceconnectionstatechange = function(e) {
+			if(config.pc)
+				pluginHandle.iceState(config.pc.iceConnectionState);
+		};
 		config.pc.onicecandidate = function(event) {
 			if (event.candidate == null ||
 					(adapter.browserDetails.browser === 'edge' && event.candidate.candidate.indexOf('endOfCandidates') > 0)) {
@@ -1522,6 +1524,9 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
+					if (!media.screenshareFrameRate) {
+						media.screenshareFrameRate = 3;
+					}
 					// Not a webcam, but screen capture
 					if(window.location.protocol !== 'https:') {
 						// Screen sharing mandates HTTPS
@@ -1561,7 +1566,8 @@ function Janus(gatewayCallbacks) {
 										googLeakyBucket: true,
 										maxWidth: window.screen.width,
 										maxHeight: window.screen.height,
-										maxFrameRate: 3,
+										minFrameRate: media.screenshareFrameRate,
+										maxFrameRate: media.screenshareFrameRate,
 										chromeMediaSource: 'screen'
 									}
 								},
@@ -1641,7 +1647,8 @@ function Janus(gatewayCallbacks) {
 											chromeMediaSource: 'desktop',
 											maxWidth: window.screen.width,
 											maxHeight: window.screen.height,
-											maxFrameRate: 3
+											minFrameRate: media.screenshareFrameRate,
+											maxFrameRate: media.screenshareFrameRate,
 										},
 										optional: [
 											{googLeakyBucket: true},
@@ -2134,6 +2141,7 @@ function Janus(gatewayCallbacks) {
 					Janus.ajax({
 						type: 'POST',
 						url: server + "/" + sessionId + "/" + handleId,
+						withCredentials: withCredentials,
 						cache: false,
 						contentType: "application/json",
 						data: JSON.stringify(request),
