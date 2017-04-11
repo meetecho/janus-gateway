@@ -205,7 +205,7 @@ following steps:
 	git submodule update
 	mkdir build && cd build
 	cmake -DCMAKE_INSTALL_PREFIX=/usr ..
-	cmake --build . && sudo cmake --target install
+	make && sudo make install
 
 * *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
