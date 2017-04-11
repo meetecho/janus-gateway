@@ -545,6 +545,7 @@ typedef struct janus_videoroom_listener {
 	janus_rtp_switching_context context;	/* Needed in case there are publisher switches on this listener */
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this publisher */
 	gboolean paused;
+	gboolean kicked;	/* Whether this subscription belongs to a participant that has been kicked */
 } janus_videoroom_listener;
 static void janus_videoroom_listener_free(janus_videoroom_listener *l);
 
@@ -1932,6 +1933,16 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(error_cause, 512, "No such user %"SCNu64" in room %"SCNu64, user_id, room_id);
 			goto plugin_response;
 		}
+		if(participant->kicked) {
+			/* Already kicked */
+			janus_mutex_unlock(&videoroom->participants_mutex);
+			response = json_object();
+			json_object_set_new(response, "videoroom", json_string("success"));
+			/* Done */
+			goto plugin_response;
+		}
+		participant->kicked = TRUE;
+		participant->session->started = FALSE;
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
 		participant->data_active = FALSE;
@@ -1944,27 +1955,32 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		int ret = gateway->push_event(participant->session->handle, &janus_videoroom_plugin, NULL, kicked, NULL);
 		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(kicked);
-		participant->kicked = TRUE;
-		participant->session->started = FALSE;
 		janus_mutex_unlock(&videoroom->participants_mutex);
 		/* If this room requires valid private_id values, we can kick subscriptions too */
 		if(videoroom->require_pvtid && participant->subscriptions != NULL) {
 			/* Iterate on the subscriptions we know this user has */
-			GSList *s = NULL;
-			while((s = participant->subscriptions) != NULL) {
+			janus_mutex_lock(&participant->listeners_mutex);
+			GSList *s = participant->subscriptions;
+			while(s) {
 				janus_videoroom_listener *listener = (janus_videoroom_listener *)s->data;
-				participant->subscriptions = g_slist_remove(participant->subscriptions, s);
-				if(listener && listener->session)
-					gateway->close_pc(listener->session->handle);
+				if(listener) {
+					listener->kicked = TRUE;
+					listener->audio = FALSE;
+					listener->video = FALSE;
+					listener->data = FALSE;
+					/* FIXME We should also close the PeerConnection, but we risk race conditions if we do it here,
+					 * so for now we mark the listener as kicked and prevent it from getting any media after this */
+				}
+				s = s->next;
 			}
+			janus_mutex_unlock(&participant->listeners_mutex);
 		}
 		/* This publisher is leaving, tell everybody */
 		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
-		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest
-		 * 	FIXME: this only kicks the publisher, but not the subscriptions it created */
+		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && participant->session)
 			gateway->close_pc(participant->session->handle);
-		JANUS_LOG(LOG_VERB, "Kicked user %"SCNu64" from room %"SCNu64"\n", user_id, room_id);
+		JANUS_LOG(LOG_INFO, "Kicked user %"SCNu64" from room %"SCNu64"\n", user_id, room_id);
 		/* Prepare response */
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
@@ -3249,6 +3265,12 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
+				if(listener->kicked) {
+					JANUS_LOG(LOG_ERR, "Unauthorized, you have been kicked\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized, you have been kicked");
+					goto error;
+				}
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
@@ -3655,7 +3677,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		// JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
-	if(listener->paused) {
+	if(listener->paused || listener->kicked) {
 		// JANUS_LOG(LOG_ERR, "This listener paused the stream...\n");
 		return;
 	}
