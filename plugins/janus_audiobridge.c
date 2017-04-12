@@ -1087,20 +1087,22 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			audiobridge->audiolevel_event = FALSE;
 			if(audiolevel_event != NULL && audiolevel_event->value != NULL)
 				audiobridge->audiolevel_event = janus_is_true(audiolevel_event->value);
-			audiobridge->audio_active_packets = 100;
-			if(audio_active_packets != NULL && audio_active_packets->value != NULL){
-				if(atoi(audio_active_packets->value) > 0) {
-					audiobridge->audio_active_packets = atoi(audio_active_packets->value);
-				} else {
-					JANUS_LOG(LOG_WARN, "audio_active_packets shouldn't be <= 0, will use default value: %d!!!\n", audiobridge->audio_active_packets);
+			if(audiobridge->audiolevel_event) {
+				audiobridge->audio_active_packets = 100;
+				if(audio_active_packets != NULL && audio_active_packets->value != NULL){
+					if(atoi(audio_active_packets->value) > 0) {
+						audiobridge->audio_active_packets = atoi(audio_active_packets->value);
+					} else {
+						JANUS_LOG(LOG_WARN, "Invalid audio_active_packets value provided, using default: %d\n", audiobridge->audio_active_packets);
+					}
 				}
-			}
-			audiobridge->audio_level_average = 25;
-			if(audio_level_average != NULL && audio_level_average->value != NULL) {
-				if(atoi(audio_level_average->value) > 0) {
-					audiobridge->audio_level_average = atoi(audio_level_average->value);
-				} else {
-					JANUS_LOG(LOG_WARN, "audio_level_average shouldn't be <= 0, will use default value: %d!!!\n", audiobridge->audio_level_average);
+				audiobridge->audio_level_average = 25;
+				if(audio_level_average != NULL && audio_level_average->value != NULL) {
+					if(atoi(audio_level_average->value) > 0) {
+						audiobridge->audio_level_average = atoi(audio_level_average->value);
+					} else {
+						JANUS_LOG(LOG_WARN, "Invalid audio_level_average value provided, using default: %d\n", audiobridge->audio_level_average);
+					}
 				}
 			}
 
@@ -1505,17 +1507,19 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			audiobridge->sampling_rate = 16000;
 		audiobridge->audiolevel_ext = audiolevel_ext ? json_is_true(audiolevel_ext) : TRUE;
 		audiobridge->audiolevel_event = audiolevel_event ? json_is_true(audiolevel_event) : FALSE;
-		audiobridge->audio_active_packets = 100;
-		if(json_integer_value(audio_active_packets) > 0) {
-			audiobridge->audio_active_packets = json_integer_value(audio_active_packets);
-		} else {
-			JANUS_LOG(LOG_WARN, "audio_active_packets shouldn't be <= 0, will use default value: %d!!!\n", audiobridge->audio_active_packets);
-		}
-		audiobridge->audio_level_average = 25;
-		if(json_integer_value(audio_level_average) > 0) {
-			audiobridge->audio_level_average = json_integer_value(audio_level_average);
-		} else {
-			JANUS_LOG(LOG_WARN, "audio_level_average shouldn't be <= 0, will use default value: %d!!!\n", audiobridge->audio_level_average);
+		if(audiobridge->audiolevel_event) {
+			audiobridge->audio_active_packets = 100;
+			if(json_integer_value(audio_active_packets) > 0) {
+				audiobridge->audio_active_packets = json_integer_value(audio_active_packets);
+			} else {
+				JANUS_LOG(LOG_WARN, "Invalid audio_active_packets value provided, using default: %d\n", audiobridge->audio_active_packets);
+			}
+			audiobridge->audio_level_average = 25;
+			if(json_integer_value(audio_level_average) > 0) {
+				audiobridge->audio_level_average = json_integer_value(audio_level_average);
+			} else {
+				JANUS_LOG(LOG_WARN, "Invalid audio_level_average value provided, using default: %d\n", audiobridge->audio_level_average);
+			}
 		}
 		switch(audiobridge->sampling_rate) {
 			case 8000:
