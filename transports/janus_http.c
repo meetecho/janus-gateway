@@ -403,35 +403,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 		}
 	} else {
 		/* HTTPS web server, read certificate and key */
-		FILE *pem = fopen(server_pem, "rb");
-		if(pem) {
-			fseek(pem, 0L, SEEK_END);
-			size_t size = ftell(pem);
-			fseek(pem, 0L, SEEK_SET);
-			cert_pem_bytes = g_malloc0(size+1);
-			char *index = cert_pem_bytes;
-			int read = 0, tot = size;
-			while((read = fread(index, sizeof(char), tot, pem)) > 0) {
-				tot -= read;
-				index += read;
-			}
-			fclose(pem);
-			cert_pem_bytes[size] = '\0';
-		}
-		FILE *key = fopen(server_key, "rb");
-		if(key) {
-			fseek(key, 0L, SEEK_END);
-			size_t size = ftell(key);
-			fseek(key, 0L, SEEK_SET);
-			cert_key_bytes = g_malloc0(size);
-			char *index = cert_key_bytes;
-			int read = 0, tot = size;
-			while((read = fread(index, sizeof(char), tot, key)) > 0) {
-				tot -= read;
-				index += read;
-			}
-			fclose(key);
-		}
+		g_file_get_contents(server_pem, &cert_pem_bytes, NULL, NULL);
+		g_file_get_contents(server_key, &cert_key_bytes, NULL, NULL);
+
 		/* Start webserver */
 		if(threads == 0) {
 			JANUS_LOG(LOG_VERB, "Using a thread per connection for the %s API %s webserver\n",
