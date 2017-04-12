@@ -182,6 +182,7 @@ void janus_streaming_incoming_rtcp(janus_plugin_session *handle, int video, char
 void janus_streaming_hangup_media(janus_plugin_session *handle);
 void janus_streaming_destroy_session(janus_plugin_session *handle, int *error);
 json_t *janus_streaming_query_session(janus_plugin_session *handle);
+static int janus_streaming_get_fd_port(int fd);
 
 /* Plugin setup */
 static janus_plugin janus_streaming_plugin =
@@ -690,7 +691,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 				if(doaudio &&
-						(aport == NULL || aport->value == NULL ||
+						(aport == NULL || aport->value == NULL || atoi(aport->value) == 0 ||
 						acodec == NULL || acodec->value == NULL ||
 						artpmap == NULL || artpmap->value == NULL)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for audio...\n", cat->name);
@@ -710,14 +711,14 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					}
 				}
 				if(dovideo &&
-						(vport == NULL || vport->value == NULL ||
+						(vport == NULL || vport->value == NULL || atoi(vport->value) == 0 ||
 						vcodec == NULL || vcodec->value == NULL ||
 						vrtpmap == NULL || vrtpmap->value == NULL)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for video...\n", cat->name);
 					cl = cl->next;
 					continue;
 				}
-				if(dodata && (dport == NULL || dport->value == NULL)) {
+				if(dodata && (dport == NULL || dport->value == NULL || atoi(dport->value) == 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s', missing mandatory information for data...\n", cat->name);
 					cl = cl->next;
 					continue;
@@ -1815,6 +1816,18 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		json_object_set_new(ml, "description", json_string(mp->description));
 		json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
 		json_object_set_new(ml, "is_private", mp->is_private ? json_true() : json_false());
+		if(!strcasecmp(type_text, "rtp")) {
+			janus_streaming_rtp_source *source = mp->source;
+			if (source->audio_fd != -1) {
+				json_object_set_new(ml, "audio_port", json_integer(janus_streaming_get_fd_port(source->audio_fd)));
+			}
+			if (source->video_fd != -1) {
+				json_object_set_new(ml, "video_port", json_integer(janus_streaming_get_fd_port(source->video_fd)));
+			}
+			if (source->data_fd != -1) {
+				json_object_set_new(ml, "data_port", json_integer(janus_streaming_get_fd_port(source->data_fd)));
+			}
+		}
 		json_object_set_new(response, "stream", ml);
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
@@ -2758,6 +2771,17 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 	return fd;
 }
 
+/* Helper to return fd port */
+static int janus_streaming_get_fd_port(int fd) {
+	struct sockaddr_in server;
+	socklen_t len = sizeof(fd);
+	if (getsockname(fd, &server, &len) == -1) {
+		return -1;
+	}
+
+	return ntohs(server.sin_port);
+}
+
 /* Helpers to destroy a streaming mountpoint. */
 static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) {
 	if(source->audio_fd > 0) {
@@ -2887,18 +2911,13 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		janus_mutex_unlock(&mountpoints_mutex);
 		return NULL;
 	}
-	if(doaudio && (aport == 0 || artpmap == NULL)) {
+	if(doaudio && (artpmap == NULL)) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information for audio...\n");
 		janus_mutex_unlock(&mountpoints_mutex);
 		return NULL;
 	}
-	if(dovideo && (vport == 0 || vcodec == 0 || vrtpmap == NULL)) {
+	if(dovideo && (vcodec == 0 || vrtpmap == NULL)) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information for video...\n");
-		janus_mutex_unlock(&mountpoints_mutex);
-		return NULL;
-	}
-	if(dodata && dport == 0) {
-		JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream, missing mandatory information for data...\n");
 		janus_mutex_unlock(&mountpoints_mutex);
 		return NULL;
 	}
@@ -3878,7 +3897,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			/* No socket, we may be in the process of reconnecting, or waiting to reconnect */
 			g_usleep(5000000);
 			continue;
-		} 
+		}
 		/* We may also need to occasionally send a GET_PARAMETER request as a keep-alive */
 		if(ka_timeout > 0) {
 			/* Let's be conservative and send a GET_PARAMETER when half of the timeout has passed */
