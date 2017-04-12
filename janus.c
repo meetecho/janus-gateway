@@ -3522,9 +3522,10 @@ gint main(int argc, char *argv[])
 		int st = atoi(item->value);
 		if(st < 0) {
 			JANUS_LOG(LOG_WARN, "Ignoring session_timeout value as it's not a positive integer\n");
-		} else if(st == 0) {
-			JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
 		} else {
+			if(st == 0) {
+				JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
+			}
 			session_timeout = st;
 		}
 	}
