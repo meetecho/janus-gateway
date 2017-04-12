@@ -159,9 +159,19 @@ BUILT_SOURCES = cmdline.c cmdline.h version.c
 cmdline.c: janus.ggo
 	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
 
-version.c: FORCE
-	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
+directory = .git
+dir_target = $(directory)-$(wildcard $(directory))
+dir_present = $(directory)-$(directory)
+dir_absent = $(directory)-
+
+version.c: FORCE | $(dir_target)
 	date | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
+
+$(dir_present):
+	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
+
+$(dir_absent):
+	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
 
 .PHONY: FORCE
 FORCE:
