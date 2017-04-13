@@ -190,6 +190,8 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
+	json_object_set_new(info, "commit-hash", json_string(janus_build_git_sha));
+	json_object_set_new(info, "compile-time", json_string(janus_build_git_time));
 	json_object_set_new(info, "log-to-stdout", janus_log_is_stdout_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "log-to-file", janus_log_is_logfile_enabled() ? json_true() : json_false());
 	if(janus_log_is_logfile_enabled())
