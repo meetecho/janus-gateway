@@ -58,6 +58,8 @@ description = This is my awesome room
 is_private = yes|no (private rooms don't appear when you do a 'list' request)
 secret = <optional password needed for manipulating (e.g. destroying) the room>
 pin = <optional password needed for joining the room>
+require_pvtid = yes|no (whether subscriptions are required to provide a valid
+             a valid private_id to associate with a publisher, default=no)
 publishers = <max number of concurrent senders> (e.g., 6 for a video
              conference or 1 for a webinar)
 bitrate = <max video bitrate for senders> (e.g., 128000)
@@ -221,6 +223,7 @@ static struct janus_json_parameter create_parameters[] = {
 	{"allowed", JSON_ARRAY, 0},
 	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
+	{"require_pvtid", JANUS_JSON_BOOL, 0},
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -451,6 +454,7 @@ typedef struct janus_videoroom {
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
 	gchar *room_pin;			/* Password needed to join this room, if any */
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
+	gboolean require_pvtid;		/* Whether subscriptions in this room require a private_id */
 	int max_publishers;			/* Maximum number of concurrent publishers */
 	uint64_t bitrate;			/* Global bitrate limit */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
@@ -531,7 +535,8 @@ typedef struct janus_videoroom_participant {
 	janus_recorder *vrc;	/* The Janus recorder instance for this publisher's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this publisher's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
-	GSList *listeners;
+	GSList *listeners;		/* Subscriptions to this publisher (who's watching this publisher)  */
+	GSList *subscriptions;	/* Subscriptions this publisher has created (who this publisher is watching) */
 	janus_mutex listeners_mutex;
 	GHashTable *rtp_forwarders;
 	janus_mutex rtp_forwarders_mutex;
@@ -551,6 +556,7 @@ typedef struct janus_videoroom_listener {
 	janus_rtp_switching_context context;	/* Needed in case there are publisher switches on this listener */
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this publisher */
 	gboolean paused;
+	gboolean kicked;	/* Whether this subscription belongs to a participant that has been kicked */
 } janus_videoroom_listener;
 static void janus_videoroom_listener_free(janus_videoroom_listener *l);
 
@@ -771,6 +777,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *priv = janus_config_get_item(cat, "is_private");
 			janus_config_item *secret = janus_config_get_item(cat, "secret");
 			janus_config_item *pin = janus_config_get_item(cat, "pin");
+			janus_config_item *req_pvtid = janus_config_get_item(cat, "require_pvtid");
 			janus_config_item *bitrate = janus_config_get_item(cat, "bitrate");
 			janus_config_item *maxp = janus_config_get_item(cat, "publishers");
 			janus_config_item *firfreq = janus_config_get_item(cat, "fir_freq");
@@ -800,6 +807,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->room_pin = g_strdup(pin->value);
 			}
 			videoroom->is_private = priv && priv->value && janus_is_true(priv->value);
+			videoroom->require_pvtid = req_pvtid && req_pvtid->value && janus_is_true(req_pvtid->value);
 			videoroom->max_publishers = 3;	/* FIXME How should we choose a default? */
 			if(maxp != NULL && maxp->value != NULL)
 				videoroom->max_publishers = atol(maxp->value);
@@ -890,13 +898,14 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_mutex_lock(&rooms_mutex);
 			g_hash_table_insert(rooms, janus_uint64_dup(videoroom->room_id), videoroom);
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s)\n",
+			JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
 				videoroom->room_id, videoroom->room_name,
 				videoroom->is_private ? "private" : "public",
 				janus_videoroom_audiocodec_name(videoroom->acodec),
 				janus_videoroom_videocodec_name(videoroom->vcodec),
 				videoroom->room_secret ? videoroom->room_secret : "no secret",
-				videoroom->room_pin ? videoroom->room_pin : "no pin");
+				videoroom->room_pin ? videoroom->room_pin : "no pin",
+				videoroom->require_pvtid ? "required" : "optional");
 			if(videoroom->record) {
 				JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 			}
@@ -1285,6 +1294,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		json_t *desc = json_object_get(root, "description");
 		json_t *is_private = json_object_get(root, "is_private");
+		json_t *req_pvtid = json_object_get(root, "require_pvtid");
 		json_t *secret = json_object_get(root, "secret");
 		json_t *pin = json_object_get(root, "pin");
 		json_t *bitrate = json_object_get(root, "bitrate");
@@ -1392,6 +1402,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		videoroom->room_name = description;
 		videoroom->is_private = is_private ? json_is_true(is_private) : FALSE;
+		videoroom->require_pvtid = req_pvtid ? json_is_true(req_pvtid) : FALSE;
 		if(secret)
 			videoroom->room_secret = g_strdup(json_string_value(secret));
 		if(pin)
@@ -1484,13 +1495,14 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 			videoroom->check_tokens = TRUE;
 		}
-		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s)\n",
+		JANUS_LOG(LOG_VERB, "Created videoroom: %"SCNu64" (%s, %s, %s/%s codecs, secret: %s, pin: %s, pvtid: %s)\n",
 			videoroom->room_id, videoroom->room_name,
 			videoroom->is_private ? "private" : "public",
 			janus_videoroom_audiocodec_name(videoroom->acodec),
 			janus_videoroom_videocodec_name(videoroom->vcodec),
 			videoroom->room_secret ? videoroom->room_secret : "no secret",
-			videoroom->room_pin ? videoroom->room_pin : "no pin");
+			videoroom->room_pin ? videoroom->room_pin : "no pin",
+			videoroom->require_pvtid ? "required" : "optional");
 		if(videoroom->record) {
 			JANUS_LOG(LOG_VERB, "  -- Room is going to be recorded in %s\n", videoroom->rec_dir ? videoroom->rec_dir : "the current folder");
 		}
@@ -1507,6 +1519,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			janus_config_add_item(config, cat, "description", videoroom->room_name);
 			if(videoroom->is_private)
 				janus_config_add_item(config, cat, "is_private", "yes");
+			if(videoroom->require_pvtid)
+				janus_config_add_item(config, cat, "require_pvtid", "yes");
 			g_snprintf(value, BUFSIZ, "%"SCNu64, videoroom->bitrate);
 			janus_config_add_item(config, cat, "bitrate", value);
 			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
@@ -1955,24 +1969,33 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto plugin_response;
 		}
 		janus_mutex_lock(&videoroom->participants_mutex);
+		janus_mutex_unlock(&rooms_mutex);
 		/* A secret may be required for this action */
 		JANUS_CHECK_SECRET(videoroom->room_secret, root, "secret", error_code, error_cause,
 			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, JANUS_VIDEOROOM_ERROR_UNAUTHORIZED);
 		if(error_code != 0) {
 			janus_mutex_unlock(&videoroom->participants_mutex);
-			janus_mutex_unlock(&rooms_mutex);
 			goto plugin_response;
 		}
 		guint64 user_id = json_integer_value(id);
 		janus_videoroom_participant *participant = g_hash_table_lookup(videoroom->participants, &user_id);
 		if(participant == NULL) {
 			janus_mutex_unlock(&videoroom->participants_mutex);
-			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "No such user %"SCNu64" in room %"SCNu64"\n", user_id, room_id);
 			error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED;
 			g_snprintf(error_cause, 512, "No such user %"SCNu64" in room %"SCNu64, user_id, room_id);
 			goto plugin_response;
 		}
+		if(participant->kicked) {
+			/* Already kicked */
+			janus_mutex_unlock(&videoroom->participants_mutex);
+			response = json_object();
+			json_object_set_new(response, "videoroom", json_string("success"));
+			/* Done */
+			goto plugin_response;
+		}
+		participant->kicked = TRUE;
+		participant->session->started = FALSE;
 		participant->audio_active = FALSE;
 		participant->video_active = FALSE;
 		participant->data_active = FALSE;
@@ -1985,21 +2008,36 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		int ret = gateway->push_event(participant->session->handle, &janus_videoroom_plugin, NULL, kicked, NULL);
 		JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		json_decref(kicked);
-		participant->kicked = TRUE;
-		participant->session->started = FALSE;
 		janus_mutex_unlock(&videoroom->participants_mutex);
+		/* If this room requires valid private_id values, we can kick subscriptions too */
+		if(videoroom->require_pvtid && participant->subscriptions != NULL) {
+			/* Iterate on the subscriptions we know this user has */
+			janus_mutex_lock(&participant->listeners_mutex);
+			GSList *s = participant->subscriptions;
+			while(s) {
+				janus_videoroom_listener *listener = (janus_videoroom_listener *)s->data;
+				if(listener) {
+					listener->kicked = TRUE;
+					listener->audio = FALSE;
+					listener->video = FALSE;
+					listener->data = FALSE;
+					/* FIXME We should also close the PeerConnection, but we risk race conditions if we do it here,
+					 * so for now we mark the listener as kicked and prevent it from getting any media after this */
+				}
+				s = s->next;
+			}
+			janus_mutex_unlock(&participant->listeners_mutex);
+		}
 		/* This publisher is leaving, tell everybody */
 		janus_videoroom_leave_or_unpublish(participant, TRUE, TRUE);
-		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest
-		 * 	FIXME: this only kicks the publisher, but not the subscriptions it created */
+		/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
 		if(participant && participant->session)
 			gateway->close_pc(participant->session->handle);
-		JANUS_LOG(LOG_VERB, "Kicked user %"SCNu64" from room %"SCNu64"\n", user_id, room_id);
+		JANUS_LOG(LOG_INFO, "Kicked user %"SCNu64" from room %"SCNu64"\n", user_id, room_id);
 		/* Prepare response */
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("success"));
 		/* Done */
-		janus_mutex_unlock(&rooms_mutex);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room, specifying whether they're publishers or just attendees */	
@@ -2667,6 +2705,14 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 				publisher->listeners = g_slist_remove(publisher->listeners, listener);
 				janus_mutex_unlock(&publisher->listeners_mutex);
 				listener->feed = NULL;
+				if(listener->pvt_id > 0) {
+					janus_videoroom_participant *owner = g_hash_table_lookup(publisher->room->private_ids, GUINT_TO_POINTER(listener->pvt_id));
+					if(owner != NULL) {
+						janus_mutex_lock(&owner->listeners_mutex);
+						owner->subscriptions = g_slist_remove(owner->subscriptions, listener);
+						janus_mutex_unlock(&owner->listeners_mutex);
+					}
+				}
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
@@ -2834,6 +2880,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->firefox = FALSE;
 				publisher->bitrate = videoroom->bitrate;
 				publisher->listeners = NULL;
+				publisher->subscriptions = NULL;
 				janus_mutex_init(&publisher->listeners_mutex);
 				publisher->audio_pt = OPUS_PT;
 				switch(videoroom->acodec) {
@@ -2978,6 +3025,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
 				janus_mutex_lock(&videoroom->participants_mutex);
+				janus_videoroom_participant *owner = NULL;
 				janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, &feed_id);
 				janus_mutex_unlock(&videoroom->participants_mutex);
 				if(publisher == NULL || publisher->sdp == NULL) {
@@ -2986,6 +3034,17 @@ static void *janus_videoroom_handler(void *data) {
 					g_snprintf(error_cause, 512, "No such feed (%"SCNu64")", feed_id);
 					goto error;
 				} else {
+					/* First of all, let's check if this room requires valid private_id values */
+					if(videoroom->require_pvtid) {
+						/* It does, let's make sure this subscription complies */
+						owner = g_hash_table_lookup(videoroom->private_ids, GUINT_TO_POINTER(pvt_id));
+						if(pvt_id == 0 || owner == NULL) {
+							JANUS_LOG(LOG_ERR, "Unauthorized (this room requires a valid private_id)\n");
+							error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+							g_snprintf(error_cause, 512, "Unauthorized (this room requires a valid private_id)");
+							goto error;
+						}
+					}
 					janus_videoroom_listener *listener = g_malloc0(sizeof(janus_videoroom_listener));
 					listener->session = session;
 					listener->room = videoroom;
@@ -3007,6 +3066,11 @@ static void *janus_videoroom_handler(void *data) {
 					janus_mutex_lock(&publisher->listeners_mutex);
 					publisher->listeners = g_slist_append(publisher->listeners, listener);
 					janus_mutex_unlock(&publisher->listeners_mutex);
+					if(owner != NULL) {
+						janus_mutex_lock(&owner->listeners_mutex);
+						owner->subscriptions = g_slist_append(owner->subscriptions, listener);
+						janus_mutex_unlock(&owner->listeners_mutex);
+					}
 					event = json_object();
 					json_object_set_new(event, "videoroom", json_string("attached"));
 					json_object_set_new(event, "room", json_integer(videoroom->room_id));
@@ -3290,6 +3354,12 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
 				if(error_code != 0)
 					goto error;
+				if(listener->kicked) {
+					JANUS_LOG(LOG_ERR, "Unauthorized, you have been kicked\n");
+					error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED;
+					g_snprintf(error_cause, 512, "Unauthorized, you have been kicked");
+					goto error;
+				}
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
@@ -3404,6 +3474,14 @@ static void *janus_videoroom_handler(void *data) {
 					publisher->listeners = g_slist_remove(publisher->listeners, listener);
 					janus_mutex_unlock(&publisher->listeners_mutex);
 					listener->feed = NULL;
+				}
+				if(listener->pvt_id > 0) {
+					janus_videoroom_participant *owner = g_hash_table_lookup(listener->room->private_ids, GUINT_TO_POINTER(listener->pvt_id));
+					if(owner != NULL) {
+						janus_mutex_lock(&owner->listeners_mutex);
+						owner->subscriptions = g_slist_remove(owner->subscriptions, listener);
+						janus_mutex_unlock(&owner->listeners_mutex);
+					}
 				}
 				session->participant_type = janus_videoroom_p_type_none;
 				event = json_object();
@@ -3736,7 +3814,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 		// JANUS_LOG(LOG_ERR, "Invalid session...\n");
 		return;
 	}
-	if(listener->paused) {
+	if(listener->paused || listener->kicked) {
 		// JANUS_LOG(LOG_ERR, "This listener paused the stream...\n");
 		return;
 	}
@@ -3851,6 +3929,7 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 			l->feed = NULL;
 		}
 	}
+	g_slist_free(p->subscriptions);
 	janus_mutex_unlock(&p->listeners_mutex);
 	janus_mutex_lock(&p->rtp_forwarders_mutex);
 	if(p->udp_sock > 0) {

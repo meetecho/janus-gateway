@@ -397,9 +397,9 @@ static GHashTable *old_plugin_sessions;
 static janus_mutex old_plugin_sessions_mutex;
 gboolean janus_plugin_session_is_alive(janus_plugin_session *plugin_session) {
 	/* Make sure this plugin session is still alive */
-	janus_mutex_lock(&old_plugin_sessions_mutex);
+	janus_mutex_lock_nodebug(&old_plugin_sessions_mutex);
 	janus_plugin_session *result = g_hash_table_lookup(old_plugin_sessions, plugin_session);
-	janus_mutex_unlock(&old_plugin_sessions_mutex);
+	janus_mutex_unlock_nodebug(&old_plugin_sessions_mutex);
 	if(result != NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid plugin session (%p)\n", plugin_session);
 	}
