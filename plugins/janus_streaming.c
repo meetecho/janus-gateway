@@ -3479,18 +3479,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	/* Now connect to the RTSP server */
 	if(janus_streaming_rtsp_connect_to_server(live_rtsp) < 0) {
 		/* Error connecting, get rid of the mountpoint */
-		janus_streaming_mountpoint_free(live_rtsp);
-		return NULL;
-	}
-	/* Update the rest of the source */
-	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtsp->id), live_rtsp);
-	janus_mutex_unlock(&mountpoints_mutex);
-	GError *error = NULL;
-	char tname[16];
-	g_snprintf(tname, sizeof(tname), "mp %"SCNu64, live_rtsp->id);
-	g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtsp, &error);
-	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
+		janus_mutex_unlock(&mountpoints_mutex);
 		janus_streaming_mountpoint_free(live_rtsp);
 		return NULL;
 	}
@@ -3500,6 +3489,18 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 		janus_streaming_mountpoint_free(live_rtsp);
 		return NULL;
 	}
+	/* Start the thread that will receive the media packets */
+	GError *error = NULL;
+	char tname[16];
+	g_snprintf(tname, sizeof(tname), "mp %"SCNu64, live_rtsp->id);
+	g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtsp, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
+		janus_streaming_mountpoint_free(live_rtsp);
+		return NULL;
+	}
+	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtsp->id), live_rtsp);
+	janus_mutex_unlock(&mountpoints_mutex);
 	return live_rtsp;
 }
 #else
