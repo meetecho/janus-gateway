@@ -3873,6 +3873,11 @@ static void *janus_streaming_relay_thread(void *data) {
 				continue;
 			}
 		}
+		if(audio_fd < 0 && video_fd < 0 && data_fd < 0) {
+			/* No socket, we may be in the process of reconnecting, or waiting to reconnect */
+			g_usleep(5000000);
+			continue;
+		} 
 		/* We may also need to occasionally send a GET_PARAMETER request as a keep-alive */
 		if(ka_timeout > 0) {
 			/* Let's be conservative and send a GET_PARAMETER when half of the timeout has passed */
