@@ -3820,6 +3820,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				/* 5 seconds passed and no media? Assume the RTSP server has gone and schedule a reconnect */
 				JANUS_LOG(LOG_WARN, "[%s] %"SCNi64"s passed with no media, trying to reconnect the RTSP stream\n",
 					name, (now - source->reconnect_timer)/G_USEC_PER_SEC);
+				audio_fd = -1;
+				video_fd = -1;
 				source->reconnect_timer = now;
 				source->reconnecting = TRUE;
 				/* Let's clean up the source first */
@@ -3860,6 +3862,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						JANUS_LOG(LOG_WARN, "[%s] RTSP PLAY failed, trying again in a few seconds...\n", name);
 					} else {
 						/* Everything should be back to normal, let's update the file descriptors */
+						JANUS_LOG(LOG_WARN, "[%s] Reconnected to the RTSP server, streaming again\n", name);
 						audio_fd = source->audio_fd;
 						video_fd = source->video_fd;
 						ka_timeout = (source->ka_timeout*G_USEC_PER_SEC)/2;
