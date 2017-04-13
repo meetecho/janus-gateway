@@ -2324,8 +2324,6 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 						participant->audio_active_packets = 0;
 						participant->audio_dBov_sum = 0;
 					}
-				} else {
-					JANUS_LOG(LOG_ERR, "Room audiolevel_event %d\n", participant->room->audiolevel_event);
 				}
 			}
 		}
@@ -3349,6 +3347,27 @@ static void *janus_audiobridge_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Offer doesn't contain Opus..?\n");
 			}
 			JANUS_LOG(LOG_VERB, "Opus payload type is %d\n", participant->opus_pt);
+			/* Check if the audio level extension was offered */
+			int extmap_id = -1;
+			janus_sdp_mdirection extmap_mdir = JANUS_SDP_SENDRECV;
+			GList *temp = offer->m_lines;
+			while(temp) {
+				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+				if(m->type == JANUS_SDP_AUDIO) {
+					GList *ma = m->attributes;
+					while(ma) {
+						janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
+						if(a->value) {
+							if(strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
+								extmap_id = atoi(a->value);
+								extmap_mdir = a->direction;
+							}
+						}
+						ma = ma->next;
+					}
+				}
+				temp = temp->next;
+			}
 			janus_sdp *answer = janus_sdp_generate_answer(offer,
 				/* Reject video and data channels, if offered */
 				JANUS_SDP_OA_VIDEO, FALSE,
@@ -3365,14 +3384,25 @@ static void *janus_audiobridge_handler(void *data) {
 			/* Is the audio level extension negotiated? */
 			participant->extmap_id = 0;
 			participant->dBov_level = 0;
-			int extmap_id = -1;
-			if(participant->room && participant->room->audiolevel_ext)
-				extmap_id = janus_rtp_header_extension_get_id(msg_sdp, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
-			if(extmap_id > -1) {
+			if(extmap_id > -1 && participant->room && participant->room->audiolevel_ext) {
 				/* Add an extmap attribute too */
 				participant->extmap_id = extmap_id;
+				/* Let's check if the extmap attribute had a direction */
+				const char *direction = NULL;
+				switch(extmap_mdir) {
+					case JANUS_SDP_SENDONLY:
+						direction = "/recvonly";
+						break;
+					case JANUS_SDP_RECVONLY:
+					case JANUS_SDP_INACTIVE:
+						direction = "/inactive";
+						break;
+					default:
+						direction = "";
+						break;
+				}
 				janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-					"%d %s\r\n", extmap_id, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+					"%d%s %s\r\n", extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_AUDIO), a);
 			}
 			/* Prepare the response */
