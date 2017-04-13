@@ -27,7 +27,7 @@ darwin*)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
 esac
 
-glib_version=2.32
+glib_version=2.34
 ssl_version=1.0.1
 
 ##
