@@ -569,6 +569,9 @@ void janus_ice_relay_data(janus_ice_handle *handle, char *buf, int len);
 void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length);
 ///@}
 
+void janus_ice_rtcp_set_base_timestamp(struct janus_ice_handle *handle, uint32_t video_ts,
+                                      uint32_t audio_ts);
+
 
 /** @name Janus ICE handle helpers
  */
