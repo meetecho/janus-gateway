@@ -717,9 +717,6 @@ void *janus_rmq_in_thread(void *data) {
 			JANUS_LOG(LOG_VERB, "  -- Reply-to: %s\n", request_id->reply_to);
 		}
 		if(p->_flags & AMQP_BASIC_CORRELATION_ID_FLAG) {
-			correlation = g_malloc0(p->correlation_id.len+1);
-			sprintf(correlation, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
-			JANUS_LOG(LOG_VERB, "  -- Correlation-id: %s\n", correlation);
 			if (!request_id) request_id = g_malloc0(sizeof(janus_rabbitmq_opaque_id));
 			request_id->correlation_id = (char *)g_malloc0(p->correlation_id.len+1);
 			sprintf(request_id->correlation_id, "%.*s", (int) p->correlation_id.len, (char *) p->correlation_id.bytes);
@@ -749,7 +746,7 @@ void *janus_rmq_in_thread(void *data) {
 		g_free(payload);
 		/* Notify the core, passing both the object and, since it may be needed, the error
 		 * We also specify the correlation ID as an opaque request identifier: we'll need it later */
-		gateway->incoming_request(&janus_rabbitmq_transport, rmq_client, request_id, admin, root, &error);
+		gateway->incoming_request(&janus_rabbitmq_transport, rmq_session, request_id, admin, root, &error);
 	}
 	JANUS_LOG(LOG_INFO, "Leaving RabbitMQ in thread\n");
 	return NULL;

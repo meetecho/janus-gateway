@@ -362,8 +362,10 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		keyFrame = 0;
 		frameLen = 0;
 		len = 0;
-		while(tmp != NULL) {
-			if(tmp->drop) {
+		while(1) {
+      if (tmp == NULL)
+        break;
+			if(tmp && tmp->drop) {
 				/* Check if timestamp changes: marker bit is not mandatory, and may be lost as well */
 				if(tmp->next == NULL || tmp->next->ts > tmp->ts)
 					break;
@@ -480,16 +482,20 @@ int janus_pp_h264_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				packet.flags |= AV_PKT_FLAG_KEY;
 
 			/* First we save to the file... */
-			packet.dts = tmp->ts-list->ts;
-			packet.pts = tmp->ts-list->ts;
-			JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
-				tmp->ts, list->ts, packet.pts);
-			if(fctx) {
-				int res = av_write_frame(fctx, &packet);
-				if(res < 0) {
-					JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
-				}
-			}
+      if (tmp) {
+        packet.dts = tmp->ts-list->ts;
+        packet.pts = tmp->ts-list->ts;
+        JANUS_LOG(LOG_HUGE, "%"SCNu64" - %"SCNu64" --> %"SCNu64"\n",
+                  tmp->ts, list->ts, packet.pts);
+        if(fctx) {
+          int res = av_write_frame(fctx, &packet);
+          if(res < 0) {
+            JANUS_LOG(LOG_ERR, "Error writing video frame to file... (error %d)\n", res);
+          }
+        }
+      }
+      else
+        break;
 		}
 		tmp = tmp->next;
 	}

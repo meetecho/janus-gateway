@@ -105,7 +105,7 @@ int janus_pp_opus_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		len = 0;
 		/* RTP payload */
 		offset = tmp->offset+12+tmp->skip;
-		fseek(file, offset, SEEK_SET);
+	fseek(file, offset, SEEK_SET);
 		len = tmp->len-12-tmp->skip;
 		if(len < 1) {
 			tmp = tmp->next;

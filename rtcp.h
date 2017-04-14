@@ -239,8 +239,11 @@ typedef struct rtcp_context
 	/* RFC 3550 A.8 Interarrival Jitter */
 	int64_t transit;
 	double jitter, jitter_remote;
-	/* Timestamp base (e.g., 48000 for opus audio, or 90000 for video) */
+	/* Timestamp time base (e.g., 48000 for opus audio, or 90000 for video) */
 	uint32_t tb;
+  /* base timestamp (first timestamp forwarded, used as the reference base
+     timestamp to compute RTCP SR timestamps */
+  volatile uint32_t base_timestamp;
 
 	/* Last SR received */
 	uint32_t lsr;
