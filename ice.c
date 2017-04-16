@@ -666,10 +666,11 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean ipv6, uint16_t
 		JANUS_LOG(LOG_WARN, "libnice version < 0.1.8, disabling ICE-TCP support\n");
 		janus_ice_tcp_enabled = FALSE;
 #else
-		if(!janus_ice_lite_enabled) {
+	/*	if(!janus_ice_lite_enabled) {
 			JANUS_LOG(LOG_WARN, "ICE-TCP only works in libnice if you enable ICE Lite too: disabling ICE-TCP support\n");
 			janus_ice_tcp_enabled = FALSE;
 		}
+	*/
 #endif
 	}
 	/* libnice debugging is disabled unless explicitly stated */
