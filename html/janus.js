@@ -2116,7 +2116,10 @@ function Janus(gatewayCallbacks) {
 				// Try a MediaStream.stop() first
 				if(!config.streamExternal && config.myStream !== null && config.myStream !== undefined) {
 					Janus.log("Stopping local stream");
-					config.myStream.stop();
+					if(config.myStream.getVideoTracks()[0])
+						config.myStream.getVideoTracks()[0].stop();
+					if(config.myStream.getAudioTracks()[0])
+						config.myStream.getAudioTracks()[0].stop();
 				}
 			} catch(e) {
 				// Do nothing if this fails
