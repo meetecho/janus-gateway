@@ -8,12 +8,12 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead. 
- * 
+ * relay_rtcp gateway callbacks instead.
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -3249,8 +3249,6 @@ void *janus_ice_send_thread(void *data) {
 						rtcp_ctx->fsr_ts = ntp;
 					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
             rtcp_ctx->base_timestamp;
-          JANUS_LOG(LOG_VERB, "[TEST SR] Sending RTCP SR for video with ts = %u bts=%u\n", rtp_ts,
-                    rtcp_ctx->base_timestamp);
 					sr->si.rtp_ts = htonl(rtp_ts);
 				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.video_packets);
@@ -3399,15 +3397,14 @@ void *janus_ice_send_thread(void *data) {
 
 				int protected = pkt->length;
 				int res = 0;
-				/* if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) { */
-				/* 	res = srtp_protect_rtcp(component->dtls->srtp_out, sbuf, &protected); */
-				/* } else { */
-				/* 	/\* We need to make sure different sources don't use the SRTP context at the same time *\/ */
-				/* 	janus_mutex_lock(&component->dtls->srtp_mutex); */
-				/* 	res = srtp_protect_rtcp(component->dtls->srtp_out, sbuf, &protected); */
-				/* 	janus_mutex_unlock(&component->dtls->srtp_mutex); */
-				/* } */
-        res = err_status_ok;
+				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
+					res = srtp_protect_rtcp(component->dtls->srtp_out, sbuf, &protected);
+				} else {
+					/* We need to make sure different sources don't use the SRTP context at the same time */
+					janus_mutex_lock(&component->dtls->srtp_mutex);
+					res = srtp_protect_rtcp(component->dtls->srtp_out, sbuf, &protected);
+					janus_mutex_unlock(&component->dtls->srtp_mutex);
+				}
 				//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTCP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
 				if(res != err_status_ok) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTCP protect error... %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
@@ -3487,9 +3484,8 @@ void *janus_ice_send_thread(void *data) {
 						header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
 					}
 					int protected = pkt->length;
-          /*  int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);*/
+          int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
-          int res = err_status_ok;
 					if(res != err_status_ok) {
 						rtp_header *header = (rtp_header *)sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
@@ -3656,13 +3652,58 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 	janus_ice_relay_rtcp_internal(handle, video, buf, len, TRUE);
 }
 
-void janus_ice_rtcp_set_base_timestamp(struct janus_ice_handle *handle, uint32_t video_ts,
-                                   uint32_t audio_ts)
+void janus_ice_set_audio_base_timestamp(struct janus_ice_handle *handle,
+                                        uint32_t audio_ts)
 {
-  struct janus_ice_stream *video_stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+  if (handle->audio_stream) {
+    handle->audio_stream->audio_rtcp_ctx->base_timestamp = audio_ts;
+    JANUS_LOG(LOG_VERB, "[DAZZL SR] Setting audio base timestamp : %u\n",
+              handle->audio_stream->audio_rtcp_ctx->base_timestamp);
+  } else {
+    JANUS_LOG(LOG_ERR, "Ice stream not configured yet\n");
+  }
+}
 
-  handle->audio_stream->audio_rtcp_ctx->base_timestamp = audio_ts;
-  video_stream->video_rtcp_ctx->base_timestamp = video_ts;
+void janus_ice_set_video_base_timestamp(struct janus_ice_handle *handle,
+                                        uint32_t video_ts)
+{
+  struct janus_ice_stream *video_stream =
+    janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ?
+    (handle->audio_stream ? handle->audio_stream : handle->video_stream) :
+    (handle->video_stream);
+
+  if (video_stream) {
+    video_stream->video_rtcp_ctx->base_timestamp = video_ts;
+    JANUS_LOG(LOG_VERB, "[DAZZL SR] Setting video base timestamp : %u\n",
+              video_stream->video_rtcp_ctx->base_timestamp);
+  } else {
+    JANUS_LOG(LOG_ERR, "Ice stream not configured yet\n");
+  }
+}
+
+void janus_ice_set_av_base_timestamps(struct janus_ice_handle *handle,
+                                      uint32_t video_ts,
+                                      uint32_t audio_ts)
+{
+  janus_ice_set_video_base_timestamp(handle, video_ts);
+  janus_ice_set_audio_base_timestamp(handle, audio_ts);
+}
+
+void janus_ice_reset_video_rtcp_fsr_ts(struct janus_ice_handle *handle)
+{
+  struct janus_ice_stream *video_stream =
+    janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ?
+    (handle->audio_stream ? handle->audio_stream : handle->video_stream) :
+    (handle->video_stream);
+
+    video_stream->video_rtcp_ctx->fsr_ts = 0;
+    JANUS_LOG(LOG_VERB, "Video RTCP fSR reset\n");
+}
+
+inline void janus_ice_reset_audio_rtcp_fsr_ts(struct janus_ice_handle *handle)
+{
+    handle->audio_stream->audio_rtcp_ctx->fsr_ts = 0;
+    JANUS_LOG(LOG_VERB, "Audio RTCP fSR reset\n");
 }
 
 #ifdef HAVE_SCTP
