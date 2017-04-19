@@ -708,7 +708,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	janus_config_destroy(config);
 	config = NULL;
 	if(!wss && !swss && !admin_wss && !admin_swss) {
-		JANUS_LOG(LOG_FATAL, "No WebSockets server started, giving up...\n");
+		JANUS_LOG(LOG_WARN, "No WebSockets server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
 	wss_janus_api_enabled = wss || swss;

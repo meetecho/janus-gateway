@@ -329,6 +329,7 @@ static int janus_sctp_incoming_data(struct socket *sock, union sctp_sockstore ad
 		} else {
 			janus_sctp_handle_message(sctp, data, datalen, ntohl(rcv.rcv_ppid), rcv.rcv_sid);
 		}
+		free(data);
 	}
 	return 1;
 }

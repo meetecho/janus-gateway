@@ -149,6 +149,8 @@ typedef struct janus_sdp_attribute {
 	char *name;
 	/*! \brief Attribute value */
 	char *value;
+	/*! \brief Attribute direction (e.g., for extmap) */
+	janus_sdp_mdirection direction;
 } janus_sdp_attribute;
 /*! \brief Helper method to quickly create a janus_sdp_attribute instance
  * @param[in] name Name of the attribute

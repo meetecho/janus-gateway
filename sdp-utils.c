@@ -100,6 +100,7 @@ janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *va
 		return NULL;
 	janus_sdp_attribute *a = g_malloc0(sizeof(janus_sdp_attribute));
 	a->name = g_strdup(name);
+	a->direction = JANUS_SDP_DEFAULT;
 	if(value) {
 		char buffer[512];
 		va_list ap;
@@ -308,7 +309,14 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							*semicolon = '\0';
 							a->name = g_strdup(line);
 							a->value = g_strdup(semicolon+1);
+							a->direction = JANUS_SDP_DEFAULT;
 							*semicolon = ':';
+							if(strstr(line, "/sendonly"))
+								a->direction = JANUS_SDP_SENDONLY;
+							else if(strstr(line, "/recvonly"))
+								a->direction = JANUS_SDP_RECVONLY;
+							if(strstr(line, "/inactive"))
+								a->direction = JANUS_SDP_INACTIVE;
 						}
 						imported->attributes = g_list_append(imported->attributes, a);
 						break;
@@ -433,7 +441,14 @@ janus_sdp *janus_sdp_parse(const char *sdp, char *error, size_t errlen) {
 							*semicolon = '\0';
 							a->name = g_strdup(line);
 							a->value = g_strdup(semicolon+1);
+							a->direction = JANUS_SDP_DEFAULT;
 							*semicolon = ':';
+							if(strstr(line, "/sendonly"))
+								a->direction = JANUS_SDP_SENDONLY;
+							else if(strstr(line, "/recvonly"))
+								a->direction = JANUS_SDP_RECVONLY;
+							if(strstr(line, "/inactive"))
+								a->direction = JANUS_SDP_INACTIVE;
 						}
 						mline->attributes = g_list_append(mline->attributes, a);
 						break;

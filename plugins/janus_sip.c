@@ -33,12 +33,13 @@
  * which means all responses (successes and errors) will be delivered
  * as events with the same transaction.
  *
- * The supported requests are \c register , \c call , \c accept and
+ * The supported requests are \c register , \c call , \c accept, \c hold , \c unhold and
  * \c hangup . \c register can be used, as the name suggests, to register
  * a username at a SIP registrar to call and be called; \c call is used
  * to send an INVITE to a different SIP URI through the plugin, while
  * \c accept is used to accept the call in case one is invited instead
- * of inviting; finally, \c hangup can be used to terminate the
+ * of inviting; \c hold and \c unhold can be used respectively to put a
+ * call on-hold and to resume it; finally, \c hangup can be used to terminate the
  * communication at any time, either to hangup (BYE) an ongoing call or
  * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
  *
@@ -296,10 +297,11 @@ typedef struct janus_sip_account {
 
 typedef struct janus_sip_media {
 	char *remote_ip;
-	int ready:1;
+	gboolean ready;
 	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
-	int has_audio:1;
+	gboolean on_hold;
+	gboolean has_audio;
 	int audio_rtp_fd, audio_rtcp_fd;
 	int local_audio_rtp_port, remote_audio_rtp_port;
 	int local_audio_rtcp_port, remote_audio_rtcp_port;
@@ -310,7 +312,8 @@ typedef struct janus_sip_media {
 	srtp_policy_t audio_remote_policy, audio_local_policy;
 	int audio_srtp_suite_in, audio_srtp_suite_out;
 	gboolean audio_send;
-	int has_video:1;
+	janus_sdp_mdirection pre_hold_audio_dir;
+	gboolean has_video;
 	int video_rtp_fd, video_rtcp_fd;
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
@@ -321,6 +324,7 @@ typedef struct janus_sip_media {
 	srtp_policy_t video_remote_policy, video_local_policy;
 	int video_srtp_suite_in, video_srtp_suite_out;
 	gboolean video_send;
+	janus_sdp_mdirection pre_hold_video_dir;
 	janus_rtp_switching_context context;
 	int pipefd[2];
 	gboolean updated;
@@ -776,14 +780,6 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 				}
 			}
 		}
-		if(local_ip == NULL) {
-			local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
-			if(local_ip == NULL) {
-				JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-				local_ip = g_strdup("127.0.0.1");
-			}
-		}
-		JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
 		if(item && item->value)
@@ -816,6 +812,15 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_destroy(config);
 	}
 	config = NULL;
+
+	if(local_ip == NULL) {
+		local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+		if(local_ip == NULL) {
+			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+			local_ip = g_strdup("127.0.0.1");
+		}
+	}
+	JANUS_LOG(LOG_VERB, "Local IP set to %s\n", local_ip);
 
 #ifdef HAVE_SRTP_2
 	/* Init randomizer (for randum numbers in SRTP) */
@@ -949,12 +954,13 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->callid = NULL;
 	session->sdp = NULL;
 	session->media.remote_ip = NULL;
-	session->media.ready = 0;
+	session->media.ready = FALSE;
 	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
 	session->media.has_srtp_local = FALSE;
 	session->media.has_srtp_remote = FALSE;
-	session->media.has_audio = 0;
+	session->media.on_hold = FALSE;
+	session->media.has_audio = FALSE;
 	session->media.audio_rtp_fd = -1;
 	session->media.audio_rtcp_fd= -1;
 	session->media.local_audio_rtp_port = 0;
@@ -968,7 +974,8 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.audio_srtp_suite_in = 0;
 	session->media.audio_srtp_suite_out = 0;
 	session->media.audio_send = TRUE;
-	session->media.has_video = 0;
+	session->media.pre_hold_audio_dir = JANUS_SDP_DEFAULT;
+	session->media.has_video = FALSE;
 	session->media.video_rtp_fd = -1;
 	session->media.video_rtcp_fd= -1;
 	session->media.local_video_rtp_port = 0;
@@ -982,6 +989,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.video_srtp_suite_in = 0;
 	session->media.video_srtp_suite_out = 0;
 	session->media.video_send = TRUE;
+	session->media.pre_hold_video_dir = JANUS_SDP_DEFAULT;
 	/* Initialize the RTP context */
 	janus_rtp_switching_context_reset(&session->media.context);
 	session->media.pipefd[0] = -1;
@@ -1731,11 +1739,11 @@ static void *janus_sip_handler(void *data) {
 			/* Allocate RTP ports and merge them with the anonymized SDP */
 			if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
-				session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
+				session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
-				session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
+				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			if(janus_sip_allocate_local_ports(session) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
@@ -1883,11 +1891,11 @@ static void *janus_sip_handler(void *data) {
 			/* Allocate RTP ports and merge them with the anonymized SDP */
 			if(strstr(msg_sdp, "m=audio") && !strstr(msg_sdp, "m=audio 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate audio...\n");
-				session->media.has_audio = 1;	/* FIXME Maybe we need a better way to signal this */
+				session->media.has_audio = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			if(strstr(msg_sdp, "m=video") && !strstr(msg_sdp, "m=video 0")) {
 				JANUS_LOG(LOG_VERB, "Going to negotiate video...\n");
-				session->media.has_video = 1;	/* FIXME Maybe we need a better way to signal this */
+				session->media.has_video = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			}
 			if(janus_sip_allocate_local_ports(session) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
@@ -1940,7 +1948,7 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("accepted"));
 			/* Start the media */
-			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
+			session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
 			GError *error = NULL;
 			char tname[16];
 			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
@@ -1964,6 +1972,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			session->media.ready = FALSE;
+			session->media.on_hold = FALSE;
 			session->status = janus_sip_call_status_closing;
 			if(session->stack->s_nh_i == NULL) {
 				JANUS_LOG(LOG_WARN, "NUA Handle for 200 OK still null??\n");
@@ -1993,6 +2003,81 @@ static void *janus_sip_handler(void *data) {
 			result = json_object();
 			json_object_set_new(result, "event", json_string("declining"));
 			json_object_set_new(result, "code", json_integer(response_code));
+		} else if(!strcasecmp(request_text, "hold") || !strcasecmp(request_text, "unhold")) {
+			/* We either need to put the call on-hold, or resume it */
+			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
+				/* Ignore */
+				janus_sip_message_free(msg);
+				continue;
+				//~ g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				//~ goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			if(session->sdp == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no SDP?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no SDP?)");
+				goto error;
+			}
+			gboolean hold = !strcasecmp(request_text, "hold");
+			if(hold != session->media.on_hold) {
+				/* To put the call on-hold, we need to set the direction to recvonly:
+				 * resuming it means resuming the direction we had before */
+				session->media.on_hold = hold;
+				janus_sdp_mline *m = janus_sdp_mline_find(session->sdp, JANUS_SDP_AUDIO);
+				if(m) {
+					if(hold) {
+						/* Take note of the original media direction */
+						session->media.pre_hold_audio_dir = m->direction;
+						/* Update the media direction */
+						switch(m->direction) {
+							case JANUS_SDP_DEFAULT:
+							case JANUS_SDP_SENDRECV:
+								m->direction = JANUS_SDP_SENDONLY;
+								break;
+							default:
+								m->direction = JANUS_SDP_INACTIVE;
+								break;
+						}
+					} else {
+						m->direction = session->media.pre_hold_audio_dir;
+					}
+				}
+				m = janus_sdp_mline_find(session->sdp, JANUS_SDP_VIDEO);
+				if(m) {
+					if(hold) {
+						/* Take note of the original media direction */
+						session->media.pre_hold_video_dir = m->direction;
+						/* Update the media direction */
+						switch(m->direction) {
+							case JANUS_SDP_DEFAULT:
+							case JANUS_SDP_SENDRECV:
+								m->direction = JANUS_SDP_SENDONLY;
+								break;
+							default:
+								m->direction = JANUS_SDP_INACTIVE;
+								break;
+						}
+					} else {
+						m->direction = session->media.pre_hold_video_dir;
+					}
+				}
+				/* Send the re-INVITE */
+				char *sdp = janus_sdp_write(session->sdp);
+				nua_invite(session->stack->s_nh_i,
+					SOATAG_USER_SDP_STR(sdp),
+					TAG_END());
+				g_free(sdp);
+			}
+			/* Send an ack back */
+			result = json_object();
+			json_object_set_new(result, "event", json_string(hold ? "holding" : "resuming"));
 		} else if(!strcasecmp(request_text, "hangup")) {
 			/* Hangup an ongoing call */
 			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
@@ -2009,6 +2094,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			session->media.ready = FALSE;
+			session->media.on_hold = FALSE;
 			session->status = janus_sip_call_status_closing;
 			nua_bye(session->stack->s_nh_i, TAG_END());
 			g_free(session->callee);
@@ -2179,7 +2266,6 @@ static void *janus_sip_handler(void *data) {
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						char buf[12];
-						memset(buf, 0, 12);
 						janus_rtcp_pli((char *)&buf, 12);
 						gateway->relay_rtcp(session->handle, 1, buf, 12);
 					}
@@ -2368,6 +2454,8 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 			} else if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
+				session->media.ready = FALSE;
+				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_idle;
 				session->stack->s_nh_i = NULL;
 				json_t *call = json_object();
@@ -2645,14 +2733,17 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Parse SDP */
 			JANUS_LOG(LOG_VERB, "Peer accepted our call:\n%s", sip->sip_payload->pl_data);
 			session->status = janus_sip_call_status_incall;
-			char *fixed_sdp = g_strdup(sip->sip_payload->pl_data);
-			janus_sip_sdp_process(session, sdp, TRUE, FALSE, NULL);
+			char *fixed_sdp = sip->sip_payload->pl_data;
+			gboolean changed = FALSE;
+			gboolean update = session->media.ready;
+			janus_sip_sdp_process(session, sdp, TRUE, update, &changed);
 			/* If we asked for SRTP and are not getting it, fail */
 			if(session->media.require_srtp && !session->media.has_srtp_remote) {
 				JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
 				janus_sdp_free(sdp);
-				g_free(fixed_sdp);
 				/* Hangup immediately */
+				session->media.ready = FALSE;
+				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_closing;
 				nua_bye(nh, TAG_END());
 				g_free(session->callee);
@@ -2663,8 +2754,9 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* No remote address parsed? Give up */
 				JANUS_LOG(LOG_ERR, "\tNo remote IP address found for RTP, something's wrong with the SDP!\n");
 				janus_sdp_free(sdp);
-				g_free(fixed_sdp);
 				/* Hangup immediately */
+				session->media.ready = FALSE;
+				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_closing;
 				nua_bye(nh, TAG_END());
 				g_free(session->callee);
@@ -2679,7 +2771,12 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				session->media.video_pt_name = janus_get_codec_from_pt(fixed_sdp, session->media.video_pt);
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
-			session->media.ready = 1;	/* FIXME Maybe we need a better way to signal this */
+			session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
+			if(update) {
+				/* Don't push to the browser if this is in response to a hold/unhold we sent ourselves */
+				JANUS_LOG(LOG_VERB, "This is an update to an existing call (possibly in response to hold/unhold)\n");
+				break;
+			}
 			GError *error = NULL;
 			char tname[16];
 			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
@@ -2699,7 +2796,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(call);
 			json_decref(jsep);
-			g_free(fixed_sdp);
 			janus_sdp_free(sdp);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
@@ -2814,7 +2910,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 					if(changed)
 						*changed = TRUE;
 				}
-				session->media.has_audio = 1;
+				session->media.has_audio = TRUE;
 				session->media.remote_audio_rtp_port = m->port;
 				session->media.remote_audio_rtcp_port = m->port+1;	/* FIXME We're assuming RTCP is on the next port */
 				if(m->direction == JANUS_SDP_SENDONLY || m->direction == JANUS_SDP_INACTIVE)
@@ -2831,7 +2927,7 @@ void janus_sip_sdp_process(janus_sip_session *session, janus_sdp *sdp, gboolean 
 					if(changed)
 						*changed = TRUE;
 				}
-				session->media.has_video = 1;
+				session->media.has_video = TRUE;
 				session->media.remote_video_rtp_port = m->port;
 				session->media.remote_video_rtcp_port = m->port+1;	/* FIXME We're assuming RTCP is on the next port */
 				if(m->direction == JANUS_SDP_SENDONLY || m->direction == JANUS_SDP_INACTIVE)
