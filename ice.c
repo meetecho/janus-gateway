@@ -3654,10 +3654,12 @@ void janus_ice_set_audio_base_timestamp(struct janus_ice_handle *handle,
 {
   if (handle->audio_stream) {
     handle->audio_stream->audio_rtcp_ctx->base_timestamp = audio_ts;
-    JANUS_LOG(LOG_VERB, "[DAZZL SR] Setting audio base timestamp : %u\n",
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting audio base timestamp : %u\n",
+              handle->handle_id,
               handle->audio_stream->audio_rtcp_ctx->base_timestamp);
   } else {
-    JANUS_LOG(LOG_ERR, "Ice stream not configured yet\n");
+    JANUS_LOG(LOG_ERR, "[%"SCNu64"] Ice stream not configured yet\n",
+              handle->handle_id);
   }
 }
 
@@ -3671,10 +3673,12 @@ void janus_ice_set_video_base_timestamp(struct janus_ice_handle *handle,
 
   if (video_stream) {
     video_stream->video_rtcp_ctx->base_timestamp = video_ts;
-    JANUS_LOG(LOG_VERB, "[DAZZL SR] Setting video base timestamp : %u\n",
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting video base timestamp : %u\n",
+              handle->handle_id,
               video_stream->video_rtcp_ctx->base_timestamp);
   } else {
-    JANUS_LOG(LOG_ERR, "Ice stream not configured yet\n");
+    JANUS_LOG(LOG_ERR, "[%"SCNu64"] Ice stream not configured yet\n",
+              handle->handle_id);
   }
 }
 
@@ -3694,13 +3698,15 @@ void janus_ice_reset_video_rtcp_fsr_ts(struct janus_ice_handle *handle)
     (handle->video_stream);
 
     video_stream->video_rtcp_ctx->fsr_ts = 0;
-    JANUS_LOG(LOG_VERB, "Video RTCP fSR reset\n");
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video RTCP fSR reset\n",
+              handle->handle_id);
 }
 
 inline void janus_ice_reset_audio_rtcp_fsr_ts(struct janus_ice_handle *handle)
 {
     handle->audio_stream->audio_rtcp_ctx->fsr_ts = 0;
-    JANUS_LOG(LOG_VERB, "Audio RTCP fSR reset\n");
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio RTCP fSR reset\n",
+              handle->handle_id);
 }
 
 #ifdef HAVE_SCTP
