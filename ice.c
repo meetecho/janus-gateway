@@ -3180,10 +3180,8 @@ void *janus_ice_send_thread(void *data) {
     rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 		/* Do the same with SR/SDES */
 		if(now-audio_rtcp_last_sr >= 500000 || rtcp_ctx->fsr_ts == 0) {
-      //JANUS_LOG(LOG_VERB, "[Dazzl test] time to send a RTCP SR\n");
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.audio_packets > 0) {
 				/* Create a SR/SDES compound */
-        //JANUS_LOG(LOG_VERB, "[Dazzl test] RTCP SR stream OK\n");
 				int srlen = 28;
 				int sdeslen = 20;
 				char rtcpbuf[srlen+sdeslen];
@@ -3209,7 +3207,6 @@ void *janus_ice_send_thread(void *data) {
 					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
             rtcp_ctx->base_timestamp;
 					sr->si.rtp_ts = htonl(rtp_ts);
-          //JANUS_LOG(LOG_VERB, "[Dazzl test] RTCP SR rtp_ts = %u\n", rtp_ts);
 				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.audio_packets);
 				sr->si.s_octets = htonl(stream->rtp_component->out_stats.audio_bytes);
