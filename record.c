@@ -249,7 +249,18 @@ int janus_recorder_close(janus_recorder *recorder) {
 		char newname[1024];
 		memset(newname, 0, 1024);
 		g_snprintf(newname, strlen(recorder->filename)-strlen(rec_tempext), "%s", recorder->filename);
-		if(rename(recorder->filename, newname) != 0) {
+		char oldpath[1024];
+		memset(oldpath, 0, 1024);
+		char newpath[1024];
+		memset(newpath, 0, 1024);
+		if(recorder->dir) {
+			g_snprintf(newpath, 1024, "%s/%s", recorder->dir, newname);
+			g_snprintf(oldpath, 1024, "%s/%s", recorder->dir, recorder->filename);
+		} else {
+			g_snprintf(newpath, 1024, "%s", newname);
+			g_snprintf(oldpath, 1024, "%s", recorder->filename);
+		}
+		if(rename(oldpath, newpath) != 0) {
 			JANUS_LOG(LOG_ERR, "Error renaming %s to %s...\n", recorder->filename, newname);
 		} else {
 			JANUS_LOG(LOG_INFO, "Recording renamed: %s\n", newname);

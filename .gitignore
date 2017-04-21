@@ -1,5 +1,6 @@
 cmdline.c
 cmdline.h
+version.c
 docs/html/
 
 /janus
@@ -45,6 +46,7 @@ Makefile.in
 /conf/janus.cfg.sample
 /conf/janus.plugin.recordplay.cfg.sample
 /conf/janus.plugin.streaming.cfg.sample
+/conf/janus.plugin.voicemail.cfg.sample
 /conf/janus.transport.http.cfg.sample
 /conf/janus.transport.websockets.cfg.sample
 

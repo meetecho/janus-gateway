@@ -247,7 +247,7 @@ typedef struct janus_seq_info {
 	guint16 state;
 	struct janus_seq_info *next;
 	struct janus_seq_info *prev;
-} seq_info_t;
+} janus_seq_info;
 enum {
 	SEQ_MISSING,
 	SEQ_NACKED,
@@ -322,6 +322,10 @@ struct janus_ice_handle {
 	GThread *send_thread;
 	/*! \brief Atomic flag to make sure we only create the thread once */
 	volatile gint send_thread_created;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	guint srtp_errors_count;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	gint last_srtp_error;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
@@ -381,7 +385,7 @@ struct janus_ice_stream {
 	/*! \brief RTCP component */
 	janus_ice_component *rtcp_component;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */
@@ -428,15 +432,15 @@ struct janus_ice_component {
 	/*! \brief Number of NACKs sent since last log message */
 	guint nack_sent_recent_cnt;
 	/*! \brief List of recently received audio sequence numbers (as a support to NACK generation) */
-	seq_info_t *last_seqs_audio;
+	janus_seq_info *last_seqs_audio;
 	/*! \brief List of recently received video sequence numbers (as a support to NACK generation) */
-	seq_info_t *last_seqs_video;
+	janus_seq_info *last_seqs_video;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */
 	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
 	/*! \brief Atomic flag to check if this instance has been destroyed */

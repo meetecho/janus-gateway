@@ -701,7 +701,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 		g_free(transaction);
 		janus_refcount_decrease(&session->ref);
 		return result;
-	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack")) {
+	} else if(!strcasecmp(request_text, "setup") || !strcasecmp(request_text, "ack") || !strcasecmp(request_text, "refresh")) {
 		/* These messages are handled asynchronously */
 		janus_textroom_message *msg = g_malloc0(sizeof(janus_textroom_message));
 		msg->handle = handle;
@@ -815,13 +815,13 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		error_code, error_cause, TRUE,
 		JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
 	const char *transaction_text = NULL;
+	json_t *reply = NULL;
 	if(error_code != 0)
 		goto msg_response;
 	json_t *request = json_object_get(root, "textroom");
 	json_t *transaction = json_object_get(root, "transaction");
 	const char *request_text = json_string_value(request);
 	transaction_text = json_string_value(transaction);
-	json_t *reply = NULL;
 	if(!strcasecmp(request_text, "message")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, message_parameters,
 			error_code, error_cause, TRUE,
@@ -999,6 +999,14 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		janus_refcount_increase(&textroom->ref);
 		janus_mutex_lock(&textroom->mutex);
 		janus_mutex_unlock(&rooms_mutex);
+		/* A PIN may be required for this action */
+		JANUS_CHECK_SECRET(textroom->room_pin, root, "pin", error_code, error_cause,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&textroom->mutex);
+			janus_refcount_decrease(&textroom->ref);
+			goto msg_response;
+		}
 		janus_mutex_lock(&session->mutex);
 		if(g_hash_table_lookup(session->rooms, &room_id) != NULL) {
 			janus_mutex_unlock(&session->mutex);
@@ -1164,6 +1172,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 		janus_mutex_unlock(&textroom->mutex);
 		janus_refcount_decrease(&textroom->ref);
 		janus_refcount_decrease(&participant->ref);
+		janus_textroom_participant_destroy(participant);
 		if(!internal) {
 			/* Send response back */
 			reply = json_object();
@@ -1193,6 +1202,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_t *rl = json_object();
 			json_object_set_new(rl, "room", json_integer(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
+			json_object_set_new(rl, "pin_required", room->room_pin ? json_true() : json_false());
 			/* TODO: Possibly list participant details... or make it a separate API call for a specific room */
 			json_object_set_new(rl, "num_participants", json_integer(g_hash_table_size(room->participants)));
 			json_array_append_new(list, rl);
@@ -1838,11 +1848,8 @@ static void *janus_textroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "PeerConnection not setup");
 				goto error;
 			}
-			if(!sdp_update) {
-				JANUS_LOG(LOG_WARN, "Got a 'refresh' request, but no SDP update? Ignoring...\n");
-			} else {
-				do_offer = TRUE;
-			}
+			sdp_update = TRUE;
+			do_offer = TRUE;
 		} else if(!strcasecmp(request_text, "ack")) {
 			/* The peer sent their answer back: do nothing */
 		} else {
