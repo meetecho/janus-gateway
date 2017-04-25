@@ -45,7 +45,7 @@ RUN git clone https://boringssl.googlesource.com/boringssl && cd boringssl \
     && cp build/crypto/libcrypto.a /opt/boringssl/lib/ && cd
 
 # Rabbit MQ
-RUN git clone https://github.com/alanxz/rabbitmq-c && cd rabbitmq-c \
+RUN git clone https://github.com/alanxz/rabbitmq-c && cd rabbitmq-c && git checkout 2ca1774 \
     && git submodule init && git submodule update && autoreconf -i \
     && ./configure --prefix=/usr && make && make install && cd
 
