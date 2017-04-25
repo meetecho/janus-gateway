@@ -8,12 +8,12 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead. 
- * 
+ * relay_rtcp gateway callbacks instead.
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -2565,7 +2565,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
-		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
+            janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
 	g_atomic_int_set(&handle->send_thread_created, 0);
 	handle->agent = g_object_new(NICE_TYPE_AGENT,
 		"compatibility", NICE_COMPATIBILITY_DRAFT19,
@@ -3176,9 +3176,10 @@ void *janus_ice_send_thread(void *data) {
 			}
 			video_rtcp_last_rr = now;
 		}
+    janus_ice_stream *stream = handle->audio_stream;
+    rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 		/* Do the same with SR/SDES */
-		if(now-audio_rtcp_last_sr >= 500000) {
-			janus_ice_stream *stream = handle->audio_stream;
+		if(now-audio_rtcp_last_sr >= 500000 || rtcp_ctx->fsr_ts == 0) {
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.audio_packets > 0) {
 				/* Create a SR/SDES compound */
 				int srlen = 28;
@@ -3197,14 +3198,14 @@ void *janus_ice_send_thread(void *data) {
 				sr->si.ntp_ts_msw = htonl(s);
 				sr->si.ntp_ts_lsw = htonl(f);
 				/* Compute an RTP timestamp coherent with the NTP one */
-				rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
 				if(rtcp_ctx == NULL) {
 					sr->si.rtp_ts = htonl(stream->audio_last_ts);	/* FIXME */
 				} else {
 					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 					if(rtcp_ctx->fsr_ts == 0)
 						rtcp_ctx->fsr_ts = ntp;
-					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000);
+					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
+            rtcp_ctx->base_timestamp;
 					sr->si.rtp_ts = htonl(rtp_ts);
 				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.audio_packets);
@@ -3216,8 +3217,9 @@ void *janus_ice_send_thread(void *data) {
 			}
 			audio_rtcp_last_sr = now;
 		}
-		if(now-video_rtcp_last_sr >= 500000) {
-			janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+    stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+    rtcp_ctx = stream->video_rtcp_ctx;
+		if(now-video_rtcp_last_sr >= 500000 || rtcp_ctx->fsr_ts == 0) {
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.video_packets > 0) {
 				/* Create a SR/SDES compound */
 				int srlen = 28;
@@ -3234,16 +3236,16 @@ void *janus_ice_send_thread(void *data) {
 				uint32_t u = tv.tv_usec;
 				uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
 				sr->si.ntp_ts_msw = htonl(s);
-				sr->si.ntp_ts_lsw = htonl(f);
+        sr->si.ntp_ts_lsw = htonl(f);
 				/* Compute an RTP timestamp coherent with the NTP one */
-				rtcp_context *rtcp_ctx = stream->video_rtcp_ctx;
 				if(rtcp_ctx == NULL) {
 					sr->si.rtp_ts = htonl(stream->video_last_ts);	/* FIXME */
 				} else {
 					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
 					if(rtcp_ctx->fsr_ts == 0)
 						rtcp_ctx->fsr_ts = ntp;
-					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000);
+					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
+            rtcp_ctx->base_timestamp;
 					sr->si.rtp_ts = htonl(rtp_ts);
 				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.video_packets);
@@ -3405,8 +3407,8 @@ void *janus_ice_send_thread(void *data) {
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... SRTCP protect error... %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
 				} else {
 					/* Shoot! */
-					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... Sending SRTCP packet (pt=%u, seq=%u, ts=%u)...\n", handle->handle_id,
-						//~ header->paytype, ntohs(header->seq_number), ntohl(header->timestamp));
+					//~JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... Sending SRTCP packet (pt=%u, seq=%u, ts=%u)...\n", handle->handle_id,
+						//~header->paytype, ntohs(header->seq_number), ntohl(header->timestamp));
 					int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, protected, sbuf);
 					if(sent < protected) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] ... only sent %d bytes? (was %d)\n", handle->handle_id, sent, protected);
@@ -3479,7 +3481,7 @@ void *janus_ice_send_thread(void *data) {
 						header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
 					}
 					int protected = pkt->length;
-					int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
+          int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
 					if(res != err_status_ok) {
 						rtp_header *header = (rtp_header *)sbuf;
@@ -3645,6 +3647,66 @@ void janus_ice_relay_rtcp_internal(janus_ice_handle *handle, int video, char *bu
 
 void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int len) {
 	janus_ice_relay_rtcp_internal(handle, video, buf, len, TRUE);
+}
+
+void janus_ice_set_audio_base_timestamp(struct janus_ice_handle *handle,
+                                        uint32_t audio_ts)
+{
+  if (handle->audio_stream) {
+    handle->audio_stream->audio_rtcp_ctx->base_timestamp = audio_ts;
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting audio base timestamp : %u\n",
+              handle->handle_id,
+              handle->audio_stream->audio_rtcp_ctx->base_timestamp);
+  } else {
+    JANUS_LOG(LOG_ERR, "[%"SCNu64"] Ice stream not configured yet\n",
+              handle->handle_id);
+  }
+}
+
+void janus_ice_set_video_base_timestamp(struct janus_ice_handle *handle,
+                                        uint32_t video_ts)
+{
+  struct janus_ice_stream *video_stream =
+    janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ?
+    (handle->audio_stream ? handle->audio_stream : handle->video_stream) :
+    (handle->video_stream);
+
+  if (video_stream) {
+    video_stream->video_rtcp_ctx->base_timestamp = video_ts;
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting video base timestamp : %u\n",
+              handle->handle_id,
+              video_stream->video_rtcp_ctx->base_timestamp);
+  } else {
+    JANUS_LOG(LOG_ERR, "[%"SCNu64"] Ice stream not configured yet\n",
+              handle->handle_id);
+  }
+}
+
+void janus_ice_set_av_base_timestamps(struct janus_ice_handle *handle,
+                                      uint32_t video_ts,
+                                      uint32_t audio_ts)
+{
+  janus_ice_set_video_base_timestamp(handle, video_ts);
+  janus_ice_set_audio_base_timestamp(handle, audio_ts);
+}
+
+void janus_ice_reset_video_rtcp_fsr_ts(struct janus_ice_handle *handle)
+{
+  struct janus_ice_stream *video_stream =
+    janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ?
+    (handle->audio_stream ? handle->audio_stream : handle->video_stream) :
+    (handle->video_stream);
+
+    video_stream->video_rtcp_ctx->fsr_ts = 0;
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video RTCP fSR reset\n",
+              handle->handle_id);
+}
+
+inline void janus_ice_reset_audio_rtcp_fsr_ts(struct janus_ice_handle *handle)
+{
+    handle->audio_stream->audio_rtcp_ctx->fsr_ts = 0;
+    JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio RTCP fSR reset\n",
+              handle->handle_id);
 }
 
 #ifdef HAVE_SCTP

@@ -422,7 +422,6 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 	return filtered;
 }
 
-
 int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len) {
 	if(ctx == NULL || packet == NULL || len < 1)
 		return -1;
@@ -433,6 +432,11 @@ int janus_rtcp_process_incoming_rtp(rtcp_context *ctx, char *packet, int len) {
 	if((pt == 0 || pt == 8) && (ctx->tb == 48000))
 		ctx->tb = 8000;
 	/* Now parse this RTP packet header and update the rtcp_context instance */
+  uint32_t ts = ntohl(rtp->timestamp);
+  if (ctx->base_timestamp == 0) {
+    ctx->base_timestamp = ts;
+  }
+
 	uint16_t seq_number = ntohs(rtp->seq_number);
 	if(ctx->base_seq == 0 && ctx->seq_cycle == 0)
 		ctx->base_seq = seq_number;
