@@ -1,29 +1,60 @@
-FROM alpine:3.5
+FROM alpine:edge
 MAINTAINER Jeremy VAILLANT <jeremy.vaillant@dazzl.tv>
+
+# Version ENV
+ENV usrsctpVersion 0.9.3.0
+
+# Packages ENV
+ENV buildDeps "curl git build-base ca-certificates rabbitmq-c-dev "
+ENV buildJanus "jansson-dev go libtool libnice-dev rabbitmq-c libogg "
+ENV buildUsrsctp "m4 automake autoconf file cmake "
+ENV buildBoringssl "linux-headers libsrtp-dev gengetopt-dev libogg-dev ffmpeg-libs ffmpeg-dev"
 
 WORKDIR /root
 
-RUN apk update \
-  && apk upgrade \
-  && apk add --no-cache \
-    git cmake ca-certificates curl wget automake libtool libssl1.0 autoconf libsrtp-dev \
-    libmicrohttpd-dev jansson-dev libnice-dev ffmpeg-dev pkgconf gengetopt glib-dev opus-dev \
-    libogg-dev go openssl build-base gawk libssl1.0 libcrypto1.0 file file-dev jansson glib \
-  && apk add rabbitmq-c-dev --no-cache -X http://dl-3.alpinelinux.org/alpine/edge/testing/
+# Prepare system
+RUN apk add --update --no-cache $buildDeps $buildJanus $buildUsrsctp $buildBoringssl
+
+# Download dependency
+RUN curl -L https://github.com/sctplab/usrsctp/archive/$usrsctpVersion.tar.gz | tar zx
+RUN git clone https://boringssl.googlesource.com/boringssl
+
+# Compil dependency
+RUN cd usrsctp-$usrsctpVersion \
+  && ./bootstrap \
+  && ./configure --prefix=/usr \
+  && make \
+  && make install
 
 # Boring SSL (go lang is needed)
-RUN git clone https://boringssl.googlesource.com/boringssl && cd boringssl \
-  && sed -i s/" -Werror"//g CMakeLists.txt && mkdir -p build && cd build \
-  && cmake -DCMAKE_CXX_FLAGS="-lrt" .. && make && cd .. \
-  && mkdir -p /opt/boringssl && cp -R include /opt/boringssl/ \
-  && mkdir -p /opt/boringssl/lib && cp build/ssl/libssl.a /opt/boringssl/lib/ \
-  && cp build/crypto/libcrypto.a /opt/boringssl/lib/ && cd
+RUN cd boringssl \
+  && sed -i s/" -Werror"//g CMakeLists.txt \
+  && mkdir -p build \
+  && cd build \
+  && cmake -DCMAKE_CXX_FLAGS="-lrt" .. \
+  && make \
+  && cd .. \
+  && mkdir -p /opt/boringssl \
+  && cp -R include /opt/boringssl/ \
+  && mkdir -p /opt/boringssl/lib \
+  && cp build/ssl/libssl.a /opt/boringssl/lib/ \
+  && cp build/crypto/libcrypto.a /opt/boringssl/lib/
+
+COPY / janus-gateway
 
 # Install Janus itself
-COPY / janus-gateway
-RUN cd janus-gateway && sh autogen.sh && ./configure --prefix=/usr/local \
-  --enable-boringssl --enable-post-processing --disable-mqtt --disable-docs \
-  && make && make configs && make install && cd
+RUN cd janus-gateway \
+  && sh autogen.sh \
+  && ./configure --prefix=/usr/local --enable-boringssl --enable-post-processing --disable-mqtt --disable-docs \
+  && make \
+  && make configs \
+  && make install
 
-RUN apk del cmake ca-certificates curl wget \
-  && rm -rf /var/cache/apk/*
+RUN rm -R usrsctp-$usrsctpVersion boringssl janus-gateway
+
+# RUN apk del $buildDeps $buildBoringssl $buildUsrsctp \
+#   && rm -rf /var/cache/apk/*
+
+# Command to execute for starting janus
+ENTRYPOINT ["/usr/local/bin/janus"]
+CMD ["-d4"]
