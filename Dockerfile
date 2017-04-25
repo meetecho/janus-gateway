@@ -31,9 +31,9 @@ RUN git clone https://github.com/sctplab/usrsctp && cd usrsctp && ./bootstrap \
     && ./configure --prefix=/usr && make && make install && cd
 
 ## Websockets
-RUN git clone git://git.libwebsockets.org/libwebsockets && cd libwebsockets \
-    && git checkout v1.5-chrome47-firefox41 && mkdir build \
-    && cd build && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr .. && make && make install && cd
+#RUN git clone git://git.libwebsockets.org/libwebsockets && cd libwebsockets \
+#    && git checkout v1.5-chrome47-firefox41 && mkdir build \
+#    && cd build && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr .. && make && make install && cd
 
 # Boring SSL (go lang is needed)
 RUN apt-get install -y golang
@@ -52,7 +52,7 @@ RUN git clone https://github.com/alanxz/rabbitmq-c && cd rabbitmq-c \
 # Install Janus itself
 COPY / janus-gateway
 RUN cd janus-gateway && sh autogen.sh && ./configure --prefix=/usr/local \
-    --enable-boringssl --enable-post-processing --disable-mqtt --disable-docs \
+    --enable-boringssl --enable-post-processing --disable-websockets --disable-mqtt --disable-docs \
     && make && make configs && make install && cd
 
 # Command to execute for starting janus
