@@ -2945,8 +2945,10 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 			json_object_set_new(calling, "username", json_string(session->account.username));
 			json_object_set_new(calling, "register_sent", json_true());
 			json_object_set_new(call, "result", calling);
-			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, NULL);
-			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			if(!session->destroyed) {
+				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			}
 			json_decref(call);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
@@ -2973,8 +2975,10 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 				json_object_set_new(result, "reason", json_string(reason));
 			}
 			json_object_set_new(event, "result", result);
-			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
-			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			if(!session->destroyed) {
+				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			}
 			json_decref(event);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
@@ -3054,8 +3058,10 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 			//~ json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
 		//~ }
 		json_object_set_new(missed, "result", result);
-		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, missed, NULL);
-		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+		if(!session->destroyed) {
+			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, missed, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+		}
 		json_decref(missed);
 		/* Also notify event handlers */
 		if(notify_events && gateway->events_is_enabled()) {
@@ -3114,8 +3120,10 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		json_object_set_new(calling, "srtp", json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 	}
 	json_object_set_new(call, "result", calling);
-	int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
-	JANUS_LOG(LOG_INFO, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	if(!session->destroyed) {
+		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
+		JANUS_LOG(LOG_INFO, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	}
 	json_decref(call);
 	json_decref(jsep);
 	janus_sdp_free(sdp);
@@ -3222,8 +3230,10 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	json_object_set_new(calling, "event", json_string("accepted"));
 	json_object_set_new(calling, "username", json_string(session->callee));
 	json_object_set_new(call, "result", calling);
-	int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
-	JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	if(!session->destroyed) {
+		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
+		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	}
 	json_decref(call);
 	json_decref(jsep);
 	janus_sdp_free(sdp);
@@ -3279,8 +3289,10 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	}
 	json_object_set_new(result, "reason", json_string(err ? strerror(err) : reason));
 	json_object_set_new(event, "result", result);
-	int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
-	JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	if(!session->destroyed) {
+		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	}
 	json_decref(event);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
@@ -3293,7 +3305,8 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 
 	/* Cleanup */
 	session->stack.sess = mem_deref(session->stack.sess);
-	session->stack.reg = mem_deref(session->stack.reg);
+	//~ session->stack.reg = mem_deref(session->stack.reg);
+	session->status = janus_sipre_call_status_idle;
 }
 
 /* Called when all SIP transactions are completed */
@@ -3363,8 +3376,10 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
-				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
-				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				if(!session->destroyed) {
+					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				}
 				json_decref(event);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
@@ -3407,8 +3422,10 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
-				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
-				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				if(!session->destroyed) {
+					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				}
 				json_decref(event);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
@@ -3447,8 +3464,10 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
-				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
-				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				if(!session->destroyed) {
+					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				}
 				json_decref(event);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
@@ -3494,6 +3513,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				} else {
 					/* 3xx, 4xx, 5xx, 6xx */
 					err = sipsess_reject(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL);
+					session->status = janus_sipre_call_status_idle;
 				}
 				//~ err = sip_treply(NULL, sipstack, payload->msg, payload->rcode, janus_sipre_error_reason(payload->rcode));
 			}
@@ -3518,10 +3538,32 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending BYE\n", session->account.username);
 			/* FIXME How do we send a BYE? */
 			session->stack.sess = mem_deref(session->stack.sess);
-			sipsess_close_all(session->stack.sess_sock);
+			//~ sipsess_close_all(session->stack.sess_sock);
 			g_free(session->callee);
 			session->callee = NULL;
 			g_free(payload);
+			/* Tell the browser... */
+			json_t *event = json_object();
+			json_object_set_new(event, "sip", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("hangup"));
+			json_object_set_new(result, "code", json_integer(200));
+			json_object_set_new(result, "reason", json_string("BYE"));
+			json_object_set_new(event, "result", result);
+			if(!session->destroyed) {
+				int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			}
+			json_decref(event);
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("hangup"));
+				json_object_set_new(info, "code", json_integer(200));
+				json_object_set_new(info, "reason", json_string("BYE"));
+				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+			}
+			session->status = janus_sipre_call_status_idle;
 			break;
 		}
 		case janus_sipre_mqueue_event_do_exit:
