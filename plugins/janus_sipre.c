@@ -3436,14 +3436,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			mbuf_printf(mb, "%s", session->temp_sdp);
 			mbuf_set_pos(mb, 0);
 			/* Send the 200 OK */
-			int err = sipsess_accept(&session->stack.sess, session->stack.sess_sock,
-				session->stack.invite, 200, "OK",
-				session->account.display_name ? session->account.display_name : session->account.username,
-				"application/sdp", mb,
-				janus_sipre_cb_auth, session, FALSE,
-				janus_sipre_cb_offer, janus_sipre_cb_answer,
-				janus_sipre_cb_established, NULL, NULL,
-				janus_sipre_cb_closed, session, NULL);
+			int err = sipsess_answer(session->stack.sess, 200, "OK", mb, NULL);
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to send the 200 OK: %d (%s)\n", err, strerror(err));
 				/* Tell the browser... */
@@ -3480,8 +3473,8 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending response code %d\n", session->account.username, payload->rcode);
 			/* Send the response code */
 			int err = 0;
-			if(payload->rcode < 200) {
-				/* Progress: 1xx */
+			if(session->stack.sess == NULL) {
+				/* We still need to accept the connection */
 				err = sipsess_accept(&session->stack.sess, session->stack.sess_sock,
 					session->stack.invite, payload->rcode, janus_sipre_error_reason(payload->rcode),
 					session->account.display_name ? session->account.display_name : session->account.username,
@@ -3490,10 +3483,19 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 					janus_sipre_cb_offer, janus_sipre_cb_answer,
 					janus_sipre_cb_established, NULL, NULL,
 					janus_sipre_cb_closed, session, NULL);
-				//~ err = sipsess_progress(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL, NULL);
 			} else {
-				/* 2xx, 3xx, 4xx, 5xx */
-				err = sip_treply(NULL, sipstack, payload->msg, payload->rcode, janus_sipre_error_reason(payload->rcode));
+				/* Connection already accepted */
+				if(payload->rcode < 200) {
+					/* 1xx */
+					err = sipsess_progress(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL, NULL);
+				} else if(payload->rcode < 300) {
+					/* 2xx */
+					err = sipsess_answer(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL, NULL);
+				} else {
+					/* 3xx, 4xx, 5xx, 6xx */
+					err = sipsess_reject(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL);
+				}
+				//~ err = sip_treply(NULL, sipstack, payload->msg, payload->rcode, janus_sipre_error_reason(payload->rcode));
 			}
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to send the %d error code: %d (%s)\n", payload->rcode, err, strerror(err));
