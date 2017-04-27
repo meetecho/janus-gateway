@@ -3375,7 +3375,9 @@ static void *janus_audiobridge_handler(void *data) {
 				JANUS_SDP_OA_DONE);
 			/* Replace the session name */
 			g_free(answer->s_name);
-			answer->s_name = g_strdup(participant->room->room_name);
+			char s_name[100];
+			g_snprintf(s_name, sizeof(s_name), "AudioBridge %"SCNu64, participant->room->room_id);
+			answer->s_name = g_strdup(s_name);
 			/* Add a fmtp attribute */
 			janus_sdp_attribute *a = janus_sdp_attribute_create("fmtp",
 				"%d maxplaybackrate=%"SCNu32"; stereo=0; sprop-stereo=0; useinbandfec=0\r\n",
