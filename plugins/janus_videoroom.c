@@ -3632,7 +3632,9 @@ static void *janus_videoroom_handler(void *data) {
 				janus_sdp_free(offer);
 				/* Replace the session name */
 				g_free(answer->s_name);
-				answer->s_name = g_strdup(videoroom->room_name);
+				char s_name[100];
+				g_snprintf(s_name, sizeof(s_name), "VideoRoom %"SCNu64, videoroom->room_id);
+				answer->s_name = g_strdup(s_name);
 				/* Which media are REALLY available? (some may have been rejected) */
 				participant->audio = FALSE;
 				participant->video = FALSE;
@@ -3721,7 +3723,7 @@ static void *janus_videoroom_handler(void *data) {
 				/* Generate an SDP string we can send back to the publisher */
 				char *answer_sdp = janus_sdp_write(answer);
 				/* Now turn the SDP into what we'll send subscribers, using the static payload types for making switching easier */
-				offer = janus_sdp_generate_offer(videoroom->room_name, answer->c_addr,
+				offer = janus_sdp_generate_offer(s_name, answer->c_addr,
 					JANUS_SDP_OA_AUDIO, participant->audio,
 					JANUS_SDP_OA_AUDIO_CODEC, janus_videoroom_audiocodec_name(videoroom->acodec),
 					JANUS_SDP_OA_AUDIO_PT, janus_videoroom_audiocodec_pt(videoroom->acodec),

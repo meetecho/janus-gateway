@@ -2442,7 +2442,7 @@ static void *janus_streaming_handler(void *data) {
 					"-", sessid, version);
 			g_strlcat(sdptemp, buffer, 2048);
 			g_snprintf(buffer, 512,
-				"s=%s\r\n", (mp->name ? mp->name : "Streaming Test"));
+				"s=Mountpoint %"SCNu64"\r\n", mp->id);
 			g_strlcat(sdptemp, buffer, 2048);
 			g_strlcat(sdptemp, "t=0 0\r\n", 2048);
 			if(mp->codecs.audio_pt >= 0) {

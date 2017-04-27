@@ -430,8 +430,10 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 	/* Prepare an SDP offer we'll send to playout viewers */
 	gboolean offer_audio = (rec->arc_file != NULL),
 		offer_video = (rec->vrc_file != NULL);
+	char s_name[100];
+	g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, rec->id);
 	janus_sdp *offer = janus_sdp_generate_offer(
-		rec->name, "1.1.1.1",
+		s_name, "1.1.1.1",
 		JANUS_SDP_OA_AUDIO, offer_audio,
 		JANUS_SDP_OA_AUDIO_CODEC, "opus",
 		JANUS_SDP_OA_AUDIO_PT, OPUS_PT,
@@ -1163,7 +1165,9 @@ static void *janus_recordplay_handler(void *data) {
 				JANUS_SDP_OA_DATA, FALSE,
 				JANUS_SDP_OA_DONE);
 			g_free(answer->s_name);
-			answer->s_name = g_strdup(session->recording->name);
+			char s_name[100];
+			g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, session->recording->id);
+			answer->s_name = g_strdup(s_name);
 			sdp = janus_sdp_write(answer);
 			janus_sdp_free(offer);
 			janus_sdp_free(answer);
