@@ -2505,6 +2505,12 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/nowylie/go-janus">go-janus</a></td>
  * 		<td>Golang library to the Janus API (Unix Sockets/SOCK_DGRAM only at the moment)</td>
  * </tr>
+ * <tr>
+ * 		<td>Elixir</td>
+ * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
+ * 		<td><a href="https://github.com/ndarilek/elixir-janus">elixir-janus</a></td>
+ *		<td>Elixir client side API wrapper for the Janus WebRTC gateway</td>
+ * </tr>
  * </table>
  * <br/>
  *
