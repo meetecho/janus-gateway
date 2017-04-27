@@ -412,6 +412,7 @@ function Janus(gatewayCallbacks) {
 				// Don't warn here because destroyHandle causes this situation.
 				return;
 			}
+			pluginHandle.detached = true;
 			pluginHandle.ondetached();
 			pluginHandle.detach();
 		} else if(json["janus"] === "media") {
@@ -781,6 +782,7 @@ function Janus(gatewayCallbacks) {
 						session : that,
 						plugin : plugin,
 						id : handleId,
+						detached : false,
 						webrtcStuff : {
 							started : false,
 							myStream : null,
@@ -867,6 +869,7 @@ function Janus(gatewayCallbacks) {
 						session : that,
 						plugin : plugin,
 						id : handleId,
+						detached : false,
 						webrtcStuff : {
 							started : false,
 							myStream : null,
@@ -1178,6 +1181,12 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if (pluginHandles[handleId].detached) {
+			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
+			delete pluginHandles[handleId];
+			callbacks.success();
+			return;
+		}
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
