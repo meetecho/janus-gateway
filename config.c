@@ -31,24 +31,24 @@ static char *get_filename(const char *path) {
 static char *ltrim(char *s) {
 	if(strlen(s) == 0)
 		return s;
-    while(isspace(*s))
+	while(isspace(*s))
 		s++;
-    return s;
+	return s;
 }
 
 static char *rtrim(char *s) {
 	if(strlen(s) == 0)
 		return s;
-    char* back = s + strlen(s);
-    while(isspace(*--back));
-    *(back+1) = '\0';
-    return s;
+	char *back = s + strlen(s);
+	while(isspace(*--back));
+	*(back+1) = '\0';
+	return s;
 }
 
 static char *trim(char *s) {
 	if(strlen(s) == 0)
 		return s;
-    return rtrim(ltrim(s)); 
+	return rtrim(ltrim(s)); 
 }
 
 
