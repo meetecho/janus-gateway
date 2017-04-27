@@ -1171,6 +1171,12 @@ function Janus(gatewayCallbacks) {
 			asyncRequest = (callbacks.asyncRequest === true);
 		Janus.log("Destroying handle " + handleId + " (async=" + asyncRequest + ")");
 		cleanupWebrtc(handleId);
+		if (pluginHandles[handleId].detached) {
+			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
+			delete pluginHandles[handleId];
+			callbacks.success();
+			return;
+		}
 		if(!connected) {
 			Janus.warn("Is the gateway down? (connected=false)");
 			callbacks.error("Is the gateway down? (connected=false)");
@@ -1181,12 +1187,6 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
-		if (pluginHandles[handleId].detached) {
-			// Plugin was already detached by Janus, calling detach again will return a handle not found error, so just exit here
-			delete pluginHandles[handleId];
-			callbacks.success();
-			return;
-		}
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
