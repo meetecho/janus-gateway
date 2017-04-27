@@ -721,13 +721,7 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		delete Janus.sessions[sessionId];
-		// Destroy all handles first
-		for(var ph in pluginHandles) {
-			var phv = pluginHandles[ph];
-			Janus.log("Destroying handle " + phv.id + " (" + phv.plugin + ")");
-			destroyHandle(phv.id, {asyncRequest: asyncRequest});
-		}
-		// Ok, go on
+		// No need to destroy all handles first, Janus will do that itself
 		var request = { "janus": "destroy", "transaction": Janus.randomString(12) };
 		if(token !== null && token !== undefined)
 			request["token"] = token;
