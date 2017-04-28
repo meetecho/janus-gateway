@@ -2113,6 +2113,24 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 			if(res != srtp_err_status_ok) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTCP unprotect error: %s (len=%d-->%d)\n", handle->handle_id, janus_srtp_error_str(res), len, buflen);
 			} else {
+				/* Check if there's an RTCP BYE: in case, let's wrap up */
+				if(janus_rtcp_has_bye(buf, buflen)) {
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
+					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+						if(handle->iceloop)
+							g_main_loop_quit(handle->iceloop);
+						janus_plugin *plugin = (janus_plugin *)handle->app;
+						if(plugin != NULL) {
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
+							if(plugin && plugin->hangup_media)
+								plugin->hangup_media(handle->app_handle);
+							janus_ice_notify_hangup(handle, "RTCP BYE");
+						}
+					}
+					return;
+				}
 				/* Is this audio or video? */
 				int video = 0;
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
