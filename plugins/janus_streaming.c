@@ -724,7 +724,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 					continue;
 				}
 #ifndef HAVE_SCTP
-				if(data) {
+				if(dodata) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' stream '%s': no datachannels support......\n", cat->name);
 					cl = cl->next;
 					continue;
