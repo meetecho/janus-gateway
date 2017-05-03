@@ -621,7 +621,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 				return -1;
 			}
 			admin_ws_path = g_strdup(item->value);
-			if(strlen(admin_ws_path) > 1 && ws_path[strlen(admin_ws_path)-1] == '/') {
+			if(strlen(admin_ws_path) > 1 && admin_ws_path[strlen(admin_ws_path)-1] == '/') {
 				/* Remove the trailing slash, it makes things harder when we parse requests later */
 				admin_ws_path[strlen(admin_ws_path)-1] = '\0';
 			}
