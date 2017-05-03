@@ -546,6 +546,34 @@ int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {
 }
 
 
+int janus_rtcp_has_bye(char *packet, int len) {
+	gboolean got_bye = FALSE;
+	/* Parse RTCP compound packet */
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return FALSE;
+	int pno = 0, total = len;
+	while(rtcp) {
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_BYE:
+				got_bye = TRUE;
+				break;
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return got_bye ? TRUE : FALSE;
+}
+
 int janus_rtcp_has_fir(char *packet, int len) {
 	gboolean got_fir = FALSE;
 	/* Parse RTCP compound packet */

@@ -411,7 +411,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"display" : "<display name to have in the room; optional>",
 	"token" : "<invitation token, in case the room has an ACL; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
-	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>,
+	"quality" : <0-10, Opus-related complexity to use, the higher the value, the better the quality (but more CPU); optional, default is 4>,
 	"volume" : <percent value, <100 reduces volume, >100 increases volume; optional, default is 100 (no volume change)>
 }
 \endverbatim
