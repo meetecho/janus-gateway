@@ -1272,6 +1272,11 @@ static int janus_websockets_common_callback(
 					janus_mutex_unlock(&ws_client->mutex);
 					return 0;
 				}
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+				lws_callback_on_writable(wsi);
+#else
+				libwebsocket_callback_on_writable(this, wsi);
+#endif
 				janus_mutex_unlock(&ws_client->mutex);
 			}
 			return 0;
