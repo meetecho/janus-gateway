@@ -3177,7 +3177,9 @@ void *janus_ice_send_thread(void *data) {
 			video_rtcp_last_rr = now;
 		}
     janus_ice_stream *stream = handle->audio_stream;
-    rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
+    rtcp_context *rtcp_ctx = NULL;
+    if (stream)
+      rtcp_ctx = stream->audio_rtcp_ctx;
 		/* Do the same with SR/SDES */
 		if(now-audio_rtcp_last_sr >= 500000 || rtcp_ctx->fsr_ts == 0) {
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.audio_packets > 0) {
@@ -3218,7 +3220,8 @@ void *janus_ice_send_thread(void *data) {
 			audio_rtcp_last_sr = now;
 		}
     stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
-    rtcp_ctx = stream->video_rtcp_ctx;
+    if (stream)
+      rtcp_ctx = stream->video_rtcp_ctx;
 		if(now-video_rtcp_last_sr >= 500000 || rtcp_ctx->fsr_ts == 0) {
 			if(stream && stream->rtp_component && stream->rtp_component->out_stats.video_packets > 0) {
 				/* Create a SR/SDES compound */
