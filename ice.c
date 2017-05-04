@@ -3652,7 +3652,7 @@ void janus_ice_relay_rtcp(janus_ice_handle *handle, int video, char *buf, int le
 void janus_ice_set_audio_base_timestamp(struct janus_ice_handle *handle,
                                         uint32_t audio_ts)
 {
-  if (handle->audio_stream) {
+  if (handle->audio_stream && handle->audio_stream->audio_rtcp_ctx) {
     handle->audio_stream->audio_rtcp_ctx->base_timestamp = audio_ts;
     JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting audio base timestamp : %u\n",
               handle->handle_id,
@@ -3671,7 +3671,7 @@ void janus_ice_set_video_base_timestamp(struct janus_ice_handle *handle,
     (handle->audio_stream ? handle->audio_stream : handle->video_stream) :
     (handle->video_stream);
 
-  if (video_stream) {
+  if (video_stream && video_stream->video_rtcp_ctx) {
     video_stream->video_rtcp_ctx->base_timestamp = video_ts;
     JANUS_LOG(LOG_VERB, "[%"SCNu64"] Setting video base timestamp : %u\n",
               handle->handle_id,
@@ -3697,16 +3697,20 @@ void janus_ice_reset_video_rtcp_fsr_ts(struct janus_ice_handle *handle)
     (handle->audio_stream ? handle->audio_stream : handle->video_stream) :
     (handle->video_stream);
 
+  if (video_stream && video_stream->video_rtcp_ctx) {
     video_stream->video_rtcp_ctx->fsr_ts = 0;
     JANUS_LOG(LOG_VERB, "[%"SCNu64"] Video RTCP fSR reset\n",
               handle->handle_id);
+  }
 }
 
 inline void janus_ice_reset_audio_rtcp_fsr_ts(struct janus_ice_handle *handle)
 {
+  if (handle->audio_stream && handle->audio_stream->audio_rtcp_ctx) {
     handle->audio_stream->audio_rtcp_ctx->fsr_ts = 0;
     JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio RTCP fSR reset\n",
               handle->handle_id);
+  }
 }
 
 #ifdef HAVE_SCTP
