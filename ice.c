@@ -3176,102 +3176,108 @@ void *janus_ice_send_thread(void *data) {
 			}
 			video_rtcp_last_rr = now;
 		}
-    janus_ice_stream *stream = handle->audio_stream;
-    rtcp_context *rtcp_ctx = NULL;
-    if (stream)
-      rtcp_ctx = stream->audio_rtcp_ctx;
-		/* Do the same with SR/SDES */
-		if(now-audio_rtcp_last_sr >= 500000 || rtcp_ctx->fsr_ts == 0) {
-			if(stream && stream->rtp_component && stream->rtp_component->out_stats.audio_packets > 0) {
-				/* Create a SR/SDES compound */
-				int srlen = 28;
-				int sdeslen = 20;
-				char rtcpbuf[srlen+sdeslen];
-				rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
-				sr->header.version = 2;
-				sr->header.type = RTCP_SR;
-				sr->header.rc = 0;
-				sr->header.length = htons((srlen/4)-1);
-				struct timeval tv;
-				gettimeofday(&tv, NULL);
-				uint32_t s = tv.tv_sec + 2208988800u;
-				uint32_t u = tv.tv_usec;
-				uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
-				sr->si.ntp_ts_msw = htonl(s);
-				sr->si.ntp_ts_lsw = htonl(f);
-				/* Compute an RTP timestamp coherent with the NTP one */
-				if(rtcp_ctx == NULL) {
-					sr->si.rtp_ts = htonl(stream->audio_last_ts);	/* FIXME */
-				} else {
-					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-					if(rtcp_ctx->fsr_ts == 0)
-						rtcp_ctx->fsr_ts = ntp;
-					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
-            rtcp_ctx->base_timestamp;
-					sr->si.rtp_ts = htonl(rtp_ts);
-				}
-				sr->si.s_packets = htonl(stream->rtp_component->out_stats.audio_packets);
-				sr->si.s_octets = htonl(stream->rtp_component->out_stats.audio_bytes);
-				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
-				janus_rtcp_sdes((char *)sdes, sdeslen, "janusaudio", 10);
-				/* Enqueue it, we'll send it later */
-				janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
-			}
-			audio_rtcp_last_sr = now;
-		}
-    stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
-    if (stream)
-      rtcp_ctx = stream->video_rtcp_ctx;
-		if(now-video_rtcp_last_sr >= 500000 || rtcp_ctx->fsr_ts == 0) {
-			if(stream && stream->rtp_component && stream->rtp_component->out_stats.video_packets > 0) {
-				/* Create a SR/SDES compound */
-				int srlen = 28;
-				int sdeslen = 20;
-				char rtcpbuf[srlen+sdeslen];
-				rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
-				sr->header.version = 2;
-				sr->header.type = RTCP_SR;
-				sr->header.rc = 0;
-				sr->header.length = htons((srlen/4)-1);
-				struct timeval tv;
-				gettimeofday(&tv, NULL);
-				uint32_t s = tv.tv_sec + 2208988800u;
-				uint32_t u = tv.tv_usec;
-				uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
-				sr->si.ntp_ts_msw = htonl(s);
-        sr->si.ntp_ts_lsw = htonl(f);
-				/* Compute an RTP timestamp coherent with the NTP one */
-				if(rtcp_ctx == NULL) {
-					sr->si.rtp_ts = htonl(stream->video_last_ts);	/* FIXME */
-				} else {
-					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-					if(rtcp_ctx->fsr_ts == 0)
-						rtcp_ctx->fsr_ts = ntp;
-					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
-            rtcp_ctx->base_timestamp;
-					sr->si.rtp_ts = htonl(rtp_ts);
-				}
-				sr->si.s_packets = htonl(stream->rtp_component->out_stats.video_packets);
-				sr->si.s_octets = htonl(stream->rtp_component->out_stats.video_bytes);
-				rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
-				janus_rtcp_sdes((char *)sdes, sdeslen, "janusvideo", 10);
-				/* Enqueue it, we'll send it later */
-				janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
-			}
-			video_rtcp_last_sr = now;
-		}
-		/* Should we clean up old NACK buffers? (we check each 1/4 of the max_nack_queue time) */
-		if(max_nack_queue > 0 && (now-last_nack_cleanup >= (max_nack_queue*250))) {
-			/* Check if we do for both streams */
-			janus_cleanup_nack_buffer(now, handle->audio_stream);
-			janus_cleanup_nack_buffer(now, handle->video_stream);
-			last_nack_cleanup = now;
-		}
 
-		/* Now let's get on with the packets */
-		if(pkt == NULL) {
-			continue;
-		}
+    janus_ice_stream *stream = handle->audio_stream;
+    if (stream) {
+      rtcp_context *rtcp_ctx = stream->audio_rtcp_ctx;
+      /* Do the same with SR/SDES */
+      if(now-audio_rtcp_last_sr >= 500000 || (rtcp_ctx && (rtcp_ctx->fsr_ts == 0))) {
+        if(stream->rtp_component && stream->rtp_component->out_stats.audio_packets > 0) {
+          /* Create a SR/SDES compound */
+          int srlen = 28;
+          int sdeslen = 20;
+          char rtcpbuf[srlen+sdeslen];
+          rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
+          sr->header.version = 2;
+          sr->header.type = RTCP_SR;
+          sr->header.rc = 0;
+          sr->header.length = htons((srlen/4)-1);
+          struct timeval tv;
+          gettimeofday(&tv, NULL);
+          uint32_t s = tv.tv_sec + 2208988800u;
+          uint32_t u = tv.tv_usec;
+          uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
+          sr->si.ntp_ts_msw = htonl(s);
+          sr->si.ntp_ts_lsw = htonl(f);
+          /* Compute an RTP timestamp coherent with the NTP one */
+          if(rtcp_ctx == NULL) {
+            sr->si.rtp_ts = htonl(stream->audio_last_ts);	/* FIXME */
+          } else {
+            int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+            if(rtcp_ctx->fsr_ts == 0)
+              rtcp_ctx->fsr_ts = ntp;
+            uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
+              rtcp_ctx->base_timestamp;
+            sr->si.rtp_ts = htonl(rtp_ts);
+          }
+          sr->si.s_packets = htonl(stream->rtp_component->out_stats.audio_packets);
+          sr->si.s_octets = htonl(stream->rtp_component->out_stats.audio_bytes);
+          rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
+          janus_rtcp_sdes((char *)sdes, sdeslen, "janusaudio", 10);
+          /* Enqueue it, we'll send it later */
+          janus_ice_relay_rtcp_internal(handle, 0, rtcpbuf, srlen+sdeslen, FALSE);
+        }
+        audio_rtcp_last_sr = now;
+      }
+    }
+
+    stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
+    if (stream) {
+      rtcp_context *rtcp_ctx = stream->video_rtcp_ctx;
+      if(now-video_rtcp_last_sr >= 500000 || (rtcp_ctx && (rtcp_ctx->fsr_ts == 0))) {
+        if(stream->rtp_component && stream->rtp_component->out_stats.video_packets > 0) {
+          /* Create a SR/SDES compound */
+          int srlen = 28;
+          int sdeslen = 20;
+          char rtcpbuf[srlen+sdeslen];
+          rtcp_sr *sr = (rtcp_sr *)&rtcpbuf;
+          sr->header.version = 2;
+          sr->header.type = RTCP_SR;
+          sr->header.rc = 0;
+          sr->header.length = htons((srlen/4)-1);
+          struct timeval tv;
+          gettimeofday(&tv, NULL);
+          uint32_t s = tv.tv_sec + 2208988800u;
+          uint32_t u = tv.tv_usec;
+          uint32_t f = (u << 12) + (u << 8) - ((u * 3650) >> 6);
+          sr->si.ntp_ts_msw = htonl(s);
+          sr->si.ntp_ts_lsw = htonl(f);
+          /* Compute an RTP timestamp coherent with the NTP one */
+          if(rtcp_ctx == NULL) {
+            sr->si.rtp_ts = htonl(stream->video_last_ts);	/* FIXME */
+          } else {
+            int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+            if(rtcp_ctx->fsr_ts == 0)
+              rtcp_ctx->fsr_ts = ntp;
+            uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000) +
+              rtcp_ctx->base_timestamp;
+            sr->si.rtp_ts = htonl(rtp_ts);
+          }
+          sr->si.s_packets = htonl(stream->rtp_component->out_stats.video_packets);
+          sr->si.s_octets = htonl(stream->rtp_component->out_stats.video_bytes);
+          rtcp_sdes *sdes = (rtcp_sdes *)&rtcpbuf[28];
+          janus_rtcp_sdes((char *)sdes, sdeslen, "janusvideo", 10);
+          /* Enqueue it, we'll send it later */
+          janus_ice_relay_rtcp_internal(handle, 1, rtcpbuf, srlen+sdeslen, FALSE);
+        }
+        video_rtcp_last_sr = now;
+      }
+    }
+
+    /* Should we clean up old NACK buffers? (we check each 1/4 of the max_nack_queue time) */
+    if(max_nack_queue > 0 && (now-last_nack_cleanup >= (max_nack_queue*250))) {
+      /* Check if we do for both streams */
+      if (handle->audio_stream)
+        janus_cleanup_nack_buffer(now, handle->audio_stream);
+      if (handle->video_stream)
+        janus_cleanup_nack_buffer(now, handle->video_stream);
+      last_nack_cleanup = now;
+    }
+
+    /* Now let's get on with the packets */
+    if(pkt == NULL) {
+      continue;
+    }
 		if(pkt == &janus_ice_dtls_alert) {
 			/* The session is over, send an alert on all streams and components */
 			if(handle->streams != NULL) {
@@ -3485,6 +3491,7 @@ void *janus_ice_send_thread(void *data) {
 					}
 					int protected = pkt->length;
           int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);
+          //int res = err_status_ok;
 					//~ JANUS_LOG(LOG_VERB, "[%"SCNu64"] ... SRTP protect %s (len=%d-->%d)...\n", handle->handle_id, janus_get_srtp_error(res), pkt->length, protected);
 					if(res != err_status_ok) {
 						rtp_header *header = (rtp_header *)sbuf;
