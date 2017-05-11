@@ -440,20 +440,18 @@ function registerUsername() {
 		if(sipserver !== "")
 			register["proxy"] = sipserver;
 		var username = $('#username').val();
-		if(username !== undefined && username !== null) {
-			if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
-				bootbox.alert('Usernames are optional for guests: if you want to specify one anyway, though, please insert a valid SIP address (e.g., sip:goofy@example.com)');
-				$('#server').removeAttr('disabled');
-				$('#username').removeAttr('disabled');
-				$('#displayname').removeAttr('disabled');
-				$('#register').removeAttr('disabled').click(registerUsername);
-				$('#registerset').removeAttr('disabled');
-				return;
-			}
-			register.username = username;
+		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
+			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
+			$('#server').removeAttr('disabled');
+			$('#username').removeAttr('disabled');
+			$('#displayname').removeAttr('disabled');
+			$('#register').removeAttr('disabled').click(registerUsername);
+			$('#registerset').removeAttr('disabled');
+			return;
 		}
+		register.username = username;
 		var displayname = $('#displayname').val();
-		if (displayname) {
+		if(displayname) {
 			register.display_name = displayname;
 		}
 		if(sipserver === "") {
