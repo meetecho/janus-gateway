@@ -142,7 +142,7 @@ static struct janus_json_parameter register_parameters[] = {
 	{"type", JSON_STRING, 0},
 	{"send_register", JANUS_JSON_BOOL, 0},
 	{"sips", JANUS_JSON_BOOL, 0},
-	{"username", JSON_STRING, 0},
+	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
 	{"authuser", JSON_STRING, 0}
@@ -1477,10 +1477,10 @@ static void *janus_sip_handler(void *data) {
 			if (user_agent && json_is_string(user_agent))
 				user_agent_text = json_string_value(user_agent);
 
-			/* Now the user part, if needed */
+			/* Now the user part (always needed, even for the guest case) */
 			json_t *username = json_object_get(root, "username");
-			if(!guest && !username) {
-				/* The username is mandatory if we're not registering as guests */
+			if(!username) {
+				/* The username is mandatory even when registering as guests */
 				JANUS_LOG(LOG_ERR, "Missing element (username)\n");
 				error_code = JANUS_SIP_ERROR_MISSING_ELEMENT;
 				g_snprintf(error_cause, 512, "Missing element (username)");
@@ -1489,21 +1489,17 @@ static void *janus_sip_handler(void *data) {
 			const char *username_text = NULL;
 			janus_sip_uri_t username_uri;
 			char user_id[256];
-			if(username) {
-				/* Parse address */
-				username_text = json_string_value(username);
-				if (janus_sip_parse_uri(&username_uri, username_text) < 0) {
-					JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
-					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
-					g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
-					goto error;
-				}
-				g_strlcpy(user_id, username_uri.url->url_user, sizeof(user_id));
+			/* Parse address */
+			username_text = json_string_value(username);
+			if(janus_sip_parse_uri(&username_uri, username_text) < 0) {
+				JANUS_LOG(LOG_ERR, "Invalid user address %s\n", username_text);
+				error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
+				g_snprintf(error_cause, 512, "Invalid user address %s\n", username_text);
+				goto error;
 			}
+			g_strlcpy(user_id, username_uri.url->url_user, sizeof(user_id));
 			if(guest) {
-				/* Not needed, we can stop here: just pick a random username if it wasn't provided and say we're registered */
-				if(!username)
-					g_snprintf(user_id, 255, "janus-sip-%"SCNu32"", janus_random_uint32());
+				/* Not needed, we can stop here: just say we're registered */
 				JANUS_LOG(LOG_INFO, "Guest will have username %s\n", user_id);
 				send_register = FALSE;
 			} else {
