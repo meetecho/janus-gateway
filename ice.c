@@ -987,6 +987,7 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opa
 	handle->handle_id = handle_id;
 	handle->app = NULL;
 	handle->app_handle = NULL;
+	handle->queued_packets = g_async_queue_new();
 	janus_mutex_init(&handle->mutex);
 
 	/* Set up other stuff. */
@@ -1087,7 +1088,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		return 0;
 	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
-	/* TODO Actually detach handle... */
+	/* Actually detach handle... */
 	int error = 0;
 	janus_mutex_lock(&old_plugin_sessions_mutex);
 	/* This is to tell the plugin to stop using this session: we'll get rid of it later */
@@ -1142,6 +1143,16 @@ void janus_ice_free(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;
 	janus_mutex_lock(&handle->mutex);
+	janus_ice_queued_packet *pkt = NULL;
+	while(g_async_queue_length(handle->queued_packets) > 0) {
+		pkt = g_async_queue_try_pop(handle->queued_packets);
+		if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
+			g_free(pkt->data);
+			g_free(pkt);
+		}
+	}
+	g_async_queue_unref(handle->queued_packets);
+	handle->queued_packets = NULL;
 	handle->session = NULL;
 	handle->app = NULL;
 	if(handle->app_handle != NULL) {
@@ -1207,6 +1218,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	if(handle == NULL)
 		return;
 	janus_mutex_lock(&handle->mutex);
+	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	if(handle->iceloop != NULL) {
 		g_main_loop_unref (handle->iceloop);
 		handle->iceloop = NULL;
@@ -1248,20 +1260,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	handle->local_sdp = NULL;
 	g_free(handle->remote_sdp);
 	handle->remote_sdp = NULL;
-	if(handle->queued_packets != NULL) {
-		janus_ice_queued_packet *pkt = NULL;
-		while(g_async_queue_length(handle->queued_packets) > 0) {
-			pkt = g_async_queue_try_pop(handle->queued_packets);
-			if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
-				g_free(pkt->data);
-				pkt->data = NULL;
-				g_free(pkt);
-				pkt = NULL;
-			}
-		}
-		g_async_queue_unref(handle->queued_packets);
-		handle->queued_packets = NULL;
-	}
 	if(handle->audio_mid != NULL) {
 		g_free(handle->audio_mid);
 		handle->audio_mid = NULL;
@@ -1274,9 +1272,7 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		g_free(handle->data_mid);
 		handle->data_mid = NULL;
 	}
-	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
-	g_atomic_int_set(&handle->send_thread_created, 0);
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
 }
@@ -2667,14 +2663,10 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 		return -1;
  	}
-	handle->queued_packets = g_async_queue_new();
-	/* We wait for ICE to succeed before creating the related thread */
-	handle->send_thread = NULL;
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
 		janus_ice_lite_enabled ? "Lite" : "Full", handle->controlling ? "controlling" : "controlled");
-	g_atomic_int_set(&handle->send_thread_created, 0);
 	handle->agent = g_object_new(NICE_TYPE_AGENT,
 		"compatibility", NICE_COMPATIBILITY_DRAFT19,
 		"main-context", handle->icectx,
@@ -3208,11 +3200,54 @@ void *janus_ice_send_thread(void *data) {
 		audio_rtcp_last_rr = before, audio_rtcp_last_sr = before, audio_last_event = before,
 		video_rtcp_last_rr = before, video_rtcp_last_sr = before, video_last_event = before,
 		last_srtp_summary = before, last_nack_cleanup = before;
-	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
+	while(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		if(handle->queued_packets != NULL) {
 			pkt = g_async_queue_timeout_pop(handle->queued_packets, 500000);
 		} else {
 			g_usleep(100000);
+		}
+		if(pkt == &janus_ice_dtls_alert) {
+			/* The session is over, send an alert on all streams and components */
+			if(handle->streams != NULL) {
+				if(handle->audio_stream) {
+					janus_ice_stream *stream = handle->audio_stream;
+					if(stream->rtp_component)
+						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+					if(stream->rtcp_component)
+						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+				}
+				if(handle->video_stream) {
+					janus_ice_stream *stream = handle->video_stream;
+					if(stream->rtp_component)
+						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+					if(stream->rtcp_component)
+						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+				}
+				if(handle->data_stream) {
+					janus_ice_stream *stream = handle->data_stream;
+					if(stream->rtp_component)
+						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
+					if(stream->rtcp_component)
+						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
+				}
+			}
+			while(g_async_queue_length(handle->queued_packets) > 0) {
+				pkt = g_async_queue_try_pop(handle->queued_packets);
+				if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
+					g_free(pkt->data);
+					pkt->data = NULL;
+					g_free(pkt);
+					pkt = NULL;
+				}
+			}
+			continue;
+		}
+		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
+			if(pkt)
+				g_free(pkt->data);
+			g_free(pkt);
+			pkt = NULL;
+			continue;
 		}
 		/* First of all, let's see if everything's fine on the recv side */
 		gint64 now = janus_get_monotonic_time();
@@ -3443,33 +3478,6 @@ void *janus_ice_send_thread(void *data) {
 
 		/* Now let's get on with the packets */
 		if(pkt == NULL) {
-			continue;
-		}
-		if(pkt == &janus_ice_dtls_alert) {
-			/* The session is over, send an alert on all streams and components */
-			if(handle->streams != NULL) {
-				if(handle->audio_stream) {
-					janus_ice_stream *stream = handle->audio_stream;
-					if(stream->rtp_component)
-						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
-					if(stream->rtcp_component)
-						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
-				}
-				if(handle->video_stream) {
-					janus_ice_stream *stream = handle->video_stream;
-					if(stream->rtp_component)
-						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
-					if(stream->rtcp_component)
-						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
-				}
-				if(handle->data_stream) {
-					janus_ice_stream *stream = handle->data_stream;
-					if(stream->rtp_component)
-						janus_dtls_srtp_send_alert(stream->rtp_component->dtls);
-					if(stream->rtcp_component)
-						janus_dtls_srtp_send_alert(stream->rtcp_component->dtls);
-				}
-			}
 			continue;
 		}
 		if(pkt->data == NULL) {
@@ -3886,6 +3894,15 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 			/* Still waiting for this component to become ready */
 			janus_mutex_unlock(&handle->mutex);
 			return;
+		}
+	}
+	/* Clear the queue before we wake the send thread */
+	janus_ice_queued_packet *pkt = NULL;
+	while(g_async_queue_length(handle->queued_packets) > 0) {
+		pkt = g_async_queue_try_pop(handle->queued_packets);
+		if(pkt != NULL && pkt != &janus_ice_dtls_alert) {
+			g_free(pkt->data);
+			g_free(pkt);
 		}
 	}
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
