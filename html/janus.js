@@ -265,6 +265,10 @@ function Janus(gatewayCallbacks) {
 	var apisecret = null;
 	if(gatewayCallbacks.apisecret !== undefined && gatewayCallbacks.apisecret !== null)
 		apisecret = gatewayCallbacks.apisecret;
+	// Whether the session will be needed to be created with an authorization key to protect it
+	var need_authkey = false;
+	if(gatewayCallbacks.authkey !== undefined && gatewayCallbacks.authkey !== null)
+		need_authkey = gatewayCallbacks.authkey === true ? true : false;
 	// Whether we should destroy this session when onbeforeunload is called
 	this.destroyOnUnload = true;
 	if(gatewayCallbacks.destroyOnUnload !== undefined && gatewayCallbacks.destroyOnUnload !== null)
@@ -272,6 +276,7 @@ function Janus(gatewayCallbacks) {
 
 	var connected = false;
 	var sessionId = null;
+	var sessionAuthKey = null;
 	var pluginHandles = {};
 	var that = this;
 	var retries = 0;
@@ -300,6 +305,8 @@ function Janus(gatewayCallbacks) {
 			longpoll = longpoll + "&token=" + token;
 		if(apisecret !== null && apisecret !== undefined)
 			longpoll = longpoll + "&apisecret=" + apisecret;
+		if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+			longpoll = longpoll + "&auth_key=" + sessionAuthKey;
 		$.ajax({
 			type: 'GET',
 			url: longpoll,
@@ -509,6 +516,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+			request["auth_key"] = sessionAuthKey;
 		ws.send(JSON.stringify(request));
 	}
 
@@ -520,6 +529,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(need_authkey)
+			request["gen_auth_key"] = true;
 		if(server === null && $.isArray(servers)) {
 			// We still need to find a working server from the list we were given
 			server = servers[serversIndex];
@@ -565,6 +576,7 @@ function Janus(gatewayCallbacks) {
 						wsKeepaliveTimeoutId = setTimeout(keepAlive, 30000);
 						connected = true;
 						sessionId = json.data["id"];
+						sessionAuthKey = json.data["auth_key"];
 						Janus.log("Created session: " + sessionId);
 						Janus.sessions[sessionId] = that;
 						callbacks.success();
@@ -610,6 +622,7 @@ function Janus(gatewayCallbacks) {
 				}
 				connected = true;
 				sessionId = json.data["id"];
+				sessionAuthKey = json.data["auth_key"];
 				Janus.log("Created session: " + sessionId);
 				Janus.sessions[sessionId] = that;
 				eventHandler();
@@ -665,6 +678,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+			request["auth_key"] = sessionAuthKey;
 		if(websockets) {
 			request["session_id"] = sessionId;
 
@@ -767,6 +782,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+			request["auth_key"] = sessionAuthKey;
 		if(websockets) {
 			transactions[transaction] = function(json) {
 				Janus.debug(json);
@@ -954,6 +971,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+			request["auth_key"] = sessionAuthKey;
 		if(jsep !== null && jsep !== undefined)
 			request.jsep = jsep;
 		Janus.debug("Sending message to plugin (handle=" + handleId + "):");
@@ -1052,6 +1071,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+			request["auth_key"] = sessionAuthKey;
 		Janus.vdebug("Sending trickle candidate (handle=" + handleId + "):");
 		Janus.vdebug(request);
 		if(websockets) {
@@ -1187,6 +1208,8 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+			request["auth_key"] = sessionAuthKey;
 		if(websockets) {
 			request["session_id"] = sessionId;
 			request["handle_id"] = handleId;
@@ -2082,6 +2105,8 @@ function Janus(gatewayCallbacks) {
 					request["token"] = token;
 				if(apisecret !== null && apisecret !== undefined)
 					request["apisecret"] = apisecret;
+				if(sessionAuthKey !== null && sessionAuthKey !== undefined)
+					request["auth_key"] = sessionAuthKey;
 				Janus.debug("Sending hangup request (handle=" + handleId + "):");
 				Janus.debug(request);
 				if(websockets) {

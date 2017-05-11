@@ -5,7 +5,7 @@ const char *janus_get_api_error(int error) {
 		case JANUS_OK:
 			return "Success";
 		case JANUS_ERROR_UNAUTHORIZED:
-			return "Unauthorized request (wrong or missing secret/token)";
+			return "Unauthorized request (wrong or missing secret/token/auth_key)";
 		case JANUS_ERROR_UNAUTHORIZED_PLUGIN:
 			return "Unauthorized access to plugin (token is not allowed to)";
 		case JANUS_ERROR_UNKNOWN:

@@ -117,6 +117,9 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			json_t *transport = va_arg(args, json_t *);
 			if(transport != NULL)
 				json_object_set(body, "transport", transport);
+			guint64 auth_key = va_arg(args, guint64);
+			if(auth_key != NULL)
+				json_object_set(body, "auth_key", json_integer(auth_key));
 			break;
 		}
 		case JANUS_EVENT_TYPE_HANDLE: {

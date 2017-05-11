@@ -80,7 +80,9 @@ static int janus_process_error_string(janus_request *request, uint64_t session_i
 static struct janus_json_parameter incoming_request_parameters[] = {
 	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"gen_auth_key", JANUS_JSON_BOOL, 0},
+	{"auth_key", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -476,7 +478,7 @@ static gpointer janus_sessions_watchdog(gpointer user_data) {
 	return NULL;
 }
 
-janus_session *janus_session_create(guint64 session_id) {
+janus_session *janus_session_create(guint64 session_id, gboolean need_authkey) {
 	if(session_id == 0) {
 		while(session_id == 0) {
 			session_id = janus_random_uint64();
@@ -493,6 +495,11 @@ janus_session *janus_session_create(guint64 session_id) {
 		return NULL;
 	}
 	session->session_id = session_id;
+	session->auth_key = 0;
+	if(need_authkey) {
+		/* Create an authorization key that will need to be passed in all requests for this session */
+		session->auth_key = janus_random_uint64();
+	}
 	session->source = NULL;
 	session->destroy = 0;
 	session->timeout = 0;
@@ -692,8 +699,14 @@ int janus_process_incoming_request(janus_request *request) {
 				goto jsondone;
 			}
 		}
+		gboolean need_authkey = FALSE;
+		json_t *authkey = json_object_get(root, "gen_auth_key");
+		if(authkey != NULL && json_is_true(authkey)) {
+			/* Generate an authorization key as well */
+			need_authkey = TRUE;
+		}
 		/* Handle it */
-		janus_session *session = janus_session_create(session_id);
+		janus_session *session = janus_session_create(session_id, need_authkey);
 		if(session == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -712,7 +725,7 @@ int janus_process_incoming_request(janus_request *request) {
 			memset(id, 0, sizeof(id));
 			g_snprintf(id, sizeof(id), "%p", session->source->instance);
 			json_object_set_new(transport, "id", json_string(id));
-			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created", transport);
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created", transport, session->auth_key);
 		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
@@ -720,6 +733,8 @@ int janus_process_incoming_request(janus_request *request) {
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		json_t *data = json_object();
 		json_object_set_new(data, "id", json_integer(session_id));
+		if(need_authkey)
+			json_object_set_new(data, "auth_key", json_integer(session->auth_key));
 		json_object_set_new(reply, "data", data);
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
@@ -770,6 +785,15 @@ int janus_process_incoming_request(janus_request *request) {
 		JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 		ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_SESSION_NOT_FOUND, "No such session %"SCNu64"", session_id);
 		goto jsondone;
+	}
+	/* If the session exists, make also sure this request is authorized to "mess" with it */
+	if(session->auth_key > 0) {
+		json_t *auth_key = json_object_get(root, "auth_key");
+		guint64 request_auth_key = (auth_key ? json_integer_value(auth_key) : 0);
+		if(request_auth_key != session->auth_key) {
+			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNAUTHORIZED, NULL);
+			goto jsondone;
+		}
 	}
 	/* Update the last activity timer */
 	session->last_activity = janus_get_monotonic_time();
@@ -2172,6 +2196,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(info, "session_last_activity", json_integer(session->last_activity));
 		if(session->source && session->source->transport)
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
+		if(session->auth_key > 0)
+			json_object_set_new(info, "session_auth_key", json_integer(session->auth_key));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
 		if(handle->opaque_id)
 			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));

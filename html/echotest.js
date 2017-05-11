@@ -86,6 +86,9 @@ $(document).ready(function() {
 					//		token: "mytoken",
 					//	or
 					//		apisecret: "serversecret",
+					// Have Janus create an authorization key for us, so that nobody can touch this session except us
+					authkey: true,
+					// Callbacks
 					success: function() {
 						// Attach to echo test plugin
 						janus.attach(
