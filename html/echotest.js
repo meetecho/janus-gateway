@@ -289,7 +289,7 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html()).parent().removeClass('open');
+										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
