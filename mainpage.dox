@@ -2559,6 +2559,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/krull/docker-janus">docker-janus</a></td>
  *		<td>Debian 8 based docker image for Meetecho's Janus Gateway</td>
  * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/atyenoria">Akinori Nakajima</a></td>
+ * 		<td><a href="https://github.com/atyenoria/janus-gateway-docker">janus-gateway-docker</a></td>
+ *		<td>Janus WebRTC Gateway Docker Image for Media Streaming Expert User</td>
+ * </tr>
  * </table>
  * <br/>
  *
