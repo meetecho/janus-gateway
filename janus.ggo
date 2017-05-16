@@ -18,11 +18,14 @@ option "ice-lite" I "Whether to enable the ICE Lite mode or not" flag off
 option "ice-tcp" T "Whether to enable ICE-TCP or not (warning: only works with ICE Lite)" flag off
 option "force-bundle" U "Whether to force BUNDLE or not (whether audio, video and data will always be bundled)" flag off
 option "force-rtcp-mux" u "Whether to force rtcp-mux or not (whether RTP and RTCP will always be muxed)" flag off
-option "max-nack-queue" q "Maximum size of the NACK queue per user for retransmissions" int typestr="number" optional
+option "max-nack-queue" q "Maximum size of the NACK queue (in ms) per user for retransmissions" int typestr="number" optional
+option "no-media-timer" t "Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this" int typestr="number" optional
 option "rtp-port-range" r "Port range to use for RTP/RTCP" string typestr="min-max" optional
 option "server-name" n "Public name of this Janus instance (default=MyJanusInstance)" string typestr="name" optional
+option "session-timeout" s "Session timeout value, in seconds (default=60)" int typestr="number" optional
 option "debug-level" d "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)" int typestr="1-7" optional
 option "debug-timestamps" D "Enable debug/logging timestamps" flag off
 option "disable-colors" o "Disable color in the logging" flag off
 option "apisecret" a "API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)" string typestr="randomstring" optional
 option "token-auth" A "Enable token-based authentication for all requests" flag off
+option "event-handlers" e "Enable event handlers" flag off

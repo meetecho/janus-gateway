@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var streaming = null;
+var opaqueId = "streamingtest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -79,6 +81,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.streaming",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									streaming = pluginHandle;
@@ -153,7 +156,7 @@ $(document).ready(function() {
 											spinner.stop();
 										spinner = null;
 									});
-									attachMediaStream($('#remotevideo').get(0), stream);
+									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");

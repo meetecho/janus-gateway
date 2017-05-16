@@ -55,6 +55,11 @@ guint32 janus_rtcp_get_sender_ssrc(char *packet, int len) {
 				rtcp_fb *rtcpfb = (rtcp_fb *)rtcp;
 				return ntohl(rtcpfb->ssrc);
 			}
+			case RTCP_XR: {
+				/* XR, extended reports (rfc3611) */
+				rtcp_xr *xr = (rtcp_xr *)rtcp;
+				return ntohl(xr->ssrc);
+			}
 			default:
 				break;
 		}
@@ -343,13 +348,22 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 				}
 				break;
 			}
+			case RTCP_XR: {
+				/* XR, extended reports (rfc3611) */
+				rtcp_xr *xr = (rtcp_xr *)rtcp;
+				if(fixssrc && newssrcl) {
+					xr->ssrc = htonl(newssrcl);
+				}
+				/* TODO Fix report blocks too, once we support them */
+				break;
+			}
 			default:
 				JANUS_LOG(LOG_ERR, "     Unknown RTCP PT %d\n", rtcp->type);
 				break;
 		}
 		/* Is this a compound packet? */
 		int length = ntohs(rtcp->length);
-		JANUS_LOG(LOG_HUGE, "       RTCP PT length: %d bytes\n", length*4+4);
+		JANUS_LOG(LOG_HUGE, "       RTCP PT %d, length: %d bytes\n", rtcp->type, length*4+4);
 		if(length == 0) {
 			//~ JANUS_LOG(LOG_HUGE, "  0-length, end of compound packet\n");
 			break;
@@ -400,6 +414,10 @@ char *janus_rtcp_filter(char *packet, int len, int *newlen) {
 					keep = FALSE;
 					break;
 				}
+				break;
+			case RTCP_XR:
+				/* FIXME We generate RR/SR ourselves, so remove XR */
+				keep = FALSE;
 				break;
 			default:
 				JANUS_LOG(LOG_ERR, "Unknown RTCP PT %d\n", rtcp->type);
@@ -527,6 +545,34 @@ int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {
 	return 0;
 }
 
+
+int janus_rtcp_has_bye(char *packet, int len) {
+	gboolean got_bye = FALSE;
+	/* Parse RTCP compound packet */
+	rtcp_header *rtcp = (rtcp_header *)packet;
+	if(rtcp->version != 2)
+		return FALSE;
+	int pno = 0, total = len;
+	while(rtcp) {
+		pno++;
+		switch(rtcp->type) {
+			case RTCP_BYE:
+				got_bye = TRUE;
+				break;
+			default:
+				break;
+		}
+		/* Is this a compound packet? */
+		int length = ntohs(rtcp->length);
+		if(length == 0)
+			break;
+		total -= length*4+4;
+		if(total <= 0)
+			break;
+		rtcp = (rtcp_header *)((uint32_t*)rtcp + length + 1);
+	}
+	return got_bye ? TRUE : FALSE;
+}
 
 int janus_rtcp_has_fir(char *packet, int len) {
 	gboolean got_fir = FALSE;

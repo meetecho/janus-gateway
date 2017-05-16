@@ -4,16 +4,17 @@
 ; and, if needed, shared apisecret and/or token authentication mechanism
 ; between application(s) and Janus.
 [general]
-configs_folder = @confdir@		; Configuration files folder
+configs_folder = @confdir@			; Configuration files folder
 plugins_folder = @plugindir@		; Plugins folder
 transports_folder = @transportdir@	; Transports folder
-;log_to_stdout = false			; Whether the Janus output should be written
-								; to stdout or not (default=true)
-;log_to_file = /tmp/janus.log	; Whether to use a log file or not
-;daemonize = true				; Whether Janus should run as a daemon
-								; or not (default=run in foreground)
-;pid_file = /tmp/janus.pid		; PID file to create when Janus has been
-								; started, and to destroy at shutdown
+events_folder = @eventdir@			; Event handlers folder
+;log_to_stdout = false				; Whether the Janus output should be written
+									; to stdout or not (default=true)
+;log_to_file = /path/to/janus.log	; Whether to use a log file or not
+;daemonize = true					; Whether Janus should run as a daemon
+									; or not (default=run in foreground)
+;pid_file = /path/to/janus.pid		; PID file to create when Janus has been
+									; started, and to destroy at shutdown
 ;interface = 1.2.3.4		; Interface to use (will be used in SDP)
 debug_level = 4				; Debug/logging level, valid values are 0-7
 ;debug_timestamps = yes		; Whether to show a timestamp for each log line
@@ -38,6 +39,25 @@ admin_secret = janusoverlord	; String that all Janus requests must contain
 ;								  in any of the available transports.
 ;server_name = MyJanusInstance	; Public name of this Janus instance
 ;								  as it will appear in an info request
+;session_timeout = 60		; How long (in seconds) we should wait before
+;							deciding a Janus session has timed out. A
+;							session times out when no request is received
+;							for session_timeout seconds (default=60s).
+;							Setting this to 0 will disable the timeout
+;							mechanism, which is NOT suggested as it may
+;							risk having orphaned sessions (sessions not
+;							controlled by any transport and never freed).
+;							To avoid timeouts, keep-alives can be used.
+;recordings_tmp_ext = tmp	; The extension for recordings, in Janus, is
+;							.mjr, a custom format we devised ourselves.
+;							By default, we save to .mjr directly. If you'd
+;							rather the recording filename have a temporary
+;							extension while it's being saved, and only
+;							have the .mjr extension when the recording
+;							is over (e.g., to automatically trigger some
+;							external scripts), then uncomment and set the
+;							recordings_tmp_ext property to the extension
+;							to add to the base (e.g., tmp --> .mjr.tmp).
 
 
 ; Certificate and key to use for DTLS.
@@ -48,18 +68,21 @@ cert_key = @certdir@/mycert.key
 
 ; Media-related stuff: you can configure whether if you want
 ; to enable IPv6 support (still WIP, so handle with care), the maximum size
-; of the NACK queue (in milliseconds, defaults to 1000ms=1s) for retransmissions, the
+; of the NACK queue (in milliseconds, defaults to 300ms) for retransmissions, the
 ; range of ports to use for RTP and RTCP (by default, no range is envisaged), the
 ; starting MTU for DTLS (1472 by default, it adapts automatically),
 ; if BUNDLE should be forced (defaults to false) and if RTCP muxing should
-; be forced (defaults to false).
+; be forced (defaults to false), and finally how much time, in seconds,
+; should pass with no media (audio or video) being received before Janus
+; notifies you about this (default=1s, 0 disables these events entirely).
 [media]
 ;ipv6 = true
-;max_nack_queue = 1000
+;max_nack_queue = 300
 ;rtp_port_range = 20000-40000
 ;dtls_mtu = 1200
 ;force-bundle = true
 ;force-rtcp-mux = true
+;no_media_timer = 1
 
 
 ; NAT-related stuff: specifically, you can configure the STUN/TURN
@@ -160,3 +183,16 @@ ice_ignore_list = vmnet
 ; transports are enabled and loaded at startup.
 [transports]
 ; disable = libjanus_rabbitmq.so
+
+; Event handlers allow you to receive live events from Janus happening
+; in core and/or plugins. Since this can require some more resources,
+; the feature is disabled by default. Setting broadcast to yes will
+; enable them. You can then choose which of the available event handlers
+; should be loaded or not. Use the 'disable' directive to prevent Janus
+; from loading one or more event handlers: use a comma separated list of
+; file names to identify the event handlers to disable. By default, if
+; broadcast is set to yes all available event handlers are enabled and
+; loaded at startup.
+[events]
+; broadcast = yes
+; disable = libjanus_sampleevh.so

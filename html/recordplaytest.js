@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var recordplay = null;
+var opaqueId = "recordplaytest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 var bandwidth = 1024 * 1024;
@@ -85,6 +87,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.recordplay",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									recordplay = pluginHandle;
@@ -234,7 +237,7 @@ $(document).ready(function() {
 									$('#video').removeClass('hide').show();
 									if($('#thevideo').length === 0)
 										$('#videobox').append('<video class="rounded centered" id="thevideo" width=320 height=240 autoplay muted="muted"/>');
-									attachMediaStream($('#thevideo').get(0), stream);
+									Janus.attachMediaStream($('#thevideo').get(0), stream);
 									$("#thevideo").get(0).muted = "muted";
 									$("#videobox").parent().block({
 										message: '<b>Publishing...</b>',
@@ -272,7 +275,7 @@ $(document).ready(function() {
 											spinner.stop();
 										spinner = null;
 									});
-									attachMediaStream($('#thevideo').get(0), stream);
+									Janus.attachMediaStream($('#thevideo').get(0), stream);
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");

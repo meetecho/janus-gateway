@@ -19,17 +19,29 @@
 ; audio = yes|no (do/don't stream audio)
 ; video = yes|no (do/don't stream video)
 ;    The following options are only valid for the 'rtp' type:
+; data = yes|no (do/don't stream text via datachannels)
 ; audioport = local port for receiving audio frames
 ; audiomcast = multicast group port for receiving audio frames, if any
+; audioiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; audiopt = <audio RTP payload type> (e.g., 111)
 ; audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 ; videoport = local port for receiving video frames
 ; videomcast = multicast group port for receiving video frames, if any
+; videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; videopt = <video RTP payload type> (e.g., 100)
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
 ; videobufferkf = yes|no (whether the plugin should store the latest
 ;		keyframe and send it immediately for new viewers, EXPERIMENTAL)
+; dataport = local port for receiving data messages to relay
+; dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
+; databuffermsg = yes|no (whether the plugin should store the latest
+;		message and send it immediately for new viewers)
+;
+; The following options are only valid for the 'rstp' type:
 ; url = RTSP stream URL (only for restreaming RTSP)
+; rtsp_user = RTSP authorization username (only if type=rtsp)
+; rtsp_pwd = RTSP authorization password (only if type=rtsp)
+; rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
 ;
 ; To test the [gstreamer-sample] example, check the test_gstreamer.sh
 ; script in the plugins/streams folder. To test the live and on-demand
@@ -40,6 +52,8 @@
 [general]
 ;admin_key = supersecret		; If set, mountpoints can be created via API
 								; only if this key is provided in the request
+;events = no					; Whether events should be sent to event
+								; handlers (default is yes)
 
 [gstreamer-sample]
 type = rtp
@@ -109,9 +123,12 @@ secret = adminpwd
 ;videortpmap = VP8/90000
 
 ;
-; This is a sample configuration for an RTSP stream
+; This is a sample configuration for an RTSP stream: you can specify
+; the url to connect to and whether or not authentication is needed
+; using the url/rtsp_user/rtsp_pwd settings (but notice that digest
+; authentication will only work if you installed libcurl >= 7.45.0)
 ; NOTE WELL: the plugin does NOT transcode, so the RTSP stream MUST be
-; in a format the browser can digest (e.g., VP8 or H.264 for video)
+; in a format the browser can digest (e.g., VP8 or H.264 baseline for video)
 ;
 ;[rtsp-test]
 ;type = rtsp
@@ -120,3 +137,5 @@ secret = adminpwd
 ;audio = no
 ;video = yes
 ;url=rtsp://127.0.0.1:8554/unicast
+;rtsp_user=username
+;rtsp_pwd=password

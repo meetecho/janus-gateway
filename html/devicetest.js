@@ -50,7 +50,9 @@ else
 
 var janus = null;
 var echotest = null;
-var started = false;
+var opaqueId = "devicetest-"+Janus.randomString(12);
+
+var started = false, firstTime = true;
 var bitrateTimer = null;
 var spinner = null;
 
@@ -75,6 +77,31 @@ function initDevices(devices) {
 			$('#audio-device').append(option);
 		} else if(device.kind === 'videoinput') {
 			$('#video-device').append(option);
+		} else if(device.kind === 'audiooutput') {
+			// Apparently only available from Chrome 49 on?
+			// https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId
+			$('#output-devices').removeClass('hide');
+			$('#audiooutput').append('<li><a href="#" id="' + device.deviceId + '">' + label + '</a></li>');
+			$('#audiooutput a').unbind('click')
+				.click(function() {
+					var deviceId = $(this).attr("id");
+					var label = $(this).text();
+					Janus.log("Trying to set device " + deviceId + " (" + label + ") as sink for the output");
+					if($('#peervideo').length === 0) {
+						Janus.error("No remote video element available");
+						bootbox.alert("No remote video element available");
+						return false;
+					}
+					$('#peervideo').get(0).setSinkId(deviceId)
+						.then(function() {
+							Janus.log('Audio output device attached:', deviceId);
+							$('#outputdeviceset').html(label + '<span class="caret"></span>').parent().removeClass('open');
+						}).catch(function(error) {
+							Janus.error(error);
+							bootbox.alert(error);
+						});
+					return false;
+				});
 		}
 	});
 
@@ -85,9 +112,14 @@ function initDevices(devices) {
 		// A different device has been selected: hangup the session, and set it up again
 		$('#audio-device, #video-device').attr('disabled', true);
 		$('#change-devices').attr('disabled', true);
-		echotest.hangup();
+		echotest.hangup(true);
+		if(firstTime) {
+			firstTime = false;
+			restartCapture();
+			return;
+		}
 		// Let's wait a couple of seconds before restarting
-		setTimeout(restartCapture, 1000);
+		setTimeout(restartCapture, 2000);
 	});
 
 	//~ restartCapture();
@@ -159,6 +191,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.echotest",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									echotest = pluginHandle;
@@ -219,7 +252,7 @@ $(document).ready(function() {
 											videoenabled = true;
 											$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 											$('#bitrate').attr('disabled', true);
-											$('#bitrateset').html('Bandwidth<span class="caret">');
+											$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 											$('#curbitrate').hide();
 											if(bitrateTimer !== null && bitrateTimer !== undefined)
 												clearInterval(bitrateTimer);
@@ -227,6 +260,7 @@ $(document).ready(function() {
 											$('#curres').hide();
 											$('#datasend').val('').attr('disabled', true);
 											$('#datarecv').val('');
+											$('#outputdeviceset').html('Output device<span class="caret"></span>');
 										}
 									}
 								},
@@ -237,7 +271,7 @@ $(document).ready(function() {
 										$('#videos').removeClass('hide').show();
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
 									}
-									attachMediaStream($('#myvideo').get(0), stream);
+									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									// No remote video yet
 									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
@@ -277,7 +311,7 @@ $(document).ready(function() {
 											var width = this.videoWidth;
 											var height = this.videoHeight;
 											$('#curres').removeClass('hide').text(width+'x'+height).show();
-											if(webrtcDetectedBrowser == "firefox") {
+											if(adapter.browserDetails.browser === "firefox") {
 												// Firefox Stable has a bug: width and height are not immediately available after a playing
 												setTimeout(function() {
 													var width = $("#peervideo").get(0).videoWidth;
@@ -287,7 +321,7 @@ $(document).ready(function() {
 											}
 										});
 									}
-									attachMediaStream($('#peervideo').get(0), stream);
+									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
 										// No remote video
@@ -328,11 +362,11 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html()).parent().removeClass('open');
+										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
-									if(webrtcDetectedBrowser == "chrome" || webrtcDetectedBrowser == "firefox") {
+									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
@@ -364,7 +398,7 @@ $(document).ready(function() {
 									videoenabled = true;
 									$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 									$('#bitrate').attr('disabled', true);
-									$('#bitrateset').html('Bandwidth<span class="caret">');
+									$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 									$('#curbitrate').hide();
 									if(bitrateTimer !== null && bitrateTimer !== undefined)
 										clearInterval(bitrateTimer);
@@ -372,6 +406,7 @@ $(document).ready(function() {
 									$('#curres').hide();
 									$('#datasend').val('').attr('disabled', true);
 									$('#datarecv').val('');
+									$('#outputdeviceset').html('Output device<span class="caret"></span>');
 								}
 							});
 					},

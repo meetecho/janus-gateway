@@ -26,21 +26,23 @@
 #include <poll.h>
 
 #include "janus.h"
+#include "version.h"
 #include "cmdline.h"
 #include "config.h"
 #include "apierror.h"
 #include "log.h"
 #include "debug.h"
+#include "ip-utils.h"
 #include "rtcp.h"
-#include "sdp.h"
 #include "auth.h"
-#include "utils.h"
+#include "record.h"
+#include "events.h"
 
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			20
-#define JANUS_VERSION_STRING	"0.2.0"
+#define JANUS_VERSION			23
+#define JANUS_VERSION_STRING	"0.2.3"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -56,6 +58,9 @@ static char *configs_folder = NULL;
 
 static GHashTable *transports = NULL;
 static GHashTable *transports_so = NULL;
+
+static GHashTable *eventhandlers = NULL;
+static GHashTable *eventhandlers_so = NULL;
 
 static GHashTable *plugins = NULL;
 static GHashTable *plugins_so = NULL;
@@ -78,7 +83,8 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter attach_parameters[] = {
-	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"opaque_id", JSON_STRING, 0}
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -106,6 +112,9 @@ static struct janus_json_parameter admin_parameters[] = {
 static struct janus_json_parameter debug_parameters[] = {
 	{"debug", JANUS_JSON_BOOL, JANUS_JSON_PARAM_REQUIRED}
 };
+static struct janus_json_parameter timeout_parameters[] = {
+	{"timeout", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 static struct janus_json_parameter level_parameters[] = {
 	{"level", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
@@ -118,6 +127,9 @@ static struct janus_json_parameter colors_parameters[] = {
 static struct janus_json_parameter mnq_parameters[] = {
 	{"max_nack_queue", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter nmt_parameters[] = {
+	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -125,7 +137,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component);
 
 
 /* IP addresses */
-static gchar local_ip[INET6_ADDRSTRLEN];
+static gchar *local_ip = NULL;
 gchar *janus_get_local_ip(void) {
 	return local_ip;
 }
@@ -141,6 +153,7 @@ void janus_set_public_ip(const char *ip) {
 	public_ip = g_strdup(ip);
 }
 static volatile gint stop = 0;
+static gint stop_signal = 0;
 gint janus_is_stopping(void) {
 	return g_atomic_int_get(&stop);
 }
@@ -150,9 +163,24 @@ gint janus_is_stopping(void) {
 static gchar *server_name = NULL;
 
 
+/* The default timeout for sessions is 60 seconds: this means that, if
+ * we don't get any activity (i.e., no request) on this session for more
+ * than 60 seconds, then it's considered expired and we destroy it. That's
+ * why we have a keep-alive method in the API. This can be overridden in
+ * either janus.cfg or from the command line. Setting this to 0 will
+ * disable the timeout mechanism, which is NOT suggested as it may risk
+ * having orphaned sessions (sessions not controlled by any transport
+ * and never freed). Besides, notice that if you make this shorter than
+ * 30s, you'll have to update the timers in janus.js when the long
+ * polling mechanism is used and shorten them as well, or you'll risk
+ * incurring in unexpected timeouts (when HTTP is used in janus.js, the
+ * long poll is used as a keepalive mechanism). */
+#define DEFAULT_SESSION_TIMEOUT		60
+static uint session_timeout = DEFAULT_SESSION_TIMEOUT;
+
+
 /* Information */
-json_t *janus_info(const char *transaction);
-json_t *janus_info(const char *transaction) {
+static json_t *janus_info(const char *transaction) {
 	/* Prepare a summary on the gateway */
 	json_t *info = json_object();
 	json_object_set_new(info, "janus", json_string("server_info"));
@@ -162,6 +190,8 @@ json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
+	json_object_set_new(info, "commit-hash", json_string(janus_build_git_sha));
+	json_object_set_new(info, "compile-time", json_string(janus_build_git_time));
 	json_object_set_new(info, "log-to-stdout", janus_log_is_stdout_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "log-to-file", janus_log_is_logfile_enabled() ? json_true() : json_false());
 	if(janus_log_is_logfile_enabled())
@@ -171,11 +201,13 @@ json_t *janus_info(const char *transaction) {
 #else
 	json_object_set_new(info, "data_channels", json_false());
 #endif
+	json_object_set_new(info, "session-timeout", json_integer(session_timeout));
 	json_object_set_new(info, "server-name", json_string(server_name ? server_name : JANUS_SERVER_NAME));
 	json_object_set_new(info, "local-ip", json_string(local_ip));
 	if(public_ip != NULL)
 		json_object_set_new(info, "public-ip", json_string(public_ip));
 	json_object_set_new(info, "ipv6", janus_ice_is_ipv6_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "ice-lite", janus_ice_is_ice_lite_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "ice-tcp", janus_ice_is_ice_tcp_enabled() ? json_true() : json_false());
 	if(janus_ice_get_stun_server() != NULL) {
 		char server[255];
@@ -189,6 +221,7 @@ json_t *janus_info(const char *transaction) {
 	}
 	json_object_set_new(info, "api_secret", api_secret ? json_true() : json_false());
 	json_object_set_new(info, "auth_token", janus_auth_is_enabled() ? json_true() : json_false());
+	json_object_set_new(info, "event_handlers", janus_events_is_enabled() ? json_true() : json_false());
 	/* Available transports */
 	json_t *t_data = json_object();
 	if(transports && g_hash_table_size(transports) > 0) {
@@ -210,6 +243,27 @@ json_t *janus_info(const char *transaction) {
 		}
 	}
 	json_object_set_new(info, "transports", t_data);
+	/* Available event handlers */
+	json_t *e_data = json_object();
+	if(eventhandlers && g_hash_table_size(eventhandlers) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, eventhandlers);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_eventhandler *e = value;
+			if(e == NULL) {
+				continue;
+			}
+			json_t *eventhandler = json_object();
+			json_object_set_new(eventhandler, "name", json_string(e->get_name()));
+			json_object_set_new(eventhandler, "author", json_string(e->get_author()));
+			json_object_set_new(eventhandler, "description", json_string(e->get_description()));
+			json_object_set_new(eventhandler, "version_string", json_string(e->get_version_string()));
+			json_object_set_new(eventhandler, "version", json_integer(e->get_version()));
+			json_object_set_new(e_data, e->get_package(), eventhandler);
+		}
+	}
+	json_object_set_new(info, "events", e_data);
 	/* Available plugins */
 	json_t *p_data = json_object();
 	if(plugins && g_hash_table_size(plugins) > 0) {
@@ -245,6 +299,7 @@ int lock_debug = 0;
 
 /*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
 static void janus_handle_signal(int signum) {
+	stop_signal = signum;
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
 			JANUS_PRINT("Stopping gateway, please wait...\n");
@@ -292,6 +347,7 @@ gboolean janus_transport_is_api_secret_needed(janus_transport *plugin);
 gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
+void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event);
 
 static janus_transport_callbacks janus_handler_transport =
 	{
@@ -301,6 +357,8 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
+		.events_is_enabled = janus_events_is_enabled,
+		.notify_event = janus_transport_notify_event,
 	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -320,6 +378,7 @@ void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, ch
 void janus_plugin_relay_data(janus_plugin_session *plugin_session, char *buf, int len);
 void janus_plugin_close_pc(janus_plugin_session *plugin_session);
 void janus_plugin_end_session(janus_plugin_session *plugin_session);
+void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event);
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_plugin_push_event,
@@ -328,7 +387,9 @@ static janus_callbacks janus_handler_plugin =
 		.relay_data = janus_plugin_relay_data,
 		.close_pc = janus_plugin_close_pc,
 		.end_session = janus_plugin_end_session,
-	};
+		.events_is_enabled = janus_events_is_enabled,
+		.notify_event = janus_plugin_notify_event,
+	}; 
 ///@}
 
 
@@ -337,8 +398,6 @@ static janus_mutex sessions_mutex;
 static GHashTable *sessions = NULL, *old_sessions = NULL;
 static GMainContext *sessions_watchdog_context = NULL;
 
-
-#define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
 
 static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
@@ -350,6 +409,8 @@ static gboolean janus_cleanup_session(gpointer user_data) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
+	if(session_timeout < 1)		/* Session timeouts are disabled */
+		return G_SOURCE_CONTINUE;
 	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -362,7 +423,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= SESSION_TIMEOUT * G_USEC_PER_SEC && !session->timeout) {
+			if (now - session->last_activity >= session_timeout * G_USEC_PER_SEC && !session->timeout) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 
 				/* Notify the transport */
@@ -375,6 +436,9 @@ static gboolean janus_check_sessions(gpointer user_data) {
 					/* Notify the transport plugin about the session timeout */
 					session->source->transport->session_over(session->source->instance, session->session_id, TRUE);
 				}
+				/* Notify event handlers as well */
+				if(janus_events_is_enabled())
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session->session_id, "timeout", NULL);
 
 				/* Mark the session as over, we'll deal with it later */
 				session->timeout = 1;
@@ -639,6 +703,17 @@ int janus_process_incoming_request(janus_request *request) {
 		session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
 		/* Notify the source that a new session has been created */
 		request->transport->session_created(request->instance, session->session_id);
+		/* Notify event handlers */
+		if(janus_events_is_enabled()) {
+			/* Session created, add info on the transport that originated it */
+			json_t *transport = json_object();
+			json_object_set_new(transport, "transport", json_string(session->source->transport->get_package()));
+			char id[32];
+			memset(id, 0, sizeof(id));
+			g_snprintf(id, sizeof(id), "%p", session->source->instance);
+			json_object_set_new(transport, "id", json_string(id));
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "created", transport);
+		}
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -750,8 +825,10 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 			}
 		}
+		json_t *opaque = json_object_get(root, "opaque_id");
+		const char *opaque_id = opaque ? json_string_value(opaque) : NULL;
 		/* Create handle */
-		handle = janus_ice_handle_create(session);
+		handle = janus_ice_handle_create(session, opaque_id);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
@@ -806,6 +883,9 @@ int janus_process_incoming_request(janus_request *request) {
 		json_object_set_new(reply, "transaction", json_string(transaction_text));
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
+		/* Notify event handlers as well */
+		if(janus_events_is_enabled())
+			janus_events_notify_handlers(JANUS_EVENT_TYPE_SESSION, session_id, "destroyed", NULL);
 	} else if(!strcasecmp(message_text, "detach")) {
 		if(handle == NULL) {
 			/* Query is an handle-level command */
@@ -931,16 +1011,22 @@ int janus_process_incoming_request(janus_request *request) {
 			jsep_sdp = (char *)json_string_value(sdp);
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Remote SDP:\n%s", handle->handle_id, jsep_sdp);
 			/* Is this valid SDP? */
+			char error_str[512];
 			int audio = 0, video = 0, data = 0, bundle = 0, rtcpmux = 0, trickle = 0;
-			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
+			janus_sdp *parsed_sdp = janus_sdp_preparse(jsep_sdp, error_str, sizeof(error_str), &audio, &video, &data, &bundle, &rtcpmux, &trickle);
 			trickle = trickle && do_trickle;
 			if(parsed_sdp == NULL) {
 				/* Invalid SDP */
-				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
+				ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, error_str);
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				janus_mutex_unlock(&handle->mutex);
 				goto jsondone;
+			}
+			/* Notify event handlers */
+			if(janus_events_is_enabled()) {
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
+					session_id, handle_id, "remote", jsep_type, jsep_sdp);
 			}
 			/* FIXME We're only handling single audio/video lines for now... */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio %s been negotiated, Video %s been negotiated, SCTP/DataChannels %s been negotiated\n",
@@ -974,6 +1060,7 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Setup ICE locally (we received an offer) */
 					if(janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle) < 0) {
 						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
+						janus_sdp_free(parsed_sdp);
 						g_free(jsep_type);
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error setting ICE locally");
@@ -984,6 +1071,7 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Make sure we're waiting for an ANSWER in the first place */
 					if(!handle->agent) {
 						JANUS_LOG(LOG_ERR, "Unexpected ANSWER (did we offer?)\n");
+						janus_sdp_free(parsed_sdp);
 						g_free(jsep_type);
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Unexpected ANSWER (did we offer?)");
@@ -991,8 +1079,15 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
-				janus_sdp_parse(handle, parsed_sdp);
-				janus_sdp_free(parsed_sdp);
+				if(janus_sdp_process(handle, parsed_sdp) < 0) {
+					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
+					janus_sdp_free(parsed_sdp);
+					g_free(jsep_type);
+					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Error processing SDP");
+					janus_mutex_unlock(&handle->mutex);
+					goto jsondone;
+				}
 				if(!offer) {
 					/* Set remote candidates now (we received an answer) */
 					if(bundle) {
@@ -1155,7 +1250,7 @@ int janus_process_incoming_request(janus_request *request) {
 							g_list_free(temp);
 							if(trickle == NULL)
 								continue;
-							if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+							if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 								/* FIXME Candidate is too old, discard it */
 								janus_ice_trickle_destroy(trickle);
 								/* FIXME We should report that */
@@ -1219,14 +1314,16 @@ int janus_process_incoming_request(janus_request *request) {
 			handle->remote_sdp = g_strdup(jsep_sdp);
 			janus_mutex_unlock(&handle->mutex);
 			/* Anonymize SDP */
-			jsep_sdp_stripped = janus_sdp_anonymize(jsep_sdp);
-			if(jsep_sdp_stripped == NULL) {
+			if(janus_sdp_anonymize(parsed_sdp) < 0) {
 				/* Invalid SDP */
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
+				janus_sdp_free(parsed_sdp);
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
 			}
+			jsep_sdp_stripped = janus_sdp_write(parsed_sdp);
+			janus_sdp_free(parsed_sdp);
 			sdp = NULL;
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		}
@@ -1234,10 +1331,8 @@ int janus_process_incoming_request(janus_request *request) {
 		/* Make sure the app handle is still valid */
 		if(handle->app == NULL || handle->app_handle == NULL || !janus_plugin_session_is_alive(handle->app_handle)) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "No plugin to handle this message");
-			if(jsep_type)
-				g_free(jsep_type);
-			if(jsep_sdp_stripped)
-				g_free(jsep_sdp_stripped);
+			g_free(jsep_type);
+			g_free(jsep_sdp_stripped);
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 			goto jsondone;
 		}
@@ -1247,6 +1342,8 @@ int janus_process_incoming_request(janus_request *request) {
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body,
 			jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL);
+		g_free(jsep_type);
+		g_free(jsep_sdp_stripped);
 		if(result == NULL) {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
@@ -1457,13 +1554,39 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_t *status = json_object();
 			json_object_set_new(status, "token_auth", janus_auth_is_enabled() ? json_true() : json_false());
+			json_object_set_new(status, "session_timeout", json_integer(session_timeout));
 			json_object_set_new(status, "log_level", json_integer(janus_log_level));
 			json_object_set_new(status, "log_timestamps", janus_log_timestamps ? json_true() : json_false());
 			json_object_set_new(status, "log_colors", janus_log_colors ? json_true() : json_false());
 			json_object_set_new(status, "locking_debug", lock_debug ? json_true() : json_false());
 			json_object_set_new(status, "libnice_debug", janus_ice_is_ice_debugging_enabled() ? json_true() : json_false());
 			json_object_set_new(status, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			json_object_set_new(status, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			json_object_set_new(reply, "status", status);
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_session_timeout")) {
+			/* Change the session timeout value */
+			JANUS_VALIDATE_JSON_OBJECT(root, timeout_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *timeout = json_object_get(root, "timeout");
+			int timeout_num = json_integer_value(timeout);
+			if(timeout_num < 0) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_ELEMENT_TYPE, "Invalid element type (timeout should be a positive integer)");
+				goto jsondone;
+			}
+			session_timeout = timeout_num;
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "timeout", json_integer(session_timeout));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -1592,6 +1715,26 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(reply, "janus", json_string("success"));
 			json_object_set_new(reply, "transaction", json_string(transaction_text));
 			json_object_set_new(reply, "max_nack_queue", json_integer(janus_get_max_nack_queue()));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "set_no_media_timer")) {
+			/* Change the current value for the no-media timer */
+			JANUS_VALIDATE_JSON_OBJECT(root, nmt_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			json_t *nmt = json_object_get(root, "no_media_timer");
+			int nmt_num = json_integer_value(nmt);
+			janus_set_no_media_timer(nmt_num);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			json_object_set_new(reply, "no_media_timer", json_integer(janus_get_no_media_timer()));
 			/* Send the success reply */
 			ret = janus_process_success(request, reply);
 			goto jsondone;
@@ -2030,6 +2173,8 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		if(session->source && session->source->transport)
 			json_object_set_new(info, "session_transport", json_string(session->source->transport->get_package()));
 		json_object_set_new(info, "handle_id", json_integer(handle_id));
+		if(handle->opaque_id)
+			json_object_set_new(info, "opaque_id", json_string(handle->opaque_id));
 		json_object_set_new(info, "created", json_integer(handle->created));
 		json_object_set_new(info, "send_thread_created", g_atomic_int_get(&handle->send_thread_created) ? json_true() : json_false());
 		json_object_set_new(info, "current_time", json_integer(janus_get_monotonic_time()));
@@ -2275,11 +2420,12 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
 		json_object_set_new(d, "dtls-role", json_string(janus_get_dtls_srtp_role(component->stream->dtls_role)));
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
+		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());
 		json_object_set_new(d, "ready", dtls->ready ? json_true() : json_false());
 		if(dtls->dtls_connected > 0)
 			json_object_set_new(d, "connected", json_integer(dtls->dtls_connected));
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio_packets));
 			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
 			json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
@@ -2297,7 +2443,7 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 			}
 			json_object_set_new(in_stats, "audio_bytes_lastsec", json_integer(bytes));
 		}
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			json_object_set_new(in_stats, "video_packets", json_integer(component->in_stats.video_packets));
 			json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
 			json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
@@ -2317,12 +2463,12 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		}
 		json_object_set_new(in_stats, "data_packets", json_integer(component->in_stats.data_packets));
 		json_object_set_new(in_stats, "data_bytes", json_integer(component->in_stats.data_bytes));
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(out_stats, "audio_packets", json_integer(component->out_stats.audio_packets));
 			json_object_set_new(out_stats, "audio_bytes", json_integer(component->out_stats.audio_bytes));
 			json_object_set_new(out_stats, "audio_nacks", json_integer(component->out_stats.audio_nacks));
 		}
-		if(!handle || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			json_object_set_new(out_stats, "video_packets", json_integer(component->out_stats.video_packets));
 			json_object_set_new(out_stats, "video_bytes", json_integer(component->out_stats.video_bytes));
 			json_object_set_new(out_stats, "video_nacks", json_integer(component->out_stats.video_nacks));
@@ -2350,9 +2496,10 @@ void janus_transport_close(gpointer key, gpointer value, gpointer user_data) {
 }
 
 void janus_transportso_close(gpointer key, gpointer value, gpointer user_data) {
-	void *transport = (janus_transport *)value;
+	void *transport = value;
 	if(!transport)
 		return;
+	/* FIXME We don't dlclose transports to be sure we can detect leaks */
 	//~ dlclose(transport);
 }
 
@@ -2414,6 +2561,19 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 	return token && janus_auth_check_token(token);
 }
 
+void janus_transport_notify_event(janus_transport *plugin, void *transport, json_t *event) {
+	/* A plugin asked to notify an event to the handlers */
+	if(!plugin || !event || !json_is_object(event))
+		return;
+	/* Notify event handlers */
+	if(janus_events_is_enabled()) {
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_TRANSPORT,
+			0, plugin->get_package(), transport, event);
+	} else {
+		json_decref(event);
+	}
+}
+
 void janus_transport_task(gpointer data, gpointer user_data) {
 	JANUS_LOG(LOG_VERB, "Transport task pool, serving request\n");
 	janus_request *request = (janus_request *)data;
@@ -2430,6 +2590,22 @@ void janus_transport_task(gpointer data, gpointer user_data) {
 }
 
 
+/* Event handlers */
+void janus_eventhandler_close(gpointer key, gpointer value, gpointer user_data) {
+	janus_eventhandler *eventhandler = (janus_eventhandler *)value;
+	if(!eventhandler)
+		return;
+	eventhandler->destroy();
+}
+
+void janus_eventhandlerso_close(gpointer key, gpointer value, gpointer user_data) {
+	void *eventhandler = (janus_eventhandler *)value;
+	if(!eventhandler)
+		return;
+	//~ dlclose(eventhandler);
+}
+
+
 /* Plugins */
 void janus_plugin_close(gpointer key, gpointer value, gpointer user_data) {
 	janus_plugin *plugin = (janus_plugin *)value;
@@ -2439,9 +2615,10 @@ void janus_plugin_close(gpointer key, gpointer value, gpointer user_data) {
 }
 
 void janus_pluginso_close(gpointer key, gpointer value, gpointer user_data) {
-	void *plugin = (janus_plugin *)value;
+	void *plugin = value;
 	if(!plugin)
 		return;
+	/* FIXME We don't dlclose plugins to be sure we can detect leaks */
 	//~ dlclose(plugin);
 }
 
@@ -2506,6 +2683,12 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", ice_handle->handle_id);
 	janus_session_notify_event(session->session_id, event);
 
+	if(jsep != NULL && janus_events_is_enabled()) {
+		/* Notify event handlers as well */
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_JSEP,
+			session->session_id, ice_handle->handle_id, "local", sdp_type, sdp);
+	}
+
 	return JANUS_OK;
 }
 
@@ -2537,13 +2720,13 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 		return NULL;
 	}
 	/* Is this valid SDP? */
+	char error_str[512];
 	int audio = 0, video = 0, data = 0, bundle = 0, rtcpmux = 0, trickle = 0;
-	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, &audio, &video, &data, &bundle, &rtcpmux, &trickle);
+	janus_sdp *parsed_sdp = janus_sdp_preparse(sdp, error_str, sizeof(error_str), &audio, &video, &data, &bundle, &rtcpmux, &trickle);
 	if(parsed_sdp == NULL) {
-		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP...\n", ice_handle->handle_id);
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Couldn't parse SDP... %s\n", ice_handle->handle_id, error_str);
 		return NULL;
 	}
-	janus_sdp_free(parsed_sdp);
 	gboolean updating = FALSE;
 	if(offer) {
 		/* We still don't have a local ICE setup */
@@ -2582,6 +2765,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
+				janus_sdp_free(parsed_sdp);
 				return NULL;
 			}
 		} else {
@@ -2595,31 +2779,34 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Handle detached or PC closed, giving up...!\n", ice_handle ? ice_handle->handle_id : 0);
+				janus_sdp_free(parsed_sdp);
 				return NULL;
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
 			g_usleep(100000);
 			if(ice_handle->cdone < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates!\n", ice_handle->handle_id);
+				janus_sdp_free(parsed_sdp);
 				return NULL;
 			}
 		}
 	}
 	/* Anonymize SDP */
-	char *sdp_stripped = janus_sdp_anonymize(sdp);
-	if(sdp_stripped == NULL) {
+	if(janus_sdp_anonymize(parsed_sdp) < 0) {
 		/* Invalid SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid SDP\n", ice_handle->handle_id);
+		janus_sdp_free(parsed_sdp);
 		return NULL;
 	}
 	/* Add our details */
-	char *sdp_merged = janus_sdp_merge(ice_handle, sdp_stripped);
+	char *sdp_merged = janus_sdp_merge(ice_handle, parsed_sdp);
 	if(sdp_merged == NULL) {
 		/* Couldn't merge SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error merging SDP\n", ice_handle->handle_id);
-		g_free(sdp_stripped);
+		janus_sdp_free(parsed_sdp);
 		return NULL;
 	}
+	janus_sdp_free(parsed_sdp);
 	/* FIXME Any disabled m-line? */
 	if(strstr(sdp_merged, "m=audio 0")) {
 		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Audio disabled via SDP\n", ice_handle->handle_id);
@@ -2773,7 +2960,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					g_list_free(temp);
 					if(trickle == NULL)
 						continue;
-					if((janus_get_monotonic_time() - trickle->received) > 15*G_USEC_PER_SEC) {
+					if((janus_get_monotonic_time() - trickle->received) > 45*G_USEC_PER_SEC) {
 						/* FIXME Candidate is too old, discard it */
 						janus_ice_trickle_destroy(trickle);
 						/* FIXME We should report that */
@@ -2837,8 +3024,6 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	json_t *jsep = json_object();
 	json_object_set_new(jsep, "type", json_string(sdp_type));
 	json_object_set_new(jsep, "sdp", json_string(sdp_merged));
-	g_free(sdp_stripped);
-	//~ g_free(sdp_merged);
 	ice_handle->local_sdp = sdp_merged;
 	return jsep;
 }
@@ -2913,33 +3098,36 @@ void janus_plugin_end_session(janus_plugin_session *plugin_session) {
 	janus_mutex_unlock(&session->mutex);
 }
 
-
-static void janus_detect_local_ip(gchar *buf, size_t buflen) {
-	JANUS_LOG(LOG_VERB, "Autodetecting local IP...\n");
-	struct sockaddr_in addr;
-	socklen_t len;
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd == -1)
-		goto error;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(1);
-	inet_pton(AF_INET, "1.2.3.4", &addr.sin_addr.s_addr);
-	if (connect(fd, (const struct sockaddr*) &addr, sizeof(addr)) < 0)
-		goto error;
-	len = sizeof(addr);
-	if (getsockname(fd, (struct sockaddr*) &addr, &len) < 0)
-		goto error;
-	if (getnameinfo((const struct sockaddr*) &addr, sizeof(addr),
-			buf, buflen,
-			NULL, 0, NI_NUMERICHOST) != 0)
-		goto error;
-	close(fd);
-	return;
-error:
-	if (fd != -1)
-		close(fd);
-	JANUS_LOG(LOG_VERB, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
-	g_strlcpy(buf, "127.0.0.1", buflen);
+void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugin_session, json_t *event) {
+	/* A plugin asked to notify an event to the handlers */
+	if(!plugin || !event || !json_is_object(event))
+		return;
+	guint64 session_id = 0, handle_id = 0;
+	if(plugin_session != NULL) {
+		if((plugin_session < (janus_plugin_session *)0x1000) || !janus_plugin_session_is_alive(plugin_session) || plugin_session->stopped) {
+			json_decref(event);
+			return;
+		}
+		janus_ice_handle *ice_handle = (janus_ice_handle *)plugin_session->gateway_handle;
+		if(!ice_handle) {
+			json_decref(event);
+			return;
+		}
+		handle_id = ice_handle->handle_id;
+		janus_session *session = (janus_session *)ice_handle->session;
+		if(!session) {
+			json_decref(event);
+			return;
+		}
+		session_id = session->session_id;
+	}
+	/* Notify event handlers */
+	if(janus_events_is_enabled()) {
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_PLUGIN,
+			session_id, handle_id, plugin->get_package(), event);
+	} else {
+		json_decref(event);
+	}
 }
 
 
@@ -2950,6 +3138,9 @@ gint main(int argc, char *argv[])
 	struct rlimit core_limits;
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
+
+	g_print("Janus commit: %s\n", janus_build_git_sha);
+	g_print("Compiled on:  %s\n\n", janus_build_git_time);
 
 	struct gengetopt_args_info args_info;
 	/* Let's call our cmdline parser */
@@ -3163,6 +3354,11 @@ gint main(int argc, char *argv[])
 	if(args_info.server_name_given) {
 		janus_config_add_item(config, "general", "server_name", args_info.server_name_arg);
 	}
+	if(args_info.session_timeout_given) {
+		char st[20];
+		g_snprintf(st, 20, "%d", args_info.session_timeout_arg);
+		janus_config_add_item(config, "general", "session_timeout", st);
+	}
  	if(args_info.interface_given) {
 		janus_config_add_item(config, "general", "interface", args_info.interface_arg);
 	}
@@ -3229,8 +3425,16 @@ gint main(int argc, char *argv[])
 		g_snprintf(mnq, 20, "%d", args_info.max_nack_queue_arg);
 		janus_config_add_item(config, "media", "max_nack_queue", mnq);
 	}
+	if(args_info.no_media_timer_given) {
+		char nmt[20];
+		g_snprintf(nmt, 20, "%d", args_info.no_media_timer_arg);
+		janus_config_add_item(config, "media", "no_media_timer", nmt);
+	}
 	if(args_info.rtp_port_range_given) {
 		janus_config_add_item(config, "media", "rtp_port_range", args_info.rtp_port_range_arg);
+	}
+	if(args_info.event_handlers_given) {
+		janus_config_add_item(config, "events", "broadcast", "yes");
 	}
 	janus_config_print(config);
 
@@ -3282,55 +3486,54 @@ gint main(int argc, char *argv[])
 	}
 	/* What is the local IP? */
 	JANUS_LOG(LOG_VERB, "Selecting local IP address...\n");
-	gboolean local_ip_set = FALSE;
 	item = janus_config_get_item_drilldown(config, "general", "interface");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "  -- Will try to use %s\n", item->value);
-		int family;
-		if (!janus_is_ip_valid(item->value, &family)) {
-			JANUS_LOG(LOG_WARN, "Invalid local IP specified: %s, guessing the default...\n", item->value);
+		/* Verify that the address is valid */
+		struct ifaddrs *ifas = NULL;
+		janus_network_address iface;
+		janus_network_address_string_buffer ibuf;
+		if(getifaddrs(&ifas) || ifas == NULL) {
+			JANUS_LOG(LOG_ERR, "Unable to acquire list of network devices/interfaces; some configurations may not work as expected...\n");
 		} else {
-			/* Verify that we can actually bind to that address */
-			int fd = socket(family, SOCK_DGRAM, 0);
-			if (fd == -1) {
-				JANUS_LOG(LOG_WARN, "Error creating test socket, falling back to detecting IP address...\n");
+			if(janus_network_lookup_interface(ifas, item->value, &iface) != 0) {
+				JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
 			} else {
-				int r;
-				struct sockaddr_storage ss;
-				socklen_t addrlen;
-				memset(&ss, 0, sizeof(ss));
-				if (family == AF_INET) {
-					struct sockaddr_in *addr4 = (struct sockaddr_in*)&ss;
-					addr4->sin_family = AF_INET;
-					addr4->sin_port = 0;
-					inet_pton(AF_INET, item->value, &(addr4->sin_addr.s_addr));
-					addrlen = sizeof(struct sockaddr_in);
+				if(janus_network_address_to_string_buffer(&iface, &ibuf) != 0 || janus_network_address_string_buffer_is_null(&ibuf)) {
+					JANUS_LOG(LOG_WARN, "Error getting local IP address from %s, falling back to detecting IP address...\n", item->value);
 				} else {
-					struct sockaddr_in6 *addr6 = (struct sockaddr_in6*)&ss;
-					addr6->sin6_family = AF_INET6;
-					addr6->sin6_port = 0;
-					inet_pton(AF_INET6, item->value, &(addr6->sin6_addr.s6_addr));
-					addrlen = sizeof(struct sockaddr_in6);
-				}
-				r = bind(fd, (const struct sockaddr*)&ss, addrlen);
-				close(fd);
-				if (r < 0) {
-					JANUS_LOG(LOG_WARN, "Error setting local IP address to %s, falling back to detecting IP address...\n", item->value);
-				} else {
-					g_strlcpy(local_ip, item->value, sizeof(local_ip));
-					local_ip_set = TRUE;
+					local_ip = g_strdup(janus_network_address_string_from_buffer(&ibuf));
 				}
 			}
 		}
 	}
-	if (!local_ip_set)
-		janus_detect_local_ip(local_ip, sizeof(local_ip));
+	if(local_ip == NULL) {
+		local_ip = janus_network_detect_local_ip_as_string(janus_network_query_options_any_ip);
+		if(local_ip == NULL) {
+			JANUS_LOG(LOG_WARN, "Couldn't find any address! using 127.0.0.1 as the local IP... (which is NOT going to work out of your machine)\n");
+			local_ip = g_strdup("127.0.0.1");
+		}
+	}
 	JANUS_LOG(LOG_INFO, "Using %s as local IP...\n", local_ip);
 
 	/* Was a custom instance name provided? */
 	item = janus_config_get_item_drilldown(config, "general", "server_name");
 	if(item && item->value) {
 		server_name = g_strdup(item->value);
+	}
+
+	/* Check if a custom session timeout value was specified */
+	item = janus_config_get_item_drilldown(config, "general", "session_timeout");
+	if(item && item->value) {
+		int st = atoi(item->value);
+		if(st < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring session_timeout value as it's not a positive integer\n");
+		} else {
+			if(st == 0) {
+				JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
+			}
+			session_timeout = st;
+		}
 	}
 
 	/* Is there any API secret to consider? */
@@ -3348,6 +3551,14 @@ gint main(int argc, char *argv[])
 	/* Also check if the token based authentication mechanism needs to be enabled */
 	item = janus_config_get_item_drilldown(config, "general", "token_auth");
 	janus_auth_init(item && item->value && janus_is_true(item->value));
+
+	/* Initialize the recorder code */
+	item = janus_config_get_item_drilldown(config, "general", "recordings_tmp_ext");
+	if(item && item->value) {
+		janus_recorder_init(TRUE, item->value);
+	} else {
+		janus_recorder_init(FALSE, NULL);
+	}
 
 	/* Setup ICE stuff (e.g., checking if the provided STUN server is correct) */
 	char *stun_server = NULL, *turn_server = NULL;
@@ -3400,9 +3611,13 @@ gint main(int argc, char *argv[])
 	item = janus_config_get_item_drilldown(config, "nat", "nat_1_1_mapping");
 	if(item && item->value) {
 		JANUS_LOG(LOG_VERB, "Using nat_1_1_mapping for public ip - %s\n", item->value);
-		nat_1_1_mapping = item->value;
-		janus_set_public_ip(item->value);
-		janus_ice_enable_nat_1_1();
+		if(!janus_network_string_is_valid_address(janus_network_query_options_any_ip, item->value)) {
+			JANUS_LOG(LOG_WARN, "Invalid nat_1_1_mapping address %s, disabling...\n", item->value);
+		} else {
+			nat_1_1_mapping = item->value;
+			janus_set_public_ip(item->value);
+			janus_ice_enable_nat_1_1();
+		}
 	}
 	/* Any TURN server to use in Janus? */
 	item = janus_config_get_item_drilldown(config, "nat", "turn_server");
@@ -3461,19 +3676,25 @@ gint main(int argc, char *argv[])
 		/* No STUN and TURN server provided for Janus: make sure it isn't on a private address */
 		gboolean private_address = FALSE;
 		const char *test_ip = nat_1_1_mapping ? nat_1_1_mapping : local_ip;
-		struct sockaddr_in addr;
-		if(inet_pton(AF_INET, test_ip, &addr) > 0) {
-			unsigned short int ip[4];
-			sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
-			if(ip[0] == 10) {
-				/* Class A private address */
-				private_address = TRUE;
-			} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
-				/* Class B private address */
-				private_address = TRUE;
-			} else if(ip[0] == 192 && ip[1] == 168) {
-				/* Class C private address */
-				private_address = TRUE;
+		janus_network_address addr;
+		if(janus_network_string_to_address(janus_network_query_options_any_ip, test_ip, &addr) != 0) {
+			JANUS_LOG(LOG_ERR, "Invalid address %s..?\n", test_ip);
+		} else {
+			if(addr.family == AF_INET) {
+				unsigned short int ip[4];
+				sscanf(test_ip, "%hu.%hu.%hu.%hu", &ip[0], &ip[1], &ip[2], &ip[3]);
+				if(ip[0] == 10) {
+					/* Class A private address */
+					private_address = TRUE;
+				} else if(ip[0] == 172 && (ip[1] >= 16 && ip[1] <= 31)) {
+					/* Class B private address */
+					private_address = TRUE;
+				} else if(ip[0] == 192 && ip[1] == 168) {
+					/* Class C private address */
+					private_address = TRUE;
+				}
+			} else {
+				/* TODO Similar check for IPv6... */
 			}
 		}
 		if(private_address) {
@@ -3499,6 +3720,16 @@ gint main(int argc, char *argv[])
 			JANUS_LOG(LOG_WARN, "Ignoring max_nack_queue value as it's less than 200\n");
 		} else {
 			janus_set_max_nack_queue(mnq);
+		}
+	}
+	/* no-media timer */
+	item = janus_config_get_item_drilldown(config, "media", "no_media_timer");
+	if(item && item->value) {
+		int nmt = atoi(item->value);
+		if(nmt < 0) {
+			JANUS_LOG(LOG_WARN, "Ignoring no_media_timer value as it's not a positive integer\n");
+		} else {
+			janus_set_no_media_timer(nmt);
 		}
 	}
 
@@ -3541,11 +3772,6 @@ gint main(int argc, char *argv[])
 	JANUS_LOG(LOG_WARN, "Data Channels support not compiled\n");
 #endif
 
-	/* Initialize Sofia-SDP */
-	if(janus_sdp_init() < 0) {
-		exit(1);
-	}
-
 	/* Sessions */
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	old_sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
@@ -3560,13 +3786,149 @@ gint main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Load event handlers */
+	const char *path = EVENTDIR;
+	item = janus_config_get_item_drilldown(config, "general", "events_folder");
+	if(item && item->value)
+		path = (char *)item->value;
+	JANUS_LOG(LOG_INFO, "Event handler plugins folder: %s\n", path);
+	DIR *dir = opendir(path);
+	if(!dir) {
+		/* Not really fatal, we don't care and go on anyway: event handlers are not fundamental */
+		JANUS_LOG(LOG_FATAL, "\tCouldn't access event handler plugins folder...\n");
+	} else {
+		/* Any event handlers to ignore? */
+		gchar **disabled_eventhandlers = NULL;
+		item = janus_config_get_item_drilldown(config, "events", "broadcast");
+		/* Event handlers are disabled by default: they need to be enabled in the configuration */
+		gboolean enable_events = FALSE;
+		if(item && item->value)
+			enable_events = janus_is_true(item->value);
+		if(!enable_events) {
+			JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
+		} else {
+			item = janus_config_get_item_drilldown(config, "events", "disable");
+			if(item && item->value)
+				disabled_eventhandlers = g_strsplit(item->value, ",", -1);
+			/* Open the shared objects */
+			struct dirent *eventent = NULL;
+			char eventpath[1024];
+			while((eventent = readdir(dir))) {
+				int len = strlen(eventent->d_name);
+				if (len < 4) {
+					continue;
+				}
+				if (strcasecmp(eventent->d_name+len-strlen(SHLIB_EXT), SHLIB_EXT)) {
+					continue;
+				}
+				/* Check if this event handler has been disabled in the configuration file */
+				if(disabled_eventhandlers != NULL) {
+					gchar *index = disabled_eventhandlers[0];
+					if(index != NULL) {
+						int i=0;
+						gboolean skip = FALSE;
+						while(index != NULL) {
+							while(isspace(*index))
+								index++;
+							if(strlen(index) && !strcmp(index, eventent->d_name)) {
+								JANUS_LOG(LOG_WARN, "Event handler plugin '%s' has been disabled, skipping...\n", eventent->d_name);
+								skip = TRUE;
+								break;
+							}
+							i++;
+							index = disabled_eventhandlers[i];
+						}
+						if(skip)
+							continue;
+					}
+				}
+				JANUS_LOG(LOG_INFO, "Loading event handler plugin '%s'...\n", eventent->d_name);
+				memset(eventpath, 0, 1024);
+				g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
+				void *event = dlopen(eventpath, RTLD_LAZY);
+				if (!event) {
+					JANUS_LOG(LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
+				} else {
+					create_e *create = (create_e*) dlsym(event, "create");
+					const char *dlsym_error = dlerror();
+					if (dlsym_error) {
+						JANUS_LOG(LOG_ERR, "\tCouldn't load symbol 'create': %s\n", dlsym_error);
+						continue;
+					}
+					janus_eventhandler *janus_eventhandler = create();
+					if(!janus_eventhandler) {
+						JANUS_LOG(LOG_ERR, "\tCouldn't use function 'create'...\n");
+						continue;
+					}
+					/* Are all the mandatory methods and callbacks implemented? */
+					if(!janus_eventhandler->init || !janus_eventhandler->destroy ||
+							!janus_eventhandler->get_api_compatibility ||
+							!janus_eventhandler->get_version ||
+							!janus_eventhandler->get_version_string ||
+							!janus_eventhandler->get_description ||
+							!janus_eventhandler->get_package ||
+							!janus_eventhandler->get_name ||
+							!janus_eventhandler->incoming_event) {
+						JANUS_LOG(LOG_ERR, "\tMissing some mandatory methods/callbacks, skipping this event handler plugin...\n");
+						continue;
+					}
+					if(janus_eventhandler->get_api_compatibility() < JANUS_EVENTHANDLER_API_VERSION) {
+						JANUS_LOG(LOG_ERR, "The '%s' event handler plugin was compiled against an older version of the API (%d < %d), skipping it: update it to enable it again\n",
+							janus_eventhandler->get_package(), janus_eventhandler->get_api_compatibility(), JANUS_EVENTHANDLER_API_VERSION);
+						continue;
+					}
+					janus_eventhandler->init(configs_folder);
+					JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_eventhandler->get_version(), janus_eventhandler->get_version_string());
+					JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_eventhandler->get_package(), janus_eventhandler->get_name());
+					JANUS_LOG(LOG_VERB, "\t   %s\n", janus_eventhandler->get_description());
+					JANUS_LOG(LOG_VERB, "\t   Plugin API version: %d\n", janus_eventhandler->get_api_compatibility());
+					JANUS_LOG(LOG_VERB, "\t   Subscriptions:");
+					if(janus_eventhandler->events_mask == 0) {
+						JANUS_LOG(LOG_VERB, " none");
+					} else {
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_SESSION))
+							JANUS_LOG(LOG_VERB, " sessions");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_HANDLE))
+							JANUS_LOG(LOG_VERB, " handles");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_JSEP))
+							JANUS_LOG(LOG_VERB, " jsep");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_WEBRTC))
+							JANUS_LOG(LOG_VERB, " webrtc");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_MEDIA))
+							JANUS_LOG(LOG_VERB, " media");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_PLUGIN))
+							JANUS_LOG(LOG_VERB, " plugins");
+						if(janus_flags_is_set(&janus_eventhandler->events_mask, JANUS_EVENT_TYPE_TRANSPORT))
+							JANUS_LOG(LOG_VERB, " transports");
+					}
+					JANUS_LOG(LOG_VERB, "\n");
+					if(eventhandlers == NULL)
+						eventhandlers = g_hash_table_new(g_str_hash, g_str_equal);
+					g_hash_table_insert(eventhandlers, (gpointer)janus_eventhandler->get_package(), janus_eventhandler);
+					if(eventhandlers_so == NULL)
+						eventhandlers_so = g_hash_table_new(g_str_hash, g_str_equal);
+					g_hash_table_insert(eventhandlers_so, (gpointer)janus_eventhandler->get_package(), event);
+				}
+			}
+		}
+		closedir(dir);
+		if(disabled_eventhandlers != NULL)
+			g_strfreev(disabled_eventhandlers);
+		disabled_eventhandlers = NULL;
+		/* Initialize the event broadcaster */
+		if(janus_events_init(enable_events, eventhandlers) < 0) {
+			JANUS_LOG(LOG_FATAL, "Error initializing the Event handlers mechanism...\n");
+			exit(1);
+		}
+	}
+
 	/* Load plugins */
-	const char *path = PLUGINDIR;
+	path = PLUGINDIR;
 	item = janus_config_get_item_drilldown(config, "general", "plugins_folder");
 	if(item && item->value)
 		path = (char *)item->value;
 	JANUS_LOG(LOG_INFO, "Plugins folder: %s\n", path);
-	DIR *dir = opendir(path);
+	dir = opendir(path);
 	if(!dir) {
 		JANUS_LOG(LOG_FATAL, "\tCouldn't access plugins folder...\n");
 		exit(1);
@@ -3648,7 +4010,11 @@ gint main(int argc, char *argv[])
 					janus_plugin->get_package(), janus_plugin->get_api_compatibility(), JANUS_PLUGIN_API_VERSION);
 				continue;
 			}
-			janus_plugin->init(&janus_handler_plugin, configs_folder);
+			if(janus_plugin->init(&janus_handler_plugin, configs_folder) < 0) {
+				JANUS_LOG(LOG_WARN, "The '%s' plugin could not be initialized\n", janus_plugin->get_package());
+				dlclose(plugin);
+				continue;
+			}
 			JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_plugin->get_version(), janus_plugin->get_version_string());
 			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_plugin->get_package(), janus_plugin->get_name());
 			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_plugin->get_description());
@@ -3771,7 +4137,11 @@ gint main(int argc, char *argv[])
 					janus_transport->get_package(), janus_transport->get_api_compatibility(), JANUS_TRANSPORT_API_VERSION);
 				continue;
 			}
-			janus_transport->init(&janus_handler_transport, configs_folder);
+			if(janus_transport->init(&janus_handler_transport, configs_folder) < 0) {
+				JANUS_LOG(LOG_WARN, "The '%s' plugin could not be initialized\n", janus_transport->get_package());
+				dlclose(transport);
+				continue;
+			}
 			JANUS_LOG(LOG_VERB, "\tVersion: %d (%s)\n", janus_transport->get_version(), janus_transport->get_version_string());
 			JANUS_LOG(LOG_VERB, "\t   [%s] %s\n", janus_transport->get_package(), janus_transport->get_name());
 			JANUS_LOG(LOG_VERB, "\t   %s\n", janus_transport->get_description());
@@ -3812,9 +4182,24 @@ gint main(int argc, char *argv[])
 		} while(res == -1 && errno == EINTR);
 	}
 
+	/* If the Event Handlers mechanism is enabled, notify handlers that Janus just started */
+	if(janus_events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "status", json_string("started"));
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, 0, info);
+	}
+
 	while(!g_atomic_int_get(&stop)) {
 		/* Loop until we have to stop */
 		usleep(250000); /* A signal will cancel usleep() but not g_usleep() */
+	}
+
+	/* If the Event Handlers mechanism is enabled, notify handlers that Janus is hanging up */
+	if(janus_events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "status", json_string("shutdown"));
+		json_object_set_new(info, "signum", json_integer(stop_signal));
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, 0, info);
 	}
 
 	/* Done */
@@ -3846,8 +4231,6 @@ gint main(int argc, char *argv[])
 	janus_dtls_srtp_cleanup();
 	EVP_cleanup();
 	ERR_free_strings();
-	JANUS_LOG(LOG_INFO, "Cleaning SDP structures...\n");
-	janus_sdp_deinit();
 #ifdef HAVE_SCTP
 	JANUS_LOG(LOG_INFO, "De-initializing SCTP...\n");
 	janus_sctp_deinit();
@@ -3864,6 +4247,20 @@ gint main(int argc, char *argv[])
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
 		g_hash_table_destroy(plugins_so);
 	}
+
+	JANUS_LOG(LOG_INFO, "Closing event handlers:\n");
+	janus_events_deinit();
+	if(eventhandlers != NULL) {
+		g_hash_table_foreach(eventhandlers, janus_eventhandler_close, NULL);
+		g_hash_table_destroy(eventhandlers);
+	}
+	if(eventhandlers_so != NULL) {
+		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
+		g_hash_table_destroy(eventhandlers_so);
+	}
+
+	janus_recorder_deinit();
+	g_free(local_ip);
 
 	JANUS_PRINT("Bye!\n");
 

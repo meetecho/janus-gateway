@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var echotest = null;
+var opaqueId = "echotest-"+Janus.randomString(12);
+
 var started = false;
 var bitrateTimer = null;
 var spinner = null;
@@ -77,9 +79,9 @@ $(document).ready(function() {
 					server: server,
 					// No "iceServers" is provided, meaning janus.js will use a default STUN server
 					// Here are some examples of how an iceServers field may look like to support TURN
-					// 		iceServers: [{url: "turn:yourturnserver.com:3478", username: "janususer", credential: "januspwd"}],
-					// 		iceServers: [{url: "turn:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
-					// 		iceServers: [{url: "turns:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
+					// 		iceServers: [{urls: "turn:yourturnserver.com:3478", username: "janususer", credential: "januspwd"}],
+					// 		iceServers: [{urls: "turn:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
+					// 		iceServers: [{urls: "turns:yourturnserver.com:443?transport=tcp", username: "janususer", credential: "januspwd"}],
 					// Should the Janus API require authentication, you can specify either the API secret or user token here too
 					//		token: "mytoken",
 					//	or
@@ -89,6 +91,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.echotest",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									echotest = pluginHandle;
@@ -142,12 +145,19 @@ $(document).ready(function() {
 										$.unblockUI();
 									}
 								},
+								iceState: function(state) {
+									Janus.log("ICE state changed to " + state);
+								},
 								mediaState: function(medium, on) {
 									Janus.log("Janus " + (on ? "started" : "stopped") + " receiving our " + medium);
 								},
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videoleft").parent().unblock();
+								},
+								slowLink: function(uplink, nacks) {
+									Janus.warn("Janus reports problems " + (uplink ? "sending" : "receiving") +
+										" packets on this PeerConnection (" + nacks + " NACKs/s " + (uplink ? "received" : "sent") + ")");
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
@@ -183,7 +193,7 @@ $(document).ready(function() {
 										$('#videos').removeClass('hide').show();
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
 									}
-									attachMediaStream($('#myvideo').get(0), stream);
+									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									$("#videoleft").parent().block({
 										message: '<b>Publishing...</b>',
@@ -228,7 +238,7 @@ $(document).ready(function() {
 											var width = this.videoWidth;
 											var height = this.videoHeight;
 											$('#curres').removeClass('hide').text(width+'x'+height).show();
-											if(webrtcDetectedBrowser == "firefox") {
+											if(adapter.browserDetails.browser === "firefox") {
 												// Firefox Stable has a bug: width and height are not immediately available after a playing
 												setTimeout(function() {
 													var width = $("#peervideo").get(0).videoWidth;
@@ -238,7 +248,7 @@ $(document).ready(function() {
 											}
 										});
 									}
-									attachMediaStream($('#peervideo').get(0), stream);
+									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
 										// No remote video
@@ -279,11 +289,11 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html()).parent().removeClass('open');
+										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
-									if(webrtcDetectedBrowser == "chrome" || webrtcDetectedBrowser == "firefox") {
+									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported

@@ -25,7 +25,7 @@
 #include "turnrest.h"
 #include "debug.h"
 #include "mutex.h"
-#include "utils.h"
+#include "ip-utils.h"
 
 static const char *api_server = NULL;
 static const char *api_key = NULL;
@@ -44,7 +44,7 @@ static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, 
 	size_t realsize = size * nmemb;
 	janus_turnrest_buffer *buf = (struct janus_turnrest_buffer *)data;
 	/* (Re)allocate if needed */
-	buf->buffer = realloc(buf->buffer, buf->size+realsize+1);
+	buf->buffer = g_realloc(buf->buffer, buf->size+realsize+1);
 	if(buf->buffer == NULL) {
 		/* Memory error! */ 
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
@@ -249,16 +249,15 @@ janus_turnrest_response *janus_turnrest_request(void) {
 		}
 		gchar **uri_parts = g_strsplit(turn_uri, ":", -1);
 		/* Resolve the TURN URI address */
-		struct addrinfo *res = NULL;
-		if(getaddrinfo(uri_parts[1], NULL, NULL, &res) != 0) {
+		janus_network_address addr;
+		janus_network_address_string_buffer addr_buf;
+		if(janus_network_string_to_address(janus_network_query_options_any_ip, uri_parts[1], &addr) != 0 ||
+				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
-			if(res)
-				freeaddrinfo(res);
 			g_strfreev(uri_parts);
 			continue;
 		}
-		instance->server = janus_address_to_ip(res->ai_addr);
-		freeaddrinfo(res);
+		instance->server = g_strdup(janus_network_address_string_from_buffer(&addr_buf));
 		if(instance->server == NULL) {
 			JANUS_LOG(LOG_WARN, "Skipping invalid TURN URI '%s' (could not resolve the address)...\n", uri_parts[1]);
 			g_strfreev(uri_parts);

@@ -1,0 +1,132 @@
+.TH JANUS 1
+.SH NAME
+janus \- WebRTC server/gateway
+.SH SYNOPSIS
+.B janus
+[options]
+.SH DESCRIPTION
+.B janus
+is a WebRTC server/gateway developed by Meetecho conceived to be a general purpose one. As such, it doesn't provide any functionality per se other than implementing the means to set up a WebRTC media communication with a browser or application, exchanging JSON messages with it over different transports, and relaying RTP/RTCP and messages between clients and the server-side application logic they're attached to. Any specific feature/application is provided by server side plugins, that browsers can then contact via the gateway to take advantage of the functionality they provide. Example of such plugins can be implementations of applications like echo tests, conference bridges, media recorders, SIP gateways and the like.
+.TP
+The reason for this is simple: we wanted something that would have a small footprint (hence a C implementation) and that we could only equip with what was really needed (hence pluggable modules). That is, something that would allow us to deploy either a full-fledged WebRTC server on the cloud, or a small nettop/box to handle a specific use case.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print help and exit
+.TP
+.BR \-V ", " \-\-version
+Print version and exit
+.TP
+.BR \-b ", " \-\-daemon
+Launch Janus in background as a daemon (default=off)
+.TP
+.BR \-p ", " \-\-pid-file=\fIpath\fR
+Open the specified PID file when starting Janus (default=none)
+.TP
+.BR \-N ", " \-\-disable-stdout
+Disable stdout based logging (default=off)
+.TP
+.BR \-L ", " \-\-log-file=\fIpath\fR
+Log to the specified file (default=stdout only)
+.TP
+.BR \-i ", " \-\-interface=\fIipaddress\fR
+Interface to use (will be the public IP)
+.TP
+.BR \-P ", " \-\-plugins-folder=\fIpath\fR
+Plugins folder (default=./plugins)
+.TP
+.BR \-C ", " \-\-config=\fIfilename\fR
+Configuration file to use
+.TP
+.BR \-F ", " \-\-configs-folder=\fIpath\fR
+Configuration files folder (default=./conf)
+.TP
+.BR \-c ", " \-\-cert-pem=\fIfilename\fR
+DTLS certificate
+.TP
+.BR \-k ", " \-\-cert-key=\fIfilename\fR
+DTLS certificate key
+.TP
+.BR \-S ", " \-\-stun-server=\fIip:port\fR
+STUN server(:port) to use, if needed (e.g., gateway behind NAT, default=none)
+.TP
+.BR \-1 ", " \-\-nat-1-1=\fIip\fR
+Public IP to put in all host candidates, assuming a 1:1 NAT is in place (e.g., Amazon EC2 instances, default=none)
+.TP
+.BR \-E ", " \-\-ice-enforce-list=\fIlist\fR
+Comma-separated list of the only interfaces to use for ICE gathering; partial strings are supported (e.g., eth0 or eno1,wlan0, default=none)
+.TP
+.BR \-X ", " \-\-ice-ignore-list=\fIlist\fR
+Comma-separated list of interfaces or IP addresses to ignore for ICE gathering; partial strings are supported (e.g., vmnet8,192.168.0.1,10.0.0.1 or vmnet,192.168., default=vmnet)
+.TP
+.BR \-6 ", " \-\-ipv6-candidates
+Whether to enable IPv6 candidates or not (experimental) (default=off)
+.TP
+.BR \-l ", " \-\-libnice-debug
+Whether to enable libnice debugging or not (default=off)
+.TP
+.BR \-I ", " \-\-ice-lite
+Whether to enable the ICE Lite mode or not (default=off)
+.TP
+.BR \-T ", " \-\-ice-tcp
+Whether to enable ICE-TCP or not (warning: only works with ICE Lite) (default=off)
+.TP
+.BR \-U ", " \-\-force-bundle
+Whether to force BUNDLE or not (whether audio, video and data will always be bundled) (default=off)
+.TP
+.BR \-u ", " \-\-force-rtcp-mux
+Whether to force rtcp-mux or not (whether RTP and RTCP will always be muxed) (default=off)
+.TP
+.BR \-q ", " \-\-max-nack-queue=\fInumber\fR
+Maximum size of the NACK queue per user for retransmissions
+.TP
+.BR \-t ", " \-\-no-media-timer=\fInumber\fR
+Time (in s) that should pass with no media (audio or video) being received before Janus notifies you about this
+.TP
+.BR \-r ", " \-\-rtp-port-range=\fImin\-max\fR
+Port range to use for RTP/RTCP
+.TP
+.BR \-n ", " \-\-server-name=\fIname\fR
+Public name of this Janus instance (default=MyJanusInstance)
+.TP
+.BR \-d ", " \-\-debug-level=\fI1\-7\fR
+Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)
+.TP
+.BR \-D ", " \-\-debug-timestamps
+Enable debug/logging timestamps (default=off)
+.TP
+.BR \-o ", " \-\-disable-colors
+Disable color in the logging (default=off)
+.TP
+.BR \-a ", " \-\-apisecret=\fIrandomstring\fR
+API secret all requests need to pass in order to be accepted by Janus (useful when wrapping Janus API requests in a server, none by default)
+.TP
+.BR \-A ", " \-\-token-auth
+Enable token-based authentication for all requests (default=off)
+.TP
+.BR \-e ", " \-\-event-handlers
+Enable event handlers (default=off)
+.SH EXAMPLES
+\fBjanus\fR \- Launch Janus with all options from configurations files
+.TP
+\fBjanus \-b \-L /tmp/januslog\fR \- Launch Janus as a daemon and log to the specified file
+.TP
+\fBjanus \-6\fR \- Launch Janus with IPv6 support enabled
+.TP
+\fBjanus \-u \-U\fR \- Launch Janus with rtcpmux and BUNDLE always forced on
+.SH BUGS
+.TP
+If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
+.TP
+Anyway, before doing that make sure you read the documentation at http://janus.conf.meetecho.com/docs/ and that it has not been discussed already at https://groups.google.com/forum/#!forum/meetecho-janus. We only use Github for code issues, and \fBNOT\fR for configuration or usage issues: use the group for that.
+.SH SEE ALSO
+.TP
+https://github.com/meetecho/janus-gateway \- Official repository
+.TP
+http://janus.conf.meetecho.com \- Demos and documentation
+.TP
+https://groups.google.com/forum/#!forum/meetecho-janus \- Community
+.TP
+http://www.meetecho.com/blog/ \- Tutorials and blog posts on Janus
+.SH AUTHORS
+Lorenzo Miniero (lorenzo@meetecho.com)

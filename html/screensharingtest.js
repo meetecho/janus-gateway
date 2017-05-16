@@ -51,6 +51,8 @@ else
 
 var janus = null;
 var screentest = null;
+var opaqueId = "screensharingtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myusername = null;
@@ -99,6 +101,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									screentest = pluginHandle;
@@ -224,7 +227,7 @@ $(document).ready(function() {
 									if($('#screenvideo').length === 0) {
 										$('#screencapture').append('<video class="rounded centered" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
 									}
-									attachMediaStream($('#screenvideo').get(0), stream);
+									Janus.attachMediaStream($('#screenvideo').get(0), stream);
 									$("#screencapture").parent().block({
 										message: '<b>Publishing...</b>',
 										css: {
@@ -394,6 +397,7 @@ function newRemoteFeed(id, display) {
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
+			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
@@ -465,7 +469,7 @@ function newRemoteFeed(id, display) {
 						spinner.stop();
 					spinner = null;
 				});
-				attachMediaStream($('#screenvideo').get(0), stream);
+				Janus.attachMediaStream($('#screenvideo').get(0), stream);
 			},
 			oncleanup: function() {
 				Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");

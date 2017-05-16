@@ -28,6 +28,8 @@
 
 #include "transport.h"
 
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <poll.h>
 #include <sys/un.h>
 
@@ -96,6 +98,7 @@ janus_transport *create(void) {
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
+static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -211,6 +214,14 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 			}
 		}
 
+		/* Check if we need to send events to handlers */
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_PFUNIX_NAME);
+		}
+
 		/* First of all, initialize the socketpair for writeable notifications */
 		if(socketpair(PF_LOCAL, SOCK_STREAM, 0, write_fd) < 0) {
 			JANUS_LOG(LOG_FATAL, "Error creating socket pair for writeable events: %d, %s\n", errno, strerror(errno));
@@ -223,7 +234,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Janus API)\n");
 		} else {
 			item = janus_config_get_item_drilldown(config, "general", "path");
-			char *pfname = (char *)(item && item->value ? item->value : "/tmp/ux-janusapi");
+			char *pfname = (char *)(item && item->value ? item->value : NULL);
 			item = janus_config_get_item_drilldown(config, "general", "type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			dgram = FALSE;
@@ -235,8 +246,12 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "Unknown type %s, assuming SOCK_SEQPACKET\n", type);
 				type = "SOCK_SEQPACKET";
 			}
-			JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Janus API)\n", type);
-			pfd = janus_pfunix_create_socket(pfname, dgram);
+			if(pfname == NULL) {
+				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Janus API)\n");
+			} else {
+				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Janus API)\n", type);
+				pfd = janus_pfunix_create_socket(pfname, dgram);
+			}
 		}
 		/* Do the same for the Admin API, if enabled */
 		item = janus_config_get_item_drilldown(config, "admin", "admin_enabled");
@@ -244,7 +259,7 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 			JANUS_LOG(LOG_WARN, "Unix Sockets server disabled (Admin API)\n");
 		} else {
 			item = janus_config_get_item_drilldown(config, "admin", "admin_path");
-			char *pfname = (char *)(item && item->value ? item->value : "/tmp/ux-janusadmin");
+			char *pfname = (char *)(item && item->value ? item->value : NULL);
 			item = janus_config_get_item_drilldown(config, "admin", "admin_type");
 			const char *type = item && item->value ? item->value : "SOCK_SEQPACKET";
 			if(!strcasecmp(type, "SOCK_SEQPACKET")) {
@@ -255,14 +270,18 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 				JANUS_LOG(LOG_WARN, "Unknown type %s, assuming SOCK_SEQPACKET\n", type);
 				type = "SOCK_SEQPACKET";
 			}
-			JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Admin API)\n", type);
-			admin_pfd = janus_pfunix_create_socket(pfname, admin_dgram);
+			if(pfname == NULL) {
+				JANUS_LOG(LOG_WARN, "No path configured, skipping Unix Sockets server (Admin API)\n");
+			} else {
+				JANUS_LOG(LOG_INFO, "Configuring %s Unix Sockets server (Admin API)\n", type);
+				admin_pfd = janus_pfunix_create_socket(pfname, admin_dgram);
+			}
 		}
 	}
 	janus_config_destroy(config);
 	config = NULL;
 	if(pfd < 0 && admin_pfd < 0) {
-		JANUS_LOG(LOG_FATAL, "No Unix Sockets server started, giving up...\n");
+		JANUS_LOG(LOG_WARN, "No Unix Sockets server started, giving up...\n");
 		return -1;	/* No point in keeping the plugin loaded */
 	}
 
@@ -349,7 +368,7 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 	if(message == NULL)
 		return -1;
 	if(transport == NULL) {
-		g_free(message);
+		json_decref(message);
 		return -1;
 	}
 	/* Make sure this is related to a still valid Unix Sockets session */
@@ -358,7 +377,7 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 	if(g_hash_table_lookup(clients, client) == NULL) {
 		janus_mutex_unlock(&clients_mutex);
 		JANUS_LOG(LOG_WARN, "Outgoing message for invalid client %p\n", client);
-		g_free(message);
+		json_decref(message);
 		message = NULL;
 		return -1;
 	}
@@ -380,7 +399,7 @@ int janus_pfunix_send_message(void *transport, void *request_id, gboolean admin,
 		do {
 			res = sendto(client->admin ? admin_pfd : pfd, payload, strlen(payload), 0, (struct sockaddr *)&client->addr, sizeof(struct sockaddr_un));
 		} while(res == -1 && errno == EINTR);
-		g_free(payload);
+		free(payload);
 	}
 	return 0;
 }
@@ -518,6 +537,12 @@ void *janus_pfunix_thread(void *data) {
 					JANUS_LOG(LOG_INFO, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
 					/* Notify core */
 					gateway->transport_gone(&janus_pfunix_transport, client);
+					/* Notify handlers about this transport being gone */
+					if(notify_events && gateway->events_is_enabled()) {
+						json_t *info = json_object();
+						json_object_set_new(info, "event", json_string("disconnected"));
+						gateway->notify_event(&janus_pfunix_transport, client, info);
+					}
 					/* Close socket */
 					shutdown(SHUT_RDWR, poll_fds[i].fd);
 					close(poll_fds[i].fd);
@@ -581,6 +606,14 @@ void *janus_pfunix_thread(void *data) {
 							g_hash_table_insert(clients_by_fd, GINT_TO_POINTER(cfd), client);
 							g_hash_table_insert(clients, client, client);
 							janus_mutex_unlock(&clients_mutex);
+							/* Notify handlers about this new transport */
+							if(notify_events && gateway->events_is_enabled()) {
+								json_t *info = json_object();
+								json_object_set_new(info, "event", json_string("connected"));
+								json_object_set_new(info, "admin_api", client->admin ? json_true() : json_false());
+								json_object_set_new(info, "fd", json_integer(client->fd));
+								gateway->notify_event(&janus_pfunix_transport, client, info);
+							}
 						}
 					} else {
 						/* SOCK_DGRAM */
@@ -616,6 +649,15 @@ void *janus_pfunix_thread(void *data) {
 							/* Take note of this new client */
 							g_hash_table_insert(clients_by_path, uaddr->sun_path, client);
 							g_hash_table_insert(clients, client, client);
+							/* Notify handlers about this new transport */
+							if(notify_events && gateway->events_is_enabled()) {
+								json_t *info = json_object();
+								json_object_set_new(info, "event", json_string("connected"));
+								json_object_set_new(info, "admin_api", client->admin ? json_true() : json_false());
+								json_object_set_new(info, "fd", json_integer(client->fd));
+								json_object_set_new(info, "type", json_string("SOCK_DGRAM"));
+								gateway->notify_event(&janus_pfunix_transport, client, info);
+							}
 						}
 						janus_mutex_unlock(&clients_mutex);
 						JANUS_LOG(LOG_VERB, "Message from client %s (%d bytes)\n", uaddr->sun_path, res);
@@ -656,6 +698,12 @@ void *janus_pfunix_thread(void *data) {
 						JANUS_LOG(LOG_INFO, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
 						/* Notify core */
 						gateway->transport_gone(&janus_pfunix_transport, client);
+						/* Notify handlers about this transport being gone */
+						if(notify_events && gateway->events_is_enabled()) {
+							json_t *info = json_object();
+							json_object_set_new(info, "event", json_string("disconnected"));
+							gateway->notify_event(&janus_pfunix_transport, client, info);
+						}
 						/* Close socket */
 						shutdown(SHUT_RDWR, poll_fds[i].fd);
 						close(poll_fds[i].fd);
@@ -689,12 +737,29 @@ void *janus_pfunix_thread(void *data) {
 		}
 	}
 
-	if(pfd > -1)
+	socklen_t addrlen = sizeof(struct sockaddr_un);
+	void *addr = g_malloc0(addrlen+1);
+	if(pfd > -1) {
+		/* Unlink the path name first */
+		if(getsockname(pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
+			unlink(((struct sockaddr_un *)addr)->sun_path);
+		}
+		/* Close the socket */
 		close(pfd);
+	}
 	pfd = -1;
-	if(admin_pfd > -1)
+	if(admin_pfd > -1) {
+		/* Unlink the path name first */
+		if(getsockname(admin_pfd, (struct sockaddr *)addr, &addrlen) != -1) {
+			JANUS_LOG(LOG_INFO, "Unlinking %s\n", ((struct sockaddr_un *)addr)->sun_path);
+			unlink(((struct sockaddr_un *)addr)->sun_path);
+		}
+		/* Close the socket */
 		close(admin_pfd);
+	}
 	admin_pfd = -1;
+	g_free(addr);
 
 	g_hash_table_destroy(clients_by_path);
 	g_hash_table_destroy(clients_by_fd);

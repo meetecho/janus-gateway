@@ -36,6 +36,7 @@
 #include <amqp.h>
 #include <amqp_framing.h>
 #include <amqp_tcp_socket.h>
+#include <amqp_ssl_socket.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -104,6 +105,7 @@ static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
 static gboolean rmq_janus_api_enabled = FALSE;
 static gboolean rmq_admin_api_enabled = FALSE;
+static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
 static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
@@ -183,6 +185,14 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 	}
 
+	/* Check if we need to send events to handlers */
+	janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+	if(events != NULL && events->value != NULL)
+		notify_events = janus_is_true(events->value);
+	if(!notify_events && callback->events_is_enabled()) {
+		JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_RABBITMQ_NAME);
+	}
+
 	/* Handle configuration, starting from the server details */
 	char *rmqhost = NULL;
 	item = janus_config_get_item_drilldown(config, "general", "host");
@@ -212,6 +222,35 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		password = g_strdup(item->value);
 	else
 		password = g_strdup("guest");
+
+	/* SSL config*/
+	const char *ssl_cacert_file = NULL;
+	const char *ssl_cert_file = NULL;
+	const char *ssl_key_file = NULL;
+	gboolean ssl_enable = FALSE;
+	gboolean ssl_verify_peer = FALSE;
+	gboolean ssl_verify_hostname = FALSE;
+	item = janus_config_get_item_drilldown(config, "general", "ssl_enable");
+	if(!item || !item->value || !janus_is_true(item->value)) {
+		JANUS_LOG(LOG_INFO, "RabbitMQ SSL support disabled\n");
+	} else {
+		ssl_enable = TRUE;
+		item = janus_config_get_item_drilldown(config, "general", "ssl_cacert");
+		if(item && item->value)
+			ssl_cacert_file = g_strdup(item->value);
+		item = janus_config_get_item_drilldown(config, "general", "ssl_cert");
+		if(item && item->value)
+			ssl_cert_file = g_strdup(item->value);
+		item = janus_config_get_item_drilldown(config, "general", "ssl_key");
+		if(item && item->value)
+			ssl_key_file = g_strdup(item->value);
+		item = janus_config_get_item_drilldown(config, "general", "ssl_verify_peer");
+		if(item && item->value && janus_is_true(item->value))
+			ssl_verify_peer = TRUE;
+		item = janus_config_get_item_drilldown(config, "general", "ssl_verify_hostname");
+		if(item && item->value && janus_is_true(item->value))
+			ssl_verify_hostname = TRUE;
+	}
 
 	/* Now check if the Janus API must be supported */
 	const char *to_janus = NULL, *from_janus = NULL;
@@ -269,14 +308,48 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		}
 		/* Connect */
 		rmq_client->rmq_conn = amqp_new_connection();
+		amqp_socket_t *socket = NULL;
+		int status;
 		JANUS_LOG(LOG_VERB, "Creating RabbitMQ socket...\n");
-		amqp_socket_t *socket = amqp_tcp_socket_new(rmq_client->rmq_conn);
-		if(socket == NULL) {
-			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error creating socket...\n");
-			goto error;
+		if (ssl_enable) {
+			socket = amqp_ssl_socket_new(rmq_client->rmq_conn);
+			if(socket == NULL) {
+				JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error creating socket...\n");
+				goto error;
+			}
+			if(ssl_verify_peer) {
+				amqp_ssl_socket_set_verify_peer(socket, 1);
+			} else {
+				amqp_ssl_socket_set_verify_peer(socket, 0);
+			}
+			if(ssl_verify_hostname) {
+				amqp_ssl_socket_set_verify_hostname(socket, 1);
+			} else {
+				amqp_ssl_socket_set_verify_hostname(socket, 0);
+			}
+			if(ssl_cacert_file) {
+				status = amqp_ssl_socket_set_cacert(socket, ssl_cacert_file);
+				if(status != AMQP_STATUS_OK) {
+					JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error setting CA certificate... (%s)\n", amqp_error_string2(status));
+					goto error;
+				}
+			}
+			if(ssl_cert_file && ssl_key_file) {
+				amqp_ssl_socket_set_key(socket, ssl_cert_file, ssl_key_file);
+				if(status != AMQP_STATUS_OK) {
+					JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error setting key... (%s)\n", amqp_error_string2(status));
+					goto error;
+				}
+			}
+		} else {
+			socket = amqp_tcp_socket_new(rmq_client->rmq_conn);
+			if(socket == NULL) {
+				JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error creating socket...\n");
+				goto error;
+			}
 		}
 		JANUS_LOG(LOG_VERB, "Connecting to RabbitMQ server...\n");
-		int status = amqp_socket_open(socket, rmqhost, rmqport);
+		status = amqp_socket_open(socket, rmqhost, rmqport);
 		if(status != AMQP_STATUS_OK) {
 			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error opening socket... (%s)\n", amqp_error_string2(status));
 			goto error;
@@ -369,6 +442,12 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 		janus_mutex_init(&rmq_client->mutex);
 		/* Done */
 		JANUS_LOG(LOG_INFO, "Setup of RabbitMQ integration completed\n");
+		/* Notify handlers about this new transport */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("connected"));
+			gateway->notify_event(&janus_rabbitmq_transport, rmq_client, info);
+		}
 	}
 	g_free(rmqhost);
 	janus_config_destroy(config);
@@ -399,6 +478,12 @@ error:
 		g_free((char *)to_janus_admin);
 	if(from_janus_admin)
 		g_free((char *)from_janus_admin);
+	if(ssl_cacert_file)
+		g_free((char *)ssl_cacert_file);
+	if(ssl_cert_file)
+		g_free((char *)ssl_cert_file);
+	if(ssl_key_file)
+		g_free((char *)ssl_key_file);
 	if(config)
 		janus_config_destroy(config);
 	return -1;
@@ -636,7 +721,7 @@ void *janus_rmq_out_thread(void *data) {
 			}
 			g_free(response->correlation_id);
 			response->correlation_id = NULL;
-			g_free(payload_text);
+			free(payload_text);
 			payload_text = NULL;
 			g_free(response);
 			response = NULL;

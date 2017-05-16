@@ -176,6 +176,7 @@ static struct janus_json_parameter request_parameters[] = {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -265,8 +266,7 @@ int ogg_flush(janus_voicemail_session *session);
 
 
 /* VoiceMail watchdog/garbage collector (sort of) */
-void *janus_voicemail_watchdog(void *data);
-void *janus_voicemail_watchdog(void *data) {
+static void *janus_voicemail_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VoiceMail watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -337,6 +337,12 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *base = janus_config_get_item_drilldown(config, "general", "base");
 		if(base && base->value)
 			recordings_base = g_strdup(base->value);
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_VOICEMAIL_NAME);
+		}
 		/* Done */
 		janus_config_destroy(config);
 		config = NULL;
@@ -569,7 +575,13 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 	uint16_t seq = ntohs(rtp->seq_number);
 	if(session->seq == 0)
 		session->seq = seq;
-	ogg_packet *op = op_from_pkt((const unsigned char *)(buf+12), len-12);	/* TODO Check RTP extensions... */
+	int plen = 0;
+	const unsigned char *payload = (const unsigned char *)janus_rtp_payload(buf, len, &plen);
+	if(!payload) {
+		JANUS_LOG(LOG_ERR, "Ops! got an error accessing the RTP payload\n");
+		return;
+	}
+	ogg_packet *op = op_from_pkt(payload, plen);
 	//~ JANUS_LOG(LOG_VERB, "\tWriting at position %d (%d)\n", seq-session->seq+1, 960*(seq-session->seq+1));
 	op->granulepos = 960*(seq-session->seq+1); // FIXME: get this from the toc byte
 	ogg_stream_packetin(session->stream, op);
@@ -703,6 +715,12 @@ static void *janus_voicemail_handler(void *data) {
 			event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
 			json_object_set_new(event, "status", json_string(session->started ? "started" : "starting"));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("starting"));
+				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
 			session->started = FALSE;
@@ -720,6 +738,12 @@ static void *janus_voicemail_handler(void *data) {
 			char url[1024];
 			g_snprintf(url, 1024, "%s/janus-voicemail-%"SCNu64".opus", recordings_base, session->recording_id);
 			json_object_set_new(event, "recording", json_string(url));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("done"));
+				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
+			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_VOICEMAIL_ERROR_INVALID_REQUEST;

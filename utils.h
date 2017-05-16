@@ -14,7 +14,6 @@
 
 #include <stdint.h>
 #include <glib.h>
-#include <netinet/in.h>
 #include <jansson.h>
 
 /* Use JANUS_JSON_BOOL instead of the non-existing JSON_BOOLEAN */
@@ -122,18 +121,6 @@ int janus_get_codec_pt(const char *sdp, const char *codec);
  * @returns The codec name, if found, NULL otherwise */
 const char *janus_get_codec_from_pt(const char *sdp, int pt);
 
-/*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
- * @param ip The IP address to check
- * @param[in,out] family The address family of the address, set by the method if valid
- * @returns true if the address is valid, false otherwise */
-gboolean janus_is_ip_valid(const char *ip, int *family);
-
-/*! \brief Convert a sockaddr address to an IP string
- * \note The resulting string is allocated, which means the caller must free it itself when done
- * @param address The sockaddr address to convert
- * @returns A string containing the IP address, if successful, NULL otherwise */
-char *janus_address_to_ip(struct sockaddr *address);
-
 /*! \brief Create and lock a PID file
  * @param file Path to the PID file to use
  * @returns 0 if successful, a negative integer otherwise */
@@ -146,7 +133,7 @@ int janus_pidfile_remove(void);
 /*! \brief Creates a string describing the JSON type and constraint
  * @param jtype The JSON type, e.g., JSON_STRING
  * @param flags Indicates constraints for the described type
- * @param[out] The type description, e.g., "a positive integer"; required size is 19 characters
+ * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters
  * @returns 0 if successful, a negative integer otherwise */
 void janus_get_json_type_name(int jtype, unsigned int flags, char *type_name);
 
@@ -214,7 +201,6 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
  * @param member The JSON member with the secret, usually "secret" or "pin"
  * @param[out] error_code int to return error code
  * @param[out] error_cause Array of char or NULL to return the error descriptions; the array has to be a global or stack variable to make sizeof work; the required size is 60
- * @param log_error If TRUE, log any error with JANUS_LOG(LOG_ERR)
  * @param missing_code The code to be returned in error_code if a parameter is missing
  * @param invalid_code The code to be returned in error_code if a parameter is invalid
  * @param unauthorized_code The code to be returned in error_code if the secret doesn't match */

@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var textroom = null;
+var opaqueId = "textroomtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myroom = 1234;	// Demo room
@@ -77,10 +79,11 @@ $(document).ready(function() {
 				{
 					server: server,
 					success: function() {
-						// Attach to echo test plugin
+						// Attach to text room plugin
 						janus.attach(
 							{
 								plugin: "janus.plugin.textroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									textroom = pluginHandle;
@@ -188,7 +191,22 @@ $(document).ready(function() {
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' left</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										delete participants[username];
+									} else if(what === "kicked") {
+										// Somebody was kicked
+										var username = json["username"];
+										var when = new Date();
+										$('#rp' + username).remove();
+										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' was kicked from the room</i></p>');
+										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
+										delete participants[username];
+										if(username === myid) {
+											bootbox.alert("You have been kicked from the room", function() {
+												window.location.reload();
+											});
+										}
 									} else if(what === "destroyed") {
+										if(json["room"] !== myroom)
+											return;
 										// Room was destroyed, goodbye!
 										Janus.warn("The room has been destroyed!");
 										bootbox.alert("The room has been destroyed", function() {

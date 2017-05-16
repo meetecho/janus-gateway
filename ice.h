@@ -20,6 +20,7 @@
 #include <glib.h>
 #include <agent.h>
 
+#include "sdp.h"
 #include "dtls.h"
 #include "sctp.h"
 #include "rtcp.h"
@@ -127,6 +128,12 @@ void janus_set_max_nack_queue(uint mnq);
 /*! \brief Method to get the current max NACK value (i.e., the number of packets per handle to store for retransmissions)
  * @returns The current max NACK value */
 uint janus_get_max_nack_queue(void);
+/*! \brief Method to modify the no-media event timer (i.e., the number of seconds where no media arrives before Janus notifies this)
+ * @param[in] timer The new timer value, in seconds */
+void janus_set_no_media_timer(uint timer);
+/*! \brief Method to get the current no-media event timer (see above)
+ * @returns The current no-media event timer */
+uint janus_get_no_media_timer(void);
 /*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
  * @returns True if libnice debugging is enabled, FALSE otherwise */
 gboolean janus_ice_is_ice_debugging_enabled(void);
@@ -238,7 +245,7 @@ typedef struct janus_seq_info {
 	guint16 state;
 	struct janus_seq_info *next;
 	struct janus_seq_info *prev;
-} seq_info_t;
+} janus_seq_info;
 enum {
 	SEQ_MISSING,
 	SEQ_NACKED,
@@ -253,6 +260,8 @@ struct janus_ice_handle {
 	void *session;
 	/*! \brief Handle identifier, guaranteed to be non-zero */
 	guint64 handle_id;
+	/*! \brief Opaque identifier, e.g., to provide inter-handle relationships to external tools */
+	char *opaque_id;
 	/*! \brief Monotonic time of when the handle has been created */
 	gint64 created;
 	/*! \brief Opaque application (plugin) pointer */
@@ -311,6 +320,10 @@ struct janus_ice_handle {
 	GThread *send_thread;
 	/*! \brief Atomic flag to make sure we only create the thread once */
 	volatile gint send_thread_created;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	guint srtp_errors_count;
+	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
+	gint last_srtp_error;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };
@@ -366,7 +379,7 @@ struct janus_ice_stream {
 	/*! \brief RTCP component */
 	janus_ice_component *rtcp_component;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this stream */
 	janus_mutex mutex;
 };
@@ -409,15 +422,15 @@ struct janus_ice_component {
 	/*! \brief Number of NACKs sent since last log message */
 	guint nack_sent_recent_cnt;
 	/*! \brief List of recently received audio sequence numbers (as a support to NACK generation) */
-	seq_info_t *last_seqs_audio;
+	janus_seq_info *last_seqs_audio;
 	/*! \brief List of recently received video sequence numbers (as a support to NACK generation) */
-	seq_info_t *last_seqs_video;
+	janus_seq_info *last_seqs_video;
 	/*! \brief Stats for incoming data (audio/video/data) */
 	janus_ice_stats in_stats;
 	/*! \brief Stats for outgoing data (audio/video/data) */
 	janus_ice_stats out_stats;
 	/*! \brief Helper flag to avoid flooding the console with the same error all over again */
-	gint noerrorlog:1;
+	gboolean noerrorlog;
 	/*! \brief Mutex to lock/unlock this component */
 	janus_mutex mutex;
 };
@@ -460,8 +473,9 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 ///@{
 /*! \brief Method to create a new Janus ICE handle
  * @param[in] gateway_session The gateway/peer session this ICE handle will belong to
+ * @param[in] opaque_id The opaque identifier provided by the creator, if any (optional)
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session);
+janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opaque_id);
 /*! \brief Method to find an existing Janus ICE handle from its ID
  * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID
@@ -528,9 +542,7 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 #endif
 /*! \brief libnice callback to notify when a new remote candidate has been discovered for an ICE agent
  * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] component_id The component ID for which the callback applies
- * @param[in] foundation Candidate (or foundation)
+ * @param[in] candidate The libnice candidate that has been discovered
  * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
 #ifndef HAVE_LIBNICE_TCP
 void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
@@ -589,12 +601,12 @@ void *janus_ice_send_thread(void *data);
  * @param[in] trickle Whether ICE trickling is supported or not
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int video, int data, int bundle, int rtcpmux, int trickle);
-/*! \brief Method to add local candidates to the gateway SDP
+/*! \brief Method to add local candidates to a janus_sdp SDP object representation
  * @param[in] handle The Janus ICE handle this method refers to
- * @param[in,out] sdp The handle description the gateway is preparing
+ * @param[in] mline The Janus SDP m-line object to add candidates to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP
  * @param[in] component_id The component ID of the candidate to add to the SDP */
-void janus_ice_candidates_to_sdp(janus_ice_handle *handle, char *sdp, guint stream_id, guint component_id);
+void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mline, guint stream_id, guint component_id);
 /*! \brief Method to handle remote candidates and start the connectivity checks
  * @param[in] handle The Janus ICE handle this method refers to
  * @param[in] stream_id The stream ID of the candidate to add to the SDP

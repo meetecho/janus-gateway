@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var sipcall = null;
+var opaqueId = "siptest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -82,6 +84,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.sip",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									sipcall = pluginHandle;
@@ -300,7 +303,7 @@ $(document).ready(function() {
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
-									attachMediaStream($('#myvideo').get(0), stream);
+									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									// No remote video yet
 									$('#videoright').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
@@ -338,11 +341,13 @@ $(document).ready(function() {
 												$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
 										}
 										$('.dtmf').click(function() {
-											// Send DTMF tone (inband)
-											sipcall.dtmf({dtmf: { tones: $(this).text()}});
-
-											// You can also send DTMF tones using SIP INFO
-											// sipcall.send({"message": {"request": "dtmf_info", "digit": $(this).text()}});
+											if(adapter.browserDetails.browser === 'chrome') {
+												// Send DTMF tone (inband)
+												sipcall.dtmf({dtmf: { tones: $(this).text()}});
+											} else {
+												// Try sending the DTMF tone using SIP INFO
+												sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
+											}
 										});
 									}
 									// Show the peer and hide the spinner when we get a playing event
@@ -353,7 +358,7 @@ $(document).ready(function() {
 											spinner.stop();
 										spinner = null;
 									});
-									attachMediaStream($('#remotevideo').get(0), stream);
+									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
 										// No remote video
@@ -435,20 +440,18 @@ function registerUsername() {
 		if(sipserver !== "")
 			register["proxy"] = sipserver;
 		var username = $('#username').val();
-		if(username !== undefined && username !== null) {
-			if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
-				bootbox.alert('Usernames are optional for guests: if you want to specify one anyway, though, please insert a valid SIP address (e.g., sip:goofy@example.com)');
-				$('#server').removeAttr('disabled');
-				$('#username').removeAttr('disabled');
-				$('#displayname').removeAttr('disabled');
-				$('#register').removeAttr('disabled').click(registerUsername);
-				$('#registerset').removeAttr('disabled');
-				return;
-			}
-			register.username = username;
+		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
+			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
+			$('#server').removeAttr('disabled');
+			$('#username').removeAttr('disabled');
+			$('#displayname').removeAttr('disabled');
+			$('#register').removeAttr('disabled').click(registerUsername);
+			$('#registerset').removeAttr('disabled');
+			return;
 		}
+		register.username = username;
 		var displayname = $('#displayname').val();
-		if (displayname) {
+		if(displayname) {
 			register.display_name = displayname;
 		}
 		if(sipserver === "") {

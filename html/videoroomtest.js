@@ -50,11 +50,15 @@ else
 
 var janus = null;
 var sfutest = null;
+var opaqueId = "videoroomtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myusername = null;
 var myid = null;
 var mystream = null;
+// We use this other ID just to map our subscriptions to us
+var mypvtid = null;
 
 var feeds = [];
 var bitrateTimer = [];
@@ -83,6 +87,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.videoroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									sfutest = pluginHandle;
@@ -138,6 +143,7 @@ $(document).ready(function() {
 										if(event === "joined") {
 											// Publisher/manager created, negotiate WebRTC and attach to existing feeds, if any
 											myid = msg["id"];
+											mypvtid = msg["private_id"];
 											Janus.log("Successfully joined room " + msg["room"] + " with ID " + myid);
 											publishOwnFeed(true);
 											// Any new feed to attach to?
@@ -155,7 +161,7 @@ $(document).ready(function() {
 										} else if(event === "destroyed") {
 											// The room has been destroyed
 											Janus.warn("The room has been destroyed!");
-											bootbox.alert(error, function() {
+											bootbox.alert("The room has been destroyed", function() {
 												window.location.reload();
 											});
 										} else if(event === "event") {
@@ -239,7 +245,7 @@ $(document).ready(function() {
 										$('#unpublish').click(unpublishOwnFeed);
 									}
 									$('#publisher').removeClass('hide').html(myusername).show();
-									attachMediaStream($('#myvideo').get(0), stream);
+									Janus.attachMediaStream($('#myvideo').get(0), stream);
 									$("#myvideo").get(0).muted = "muted";
 									$("#videolocal").parent().parent().block({
 										message: '<b>Publishing...</b>',
@@ -333,7 +339,8 @@ function publishOwnFeed(useAudio) {
 	$('#publish').attr('disabled', true).unbind('click');
 	sfutest.createOffer(
 		{
-			media: { audioRecv: false, videoRecv: false, audioSend: useAudio, videoSend: true},	// Publishers are sendonly
+			// Add data:true here if you want to publish datachannels as well
+			media: { audioRecv: false, videoRecv: false, audioSend: useAudio, videoSend: true },	// Publishers are sendonly
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
@@ -376,12 +383,13 @@ function newRemoteFeed(id, display) {
 	janus.attach(
 		{
 			plugin: "janus.plugin.videoroom",
+			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": 1234, "ptype": "listener", "feed": id };
+				var listen = { "request": "join", "room": 1234, "ptype": "listener", "feed": id, "private_id": mypvtid };
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {
@@ -426,6 +434,8 @@ function newRemoteFeed(id, display) {
 					remoteFeed.createAnswer(
 						{
 							jsep: jsep,
+							// Add data:true here if you want to subscribe to datachannels as well
+							// (obviously only works if the publisher offered them in the first place)
 							media: { audioSend: false, videoSend: false },	// We want recvonly audio/video
 							success: function(jsep) {
 								Janus.debug("Got SDP!");
@@ -466,7 +476,7 @@ function newRemoteFeed(id, display) {
 					var width = this.videoWidth;
 					var height = this.videoHeight;
 					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					if(webrtcDetectedBrowser == "firefox") {
+					if(adapter.browserDetails.browser === "firefox") {
 						// Firefox Stable has a bug: width and height are not immediately available after a playing
 						setTimeout(function() {
 							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
@@ -475,7 +485,7 @@ function newRemoteFeed(id, display) {
 						}, 2000);
 					}
 				});
-				attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
+				Janus.attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
 				var videoTracks = stream.getVideoTracks();
 				if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
 					// No remote video
@@ -486,7 +496,7 @@ function newRemoteFeed(id, display) {
 							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
 						'</div>');
 				}
-				if(webrtcDetectedBrowser == "chrome" || webrtcDetectedBrowser == "firefox") {
+				if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 						// Display updated bitrate, if supported
