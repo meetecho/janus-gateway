@@ -1346,11 +1346,11 @@ function Janus(gatewayCallbacks) {
 			config.pc.addStream(stream);
 			pluginHandle.onlocalstream(stream);
 		}
-		config.pc.onaddstream = function(remoteStream) {
+		config.pc.ontrack = function(remoteStream) {
 			Janus.log("Handling Remote Stream");
 			Janus.debug(remoteStream);
 			config.remoteStream = remoteStream;
-			pluginHandle.onremotestream(remoteStream.stream);
+			pluginHandle.onremotestream(remoteStream.streams[0]);
 		};
 		// Any data channel to create?
 		if(isDataEnabled(media)) {
@@ -2066,11 +2066,11 @@ function Janus(gatewayCallbacks) {
 		} else if(config.pc.getStats && adapter.browserDetails.browser == "firefox") {
 			// Do it the Firefox way
 			if(config.remoteStream === null || config.remoteStream === undefined
-					|| config.remoteStream.stream === null || config.remoteStream.stream === undefined) {
+					|| config.remoteStream.streams[0] === null || config.remoteStream.streams[0] === undefined) {
 				Janus.warn("Remote stream unavailable");
 				return "Remote stream unavailable";
 			}
-			var videoTracks = config.remoteStream.stream.getVideoTracks();
+			var videoTracks = config.remoteStream.streams[0].getVideoTracks();
 			if(videoTracks === null || videoTracks === undefined || videoTracks.length < 1) {
 				Janus.warn("No video track");
 				return "No video track";
