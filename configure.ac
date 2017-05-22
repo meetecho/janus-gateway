@@ -88,6 +88,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
                      [enable_plugin_sip=no])
+               AS_IF([test "x$enable_plugin_nosip" != "xyes"],
+                     [enable_plugin_nosip=no])
                AS_IF([test "x$enable_plugin_streaming" != "xyes"],
                      [enable_plugin_streaming=no])
                AS_IF([test "x$enable_plugin_textroom" != "xyes"],
@@ -473,7 +475,8 @@ AC_ARG_ENABLE([plugin-sip],
 AC_ARG_ENABLE([plugin-nosip],
               [AS_HELP_STRING([--disable-plugin-nosip],
                               [Disable nosip plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_nosip" != "xyes"],
+                     [enable_plugin_nosip=no])],
               [enable_plugin_nosip=yes])
 
 AC_ARG_ENABLE([plugin-streaming],
