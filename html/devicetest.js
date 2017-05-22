@@ -52,7 +52,7 @@ var janus = null;
 var echotest = null;
 var opaqueId = "devicetest-"+Janus.randomString(12);
 
-var started = false;
+var started = false, firstTime = true;
 var bitrateTimer = null;
 var spinner = null;
 
@@ -77,6 +77,31 @@ function initDevices(devices) {
 			$('#audio-device').append(option);
 		} else if(device.kind === 'videoinput') {
 			$('#video-device').append(option);
+		} else if(device.kind === 'audiooutput') {
+			// Apparently only available from Chrome 49 on?
+			// https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId
+			$('#output-devices').removeClass('hide');
+			$('#audiooutput').append('<li><a href="#" id="' + device.deviceId + '">' + label + '</a></li>');
+			$('#audiooutput a').unbind('click')
+				.click(function() {
+					var deviceId = $(this).attr("id");
+					var label = $(this).text();
+					Janus.log("Trying to set device " + deviceId + " (" + label + ") as sink for the output");
+					if($('#peervideo').length === 0) {
+						Janus.error("No remote video element available");
+						bootbox.alert("No remote video element available");
+						return false;
+					}
+					$('#peervideo').get(0).setSinkId(deviceId)
+						.then(function() {
+							Janus.log('Audio output device attached:', deviceId);
+							$('#outputdeviceset').html(label + '<span class="caret"></span>').parent().removeClass('open');
+						}).catch(function(error) {
+							Janus.error(error);
+							bootbox.alert(error);
+						});
+					return false;
+				});
 		}
 	});
 
@@ -87,9 +112,14 @@ function initDevices(devices) {
 		// A different device has been selected: hangup the session, and set it up again
 		$('#audio-device, #video-device').attr('disabled', true);
 		$('#change-devices').attr('disabled', true);
-		echotest.hangup();
+		echotest.hangup(true);
+		if(firstTime) {
+			firstTime = false;
+			restartCapture();
+			return;
+		}
 		// Let's wait a couple of seconds before restarting
-		setTimeout(restartCapture, 1000);
+		setTimeout(restartCapture, 2000);
 	});
 
 	//~ restartCapture();
@@ -222,7 +252,7 @@ $(document).ready(function() {
 											videoenabled = true;
 											$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 											$('#bitrate').attr('disabled', true);
-											$('#bitrateset').html('Bandwidth<span class="caret">');
+											$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 											$('#curbitrate').hide();
 											if(bitrateTimer !== null && bitrateTimer !== undefined)
 												clearInterval(bitrateTimer);
@@ -230,6 +260,7 @@ $(document).ready(function() {
 											$('#curres').hide();
 											$('#datasend').val('').attr('disabled', true);
 											$('#datarecv').val('');
+											$('#outputdeviceset').html('Output device<span class="caret"></span>');
 										}
 									}
 								},
@@ -331,7 +362,7 @@ $(document).ready(function() {
 										} else {
 											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
 										}
-										$('#bitrateset').html($(this).html()).parent().removeClass('open');
+										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
@@ -367,7 +398,7 @@ $(document).ready(function() {
 									videoenabled = true;
 									$('#togglevideo').attr('disabled', true).html("Disable video").removeClass("btn-success").addClass("btn-danger");
 									$('#bitrate').attr('disabled', true);
-									$('#bitrateset').html('Bandwidth<span class="caret">');
+									$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 									$('#curbitrate').hide();
 									if(bitrateTimer !== null && bitrateTimer !== undefined)
 										clearInterval(bitrateTimer);
@@ -375,6 +406,7 @@ $(document).ready(function() {
 									$('#curres').hide();
 									$('#datasend').val('').attr('disabled', true);
 									$('#datarecv').val('');
+									$('#outputdeviceset').html('Output device<span class="caret"></span>');
 								}
 							});
 					},
