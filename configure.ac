@@ -88,6 +88,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
                      [enable_plugin_sip=no])
+               AS_IF([test "x$enable_plugin_sipre" != "xyes"],
+                     [enable_plugin_sipre=no])
                AS_IF([test "x$enable_plugin_streaming" != "xyes"],
                      [enable_plugin_streaming=no])
                AS_IF([test "x$enable_plugin_textroom" != "xyes"],
@@ -473,7 +475,8 @@ AC_ARG_ENABLE([plugin-sip],
 AC_ARG_ENABLE([plugin-sipre],
               [AS_HELP_STRING([--disable-plugin-sipre],
                               [Disable sipre plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_sipre" != "xyes"],
+                     [enable_plugin_sipre=no])],
               [enable_plugin_sipre=maybe])
 
 AC_ARG_ENABLE([plugin-streaming],
