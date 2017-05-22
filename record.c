@@ -69,9 +69,6 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	}
 	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
 		type = JANUS_RECORDER_VIDEO;
-		if(!strcasecmp(codec, "vp9")) {
-			JANUS_LOG(LOG_WARN, "The post-processor currently doesn't support VP9: recording anyway for the future\n");
-		}
 	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")) {
 		type = JANUS_RECORDER_AUDIO;
 		if(!strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma"))

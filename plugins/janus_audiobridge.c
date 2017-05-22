@@ -2361,7 +2361,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			if(g_list_length(participant->inbuf) >= DEFAULT_PREBUFFERING*2) {
 				gint64 now = janus_get_monotonic_time();
 				if(now - participant->last_drop > 5*G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_WARN, "Too many packets in queue (%d > %d), removing older ones\n",
+					JANUS_LOG(LOG_VERB, "Too many packets in queue (%d > %d), removing older ones\n",
 						g_list_length(participant->inbuf), DEFAULT_PREBUFFERING*2);
 					participant->last_drop = now;
 				}

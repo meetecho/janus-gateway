@@ -40,47 +40,11 @@ AC_ARG_ENABLE([docs],
               [],
               [enable_docs=no])
 
-AC_ARG_ENABLE([rest],
-              [AS_HELP_STRING([--disable-rest],
-                              [Disable REST (HTTP/HTTPS) support])],
-              [],
-              [enable_rest=maybe])
-
-AC_ARG_ENABLE([websockets],
-              [AS_HELP_STRING([--disable-websockets],
-                              [Disable WebSockets support])],
-              [],
-              [enable_websockets=maybe])
-
 AC_ARG_ENABLE([data-channels],
               [AS_HELP_STRING([--disable-data-channels],
                               [Disable DataChannels])],
               [],
               [enable_data_channels=maybe])
-
-AC_ARG_ENABLE([rabbitmq],
-              [AS_HELP_STRING([--disable-rabbitmq],
-                              [Disable RabbitMQ integration])],
-              [],
-              [enable_rabbitmq=maybe])
-
-AC_ARG_ENABLE([mqtt],
-              [AS_HELP_STRING([--disable-mqtt],
-                              [Disable MQTT integration])],
-              [],
-              [enable_mqtt=maybe])
-
-AC_ARG_ENABLE([unix-sockets],
-              [AS_HELP_STRING([--disable-unix-sockets],
-                              [Disable Unix Sockets integration])],
-              [],
-              [enable_unix_sockets=maybe])
-
-AC_ARG_ENABLE([sample-event-handler],
-              [AS_HELP_STRING([--disable-sample-event-handler],
-                              [Disable sample event handler (HTTP POST) ])],
-              [],
-              [enable_sample_event_handler=maybe])
 
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
@@ -111,6 +75,99 @@ AC_ARG_ENABLE([turn-rest-api],
                               [Disable TURN REST API client (via libcurl)])],
               [],
               [enable_turn_rest_api=maybe])
+
+AC_ARG_ENABLE([all-plugins],
+              [AS_HELP_STRING([--disable-all-plugins],
+                              [Disable building all plugins (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_plugin_audiobridge" != "xyes"],
+                     [enable_plugin_audiobridge=no])
+               AS_IF([test "x$enable_plugin_echotest" != "xyes"],
+                     [enable_plugin_echotest=no])
+               AS_IF([test "x$enable_plugin_recordplay" != "xyes"],
+                     [enable_plugin_recordplay=no])
+               AS_IF([test "x$enable_plugin_sip" != "xyes"],
+                     [enable_plugin_sip=no])
+               AS_IF([test "x$enable_plugin_streaming" != "xyes"],
+                     [enable_plugin_streaming=no])
+               AS_IF([test "x$enable_plugin_textroom" != "xyes"],
+                     [enable_plugin_textroom=no])
+               AS_IF([test "x$enable_plugin_videocall" != "xyes"],
+                     [enable_plugin_videocall=no])
+               AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
+                     [enable_plugin_videoroom=no])
+               AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
+                     [enable_plugin_voicemail=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([all-transports],
+              [AS_HELP_STRING([--disable-all-transports],
+                              [Disable building all transports (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_rest" != "xyes"],
+                     [enable_rest=no])
+               AS_IF([test "x$enable_websockets" != "xyes"],
+                     [enable_websockets=no])
+               AS_IF([test "x$enable_rabbitmq" != "xyes"],
+                     [enable_rabbitmq=no])
+               AS_IF([test "x$enable_mqtt" != "xyes"],
+                     [enable_mqtt=no])
+               AS_IF([test "x$enable_unix_sockets" != "xyes"],
+                     [enable_unix_sockets=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([all-handlers],
+              [AS_HELP_STRING([--disable-all-handlers],
+                              [Disable building all event handlers (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_sample_event_handler" != "xyes"],
+                     [enable_sample_event_handler=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([rest],
+              [AS_HELP_STRING([--disable-rest],
+                              [Disable REST (HTTP/HTTPS) support])],
+              [AS_IF([test "x$enable_rest" != "xyes"],
+                     [enable_rest=no])],
+              [enable_rest=maybe])
+
+AC_ARG_ENABLE([websockets],
+              [AS_HELP_STRING([--disable-websockets],
+                              [Disable WebSockets support])],
+              [AS_IF([test "x$enable_websockets" != "xyes"],
+                     [enable_websockets=no])],
+              [enable_websockets=maybe])
+
+AC_ARG_ENABLE([rabbitmq],
+              [AS_HELP_STRING([--disable-rabbitmq],
+                              [Disable RabbitMQ integration])],
+              [AS_IF([test "x$enable_rabbitmq" != "xyes"],
+                     [enable_rabbitmq=no])],
+              [enable_rabbitmq=maybe])
+
+AC_ARG_ENABLE([mqtt],
+              [AS_HELP_STRING([--disable-mqtt],
+                              [Disable MQTT integration])],
+              [AS_IF([test "x$enable_mqtt" != "xyes"],
+                     [enable_mqtt=no])],
+              [enable_mqtt=maybe])
+
+AC_ARG_ENABLE([unix-sockets],
+              [AS_HELP_STRING([--disable-unix-sockets],
+                              [Disable Unix Sockets integration])],
+              [AS_IF([test "x$enable_unix_sockets" != "xyes"],
+                     [enable_unix_sockets=no])],
+              [enable_unix_sockets=maybe])
+
+AC_ARG_ENABLE([sample-event-handler],
+              [AS_HELP_STRING([--disable-sample-event-handler],
+                              [Disable sample event handler (HTTP POST) ])],
+              [AS_IF([test "x$enable_sample_event_handler" != "xyes"],
+                     [enable_sample_event_handler=no])],
+              [enable_sample_event_handler=maybe])
 
 PKG_CHECK_MODULES([JANUS],
                   [
@@ -388,25 +445,29 @@ PKG_CHECK_MODULES([PLUGINS],
 AC_ARG_ENABLE([plugin-audiobridge],
               [AS_HELP_STRING([--disable-plugin-audiobridge],
                               [Disable audiobridge plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_audiobridge" != "xyes"],
+                     [enable_plugin_audiobridge=no])],
               [enable_plugin_audiobridge=maybe])
 
 AC_ARG_ENABLE([plugin-echotest],
               [AS_HELP_STRING([--disable-plugin-echotest],
                               [Disable echotest plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_echotest" != "xyes"],
+                     [enable_plugin_echotest=no])],
               [enable_plugin_echotest=yes])
 
 AC_ARG_ENABLE([plugin-recordplay],
               [AS_HELP_STRING([--disable-plugin-recordplay],
                               [Disable record&play plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_recordplay" != "xyes"],
+                     [enable_plugin_recordplay=no])],
               [enable_plugin_recordplay=yes])
 
 AC_ARG_ENABLE([plugin-sip],
               [AS_HELP_STRING([--disable-plugin-sip],
                               [Disable sip plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_sip" != "xyes"],
+                     [enable_plugin_sip=no])],
               [enable_plugin_sip=maybe])
 
 AC_ARG_ENABLE([plugin-nosip],
@@ -418,32 +479,37 @@ AC_ARG_ENABLE([plugin-nosip],
 AC_ARG_ENABLE([plugin-streaming],
               [AS_HELP_STRING([--disable-plugin-streaming],
                               [Disable streaming plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_streaming" != "xyes"],
+                     [enable_plugin_streaming=no])],
               [enable_plugin_streaming=yes])
+
+AC_ARG_ENABLE([plugin-textroom],
+              [AS_HELP_STRING([--disable-plugin-textroom],
+                              [Disable textroom plugin])],
+              [AS_IF([test "x$enable_plugin_textroom" != "xyes"],
+                     [enable_plugin_textroom=no])],
+              [enable_plugin_textroom=yes])
 
 AC_ARG_ENABLE([plugin-videocall],
               [AS_HELP_STRING([--disable-plugin-videocall],
                               [Disable videocall plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_videocall" != "xyes"],
+                     [enable_plugin_videocall=no])],
               [enable_plugin_videocall=yes])
 
 AC_ARG_ENABLE([plugin-videoroom],
               [AS_HELP_STRING([--disable-plugin-videoroom],
                               [Disable videoroom plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
+                     [enable_plugin_videoroom=no])],
               [enable_plugin_videoroom=yes])
 
 AC_ARG_ENABLE([plugin-voicemail],
               [AS_HELP_STRING([--disable-plugin-voicemail],
                               [Disable voicemail plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
+                     [enable_plugin_voicemail=no])],
               [enable_plugin_voicemail=maybe])
-
-AC_ARG_ENABLE([plugin-textroom],
-              [AS_HELP_STRING([--disable-plugin-textroom],
-                              [Disable textroom plugin])],
-              [],
-              [enable_plugin_textroom=yes])
 
 PKG_CHECK_MODULES([SOFIA],
                   [sofia-sip-ua],
