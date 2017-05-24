@@ -140,7 +140,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JANUS_JSON_STRING, 0},
 	{"ha1_secret", JANUS_JSON_STRING, 0},
-	{"authuser", JANUS_JSON_STRING, 0}
+	{"authuser", JANUS_JSON_STRING, 0},
+	{"headers", JANUS_JSON_OBJECT, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JANUS_JSON_STRING, 0}
@@ -256,12 +257,14 @@ typedef struct janus_sipre_mqueue_payload {
 	void *session;				/* The session this event refers to */
 	const struct sip_msg *msg;	/* The SIP message this refers to, if any */
 	int rcode;					/* The error code to send back, if any */
+	void *data;					/* Payload specific data */
 } janus_sipre_mqueue_payload;
-static janus_sipre_mqueue_payload *janus_sipre_mqueue_payload_create(void *session, const struct sip_msg *msg, int rcode) {
+static janus_sipre_mqueue_payload *janus_sipre_mqueue_payload_create(void *session, const struct sip_msg *msg, int rcode, void *data) {
 	janus_sipre_mqueue_payload *payload = g_malloc0(sizeof(janus_sipre_mqueue_payload));
 	payload->session = session;
 	payload->msg = msg;
 	payload->rcode = rcode;
+	payload->data = data;
 	return payload;
 }
 
@@ -468,7 +471,7 @@ typedef struct janus_sipre_session {
 	char *transaction;
 	char *callee;
 	char *callid;
-	char *temp_sdp, *temp_headers;
+	char *temp_sdp;
 	janus_sdp *sdp;				/* The SDP this user sent */
 	janus_recorder *arc;		/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *arc_peer;	/* The Janus recorder instance for the peer's audio, if enabled */
@@ -1059,7 +1062,7 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_init(&session->mutex);
 	handle->plugin_handle = session;
 
-	mqueue_push(mq, janus_sipre_mqueue_event_do_listen, janus_sipre_mqueue_payload_create(session, NULL, 0));
+	mqueue_push(mq, janus_sipre_mqueue_event_do_listen, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, handle, session);
@@ -1087,7 +1090,7 @@ void janus_sipre_destroy_session(janus_plugin_session *handle, int *error) {
 		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Destroying SIPre session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
 		/* Destroy re-related stuff for this SIP session */
-		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -1580,14 +1583,44 @@ static void *janus_sipre_handler(void *data) {
 
 			session->account.registration_status = janus_sipre_registration_status_registering;
 			if(send_register) {
+				/* Check if the INVITE needs to be enriched with custom headers */
+				char custom_headers[2048];
+				custom_headers[0] = '\0';
+				json_t *headers = json_object_get(root, "headers");
+				if(headers) {
+					if(json_object_size(headers) > 0) {
+						/* Parse custom headers */
+						const char *key = NULL;
+						json_t *value = NULL;
+						void *iter = json_object_iter(headers);
+						while(iter != NULL) {
+							key = json_object_iter_key(iter);
+							value = json_object_get(headers, key);
+							if(value == NULL || !json_is_string(value)) {
+								JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+								iter = json_object_iter_next(headers, iter);
+								continue;
+							}
+							char h[255];
+							g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+							JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+							g_strlcat(custom_headers, h, 2048);
+							iter = json_object_iter_next(headers, iter);
+						}
+					}
+				}
+				char *data = NULL;
+				if(strlen(custom_headers))
+					data = g_strdup(custom_headers);
+				/* TODO Any way to specify TTL in sipreg_register? */
 				char ttl_text[20];
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
-					/* TODO Any way to specify TTL in sipreg_register? */
 				/* We enqueue this REGISTER attempt, to be sure it's done in the re_main loop thread
 				 * FIXME Maybe passing a key to the session is better than passing the session object
 				 * itself? it may be gone when it gets handled... won't be an issue with the
 				 * reference counter branch but needs to be taken into account until then */
-				mqueue_push(mq, janus_sipre_mqueue_event_do_register, janus_sipre_mqueue_payload_create(session, NULL, 0));
+				mqueue_push(mq, janus_sipre_mqueue_event_do_register,
+					janus_sipre_mqueue_payload_create(session, NULL, 0, data));
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
 			} else {
@@ -1755,6 +1788,10 @@ static void *janus_sipre_handler(void *data) {
 			/* Create a random call-id */
 			char callid[24];
 			janus_sipre_random_string(24, (char *)&callid);
+			/* Take note of custom headers, if any */
+			char *data = NULL;
+			if(strlen(custom_headers))
+				data = g_strdup(custom_headers);
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -1770,9 +1807,7 @@ static void *janus_sipre_handler(void *data) {
 			g_hash_table_insert(callids, session->callid, session);
 			session->media.autoack = do_autoack;
 			session->temp_sdp = sdp;
-			if(strlen(custom_headers) > 0)
-				session->temp_headers = g_strdup(custom_headers);
-			mqueue_push(mq, janus_sipre_mqueue_event_do_call, janus_sipre_mqueue_payload_create(session, NULL, 0));
+			mqueue_push(mq, janus_sipre_mqueue_event_do_call, janus_sipre_mqueue_payload_create(session, NULL, 0, data));
 			/* Done for now */
 			if(session->transaction)
 				g_free(session->transaction);
@@ -1896,7 +1931,7 @@ static void *janus_sipre_handler(void *data) {
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sipre_call_status_incall;
 			session->temp_sdp = sdp;
-			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0));
+			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 			/* Send an ack back */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("accepted"));
@@ -1936,7 +1971,8 @@ static void *janus_sipre_handler(void *data) {
 				response_code = 486;
 			}
 			/* Enqueue the response */
-			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, session->stack.invite, response_code));
+			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode,
+				janus_sipre_mqueue_payload_create(session, session->stack.invite, response_code, NULL));
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -1969,7 +2005,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			session->status = janus_sipre_call_status_closing;
 			/* Enqueue the BYE */
-			mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0));
+			mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 			/* Notify the operation */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("hangingup"));
@@ -3023,7 +3059,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	if(sdp_offer == NULL) {
 		/* No SDP? */
 		JANUS_LOG(LOG_INFO, "[SIPre-%s] No SDP in the INVITE?\n", session->account.username);
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 		return;
 	}
 	char offer[1024];
@@ -3034,7 +3070,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	janus_sdp *sdp = janus_sdp_parse(offer, sdperror, sizeof(sdperror));
 	if(!sdp) {
 		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 		return;
 	}
 
@@ -3043,7 +3079,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		/* Already in a call (FIXME How do we handle re-INVITEs?) */
 		janus_sdp_free(sdp);
 		JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sipre_call_status_string(session->status));
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486, NULL));
 		/* Notify the web app about the missed invite */
 		json_t *missed = json_object();
 		json_object_set_new(missed, "sip", json_string("event"));
@@ -3084,13 +3120,13 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	janus_sipre_sdp_process(session, sdp, FALSE, reinvite, &changed);
 	/* Check if offer has neither audio nor video, fail with 488 */
 	if (!session->media.has_audio && !session->media.has_video) {
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 		janus_sdp_free(sdp);
 		return;
 	}
 	/* Also fail with 488 if there's no remote IP address that can be used for RTP */
 	if (!session->media.remote_ip) {
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 		janus_sdp_free(sdp);
 		return;
 	}
@@ -3135,7 +3171,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 	}
 	/* Send a Ringing back */
-	mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 180));
+	mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 180, NULL));
 }
 
 /* Called when an SDP offer is received (got offer: true) or being sent (got_offer: false) */
@@ -3186,7 +3222,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		janus_sdp_free(sdp);
 		/* Hangup immediately */
 		session->status = janus_sipre_call_status_closing;
-		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, msg, 0));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, msg, 0, NULL));
 		g_free(session->callee);
 		session->callee = NULL;
 		return EINVAL;
@@ -3197,7 +3233,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		janus_sdp_free(sdp);
 		/* Hangup immediately */
 		session->status = janus_sipre_call_status_closing;
-		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, msg, 0));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, msg, 0, NULL));
 		g_free(session->callee);
 		session->callee = NULL;
 		return EINVAL;
@@ -3355,13 +3391,16 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending REGISTER\n", session->account.username);
+			/* Check if there are custom headers to add */
+			char *headers = (char *)payload->data;
 			/* Send the REGISTER */
 			int err = sipreg_register(&session->stack.reg, sipstack,
 				session->account.proxy,
 				session->account.identity, session->account.identity, 3600,
 				session->account.display_name ? session->account.display_name : session->account.username, NULL, 0, 0,
 				janus_sipre_cb_auth, session, FALSE,
-				janus_sipre_cb_register, session, NULL, NULL);
+				janus_sipre_cb_register, session, NULL, (headers ? headers : ""), NULL);
+			g_free(headers);
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to REGISTER: %d (%s)\n", err, strerror(err));
 				/* Tell the browser... */
@@ -3393,6 +3432,8 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
 			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending INVITE\n%s", session->account.username, session->temp_sdp);
+			/* Check if there are custom headers to add */
+			char *headers = (char *)payload->data;
 			/* Convert the SDP into a struct mbuf */
 			struct mbuf *mb = mbuf_alloc(strlen(session->temp_sdp)+1);
 			mbuf_printf(mb, "%s", session->temp_sdp);
@@ -3407,7 +3448,8 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				janus_sipre_cb_offer, janus_sipre_cb_answer,
 				janus_sipre_cb_progress, janus_sipre_cb_established,
 				NULL, NULL, janus_sipre_cb_closed, session,
-				"%s", (session->temp_headers ? session->temp_headers : ""));
+				"%s", (headers ? headers : ""));
+			g_free(headers);
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to INVITE: %d (%s)\n", err, strerror(err));
 				/* Tell the browser... */
@@ -3435,8 +3477,6 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			mem_deref(mb);
 			g_free(session->temp_sdp);
 			session->temp_sdp = NULL;
-			g_free(session->temp_headers);
-			session->temp_headers = NULL;
 			g_free(payload);
 			break;
 		}
@@ -3477,8 +3517,6 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			mem_deref(mb);
 			g_free(session->temp_sdp);
 			session->temp_sdp = NULL;
-			g_free(session->temp_headers);
-			session->temp_headers = NULL;
 			g_free(payload);
 			break;
 		}
