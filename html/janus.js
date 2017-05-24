@@ -101,10 +101,11 @@ Janus.init = function(options) {
 		}
 		Janus.log("Initializing library");
 		// Helper method to enumerate devices
-		Janus.listDevices = function(callback) {
+		Janus.listDevices = function(callback, config) {
 			callback = (typeof callback == "function") ? callback : Janus.noop;
+			if (config == null) config = { audio: true, video: true };
 			if(navigator.mediaDevices) {
-				navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+				navigator.mediaDevices.getUserMedia(config)
 				.then(function(stream) {
 					navigator.mediaDevices.enumerateDevices().then(function(devices) {
 						Janus.debug(devices);
