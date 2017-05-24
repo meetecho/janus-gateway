@@ -26,6 +26,7 @@
 #include <poll.h>
 
 #include "janus.h"
+#include "version.h"
 #include "cmdline.h"
 #include "config.h"
 #include "apierror.h"
@@ -189,6 +190,8 @@ static json_t *janus_info(const char *transaction) {
 	json_object_set_new(info, "version", json_integer(JANUS_VERSION));
 	json_object_set_new(info, "version_string", json_string(JANUS_VERSION_STRING));
 	json_object_set_new(info, "author", json_string(JANUS_AUTHOR));
+	json_object_set_new(info, "commit-hash", json_string(janus_build_git_sha));
+	json_object_set_new(info, "compile-time", json_string(janus_build_git_time));
 	json_object_set_new(info, "log-to-stdout", janus_log_is_stdout_enabled() ? json_true() : json_false());
 	json_object_set_new(info, "log-to-file", janus_log_is_logfile_enabled() ? json_true() : json_false());
 	if(janus_log_is_logfile_enabled())
@@ -3136,6 +3139,9 @@ gint main(int argc, char *argv[])
 	core_limits.rlim_cur = core_limits.rlim_max = RLIM_INFINITY;
 	setrlimit(RLIMIT_CORE, &core_limits);
 
+	g_print("Janus commit: %s\n", janus_build_git_sha);
+	g_print("Compiled on:  %s\n\n", janus_build_git_time);
+
 	struct gengetopt_args_info args_info;
 	/* Let's call our cmdline parser */
 	if(cmdline_parser(argc, argv, &args_info) != 0)
@@ -3522,9 +3528,10 @@ gint main(int argc, char *argv[])
 		int st = atoi(item->value);
 		if(st < 0) {
 			JANUS_LOG(LOG_WARN, "Ignoring session_timeout value as it's not a positive integer\n");
-		} else if(st == 0) {
-			JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
 		} else {
+			if(st == 0) {
+				JANUS_LOG(LOG_WARN, "Session timeouts have been disabled (note, may result in orphaned sessions)\n");
+			}
 			session_timeout = st;
 		}
 	}
