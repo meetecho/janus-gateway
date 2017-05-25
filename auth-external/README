@@ -1,0 +1,12 @@
+###
+### To run this example authentication/authorization server...
+###
+
+# Install nodejs in whatever way your distribution provides it.
+apt-get install nodejs
+
+# Install the required sub-packages
+npm install .
+
+# Start it up!
+nodejs /authserver-example.js

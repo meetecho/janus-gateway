@@ -19,11 +19,12 @@
 #define _JANUS_AUTH_H
 
 #include <glib.h>
+#include <jansson.h>
 
 
 /*! \brief Method to initializing the token based authentication
- * @param[in] enabled Whether the authentication mechanism should be enabled or not */
-void janus_auth_init(gboolean enabled);
+ * @param[in] type Type of authentication: 'I'=internal, 'E'=external, '-'=none */
+void janus_auth_init(char type);
 /*! \brief Method to check whether the mechanism is enabled or not */
 gboolean janus_auth_is_enabled(void);
 /*! \brief Method to de-initialize the mechanism */
@@ -35,8 +36,9 @@ void janus_auth_deinit(void);
 gboolean janus_auth_add_token(const char *token);
 /*! \brief Method to check whether a provided token is valid or not
  * @param[in] token The token to validate
+ * @param[in/out] root The JSON root of the incoming message being processed
  * @returns true if the token is valid, false otherwise */
-gboolean janus_auth_check_token(const char *token);
+gboolean janus_auth_check_token(const char *token, json_t *root);
 /*! \brief Method to return a list of the tokens
  * \note It's the caller responsibility to free the list and its values
  * @returns A pointer to a GList instance containing the tokens */
@@ -67,4 +69,39 @@ GList *janus_auth_list_plugins(const char *token);
  * @returns true if the operation was successful, false otherwise */
 gboolean janus_auth_disallow_plugin(const char *token, void *plugin);
 
+
+/*! \brief The external token authenticator function to be used.
+ * @param[in] token The token to validate
+ * @param[in] root The JSON root of the incoming message being processed
+ * @returns true if the token is valid, false otherwise */
+gboolean (*janus_auth_check_token_external)(const char *token, json_t *root);
+
+
+#ifdef HAVE_LIBCURL
+
+/*! \brief External token authenticator that issues http requests for authentication
+ * @param[in] token The token to validate
+ * @param[in] root The JSON root of the incoming message being processed
+ * @returns true if the token is valid, false otherwise */
+gboolean janus_auth_check_token_http(const char *token, json_t *root);
+
+#else
+
+/*! \brief External token authenticator that always returns FALSE
+ * @param[in] token The token to validate
+ * @param[in] root The JSON root of the incoming message being processed
+ * @returns false, always */
+gboolean janus_auth_check_token_false(const char *token, json_t *root);
+
+#endif
+
+/*! \brief Set the private data of the external token authenticator
+ * @param[in] data Data which is meaningful to the external token authenticator
+ */
+void janus_auth_set_external_private_data(void * data);
+
+/*! \brief Get the private data of the external token authenticator
+ * @return the private data previously set
+ */
+const char * janus_auth_get_external_private_data(void);
 #endif
