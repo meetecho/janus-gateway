@@ -9,4 +9,4 @@ apt-get install nodejs
 npm install .
 
 # Start it up!
-nodejs /authserver-example.js
+nodejs ./authserver-example.js

@@ -86,7 +86,7 @@ $(document).ready(function() {
 					//		token: "mytoken",
 					//	or
 					//		apisecret: "serversecret",
-                                        token: "mytoken",
+                                        token: "echoonly",
 					success: function() {
 						// Attach to echo test plugin
 						janus.attach(

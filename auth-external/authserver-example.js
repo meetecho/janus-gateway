@@ -13,7 +13,6 @@ var allowedTokens =
   default : function(request)
   {
     var authenticated = allowStandard(request);
-console.log("DEFAULT: returning", authenticated);
     return authenticated;
   },
 
