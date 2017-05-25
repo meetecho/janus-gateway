@@ -145,7 +145,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
-	{"authuser", JSON_STRING, 0}
+	{"authuser", JSON_STRING, 0},
+	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
 	{"proxy", JSON_STRING, 0}
@@ -1588,6 +1589,32 @@ static void *janus_sip_handler(void *data) {
 			}
 
 			if (send_register) {
+				/* Check if the REGISTER needs to be enriched with custom headers */
+				char custom_headers[2048];
+				custom_headers[0] = '\0';
+				json_t *headers = json_object_get(root, "headers");
+				if(headers) {
+					if(json_object_size(headers) > 0) {
+						/* Parse custom headers */
+						const char *key = NULL;
+						json_t *value = NULL;
+						void *iter = json_object_iter(headers);
+						while(iter != NULL) {
+							key = json_object_iter_key(iter);
+							value = json_object_get(headers, key);
+							if(value == NULL || !json_is_string(value)) {
+								JANUS_LOG(LOG_WARN, "Skipping header '%s': value is not a string\n", key);
+								iter = json_object_iter_next(headers, iter);
+								continue;
+							}
+							char h[255];
+							g_snprintf(h, 255, "%s: %s\r\n", key, json_string_value(value));
+							JANUS_LOG(LOG_VERB, "Adding custom header, %s", h);
+							g_strlcat(custom_headers, h, 2048);
+							iter = json_object_iter_next(headers, iter);
+						}
+					}
+				}
 				session->stack->s_nh_r = nua_handle(session->stack->s_nua, session, TAG_END());
 				if(session->stack->s_nh_r == NULL) {
 					JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
@@ -1601,6 +1628,7 @@ static void *janus_sip_handler(void *data) {
 					NUTAG_M_USERNAME(session->account.username),
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
+					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					SIPTAG_EXPIRES_STR(ttl_text),
 					NUTAG_PROXY(proxy_text),
 					TAG_END());
