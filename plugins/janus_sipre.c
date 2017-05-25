@@ -2964,6 +2964,7 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_register\n", session->account.username);
 	if(err) {
 		JANUS_LOG(LOG_ERR, "[SIPre-%s] REGISTER error: %s\n", session->account.username, strerror(err));
+		/* FIXME Should we send an event here? */
 	} else {
 		JANUS_LOG(LOG_VERB, "[SIPre-%s] REGISTER reply: %u\n", session->account.username, msg->scode);
 		if(msg->scode == 200) {
@@ -3024,7 +3025,6 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 			}
 		}
 	}
-	/* TODO Send result back to user */
 }
 
 /* Called when SIP progress (e.g., 180 Ringing) responses are received */
@@ -3188,7 +3188,7 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 			return err;
 		}
 		JANUS_LOG(LOG_INFO, "SDP offer received\n");
-		/* TODO Handle */
+		/* FIXME Anything to do here? */
 	} else {
 		JANUS_LOG(LOG_INFO, "Sending SDP offer\n");
 	}
@@ -3290,8 +3290,7 @@ void janus_sipre_cb_established(const struct sip_msg *msg, void *arg) {
 		return;
 	}
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_established\n", session->account.username);
-
-	/* TODO Handle */
+	/* FIXME Anything to do here? */
 }
 
 /* Called when the session fails to connect or is terminated by the peer */
@@ -3381,7 +3380,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Listening\n", session->account.username);
 			int err = sipsess_listen(&session->stack.sess_sock, sipstack, 32, janus_sipre_cb_incoming, session);
 			if(err != 0) {
-				/* TODO Anything we should do? */
+				/* FIXME Anything we should do? */
 				JANUS_LOG(LOG_ERR, "Error listening: %d (%s)\n", err, strerror(err));
 			}
 			g_free(payload);
