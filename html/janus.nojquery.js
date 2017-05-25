@@ -1346,11 +1346,11 @@ function Janus(gatewayCallbacks) {
 			config.pc.addStream(stream);
 			pluginHandle.onlocalstream(stream);
 		}
-		config.pc.ontrack = function(remoteStream) {
+		config.pc.onaddstream = function(remoteStream) {
 			Janus.log("Handling Remote Stream");
 			Janus.debug(remoteStream);
 			config.remoteStream = remoteStream;
-			pluginHandle.onremotestream(remoteStream.streams[0]);
+			pluginHandle.onremotestream(remoteStream.stream);
 		};
 		// Any data channel to create?
 		if(isDataEnabled(media)) {
