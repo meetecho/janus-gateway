@@ -387,14 +387,14 @@ function Janus(gatewayCallbacks) {
 	}
 
 	// Private event handler: this will trigger plugin callbacks, if set
-	function handleEvent(json) {
+	function handleEvent(json, skipTimeout) {
 		retries = 0;
-		if(!websockets && sessionId !== undefined && sessionId !== null)
+		if(!websockets && sessionId !== undefined && sessionId !== null && skipTimeout !== true)
 			setTimeout(eventHandler, 200);
 		if(!websockets && Array.isArray(json)) {
 			// We got an array: it means we passed a maxev > 1, iterate on all objects
 			for(var i=0; i<json.length; i++) {
-				handleEvent(json[i]);
+				handleEvent(json[i], true);
 			}
 			return;
 		}
