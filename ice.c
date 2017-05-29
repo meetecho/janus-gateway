@@ -1173,9 +1173,21 @@ void janus_ice_free(janus_ice_handle *handle) {
 	handle = NULL;
 }
 
-void janus_ice_webrtc_hangup(janus_ice_handle *handle) {
+void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	if(handle == NULL)
 		return;
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		return;
+	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+	janus_plugin *plugin = (janus_plugin *)handle->app;
+	if(plugin != NULL) {
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about the hangup because of a %s (%s)\n",
+			handle->handle_id, reason, plugin->get_name());
+		if(plugin && plugin->hangup_media)
+			plugin->hangup_media(handle->app_handle);
+		janus_ice_notify_hangup(handle, reason);
+	}
 	if(handle->queued_packets != NULL)
 		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
 	if(handle->send_thread == NULL) {
@@ -2113,19 +2125,7 @@ void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_i
 				/* Check if there's an RTCP BYE: in case, let's wrap up */
 				if(janus_rtcp_has_bye(buf, buflen)) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
-					janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
-					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-						janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
-						if(handle->iceloop)
-							g_main_loop_quit(handle->iceloop);
-						janus_plugin *plugin = (janus_plugin *)handle->app;
-						if(plugin != NULL) {
-							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-							if(plugin && plugin->hangup_media)
-								plugin->hangup_media(handle->app_handle);
-							janus_ice_notify_hangup(handle, "RTCP BYE");
-						}
-					}
+					janus_ice_webrtc_hangup(handle, "RTCP BYE");
 					return;
 				}
 				/* Is this audio or video? */
@@ -2669,7 +2669,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 		return -1;
- 	}
+	}
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
@@ -3246,6 +3246,12 @@ void *janus_ice_send_thread(void *data) {
 					g_free(pkt);
 					pkt = NULL;
 				}
+			}
+			if(handle->iceloop) {
+				g_main_loop_quit(handle->iceloop);
+				handle->iceloop = NULL;
+				g_main_context_wakeup(handle->icectx);
+				handle->icectx = NULL;
 			}
 			continue;
 		}
