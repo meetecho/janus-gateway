@@ -1255,7 +1255,6 @@ void janus_audiobridge_destroy_session(janus_plugin_session *handle, int *error)
 	JANUS_LOG(LOG_VERB, "Removing AudioBridge session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	janus_audiobridge_hangup_media(handle);
-	handle->plugin_handle = NULL;
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
 
@@ -2498,12 +2497,7 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_audiobridge_message_free(msg);
 			continue;
 		}
-		janus_audiobridge_session *session = NULL;
-		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL) {
-			session = (janus_audiobridge_session *)msg->handle->plugin_handle;
-		}
-		janus_mutex_unlock(&sessions_mutex);
+		janus_audiobridge_session *session = (janus_audiobridge_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_audiobridge_message_free(msg);

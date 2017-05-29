@@ -1104,7 +1104,6 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	if(!g_atomic_int_get(&session->destroyed)) {
 		/* Any related WebRTC PeerConnection is not available anymore either */
 		janus_videoroom_hangup_media(handle);
-		handle->plugin_handle = NULL;
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
 			/* Get rid of publisher */
 			janus_mutex_lock(&session->mutex);
@@ -2830,14 +2829,9 @@ static void *janus_videoroom_handler(void *data) {
 			janus_videoroom_message_free(msg);
 			continue;
 		}
-		janus_videoroom_session *session = NULL;
 		janus_videoroom *videoroom = NULL;
 		janus_videoroom_publisher *participant = NULL;
-		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_videoroom_session *)msg->handle->plugin_handle;
-		}
-		janus_mutex_unlock(&sessions_mutex);
+		janus_videoroom_session *session = (janus_videoroom_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_videoroom_message_free(msg);

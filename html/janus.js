@@ -101,10 +101,11 @@ Janus.init = function(options) {
 		}
 		Janus.log("Initializing library");
 		// Helper method to enumerate devices
-		Janus.listDevices = function(callback) {
+		Janus.listDevices = function(callback, config) {
 			callback = (typeof callback == "function") ? callback : Janus.noop;
+			if (config == null) config = { audio: true, video: true };
 			if(navigator.mediaDevices) {
-				navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+				navigator.mediaDevices.getUserMedia(config)
 				.then(function(stream) {
 					navigator.mediaDevices.enumerateDevices().then(function(devices) {
 						Janus.debug(devices);
@@ -325,14 +326,14 @@ function Janus(gatewayCallbacks) {
 	}
 
 	// Private event handler: this will trigger plugin callbacks, if set
-	function handleEvent(json) {
+	function handleEvent(json, skipTimeout) {
 		retries = 0;
-		if(!websockets && sessionId !== undefined && sessionId !== null)
+		if(!websockets && sessionId !== undefined && sessionId !== null && skipTimeout !== true)
 			setTimeout(eventHandler, 200);
 		if(!websockets && $.isArray(json)) {
 			// We got an array: it means we passed a maxev > 1, iterate on all objects
 			for(var i=0; i<json.length; i++) {
-				handleEvent(json[i]);
+				handleEvent(json[i], true);
 			}
 			return;
 		}

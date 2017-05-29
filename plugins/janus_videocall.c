@@ -555,7 +555,6 @@ void janus_videocall_destroy_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_lock(&sessions_mutex);
 	JANUS_LOG(LOG_VERB, "Removing VideoCall user %s session...\n", session->username ? session->username : "'unknown'");
 	janus_videocall_hangup_media(handle);
-	handle->plugin_handle = NULL;
 	if(session->username != NULL) {
 		int res = g_hash_table_remove(sessions, (gpointer)session->username);
 		JANUS_LOG(LOG_VERB, "  -- Removed: %d\n", res);

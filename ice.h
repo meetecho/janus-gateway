@@ -177,7 +177,8 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO			(1 << 14)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
-#define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 17)
+#define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 17)
+#define JANUS_ICE_HANDLE_WEBRTC_ICE_RESTART			(1 << 18)
 
 
 /*! \brief Janus media statistics
@@ -503,8 +504,9 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
  * @returns 0 in case of success, a negative integer otherwise */
 gint janus_ice_handle_destroy(void *core_session, janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
- * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup */
-void janus_ice_webrtc_hangup(janus_ice_handle *handle);
+ * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup
+ * @param[in] reason A description of why this happened */
+void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
 /*! \brief Method to only free the WebRTC related resources allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */
 void janus_ice_webrtc_free(janus_ice_handle *handle);
