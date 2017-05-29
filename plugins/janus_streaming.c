@@ -3301,12 +3301,26 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char vfmtp[2048];
 	char vcontrol[2048];
 	char uri[1024];
-	char transport[1024];
+	char vtransport[1024];
 	multiple_fds video_fds = {-1, -1};
-	int result;
-	result = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
-		transport, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
-	if(result != -1) {
+
+	int apt = -1;
+	char artpmap[2048];
+	char afmtp[2048];
+	char acontrol[2048];
+	char atransport[1024];
+	multiple_fds audio_fds = {-1, -1};
+
+	/* Parse both video and audio first before proceed to setup as curldata will be reused */
+	int vresult;
+	vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
+		vtransport, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
+
+	int aresult;
+	aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
+		atransport, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
+
+	if(vresult != -1) {
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
@@ -3319,7 +3333,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, vcontrol);
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
-		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
+		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, vtransport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
@@ -3338,21 +3352,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
 		}
 	}
-	int apt = -1;
-	char artpmap[2048];
-	char afmtp[2048];
-	char acontrol[2048];
-	multiple_fds audio_fds = {-1, -1};
-	result = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
-		transport, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
-	if(result != -1) {
+
+	if(aresult != -1) {
 		/* Send an RTSP SETUP for audio */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
 		g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, acontrol);
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
-		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
+		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, atransport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
@@ -3373,6 +3381,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				ka_timeout = temp_timeout;
 		}
 	}
+
 	/* Update the source */
 	mp->codecs.audio_pt = doaudio ? apt : -1;
 	g_free(mp->codecs.audio_rtpmap);

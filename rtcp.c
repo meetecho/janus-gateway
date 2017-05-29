@@ -539,8 +539,13 @@ int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {
 	ctx->expected_prior = ctx->expected;
 	ctx->received_prior = ctx->received;
 	rb->flcnpl = htonl(lost | fraction);
-	rb->lsr = htonl(ctx->lsr);
-	rb->delay = htonl(((now - ctx->lsr_ts) << 16) / 1000000);
+	if(ctx->lsr > 0) {
+		rb->lsr = htonl(ctx->lsr);
+		rb->delay = htonl(((now - ctx->lsr_ts) / 1000000) << 16);
+	} else {
+		rb->lsr = 0;
+		rb->delay = 0;
+	}
 	ctx->last_sent = now;
 	return 0;
 }
