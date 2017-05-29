@@ -380,7 +380,6 @@ void janus_echotest_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -2;
 		return;
 	}
-	handle->plugin_handle = NULL;
 	JANUS_LOG(LOG_VERB, "Removing Echo Test session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
@@ -657,12 +656,7 @@ static void *janus_echotest_handler(void *data) {
 			janus_echotest_message_free(msg);
 			continue;
 		}
-		janus_echotest_session *session = NULL;
-		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_echotest_session *)msg->handle->plugin_handle;
-		}
-		janus_mutex_unlock(&sessions_mutex);
+		janus_echotest_session *session = (janus_echotest_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_echotest_message_free(msg);

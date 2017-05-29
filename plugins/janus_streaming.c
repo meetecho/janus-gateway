@@ -1153,7 +1153,6 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	JANUS_LOG(LOG_VERB, "Removing streaming session...\n");
 	janus_streaming_hangup_media(session->handle);
-	handle->plugin_handle = NULL;
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_remove(sessions, handle);
 	janus_mutex_unlock(&sessions_mutex);
@@ -1871,6 +1870,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				session->paused = FALSE;
 				session->mountpoint = NULL;
 				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+				janus_refcount_decrease(&session->ref);
 				janus_refcount_decrease(&mp->ref);
 				gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 				gateway->close_pc(session->handle);
@@ -2350,12 +2350,7 @@ static void *janus_streaming_handler(void *data) {
 			janus_streaming_message_free(msg);
 			continue;
 		}
-		janus_streaming_session *session = NULL;
-		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_streaming_session *)msg->handle->plugin_handle;
-		}
-		janus_mutex_unlock(&sessions_mutex);
+		janus_streaming_session *session = (janus_streaming_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_streaming_message_free(msg);
@@ -2413,8 +2408,17 @@ static void *janus_streaming_handler(void *data) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto error;
 			}
+			janus_mutex_lock(&mp->mutex);
 			janus_mutex_unlock(&mountpoints_mutex);
 			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %"SCNu64"\n", id_value);
+			if(session->mountpoint != NULL || g_list_find(mp->listeners, session) != NULL) {
+				janus_mutex_unlock(&mp->mutex);
+				janus_refcount_decrease(&mp->ref);
+				JANUS_LOG(LOG_ERR, "Already watching a stream...\n");
+				error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
+				g_snprintf(error_cause, 512, "Already watching a stream");
+				goto error;
+			}
 			session->stopping = FALSE;
 			session->mountpoint = mp;
 			if(mp->streaming_type == janus_streaming_type_on_demand) {
@@ -2423,6 +2427,8 @@ static void *janus_streaming_handler(void *data) {
 				g_snprintf(tname, sizeof(tname), "mp %"SCNu64, id_value);
 				g_thread_try_new(tname, &janus_streaming_ondemand_thread, session, &error);
 				if(error != NULL) {
+					session->mountpoint = NULL;
+					janus_mutex_unlock(&mp->mutex);
 					janus_refcount_decrease(&mp->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n", error->code, error->message ? error->message : "??");
 					error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
@@ -2430,8 +2436,7 @@ static void *janus_streaming_handler(void *data) {
 					goto error;
 				}
 			}
-			/* TODO Check if user is already watching a stream, if the video is active, etc. */
-			janus_mutex_lock(&mp->mutex);
+			janus_refcount_increase(&session->ref);
 			mp->listeners = g_list_append(mp->listeners, session);
 			janus_mutex_unlock(&mp->mutex);
 			sdp_type = "offer";	/* We're always going to do the offer ourselves, never answer */
@@ -2646,6 +2651,7 @@ static void *janus_streaming_handler(void *data) {
 				if(g_list_find(mp->listeners, session) != NULL) {
 					JANUS_LOG(LOG_VERB, "  -- -- Found!\n");
 					janus_refcount_decrease(&session->mountpoint->ref);
+					janus_refcount_decrease(&session->ref);
 				}
 				mp->listeners = g_list_remove_all(mp->listeners, session);
 				janus_mutex_unlock(&mp->mutex);
@@ -3303,12 +3309,26 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 	char vfmtp[2048];
 	char vcontrol[2048];
 	char uri[1024];
-	char transport[1024];
+	char vtransport[1024];
 	multiple_fds video_fds = {-1, -1};
-	int result;
-	result = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
-		transport, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
-	if(result != -1) {
+
+	int apt = -1;
+	char artpmap[2048];
+	char afmtp[2048];
+	char acontrol[2048];
+	char atransport[1024];
+	multiple_fds audio_fds = {-1, -1};
+
+	/* Parse both video and audio first before proceed to setup as curldata will be reused */
+	int vresult;
+	vresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "video", &vpt,
+		vtransport, vrtpmap, vfmtp, vcontrol, &source->video_iface, &video_fds);
+
+	int aresult;
+	aresult = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
+		atransport, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
+
+	if(vresult != -1) {
 		/* Send an RTSP SETUP for video */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
@@ -3321,7 +3341,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, vcontrol);
 		}
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
-		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
+		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, vtransport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
@@ -3340,21 +3360,15 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 			JANUS_LOG(LOG_VERB, "  -- RTSP session timeout (video): %d\n", ka_timeout);
 		}
 	}
-	int apt = -1;
-	char artpmap[2048];
-	char afmtp[2048];
-	char acontrol[2048];
-	multiple_fds audio_fds = {-1, -1};
-	result = janus_streaming_rtsp_parse_sdp(curldata->buffer, name, "audio", &apt,
-		transport, artpmap, afmtp, acontrol, &source->audio_iface, &audio_fds);
-	if(result != -1) {
+
+	if(aresult != -1) {
 		/* Send an RTSP SETUP for audio */
 		g_free(curldata->buffer);
 		curldata->buffer = g_malloc0(1);
 		curldata->size = 0;
 		g_snprintf(uri, sizeof(uri), "%s/%s", source->rtsp_url, acontrol);
 		curl_easy_setopt(curl, CURLOPT_RTSP_STREAM_URI, uri);
-		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, transport);
+		curl_easy_setopt(curl, CURLOPT_RTSP_TRANSPORT, atransport);
 		curl_easy_setopt(curl, CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_SETUP);
 		res = curl_easy_perform(curl);
 		if(res != CURLE_OK) {
@@ -3375,6 +3389,7 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 				ka_timeout = temp_timeout;
 		}
 	}
+
 	/* Update the source */
 	mp->codecs.audio_pt = doaudio ? apt : -1;
 	g_free(mp->codecs.audio_rtpmap);
@@ -4221,6 +4236,7 @@ static void *janus_streaming_relay_thread(void *data) {
 			session->paused = FALSE;
 			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
+			janus_refcount_decrease(&session->ref);
 			janus_refcount_decrease(&mountpoint->ref);
 			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 			gateway->close_pc(session->handle);

@@ -620,12 +620,7 @@ static void *janus_voicemail_handler(void *data) {
 			janus_voicemail_message_free(msg);
 			continue;
 		}
-		janus_voicemail_session *session = NULL;
-		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_voicemail_session *)msg->handle->plugin_handle;
-		}
-		janus_mutex_unlock(&sessions_mutex);
+		janus_voicemail_session *session = (janus_voicemail_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_voicemail_message_free(msg);

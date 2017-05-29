@@ -1006,7 +1006,6 @@ void janus_sip_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_mutex_lock(&sessions_mutex);
 	janus_sip_hangup_media(handle);
-	handle->plugin_handle = NULL;
 	JANUS_LOG(LOG_VERB, "Destroying SIP session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
 	/* Shutdown the NUA */
 	if(session->stack && session->stack->s_nua)
@@ -1322,12 +1321,7 @@ static void *janus_sip_handler(void *data) {
 			janus_sip_message_free(msg);
 			continue;
 		}
-		janus_sip_session *session = NULL;
-		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_sip_session *)msg->handle->plugin_handle;
-		}
-		janus_mutex_unlock(&sessions_mutex);
+		janus_sip_session *session = (janus_sip_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_sip_message_free(msg);
