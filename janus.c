@@ -924,7 +924,7 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_DETACH, "No plugin attached");
 			goto jsondone;
 		}
-		janus_ice_webrtc_hangup(handle);
+		janus_ice_webrtc_hangup(handle, "Janus API");
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
 		json_object_set_new(reply, "janus", json_string("success"));
@@ -3078,7 +3078,7 @@ void janus_plugin_close_pc(janus_plugin_session *plugin_session) {
 
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Plugin asked to hangup PeerConnection: sending alert\n", ice_handle->handle_id);
 	/* Send an alert on all the DTLS connections */
-	janus_ice_webrtc_hangup(ice_handle);
+	janus_ice_webrtc_hangup(ice_handle, "Close PC");
 }
 
 void janus_plugin_end_session(janus_plugin_session *plugin_session) {
