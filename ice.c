@@ -3537,11 +3537,13 @@ void *janus_ice_send_thread(void *data) {
 					rtcp_rr *rr = (rtcp_rr *)rtcpbuf;
 					rr->header.version = 2;
 					rr->header.type = RTCP_RR;
-					rr->header.rc = 1;
+					rr->header.rc = 0;
 					rr->header.length = htons((rrlen/4)-1);
 					janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
-					if(stream && stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd)
+					if(stream && stream->video_rtcp_ctx && stream->video_rtcp_ctx->rtp_recvd) {
+						rr->header.rc = 1;
 						janus_rtcp_report_block(stream->video_rtcp_ctx, &rr->rb[0]);
+					}
 					/* Append REMB */
 					memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
 					/* Free old packet and update */
