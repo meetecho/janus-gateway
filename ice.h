@@ -499,7 +499,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id);
 void janus_ice_free(janus_ice_handle *handle);
 /*! \brief Method to only hangup (e.g., DTLS alert) the WebRTC PeerConnection allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC PeerConnection to hangup
- * @param reason A description of why this happened */
+ * @param[in] reason A description of why this happened */
 void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason);
 /*! \brief Method to only free the WebRTC related resources allocated by a Janus ICE handle
  * @param[in] handle The Janus ICE handle instance managing the WebRTC resources to free */

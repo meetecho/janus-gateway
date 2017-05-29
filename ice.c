@@ -1188,7 +1188,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			plugin->hangup_media(handle->app_handle);
 		janus_ice_notify_hangup(handle, reason);
 	}
- 	if(handle->queued_packets != NULL)
+	if(handle->queued_packets != NULL)
 		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
 	if(handle->send_thread == NULL) {
 		/* Get rid of the loop */
@@ -2669,7 +2669,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 		return -1;
- 	}
+	}
 	/* Note: NICE_COMPATIBILITY_RFC5245 is only available in more recent versions of libnice */
 	handle->controlling = janus_ice_lite_enabled ? FALSE : !offer;
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] Creating ICE agent (ICE %s mode, %s)\n", handle->handle_id,
@@ -3253,7 +3253,7 @@ void *janus_ice_send_thread(void *data) {
 				g_main_context_wakeup(handle->icectx);
 				handle->icectx = NULL;
 			}
- 			continue;
+			continue;
 		}
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY)) {
 			if(pkt)
