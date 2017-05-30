@@ -1,0 +1,13 @@
+[Unit]
+Description=Janus WebRTC gateway
+After=syslog.target
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/janus
+Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target
+
