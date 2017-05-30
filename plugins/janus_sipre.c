@@ -224,6 +224,7 @@ typedef enum janus_sipre_mqueue_event {
 	janus_sipre_mqueue_event_do_call,
 	janus_sipre_mqueue_event_do_accept,
 	janus_sipre_mqueue_event_do_rcode,
+	janus_sipre_mqueue_event_do_sipinfo,
 	janus_sipre_mqueue_event_do_bye,
 	janus_sipre_mqueue_event_do_destroy,
 	/* TODO Add other events here */
@@ -241,8 +242,12 @@ static const char *janus_sipre_mqueue_event_string(janus_sipre_mqueue_event even
 			return "accept";
 		case janus_sipre_mqueue_event_do_rcode:
 			return "rcode";
+		case janus_sipre_mqueue_event_do_sipinfo:
+			return "sipinfo";
 		case janus_sipre_mqueue_event_do_bye:
 			return "bye";
+		case janus_sipre_mqueue_event_do_destroy:
+			return "destroy";
 		case janus_sipre_mqueue_event_do_exit:
 			return "exit";
 		default:
@@ -2244,10 +2249,14 @@ static void *janus_sipre_handler(void *data) {
 			if(duration_ms <= 0 || duration_ms > 5000) {
 				duration_ms = 160; /* default value */
 			}
-
 			char payload[64];
 			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, duration_ms);
-			/* TODO Send "application/dtmf-relay" SIP INFO */
+			/* Send "application/dtmf-relay" SIP INFO */
+			mqueue_push(mq, janus_sipre_mqueue_event_do_sipinfo,
+				janus_sipre_mqueue_payload_create(session, NULL, 0, g_strdup(payload)));
+			/* Notify the result */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("dtmfsent"));
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_SIPRE_ERROR_INVALID_REQUEST;
@@ -3558,6 +3567,32 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				session->stack.sess = NULL;
 			}
 			mem_deref((void *)payload->msg);
+			g_free(payload);
+			break;
+		}
+		case janus_sipre_mqueue_event_do_sipinfo: {
+			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
+			janus_sipre_session *session = (janus_sipre_session *)payload->session;
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending SIP INFO (DTMF): %s\n", session->account.username, (char *)payload->data);
+			/* Convert the SDP into a struct mbuf */
+			struct mbuf *mb = mbuf_alloc(strlen((char *)payload->data)+1);
+			mbuf_printf(mb, "%s", (char *)payload->data);
+			mbuf_set_pos(mb, 0);
+			g_free(payload->data);
+			/* Send the 200 OK */
+			int err = sipsess_info(session->stack.sess, "application/dtmf-relay", mb, NULL, NULL);
+			if(err != 0) {
+				JANUS_LOG(LOG_ERR, "Error attempting to send the SIP INFO: %d (%s)\n", err, strerror(err));
+				/* Tell the browser... */
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
+				json_t *result = json_object();
+				json_object_set_new(result, "event", json_string("dtmferror"));
+				json_object_set_new(result, "code", json_integer(err));
+				json_object_set_new(result, "reason", json_string(strerror(err)));
+				json_object_set_new(event, "result", result);
+			}
+			mem_deref(mb);
 			g_free(payload);
 			break;
 		}
