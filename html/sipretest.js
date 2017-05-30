@@ -202,7 +202,7 @@ $(document).ready(function() {
 												  .removeClass("btn-success").addClass("btn-danger")
 												  .unbind('click').click(doHangup);
 										} else if(event === 'incomingcall') {
-											Janus.log("Incoming call from " + result["username"] + "!");
+											Janus.log("Incoming call from " + result["displayname"] + " (" + result["username"] + ")!");
 											var doAudio = true, doVideo = true;
 											if(jsep !== null && jsep !== undefined) {
 												// What has been negotiated?
@@ -221,7 +221,7 @@ $(document).ready(function() {
 											// Notify user
 											bootbox.hideAll();
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!" + rtpType,
+												message: "Incoming call from " + result["displayname"] + " (" + result["username"] + ")!" + rtpType,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {

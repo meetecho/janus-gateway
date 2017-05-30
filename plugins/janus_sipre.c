@@ -228,6 +228,7 @@ typedef enum janus_sipre_mqueue_event {
 	janus_sipre_mqueue_event_do_accept,
 	janus_sipre_mqueue_event_do_rcode,
 	janus_sipre_mqueue_event_do_bye,
+	janus_sipre_mqueue_event_do_destroy,
 	/* TODO Add other events here */
 	janus_sipre_mqueue_event_do_exit
 } janus_sipre_mqueue_event;
@@ -1090,7 +1091,7 @@ void janus_sipre_destroy_session(janus_plugin_session *handle, int *error) {
 		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Destroying SIPre session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
 		/* Destroy re-related stuff for this SIP session */
-		mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_destroy, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -1288,6 +1289,9 @@ void janus_sipre_hangup_media(janus_plugin_session *handle) {
 		 session->status == janus_sipre_call_status_invited ||
 		 session->status == janus_sipre_call_status_incall))
 		return;
+	session->status = janus_sipre_call_status_closing;
+	/* Enqueue the BYE */
+	mqueue_push(mq, janus_sipre_mqueue_event_do_bye, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 	/* Get rid of the recorders, if available */
 	janus_mutex_lock(&session->rec_mutex);
 	if(session->arc) {
@@ -1315,13 +1319,6 @@ void janus_sipre_hangup_media(janus_plugin_session *handle) {
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
-	/* FIXME Simulate a "hangup" coming from the browser */
-	janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
-	msg->handle = handle;
-	msg->message = json_pack("{ss}", "request", "hangup");
-	msg->transaction = NULL;
-	msg->jsep = NULL;
-	g_async_queue_push(messages, msg);
 }
 
 /* Thread to handle incoming messages */
@@ -3043,7 +3040,7 @@ void janus_sipre_cb_progress(const struct sip_msg *msg, void *arg) {
 /* Called upon incoming INVITEs */
 void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_incoming\n", session->account.username);
+	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_incoming (%p)\n", session->account.username, session);
 	/* Increase the reference to the msg instance, as we'll need it either
 	 * to reply with an error right away, or for a success/error later */
 	mem_ref((struct sip_msg *)msg);
@@ -3051,6 +3048,12 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	char *from = NULL;
 	re_sdprintf(&from, "%H", uri_encode, &msg->from.uri);
 	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Caller: %s\n", session->account.username, from);
+	char dname[256];
+	dname[0] = '\0';
+	if(msg->from.dname.l > 0) {
+		g_snprintf(dname, sizeof(dname), "%.*s", (int)msg->from.dname.l, msg->from.dname.p);
+		JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Display: %s\n", session->account.username, dname);
+	}
 	char callid[256];
 	g_snprintf(callid, sizeof(callid), "%.*s", (int)msg->callid.l, msg->callid.p);
 	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
@@ -3086,9 +3089,9 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		json_t *result = json_object();
 		json_object_set_new(result, "event", json_string("missed_call"));
 		json_object_set_new(result, "caller", json_string(from));
-		//~ if (sip->sip_from && sip->sip_from->a_display) {
-			//~ json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
-		//~ }
+		if(strlen(dname)) {
+			json_object_set_new(result, "displayname", json_string(dname));
+		}
 		json_object_set_new(missed, "result", result);
 		if(!session->destroyed) {
 			int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, missed, NULL);
@@ -3144,9 +3147,9 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	json_t *calling = json_object();
 	json_object_set_new(calling, "event", json_string("incomingcall"));
 	json_object_set_new(calling, "username", json_string(session->callee));
-	//~ if(sip->sip_from && sip->sip_from->a_display) {
-		//~ json_object_set_new(calling, "displayname", json_string(sip->sip_from->a_display));
-	//~ }
+	if(strlen(dname)) {
+		json_object_set_new(calling, "displayname", json_string(dname));
+	}
 	if(session->media.has_srtp_remote) {
 		/* FIXME Maybe a true/false instead? */
 		json_object_set_new(calling, "srtp", json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
@@ -3166,8 +3169,8 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		if(session->callid)
 			json_object_set_new(info, "call-id", json_string(session->callid));
 		json_object_set_new(info, "username", json_string(session->callee));
-		//~ if(sip->sip_from && sip->sip_from->a_display)
-			//~ json_object_set_new(info, "displayname", json_string(sip->sip_from->a_display));
+		if(strlen(dname))
+			json_object_set_new(info, "displayname", json_string(dname));
 		gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 	}
 	/* Send a Ringing back */
@@ -3571,7 +3574,6 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending BYE\n", session->account.username);
 			/* FIXME How do we send a BYE? */
 			session->stack.sess = mem_deref(session->stack.sess);
-			//~ sipsess_close_all(session->stack.sess_sock);
 			g_free(session->callee);
 			session->callee = NULL;
 			g_free(payload);
@@ -3597,6 +3599,14 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 			}
 			session->status = janus_sipre_call_status_idle;
+			break;
+		}
+		case janus_sipre_mqueue_event_do_destroy: {
+			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
+			janus_sipre_session *session = (janus_sipre_session *)payload->session;
+			JANUS_LOG(LOG_WARN, "[SIPre-%s] Destroying session\n", session->account.username);
+			/* FIXME How to correctly clean up? */
+			sipsess_close_all(session->stack.sess_sock);
 			break;
 		}
 		case janus_sipre_mqueue_event_do_exit:
