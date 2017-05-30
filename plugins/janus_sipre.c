@@ -2928,7 +2928,6 @@ gpointer janus_sipre_stack_thread(gpointer user_data) {
 
 done:
 	g_atomic_int_set(&libre_inited, -1);
-	g_thread_unref(g_thread_self());
 	return NULL;
 }
 
