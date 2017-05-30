@@ -2751,7 +2751,7 @@ static void *janus_sipre_relay_thread(void *data) {
 	struct sockaddr_in server_addr;
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
-	if((inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {	/* Not a numeric IP... */
+	if(inet_aton(session->media.remote_ip, &server_addr.sin_addr) == 0) {	/* Not a numeric IP... */
 		struct hostent *host = gethostbyname(session->media.remote_ip);	/* ...resolve name */
 		if(!host) {
 			JANUS_LOG(LOG_ERR, "[SIPre-%s] Couldn't get host (%s)\n", session->account.username, session->media.remote_ip);
@@ -2787,7 +2787,7 @@ static void *janus_sipre_relay_thread(void *data) {
 
 		if(session->media.updated) {
 			/* Apparently there was a session update */
-			if(have_server_ip && (inet_aton(session->media.remote_ip, &server_addr.sin_addr)) <= 0) {
+			if(session->media.remote_ip != NULL && (inet_aton(session->media.remote_ip, &server_addr.sin_addr) != 0)) {
 				janus_sipre_connect_sockets(session, &server_addr);
 			} else {
 				JANUS_LOG(LOG_ERR, "[SIPre-%s] Couldn't update session details (missing or invalid remote IP address)\n", session->account.username);
@@ -3165,9 +3165,8 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		return;
 	}
 
-	gboolean reinvite = FALSE;	/* Placeholder */
 	if(session->stack.sess != NULL) {
-		/* Already in a call (FIXME How do we handle re-INVITEs?) */
+		/* Already in a call */
 		janus_sdp_free(sdp);
 		JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sipre_call_status_string(session->status));
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486, NULL));
@@ -3195,20 +3194,17 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		}
 		return;
 	}
-	if(!reinvite) {
-		/* New incoming call */
-		session->callee = g_strdup(from);
-		session->callid = g_strdup(callid);
-		g_hash_table_insert(callids, session->callid, session);
-		session->status = janus_sipre_call_status_invited;
-		/* Clean up SRTP stuff from before first, in case it's still needed */
-		janus_sipre_srtp_cleanup(session);
-	}
+	/* New incoming call */
+	session->callee = g_strdup(from);
+	session->callid = g_strdup(callid);
+	g_hash_table_insert(callids, session->callid, session);
+	session->status = janus_sipre_call_status_invited;
+	/* Clean up SRTP stuff from before first, in case it's still needed */
+	janus_sipre_srtp_cleanup(session);
 	/* Parse SDP */
-	JANUS_LOG(LOG_INFO, "Someone is %s a call:\n%s",
-		reinvite ? "updating" : "inviting us in", offer);
+	JANUS_LOG(LOG_INFO, "Someone is inviting us a call\n");
 	gboolean changed = FALSE;
-	janus_sipre_sdp_process(session, sdp, FALSE, reinvite, &changed);
+	janus_sipre_sdp_process(session, sdp, FALSE, FALSE, &changed);
 	/* Check if offer has neither audio nor video, fail with 488 */
 	if (!session->media.has_audio && !session->media.has_video) {
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
@@ -3221,12 +3217,6 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		janus_sdp_free(sdp);
 		return;
 	}
-	//~ if(reinvite) {
-		//~ /* No need to involve the browser: we reply ourselves */
-		//~ nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
-		//~ janus_sdp_free(sdp);
-		//~ break;
-	//~ }
 	session->stack.invite = msg;
 	/* Send SDP to the browser */
 	json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", offer);
@@ -3265,26 +3255,39 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 180, NULL));
 }
 
-/* Called when an SDP offer is received (got offer: true) or being sent (got_offer: false) */
+/* Called when an SDP offer is received (re-INVITE) */
 int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_offer\n", session->account.username);
 
-	struct sdp_session *sdp = NULL;
-	const bool got_offer = mbuf_get_left(msg->mb);
-	if(got_offer) {
-		int err = sdp_decode(sdp, msg->mb, true);
-		if(err) {
-			JANUS_LOG(LOG_ERR, "unable to decode SDP offer: %s\n", strerror(err));
-			return err;
-		}
-		JANUS_LOG(LOG_INFO, "SDP offer received\n");
-		/* FIXME Anything to do here? */
-	} else {
-		JANUS_LOG(LOG_INFO, "Sending SDP offer\n");
+	const char *sdp_offer = (const char *)mbuf_buf(msg->mb);
+	char offer[1024];
+	g_snprintf(offer, sizeof(offer), "%.*s", (int)mbuf_get_left(msg->mb), sdp_offer);
+	JANUS_LOG(LOG_INFO, "Someone is updating a call:\n%s", offer);
+	/* Parse the remote SDP */
+	char sdperror[100];
+	janus_sdp *sdp = janus_sdp_parse(offer, sdperror, sizeof(sdperror));
+	if(!sdp) {
+		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
+		return EINVAL;
 	}
-
-	return sdp_encode(mbp, sdp, !got_offer);
+	gboolean changed = FALSE;
+	janus_sipre_sdp_process(session, sdp, FALSE, TRUE, &changed);
+	janus_sdp_free(sdp);
+	/* Check if offer has neither audio nor video, fail with 488 */
+	if (!session->media.has_audio && !session->media.has_video) {
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
+		return EINVAL;
+	}
+	/* Also fail with 488 if there's no remote IP address that can be used for RTP */
+	if (!session->media.remote_ip) {
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
+		return EINVAL;
+	}
+	session->temp_sdp = janus_sdp_write(session->sdp);
+	JANUS_LOG(LOG_INFO, "Answering re-INVITE:\n%s", session->temp_sdp);
+	mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+	return 0;
 }
 
 
@@ -3294,11 +3297,12 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_answer\n", session->account.username);
 
 	const char *sdp_answer = (const char *)mbuf_buf(msg->mb);
-	JANUS_LOG(LOG_INFO, "SDP answer received\n%s", sdp_answer);
-
+	char answer[1024];
+	g_snprintf(answer, sizeof(answer), "%.*s", (int)mbuf_get_left(msg->mb), sdp_answer);
+	JANUS_LOG(LOG_INFO, "SDP answer received\n%s", answer);
 	/* Parse the SDP */
 	char sdperror[100];
-	janus_sdp *sdp = janus_sdp_parse(sdp_answer, sdperror, sizeof(sdperror));
+	janus_sdp *sdp = janus_sdp_parse(answer, sdperror, sizeof(sdperror));
 	if(!sdp) {
 		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
 		return EINVAL;
