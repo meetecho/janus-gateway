@@ -179,7 +179,7 @@ static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
-static int register_ttl = JANUS_DEFAULT_REGISTER_TTL;
+static uint32_t register_ttl = JANUS_DEFAULT_REGISTER_TTL;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -433,6 +433,7 @@ typedef struct janus_sipre_stack {
 	struct sipsess *sess;				/* SIP session */
 	struct sipsess_sock *sess_sock;		/* SIP session socket */
 	struct sipreg *reg;					/* SIP registration */
+	uint32_t expires;					/* Registration interval (seconds) */
 	const struct sip_msg *invite;		/* Current INVITE */
 	void *session;						/* Opaque pointer to the plugin session */
 } janus_sipre_stack;
@@ -845,7 +846,7 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 
 		item = janus_config_get_item_drilldown(config, "general", "register_ttl");
 		if(item && item->value) {
-			register_ttl = atoi(item->value);
+			register_ttl = atol(item->value);
 		}
 		JANUS_LOG(LOG_VERB, "SIPre registration TTL set to %d seconds\n", register_ttl);
 
@@ -1489,6 +1490,7 @@ static void *janus_sipre_handler(void *data) {
 				ttl = json_integer_value(reg_ttl);
 			if(ttl <= 0)
 				ttl = JANUS_DEFAULT_REGISTER_TTL;
+			session->stack.expires = ttl;
 
 			/* Parse display name */
 			const char* display_name_text = NULL;
@@ -3502,7 +3504,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			/* Send the REGISTER */
 			int err = sipreg_register(&session->stack.reg, session->stack.sipstack,
 				session->account.proxy,
-				session->account.identity, session->account.identity, 3600,
+				session->account.identity, session->account.identity, session->stack.expires,
 				session->account.display_name ? session->account.display_name : session->account.username, NULL, 0, 0,
 				janus_sipre_cb_auth, session, FALSE,
 				janus_sipre_cb_register, session, NULL, (headers ? headers : ""), NULL);
@@ -3657,7 +3659,6 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 					session->media.on_hold = FALSE;
 					session->status = janus_sipre_call_status_idle;
 				}
-				//~ err = sip_treply(NULL, session->stack.sipstack, payload->msg, payload->rcode, janus_sipre_error_reason(payload->rcode));
 			}
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to send the %d error code: %d (%s)\n", payload->rcode, err, strerror(err));
