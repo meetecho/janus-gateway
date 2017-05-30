@@ -1555,7 +1555,16 @@ function Janus(gatewayCallbacks) {
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
 							.then(function(stream) { gsmCallback(null, stream); })
-							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
+							.catch(function(error) {
+								if (error.name === 'NotFoundError' && constraints.video && constraints.video.mozMediaSource === 'window' && constraints.video.mediaSource === 'window') {
+									constraints.video.mozMediaSource = 'screen'
+									constraints.video.mediaSource = 'screen'
+									getScreenMedia(constraints, gsmCallback)
+								} else {
+									pluginHandle.consentDialog(false);
+									gsmCallback(error);
+								}
+							});
 					};
 					if(adapter.browserDetails.browser === 'chrome') {
 						var chromever = adapter.browserDetails.version;
