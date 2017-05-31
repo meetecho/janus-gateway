@@ -520,8 +520,10 @@ typedef struct janus_videoroom_participant {
 	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
 	gboolean audio_active;
 	gboolean video_active;
-	int audio_active_packets; /* participants number of audio packets to accumulate */
-	int audio_dBov_sum;	/* participants accumulated dBov value for audio level*/
+	int audio_dBov_level;		/* Value in dBov of the audio level (last value from extension) */
+	int audio_active_packets;	/* Participant's number of audio packets to accumulate */
+	int audio_dBov_sum;			/* Participant's accumulated dBov value for audio level*/
+	gboolean talking;			/* Whether this participant is currently talking (uses audio levels extension) */
 	gboolean data_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
 	uint64_t bitrate;
@@ -1159,6 +1161,10 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					if(participant->drc && participant->drc->filename)
 						json_object_set_new(recording, "data", json_string(participant->drc->filename));
 					json_object_set_new(info, "recording", recording);
+				}
+				if(participant->audio_level_extmap_id > 0) {
+					json_object_set_new(info, "audio-level-dBov", json_integer(participant->audio_dBov_level));
+					json_object_set_new(info, "talking", participant->talking ? json_true() : json_false());
 				}
 			}
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
@@ -2068,6 +2074,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				json_object_set_new(pl, "display", json_string(p->display));
 			json_object_set_new(pl, "publisher", (p->sdp && p->session->started) ? json_true() : json_false());
 			if ((p->sdp && p->session->started)) {
+				if(p->audio_level_extmap_id > 0)
+					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 				json_object_set_new(pl, "internal_audio_ssrc", json_integer(p->audio_ssrc));
 				json_object_set_new(pl, "internal_video_ssrc", json_integer(p->video_ssrc));
 			}
@@ -2313,12 +2321,27 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		if(janus_rtp_header_extension_parse_audio_level(buf, len, participant->audio_level_extmap_id, &level) == 0) {
 			participant->audio_dBov_sum += level;
 			participant->audio_active_packets++;
+			participant->audio_dBov_level = level;
 			if(participant->audio_active_packets > 0 && participant->audio_active_packets == videoroom->audio_active_packets) {
+				gboolean notify_talk_event = FALSE;
 				if((float)participant->audio_dBov_sum/(float)participant->audio_active_packets < videoroom->audio_level_average) {
-					/* Notify all participants */
+					/* Participant talking, should we notify all participants? */
+					if(!participant->talking)
+						notify_talk_event = TRUE;
+					participant->talking = TRUE;
+				} else {
+					/* Participant not talking anymore, should we notify all participants? */
+					if(participant->talking)
+						notify_talk_event = TRUE;
+					participant->talking = FALSE;
+				}
+				participant->audio_active_packets = 0;
+				participant->audio_dBov_sum = 0;
+				/* Only notify in case of state changes */
+				if(notify_talk_event) {
 					janus_mutex_lock(&participant->room->participants_mutex);
 					json_t *event = json_object();
-					json_object_set_new(event, "videoroom", json_string("talking"));
+					json_object_set_new(event, "videoroom", json_string(participant->talking ? "talking" : "stopped-talking"));
 					json_object_set_new(event, "room", json_integer(participant->room->room_id));
 					json_object_set_new(event, "id", json_integer(participant->user_id));
 					janus_videoroom_notify_participants(participant, event);
@@ -2327,14 +2350,12 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					/* Also notify event handlers */
 					if(notify_events && gateway->events_is_enabled()) {
 						json_t *info = json_object();
-						json_object_set_new(info, "videoroom", json_string("talking"));
+						json_object_set_new(info, "videoroom", json_string(participant->talking ? "talking" : "stopped-talking"));
 						json_object_set_new(info, "room", json_integer(participant->room->room_id));
 						json_object_set_new(info, "id", json_integer(participant->user_id));
 						gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 					}
 				}
-				participant->audio_active_packets = 0;
-				participant->audio_dBov_sum = 0;
 			}
 		}
 	}
@@ -2668,6 +2689,8 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->data_active = FALSE;
 		participant->audio_active_packets = 0;
 		participant->audio_dBov_sum = 0;
+		participant->audio_dBov_level = 0;
+		participant->talking = FALSE;
 		participant->remb_startup = 4;
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
@@ -2988,6 +3011,8 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(pl, "id", json_integer(p->user_id));
 					if(p->display)
 						json_object_set_new(pl, "display", json_string(p->display));
+					if(p->audio_level_extmap_id > 0)
+						json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 					json_array_append_new(list, pl);
 				}
 				janus_mutex_unlock(&videoroom->participants_mutex);
