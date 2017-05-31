@@ -2340,6 +2340,10 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 		/* SDP time */
 		gchar buffer[200];
 		if(c->type == NICE_CANDIDATE_TYPE_HOST) {
+			/* if the public IP is specified, igonre candidates which don't match */
+			if (host_ip != NULL && strcmp(host_ip, address) != 0)
+				continue
+
 			/* 'host' candidate */
 			if(c->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
 				g_snprintf(buffer, sizeof(buffer),
@@ -2348,7 +2352,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 						c->component_id,
 						"udp",
 						c->priority,
-						host_ip ? host_ip : address,
+						address,
 						port);
 			} else {
 				if(!janus_ice_tcp_enabled) {
@@ -2389,7 +2393,7 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 							c->component_id,
 							"tcp",
 							c->priority,
-							host_ip ? host_ip : address,
+							address,
 							port,
 							type);
 				}
