@@ -3146,19 +3146,19 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	g_snprintf(callid, sizeof(callid), "%.*s", (int)msg->callid.l, msg->callid.p);
 	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
 
-	const char *sdp_offer = (const char *)mbuf_buf(msg->mb);
-	if(sdp_offer == NULL) {
+	const char *offer = (const char *)mbuf_buf(msg->mb);
+	if(offer == NULL) {
 		/* No SDP? */
-		JANUS_LOG(LOG_INFO, "[SIPre-%s] No SDP in the INVITE?\n", session->account.username);
+		JANUS_LOG(LOG_WARN, "[SIPre-%s] No SDP in the INVITE?\n", session->account.username);
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 		return;
 	}
-	char offer[1024];
-	g_snprintf(offer, sizeof(offer), "%.*s", (int)mbuf_get_left(msg->mb), sdp_offer);
-	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Offer: %s\n", session->account.username, offer);
+	char sdp_offer[1024];
+	g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
+	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Offer: %s\n", session->account.username, sdp_offer);
 	/* Parse the remote SDP */
 	char sdperror[100];
-	janus_sdp *sdp = janus_sdp_parse(offer, sdperror, sizeof(sdperror));
+	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
 	if(!sdp) {
 		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
@@ -3219,7 +3219,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	}
 	session->stack.invite = msg;
 	/* Send SDP to the browser */
-	json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", offer);
+	json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp_offer);
 	json_t *call = json_object();
 	json_object_set_new(call, "sip", json_string("event"));
 	json_t *calling = json_object();
@@ -3260,13 +3260,18 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_offer\n", session->account.username);
 
-	const char *sdp_offer = (const char *)mbuf_buf(msg->mb);
-	char offer[1024];
-	g_snprintf(offer, sizeof(offer), "%.*s", (int)mbuf_get_left(msg->mb), sdp_offer);
-	JANUS_LOG(LOG_INFO, "Someone is updating a call:\n%s", offer);
+	const char *offer = (const char *)mbuf_buf(msg->mb);
+	if(offer == NULL) {
+		/* No SDP? */
+		JANUS_LOG(LOG_WARN, "[SIPre-%s] No SDP in the re-INVITE?\n", session->account.username);
+		return EINVAL;
+	}
+	char sdp_offer[1024];
+	g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
+	JANUS_LOG(LOG_INFO, "Someone is updating a call:\n%s", sdp_offer);
 	/* Parse the remote SDP */
 	char sdperror[100];
-	janus_sdp *sdp = janus_sdp_parse(offer, sdperror, sizeof(sdperror));
+	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
 	if(!sdp) {
 		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
 		return EINVAL;
@@ -3284,9 +3289,11 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
 		return EINVAL;
 	}
-	session->temp_sdp = janus_sdp_write(session->sdp);
-	JANUS_LOG(LOG_INFO, "Answering re-INVITE:\n%s", session->temp_sdp);
-	mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+	char *answer = janus_sdp_write(session->sdp);
+	JANUS_LOG(LOG_INFO, "Answering re-INVITE:\n%s", answer);
+	*mbp = mbuf_alloc(strlen(answer)+1);
+	mbuf_printf(*mbp, "%s", answer);
+	mbuf_set_pos(*mbp, 0);
 	return 0;
 }
 
@@ -3296,13 +3303,18 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_answer\n", session->account.username);
 
-	const char *sdp_answer = (const char *)mbuf_buf(msg->mb);
-	char answer[1024];
-	g_snprintf(answer, sizeof(answer), "%.*s", (int)mbuf_get_left(msg->mb), sdp_answer);
-	JANUS_LOG(LOG_INFO, "SDP answer received\n%s", answer);
+	const char *answer = (const char *)mbuf_buf(msg->mb);
+	if(answer == NULL) {
+		/* No SDP? */
+		JANUS_LOG(LOG_WARN, "[SIPre-%s] No SDP in the answer?\n", session->account.username);
+		return EINVAL;
+	}
+	char sdp_answer[1024];
+	g_snprintf(sdp_answer, sizeof(sdp_answer), "%.*s", (int)mbuf_get_left(msg->mb), answer);
+	JANUS_LOG(LOG_INFO, "SDP answer received\n%s", sdp_answer);
 	/* Parse the SDP */
 	char sdperror[100];
-	janus_sdp *sdp = janus_sdp_parse(answer, sdperror, sizeof(sdperror));
+	janus_sdp *sdp = janus_sdp_parse(sdp_answer, sdperror, sizeof(sdperror));
 	if(!sdp) {
 		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
 		return EINVAL;
@@ -3408,7 +3420,7 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	}
 
 	if(err) {
-		JANUS_LOG(LOG_ERR, "[SIPre-%s] janus_sipre_cb_closed: %s\n", session->account.username, strerror(err));
+		JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_closed: %d %s\n", session->account.username, err, strerror(err));
 	} else {
 		JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_closed: %u %s\n", session->account.username, msg->scode, (char *)&msg->reason.p);
 	}
