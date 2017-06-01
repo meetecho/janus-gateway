@@ -3047,7 +3047,7 @@ gpointer janus_sipre_stack_thread(gpointer user_data) {
 	}
 
 	/* Done here */
-	JANUS_LOG(LOG_WARN, "Leaving libre loop thread...\n");
+	JANUS_LOG(LOG_INFO, "Leaving libre loop thread...\n");
 	re_thread_close();
 	/* Deinitialize libre */
 	libre_close();
@@ -3146,31 +3146,30 @@ void janus_sipre_cb_progress(const struct sip_msg *msg, void *arg) {
 	if(msg->reason.l > 0) {
 		g_snprintf(reason, (msg->reason.l < 255 ? msg->reason.l+1 : 255), "%s", msg->reason.p);
 	}
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] Session progress: %u %s\n", session->account.username, msg->scode, reason);
-
-	/* TODO Handle */
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] Session progress: %u %s\n", session->account.username, msg->scode, reason);
+	/* FIXME Anything we should do with this? Notify the user? */
 }
 
 /* Called upon incoming INVITEs */
 void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_incoming (%p)\n", session->account.username, session);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_incoming (%p)\n", session->account.username, session);
 	/* Increase the reference to the msg instance, as we'll need it either
 	 * to reply with an error right away, or for a success/error later */
 	mem_ref((struct sip_msg *)msg);
 	/* Parse a few relevant identifiers */
 	char *from = NULL;
 	re_sdprintf(&from, "%H", uri_encode, &msg->from.uri);
-	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Caller: %s\n", session->account.username, from);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Caller: %s\n", session->account.username, from);
 	char dname[256];
 	dname[0] = '\0';
 	if(msg->from.dname.l > 0) {
 		g_snprintf(dname, sizeof(dname), "%.*s", (int)msg->from.dname.l, msg->from.dname.p);
-		JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Display: %s\n", session->account.username, dname);
+		JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Display: %s\n", session->account.username, dname);
 	}
 	char callid[256];
 	g_snprintf(callid, sizeof(callid), "%.*s", (int)msg->callid.l, msg->callid.p);
-	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
 
 	const char *offer = (const char *)mbuf_buf(msg->mb);
 	if(offer == NULL) {
@@ -3181,7 +3180,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	}
 	char sdp_offer[1024];
 	g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
-	JANUS_LOG(LOG_INFO, "[SIPre-%s]   -- Offer: %s\n", session->account.username, sdp_offer);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Offer: %s\n", session->account.username, sdp_offer);
 	/* Parse the remote SDP */
 	char sdperror[100];
 	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
@@ -3228,7 +3227,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	/* Clean up SRTP stuff from before first, in case it's still needed */
 	janus_sipre_srtp_cleanup(session);
 	/* Parse SDP */
-	JANUS_LOG(LOG_INFO, "Someone is inviting us a call\n");
+	JANUS_LOG(LOG_VERB, "Someone is inviting us a call\n");
 	gboolean changed = FALSE;
 	janus_sipre_sdp_process(session, sdp, FALSE, FALSE, &changed);
 	/* Check if offer has neither audio nor video, fail with 488 */
@@ -3261,7 +3260,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	json_object_set_new(call, "result", calling);
 	if(!session->destroyed) {
 		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, call, jsep);
-		JANUS_LOG(LOG_INFO, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 	}
 	json_decref(call);
 	json_decref(jsep);
@@ -3284,8 +3283,8 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 /* Called when an SDP offer is received (re-INVITE) */
 int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_offer\n", session->account.username);
-
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_offer\n", session->account.username);
+	/* Get the SDP */
 	const char *offer = (const char *)mbuf_buf(msg->mb);
 	if(offer == NULL) {
 		/* No SDP? */
@@ -3294,7 +3293,7 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 	}
 	char sdp_offer[1024];
 	g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
-	JANUS_LOG(LOG_INFO, "Someone is updating a call:\n%s", sdp_offer);
+	JANUS_LOG(LOG_VERB, "Someone is updating a call:\n%s", sdp_offer);
 	/* Parse the remote SDP */
 	char sdperror[100];
 	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
@@ -3316,7 +3315,7 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 		return EINVAL;
 	}
 	char *answer = janus_sdp_write(session->sdp);
-	JANUS_LOG(LOG_INFO, "Answering re-INVITE:\n%s", answer);
+	JANUS_LOG(LOG_VERB, "Answering re-INVITE:\n%s", answer);
 	*mbp = mbuf_alloc(strlen(answer)+1);
 	mbuf_printf(*mbp, "%s", answer);
 	mbuf_set_pos(*mbp, 0);
@@ -3327,8 +3326,8 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 /* Called when an SDP answer is received */
 int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_answer\n", session->account.username);
-
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_answer\n", session->account.username);
+	/* Get the SDP */
 	const char *answer = (const char *)mbuf_buf(msg->mb);
 	if(answer == NULL) {
 		/* No SDP? */
@@ -3337,7 +3336,6 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	}
 	char sdp_answer[1024];
 	g_snprintf(sdp_answer, sizeof(sdp_answer), "%.*s", (int)mbuf_get_left(msg->mb), answer);
-	JANUS_LOG(LOG_INFO, "SDP answer received\n%s", sdp_answer);
 	/* Parse the SDP */
 	char sdperror[100];
 	janus_sdp *sdp = janus_sdp_parse(sdp_answer, sdperror, sizeof(sdperror));
@@ -3353,7 +3351,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	janus_sipre_sdp_process(session, sdp, TRUE, update, &changed);
 	/* If we asked for SRTP and are not getting it, fail */
 	if(session->media.require_srtp && !session->media.has_srtp_remote) {
-		JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
+		JANUS_LOG(LOG_ERR, "We asked for mandatory SRTP but didn't get any in the reply!\n");
 		janus_sdp_free(sdp);
 		/* Hangup immediately */
 		session->media.ready = FALSE;
@@ -3366,7 +3364,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	}
 	if(!session->media.remote_ip) {
 		/* No remote address parsed? Give up */
-		JANUS_LOG(LOG_ERR, "\tNo remote IP address found for RTP, something's wrong with the SDP!\n");
+		JANUS_LOG(LOG_ERR, "No remote IP address found for RTP, something's wrong with the SDP!\n");
 		janus_sdp_free(sdp);
 		/* Hangup immediately */
 		session->media.ready = FALSE;
@@ -3433,7 +3431,7 @@ void janus_sipre_cb_established(const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_WARN, "[SIPre-??] janus_sipre_cb_established\n");
 		return;
 	}
-	JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_established\n", session->account.username);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_established\n", session->account.username);
 	/* FIXME Anything to do here? */
 }
 
@@ -3441,14 +3439,13 @@ void janus_sipre_cb_established(const struct sip_msg *msg, void *arg) {
 void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	if(session == NULL) {
-		JANUS_LOG(LOG_WARN, "[SIPre-??] janus_sipre_cb_closed\n");
+		JANUS_LOG(LOG_HUGE, "[SIPre-??] janus_sipre_cb_closed\n");
 		return;
 	}
-
 	if(err) {
-		JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_closed: %d %s\n", session->account.username, err, strerror(err));
+		JANUS_LOG(LOG_VERB, "[SIPre-%s] Session closed: %d %s\n", session->account.username, err, strerror(err));
 	} else {
-		JANUS_LOG(LOG_INFO, "[SIPre-%s] janus_sipre_cb_closed: %u %s\n", session->account.username, msg->scode, (char *)&msg->reason.p);
+		JANUS_LOG(LOG_VERB, "[SIPre-%s] Session closed: %u %s\n", session->account.username, msg->scode, (char *)&msg->reason.p);
 	}
 
 	/* Tell the browser... */
@@ -3490,16 +3487,16 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 void janus_sipre_cb_exit(void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	if(session == NULL) {
-		JANUS_LOG(LOG_WARN, "[SIPre-??] janus_sipre_cb_exit\n");
+		JANUS_LOG(LOG_HUGE, "[SIPre-??] janus_sipre_cb_exit\n");
 		return;
 	}
-	JANUS_LOG(LOG_WARN, "[SIPre-%s] janus_sipre_cb_exit\n", session->account.username);
+	JANUS_LOG(LOG_INFO, "[SIPre-%s] Cleaning SIP stack\n", session->account.username);
 	mem_deref(&session->stack.sipstack);
 }
 
 /* Callback to implement SIP requests in the re_main loop thread */
 void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
-	JANUS_LOG(LOG_WARN, "janus_sipre_mqueue_handler: %d (%s)\n", id, janus_sipre_mqueue_event_string((janus_sipre_mqueue_event)id));
+	JANUS_LOG(LOG_HUGE, "janus_sipre_mqueue_handler: %d (%s)\n", id, janus_sipre_mqueue_event_string((janus_sipre_mqueue_event)id));
 	switch((janus_sipre_mqueue_event)id) {
 		case janus_sipre_mqueue_event_do_init: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
@@ -3587,7 +3584,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_call: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending INVITE\n%s", session->account.username, session->temp_sdp);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending INVITE\n%s", session->account.username, session->temp_sdp);
 			/* Check if there are custom headers to add */
 			char *headers = (char *)payload->data;
 			/* Convert the SDP into a struct mbuf */
@@ -3639,7 +3636,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_accept: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending 200 OK\n%s", session->account.username, session->temp_sdp);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending 200 OK\n%s", session->account.username, session->temp_sdp);
 			/* Convert the SDP into a struct mbuf */
 			struct mbuf *mb = mbuf_alloc(strlen(session->temp_sdp)+1);
 			mbuf_printf(mb, "%s", session->temp_sdp);
@@ -3679,7 +3676,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_rcode: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending response code %d\n", session->account.username, payload->rcode);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending response code %d\n", session->account.username, payload->rcode);
 			/* Send the response code */
 			int err = 0;
 			if(session->stack.sess == NULL) {
@@ -3726,7 +3723,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_update: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending SIP re-INVITE\n", session->account.username);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending SIP re-INVITE\n", session->account.username);
 			/* Convert the SDP into a struct mbuf */
 			struct mbuf *mb = mbuf_alloc(strlen(session->temp_sdp)+1);
 			mbuf_printf(mb, "%s", session->temp_sdp);
@@ -3745,7 +3742,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_sipinfo: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending SIP INFO (DTMF): %s\n", session->account.username, (char *)payload->data);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending SIP INFO (DTMF): %s\n", session->account.username, (char *)payload->data);
 			/* Convert the SDP into a struct mbuf */
 			struct mbuf *mb = mbuf_alloc(strlen((char *)payload->data)+1);
 			mbuf_printf(mb, "%s", (char *)payload->data);
@@ -3771,7 +3768,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_bye: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_WARN, "[SIPre-%s] Sending BYE\n", session->account.username);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending BYE\n", session->account.username);
 			/* FIXME How do we send a BYE? */
 			session->stack.sess = mem_deref(session->stack.sess);
 			g_free(session->callee);
@@ -3806,7 +3803,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_destroy: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_WARN, "[SIPre-%s] Destroying session\n", session->account.username);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Destroying session\n", session->account.username);
 			/* FIXME How to correctly clean up? */
 			sipsess_close_all(session->stack.sess_sock);
 			break;
