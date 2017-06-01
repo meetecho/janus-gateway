@@ -798,6 +798,25 @@ static void janus_sipre_random_string(int length, char *buffer) {
 }
 
 
+#ifdef HAVE_LIBRE_SIPTRACE
+/* libre SIP logger function: when the Event Handlers mechanism is enabled,
+ * we use this to intercept SIP messages sent and received by the stack */
+static void janus_sipre_msg_logger(bool tx, enum sip_transp tp, const struct sa *src, const struct sa *dst,
+		const uint8_t *pkt, size_t len, void *arg) {
+	/* Access the session this message refers to */
+	janus_sipre_session *session = (janus_sipre_session *)arg;
+	/* Print the SIP message */
+	char sip_msg[2048];
+	g_snprintf(sip_msg, sizeof(sip_msg), "%.*s", (int)len, (char *)pkt);
+	/* Shoot the event */
+	json_t *info = json_object();
+	json_object_set_new(info, "event", json_string(tx ? "sip-out" : "sip-in"));
+	json_object_set_new(info, "sip", json_string(sip_msg));
+	gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+}
+#endif
+
+
 /* Plugin implementation */
 int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 	if(g_atomic_int_get(&stopping)) {
@@ -930,6 +949,13 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_ERR, "Got error trying to initialize libre...\n");
 		return -1;
 	}
+
+#ifndef HAVE_LIBRE_SIPTRACE
+	JANUS_LOG(LOG_WARN, "sip_set_trace() was not found in libre... "
+		"The tracing of SIP incoming/outgoing SIP messages when using the SIPre plugin will not be available to Event Handlers. "
+		"In case you're interested in that, apply this patch on your libre installation and recompile the plugin: "
+		"https://raw.githubusercontent.com/alfredh/patches/master/re-sip-trace.patch\n");
+#endif
 
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_SIPRE_NAME);
 	return 0;
@@ -3507,6 +3533,12 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				g_free(payload);
 				return;
 			}
+#ifdef HAVE_LIBRE_SIPTRACE
+			if(gateway->events_is_enabled()) {
+				/* Trace incoming/outgoing SIP messages */
+				sip_set_trace(session->stack.sipstack, janus_sipre_msg_logger);
+			}
+#endif
 			mem_deref(session->stack.tls);
 			g_free(payload);
 			break;
