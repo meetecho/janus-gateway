@@ -3170,31 +3170,11 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	char callid[256];
 	g_snprintf(callid, sizeof(callid), "%.*s", (int)msg->callid.l, msg->callid.p);
 	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Call-ID: %s\n", session->account.username, callid);
-
-	const char *offer = (const char *)mbuf_buf(msg->mb);
-	if(offer == NULL) {
-		/* No SDP? */
-		JANUS_LOG(LOG_WARN, "[SIPre-%s] No SDP in the INVITE?\n", session->account.username);
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-		return;
-	}
-	char sdp_offer[1024];
-	g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
-	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Offer: %s\n", session->account.username, sdp_offer);
-	/* Parse the remote SDP */
-	char sdperror[100];
-	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
-	if(!sdp) {
-		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-		return;
-	}
-
+	/* Make sure we're not in a call already */
 	if(session->stack.sess != NULL) {
 		/* Already in a call */
-		janus_sdp_free(sdp);
-		JANUS_LOG(LOG_VERB, "\tAlready in a call (busy, status=%s)\n", janus_sipre_call_status_string(session->status));
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486, NULL));
+		JANUS_LOG(LOG_VERB, "Already in a call (busy, status=%s)\n", janus_sipre_call_status_string(session->status));
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 486, session));
 		/* Notify the web app about the missed invite */
 		json_t *missed = json_object();
 		json_object_set_new(missed, "sip", json_string("event"));
@@ -3220,6 +3200,24 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		return;
 	}
 	/* New incoming call */
+	const char *offer = (const char *)mbuf_buf(msg->mb);
+	if(offer == NULL) {
+		/* No SDP? */
+		JANUS_LOG(LOG_WARN, "[SIPre-%s] No SDP in the INVITE?\n", session->account.username);
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
+		return;
+	}
+	char sdp_offer[1024];
+	g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Offer: %s\n", session->account.username, sdp_offer);
+	/* Parse the remote SDP */
+	char sdperror[100];
+	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
+	if(!sdp) {
+		JANUS_LOG(LOG_ERR, "Error parsing SDP! %s\n", sdperror);
+		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
+		return;
+	}
 	session->callee = g_strdup(from);
 	session->callid = g_strdup(callid);
 	g_hash_table_insert(callids, session->callid, session);
@@ -3298,7 +3296,7 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 	char sdperror[100];
 	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
 	if(!sdp) {
-		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
+		JANUS_LOG(LOG_ERR, "Error parsing SDP! %s\n", sdperror);
 		return EINVAL;
 	}
 	gboolean changed = FALSE;
@@ -3340,7 +3338,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	char sdperror[100];
 	janus_sdp *sdp = janus_sdp_parse(sdp_answer, sdperror, sizeof(sdperror));
 	if(!sdp) {
-		JANUS_LOG(LOG_ERR, "\tError parsing SDP! %s\n", sdperror);
+		JANUS_LOG(LOG_ERR, "Error parsing SDP! %s\n", sdperror);
 		return EINVAL;
 	}
 	/* Parse SDP */
@@ -3699,10 +3697,25 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 					err = sipsess_answer(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL, NULL);
 				} else {
 					/* 3xx, 4xx, 5xx, 6xx */
-					err = sipsess_reject(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL);
-					session->media.ready = FALSE;
-					session->media.on_hold = FALSE;
-					session->status = janus_sipre_call_status_idle;
+					if(payload->data == NULL) {
+						/* Send an error message on the current call */
+						err = sipsess_reject(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL);
+						session->media.ready = FALSE;
+						session->media.on_hold = FALSE;
+						session->status = janus_sipre_call_status_idle;
+					} else {
+						/* We're rejecting a new call because we're busy in another one: accept first and then reject */
+						struct sipsess *sess = NULL;
+						err = sipsess_accept(&sess, session->stack.sess_sock,
+							payload->msg, 180, janus_sipre_error_reason(180),
+							session->account.display_name ? session->account.display_name : session->account.username,
+							"application/sdp", NULL,
+							janus_sipre_cb_auth, session, FALSE,
+							janus_sipre_cb_offer, janus_sipre_cb_answer,
+							janus_sipre_cb_established, NULL, NULL,
+							janus_sipre_cb_closed, session, NULL);
+						err = sipsess_reject(sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL);
+					}
 				}
 			}
 			if(err != 0) {
