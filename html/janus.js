@@ -1498,11 +1498,21 @@ function Janus(gatewayCallbacks) {
 							streamsDone(handleId, jsep, media, callbacks, stream);
 						}
 					};
-					function getScreenMedia(constraints, gsmCallback) {
+					function getScreenMedia(constraints, gsmCallback, useAudio) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
-							.then(function(stream) { gsmCallback(null, stream); })
+							.then(function(stream) { 
+								if(useAudio){
+									navigator.mediaDevices.getUserMedia({ audio: true })
+									.then(function (audioStream) {
+										stream.addTrack(audioStream.getAudioTracks()[0]);
+										gsmCallback(null, stream);
+									})
+								} else {
+									gsmCallback(null, stream);
+								} 
+							})
 							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
 					if(adapter.browserDetails.browser === 'chrome') {
@@ -1593,7 +1603,7 @@ function Janus(gatewayCallbacks) {
 								callbacks.error(error);
 							} else {
 								constraints = {
-									audio: isAudioSendEnabled(media),
+									audio: false,
 									video: {
 										mandatory: {
 											chromeMediaSource: 'desktop',
@@ -1609,7 +1619,7 @@ function Janus(gatewayCallbacks) {
 									}
 								};
 								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
-								getScreenMedia(constraints, callback);
+								getScreenMedia(constraints, callback, isAudioSendEnabled(media));
 							}
 						} else if (event.data.type == 'janusGetScreenPending') {
 							window.clearTimeout(event.data.id);
