@@ -40,8 +40,9 @@ int janus_events_init(gboolean enabled, GHashTable *handlers) {
 
 void janus_events_deinit(void) {
 	eventsenabled = FALSE;
-
-	g_async_queue_push(events, &exit_event);
+	if (events != NULL) {
+		g_async_queue_push(events, &exit_event);
+	}
 	if(events_thread != NULL) {
 		g_thread_join(events_thread);
 		events_thread = NULL;
