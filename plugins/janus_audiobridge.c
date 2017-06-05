@@ -268,7 +268,8 @@ record_file =	/path/to/recording.wav (where to save the recording)
 		{	// Participant #1
 			"id" : <unique numeric ID of the participant>,
 			"display" : "<display name of the participant, if any; optional>",
-			"muted" : <true|false, whether user is muted or not>
+			"muted" : <true|false, whether user is muted or not>,
+			"talking" : <true|false, whether user is talking or not (only if audio levels are used)>,
 		},
 		// Other participants
 	]
@@ -787,8 +788,9 @@ typedef struct janus_audiobridge_participant {
 	int opus_pt;			/* Opus payload type */
 	int extmap_id;			/* Audio level RTP extension id, if any */
 	int dBov_level;			/* Value in dBov of the audio level (last value from extension) */
-	int audio_active_packets;   /* participants number of audio packets to accumulate */
-	int audio_dBov_sum;	    /* participants accumulated dBov value for audio level */
+	int audio_active_packets;	/* Participant's number of audio packets to accumulate */
+	int audio_dBov_sum;	    /* Participant's accumulated dBov value for audio level */
+	gboolean talking;		/* Whether this participant is currently talking (uses audio levels extension) */
 	janus_rtp_switching_context context;	/* Needed in case the participant changes room */
 	/* Opus stuff */
 	OpusEncoder *encoder;		/* Opus encoder instance */
@@ -1343,8 +1345,10 @@ json_t *janus_audiobridge_query_session(janus_plugin_session *handle) {
 			json_object_set_new(info, "last-drop", json_integer(participant->last_drop));
 		if(participant->arc && participant->arc->filename)
 			json_object_set_new(info, "audio-recording", json_string(participant->arc->filename));
-		if(participant->extmap_id > 0)
+		if(participant->extmap_id > 0) {
 			json_object_set_new(info, "audio-level-dBov", json_integer(participant->dBov_level));
+			json_object_set_new(info, "talking", participant->talking ? json_true() : json_false());
+		}
 	}
 	json_object_set_new(info, "started", session->started ? json_true() : json_false());
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
@@ -1970,6 +1974,8 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			if(p->display)
 				json_object_set_new(pl, "display", json_string(p->display));
 			json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
+			if(p->extmap_id > 0)
+				json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 			json_array_append_new(list, pl);
 		}
 		janus_mutex_unlock(&audiobridge->mutex);
@@ -2301,12 +2307,26 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 					participant->audio_active_packets++;
 					participant->dBov_level = level;
 					if(participant->audio_active_packets > 0 && participant->audio_active_packets == participant->room->audio_active_packets) {
+						gboolean notify_talk_event = FALSE;
 						if((float) participant->audio_dBov_sum / (float) participant->audio_active_packets <
 								participant->room->audio_level_average) {
+							/* Participant talking, should we notify all participants? */
+							if(!participant->talking)
+								notify_talk_event = TRUE;
+							participant->talking = TRUE;
+						} else {
+							/* Participant not talking anymore, should we notify all participants? */
+							if(participant->talking)
+								notify_talk_event = TRUE;
+							participant->talking = FALSE;
+						}
+						participant->audio_active_packets = 0;
+						participant->audio_dBov_sum = 0;
+						/* Only notify in case of state changes */
+						if(notify_talk_event) {
 							janus_mutex_lock(&participant->room->mutex);
-							/* Notify all participants */
 							json_t *event = json_object();
-							json_object_set_new(event, "audiobridge", json_string("talking"));
+							json_object_set_new(event, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
 							json_object_set_new(event, "room", json_integer(participant->room->room_id));
 							json_object_set_new(event, "id", json_integer(participant->user_id));
 							janus_audiobridge_notify_participants(participant, event);
@@ -2315,14 +2335,12 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 							/* Also notify event handlers */
 							if(notify_events && gateway->events_is_enabled()) {
 								json_t *info = json_object();
-								json_object_set_new(info, "audiobridge", json_string("talking"));
+								json_object_set_new(info, "audiobridge", json_string(participant->talking ? "talking" : "stopped-talking"));
 								json_object_set_new(info, "room", json_integer(participant->room->room_id));
 								json_object_set_new(info, "id", json_integer(participant->user_id));
 								gateway->notify_event(&janus_audiobridge_plugin, session->handle, info);
 							}
 						}
-						participant->audio_active_packets = 0;
-						participant->audio_dBov_sum = 0;
 					}
 				}
 			}
@@ -2468,6 +2486,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	participant->reset = FALSE;
 	participant->audio_active_packets = 0;
 	participant->audio_dBov_sum = 0;
+	participant->talking = FALSE;
 	/* Get rid of queued packets */
 	while(participant->inbuf) {
 		GList *first = g_list_first(participant->inbuf);
@@ -2661,6 +2680,7 @@ static void *janus_audiobridge_handler(void *data) {
 				participant->opus_pt = 0;
 				participant->extmap_id = 0;
 				participant->dBov_level = 0;
+				participant->talking = FALSE;
 			}
 			JANUS_LOG(LOG_VERB, "Creating Opus encoder/decoder (sampling rate %d)\n", audiobridge->sampling_rate);
 			/* Opus encoder */
@@ -2776,6 +2796,8 @@ static void *janus_audiobridge_handler(void *data) {
 				if(p->display)
 					json_object_set_new(pl, "display", json_string(p->display));
 				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
+				if(p->extmap_id > 0)
+					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 				json_array_append_new(list, pl);
 			}
 			janus_mutex_unlock(&audiobridge->mutex);
@@ -3051,6 +3073,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->prebuffering = TRUE;
 			participant->audio_active_packets = 0;
 			participant->audio_dBov_sum = 0;
+			participant->talking = FALSE;
 			/* Is the sampling rate of the new room the same as the one in the old room, or should we update the decoder/encoder? */
 			janus_audiobridge_room *old_audiobridge = participant->room;
 			/* Leave the old room first... */
@@ -3168,6 +3191,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
 			participant->audio_active_packets = 0;
 			participant->audio_dBov_sum = 0;
+			participant->talking = FALSE;
 			participant->volume_gain = volume;
 			if(quality) {
 				participant->opus_complexity = complexity;
@@ -3211,6 +3235,8 @@ static void *janus_audiobridge_handler(void *data) {
 				if(p->display)
 					json_object_set_new(pl, "display", json_string(p->display));
 				json_object_set_new(pl, "muted", p->muted ? json_true() : json_false());
+				if(p->extmap_id > 0)
+					json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 				json_array_append_new(list, pl);
 			}
 			event = json_object();
