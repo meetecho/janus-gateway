@@ -84,7 +84,9 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 };
 static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"opaque_id", JSON_STRING, 0}
+	{"opaque_id", JSON_STRING, 0},
+	{"force-bundle", JANUS_JSON_BOOL, 0},
+	{"force-rtcp-mux", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -807,6 +809,8 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
+		gboolean force_bundle = json_is_true(json_object_get(root, "force-bundle"));
+		gboolean force_rtcp_mux = json_is_true(json_object_get(root, "force-rtcp-mux"));
 		const gchar *plugin_text = json_string_value(plugin);
 		janus_plugin *plugin_t = janus_plugin_find(plugin_text);
 		if(plugin_t == NULL) {
@@ -834,6 +838,8 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		handle_id = handle->handle_id;
+		handle->force_bundle = force_bundle;
+		handle->force_rtcp_mux = force_rtcp_mux;
 		/* Attach to the plugin */
 		int error = 0;
 		if((error = janus_ice_handle_attach_plugin(session, handle_id, plugin_t)) != 0) {
@@ -1114,7 +1120,7 @@ int janus_process_incoming_request(janus_request *request) {
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
 								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
 								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-								if(!janus_ice_is_rtcpmux_forced())
+								if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 									nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								nice_agent_remove_stream(handle->agent, handle->video_stream->stream_id);
 								janus_ice_stream_free(handle->streams, handle->video_stream);
@@ -1145,7 +1151,7 @@ int janus_process_incoming_request(janus_request *request) {
 							handle->data_id = 0;
 						}
 					}
-					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && !janus_ice_is_rtcpmux_forced()) {
+					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && !handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced()) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", handle->handle_id);
 						if(handle->audio_stream && handle->audio_stream->components != NULL) {
 							nice_agent_attach_recv(handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
@@ -2220,6 +2226,10 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "ice-mode", json_string(janus_ice_is_ice_lite_enabled() ? "lite" : "full"));
 			json_object_set_new(info, "ice-role", json_string(handle->controlling ? "controlling" : "controlled"));
 		}
+		if(handle->force_bundle)
+			json_object_set_new(info, "force-bundle", json_true());
+		if(handle->force_rtcp_mux)
+			json_object_set_new(info, "force-rtcp-mux", json_true());
 		json_t *sdps = json_object();
 		if(handle->rtp_profile)
 			json_object_set_new(sdps, "profile", json_string(handle->rtp_profile));
@@ -2866,7 +2876,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
 						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
 						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
-						if(!janus_ice_is_rtcpmux_forced())
+						if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 							nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 						nice_agent_remove_stream(ice_handle->agent, ice_handle->video_stream->stream_id);
 						janus_ice_stream_free(ice_handle->streams, ice_handle->video_stream);
@@ -2897,7 +2907,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					ice_handle->data_id = 0;
 				}
 			}
-			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && !janus_ice_is_rtcpmux_forced()) {
+			if(janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) && !ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced()) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- rtcp-mux is supported by the browser, getting rid of RTCP components, if any...\n", ice_handle->handle_id);
 				if(ice_handle->audio_stream && ice_handle->audio_stream->rtcp_component && ice_handle->audio_stream->components != NULL) {
 					nice_agent_attach_recv(ice_handle->agent, ice_handle->audio_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);

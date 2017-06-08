@@ -271,6 +271,10 @@ struct janus_ice_handle {
 	janus_plugin_session *app_handle;
 	/*! \brief Mask of WebRTC-related flags for this handle */
 	janus_flags webrtc_flags;
+	/*! \brief Whether we have to force BUNDLE when negotiating (if true, overrides global configuration) */
+	gboolean force_bundle;
+	/*! \brief Whether we have to force rtcp-mux when negotiating (if true, overrides global configuration) */
+	gboolean force_rtcp_mux;
 	/*! \brief Number of gathered candidates */
 	gint cdone;
 	/*! \brief GLib context for libnice */
