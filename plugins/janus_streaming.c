@@ -1317,12 +1317,18 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		if(mp->streaming_source == janus_streaming_source_rtp) {
 			janus_streaming_rtp_source *source = mp->source;
 			gint64 now = janus_get_monotonic_time();
-			if(source->audio_fd != -1)
+			if(source->audio_fd != -1) {
 				json_object_set_new(ml, "audio_age_ms", json_integer((now - source->last_received_audio) / 1000));
-			if(source->video_fd != -1)
+				json_object_set_new(ml, "audio_port", json_integer(janus_streaming_get_fd_port(source->audio_fd)));
+                        }
+			if(source->video_fd != -1) {
 				json_object_set_new(ml, "video_age_ms", json_integer((now - source->last_received_video) / 1000));
-			if(source->data_fd != -1)
+				json_object_set_new(ml, "video_port", json_integer(janus_streaming_get_fd_port(source->video_fd)));
+                        }
+			if(source->data_fd != -1) {
 				json_object_set_new(ml, "data_age_ms", json_integer((now - source->last_received_data) / 1000));
+				json_object_set_new(ml, "data_port", json_integer(janus_streaming_get_fd_port(source->data_fd)));
+                        }
 			janus_mutex_lock(&source->rec_mutex);
 			if(source->arc || source->vrc || source->drc) {
 				json_t *recording = json_object();
