@@ -2367,13 +2367,15 @@ static void *janus_sip_handler(void *data) {
 			if (duration_ms <= 0 || duration_ms > 5000) {
 				duration_ms = 160; /* default value */
 			}
-
 			char payload[64];
 			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, duration_ms);
 			nua_info(session->stack->s_nh_i,
 				SIPTAG_CONTENT_TYPE_STR("application/dtmf-relay"),
 				SIPTAG_PAYLOAD_STR(payload),
 				TAG_END());
+			/* Notify the result */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("dtmfsent"));
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", request_text);
 			error_code = JANUS_SIP_ERROR_INVALID_REQUEST;

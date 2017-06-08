@@ -820,19 +820,7 @@ void janus_dtls_callback(const SSL *ssl, int where, int ret) {
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS alert triggered on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
-	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
-	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
-		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
-		if(handle->iceloop)
-			g_main_loop_quit(handle->iceloop);
-		janus_plugin *plugin = (janus_plugin *)handle->app;
-		if(plugin != NULL) {
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-			if(plugin && plugin->hangup_media)
-				plugin->hangup_media(handle->app_handle);
-			janus_ice_notify_hangup(handle, "DTLS alert");
-		}
-	}
+	janus_ice_webrtc_hangup(handle, "DTLS alert");
 }
 
 /* DTLS certificate verification callback */
