@@ -144,8 +144,6 @@ Janus.init = function(options) {
 				} else {
 					Janus.error("Error attaching stream to element");
 				}
-			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
-				element.src = URL.createObjectURL(stream);
 			} else {
 				element.srcObject = stream;
 			}
