@@ -1402,7 +1402,7 @@ function Janus(gatewayCallbacks) {
 			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
-				if(media.video && media.video != 'screen' && media.video != 'window') {
+				if(media.video && !isScreenshare(media)) {
 					var width = 0;
 					var height = 0, maxHeight = 0;
 					if(media.video === 'lowres') {
@@ -1465,20 +1465,20 @@ function Janus(gatewayCallbacks) {
 						}
 					} else {
 						videoSupport = {
-						    'mandatory': {
-						        'maxHeight': maxHeight,
-						        'minHeight': height,
-						        'maxWidth':  width,
-						        'minWidth':  width
-						    },
-						    'optional': []
+							'mandatory': {
+								'maxHeight': maxHeight,
+								'minHeight': height,
+								'maxWidth':  width,
+								'minWidth':  width
+							},
+							'optional': []
 						};
 					}
 					if(typeof media.video === 'object') {
 						videoSupport = media.video;
 					}
 					Janus.debug(videoSupport);
-				} else if(media.video === 'screen' || media.video === 'window') {
+				} else if(isScreenshare(media)) {
 					if (!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
 					}
@@ -1500,14 +1500,25 @@ function Janus(gatewayCallbacks) {
 						} else {
 							streamsDone(handleId, jsep, media, callbacks, stream);
 						}
-					};
+					}
+
+					function getWebkitScreenMedia(constraints, gsmCallback) {
+						Janus.log("Adding media constraint (chrome-specific screen capture)");
+						Janus.debug(constraints);
+						navigator.webkitGetUserMedia(constraints,
+								function success(stream) { gsmCallback(null, stream); },
+								function failure(error) { pluginHandle.consentDialog(false); gsmCallback(error); }
+						);
+					}
+
 					function getScreenMedia(constraints, gsmCallback) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
 							.then(function(stream) { gsmCallback(null, stream); })
 							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
-					};
+					}
+
 					if(adapter.browserDetails.browser === 'chrome') {
 						var chromever = adapter.browserDetails.version;
 						var maxver = 33;
@@ -1528,7 +1539,7 @@ function Janus(gatewayCallbacks) {
 								},
 								audio: isAudioSendEnabled(media)
 							};
-							getScreenMedia(constraints, callbackUserMedia);
+							getWebkitScreenMedia(constraints, callbackUserMedia);
 						} else {
 							// Chrome 34+ requires an extension
 							var pending = window.setTimeout(
@@ -1539,7 +1550,14 @@ function Janus(gatewayCallbacks) {
 									return callbacks.error(error);
 								}, 1000);
 							cache[pending] = [callbackUserMedia, null];
-							window.postMessage({ type: 'janusGetScreen', id: pending }, '*');
+							var options = ['screen', 'window'];
+							if(chromever >= 50) {
+								if (isAudioSendEnabled(media)) {
+									options.push('audio');
+								}
+								options.push('tab');
+							}
+							window.postMessage({ type: 'janusGetScreen', id: pending, options: options }, '*');
 						}
 					} else if (window.navigator.userAgent.match('Firefox')) {
 						var ffver = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
@@ -1596,23 +1614,42 @@ function Janus(gatewayCallbacks) {
 								callbacks.error(error);
 							} else {
 								constraints = {
-									audio: isAudioSendEnabled(media),
+									audio: false,
 									video: {
 										mandatory: {
 											chromeMediaSource: 'desktop',
+											chromeMediaSourceId: event.data.sourceId,
 											maxWidth: window.screen.width,
 											maxHeight: window.screen.height,
 											minFrameRate: media.screenshareFrameRate,
-											maxFrameRate: media.screenshareFrameRate,
+											maxFrameRate: media.screenshareFrameRate
 										},
 										optional: [
+											{googNoiseReduction: true},
 											{googLeakyBucket: true},
 											{googTemporalLayeredScreencast: true}
 										]
 									}
 								};
-								constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
-								getScreenMedia(constraints, callback);
+
+								if(isAudioSendEnabled(media)) {
+									constraints.audio = {
+										mandatory: {
+											chromeMediaSource: 'desktop',
+											chromeMediaSourceId: event.data.sourceId
+										},
+										optional: [
+											{googEchoCancellation: true},
+											// {googEchoCancellation2: true},
+											{googTypingNoiseDetection: true},
+											{googNoiseSuppression: true}
+											// {googNoiseSuppression2: true}
+										]
+									}
+								}
+
+								Janus.debug(['Final Screenshare Log', constraints]);
+								getWebkitScreenMedia(constraints, callback);
 							}
 						} else if (event.data.type == 'janusGetScreenPending') {
 							window.clearTimeout(event.data.id);
@@ -2245,4 +2282,18 @@ function Janus(gatewayCallbacks) {
 			return true;	// Default is true
 		return (trickle === true);
 	}
+
+	function isScreenshare(media) {
+		return (
+			media.video === 'screen' ||
+			media.video === 'window' ||
+			media.video === 'tab' ||
+			(
+				typeof media.video === "object" &&
+				media.length &&
+				(( media.indexOf('screen') + media.indexOf('window') + media.indexOf('tab')) > -3)
+			)
+		);
+	}
 };
+
