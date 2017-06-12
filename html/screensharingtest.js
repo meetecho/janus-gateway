@@ -161,7 +161,7 @@ $(document).ready(function() {
 												Janus.debug("Negotiating WebRTC stream for our screen (capture " + capture + ")");
 												screentest.createOffer(
 													{
-														media: { video: capture, audio: false, videoRecv: false},	// Screen sharing doesn't work with audio, and Publishers are sendonly
+														media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
 														success: function(jsep) {
 															Janus.debug("Got publisher SDP!");
 															Janus.debug(jsep);
