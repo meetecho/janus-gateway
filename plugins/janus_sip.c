@@ -149,7 +149,8 @@ static struct janus_json_parameter register_parameters[] = {
 	{"headers", JSON_OBJECT, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
-	{"proxy", JSON_STRING, 0}
+	{"proxy", JSON_STRING, 0},
+	{"outbound_proxy", JSON_STRING, 0}
 };
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -293,6 +294,7 @@ typedef struct janus_sip_account {
 	janus_sip_secret_type secret_type;
 	int sip_port;
 	char *proxy;
+	char *outbound_proxy;
 	janus_sip_registration_status registration_status;
 } janus_sip_account;
 
@@ -563,6 +565,10 @@ static void *janus_sip_watchdog(void *data) {
 					if (session->account.proxy) {
 					    g_free(session->account.proxy);
 					    session->account.proxy = NULL;
+					}
+					if (session->account.outbound_proxy) {
+					    g_free(session->account.outbound_proxy);
+					    session->account.outbound_proxy = NULL;
 					}
 					if (session->account.secret) {
 					    g_free(session->account.secret);
@@ -947,6 +953,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.secret_type = janus_sip_secret_type_unknown;
 	session->account.sip_port = 0;
 	session->account.proxy = NULL;
+	session->account.outbound_proxy = NULL;
 	session->account.registration_status = janus_sip_registration_status_unregistered;
 	session->status = janus_sip_call_status_idle;
 	session->stack = NULL;
@@ -1397,6 +1404,9 @@ static void *janus_sip_handler(void *data) {
 			if(session->account.proxy != NULL)
 				g_free(session->account.proxy);
 			session->account.proxy = NULL;
+			if(session->account.outbound_proxy != NULL)
+				g_free(session->account.outbound_proxy);
+			session->account.outbound_proxy = NULL;
 			if(session->account.user_agent != NULL)
 				g_free(session->account.user_agent);
 			session->account.user_agent = NULL;
@@ -1437,10 +1447,9 @@ static void *janus_sip_handler(void *data) {
 				sips = json_is_true(do_sips);
 			}
 
-			/* Parse address */
+			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
 			const char *proxy_text = NULL;
-
 			if (proxy && !json_is_null(proxy)) {
 				/* Has to be validated separately because it could be null */
 				JANUS_VALIDATE_JSON_OBJECT(root, proxy_parameters,
@@ -1454,6 +1463,24 @@ static void *janus_sip_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
 					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 					g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
+					goto error;
+				}
+			}
+			json_t *outbound_proxy = json_object_get(root, "outbound_proxy");
+			const char *obproxy_text = NULL;
+			if (outbound_proxy && !json_is_null(outbound_proxy)) {
+				/* Has to be validated separately because it could be null */
+				JANUS_VALIDATE_JSON_OBJECT(root, proxy_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
+				obproxy_text = json_string_value(outbound_proxy);
+				janus_sip_uri_t outbound_proxy_uri;
+				if (janus_sip_parse_proxy_uri(&outbound_proxy_uri, obproxy_text) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid outbound_proxy address %s\n", obproxy_text);
+					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
+					g_snprintf(error_cause, 512, "Invalid outbound_proxy address %s\n", obproxy_text);
 					goto error;
 				}
 			}
@@ -1554,6 +1581,9 @@ static void *janus_sip_handler(void *data) {
 			if (proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
 			}
+			if (obproxy_text) {
+				session->account.outbound_proxy = g_strdup(obproxy_text);
+			}
 
 			session->account.registration_status = janus_sip_registration_status_registering;
 			if(session->stack == NULL) {
@@ -1630,7 +1660,8 @@ static void *janus_sip_handler(void *data) {
 					SIPTAG_TO_STR(username_text),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					SIPTAG_EXPIRES_STR(ttl_text),
-					NUTAG_PROXY(proxy_text),
+					NUTAG_REGISTRAR(proxy_text),
+					NUTAG_PROXY(obproxy_text),
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
@@ -1832,7 +1863,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(uri_text),
 				SIPTAG_CALL_ID_STR(callid),
 				SOATAG_USER_SDP_STR(sdp),
-				NUTAG_PROXY(session->account.proxy),
+				NUTAG_PROXY(session->account.outbound_proxy),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
 				NUTAG_AUTOACK(do_autoack),

@@ -420,6 +420,13 @@ function registerUsername() {
 	$('#password').attr('disabled', true);
 	$('#register').attr('disabled', true).unbind('click');
 	$('#registerset').attr('disabled', true);
+	// Let's see if the user provided a server address
+	// 		NOTE WELL! Even though the attribute we set in the request is called "proxy",
+	//		this is actually the _registrar_. If you want to set an outbound proxy (for this
+	//		REGISTER request and for all INVITEs that will follow), you'll need to set the
+	//		"outbound_proxy" property in the request instead. The two are of course not
+	//		mutually exclusive. If you set neither, the domain part of the user identity
+	//		will be used as the target of the REGISTER request the plugin might send.
 	var sipserver = $('#server').val();
 	if(sipserver !== "" && sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0) {
 		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
@@ -437,8 +444,11 @@ function registerUsername() {
 			"request" : "register",
 			"type" : "guest"
 		};
-		if(sipserver !== "")
+		if(sipserver !== "") {
 			register["proxy"] = sipserver;
+			// Uncomment this if you want to see an outbound proxy too
+			//~ register["outbound_proxy"] = "sip:outbound.example.com";
+		}
 		var username = $('#username').val();
 		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
@@ -526,6 +536,8 @@ function registerUsername() {
 			}); 
 	} else {
 		register["proxy"] = sipserver;
+		// Uncomment this if you want to see an outbound proxy too
+		//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		sipcall.send({"message": register});
 	}
 }
