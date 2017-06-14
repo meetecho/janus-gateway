@@ -373,6 +373,11 @@ $(document).ready(function() {
 											var bitrate = echotest.getBitrate();
 											//~ Janus.debug("Current bitrate is " + echotest.getBitrate());
 											$('#curbitrate').text(bitrate);
+											// Check if the resolution changed too
+											var width = $("#peervideo").get(0).videoWidth;
+											var height = $("#peervideo").get(0).videoHeight;
+											if(width > 0 && height > 0)
+												$('#curres').removeClass('hide').text(width+'x'+height).show();
 										}, 1000);
 									}
 								},

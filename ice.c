@@ -2637,14 +2637,14 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	}
 	/* Note: in case this is not an OFFER, we don't know whether BUNDLE is supported on the other side or not yet,
 	 * unless Janus was configured to force BUNDLE in which case we enable it on our side anyway */
-	if((offer && bundle) || janus_force_bundle) {
+	if((offer && bundle) || janus_force_bundle || handle->force_bundle) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE);
 	} else {
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE);
 	}
 	/* Note: in case this is not an OFFER, we don't know whether rtcp-mux is supported on the other side or not yet,
 	 * unless Janus was configured to force rtcp-mux in which case we enable it on our side anyway */
-	if((offer && rtcpmux) || janus_force_rtcpmux) {
+	if((offer && rtcpmux) || janus_force_rtcpmux || handle->force_rtcp_mux) {
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX);
 	} else {
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX);

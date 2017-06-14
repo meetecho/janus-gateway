@@ -161,7 +161,7 @@ $(document).ready(function() {
 												Janus.debug("Negotiating WebRTC stream for our screen (capture " + capture + ")");
 												screentest.createOffer(
 													{
-														media: { video: capture, audio: false, videoRecv: false},	// Screen sharing doesn't work with audio, and Publishers are sendonly
+														media: { video: capture, audioSend: true, videoRecv: false},	// Screen sharing Publishers are sendonly
 														success: function(jsep) {
 															Janus.debug("Got publisher SDP!");
 															Janus.debug(jsep);
@@ -459,7 +459,7 @@ function newRemoteFeed(id, display) {
 				if($('#screenvideo').length === 0) {
 					// No remote video yet
 					$('#screencapture').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
-					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay muted="muted"/>');
+					$('#screencapture').append('<video class="rounded centered hide" id="screenvideo" width="100%" height="100%" autoplay/>');
 				}
 				// Show the video, hide the spinner and show the resolution when we get a playing event
 				$("#screenvideo").bind("playing", function () {
