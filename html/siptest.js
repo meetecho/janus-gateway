@@ -155,6 +155,7 @@ $(document).ready(function() {
 										if(!registered) {
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#authuser').removeAttr('disabled');
 											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
@@ -178,6 +179,7 @@ $(document).ready(function() {
 											Janus.warn("Registration failed: " + result["code"] + " " + result["reason"]);
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#authuser').removeAttr('disabled');
 											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
@@ -416,15 +418,24 @@ function registerUsername() {
 	// Try a registration
 	$('#server').attr('disabled', true);
 	$('#username').attr('disabled', true);
+	$('#authuser').attr('disabled', true);
 	$('#displayname').attr('disabled', true);
 	$('#password').attr('disabled', true);
 	$('#register').attr('disabled', true).unbind('click');
 	$('#registerset').attr('disabled', true);
+	// Let's see if the user provided a server address
+	// 		NOTE WELL! Even though the attribute we set in the request is called "proxy",
+	//		this is actually the _registrar_. If you want to set an outbound proxy (for this
+	//		REGISTER request and for all INVITEs that will follow), you'll need to set the
+	//		"outbound_proxy" property in the request instead. The two are of course not
+	//		mutually exclusive. If you set neither, the domain part of the user identity
+	//		will be used as the target of the REGISTER request the plugin might send.
 	var sipserver = $('#server').val();
 	if(sipserver !== "" && sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0) {
 		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -437,13 +448,17 @@ function registerUsername() {
 			"request" : "register",
 			"type" : "guest"
 		};
-		if(sipserver !== "")
+		if(sipserver !== "") {
 			register["proxy"] = sipserver;
+			// Uncomment this if you want to see an outbound proxy too
+			//~ register["outbound_proxy"] = "sip:outbound.example.com";
+		}
 		var username = $('#username').val();
 		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
 			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
 			$('#server').removeAttr('disabled');
 			$('#username').removeAttr('disabled');
+			$('#authuser').removeAttr('disabled');
 			$('#displayname').removeAttr('disabled');
 			$('#register').removeAttr('disabled').click(registerUsername);
 			$('#registerset').removeAttr('disabled');
@@ -455,13 +470,14 @@ function registerUsername() {
 			register.display_name = displayname;
 		}
 		if(sipserver === "") {
-			bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+			bootbox.confirm("You didn't specify a SIP Registrar to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
 				function(result) {
 					if(result) {
 						sipcall.send({"message": register});
 					} else {
 						$('#server').removeAttr('disabled');
 						$('#username').removeAttr('disabled');
+						$('#authuser').removeAttr('disabled');
 						$('#displayname').removeAttr('disabled');
 						$('#register').removeAttr('disabled').click(registerUsername);
 						$('#registerset').removeAttr('disabled');
@@ -477,6 +493,7 @@ function registerUsername() {
 		bootbox.alert('Please insert a valid SIP identity address (e.g., sip:goofy@example.com)');
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -488,6 +505,7 @@ function registerUsername() {
 		bootbox.alert("Insert the username secret (e.g., mypassword)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -498,8 +516,15 @@ function registerUsername() {
 		"request" : "register",
 		"username" : username
 	};
+	// By default, the SIP plugin tries to extract the username part from the SIP
+	// identity to register; if the username is different, you can provide it here
+	var authuser = $('#authuser').val();
+	if(authuser !== "") {
+		register.authuser = authuser;
+	}
+	// The display name is only needed when you want a friendly name to appear when you call someone
 	var displayname = $('#displayname').val();
-	if (displayname) {
+	if(displayname !== "") {
 		register.display_name = displayname;
 	}
 	if(selectedApproach === "secret") {
@@ -511,13 +536,14 @@ function registerUsername() {
 		register["ha1_secret"] = md5(sip_user+':'+sip_domain+':'+password);
 	}
 	if(sipserver === "") {
-		bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+		bootbox.confirm("You didn't specify a SIP Registrar: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
 			function(result) {
 				if(result) {
 					sipcall.send({"message": register});
 				} else {
 					$('#server').removeAttr('disabled');
 					$('#username').removeAttr('disabled');
+					$('#authuser').removeAttr('disabled');
 					$('#displayname').removeAttr('disabled');
 					$('#password').removeAttr('disabled');
 					$('#register').removeAttr('disabled').click(registerUsername);
@@ -526,6 +552,8 @@ function registerUsername() {
 			}); 
 	} else {
 		register["proxy"] = sipserver;
+		// Uncomment this if you want to see an outbound proxy too
+		//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		sipcall.send({"message": register});
 	}
 }
