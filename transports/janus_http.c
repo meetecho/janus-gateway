@@ -33,6 +33,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netdb.h>
+#include <sys/stat.h>
 
 #include <microhttpd.h>
 
@@ -254,8 +255,11 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 	static struct sockaddr_in addr;
 	struct sockaddr_in6 addr6;
 	gboolean ipv6 = FALSE;
+	unsigned ipv6_flags=0;
+	
 	if(ip && strstr(ip, ":"))
 		ipv6 = TRUE;
+		ipv6_flags=MHD_USE_IPv6;
 	if(ip || interface) {
 		gboolean found = FALSE;
 		struct ifaddrs *ifaddr = NULL, *ifa = NULL;
@@ -330,6 +334,21 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				return NULL;
 			}
 		}
+	} else {
+		
+#ifdef __linux
+		struct stat statbuf;
+		if (stat("/proc/net/if_inet6",&statbuf)==0){
+			ipv6_flags|=MHD_USE_DUAL_STACK;
+			JANUS_LOG(LOG_VERB, "Enbling IPv6 dual stack in IPv6 capable system for the %s API %s webserver\n",
+				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
+		} else {
+			ipv6_flags=0;
+			JANUS_LOG(LOG_VERB, "Disabling IPv6 dual stack in IPv6 uncapable system for the %s API %s webserver\n",
+				admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
+		}
+#endif
+		
 	}
 
 	if(!secure) {
@@ -343,9 +362,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 				/* Bind to all interfaces */
 				daemon = MHD_start_daemon(
 #if MHD_VERSION >= 0x00095208
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_DUAL_STACK,
+					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | ipv6_flags,
 #else
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_DUAL_STACK,
+					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | ipv6_flags,
 #endif
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
@@ -361,9 +380,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
 #if MHD_VERSION >= 0x00095208
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | ipv6_flags,
 #else
-					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | ipv6_flags,
 #endif
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
@@ -424,9 +443,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
 #if MHD_VERSION >= 0x00095208
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | MHD_USE_DUAL_STACK,
+					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | ipv6_flags,
 #else
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | MHD_USE_DUAL_STACK,
+					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | ipv6_flags,
 #endif
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
@@ -444,9 +463,9 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 					admin ? "Admin" : "Janus", secure ? "HTTPS" : "HTTP");
 				daemon = MHD_start_daemon(
 #if MHD_VERSION >= 0x00095208
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_AUTO_INTERNAL_THREAD | MHD_USE_AUTO | ipv6_flags,
 #else
-					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | (ipv6 ? MHD_USE_IPv6 : 0),
+					MHD_USE_SSL | MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL_INTERNALLY | MHD_USE_POLL | ipv6_flags,
 #endif
 					port,
 					admin ? janus_http_admin_client_connect : janus_http_client_connect,
