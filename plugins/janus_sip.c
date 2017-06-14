@@ -23,19 +23,16 @@
  * need to fork in the same place. This specific functionality, though, has
  * not been implemented as of yet.
  *
- * \todo Only Asterisk and Kamailio have been tested as a SIP server, and
- * specifically only with basic audio calls: this plugin needs some work
- * to make it more stable and reliable.
- *
  * \section sipapi SIP Plugin API
  *
  * All requests you can send in the SIP Plugin API are asynchronous,
  * which means all responses (successes and errors) will be delivered
  * as events with the same transaction.
  *
- * The supported requests are \c register , \c call , \c accept, \c hold , \c unhold and
- * \c hangup . \c register can be used, as the name suggests, to register
- * a username at a SIP registrar to call and be called; \c call is used
+ * The supported requests are \c register , \c unregister ,\c call ,
+ * \c accept, \c hold , \c unhold and \c hangup . \c register can be used,
+ * as the name suggests, to register a username at a SIP registrar to,
+ * call and be called, while \c unregister unregisters it; \c call is used
  * to send an INVITE to a different SIP URI through the plugin, while
  * \c accept is used to accept the call in case one is invited instead
  * of inviting; \c hold and \c unhold can be used respectively to put a
@@ -146,10 +143,12 @@ static struct janus_json_parameter register_parameters[] = {
 	{"secret", JSON_STRING, 0},
 	{"ha1_secret", JSON_STRING, 0},
 	{"authuser", JSON_STRING, 0},
-	{"headers", JSON_OBJECT, 0}
+	{"headers", JSON_OBJECT, 0},
+	{"refresh", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
-	{"proxy", JSON_STRING, 0}
+	{"proxy", JSON_STRING, 0},
+	{"outbound_proxy", JSON_STRING, 0}
 };
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -293,6 +292,7 @@ typedef struct janus_sip_account {
 	janus_sip_secret_type secret_type;
 	int sip_port;
 	char *proxy;
+	char *outbound_proxy;
 	janus_sip_registration_status registration_status;
 } janus_sip_account;
 
@@ -563,6 +563,10 @@ static void *janus_sip_watchdog(void *data) {
 					if (session->account.proxy) {
 					    g_free(session->account.proxy);
 					    session->account.proxy = NULL;
+					}
+					if (session->account.outbound_proxy) {
+					    g_free(session->account.outbound_proxy);
+					    session->account.outbound_proxy = NULL;
 					}
 					if (session->account.secret) {
 					    g_free(session->account.secret);
@@ -947,6 +951,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->account.secret_type = janus_sip_secret_type_unknown;
 	session->account.sip_port = 0;
 	session->account.proxy = NULL;
+	session->account.outbound_proxy = NULL;
 	session->account.registration_status = janus_sip_registration_status_unregistered;
 	session->status = janus_sip_call_status_idle;
 	session->stack = NULL;
@@ -1367,47 +1372,20 @@ static void *janus_sip_handler(void *data) {
 
 		if(!strcasecmp(request_text, "register")) {
 			/* Send a REGISTER */
-			if(session->account.registration_status > janus_sip_registration_status_unregistered) {
-				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->account.username);
-				error_code = JANUS_SIP_ERROR_ALREADY_REGISTERED;
-				g_snprintf(error_cause, 512, "Already registered (%s)", session->account.username);
-				goto error;
-			}
-
-			/* Cleanup old values */
-			if(session->account.identity != NULL) {
-				g_hash_table_remove(identities, session->account.identity);
-				g_free(session->account.identity);
-			}
-			session->account.identity = NULL;
-			session->account.sips = TRUE;
-			if(session->account.username != NULL)
-				g_free(session->account.username);
-			session->account.username = NULL;
-			if(session->account.display_name != NULL)
-				g_free(session->account.display_name);
-			session->account.display_name = NULL;
-			if(session->account.authuser != NULL)
-				g_free(session->account.authuser);
-			session->account.authuser = NULL;
-			if(session->account.secret != NULL)
-				g_free(session->account.secret);
-			session->account.secret = NULL;
-			session->account.secret_type = janus_sip_secret_type_unknown;
-			if(session->account.proxy != NULL)
-				g_free(session->account.proxy);
-			session->account.proxy = NULL;
-			if(session->account.user_agent != NULL)
-				g_free(session->account.user_agent);
-			session->account.user_agent = NULL;
-			session->account.registration_status = janus_sip_registration_status_unregistered;
-
-			gboolean guest = FALSE;
 			JANUS_VALIDATE_JSON_OBJECT(root, register_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
+			gboolean refresh = json_is_true(json_object_get(root, "refresh"));
+			if(session->account.registration_status > janus_sip_registration_status_unregistered && !refresh) {
+				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->account.username);
+				error_code = JANUS_SIP_ERROR_ALREADY_REGISTERED;
+				g_snprintf(error_cause, 512, "Already registered (%s)", session->account.username);
+				goto error;
+			}
+			/* Parse the request */
+			gboolean guest = FALSE;
 			json_t *type = json_object_get(root, "type");
 			if(type != NULL) {
 				const char *type_text = json_string_value(type);
@@ -1437,10 +1415,9 @@ static void *janus_sip_handler(void *data) {
 				sips = json_is_true(do_sips);
 			}
 
-			/* Parse address */
+			/* Parse addresses */
 			json_t *proxy = json_object_get(root, "proxy");
 			const char *proxy_text = NULL;
-
 			if (proxy && !json_is_null(proxy)) {
 				/* Has to be validated separately because it could be null */
 				JANUS_VALIDATE_JSON_OBJECT(root, proxy_parameters,
@@ -1454,6 +1431,24 @@ static void *janus_sip_handler(void *data) {
 					JANUS_LOG(LOG_ERR, "Invalid proxy address %s\n", proxy_text);
 					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
 					g_snprintf(error_cause, 512, "Invalid proxy address %s\n", proxy_text);
+					goto error;
+				}
+			}
+			json_t *outbound_proxy = json_object_get(root, "outbound_proxy");
+			const char *obproxy_text = NULL;
+			if (outbound_proxy && !json_is_null(outbound_proxy)) {
+				/* Has to be validated separately because it could be null */
+				JANUS_VALIDATE_JSON_OBJECT(root, proxy_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
+				obproxy_text = json_string_value(outbound_proxy);
+				janus_sip_uri_t outbound_proxy_uri;
+				if (janus_sip_parse_proxy_uri(&outbound_proxy_uri, obproxy_text) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid outbound_proxy address %s\n", obproxy_text);
+					error_code = JANUS_SIP_ERROR_INVALID_ADDRESS;
+					g_snprintf(error_cause, 512, "Invalid outbound_proxy address %s\n", obproxy_text);
 					goto error;
 				}
 			}
@@ -1488,6 +1483,9 @@ static void *janus_sip_handler(void *data) {
 				goto error;
 			}
 			const char *username_text = NULL;
+			const char *secret_text = NULL;
+			const char *authuser_text = NULL;
+			janus_sip_secret_type secret_type = janus_sip_secret_type_plaintext;
 			janus_sip_uri_t username_uri;
 			char user_id[256];
 			/* Parse address */
@@ -1519,44 +1517,77 @@ static void *janus_sip_handler(void *data) {
 					g_snprintf(error_cause, 512, "Conflicting elements specified (secret and ha1_secret)");
 					goto error;
 				}
-				const char *secret_text;
 				if(secret) {
 					secret_text = json_string_value(secret);
-					session->account.secret = g_strdup(secret_text);
-					session->account.secret_type = janus_sip_secret_type_plaintext;
+					secret_type = janus_sip_secret_type_plaintext;
 				} else {
 					secret_text = json_string_value(ha1_secret);
-					session->account.secret = g_strdup(secret_text);
-					session->account.secret_type = janus_sip_secret_type_hashed;
+					secret_type = janus_sip_secret_type_hashed;
 				}
 				if (authuser) {
-					const char *authuser_text;
 					authuser_text = json_string_value(authuser);
-					session->account.authuser = g_strdup(authuser_text);
-				} else {
-					session->account.authuser = g_strdup(user_id);
 				}
 				/* Got the values, try registering now */
-				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
-					username_text, secret_text, username_uri.url->url_host, proxy_text != NULL ? proxy_text : "(null)");
+				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s (outbound proxy: %s)\n",
+					username_text, secret_text, username_uri.url->url_host,
+					proxy_text != NULL ? proxy_text : "(null)",
+					obproxy_text != NULL ? obproxy_text : "none");
 			}
-
+			/* If this is a refresh, get rid of the old values */
+			if(refresh) {
+				/* Cleanup old values */
+				if(session->account.identity != NULL) {
+					g_hash_table_remove(identities, session->account.identity);
+					g_free(session->account.identity);
+				}
+				session->account.identity = NULL;
+				session->account.sips = TRUE;
+				if(session->account.username != NULL)
+					g_free(session->account.username);
+				session->account.username = NULL;
+				if(session->account.display_name != NULL)
+					g_free(session->account.display_name);
+				session->account.display_name = NULL;
+				if(session->account.authuser != NULL)
+					g_free(session->account.authuser);
+				session->account.authuser = NULL;
+				if(session->account.secret != NULL)
+					g_free(session->account.secret);
+				session->account.secret = NULL;
+				session->account.secret_type = janus_sip_secret_type_unknown;
+				if(session->account.proxy != NULL)
+					g_free(session->account.proxy);
+				session->account.proxy = NULL;
+				if(session->account.outbound_proxy != NULL)
+					g_free(session->account.outbound_proxy);
+				session->account.outbound_proxy = NULL;
+				if(session->account.user_agent != NULL)
+					g_free(session->account.user_agent);
+				session->account.user_agent = NULL;
+				session->account.registration_status = janus_sip_registration_status_unregistered;
+			}
 			session->account.identity = g_strdup(username_text);
 			g_hash_table_insert(identities, session->account.identity, session);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
-			if (display_name_text) {
+			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
+			session->account.secret = secret_text ? g_strdup(secret_text) : NULL;
+			session->account.secret_type = secret_type;
+			if(display_name_text) {
 				session->account.display_name = g_strdup(display_name_text);
 			}
-			if (user_agent_text) {
+			if(user_agent_text) {
 				session->account.user_agent = g_strdup(user_agent_text);
 			}
-			if (proxy_text) {
+			if(proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
+			}
+			if(obproxy_text) {
+				session->account.outbound_proxy = g_strdup(obproxy_text);
 			}
 
 			session->account.registration_status = janus_sip_registration_status_registering;
-			if(session->stack == NULL) {
+			if(!refresh && session->stack == NULL) {
 				/* Start the thread first */
 				GError *error = NULL;
 				char tname[16];
@@ -1588,7 +1619,7 @@ static void *janus_sip_handler(void *data) {
 				session->stack->s_nh_r = NULL;
 			}
 
-			if (send_register) {
+			if(send_register) {
 				/* Check if the REGISTER needs to be enriched with custom headers */
 				char custom_headers[2048];
 				custom_headers[0] = '\0';
@@ -1626,11 +1657,13 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 				nua_register(session->stack->s_nh_r,
 					NUTAG_M_USERNAME(session->account.username),
+					NUTAG_M_DISPLAY(session->account.display_name),
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
 					TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 					SIPTAG_EXPIRES_STR(ttl_text),
-					NUTAG_PROXY(proxy_text),
+					NUTAG_REGISTRAR(proxy_text),
+					NUTAG_PROXY(obproxy_text),
 					TAG_END());
 				result = json_object();
 				json_object_set_new(result, "event", json_string("registering"));
@@ -1650,6 +1683,30 @@ static void *janus_sip_handler(void *data) {
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 			}
+		} else if(!strcasecmp(request_text, "unregister")) {
+			if(session->stack == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (register first)");
+				goto error;
+			}
+			if(session->account.registration_status < janus_sip_registration_status_registered) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (not registered)");
+				goto error;
+			}
+			if(session->stack->s_nh_r == NULL) {
+				JANUS_LOG(LOG_ERR, "NUA Handle for REGISTER still null??\n");
+				error_code = JANUS_SIP_ERROR_LIBSOFIA_ERROR;
+				g_snprintf(error_cause, 512, "Invalid NUA Handle");
+				goto error;
+			}
+			/* Unregister now */
+			session->account.registration_status = janus_sip_registration_status_unregistering;
+			nua_unregister(session->stack->s_nh_r, TAG_END());
+			result = json_object();
+			json_object_set_new(result, "event", json_string("unregistering"));
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
 			if(session->stack == NULL) {
@@ -1832,7 +1889,7 @@ static void *janus_sip_handler(void *data) {
 				SIPTAG_TO_STR(uri_text),
 				SIPTAG_CALL_ID_STR(callid),
 				SOATAG_USER_SDP_STR(sdp),
-				NUTAG_PROXY(session->account.proxy),
+				NUTAG_PROXY(session->account.outbound_proxy),
 				TAG_IF(strlen(custom_headers) > 0, SIPTAG_HEADER_STR(custom_headers)),
 				NUTAG_AUTOANSWER(0),
 				NUTAG_AUTOACK(do_autoack),
@@ -2834,27 +2891,34 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			}
 			break;
 		}
-		case nua_r_register: {
+		case nua_r_register:
+		case nua_r_unregister: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			if(status == 200) {
-				if(session->account.registration_status < janus_sip_registration_status_registered)
-					session->account.registration_status = janus_sip_registration_status_registered;
-				JANUS_LOG(LOG_VERB, "Successfully registered\n");
+				if(event == nua_r_register) {
+					if(session->account.registration_status < janus_sip_registration_status_registered)
+						session->account.registration_status = janus_sip_registration_status_registered;
+				} else {
+					session->account.registration_status = janus_sip_registration_status_unregistered;
+				}
+				const char *event_name = (event == nua_r_register ? "registered" : "unregistered");
+				JANUS_LOG(LOG_VERB, "Successfully %s\n", event_name);
 				/* Notify the browser */
-				json_t *call = json_object();
-				json_object_set_new(call, "sip", json_string("event"));
-				json_t *calling = json_object();
-				json_object_set_new(calling, "event", json_string("registered"));
-				json_object_set_new(calling, "username", json_string(session->account.username));
-				json_object_set_new(calling, "register_sent", json_true());
-				json_object_set_new(call, "result", calling);
-				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, NULL);
+				json_t *reg = json_object();
+				json_object_set_new(reg, "sip", json_string("event"));
+				json_t *reging = json_object();
+				json_object_set_new(reging, "event", json_string(event_name));
+				json_object_set_new(reging, "username", json_string(session->account.username));
+				if(event == nua_r_register)
+					json_object_set_new(reging, "register_sent", json_true());
+				json_object_set_new(reg, "result", reging);
+				int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, reg, NULL);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-				json_decref(call);
+				json_decref(reg);
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
-					json_object_set_new(info, "event", json_string("registered"));
+					json_object_set_new(info, "event", json_string(event_name));
 					json_object_set_new(info, "identity", json_string(session->account.identity));
 					if(session->account.proxy)
 						json_object_set_new(info, "proxy", json_string(session->account.proxy));

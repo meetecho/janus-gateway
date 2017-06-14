@@ -54,6 +54,7 @@ var opaqueId = "videoroomtest-"+Janus.randomString(12);
 
 var started = false;
 
+var myroom = 1234;	// Demo room
 var myusername = null;
 var myid = null;
 var mystream = null;
@@ -218,7 +219,17 @@ $(document).ready(function() {
 													remoteFeed.detach();
 												}
 											} else if(msg["error"] !== undefined && msg["error"] !== null) {
-												bootbox.alert(msg["error"]);
+												if(msg["error_code"] === 426) {
+													// This is a "no such room" error: give a more meaningful description
+													bootbox.alert(
+														"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
+														"does not exist...</p><p>Do you have an updated <code>janus.plugin.videoroom.cfg</code> " +
+														"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
+														"from that sample in your current configuration file, then restart Janus and try again."
+													);
+												} else {
+													bootbox.alert(msg["error"]);
+												}
 											}
 										}
 									}
@@ -328,7 +339,7 @@ function registerUsername() {
 			$('#register').removeAttr('disabled').click(registerUsername);
 			return;
 		}
-		var register = { "request": "join", "room": 1234, "ptype": "publisher", "display": username };
+		var register = { "request": "join", "room": myroom, "ptype": "publisher", "display": username };
 		myusername = username;
 		sfutest.send({"message": register});
 	}
@@ -389,7 +400,7 @@ function newRemoteFeed(id, display) {
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
-				var listen = { "request": "join", "room": 1234, "ptype": "listener", "feed": id, "private_id": mypvtid };
+				var listen = { "request": "join", "room": myroom, "ptype": "listener", "feed": id, "private_id": mypvtid };
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {
@@ -440,7 +451,7 @@ function newRemoteFeed(id, display) {
 							success: function(jsep) {
 								Janus.debug("Got SDP!");
 								Janus.debug(jsep);
-								var body = { "request": "start", "room": 1234 };
+								var body = { "request": "start", "room": myroom };
 								remoteFeed.send({"message": body, "jsep": jsep});
 							},
 							error: function(error) {
