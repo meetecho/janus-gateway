@@ -278,7 +278,17 @@ function registerUsername() {
 		transactions[transaction] = function(response) {
 			if(response["textroom"] === "error") {
 				// Something went wrong
-				bootbox.alert(response["error"]);
+				if(response["error_code"] === 417) {
+					// This is a "no such room" error: give a more meaningful description
+					bootbox.alert(
+						"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
+						"does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.cfg</code> " +
+						"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
+						"from that sample in your current configuration file, then restart Janus and try again."
+					);
+				} else {
+					bootbox.alert(response["error"]);
+				}
 				$('#username').removeAttr('disabled').val("");
 				$('#register').removeAttr('disabled').click(registerUsername);
 				return;
