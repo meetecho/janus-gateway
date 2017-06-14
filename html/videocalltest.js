@@ -321,14 +321,6 @@ $(document).ready(function() {
 										var width = this.videoWidth;
 										var height = this.videoHeight;
 										$('#curres').removeClass('hide').text(width+'x'+height).show();
-										if(adapter.browserDetails.browser === "firefox") {
-											// Firefox Stable has a bug: width and height are not immediately available after a playing
-											setTimeout(function() {
-												var width = $("#remotevideo").get(0).videoWidth;
-												var height = $("#remotevideo").get(0).videoHeight;
-												$('#curres').removeClass('hide').text(width+'x'+height).show();
-											}, 2000);
-										}
 									});
 									Janus.attachMediaStream($('#remotevideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
@@ -385,6 +377,11 @@ $(document).ready(function() {
 											// Display updated bitrate, if supported
 											var bitrate = videocall.getBitrate();
 											$('#curbitrate').text(bitrate);
+											// Check if the resolution changed too
+											var width = $("#remotevideo").get(0).videoWidth;
+											var height = $("#remotevideo").get(0).videoHeight;
+											if(width > 0 && height > 0)
+												$('#curres').removeClass('hide').text(width+'x'+height).show();
 										}, 1000);
 									}
 								},
