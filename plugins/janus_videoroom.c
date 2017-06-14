@@ -2462,9 +2462,6 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 					packet.ubit = ubit;
 					packet.bbit = bbit;
 					packet.ebit = ebit;
-					JANUS_LOG(LOG_WARN, "sl=%d, tl=%d, p=%u, d=%u, u=%u, b=%u, e=%u\n",
-						packet.spatial_layer, packet.temporal_layer,
-						packet.pbit, packet.dbit, packet.ubit, packet.bbit, packet.ebit);
 				}
 			}
 		}
@@ -4130,43 +4127,43 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			int temporal_layer = listener->temporal_layer;
 			if(listener->target_temporal_layer > listener->temporal_layer) {
 				/* We need to upscale */
-				JANUS_LOG(LOG_WARN, "We need to upscale temporally:\n");
+				JANUS_LOG(LOG_HUGE, "We need to upscale temporally:\n");
 				if(packet->ubit && packet->bbit && packet->temporal_layer <= listener->target_temporal_layer) {
-					JANUS_LOG(LOG_WARN, "  -- Upscaling temporal layer: %u --> %u\n",
+					JANUS_LOG(LOG_HUGE, "  -- Upscaling temporal layer: %u --> %u\n",
 						packet->temporal_layer, listener->target_temporal_layer);
 					listener->temporal_layer = packet->temporal_layer;
 					temporal_layer = listener->temporal_layer;
 				}
 			} else if(listener->target_temporal_layer < listener->temporal_layer) {
 				/* We need to downscale */
-				JANUS_LOG(LOG_WARN, "We need to downscale temporally:\n");
+				JANUS_LOG(LOG_HUGE, "We need to downscale temporally:\n");
 				if(packet->ebit) {
-					JANUS_LOG(LOG_WARN, "  -- Downscaling temporal layer: %u --> %u\n",
+					JANUS_LOG(LOG_HUGE, "  -- Downscaling temporal layer: %u --> %u\n",
 						listener->temporal_layer, listener->target_temporal_layer);
 					listener->temporal_layer = listener->target_temporal_layer;
 				}
 			}
 			if(temporal_layer < packet->temporal_layer) {
 				/* Drop the packet: update the context to make sure sequence number is increased normally later */
-				JANUS_LOG(LOG_WARN, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->temporal_layer);
+				JANUS_LOG(LOG_HUGE, "Dropping packet (temporal layer %d < %d)\n", temporal_layer, packet->temporal_layer);
 				listener->context.v_base_seq++;
 				return;
 			}
 			int spatial_layer = listener->spatial_layer;
 			if(listener->target_spatial_layer > listener->spatial_layer) {
-				JANUS_LOG(LOG_WARN, "We need to upscale spatially:\n");
+				JANUS_LOG(LOG_HUGE, "We need to upscale spatially:\n");
 				/* We need to upscale */
 				if(packet->pbit == 0 && packet->bbit && packet->spatial_layer == listener->spatial_layer+1) {
-					JANUS_LOG(LOG_WARN, "  -- Upscaling spatial layer: %u --> %u\n",
+					JANUS_LOG(LOG_HUGE, "  -- Upscaling spatial layer: %u --> %u\n",
 						packet->spatial_layer, listener->target_spatial_layer);
 					listener->spatial_layer = packet->spatial_layer;
 					spatial_layer = listener->spatial_layer;
 				}
 			} else if(listener->target_spatial_layer < listener->spatial_layer) {
 				/* We need to downscale */
-				JANUS_LOG(LOG_WARN, "We need to downscale spatially:\n");
+				JANUS_LOG(LOG_HUGE, "We need to downscale spatially:\n");
 				if(packet->ebit) {
-					JANUS_LOG(LOG_WARN, "  -- Downscaling spatial layer: %u --> %u\n",
+					JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %u --> %u\n",
 						listener->spatial_layer, listener->target_spatial_layer);
 					listener->spatial_layer = listener->target_spatial_layer;
 				}
