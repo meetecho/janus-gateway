@@ -1656,7 +1656,7 @@ static void *janus_sip_handler(void *data) {
 				char ttl_text[20];
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 				nua_register(session->stack->s_nh_r,
-					NUTAG_M_USERNAME(session->account.username),
+					NUTAG_M_USERNAME(session->account.authuser),
 					NUTAG_M_DISPLAY(session->account.display_name),
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
