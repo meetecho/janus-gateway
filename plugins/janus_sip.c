@@ -1528,8 +1528,9 @@ static void *janus_sip_handler(void *data) {
 					authuser_text = json_string_value(authuser);
 				}
 				/* Got the values, try registering now */
-				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s (outbound proxy: %s)\n",
+				JANUS_LOG(LOG_VERB, "Registering user %s (auth=%s, secret %s) @ %s through %s (outbound proxy: %s)\n",
 					username_text, secret_text, username_uri.url->url_host,
+					authuser_text != NULL ? authuser_text : username_text,
 					proxy_text != NULL ? proxy_text : "(null)",
 					obproxy_text != NULL ? obproxy_text : "none");
 			}
