@@ -60,6 +60,7 @@
 #include <re_srtp.h>
 #include <re_tmr.h>
 #include <re_tls.h>
+#include <re_dns.h>
 
 #include "../debug.h"
 #include "../apierror.h"
@@ -440,6 +441,7 @@ typedef struct janus_sipre_stack {
 	struct sipsess *sess;				/* SIP session */
 	struct sipsess_sock *sess_sock;		/* SIP session socket */
 	struct sipreg *reg;					/* SIP registration */
+	struct dnsc *dns_client;			/* DNS client */
 	uint32_t expires;					/* Registration interval (seconds) */
 	const struct sip_msg *invite;		/* Current INVITE */
 	void *session;						/* Opaque pointer to the plugin session */
@@ -722,6 +724,9 @@ static void *janus_sipre_watchdog(void *data) {
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
+					sipsess_close_all(session->stack.sess_sock);
+					mem_deref(session->stack.dns_client);
+					mem_deref(session->stack.sipstack);
 					if(session->account.identity) {
 					    g_hash_table_remove(identities, session->account.identity);
 					    g_free(session->account.identity);
@@ -1141,6 +1146,8 @@ void janus_sipre_destroy_session(janus_plugin_session *handle, int *error) {
 		janus_sipre_hangup_media(handle);
 		session->destroyed = janus_get_monotonic_time();
 		JANUS_LOG(LOG_VERB, "Destroying SIPre session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
+		/* Unregister */
+		mqueue_push(mq, janus_sipre_mqueue_event_do_unregister, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 		/* Destroy re-related stuff for this SIP session */
 		mqueue_push(mq, janus_sipre_mqueue_event_do_destroy, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 		/* Cleaning up and removing the session is done in a lazy way */
@@ -3531,7 +3538,8 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	}
 
 	/* Cleanup */
-	session->stack.sess = mem_deref(session->stack.sess);
+	mem_deref(session->stack.sess);
+	session->stack.sess = NULL;
 	session->media.ready = FALSE;
 	session->media.on_hold = FALSE;
 	session->status = janus_sipre_call_status_idle;
@@ -3545,7 +3553,6 @@ void janus_sipre_cb_exit(void *arg) {
 		return;
 	}
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] Cleaning SIP stack\n", session->account.username);
-	mem_deref(&session->stack.sipstack);
 }
 
 /* Callback to implement SIP requests in the re_main loop thread */
@@ -3555,10 +3562,27 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 		case janus_sipre_mqueue_event_do_init: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			/* Let's allocate the stack first */
-			int err = sip_alloc(&session->stack.sipstack, NULL, 32, 32, 32, JANUS_SIPRE_NAME, janus_sipre_cb_exit, session);
+			/* We need a DNS client */
+			struct sa nsv[8];
+			uint32_t nsn = ARRAY_SIZE(nsv);
+			int err = dns_srv_get(NULL, 0, nsv, &nsn);
+			if(err) {
+				JANUS_LOG(LOG_ERR, "Failed to get the DNS servers list for the SIP stack: %d (%s)\n", err, strerror(err));
+				g_free(payload);
+				return;
+			}
+			err = dnsc_alloc(&session->stack.dns_client, NULL, nsv, nsn);
+			if(err) {
+				JANUS_LOG(LOG_ERR, "Failed to initialize the DNS client for the SIP stack: %d (%s)\n", err, strerror(err));
+				g_free(payload);
+				return;
+			}
+			/* Let's allocate the stack now */
+			err = sip_alloc(&session->stack.sipstack, session->stack.dns_client, 32, 32, 32, JANUS_SIPRE_NAME, janus_sipre_cb_exit, session);
 			if(err) {
 				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP stack: %d (%s)\n", err, strerror(err));
+				mem_deref(session->stack.dns_client);
+				session->stack.dns_client = NULL;
 				g_free(payload);
 				return;
 			}
@@ -3579,7 +3603,9 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			err |= sipsess_listen(&session->stack.sess_sock, session->stack.sipstack, 32, janus_sipre_cb_incoming, session);
 			if(err) {
 				mem_deref(session->stack.sipstack);
+				session->stack.sipstack = NULL;
 				mem_deref(session->stack.tls);
+				session->stack.tls = NULL;
 				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIPS transports: %d (%s)\n", err, strerror(err));
 				g_free(payload);
 				return;
@@ -3591,6 +3617,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			}
 #endif
 			mem_deref(session->stack.tls);
+			session->stack.tls = NULL;
 			g_free(payload);
 			break;
 		}
@@ -3634,7 +3661,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			int err = sipreg_register(&session->stack.reg, session->stack.sipstack,
 				session->account.proxy,
 				session->account.identity, session->account.identity, session->stack.expires,
-				session->account.display_name ? session->account.display_name : session->account.username, NULL, 0, 0,
+				session->account.username, NULL, 0, 0,
 				janus_sipre_cb_auth, session, FALSE,
 				janus_sipre_cb_register, session, NULL, (headers ? headers : ""), NULL);
 			g_free(headers);
@@ -3679,7 +3706,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			int err = sipsess_connect(&session->stack.sess, session->stack.sess_sock,
 				session->callee,
 				session->account.display_name, session->account.identity,
-				session->account.display_name ? session->account.display_name : session->account.username,
+				session->account.username,
 				NULL, 0, "application/sdp", mb,
 				janus_sipre_cb_auth, session, FALSE,
 				janus_sipre_cb_offer, janus_sipre_cb_answer,
@@ -3868,8 +3895,9 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending BYE\n", session->account.username);
-			/* FIXME How do we send a BYE? */
-			session->stack.sess = mem_deref(session->stack.sess);
+			/* Send a BYE */
+			mem_deref(session->stack.sess);
+			session->stack.sess = NULL;
 			g_free(session->callee);
 			session->callee = NULL;
 			g_free(payload);
@@ -3904,11 +3932,12 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Destroying session\n", session->account.username);
 			/* FIXME How to correctly clean up? */
-			if(session->stack.reg)
-				session->stack.reg = mem_deref(session->stack.reg);
-			if(session->stack.sess)
-				session->stack.sess = mem_deref(session->stack.sess);
-			sipsess_close_all(session->stack.sess_sock);
+			mem_deref(session->stack.reg);
+			session->stack.reg = NULL;
+			mem_deref(session->stack.sess);
+			session->stack.sess = NULL;
+			mem_deref(session->stack.dns_client);
+			session->stack.dns_client = NULL;
 			break;
 		}
 		case janus_sipre_mqueue_event_do_exit:
