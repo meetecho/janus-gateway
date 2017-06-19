@@ -245,6 +245,16 @@ gboolean janus_ice_is_ignored(const char *ip) {
 }
 
 
+/* Frequency of statistics via event handlers (one second by default) */
+static int janus_ice_event_stats_period = 1;
+void janus_ice_set_event_stats_period(int period) {
+	janus_ice_event_stats_period = period;
+}
+int janus_ice_get_event_stats_period(void) {
+	return janus_ice_event_stats_period;
+}
+
+
 /* RTP/RTCP port range */
 uint16_t rtp_range_min = 0;
 uint16_t rtp_range_max = 0;
@@ -3421,7 +3431,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 		/* We tell event handlers once per second about RTCP-related stuff
 		 * FIXME Should we really do this here? Would this slow down this thread and add delay? */
-		if(now-audio_last_event >= G_USEC_PER_SEC) {
+		if(janus_ice_event_stats_period > 0 && now-audio_last_event >= janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 				janus_ice_stream *stream = handle->audio_stream;
 				if(stream && stream->audio_rtcp_ctx) {
@@ -3446,7 +3456,7 @@ void *janus_ice_send_thread(void *data) {
 			}
 			audio_last_event = now;
 		}
-		if(now-video_last_event >= G_USEC_PER_SEC) {
+		if(janus_ice_event_stats_period > 0 && now-video_last_event >= janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
 				if(stream && stream->video_rtcp_ctx) {
