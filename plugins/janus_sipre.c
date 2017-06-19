@@ -16,9 +16,10 @@
  * which means all responses (successes and errors) will be delivered
  * as events with the same transaction.
  *
- * The supported requests are \c register , \c call , \c accept, \c hold , \c unhold and
- * \c hangup . \c register can be used, as the name suggests, to register
- * a username at a SIPre registrar to call and be called; \c call is used
+ * The supported requests are \c register , \c unregister , \c call ,
+ * \c accept, \c hold , \c unhold and \c hangup . \c register can be used,
+ * as the name suggests, to register a username at a SIP registrar to
+ * call and be called, while \c unregister unregisters it; \c call is used
  * to send an INVITE to a different SIPre URI through the plugin, while
  * \c accept is used to accept the call in case one is invited instead
  * of inviting; ; \c hold and \c unhold can be used respectively to put a
@@ -142,10 +143,12 @@ static struct janus_json_parameter register_parameters[] = {
 	{"secret", JANUS_JSON_STRING, 0},
 	{"ha1_secret", JANUS_JSON_STRING, 0},
 	{"authuser", JANUS_JSON_STRING, 0},
-	{"headers", JANUS_JSON_OBJECT, 0}
+	{"headers", JANUS_JSON_OBJECT, 0},
+	{"refresh", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter proxy_parameters[] = {
-	{"proxy", JANUS_JSON_STRING, 0}
+	{"proxy", JSON_STRING, 0},
+	{"outbound_proxy", JSON_STRING, 0}
 };
 static struct janus_json_parameter call_parameters[] = {
 	{"uri", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -222,6 +225,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg);
 typedef enum janus_sipre_mqueue_event {
 	janus_sipre_mqueue_event_do_init,
 	janus_sipre_mqueue_event_do_register,
+	janus_sipre_mqueue_event_do_unregister,
 	janus_sipre_mqueue_event_do_call,
 	janus_sipre_mqueue_event_do_accept,
 	janus_sipre_mqueue_event_do_rcode,
@@ -238,6 +242,8 @@ static const char *janus_sipre_mqueue_event_string(janus_sipre_mqueue_event even
 			return "init";
 		case janus_sipre_mqueue_event_do_register:
 			return "register";
+		case janus_sipre_mqueue_event_do_unregister:
+			return "unregister";
 		case janus_sipre_mqueue_event_do_call:
 			return "call";
 		case janus_sipre_mqueue_event_do_accept:
@@ -424,6 +430,7 @@ typedef struct janus_sipre_account {
 	janus_sipre_secret_type secret_type;
 	int sip_port;
 	char *proxy;
+	char *outbound_proxy;
 	janus_sipre_registration_status registration_status;
 } janus_sipre_account;
 
@@ -724,6 +731,10 @@ static void *janus_sipre_watchdog(void *data) {
 					if(session->account.proxy) {
 					    g_free(session->account.proxy);
 					    session->account.proxy = NULL;
+					}
+					if(session->account.outbound_proxy) {
+					    g_free(session->account.outbound_proxy);
+					    session->account.outbound_proxy = NULL;
 					}
 					if(session->account.secret) {
 					    g_free(session->account.secret);
@@ -1047,6 +1058,7 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->account.secret_type = janus_sipre_secret_type_unknown;
 	session->account.sip_port = 0;
 	session->account.proxy = NULL;
+	session->account.outbound_proxy = NULL;
 	session->account.registration_status = janus_sipre_registration_status_unregistered;
 	session->status = janus_sipre_call_status_idle;
 	memset(&session->stack, 0, sizeof(janus_sipre_stack));
@@ -1419,48 +1431,20 @@ static void *janus_sipre_handler(void *data) {
 		json_t *result = NULL;
 
 		if(!strcasecmp(request_text, "register")) {
-			/* Send a REGISTER */
-			if(session->account.registration_status > janus_sipre_registration_status_unregistered) {
-				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->account.username);
-				error_code = JANUS_SIPRE_ERROR_ALREADY_REGISTERED;
-				g_snprintf(error_cause, 512, "Already registered (%s)", session->account.username);
-				goto error;
-			}
-
-			/* Cleanup old values */
-			if(session->account.identity != NULL) {
-				g_hash_table_remove(identities, session->account.identity);
-				g_free(session->account.identity);
-			}
-			session->account.identity = NULL;
-			session->account.sips = TRUE;
-			if(session->account.username != NULL)
-				g_free(session->account.username);
-			session->account.username = NULL;
-			if(session->account.display_name != NULL)
-				g_free(session->account.display_name);
-			session->account.display_name = NULL;
-			if(session->account.authuser != NULL)
-				g_free(session->account.authuser);
-			session->account.authuser = NULL;
-			if(session->account.secret != NULL)
-				g_free(session->account.secret);
-			session->account.secret = NULL;
-			session->account.secret_type = janus_sipre_secret_type_unknown;
-			if(session->account.proxy != NULL)
-				g_free(session->account.proxy);
-			session->account.proxy = NULL;
-			if(session->account.user_agent != NULL)
-				g_free(session->account.user_agent);
-			session->account.user_agent = NULL;
-			session->account.registration_status = janus_sipre_registration_status_unregistered;
-
-			gboolean guest = FALSE;
 			JANUS_VALIDATE_JSON_OBJECT(root, register_parameters,
 				error_code, error_cause, TRUE,
 				JANUS_SIPRE_ERROR_MISSING_ELEMENT, JANUS_SIPRE_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
+			gboolean refresh = json_is_true(json_object_get(root, "refresh"));
+			if(session->account.registration_status > janus_sipre_registration_status_unregistered && !refresh) {
+				JANUS_LOG(LOG_ERR, "Already registered (%s)\n", session->account.username);
+				error_code = JANUS_SIPRE_ERROR_ALREADY_REGISTERED;
+				g_snprintf(error_cause, 512, "Already registered (%s)", session->account.username);
+				goto error;
+			}
+			/* Parse the request */
+			gboolean guest = FALSE;
 			json_t *type = json_object_get(root, "type");
 			if(type != NULL) {
 				const char *type_text = json_string_value(type);
@@ -1508,6 +1492,23 @@ static void *janus_sipre_handler(void *data) {
 					goto error;
 				}
 			}
+			json_t *outbound_proxy = json_object_get(root, "outbound_proxy");
+			const char *obproxy_text = NULL;
+			if(outbound_proxy && !json_is_null(outbound_proxy)) {
+				/* Has to be validated separately because it could be null */
+				JANUS_VALIDATE_JSON_OBJECT(root, proxy_parameters,
+					error_code, error_cause, TRUE,
+					JANUS_SIPRE_ERROR_MISSING_ELEMENT, JANUS_SIPRE_ERROR_INVALID_ELEMENT);
+				if(error_code != 0)
+					goto error;
+				obproxy_text = json_string_value(outbound_proxy);
+				if(janus_sipre_parse_uri(obproxy_text) < 0) {
+					JANUS_LOG(LOG_ERR, "Invalid outbound_proxy address %s\n", obproxy_text);
+					error_code = JANUS_SIPRE_ERROR_INVALID_ADDRESS;
+					g_snprintf(error_cause, 512, "Invalid outbound_proxy address %s\n", obproxy_text);
+					goto error;
+				}
+			}
 
 			/* Parse register TTL */
 			int ttl = register_ttl;
@@ -1540,6 +1541,9 @@ static void *janus_sipre_handler(void *data) {
 				goto error;
 			}
 			const char *username_text = NULL;
+			const char *secret_text = NULL;
+			const char *authuser_text = NULL;
+			janus_sipre_secret_type secret_type = janus_sipre_secret_type_plaintext;
 			char *user_id = NULL, *user_host = NULL;
 			guint16 user_port = 0;
 			/* Parse address */
@@ -1577,32 +1581,64 @@ static void *janus_sipre_handler(void *data) {
 					g_snprintf(error_cause, 512, "Conflicting elements specified (secret and ha1_secret)");
 					goto error;
 				}
-				const char *secret_text;
 				if(secret) {
 					secret_text = json_string_value(secret);
-					session->account.secret = g_strdup(secret_text);
-					session->account.secret_type = janus_sipre_secret_type_plaintext;
+					secret_type = janus_sipre_secret_type_plaintext;
 				} else {
 					secret_text = json_string_value(ha1_secret);
-					session->account.secret = g_strdup(secret_text);
-					session->account.secret_type = janus_sipre_secret_type_hashed;
+					secret_type = janus_sipre_secret_type_hashed;
 				}
 				if(authuser) {
-					const char *authuser_text;
 					authuser_text = json_string_value(authuser);
-					session->account.authuser = g_strdup(authuser_text);
-				} else {
-					session->account.authuser = g_strdup(user_id);
 				}
 				/* Got the values, try registering now */
-				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s\n",
-					user_id, secret_text, user_host, proxy_text != NULL ? proxy_text : "(null)");
+				JANUS_LOG(LOG_VERB, "Registering user %s (auth=%s, secret %s) @ %s through %s (outbound proxy: %s)\n",
+					user_id, secret_text, user_host,
+					authuser_text != NULL ? authuser_text : user_id,
+					proxy_text != NULL ? proxy_text : "(null)",
+					obproxy_text != NULL ? obproxy_text : "none");
 			}
 
+			/* If this is a refresh, get rid of the old values */
+			if(refresh) {
+				/* Cleanup old values */
+				if(session->account.identity != NULL) {
+					g_hash_table_remove(identities, session->account.identity);
+					g_free(session->account.identity);
+				}
+				session->account.identity = NULL;
+				session->account.sips = TRUE;
+				if(session->account.username != NULL)
+					g_free(session->account.username);
+				session->account.username = NULL;
+				if(session->account.display_name != NULL)
+					g_free(session->account.display_name);
+				session->account.display_name = NULL;
+				if(session->account.authuser != NULL)
+					g_free(session->account.authuser);
+				session->account.authuser = NULL;
+				if(session->account.secret != NULL)
+					g_free(session->account.secret);
+				session->account.secret = NULL;
+				session->account.secret_type = janus_sipre_secret_type_unknown;
+				if(session->account.proxy != NULL)
+					g_free(session->account.proxy);
+				session->account.proxy = NULL;
+				if(session->account.outbound_proxy != NULL)
+					g_free(session->account.outbound_proxy);
+				session->account.outbound_proxy = NULL;
+				if(session->account.user_agent != NULL)
+					g_free(session->account.user_agent);
+				session->account.user_agent = NULL;
+				session->account.registration_status = janus_sipre_registration_status_unregistered;
+			}
 			session->account.identity = g_strdup(username_text);
 			g_hash_table_insert(identities, session->account.identity, session);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
+			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
+			session->account.secret = secret_text ? g_strdup(secret_text) : NULL;
+			session->account.secret_type = secret_type;
 			if(display_name_text) {
 				session->account.display_name = g_strdup(display_name_text);
 			}
@@ -1616,6 +1652,9 @@ static void *janus_sipre_handler(void *data) {
 				char uri[256];
 				g_snprintf(uri, sizeof(uri), "sip:%s:%"SCNu16, user_host, (user_port ? user_port : 5060));
 				session->account.proxy = g_strdup(uri);
+			}
+			if(obproxy_text) {
+				session->account.outbound_proxy = g_strdup(obproxy_text);
 			}
 			g_free(user_host);
 			g_free(user_id);
@@ -1651,9 +1690,6 @@ static void *janus_sipre_handler(void *data) {
 				char *data = NULL;
 				if(strlen(custom_headers))
 					data = g_strdup(custom_headers);
-				/* TODO Any way to specify TTL in sipreg_register? */
-				char ttl_text[20];
-				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 				/* We enqueue this REGISTER attempt, to be sure it's done in the re_main loop thread
 				 * FIXME Maybe passing a key to the session is better than passing the session object
 				 * itself? it may be gone when it gets handled... won't be an issue with the
@@ -1678,6 +1714,20 @@ static void *janus_sipre_handler(void *data) {
 					gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 				}
 			}
+		} else if(!strcasecmp(request_text, "unregister")) {
+			if(session->account.registration_status < janus_sipre_registration_status_registered) {
+				JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (register first)");
+				goto error;
+			}
+			/* Unregister now */
+			session->account.registration_status = janus_sipre_registration_status_unregistering;
+			session->stack.expires = 0;
+			mqueue_push(mq, janus_sipre_mqueue_event_do_unregister,
+				janus_sipre_mqueue_payload_create(session, NULL, 0, data));
+			result = json_object();
+			json_object_set_new(result, "event", json_string("unregistering"));
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
 			if(session->account.registration_status < janus_sipre_registration_status_registered) {
@@ -3077,15 +3127,20 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_ERR, "[SIPre-%s] REGISTER error: %s\n", session->account.username, strerror(err));
 		/* FIXME Should we send an event here? */
 	} else {
+		const char *event_name = (session->stack.expires > 0 ? "registered" : "unregistered");
 		JANUS_LOG(LOG_VERB, "[SIPre-%s] REGISTER reply: %u\n", session->account.username, msg->scode);
 		if(msg->scode == 200) {
-			if(session->account.registration_status < janus_sipre_registration_status_registered)
-				session->account.registration_status = janus_sipre_registration_status_registered;
+			if(session->stack.expires > 0) {
+				if(session->account.registration_status < janus_sipre_registration_status_registered)
+					session->account.registration_status = janus_sipre_registration_status_registered;
+			} else {
+				session->account.registration_status = janus_sipre_registration_status_unregistered;
+			}
 			/* Notify the browser */
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
-			json_object_set_new(calling, "event", json_string("registered"));
+			json_object_set_new(calling, "event", json_string(event_name));
 			json_object_set_new(calling, "username", json_string(session->account.username));
 			json_object_set_new(calling, "register_sent", json_true());
 			json_object_set_new(call, "result", calling);
@@ -3097,7 +3152,7 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string("registered"));
+				json_object_set_new(info, "event", json_string(event_name));
 				json_object_set_new(info, "identity", json_string(session->account.identity));
 				if(session->account.proxy)
 					json_object_set_new(info, "proxy", json_string(session->account.proxy));
@@ -3106,6 +3161,8 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 		} else {
 			/* Authentication failed? */
 			session->account.registration_status = janus_sipre_registration_status_failed;
+			mem_deref(session->stack.reg);
+			session->stack.reg = NULL;
 			/* Tell the browser... */
 			json_t *event = json_object();
 			json_object_set_new(event, "sip", json_string("event"));
@@ -3475,7 +3532,6 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 
 	/* Cleanup */
 	session->stack.sess = mem_deref(session->stack.sess);
-	//~ session->stack.reg = mem_deref(session->stack.reg);
 	session->media.ready = FALSE;
 	session->media.on_hold = FALSE;
 	session->status = janus_sipre_call_status_idle;
@@ -3538,9 +3594,39 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			g_free(payload);
 			break;
 		}
-		case janus_sipre_mqueue_event_do_register: {
+		case janus_sipre_mqueue_event_do_register:
+		case janus_sipre_mqueue_event_do_unregister: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
+			/* Whether it's a REGISTER or an unregister, get rid of the previous instance */
+			mem_deref(session->stack.reg);
+			session->stack.reg = NULL;
+			/* If it's an unregister, we're done */
+			if(session->stack.expires == 0) {
+				/* Notify the browser */
+				json_t *event = json_object();
+				json_object_set_new(event, "sip", json_string("event"));
+				json_t *unreging = json_object();
+				json_object_set_new(unreging, "event", json_string("unregistered"));
+				json_object_set_new(unreging, "username", json_string(session->account.username));
+				json_object_set_new(unreging, "register_sent", json_true());
+				json_object_set_new(event, "result", unreging);
+				if(!session->destroyed) {
+					int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, event, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+				}
+				json_decref(event);
+				/* Also notify event handlers */
+				if(notify_events && gateway->events_is_enabled()) {
+					json_t *info = json_object();
+					json_object_set_new(info, "event", json_string("unregistered"));
+					json_object_set_new(info, "identity", json_string(session->account.identity));
+					if(session->account.proxy)
+						json_object_set_new(info, "proxy", json_string(session->account.proxy));
+					gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+				}
+				break;
+			}
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending REGISTER\n", session->account.username);
 			/* Check if there are custom headers to add */
 			char *headers = (char *)payload->data;
@@ -3818,6 +3904,10 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Destroying session\n", session->account.username);
 			/* FIXME How to correctly clean up? */
+			if(session->stack.reg)
+				session->stack.reg = mem_deref(session->stack.reg);
+			if(session->stack.sess)
+				session->stack.sess = mem_deref(session->stack.sess);
 			sipsess_close_all(session->stack.sess_sock);
 			break;
 		}
