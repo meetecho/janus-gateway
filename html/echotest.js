@@ -238,14 +238,6 @@ $(document).ready(function() {
 											var width = this.videoWidth;
 											var height = this.videoHeight;
 											$('#curres').removeClass('hide').text(width+'x'+height).show();
-											if(adapter.browserDetails.browser === "firefox") {
-												// Firefox Stable has a bug: width and height are not immediately available after a playing
-												setTimeout(function() {
-													var width = $("#peervideo").get(0).videoWidth;
-													var height = $("#peervideo").get(0).videoHeight;
-													$('#curres').removeClass('hide').text(width+'x'+height).show();
-												}, 2000);
-											}
 										});
 									}
 									Janus.attachMediaStream($('#peervideo').get(0), stream);
@@ -300,6 +292,11 @@ $(document).ready(function() {
 											var bitrate = echotest.getBitrate();
 											//~ Janus.debug("Current bitrate is " + echotest.getBitrate());
 											$('#curbitrate').text(bitrate);
+											// Check if the resolution changed too
+											var width = $("#peervideo").get(0).videoWidth;
+											var height = $("#peervideo").get(0).videoHeight;
+											if(width > 0 && height > 0)
+												$('#curres').removeClass('hide').text(width+'x'+height).show();
 										}, 1000);
 									}
 								},
