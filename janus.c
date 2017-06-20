@@ -2395,6 +2395,10 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 	json_t *c = json_object();
 	json_object_set_new(c, "id", json_integer(component->component_id));
 	json_object_set_new(c, "state", json_string(janus_get_ice_state_name(component->state)));
+	if(component->icefailed_detected) {
+		json_object_set_new(c, "failed-detected", json_integer(component->icefailed_detected));
+		json_object_set_new(c, "icetimer-started", component->icestate_source ? json_true() : json_false());
+	}
 	if(component->component_connected > 0)
 		json_object_set_new(c, "connected", json_integer(component->component_connected));
 	if(component->local_candidates) {
