@@ -3655,13 +3655,17 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				break;
 			}
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending REGISTER\n", session->account.username);
+			/* Check if there is an outbound proxy to take into account */
+			const char *outbound_proxy[1];
+			outbound_proxy[0] = session->account.outbound_proxy;
 			/* Check if there are custom headers to add */
 			char *headers = (char *)payload->data;
 			/* Send the REGISTER */
 			int err = sipreg_register(&session->stack.reg, session->stack.sipstack,
 				session->account.proxy,
 				session->account.identity, session->account.identity, session->stack.expires,
-				session->account.username, NULL, 0, 0,
+				session->account.username,
+				outbound_proxy, (outbound_proxy[0] ? 1 : 0), 0,
 				janus_sipre_cb_auth, session, FALSE,
 				janus_sipre_cb_register, session, NULL, (headers ? headers : ""), NULL);
 			g_free(headers);
@@ -3696,6 +3700,9 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
 			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending INVITE\n%s", session->account.username, session->temp_sdp);
+			/* Check if there is an outbound proxy to take into account */
+			const char *outbound_proxy[1];
+			outbound_proxy[0] = session->account.outbound_proxy;
 			/* Check if there are custom headers to add */
 			char *headers = (char *)payload->data;
 			/* Convert the SDP into a struct mbuf */
@@ -3707,7 +3714,8 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				session->callee,
 				session->account.display_name, session->account.identity,
 				session->account.username,
-				NULL, 0, "application/sdp", mb,
+				outbound_proxy, (outbound_proxy[0] ? 1 : 0),
+				"application/sdp", mb,
 				janus_sipre_cb_auth, session, FALSE,
 				janus_sipre_cb_offer, janus_sipre_cb_answer,
 				janus_sipre_cb_progress, janus_sipre_cb_established,
