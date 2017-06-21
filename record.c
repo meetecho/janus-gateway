@@ -93,9 +93,11 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	rc->file = NULL;
 	rc->codec = g_strdup(codec);
 	rc->created = janus_get_real_time();
-	rc->pause = 0;
+	rc->paused = 0;
 	rc->paused_ts = 0;
 	rc->offset_ts = 0;
+	rc->paused_seq = 0;
+	rc->offset_seq = 0;
 	if(dir != NULL) {
 		/* Check if this directory exists, and create it if needed */
 		struct stat s;
@@ -210,25 +212,33 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		/* Done */
 		recorder->header = 1;
 	}
-	if(recorder->pause) {
+	if(recorder->paused) {
 		if(!recorder->paused_ts) {
 			if(recorder->type == JANUS_RECORDER_DATA) {
 				recorder->paused_ts = janus_get_real_time();
 			} else {
 				recorder->paused_ts = ntohl(rtp->timestamp);
+				recorder->paused_seq = ntohs(rtp->seq_number);
 			}
-			JANUS_LOG(LOG_INFO, "PAUSED TIME TS = %u, OFFSET=%u \n", recorder->paused_ts, recorder->offset_ts);
+			JANUS_LOG(LOG_INFO, "Pause TS: %ld Seq: %u, Offset TS: %ld Seq: %u \n",
+				recorder->paused_ts, recorder->paused_seq, recorder->offset_ts, recorder->offset_seq);
 		}
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return 0;
-	} else if(recorder->paused_ts) {
+	}
+	if(recorder->paused_ts) {
 		if(recorder->type == JANUS_RECORDER_DATA) {
 			recorder->offset_ts += janus_get_real_time() - recorder->paused_ts;
 		} else {
 			recorder->offset_ts = (uint32_t) recorder->offset_ts + (ntohl(rtp->timestamp) - (uint32_t)recorder->paused_ts);
-			JANUS_LOG(LOG_INFO, "RESUME TIME TS = %u OFFSET=%u \n", rtp->timestamp, recorder->paused_ts, recorder->offset_ts);
+			JANUS_LOG(LOG_INFO, "Resume TS: %u Pause TS: %ld Offset TS: %ld \n", rtp->timestamp, recorder->paused_ts, recorder->offset_ts);
 		}
 		recorder->paused_ts = 0;
+	}
+	if(recorder->paused_seq && (recorder->type != JANUS_RECORDER_DATA)) {
+		recorder->offset_seq = recorder->offset_seq + (ntohs(rtp->seq_number) - recorder->paused_seq);
+		JANUS_LOG(LOG_INFO, "Resume Seq: %u Pause Seq: %hd Offset: %hd \n", ntohs(rtp->seq_number), recorder->paused_seq, recorder->offset_seq);
+		recorder->paused_seq = 0;
 	}
 	/* Write frame header */
 	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
@@ -261,19 +271,30 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 	return 0;
 }
 
-int janus_recorder_pause(janus_recorder *recorder, gboolean paused) {
+int janus_recorder_pause(janus_recorder *recorder) {
 	if(!recorder || !recorder->writable)
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
+	recorder->paused = 1;
 	/*
+	//TODO Write some PAUSE Header with Timestamp, to synchronize between multiple streams
 	fwrite(pause_header, sizeof(char), strlen(frame_header), recorder->file);
 	uint16_t header_bytes = htons(0);
 	fwrite(&header_bytes, sizeof(uint16_t), 1, recorder->file);
 	*/
-	recorder->pause = paused ? 1:0;
 	janus_mutex_unlock_nodebug(&recorder->mutex);
 	return 0;
 }
+
+int janus_recorder_resume(janus_recorder *recorder) {
+	if(!recorder || !recorder->writable)
+		return -1;
+	janus_mutex_lock_nodebug(&recorder->mutex);
+	recorder->paused = 0;
+	janus_mutex_unlock_nodebug(&recorder->mutex);
+	return 0;
+}
+
 int janus_recorder_close(janus_recorder *recorder) {
 	if(!recorder || !recorder->writable)
 		return -1;

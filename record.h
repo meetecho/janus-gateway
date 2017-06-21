@@ -48,10 +48,12 @@ typedef struct janus_recorder {
 	gint64 created;
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
-	/*! \brief Timestaps for pause and resume the recording */
+	/*! \brief RTP Timestaps for pausing and resuming the recording */
 	gint64 paused_ts, offset_ts;
-	/*! \brief Whether recording paused or not */
-	int pause:1;
+	/*! \brief RTP Sequences for pausing and resuming the recording */
+	uint16_t paused_seq, offset_seq;
+	/*! \brief Whether the recording has been paused or not */
+	int paused:1;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
 	int header:1;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
@@ -81,11 +83,14 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
  * @param[in] length The frame data length
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length);
-/*! \brief Pause/Resume the recorder
+/*! \brief Pause the recorder
  * @param[in] recorder The janus_recorder instance
- * @param[in] boolean Whether to pause or resume
  * @returns 0 in case of success, a negative integer otherwise */
-int janus_recorder_pause(janus_recorder *recorder, gboolean pause);
+int janus_recorder_pause(janus_recorder *recorder);
+/*! \brief Resume the recorder
+ * @param[in] recorder The janus_recorder instance
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_resume(janus_recorder *recorder);
 /*! \brief Close the recorder
  * @param[in] recorder The janus_recorder instance to close
  * @returns 0 in case of success, a negative integer otherwise */
