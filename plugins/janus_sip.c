@@ -2778,7 +2778,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
 				}
 				memset(auth, 0, sizeof(auth));
-				g_snprintf(auth, sizeof(auth), "%s%s:\"%s\":%s:%s%s",
+				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					scheme,
 					realm,
