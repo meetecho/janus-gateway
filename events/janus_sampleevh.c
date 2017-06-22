@@ -76,7 +76,7 @@ static void *janus_sampleevh_handler(void *data);
 
 /* Queue of events to handle */
 static GAsyncQueue *events = NULL;
-static gboolean group_events = FALSE;
+static gboolean group_events = TRUE;
 static json_t exit_event;
 static void janus_sampleevh_event_free(json_t *event) {
 	if(!event || event == &exit_event)
@@ -204,7 +204,8 @@ int janus_sampleevh_init(const char *config_path) {
 				}
 				/* Is grouping of events ok? */
 				item = janus_config_get_item_drilldown(config, "general", "grouping");
-				group_events = item && item->value && janus_is_true(item->value);
+				if(item && item->value)
+					group_events = janus_is_true(item->value);
 				/* Done */
 				enabled = TRUE;
 			}
