@@ -2395,6 +2395,10 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 	json_t *c = json_object();
 	json_object_set_new(c, "id", json_integer(component->component_id));
 	json_object_set_new(c, "state", json_string(janus_get_ice_state_name(component->state)));
+	if(component->icefailed_detected) {
+		json_object_set_new(c, "failed-detected", json_integer(component->icefailed_detected));
+		json_object_set_new(c, "icetimer-started", component->icestate_source ? json_true() : json_false());
+	}
 	if(component->component_connected > 0)
 		json_object_set_new(c, "connected", json_integer(component->component_connected));
 	if(component->local_candidates) {
@@ -3817,6 +3821,20 @@ gint main(int argc, char *argv[])
 		if(!enable_events) {
 			JANUS_LOG(LOG_WARN, "Event handlers support disabled\n");
 		} else {
+			item = janus_config_get_item_drilldown(config, "events", "stats_period");
+			if(item && item->value) {
+				/* Check if we need to use a larger period for pushing statistics to event handlers */
+				int period = atoi(item->value);
+				if(period < 0) {
+					JANUS_LOG(LOG_WARN, "Invalid event handlers statistics period, using default value (1 second)\n");
+				} else if(period == 0) {
+					janus_ice_set_event_stats_period(0);
+					JANUS_LOG(LOG_WARN, "Disabling event handlers statistics period, no media statistics will be pushed to event handlers\n");
+				} else {
+					janus_ice_set_event_stats_period(period);
+					JANUS_LOG(LOG_INFO, "Setting event handlers statistics period to %d seconds\n", period);
+				}
+			}
 			item = janus_config_get_item_drilldown(config, "events", "disable");
 			if(item && item->value)
 				disabled_eventhandlers = g_strsplit(item->value, ",", -1);

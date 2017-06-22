@@ -9,9 +9,10 @@ events = all	; Comma separated list of the events mask you're interested
 				; in. Valid values are none, sessions, handles, jsep, webrtc,
 				; media, plugins, transports, core and all. By default we
 				; subscribe to everything (all)
-grouping = no	; Whether events should be sent individually (one per
+grouping = yes	; Whether events should be sent individually (one per
 				; HTTP POST, JSON object), or if it's ok to group them
 				; (one or more per HTTP POST, JSON array with objects)
+				; The default is 'yes' to limit the number of connections.
 backend = http://your.webserver.here/and/a/path
 				; Address the plugin will send all events to as HTTP POST
 				; requests with an application/json payload. In case
