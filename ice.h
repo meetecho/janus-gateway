@@ -418,8 +418,12 @@ struct janus_ice_component {
 	gchar *selected_pair;
 	/*! \brief Whether the setup of remote candidates for this component has started or not */
 	gboolean process_started;
+	/*! \brief Timer to check when we should consider ICE as failed */
+	GSource *icestate_source;
+	/*! \brief Time of when we first detected an ICE failed (we'll need this for the timer above) */
+	gint64 icefailed_detected;
 	/*! \brief Re-transmission timer for DTLS */
-	GSource *source;
+	GSource *dtlsrt_source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
