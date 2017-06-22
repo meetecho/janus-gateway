@@ -114,13 +114,19 @@
  * eases the task of creating sessions with the gateway, attaching WebRTC
  * users to plugins, send and receive requests and events to the plugins
  * themselves and so on. For real examples of how this library can be
- * used, check the demos in the \b html folder of this package.
+ * used, check the demos in the \b html folder of this package. Notice
+ * that the \c janus.js library makes use of the features made available
+ * by the <a href="https://github.com/webrtc/adapter">webrtc-adapter</a>
+ * shim, which means that your web application should always include it
+ * as a dependency. For instance, all the demos link to it externally via
+ * <a href="https://cdnjs.com/">cdnjs.com</a>.
  *
  * \note The current \c janus.js library makes use of jQuery (http://jquery.com/)
  * as a support. A version without that dependency is available as
  * \c janus.nojquery.js in the same folder, so you can use that one instead
  * if required by your web application: all the documentation related to
- * \c janus.js applies to \c janus.nojquery.js as well.
+ * \c janus.js applies to \c janus.nojquery.js as well (including the
+ * dependency on the webrtc-adapter shim).
  *
  * In general, when using the gateway features, you would normally do the following:
  *

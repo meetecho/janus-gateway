@@ -134,6 +134,12 @@ void janus_set_no_media_timer(uint timer);
 /*! \brief Method to get the current no-media event timer (see above)
  * @returns The current no-media event timer */
 uint janus_get_no_media_timer(void);
+/*! \brief Method to modify the event handler statistics period (i.e., the number of seconds that should pass before Janus notifies event handlers about media statistics for a PeerConnection)
+ * @param[in] timer The new timer value, in seconds */
+void janus_ice_set_event_stats_period(int period);
+/*! \brief Method to get the current event handler statistics period (see above)
+ * @returns The current event handler stats period */
+int janus_ice_get_event_stats_period(void);
 /*! \brief Method to check whether libnice debugging has been enabled (http://nice.freedesktop.org/libnice/libnice-Debug-messages.html)
  * @returns True if libnice debugging is enabled, FALSE otherwise */
 gboolean janus_ice_is_ice_debugging_enabled(void);
@@ -412,8 +418,12 @@ struct janus_ice_component {
 	gchar *selected_pair;
 	/*! \brief Whether the setup of remote candidates for this component has started or not */
 	gboolean process_started;
+	/*! \brief Timer to check when we should consider ICE as failed */
+	GSource *icestate_source;
+	/*! \brief Time of when we first detected an ICE failed (we'll need this for the timer above) */
+	gint64 icefailed_detected;
 	/*! \brief Re-transmission timer for DTLS */
-	GSource *source;
+	GSource *dtlsrt_source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
