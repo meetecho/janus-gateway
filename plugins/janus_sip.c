@@ -2019,6 +2019,11 @@ static void *janus_sip_handler(void *data) {
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
 			/* Send 200 OK */
+			if(!answer) {
+				if(session->transaction)
+					g_free(session->transaction);
+				session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
+			}
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sip_call_status_incall;
 			if(session->stack->s_nh_i == NULL) {
