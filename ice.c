@@ -245,6 +245,16 @@ gboolean janus_ice_is_ignored(const char *ip) {
 }
 
 
+/* Frequency of statistics via event handlers (one second by default) */
+static int janus_ice_event_stats_period = 1;
+void janus_ice_set_event_stats_period(int period) {
+	janus_ice_event_stats_period = period;
+}
+int janus_ice_get_event_stats_period(void) {
+	return janus_ice_event_stats_period;
+}
+
+
 /* RTP/RTCP port range */
 uint16_t rtp_range_min = 0;
 uint16_t rtp_range_max = 0;
@@ -1346,10 +1356,15 @@ void janus_ice_component_free(GHashTable *components, janus_ice_component *compo
 	if(components != NULL)
 		g_hash_table_remove(components, GUINT_TO_POINTER(component->component_id));
 	component->stream = NULL;
-	if(component->source != NULL) {
-		g_source_destroy(component->source);
-		g_source_unref(component->source);
-		component->source = NULL;
+	if(component->icestate_source != NULL) {
+		g_source_destroy(component->icestate_source);
+		g_source_unref(component->icestate_source);
+		component->icestate_source = NULL;
+	}
+	if(component->dtlsrt_source != NULL) {
+		g_source_destroy(component->dtlsrt_source);
+		g_source_unref(component->dtlsrt_source);
+		component->dtlsrt_source = NULL;
 	}
 	if(component->dtls != NULL) {
 		janus_dtls_srtp_destroy(component->dtls);
@@ -1485,6 +1500,75 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 }
 
 
+/* ICE state check timer (needed to check if a failed really is definitive or if things can still improve) */
+static gboolean janus_ice_check_failed(gpointer data) {
+	janus_ice_component *component = (janus_ice_component *)data;
+	if(component == NULL)
+		return FALSE;
+	janus_ice_stream *stream = component->stream;
+	if(!stream)
+		goto stoptimer;
+	janus_ice_handle *handle = stream->handle;
+	if(!handle)
+		goto stoptimer;
+	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) ||
+			janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT))
+		goto stoptimer;
+	if(component->state == NICE_COMPONENT_STATE_CONNECTED || component->state == NICE_COMPONENT_STATE_READY) {
+		/* ICE succeeded in the meanwhile, get rid of this timer */
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE succeeded, disabling ICE state check timer!\n", handle->handle_id);
+		goto stoptimer;
+	}
+	/* Still in the failed state, how much time passed since we first detected it? */
+	if(janus_get_monotonic_time() - component->icefailed_detected < 5*G_USEC_PER_SEC) {
+		/* Let's wait a little longer */
+		return TRUE;
+	}
+	/* If we got here it means the timer expired, and we should check if this is a failure */
+	gboolean trickle_recv = (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES));
+	gboolean answer_recv = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
+	gboolean alert_set = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+	/* We may still be waiting for something... but we don't wait forever */
+	gboolean do_wait = TRUE;
+	if(janus_get_monotonic_time() - component->icefailed_detected >= 15*G_USEC_PER_SEC) {
+		do_wait = FALSE;
+	}
+	if(!do_wait || (handle && trickle_recv && answer_recv && !alert_set)) {
+		/* FIXME Should we really give up for what may be a failure in only one of the media? */
+		if(stream->disabled) {
+			JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but stream is disabled so we don't care...\n",
+				handle->handle_id, component->component_id, stream->stream_id);
+			goto stoptimer;
+		}
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"] ICE failed for component %d in stream %d...\n",
+			handle->handle_id, component->component_id, stream->stream_id);
+		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+		janus_plugin *plugin = (janus_plugin *)handle->app;
+		if(plugin != NULL) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
+			if(plugin && plugin->hangup_media)
+				plugin->hangup_media(handle->app_handle);
+		}
+		janus_ice_notify_hangup(handle, "ICE failed");
+		goto stoptimer;
+	}
+	/* Let's wait a little longer */
+	JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but we're still waiting for some info so we don't care... (trickle %s, answer %s, alert %s)\n",
+		handle->handle_id, component->component_id, stream->stream_id,
+		trickle_recv ? "received" : "pending",
+		answer_recv ? "received" : "pending",
+		alert_set ? "set" : "not set");
+	return TRUE;
+
+stoptimer:
+	if(component->icestate_source != NULL) {
+		g_source_destroy(component->icestate_source);
+		g_source_unref(component->icestate_source);
+		component->icestate_source = NULL;
+	}
+	return FALSE;
+}
+
 /* Callbacks */
 void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
@@ -1551,30 +1635,23 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 	/* FIXME Even in case the state is 'connected', we wait for the 'new-selected-pair' callback to do anything */
 	if(state == NICE_COMPONENT_STATE_FAILED) {
 		/* Failed doesn't mean necessarily we need to give up: we may be trickling */
+		gboolean alert_set = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
+		if(alert_set)
+			return;
 		gboolean trickle_recv = (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE) || janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES));
 		gboolean answer_recv = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER);
-		gboolean alert_set = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
-		if(handle && trickle_recv && answer_recv && !alert_set) {
-			/* FIXME Should we really give up for what may be a failure in only one of the media? */
-			if(stream->disabled) {
-				JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but stream is disabled so we don't care...\n", handle->handle_id, component_id, stream_id);
-				return;
-			}
-			JANUS_LOG(LOG_ERR, "[%"SCNu64"] ICE failed for component %d in stream %d...\n", handle->handle_id, component_id, stream_id);
-			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
-			janus_plugin *plugin = (janus_plugin *)handle->app;
-			if(plugin != NULL) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Telling the plugin about it (%s)\n", handle->handle_id, plugin->get_name());
-				if(plugin && plugin->hangup_media)
-					plugin->hangup_media(handle->app_handle);
-			}
-			janus_ice_notify_hangup(handle, "ICE failed");
-		} else {
-			JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but we're still waiting for some info so we don't care... (trickle %s, answer %s, alert %s)\n",
-				handle->handle_id, component_id, stream_id,
-				trickle_recv ? "received" : "pending",
-				answer_recv ? "received" : "pending",
-				alert_set ? "set" : "not set");
+		JANUS_LOG(LOG_WARN, "[%"SCNu64"] ICE failed for component %d in stream %d, but let's give it some time... (trickle %s, answer %s, alert %s)\n",
+			handle->handle_id, component_id, stream_id,
+			trickle_recv ? "received" : "pending",
+			answer_recv ? "received" : "pending",
+			alert_set ? "set" : "not set");
+		/* In case we haven't started a timer yet, let's do it now */
+		if(component->icestate_source == NULL && component->icefailed_detected == 0) {
+			component->icefailed_detected = janus_get_monotonic_time();
+			component->icestate_source = g_timeout_source_new(500);
+			g_source_set_callback(component->icestate_source, janus_ice_check_failed, component, NULL);
+			guint id = g_source_attach(component->icestate_source, handle->icectx);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating ICE state check timer with ID %u\n", handle->handle_id, id);
 		}
 	}
 }
@@ -1679,9 +1756,9 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 	}
 	janus_dtls_srtp_handshake(component->dtls);
 	/* Create retransmission timer */
-	component->source = g_timeout_source_new(100);
-	g_source_set_callback(component->source, janus_dtls_retry, component->dtls, NULL);
-	guint id = g_source_attach(component->source, handle->icectx);
+	component->dtlsrt_source = g_timeout_source_new(100);
+	g_source_set_callback(component->dtlsrt_source, janus_dtls_retry, component->dtls, NULL);
+	guint id = g_source_attach(component->dtlsrt_source, handle->icectx);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Creating retransmission timer with ID %u\n", handle->handle_id, id);
 }
 
@@ -2868,7 +2945,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->remote_candidates = NULL;
 		audio_rtp->selected_pair = NULL;
 		audio_rtp->process_started = FALSE;
-		audio_rtp->source = NULL;
+		audio_rtp->icestate_source = NULL;
+		audio_rtp->icefailed_detected = 0;
+		audio_rtp->dtlsrt_source = NULL;
 		audio_rtp->dtls = NULL;
 		audio_rtp->retransmit_buffer = NULL;
 		audio_rtp->retransmit_log_ts = 0;
@@ -2930,7 +3009,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->remote_candidates = NULL;
 			audio_rtcp->selected_pair = NULL;
 			audio_rtcp->process_started = FALSE;
-			audio_rtcp->source = NULL;
+			audio_rtcp->icestate_source = NULL;
+			audio_rtcp->icefailed_detected = 0;
+			audio_rtcp->dtlsrt_source = NULL;
 			audio_rtcp->dtls = NULL;
 			audio_rtcp->retransmit_buffer = NULL;
 			audio_rtcp->retransmit_log_ts = 0;
@@ -3021,7 +3102,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->remote_candidates = NULL;
 		video_rtp->selected_pair = NULL;
 		video_rtp->process_started = FALSE;
-		video_rtp->source = NULL;
+		video_rtp->icestate_source = NULL;
+		video_rtp->icefailed_detected = 0;
+		video_rtp->dtlsrt_source = NULL;
 		video_rtp->dtls = NULL;
 		video_rtp->retransmit_buffer = NULL;
 		video_rtp->retransmit_log_ts = 0;
@@ -3083,7 +3166,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->remote_candidates = NULL;
 			video_rtcp->selected_pair = NULL;
 			video_rtcp->process_started = FALSE;
-			video_rtcp->source = NULL;
+			video_rtcp->icestate_source = NULL;
+			video_rtcp->icefailed_detected = 0;
+			video_rtcp->dtlsrt_source = NULL;
 			video_rtcp->dtls = NULL;
 			video_rtcp->retransmit_buffer = NULL;
 			video_rtcp->retransmit_log_ts = 0;
@@ -3171,7 +3256,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->remote_candidates = NULL;
 		data_component->selected_pair = NULL;
 		data_component->process_started = FALSE;
-		data_component->source = NULL;
+		data_component->icestate_source = NULL;
+		data_component->icefailed_detected = 0;
+		data_component->dtlsrt_source = NULL;
 		data_component->dtls = NULL;
 		data_component->retransmit_buffer = NULL;
 		data_component->retransmit_log_ts = 0;
@@ -3421,7 +3508,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 		/* We tell event handlers once per second about RTCP-related stuff
 		 * FIXME Should we really do this here? Would this slow down this thread and add delay? */
-		if(now-audio_last_event >= G_USEC_PER_SEC) {
+		if(janus_ice_event_stats_period > 0 && now-audio_last_event >= janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 				janus_ice_stream *stream = handle->audio_stream;
 				if(stream && stream->audio_rtcp_ctx) {
@@ -3446,7 +3533,7 @@ void *janus_ice_send_thread(void *data) {
 			}
 			audio_last_event = now;
 		}
-		if(now-video_last_event >= G_USEC_PER_SEC) {
+		if(janus_ice_event_stats_period > 0 && now-video_last_event >= janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
 				if(stream && stream->video_rtcp_ctx) {

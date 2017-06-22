@@ -29,9 +29,9 @@
  * which means all responses (successes and errors) will be delivered
  * as events with the same transaction.
  *
- * The supported requests are \c register , \c unregister ,\c call ,
+ * The supported requests are \c register , \c unregister , \c call ,
  * \c accept, \c hold , \c unhold and \c hangup . \c register can be used,
- * as the name suggests, to register a username at a SIP registrar to,
+ * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
  * to send an INVITE to a different SIP URI through the plugin, while
  * \c accept is used to accept the call in case one is invited instead
@@ -1528,8 +1528,9 @@ static void *janus_sip_handler(void *data) {
 					authuser_text = json_string_value(authuser);
 				}
 				/* Got the values, try registering now */
-				JANUS_LOG(LOG_VERB, "Registering user %s (secret %s) @ %s through %s (outbound proxy: %s)\n",
+				JANUS_LOG(LOG_VERB, "Registering user %s (auth=%s, secret %s) @ %s through %s (outbound proxy: %s)\n",
 					username_text, secret_text, username_uri.url->url_host,
+					authuser_text != NULL ? authuser_text : username_text,
 					proxy_text != NULL ? proxy_text : "(null)",
 					obproxy_text != NULL ? obproxy_text : "none");
 			}
@@ -1656,7 +1657,7 @@ static void *janus_sip_handler(void *data) {
 				char ttl_text[20];
 				g_snprintf(ttl_text, sizeof(ttl_text), "%d", ttl);
 				nua_register(session->stack->s_nh_r,
-					NUTAG_M_USERNAME(session->account.username),
+					NUTAG_M_USERNAME(session->account.authuser),
 					NUTAG_M_DISPLAY(session->account.display_name),
 					SIPTAG_FROM_STR(username_text),
 					SIPTAG_TO_STR(username_text),
@@ -2777,7 +2778,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
 				}
 				memset(auth, 0, sizeof(auth));
-				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
+				g_snprintf(auth, sizeof(auth), "%s%s:\"%s\":%s:%s%s",
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					scheme,
 					realm,
