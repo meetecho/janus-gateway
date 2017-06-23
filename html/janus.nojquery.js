@@ -1493,12 +1493,12 @@ function Janus(gatewayCallbacks) {
 						maxHeight = 360;
 						width = 640;
 					} else {
-						Janus.log("Default video setting (" + media.video + ") is stdres 4:3");
+						Janus.log("Default video setting is stdres 4:3");
 						height = 480;
 						maxHeight = 480;
 						width = 640;
 					}
-					Janus.log("Adding media constraint " + media.video);
+					Janus.log("Adding media constraint:", media.video);
 					if(navigator.mozGetUserMedia) {
 						var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
 						if(firefoxVer < 38) {
@@ -1531,7 +1531,7 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
-					if (!media.screenshareFrameRate) {
+					if(!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
 					}
 					// Not a webcam, but screen capture

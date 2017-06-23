@@ -112,17 +112,15 @@ function initDevices(devices) {
 		// A different device has been selected: hangup the session, and set it up again
 		$('#audio-device, #video-device').attr('disabled', true);
 		$('#change-devices').attr('disabled', true);
-		echotest.hangup(true);
 		if(firstTime) {
 			firstTime = false;
 			restartCapture();
 			return;
 		}
+		echotest.hangup(true);
 		// Let's wait a couple of seconds before restarting
 		setTimeout(restartCapture, 2000);
 	});
-
-	//~ restartCapture();
 }
 
 function restartCapture() {
