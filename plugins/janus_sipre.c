@@ -1253,8 +1253,8 @@ void janus_sipre_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 				video ? "video" : "audio",
 				video ? session->media.video_ssrc : session->media.audio_ssrc);
 		}
-		if((video && session->media.has_video && session->media.video_rtp_fd) ||
-				(!video && session->media.has_audio && session->media.audio_rtp_fd)) {
+		if((video && session->media.has_video && session->media.video_rtp_fd != -1) ||
+				(!video && session->media.has_audio && session->media.audio_rtp_fd != -1)) {
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 			/* Is SRTP involved? */
@@ -1294,8 +1294,8 @@ void janus_sipre_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 			return;
 		}
 		/* Forward to our SIPre peer */
-		if((video && session->media.has_video && session->media.video_rtcp_fd) ||
-				(!video && session->media.has_audio && session->media.audio_rtcp_fd)) {
+		if((video && session->media.has_video && session->media.video_rtcp_fd != -1) ||
+				(!video && session->media.has_audio && session->media.audio_rtcp_fd != -1)) {
 			/* Fix SSRCs as the gateway does */
 			JANUS_LOG(LOG_HUGE, "[SIPre-%s] Fixing %s SSRCs (local %u, peer %u)\n",
 				session->account.username ? session->account.username : "unknown",
@@ -1965,6 +1965,10 @@ static void *janus_sipre_handler(void *data) {
 			}
 			/* Accept a call from another peer */
 			JANUS_LOG(LOG_VERB, "We're accepting the call from %s\n", session->callee);
+			gboolean answer = !strcasecmp(msg_sdp_type, "answer");
+			if(!answer) {
+				JANUS_LOG(LOG_VERB, "This is a response to an offerless INVITE\n");
+			}
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			session->media.has_srtp_local = answer_srtp;
 			if(answer_srtp) {
@@ -2018,27 +2022,34 @@ static void *janus_sipre_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string("accepted"));
+				json_object_set_new(info, "event", json_string(answer ? "accepted" : "accepting"));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 			}
 			/* Enqueue the 200 OK */
+			if(!answer) {
+				if(session->transaction)
+					g_free(session->transaction);
+				session->transaction = msg->transaction ? g_strdup(msg->transaction) : NULL;
+			}
 			g_atomic_int_set(&session->hangingup, 0);
 			session->status = janus_sipre_call_status_incall;
 			session->temp_sdp = sdp;
 			mqueue_push(mq, janus_sipre_mqueue_event_do_accept, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 			/* Send an ack back */
 			result = json_object();
-			json_object_set_new(result, "event", json_string("accepted"));
-			/* Start the media */
-			session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
-			GError *error = NULL;
-			char tname[16];
-			g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
-			g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
-			if(error != NULL) {
-				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+			json_object_set_new(result, "event", json_string(answer ? "accepted" : "accepting"));
+			if(answer) {
+				/* Start the media */
+				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
+				GError *error = NULL;
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
+				g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
+				if(error != NULL) {
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+				}
 			}
 		} else if(!strcasecmp(request_text, "decline")) {
 			/* Reject an incoming call */
@@ -2927,13 +2938,37 @@ static void *janus_sipre_relay_thread(void *data) {
 		int i = 0;
 		for(i=0; i<num; i++) {
 			if(fds[i].revents & (POLLERR | POLLHUP)) {
-				/* Socket error? */
-				JANUS_LOG(LOG_ERR, "[SIPre-%s] Error polling: %s...\n", session->account.username,
-					fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
-				JANUS_LOG(LOG_ERR, "[SIPre-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
+				/* If we just updated the session, let's wait until things have calmed down */
 				if(session->media.updated)
 					break;
-				goon = FALSE;	/* Can we assume it's pretty much over, after a POLLERR? */
+				/* Check the socket error */
+				int error = 0;
+				socklen_t errlen = sizeof(error);
+				getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
+				if(error == 0) {
+					/* Maybe not a breaking error after all? */
+					continue;
+				} else if(error == 111) {
+					/* ICMP error? If it's related to RTCP, let's just close the RTCP socket and move on */
+					if(fds[i].fd == session->media.audio_rtcp_fd) {
+						JANUS_LOG(LOG_WARN, "[SIPre-%s] Got a '%s' on the audio RTCP socket, closing it\n",
+							session->account.username, strerror(error));
+						close(session->media.audio_rtcp_fd);
+						session->media.audio_rtcp_fd = -1;
+					} else if(fds[i].fd == session->media.video_rtcp_fd) {
+						JANUS_LOG(LOG_WARN, "[SIPre-%s] Got a '%s' on the video RTCP socket, closing it\n",
+							session->account.username, strerror(error));
+						close(session->media.video_rtcp_fd);
+						session->media.video_rtcp_fd = -1;
+					}
+					/* FIXME Should we do the same with the RTP sockets as well? We may risk overreacting, there... */
+					continue;
+				}
+				JANUS_LOG(LOG_ERR, "[SIPre-%s] Error polling %d (socket #%d): %s...\n", session->account.username,
+					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
+				JANUS_LOG(LOG_ERR, "[SIPre-%s]   -- %d (%s)\n", session->account.username, error, strerror(error));
+				/* Can we assume it's pretty much over, after a POLLERR? */
+				goon = FALSE;
 				/* FIXME Simulate a "hangup" coming from the browser */
 				janus_sipre_message *msg = g_malloc0(sizeof(janus_sipre_message));
 				msg->handle = session->handle;
@@ -3263,24 +3298,23 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		}
 		return;
 	}
-	/* New incoming call */
-	const char *offer = (const char *)mbuf_buf(msg->mb);
-	if(offer == NULL) {
-		/* No SDP? */
-		JANUS_LOG(LOG_WARN, "[SIPre-%s] No SDP in the INVITE?\n", session->account.username);
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-		return;
-	}
+	/* New incoming call, check if there's an SDP to process */
 	char sdp_offer[1024];
-	g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
-	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Offer: %s\n", session->account.username, sdp_offer);
-	/* Parse the remote SDP */
-	char sdperror[100];
-	janus_sdp *sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
-	if(!sdp) {
-		JANUS_LOG(LOG_ERR, "Error parsing SDP! %s\n", sdperror);
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-		return;
+	janus_sdp *sdp = NULL;
+	const char *offer = (const char *)mbuf_buf(msg->mb);
+	if(offer == NULL || mbuf_get_left(msg->mb) == 0) {
+		JANUS_LOG(LOG_WARN, "[SIPre-%s] Received offerless INVITE\n", session->account.username);
+	} else {
+		g_snprintf(sdp_offer, sizeof(sdp_offer), "%.*s", (int)mbuf_get_left(msg->mb), offer);
+		JANUS_LOG(LOG_WARN, "[SIPre-%s]   -- Offer: %s\n", session->account.username, sdp_offer);
+		/* Parse the remote SDP */
+		char sdperror[100];
+		sdp = janus_sdp_parse(sdp_offer, sdperror, sizeof(sdperror));
+		if(!sdp) {
+			JANUS_LOG(LOG_ERR, "Error parsing SDP! %s\n", sdperror);
+			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
+			return;
+		}
 	}
 	session->callee = g_strdup(from);
 	session->callid = g_strdup(callid);
@@ -3290,23 +3324,27 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	janus_sipre_srtp_cleanup(session);
 	/* Parse SDP */
 	JANUS_LOG(LOG_VERB, "Someone is inviting us a call\n");
-	gboolean changed = FALSE;
-	janus_sipre_sdp_process(session, sdp, FALSE, FALSE, &changed);
-	/* Check if offer has neither audio nor video, fail with 488 */
-	if (!session->media.has_audio && !session->media.has_video) {
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-		janus_sdp_free(sdp);
-		return;
-	}
-	/* Also fail with 488 if there's no remote IP address that can be used for RTP */
-	if (!session->media.remote_ip) {
-		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-		janus_sdp_free(sdp);
-		return;
+	if(sdp) {
+		gboolean changed = FALSE;
+		janus_sipre_sdp_process(session, sdp, FALSE, FALSE, &changed);
+		/* Check if offer has neither audio nor video, fail with 488 */
+		if(!session->media.has_audio && !session->media.has_video) {
+			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
+			janus_sdp_free(sdp);
+			return;
+		}
+		/* Also fail with 488 if there's no remote IP address that can be used for RTP */
+		if(!session->media.remote_ip) {
+			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
+			janus_sdp_free(sdp);
+			return;
+		}
 	}
 	session->stack.invite = msg;
-	/* Send SDP to the browser */
-	json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp_offer);
+	/* Notify the browser about the call */
+	json_t *jsep = NULL;
+	if(sdp)
+		jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp_offer);
 	json_t *call = json_object();
 	json_object_set_new(call, "sip", json_string("event"));
 	json_t *calling = json_object();
@@ -3315,7 +3353,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	if(strlen(dname)) {
 		json_object_set_new(calling, "displayname", json_string(dname));
 	}
-	if(session->media.has_srtp_remote) {
+	if(sdp && session->media.has_srtp_remote) {
 		/* FIXME Maybe a true/false instead? */
 		json_object_set_new(calling, "srtp", json_string(session->media.require_srtp ? "sdes_mandatory" : "sdes_optional"));
 	}
@@ -3325,7 +3363,8 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
 	}
 	json_decref(call);
-	json_decref(jsep);
+	if(jsep)
+		json_decref(jsep);
 	janus_sdp_free(sdp);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
