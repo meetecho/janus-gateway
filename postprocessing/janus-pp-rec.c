@@ -84,8 +84,7 @@ int working = 0;
 
 
 /* Signal handler */
-void janus_pp_handle_signal(int signum);
-void janus_pp_handle_signal(int signum) {
+static void janus_pp_handle_signal(int signum) {
 	working = 0;
 }
 
@@ -244,6 +243,13 @@ int main(int argc, char *argv[])
 				if(!info) {
 					JANUS_LOG(LOG_ERR, "JSON error: on line %d: %s\n", error.line, error.text);
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
+					exit(1);
+				}
+				/* First of all let's check if this is a PERC recording */
+				json_t *perc = json_object_get(info, "p");
+				if(perc && json_is_true(perc)) {
+					/* It is, nothing we can do unless we can get hold of the key... */
+					JANUS_LOG(LOG_WARN, "This is a PERC recording... use janus-unperc to decrypt it first, if you have access to the key\n");
 					exit(1);
 				}
 				/* Is it audio or video? */

@@ -5,6 +5,7 @@ docs/html/
 
 /janus
 /janus-pp-rec
+/janus-pp-unperc
 /plugins/*.so
 /transports/*.so
 /events/*.so

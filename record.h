@@ -48,10 +48,12 @@ typedef struct janus_recorder {
 	gint64 created;
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
+	/*! \brief Whether this is a recording of a PERC session (meaning payload will be encrypted) */
+	gboolean perc;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
-	int header:1;
+	gboolean header;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
-	int writable:1;
+	gboolean writable;
 	/*! \brief Mutex to lock/unlock this recorder instance */ 
 	janus_mutex mutex;
 } janus_recorder;
@@ -69,8 +71,9 @@ void janus_recorder_deinit(void);
  * @param[in] dir Path of the directory to save the recording into (will try to create it if it doesn't exist)
  * @param[in] codec Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9")
  * @param[in] filename Filename to use for the recording
+ * @param[in] perc Whether this recording is for a PERC session
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
-janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename);
+janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename, gboolean perc);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save

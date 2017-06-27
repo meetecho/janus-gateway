@@ -359,6 +359,7 @@ typedef struct janus_videocall_session {
 	gboolean has_video;
 	gboolean audio_active;
 	gboolean video_active;
+	gboolean perc;
 	uint64_t bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
@@ -605,6 +606,8 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "peer", session->peer->username ? json_string(session->peer->username) : NULL);
 		json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
+		if(session->perc)
+			json_object_set_new(info, "perc", json_true());
 		json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 		json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
 	}
@@ -832,6 +835,7 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->has_video = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
+	session->perc = FALSE;
 	session->bitrate = 0;
 }
 
@@ -884,6 +888,11 @@ static void *janus_videocall_handler(void *data) {
 			goto error;
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		gboolean perc = json_is_true(json_object_get(msg->jsep, "perc"));
+		if(perc) {
+			JANUS_LOG(LOG_WARN, "This is a PERC %s: make sure the peer does PERC too, and that they're aware of each other's key\n", msg_sdp_type);
+			session->perc = TRUE;
+		}
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
@@ -1147,7 +1156,7 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", recording_base);
-							session->arc = janus_recorder_create(NULL, "opus", filename);
+							session->arc = janus_recorder_create(NULL, "opus", filename, session->perc);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
@@ -1158,7 +1167,7 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(session->peer && session->peer->username) ? session->peer->username : "unknown",
 								now);
-							session->arc = janus_recorder_create(NULL, "opus", filename);
+							session->arc = janus_recorder_create(NULL, "opus", filename, session->perc);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
@@ -1171,7 +1180,7 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-video", recording_base);
-							session->vrc = janus_recorder_create(NULL, "vp8", filename);
+							session->vrc = janus_recorder_create(NULL, "vp8", filename, session->perc);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
@@ -1182,7 +1191,7 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(session->peer && session->peer->username) ? session->peer->username : "unknown",
 								now);
-							session->vrc = janus_recorder_create(NULL, "vp8", filename);
+							session->vrc = janus_recorder_create(NULL, "vp8", filename, session->perc);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");

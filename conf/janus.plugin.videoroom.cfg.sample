@@ -5,6 +5,8 @@
 ; pin = <optional password needed for joining the room>
 ; require_pvtid = yes|no (whether subscriptions are required to provide a valid
 ;			a valid private_id to associate with a publisher, default=no)
+; perc = yes|no (whether this room will be for PERC participants, meaning
+;			payloads will be encrypted and so will recordings, default=no)
 ; publishers = <max number of concurrent senders> (e.g., 6 for a video
 ;              conference or 1 for a webinar)
 ; bitrate = <max video bitrate for senders> (e.g., 128000)
@@ -39,3 +41,21 @@ fir_freq = 10
 ;videocodec = vp8
 record = false
 ;rec_dir = /path/to/recordings-folder
+
+
+; This other demo room here is only there in case you want to play with
+; the PERC-Lite support. Notice that you'll need a custom build of Chrome,
+; or otherwise you'll be joining as a regular WebRTC participant and
+; communication with other PERC-enabled clients will fail.
+[3456]
+description = PERC-Lite Demo Room
+secret = adminpwd
+publishers = 6
+bitrate = 128000
+fir_freq = 10
+perc = true
+; Recording needs to be disabled, because packets will be encrypted with
+; a key is unavailable to Janus. In the future, the post-processor will be
+; updated to allow you to provide a key yourself, so that streams can be
+; decrypted and post-processed to a media file as normal.
+record = false

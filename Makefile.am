@@ -391,7 +391,9 @@ endif
 
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
+bin_PROGRAMS += janus-pp-unperc
 man1_MANS += postprocessing/janus-pp-rec.1
+man1_MANS += postprocessing/janus-pp-unperc.1
 
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-g711.c \
@@ -417,6 +419,22 @@ janus_pp_rec_CFLAGS = \
 
 janus_pp_rec_LDADD = \
 	$(POST_PROCESSING_LIBS) \
+	$(NULL)
+
+janus_pp_unperc_SOURCES = \
+	postprocessing/pp-rtp.h \
+	postprocessing/janus-pp-unperc.c \
+	log.c \
+	$(NULL)
+
+janus_pp_unperc_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(POST_PROCESSING_CFLAGS) \
+	$(NULL)
+
+janus_pp_unperc_LDADD = \
+	$(POST_PROCESSING_LIBS) \
+	$(POST_PROCESSING_MANUAL_LIBS) \
 	$(NULL)
 endif
 

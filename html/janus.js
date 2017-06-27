@@ -768,6 +768,10 @@ function Janus(gatewayCallbacks) {
 			request["token"] = token;
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
+		if(callbacks.percLite === true)
+			request["perc"] = true;
+		else
+			callbacks.percLite = false;
 		if(websockets) {
 			transactions[transaction] = function(json) {
 				Janus.debug(json);
@@ -807,7 +811,9 @@ function Janus(gatewayCallbacks) {
 								tsnow : null,
 								tsbefore : null,
 								timer : null
-							}
+							},
+							percLite: callbacks.percLite,
+							percKey : null
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
@@ -819,6 +825,7 @@ function Janus(gatewayCallbacks) {
 						muteVideo : function() { return mute(handleId, true, true); },
 						unmuteVideo : function() { return mute(handleId, true, false); },
 						getBitrate : function() { return getBitrate(handleId); },
+						setPercKey : function(key) { setPercKey(handleId, key); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -894,7 +901,9 @@ function Janus(gatewayCallbacks) {
 								tsnow : null,
 								tsbefore : null,
 								timer : null
-							}
+							},
+							percLite: callbacks.percLite,
+							percKey : null
 						},
 						getId : function() { return handleId; },
 						getPlugin : function() { return plugin; },
@@ -906,6 +915,7 @@ function Janus(gatewayCallbacks) {
 						muteVideo : function() { return mute(handleId, true, true); },
 						unmuteVideo : function() { return mute(handleId, true, false); },
 						getBitrate : function() { return getBitrate(handleId); },
+						setPercKey : function(key) { setPercKey(handleId, key); },
 						send : function(callbacks) { sendMessage(handleId, callbacks); },
 						data : function(callbacks) { sendData(handleId, callbacks); },
 						dtmf : function(callbacks) { sendDtmf(handleId, callbacks); },
@@ -1238,6 +1248,8 @@ function Janus(gatewayCallbacks) {
 		Janus.debug("streamsDone:", stream);
 		config.myStream = stream;
 		var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy};
+		if(config.percKey)
+			pc_config["mediaCryptoKey"] = config.percKey;
 		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
 		var pc_constraints = {
 			"optional": [{"DtlsSrtpKeyAgreement": true}]
@@ -2060,6 +2072,21 @@ function Janus(gatewayCallbacks) {
 		} else {
 			Janus.warn("Getting the video bitrate unsupported by browser");
 			return "Feature unsupported by browser";
+		}
+	}
+
+	function setPercKey(handleId, key) {
+		var pluginHandle = pluginHandles[handleId];
+		if(pluginHandle === null || pluginHandle === undefined ||
+				pluginHandle.webrtcStuff === null || pluginHandle.webrtcStuff === undefined) {
+			Janus.warn("Invalid handle");
+			return;
+		}
+		var config = pluginHandle.webrtcStuff;
+		if(!config.percLite) {
+			Janus.warn("Didn't create the handle as a PERC Lite one: ignoring this key");
+		} else {
+			config.percKey = key;
 		}
 	}
 

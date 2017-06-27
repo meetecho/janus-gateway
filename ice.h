@@ -177,6 +177,7 @@ typedef struct janus_ice_trickle janus_ice_trickle;
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_OFFER			(1 << 15)
 #define JANUS_ICE_HANDLE_WEBRTC_GOT_ANSWER			(1 << 16)
 #define JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT			(1 << 17)
+#define JANUS_ICE_HANDLE_WEBRTC_PERC_LITE			(1 << 18)
 
 
 /*! \brief Janus media statistics

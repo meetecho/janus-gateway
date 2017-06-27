@@ -84,7 +84,8 @@ static struct janus_json_parameter incoming_request_parameters[] = {
 };
 static struct janus_json_parameter attach_parameters[] = {
 	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
-	{"opaque_id", JSON_STRING, 0}
+	{"opaque_id", JSON_STRING, 0},
+	{"perc", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -807,6 +808,7 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		json_t *plugin = json_object_get(root, "plugin");
+		gboolean perc = json_is_true(json_object_get(root, "perc"));
 		const gchar *plugin_text = json_string_value(plugin);
 		janus_plugin *plugin_t = janus_plugin_find(plugin_text);
 		if(plugin_t == NULL) {
@@ -834,6 +836,10 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		handle_id = handle->handle_id;
+		if(perc) {
+			/* We'll need to assume PERC for all PeerConnections, and notify plugins accordingly */
+			janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PERC_LITE);
+		}
 		/* Attach to the plugin */
 		int error = 0;
 		if((error = janus_ice_handle_attach_plugin(session, handle_id, plugin_t)) != 0) {
@@ -1339,11 +1345,13 @@ int janus_process_incoming_request(janus_request *request) {
 
 		/* Send the message to the plugin (which must eventually free transaction_text and unref the two objects, body and jsep) */
 		json_incref(body);
-		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
-			g_strdup((char *)transaction_text), body,
-			jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL);
+		jsep = jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL;
 		g_free(jsep_type);
 		g_free(jsep_sdp_stripped);
+		if(jsep != NULL && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PERC_LITE))
+			json_object_set(jsep, "perc", json_true());
+		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
+			g_strdup((char *)transaction_text), body, jsep);
 		if(result == NULL) {
 			/* Something went horribly wrong! */
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_PLUGIN_MESSAGE, "Plugin didn't give a result");
@@ -2213,6 +2221,7 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		json_object_set_new(flags, "has-audio", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO) ? json_true() : json_false());
 		json_object_set_new(flags, "has-video", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO) ? json_true() : json_false());
 		json_object_set_new(flags, "plan-b", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B) ? json_true() : json_false());
+		json_object_set_new(flags, "perc-lite", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PERC_LITE) ? json_true() : json_false());
 		json_object_set_new(flags, "cleaning", janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING) ? json_true() : json_false());
 		json_object_set_new(info, "flags", flags);
 		if(handle->agent) {

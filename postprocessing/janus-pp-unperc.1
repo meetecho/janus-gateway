@@ -1,0 +1,35 @@
+.TH JANUS-PP-UNPERC 1
+.SH NAME
+janus-pp-unperc \- Helper tool to remove the PERC layer from Janus recordings.
+.SH SYNOPSIS
+.B janus-pp-unperc
+.IR key
+.IR source.mjr
+.IR destination.mjr
+.SH DESCRIPTION
+.B janus-pp-unperc
+is a simple utility that allows you remove the PERC layer from Janus recordings, if present. In fact, when PERC is used, the content of RTP packets is still encrypted, and cannot be processed by \fBjanus-pp-rec\fR as it is. If you provide the key, this tool unencrypts the payload, and returns a plain file that can be processed instead.
+.TP
+The tool requires three parameters: a base-64 encoded string containing the key that will used for decrypting, the path to the .mjr file to decrypt, and a path of the target file. Notice that the tool will return an error if the key is invalid, or if the recording is not PERC-enabled.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print help and exit
+.SH EXAMPLES
+\fBjanus-pp-unperc MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ= rec1234.mjr rec1234-plain.mjr\fR \- Unencrypt the specified recording with the key to a different file
+.SH BUGS
+.TP
+If you think you found a bug or want to contribute a feature, you can issue or a pull request on https://github.com/meetecho/janus-gateway/issues.
+.TP
+Anyway, before doing that make sure you read the documentation at http://janus.conf.meetecho.com/docs/ and that it has not been discussed already at https://groups.google.com/forum/#!forum/meetecho-janus. We only use Github for code issues, and \fBNOT\fR for configuration or usage issues: use the group for that.
+.SH SEE ALSO
+.TP
+https://github.com/meetecho/janus-gateway \- Official repository
+.TP
+http://janus.conf.meetecho.com \- Demos and documentation
+.TP
+https://groups.google.com/forum/#!forum/meetecho-janus \- Community
+.TP
+http://www.meetecho.com/blog/ \- Tutorials and blog posts on Janus
+.SH AUTHORS
+Lorenzo Miniero (lorenzo@meetecho.com)

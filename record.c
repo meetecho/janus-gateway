@@ -61,7 +61,7 @@ void janus_recorder_deinit(void) {
 }
 
 
-janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename) {
+janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename, gboolean perc) {
 	janus_recorder_medium type = JANUS_RECORDER_AUDIO;
 	if(codec == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing codec information\n");
@@ -156,11 +156,12 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 		rc->dir = g_strdup(dir);
 	rc->filename = g_strdup(newname);
 	rc->type = type;
+	rc->perc = perc;
 	/* Write the first part of the header */
 	fwrite(header, sizeof(char), strlen(header), rc->file);
-	rc->writable = 1;
+	rc->writable = TRUE;
 	/* We still need to also write the info header first */
-	rc->header = 0;
+	rc->header = FALSE;
 	janus_mutex_init(&rc->mutex);
 	return rc;
 }
@@ -196,6 +197,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		json_object_set_new(info, "c", json_string(recorder->codec));					/* Media codec */
 		json_object_set_new(info, "s", json_integer(recorder->created));				/* Created time */
 		json_object_set_new(info, "u", json_integer(janus_get_real_time()));			/* First frame written time */
+		if(recorder->perc)
+			json_object_set_new(info, "p", json_true());				/* PERC recording, payload will be encrypted */
 		gchar *info_text = json_dumps(info, JSON_PRESERVE_ORDER);
 		json_decref(info);
 		uint16_t info_bytes = htons(strlen(info_text));
@@ -203,7 +206,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
 		free(info_text);
 		/* Done */
-		recorder->header = 1;
+		recorder->header = TRUE;
 	}
 	/* Write frame header */
 	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
@@ -234,7 +237,7 @@ int janus_recorder_close(janus_recorder *recorder) {
 	if(!recorder || !recorder->writable)
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
-	recorder->writable = 0;
+	recorder->writable = FALSE;
 	if(recorder->file) {
 		fseek(recorder->file, 0L, SEEK_END);
 		size_t fsize = ftell(recorder->file);

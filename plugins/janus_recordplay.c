@@ -1073,6 +1073,7 @@ static void *janus_recordplay_handler(void *data) {
 			goto error;
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		gboolean perc = json_is_true(json_object_get(msg->jsep, "perc"));
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *event = NULL;
@@ -1115,6 +1116,9 @@ static void *janus_recordplay_handler(void *data) {
 				}
 			}
 			JANUS_LOG(LOG_VERB, "Starting new recording with ID %"SCNu64"\n", id);
+			if(perc) {
+				JANUS_LOG(LOG_WARN, "Notice that this is a PERC session: the recording payload will be encrypted, and you'll need the key to replay it\n");
+			}
 			janus_recordplay_recording *rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
 			rec->id = id;
 			rec->name = g_strdup(name_text);
@@ -1138,7 +1142,7 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				rec->arc_file = g_strdup(filename);
 				/* FIXME Assuming Opus */
-				session->arc = janus_recorder_create(recordings_path, "opus", rec->arc_file);
+				session->arc = janus_recorder_create(recordings_path, "opus", rec->arc_file, perc);
 			}
 			if(strstr(msg_sdp, "m=video")) {
 				char filename[256];
@@ -1149,7 +1153,7 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				rec->vrc_file = g_strdup(filename);
 				/* FIXME Assuming VP8 */
-				session->vrc = janus_recorder_create(recordings_path, "vp8", rec->vrc_file);
+				session->vrc = janus_recorder_create(recordings_path, "vp8", rec->vrc_file, perc);
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
@@ -1632,6 +1636,12 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 					JANUS_LOG(LOG_WARN, "Error parsing info header...\n");
 					fclose(file);
 					return NULL;
+				}
+				/* First of all let's check if this is a PERC recording */
+				json_t *perc = json_object_get(info, "p");
+				if(perc && json_is_true(perc)) {
+					/* It is, clarify that the encryption key will be needed to replay this... */
+					JANUS_LOG(LOG_WARN, "This is a PERC recording, so the viewer will need the right key to decrypt the payload...\n");
 				}
 				/* Is it audio or video? */
 				json_t *type = json_object_get(info, "t");

@@ -756,12 +756,20 @@ static void *janus_voicemail_handler(void *data) {
 		/* Any SDP to handle? */
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		gboolean perc = json_is_true(json_object_get(msg->jsep, "perc"));
 		if(!msg_sdp) {
 			int ret = gateway->push_event(msg->handle, &janus_voicemail_plugin, msg->transaction, event, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			json_decref(event);
 		} else {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
+			if(perc) {
+				/* We can't accept a PERC client, we need to save the unencrypted media frames to an .opus file */
+				JANUS_LOG(LOG_ERR, "PERC clients are unsupported by this plugin\n");
+				error_code = JANUS_VOICEMAIL_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "PERC clients are unsupported by this plugin");
+				goto error;
+			}
 			const char *type = NULL;
 			if(!strcasecmp(msg_sdp_type, "offer"))
 				type = "answer";

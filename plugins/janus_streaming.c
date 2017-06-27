@@ -2005,7 +2005,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				else if(strstr(mp->codecs.audio_rtpmap, "g722") || strstr(mp->codecs.audio_rtpmap, "G722"))
 					codec = "g722";
 				const char *audiofile = json_string_value(audio);
-				arc = janus_recorder_create(NULL, codec, (char *)audiofile);
+				arc = janus_recorder_create(NULL, codec, (char *)audiofile, FALSE);
 				if(arc == NULL) {
 					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for audio\n", mp->name);
 					janus_mutex_unlock(&mountpoints_mutex);
@@ -2024,7 +2024,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				else if(strstr(mp->codecs.video_rtpmap, "h264") || strstr(mp->codecs.video_rtpmap, "H264"))
 					codec = "h264";
 				const char *videofile = json_string_value(video);
-				vrc = janus_recorder_create(NULL, codec, (char *)videofile);
+				vrc = janus_recorder_create(NULL, codec, (char *)videofile, FALSE);
 				if(vrc == NULL) {
 					if(arc != NULL) {
 						janus_recorder_close(arc);
@@ -2041,7 +2041,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 			}
 			if(data) {
 				const char *datafile = json_string_value(data);
-				drc = janus_recorder_create(NULL, "text", (char *)datafile);
+				drc = janus_recorder_create(NULL, "text", (char *)datafile, FALSE);
 				if(drc == NULL) {
 					if(arc != NULL) {
 						janus_recorder_close(arc);
@@ -2658,8 +2658,13 @@ static void *janus_streaming_handler(void *data) {
 		/* Any SDP to handle? */
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
+		gboolean perc = json_is_true(json_object_get(msg->jsep, "perc"));
 		if(msg_sdp) {
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well (but we really don't care):\n%s\n", msg_sdp_type, msg_sdp);
+			if(perc) {
+				/* Warn that this likely won't work (unless the mountpoint is re-streaming a PERC payload) */
+				JANUS_LOG(LOG_WARN, "Viewer is doing PERC, make sure the Streaming mountpoint does that too...\n");
+			}
 		}
 
 		/* Prepare JSON event */
