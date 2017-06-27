@@ -507,12 +507,18 @@ function newRemoteFeed(id, display) {
 							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
 						'</div>');
 				}
-				if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
+				if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox" ||
+						adapter.browserDetails.browser === "safari") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 						// Display updated bitrate, if supported
 						var bitrate = remoteFeed.getBitrate();
 						$('#curbitrate'+remoteFeed.rfindex).text(bitrate);
+						// Check if the resolution changed too
+						var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
+						var height = $("#remotevideo"+remoteFeed.rfindex).get(0).videoHeight;
+						if(width > 0 && height > 0)
+							$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
 					}, 1000);
 				}
 			},
