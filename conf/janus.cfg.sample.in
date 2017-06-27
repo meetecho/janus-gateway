@@ -192,7 +192,15 @@ ice_ignore_list = vmnet
 ; from loading one or more event handlers: use a comma separated list of
 ; file names to identify the event handlers to disable. By default, if
 ; broadcast is set to yes all available event handlers are enabled and
-; loaded at startup.
+; loaded at startup. Finally, you can choose how often media statistics
+; (packets sent/received, losses, etc.) should be sent: by default it's
+; once per second (audio and video statistics sent separately), but may
+; considered too verbose, or you may want to limit the number of events,
+; especially if you have many PeerConnections active. To change this,
+; just set 'stats_period' to the number of seconds that should pass in
+; between statistics for each handle. Setting it to 0 disables them (but
+; not other media-related events).
 [events]
 ; broadcast = yes
 ; disable = libjanus_sampleevh.so
+; stats_period = 5

@@ -256,8 +256,26 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 	gboolean ipv6 = FALSE;
 	if(ip && strstr(ip, ":"))
 		ipv6 = TRUE;
-	if(ip || interface) {
-		gboolean found = FALSE;
+	gboolean found = FALSE;
+	if(ip) {
+		/* Do a quick check to see if we need to bind on all addresses of a specific family */
+		if(!strcasecmp(ip, "0.0.0.0")) {
+			/* Bind on all IPv4 addresses */
+			found = TRUE;
+			memset(&addr, 0, sizeof (struct sockaddr_in));
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(port);
+			addr.sin_addr.s_addr = INADDR_ANY;
+		} else if(!strcasecmp(ip, "::")) {
+			/* Bind on all IPv6 addresses */
+			found = TRUE;
+			memset(&addr6, 0, sizeof (struct sockaddr_in6));
+			addr6.sin6_family = AF_INET6;
+			addr6.sin6_port = htons(port);
+			addr6.sin6_addr = in6addr_any;
+		}
+	}
+	if(!found && (ip || interface)) {
 		struct ifaddrs *ifaddr = NULL, *ifa = NULL;
 		int family = 0, s = 0, n = 0;
 		char host[NI_MAXHOST];
