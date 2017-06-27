@@ -6,7 +6,10 @@
 ; 'unlimited' (which means a thread per connection, as specified by the
 ; libmicrohttpd documentation), using a number will make use of a thread
 ; pool instead. Since long polls are involved, make sure you choose a
-; value that doesn't keep new connections waiting.
+; value that doesn't keep new connections waiting. Notice that by default
+; all the web servers will try and bind on both IPv4 and IPv6: if you
+; want to only bind to IPv4 addresses (e.g., because your system does not
+; support IPv6), you should set the web server 'ip' property to '0.0.0.0'.
 [general]
 json = indented				; Whether the JSON messages should be indented (default),
 							; plain (no indentation) or compact (no indentation and no spaces)
