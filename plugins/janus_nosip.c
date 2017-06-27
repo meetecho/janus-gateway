@@ -733,8 +733,8 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 				video ? "video" : "audio",
 				video ? session->media.video_ssrc : session->media.audio_ssrc);
 		}
-		if((video && session->media.has_video && session->media.video_rtp_fd) ||
-				(!video && session->media.has_audio && session->media.audio_rtp_fd)) {
+		if((video && session->media.has_video && session->media.video_rtp_fd != -1) ||
+				(!video && session->media.has_audio && session->media.audio_rtp_fd != -1)) {
 			/* Save the frame if we're recording */
 			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 			/* Is SRTP involved? */
@@ -773,8 +773,8 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 			return;
 		}
 		/* Forward to our NoSIP peer */
-		if((video && session->media.has_video && session->media.video_rtcp_fd) ||
-				(!video && session->media.has_audio && session->media.audio_rtcp_fd)) {
+		if((video && session->media.has_video && session->media.video_rtcp_fd != -1) ||
+				(!video && session->media.has_audio && session->media.audio_rtcp_fd != -1)) {
 			/* Fix SSRCs as the gateway does */
 			JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Fixing %s SSRCs (local %u, peer %u)\n",
 				session, video ? "video" : "audio",
@@ -1781,15 +1781,35 @@ static void *janus_nosip_relay_thread(void *data) {
 		int i = 0;
 		for(i=0; i<num; i++) {
 			if(fds[i].revents & (POLLERR | POLLHUP)) {
+				/* If we just updated the session, let's wait until things have calmed down */
 				if(session->media.updated)
 					break;
-				/* Socket error? */
-				JANUS_LOG((errno == 0 ? LOG_WARN : LOG_ERR), "[NoSIP-%p] Error polling: %s... errno=%d (%s)\n",
-					session, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP", errno, strerror(errno));
-				if(errno == 0) {
-					/* Maybe not a breaking error? */
+				/* Check the socket error */
+				int error = 0;
+				socklen_t errlen = sizeof(error);
+				getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
+				if(error == 0) {
+					/* Maybe not a breaking error after all? */
+					continue;
+				} else if(error == 111) {
+					/* ICMP error? If it's related to RTCP, let's just close the RTCP socket and move on */
+					if(fds[i].fd == session->media.audio_rtcp_fd) {
+						JANUS_LOG(LOG_WARN, "[NoSIP-%p] Got a '%s' on the audio RTCP socket, closing it\n",
+							session, strerror(error));
+						close(session->media.audio_rtcp_fd);
+						session->media.audio_rtcp_fd = -1;
+					} else if(fds[i].fd == session->media.video_rtcp_fd) {
+						JANUS_LOG(LOG_WARN, "[NoSIP-%p] Got a '%s' on the video RTCP socket, closing it\n",
+							session, strerror(error));
+						close(session->media.video_rtcp_fd);
+						session->media.video_rtcp_fd = -1;
+					}
+					/* FIXME Should we do the same with the RTP sockets as well? We may risk overreacting, there... */
 					continue;
 				}
+				JANUS_LOG(LOG_ERR, "[NoSIP-%p] Error polling %d (socket #%d): %s...\n", session,
+					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
+				JANUS_LOG(LOG_ERR, "[NoSIP-%p]   -- %d (%s)\n", session, error, strerror(error));
 				/* Can we assume it's pretty much over, after a POLLERR? */
 				goon = FALSE;
 				/* FIXME Close the PeerConnection */
