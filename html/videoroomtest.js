@@ -507,7 +507,8 @@ function newRemoteFeed(id, display) {
 							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
 						'</div>');
 				}
-				if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
+				if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox" ||
+						adapter.browserDetails.browser === "safari") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 						// Display updated bitrate, if supported
