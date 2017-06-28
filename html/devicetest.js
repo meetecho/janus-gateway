@@ -122,8 +122,6 @@ function initDevices(devices) {
 		// Let's wait a couple of seconds before restarting
 		setTimeout(restartCapture, 2000);
 	});
-
-	//~ restartCapture();
 }
 
 function restartCapture() {
@@ -277,14 +275,24 @@ $(document).ready(function() {
 											$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 												.unbind('click').click(function() {
 													toastr.info("Switching simulcast video, wait for it... (lower quality)", null, {timeOut: 2000});
+													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 													echotest.send({message: { simulcast: 0}});
 												});
 											$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-success')
 												.unbind('click').click(function() {
-													toastr.info("Switching simulcast video, wait for it... (higher quality)", null, {timeOut: 2000});
+													toastr.info("Switching simulcast video, wait for it... (normal quality)", null, {timeOut: 2000});
+													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													echotest.send({message: { simulcast: 1}});
+												});
+											$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-success')
+												.unbind('click').click(function() {
+													toastr.info("Switching simulcast video, wait for it... (higher quality)", null, {timeOut: 2000});
+													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													echotest.send({message: { simulcast: 1}});
 												});
@@ -292,11 +300,18 @@ $(document).ready(function() {
 										// We just received notice that there's been a switch, update the buttons
 										if(simulcast === 0) {
 											toastr.success("Switched simulcast video! (lower quality)", null, {timeOut: 2000});
+											$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 										} else if(simulcast === 1) {
-											toastr.success("Switched simulcast video! (higher quality)", null, {timeOut: 2000});
+											toastr.success("Switched simulcast video! (normal quality)", null, {timeOut: 2000});
+											$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+										} else if(simulcast === 2) {
+											toastr.success("Switched simulcast video! (higher quality)", null, {timeOut: 2000});
+											$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 										}
 									}
@@ -403,7 +418,8 @@ $(document).ready(function() {
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
-									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
+									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox" ||
+											adapter.browserDetails.browser === "safari") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
@@ -453,6 +469,7 @@ $(document).ready(function() {
 									$('#simulcast').addClass('hide');
 									$('#sl-0').unbind('click');
 									$('#sl-1').unbind('click');
+									$('#sl-2').unbind('click');
 								}
 							});
 					},

@@ -449,8 +449,11 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 	json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
-	if(session->ssrc[0] != 0)
+	if(session->ssrc[0] != 0) {
 		json_object_set_new(info, "simulcast", json_true());
+		json_object_set_new(info, "simulcast-level", json_integer(session->simulcast));
+		json_object_set_new(info, "simulcast-target", json_integer(session->simulcast_target));
+	}
 	if(session->arc || session->vrc[0] || session->drc) {
 		json_t *recording = json_object();
 		if(session->arc && session->arc->filename)
@@ -523,7 +526,8 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			uint32_t ssrc = ntohl(header->ssrc);
 			char sdes_item[16];
 			if(janus_rtp_header_extension_parse_rtp_stream_id(buf, len, session->rtpmapid_extmap_id, sdes_item, sizeof(sdes_item)) == 0) {
-				JANUS_LOG(LOG_DBG, "%"SCNu32"/%"SCNu16"/%"SCNu32": RTP stream ID extension: %s\n", ssrc, seq_number, timestamp, sdes_item);
+				JANUS_LOG(LOG_DBG, "%"SCNu32"/%"SCNu16"/%"SCNu32"/%d: RTP stream ID extension: %s\n",
+					ssrc, seq_number, timestamp, header->padding, sdes_item);
 			}
 		}
 		if(video && session->video_active && session->ssrc[0] != 0) {
@@ -549,8 +553,10 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 				/* There has been a change: let's wait for a keyframe on the target */
 				if(ssrc == session->ssrc[session->simulcast_target]) {
 					if(janus_vp8_is_keyframe(payload, plen)) {
-						JANUS_LOG(LOG_WARN, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n",
-							ssrc, session->ssrc[session->simulcast]);
+						uint32_t ssrc_old = 0;
+						if(session->simulcast != -1)
+							ssrc_old = session->ssrc[session->simulcast];
+						JANUS_LOG(LOG_WARN, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
 						session->simulcast = session->simulcast_target;
 						switched = TRUE;
 						/* Notify the user */
@@ -664,9 +670,14 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
 				uplink ? "uplink" : "downlink", video ? "video" : "audio", session->bitrate);
 			/* ... and send a new REMB back */
-			char rtcpbuf[24];
-			janus_rtcp_remb((char *)(&rtcpbuf), 24, session->bitrate);
-			gateway->relay_rtcp(handle, 1, rtcpbuf, 24);
+			char rtcpbuf[32];
+			int numssrc = 1;
+			if(session->ssrc[1])
+				numssrc++;
+			if(session->ssrc[2])
+				numssrc++;
+			int remblen = janus_rtcp_remb_ssrcs((char *)(&rtcpbuf), sizeof(rtcpbuf), session->bitrate, numssrc);
+			gateway->relay_rtcp(handle, 1, rtcpbuf, remblen);
 			/* As a last thing, notify the user about this */
 			json_t *event = json_object();
 			json_object_set_new(event, "echotest", json_string("event"));
@@ -870,11 +881,15 @@ static void *janus_echotest_handler(void *data) {
 			JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64"\n", session->bitrate);
 			if(session->bitrate > 0) {
 				/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
-				char buf[24];
-				memset(buf, 0, 24);
-				janus_rtcp_remb((char *)&buf, 24, session->bitrate);
+				char rtcpbuf[32];
+				int numssrc = 1;
+				if(session->ssrc[1])
+					numssrc++;
+				if(session->ssrc[2])
+					numssrc++;
+				int remblen = janus_rtcp_remb_ssrcs((char *)(&rtcpbuf), sizeof(rtcpbuf), session->bitrate, numssrc);
 				JANUS_LOG(LOG_VERB, "Sending REMB\n");
-				gateway->relay_rtcp(session->handle, 1, buf, 24);
+				gateway->relay_rtcp(session->handle, 1, rtcpbuf, remblen);
 				/* FIXME How should we handle a subsequent "no limit" bitrate? */
 			}
 		}
@@ -969,17 +984,21 @@ static void *janus_echotest_handler(void *data) {
 						}
 						if(session->ssrc[0] != 0) {
 							/* Create recordings for the other layers as well */
-							g_snprintf(filename, 255, "%s-video-sim1", recording_base);
-							session->vrc[1] = janus_recorder_create(NULL, "vp8", filename);
-							if(session->vrc[1] == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this EchoTest user!\n");
+							if(session->ssrc[1] != 0) {
+								g_snprintf(filename, 255, "%s-video-sim1", recording_base);
+								session->vrc[1] = janus_recorder_create(NULL, "vp8", filename);
+								if(session->vrc[1] == NULL) {
+									/* FIXME We should notify the fact the recorder could not be created */
+									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this EchoTest user!\n");
+								}
 							}
-							g_snprintf(filename, 255, "%s-video-sim2", recording_base);
-							session->vrc[2] = janus_recorder_create(NULL, "vp8", filename);
-							if(session->vrc[2] == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this EchoTest user!\n");
+							if(session->ssrc[2] != 0) {
+								g_snprintf(filename, 255, "%s-video-sim2", recording_base);
+								session->vrc[2] = janus_recorder_create(NULL, "vp8", filename);
+								if(session->vrc[2] == NULL) {
+									/* FIXME We should notify the fact the recorder could not be created */
+									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this EchoTest user!\n");
+								}
 							}
 						}
 					} else {
@@ -992,17 +1011,21 @@ static void *janus_echotest_handler(void *data) {
 						}
 						if(session->ssrc[0] != 0) {
 							/* Create recordings for the other layers as well */
-							g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video-sim1", session, now);
-							session->vrc[1] = janus_recorder_create(NULL, "vp8", filename);
-							if(session->vrc[1] == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this EchoTest user!\n");
+							if(session->ssrc[1] != 0) {
+								g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video-sim1", session, now);
+								session->vrc[1] = janus_recorder_create(NULL, "vp8", filename);
+								if(session->vrc[1] == NULL) {
+									/* FIXME We should notify the fact the recorder could not be created */
+									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this EchoTest user!\n");
+								}
 							}
-							g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video-sim2", session, now);
-							session->vrc[2] = janus_recorder_create(NULL, "vp8", filename);
-							if(session->vrc[2] == NULL) {
-								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this EchoTest user!\n");
+							if(session->ssrc[2] != 0) {
+								g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video-sim2", session, now);
+								session->vrc[2] = janus_recorder_create(NULL, "vp8", filename);
+								if(session->vrc[2] == NULL) {
+									/* FIXME We should notify the fact the recorder could not be created */
+									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this EchoTest user!\n");
+								}
 							}
 						}
 					}

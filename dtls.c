@@ -928,20 +928,15 @@ gboolean janus_dtls_retry(gpointer stack) {
 		return FALSE;
 	janus_ice_stream *stream = component->stream;
 	if(!stream)
-		return FALSE;
+		goto stoptimer;
 	janus_ice_handle *handle = stream->handle;
 	if(!handle)
-		return FALSE;
+		goto stoptimer;
 	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
-		return FALSE;
+		goto stoptimer;
 	if(dtls->dtls_state == JANUS_DTLS_STATE_CONNECTED) {
-		JANUS_LOG(LOG_VERB, "[%"SCNu64"]  DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
-		if(component->source != NULL) {
-			g_source_destroy(component->source);
-			g_source_unref(component->source);
-			component->source = NULL;
-		}
-		return FALSE;
+		JANUS_LOG(LOG_VERB, "[%"SCNu64"] DTLS already set up, disabling retransmission timer!\n", handle->handle_id);
+		goto stoptimer;
 	}
 	struct timeval timeout = {0};
 	DTLSv1_get_timeout(dtls->ssl, &timeout);
@@ -957,6 +952,14 @@ gboolean janus_dtls_retry(gpointer stack) {
 		janus_dtls_fd_bridge(dtls);
 	}
 	return TRUE;
+
+stoptimer:
+	if(component->dtlsrt_source != NULL) {
+		g_source_destroy(component->dtlsrt_source);
+		g_source_unref(component->dtlsrt_source);
+		component->dtlsrt_source = NULL;
+	}
+	return FALSE;
 }
 
 

@@ -767,7 +767,8 @@ function Janus(gatewayCallbacks) {
 		if(apisecret !== null && apisecret !== undefined)
 			request["apisecret"] = apisecret;
 		// If we know the browser supports BUNDLE and/or rtcp-mux, let's advertise those right away
-		if(adapter.browserDetails.browser == "chrome" || adapter.browserDetails.browser == "firefox") {
+		if(adapter.browserDetails.browser == "chrome" || adapter.browserDetails.browser == "firefox" ||
+				adapter.browserDetails.browser == "safari") {
 			request["force-bundle"] = true;
 			request["force-rtcp-mux"] = true;
 		}
@@ -1402,6 +1403,9 @@ function Janus(gatewayCallbacks) {
 			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
+				var simulcast = callbacks.simulcast === true ? true : false;
+				if(simulcast && !jsep && (media.video === undefined || media.video === false))
+					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					var width = 0;
 					var height = 0, maxHeight = 0;
@@ -1441,12 +1445,12 @@ function Janus(gatewayCallbacks) {
 						maxHeight = 360;
 						width = 640;
 					} else {
-						Janus.log("Default video setting (" + media.video + ") is stdres 4:3");
+						Janus.log("Default video setting is stdres 4:3");
 						height = 480;
 						maxHeight = 480;
 						width = 640;
 					}
-					Janus.log("Adding media constraint " + media.video);
+					Janus.log("Adding media constraint:", media.video);
 					if(navigator.mozGetUserMedia) {
 						var firefoxVer = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10);
 						if(firefoxVer < 38) {
@@ -1479,7 +1483,7 @@ function Janus(gatewayCallbacks) {
 					}
 					Janus.debug(videoSupport);
 				} else if(media.video === 'screen' || media.video === 'window') {
-					if (!media.screenshareFrameRate) {
+					if(!media.screenshareFrameRate) {
 						media.screenshareFrameRate = 3;
 					}
 					// Not a webcam, but screen capture
@@ -1732,7 +1736,11 @@ function Janus(gatewayCallbacks) {
 		}
 		var config = pluginHandle.webrtcStuff;
 		var simulcast = callbacks.simulcast === true ? true : false;
-		Janus.log("Creating offer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
+		if(!simulcast) {
+			Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
+		} else {
+			Janus.log("Creating offer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
+		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = null;
 		if(adapter.browserDetails.browser == "firefox" || adapter.browserDetails.browser == "edge") {
@@ -1759,7 +1767,8 @@ function Janus(gatewayCallbacks) {
 			Janus.log(parameters);
 			sender.setParameters({encodings: [
 				{ rid: "high", active: true, priority: "high", maxBitrate: 2000000 },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: 200000 }
+				{ rid: "medium", active: true, priority: "medium", maxBitrate: 400000 },
+				{ rid: "low", active: true, priority: "medium", maxBitrate: 200000 }
 			]});
 		}
 		config.pc.createOffer(
@@ -1847,8 +1856,6 @@ function Janus(gatewayCallbacks) {
 							ssrc[1] = Math.floor(Math.random()*0xFFFFFFFF);
 							ssrc[2] = Math.floor(Math.random()*0xFFFFFFFF);
 							// Add attributes to the SDP
-							lines.splice(insertAt, 0, 'a=ssrc-group:SIM ' + ssrc[0] + ' ' + ssrc[1] + ' ' + ssrc[2]);
-							insertAt++;
 							for(var i=0; i<ssrc.length; i++) {
 								if(cname) {
 									lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' cname:' + cname);
@@ -1867,6 +1874,7 @@ function Janus(gatewayCallbacks) {
 									insertAt++;
 								}
 							}
+							lines.splice(insertAt, 0, 'a=ssrc-group:SIM ' + ssrc[0] + ' ' + ssrc[1] + ' ' + ssrc[2]);
 							offer.sdp = lines.join("\r\n");
 						} else if(adapter.browserDetails.browser !== "firefox") {
 							Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
@@ -2108,83 +2116,35 @@ function Janus(gatewayCallbacks) {
 		if(config.pc === null || config.pc === undefined)
 			return "Invalid PeerConnection";
 		// Start getting the bitrate, if getStats is supported
-		if(config.pc.getStats && adapter.browserDetails.browser == "chrome") {
-			// Do it the Chrome way
-			if(config.remoteStream === null || config.remoteStream === undefined) {
-				Janus.warn("Remote stream unavailable");
-				return "Remote stream unavailable";
-			}
-			// http://webrtc.googlecode.com/svn/trunk/samples/js/demos/html/constraints-and-stats.html
+		if(config.pc.getStats) {
 			if(config.bitrate.timer === null || config.bitrate.timer === undefined) {
-				Janus.log("Starting bitrate timer (Chrome)");
+				Janus.log("Starting bitrate timer (via getStats)");
 				config.bitrate.timer = setInterval(function() {
-					config.pc.getStats(function(stats) {
-						var results = stats.result();
-						for(var i=0; i<results.length; i++) {
-							var res = results[i];
-							if(res.type == 'ssrc' && res.stat('googFrameHeightReceived')) {
-								config.bitrate.bsnow = res.stat('bytesReceived');
-								config.bitrate.tsnow = res.timestamp;
-								if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
-									// Skip this round
-									config.bitrate.bsbefore = config.bitrate.bsnow;
-									config.bitrate.tsbefore = config.bitrate.tsnow;
-								} else {
-									// Calculate bitrate
-									var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / (config.bitrate.tsnow - config.bitrate.tsbefore));
-									config.bitrate.value = bitRate + ' kbits/sec';
-									//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
-									config.bitrate.bsbefore = config.bitrate.bsnow;
-									config.bitrate.tsbefore = config.bitrate.tsnow;
+					config.pc.getStats()
+						.then(function(stats) {
+							stats.forEach(res => {
+								if(res && (res.mediaType === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
+										res.type === "inbound-rtp" && res.id.indexOf("rtcp") < 0) {
+									config.bitrate.bsnow = res.bytesReceived;
+									config.bitrate.tsnow = res.timestamp;
+									if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
+										// Skip this round
+										config.bitrate.bsbefore = config.bitrate.bsnow;
+										config.bitrate.tsbefore = config.bitrate.tsnow;
+									} else {
+										// Calculate bitrate
+										var timePassed = config.bitrate.tsnow - config.bitrate.tsbefore;
+										if(adapter.browserDetails.browser == "safari")
+											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
+										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
+										config.bitrate.value = bitRate + ' kbits/sec';
+										//~ Janus.log("Estimated bitrate is " + config.bitrate.value);
+										config.bitrate.bsbefore = config.bitrate.bsnow;
+										config.bitrate.tsbefore = config.bitrate.tsnow;
+									}
 								}
-							}
-						}
-					});
-				}, 1000);
-				return "0 kbits/sec";	// We don't have a bitrate value yet
-			}
-			return config.bitrate.value;
-		} else if(config.pc.getStats && adapter.browserDetails.browser == "firefox") {
-			// Do it the Firefox way
-			if(config.remoteStream === null || config.remoteStream === undefined || config.remoteStream.remoteStreams === undefined
-					|| config.remoteStream.streams[0] === null || config.remoteStream.streams[0] === undefined) {
-				Janus.warn("Remote stream unavailable");
-				return "Remote stream unavailable";
-			}
-			var videoTracks = config.remoteStream.streams[0].getVideoTracks();
-			if(videoTracks === null || videoTracks === undefined || videoTracks.length < 1) {
-				Janus.warn("No video track");
-				return "No video track";
-			}
-			// https://github.com/muaz-khan/getStats/blob/master/getStats.js
-			if(config.bitrate.timer === null || config.bitrate.timer === undefined) {
-				Janus.log("Starting bitrate timer (Firefox)");
-				config.bitrate.timer = setInterval(function() {
-					// We need a helper callback
-					var cb = function(res) {
-						if(res === null || res === undefined ||
-								res.inbound_rtp_video_1 == null || res.inbound_rtp_video_1 == null) {
-							config.bitrate.value = "Missing inbound_rtp_video_1";
-							return;
-						}
-						config.bitrate.bsnow = res.inbound_rtp_video_1.bytesReceived;
-						config.bitrate.tsnow = res.inbound_rtp_video_1.timestamp;
-						if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
-							// Skip this round
-							config.bitrate.bsbefore = config.bitrate.bsnow;
-							config.bitrate.tsbefore = config.bitrate.tsnow;
-						} else {
-							// Calculate bitrate
-							var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / (config.bitrate.tsnow - config.bitrate.tsbefore));
-							config.bitrate.value = bitRate + ' kbits/sec';
-							config.bitrate.bsbefore = config.bitrate.bsnow;
-							config.bitrate.tsbefore = config.bitrate.tsnow;
-						}
-					};
-					// Actually get the stats
-					config.pc.getStats(videoTracks[0], function(stats) {
-						cb(stats);
-					}, cb);
+							});
+						});
 				}, 1000);
 				return "0 kbits/sec";	// We don't have a bitrate value yet
 			}
