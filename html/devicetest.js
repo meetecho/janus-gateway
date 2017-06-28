@@ -58,6 +58,7 @@ var spinner = null;
 
 var audioenabled = false;
 var videoenabled = false;
+var simulcastStarted = false;
 
 // Helper method to prepare a UI selection of the available devices
 function initDevices(devices) {
@@ -112,12 +113,12 @@ function initDevices(devices) {
 		// A different device has been selected: hangup the session, and set it up again
 		$('#audio-device, #video-device').attr('disabled', true);
 		$('#change-devices').attr('disabled', true);
-		echotest.hangup(true);
 		if(firstTime) {
 			firstTime = false;
 			restartCapture();
 			return;
 		}
+		echotest.hangup(true);
 		// Let's wait a couple of seconds before restarting
 		setTimeout(restartCapture, 2000);
 	});
@@ -133,7 +134,7 @@ function restartCapture() {
 	Janus.debug("Trying a createOffer too (audio/video sendrecv)");
 	echotest.createOffer(
 		{
-			// No media provided: by default, it's sendrecv for audio and video
+			// We provide a specific device ID for both audio and video
 			media: {
 				audio: {
 					deviceId: {
@@ -147,6 +148,9 @@ function restartCapture() {
 				},
 				data: true	// Let's negotiate data channels as well
 			},
+			// If you want to test simulcasting (Chrome and Firefox only), then
+			// uncomment the "simulcast:true," line: new buttons will appear
+			simulcast: true,
 			success: function(jsep) {
 				Janus.debug("Got SDP!");
 				Janus.debug(jsep);
@@ -261,6 +265,39 @@ $(document).ready(function() {
 											$('#datasend').val('').attr('disabled', true);
 											$('#datarecv').val('');
 											$('#outputdeviceset').html('Output device<span class="caret"></span>');
+										}
+									}
+									// Is simulcast in place?
+									var simulcast = msg["simulcast"];
+									if(simulcast !== null && simulcast !== undefined) {
+										if(!simulcastStarted) {
+											simulcastStarted = true;
+											$('#simulcast').removeClass('hide');
+											// Enable the VP8 simulcast selection buttons
+											$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
+												.unbind('click').click(function() {
+													toastr.info("Switching simulcast video, wait for it... (lower quality)", null, {timeOut: 2000});
+													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+													echotest.send({message: { simulcast: 0}});
+												});
+											$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-success')
+												.unbind('click').click(function() {
+													toastr.info("Switching simulcast video, wait for it... (higher quality)", null, {timeOut: 2000});
+													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													echotest.send({message: { simulcast: 1}});
+												});
+										}
+										// We just received notice that there's been a switch, update the buttons
+										if(simulcast === 0) {
+											toastr.success("Switched simulcast video! (lower quality)", null, {timeOut: 2000});
+											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+										} else if(simulcast === 1) {
+											toastr.success("Switched simulcast video! (higher quality)", null, {timeOut: 2000});
+											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 										}
 									}
 								},
@@ -412,6 +449,10 @@ $(document).ready(function() {
 									$('#datasend').val('').attr('disabled', true);
 									$('#datarecv').val('');
 									$('#outputdeviceset').html('Output device<span class="caret"></span>');
+									simulcastStarted = false;
+									$('#simulcast').addClass('hide');
+									$('#sl-0').unbind('click');
+									$('#sl-1').unbind('click');
 								}
 							});
 					},

@@ -102,6 +102,8 @@ typedef struct janus_rtp_header_extension {
 #define JANUS_RTP_EXTMAP_CC_EXTENSIONS		"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
 /*! \brief a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay */
 #define JANUS_RTP_EXTMAP_PLAYOUT_DELAY		"http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+/*! \brief a=extmap:3/sendonly urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id */
+#define JANUS_RTP_EXTMAP_RTP_STREAM_ID		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 
 /*! \brief Helper to quickly access the RTP payload, skipping header and extensions
  * @param[in] buf The packet data
@@ -152,6 +154,17 @@ int janus_rtp_header_extension_parse_video_orientation(char *buf, int len, int i
  * @returns 0 if found, -1 otherwise */
 int janus_rtp_header_extension_parse_playout_delay(char *buf, int len, int id,
 	uint16_t *min_delay, uint16_t *max_delay);
+
+/*! \brief Helper to parse a rtp-stream-id RTP extension (https://tools.ietf.org/html/draft-ietf-avtext-rid-09)
+ * @param[in] buf The packet data
+ * @param[in] len The packet data length in bytes
+ * @param[in] id The extension ID to look for
+ * @param[out] sdes_item Buffer where the RTP stream ID will be written
+ * @param[in] sdes_len Size of the input/output buffer
+ * @returns 0 if found, -1 otherwise */
+int janus_rtp_header_extension_parse_rtp_stream_id(char *buf, int len, int id,
+	char *sdes_item, int sdes_len);
+
 
 /*! \brief RTP context, in order to make sure SSRC changes result in coherent seq/ts increases */
 typedef struct janus_rtp_switching_context {

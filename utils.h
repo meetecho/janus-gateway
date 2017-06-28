@@ -220,4 +220,39 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 		} \
 	} while(0)
 
+/*! \brief Helper method to check if a VP8 frame is a keyframe or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_vp8_is_keyframe(char* buffer, int len);
+
+/*! \brief Helper method to check if a VP9 frame is a keyframe or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_vp9_is_keyframe(char* buffer, int len);
+
+/*! \brief Helper method to check if an H.264 frame is a keyframe or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_h264_is_keyframe(char* buffer, int len);
+
+/*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
+typedef struct janus_vp8_simulcast_context {
+	uint16_t last_picid, base_picid, base_picid_prev;
+	uint16_t last_tlzi, base_tlzi, base_tlzi_prev;
+} janus_vp8_simulcast_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context);
+
+/*! \brief Use the context info to update the RTP header of a packet, if needed
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @param[in] context The context to use as a reference
+ * @param[in] switched Whether there has been a source switch or not (important to compute offsets) */
+void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simulcast_context *context, gboolean switched);
+
 #endif

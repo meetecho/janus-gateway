@@ -11,6 +11,7 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="devicetest.js"></script>
 <script>
@@ -25,6 +26,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.css"/>
 </head>
 <body>
 
@@ -118,6 +120,12 @@
 								<h3 class="panel-title">Remote Stream
 									<span class="label label-primary hide" id="curres"></span>
 									<span class="label label-info hide" id="curbitrate"></span>
+									<div id="simulcast" class="btn-group btn-group-xs pull-right hide">
+										<div class="btn-group btn-group-xs">
+											<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 50%">SL 1</button>
+											<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 50%">SL 0</button>
+										</div>
+									</div>
 									<div class="btn-group btn-group-xs pull-right hide" id="output-devices">
 										<div class="btn-group btn-group-xs">
 											<button id="outputdeviceset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">

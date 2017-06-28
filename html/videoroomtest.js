@@ -134,6 +134,20 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videolocal").parent().parent().unblock();
+									// This controls allows us to override the global room bitrate cap
+									$('#bitrate').parent().parent().removeClass('hide').show();
+									$('#bitrate a').click(function() {
+										var id = $(this).attr("id");
+										var bitrate = parseInt(id)*1000;
+										if(bitrate === 0) {
+											Janus.log("Not limiting bandwidth via REMB");
+										} else {
+											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
+										}
+										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
+										sfutest.send({"message": { "request": "configure", "bitrate": bitrate }});
+										return false;
+									});
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -286,6 +300,8 @@ $(document).ready(function() {
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
 									$('#publish').click(function() { publishOwnFeed(true); });
 									$("#videolocal").parent().parent().unblock();
+									$('#bitrate').parent().parent().addClass('hide');
+									$('#bitrate a').unbind('click');
 								}
 							});
 					},
@@ -352,6 +368,10 @@ function publishOwnFeed(useAudio) {
 		{
 			// Add data:true here if you want to publish datachannels as well
 			media: { audioRecv: false, videoRecv: false, audioSend: useAudio, videoSend: true },	// Publishers are sendonly
+			// If you want to test simulcasting (Chrome and Firefox only), then
+			// uncomment the "simulcast:true," line: new buttons will appear
+			// for the viewers subscribing to this stream remotely
+			simulcast: true,
 			success: function(jsep) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
@@ -397,6 +417,7 @@ function newRemoteFeed(id, display) {
 			opaqueId: opaqueId,
 			success: function(pluginHandle) {
 				remoteFeed = pluginHandle;
+				remoteFeed.simulcastStarted = false;
 				Janus.log("Plugin attached! (" + remoteFeed.getPlugin() + ", id=" + remoteFeed.getId() + ")");
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
@@ -432,6 +453,40 @@ function newRemoteFeed(id, display) {
 						}
 						Janus.log("Successfully attached to feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") in room " + msg["room"]);
 						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
+					} else if(event === "simulcast") {
+						// We got an event on a simulcast switch from this publisher
+						var simulcast = msg["simulcast"];
+						if(simulcast !== null && simulcast !== undefined) {
+							if(!remoteFeed.simulcastStarted) {
+								remoteFeed.simulcastStarted = true;
+								$('#simulcast'+remoteFeed.rfindex).removeClass('hide');
+								// Enable the VP8 simulcast selection buttons
+								$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-primary')
+									.unbind('click').click(function() {
+										toastr.info("Switching " + remoteFeed.rfdisplay + "'s simulcast video, wait for it... (lower quality)", null, {timeOut: 2000});
+										$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+										$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+										remoteFeed.send({message: { request: "configure", simulcast: 0}});
+									});
+								$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-success')
+									.unbind('click').click(function() {
+										toastr.info("Switching " + remoteFeed.rfdisplay + "'s simulcast video, wait for it... (higher quality)", null, {timeOut: 2000});
+										$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+										$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+										remoteFeed.send({message: { request: "configure", simulcast: 1}});
+									});
+							}
+							// We just received notice that there's been a switch, update the buttons
+							if(simulcast === 0) {
+								toastr.success("Switched " + remoteFeed.rfdisplay + "'s simulcast video! (lower quality)", null, {timeOut: 2000});
+								$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+								$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+							} else if(simulcast === 1) {
+								toastr.success("Switched " + remoteFeed.rfdisplay + "'s simulcast video! (higher quality)", null, {timeOut: 2000});
+								$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+								$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+							}
+						}
 					} else if(msg["error"] !== undefined && msg["error"] !== null) {
 						bootbox.alert(msg["error"]);
 					} else {
@@ -532,6 +587,9 @@ function newRemoteFeed(id, display) {
 				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
+				$('#sl'+remoteFeed.rfindex+'-1').unbind('click');
+				$('#sl'+remoteFeed.rfindex+'-0').unbind('click');
+				$('#simulcast'+remoteFeed.rfindex).addClass('hide');
 			}
 		});
 }
