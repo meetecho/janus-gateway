@@ -2059,6 +2059,7 @@ function Janus(gatewayCallbacks) {
 										config.bitrate.tsbefore = config.bitrate.tsnow;
 									} else {
 										// Calculate bitrate
+										var timePassed = config.bitrate.tsnow - config.bitrate.tsbefore;
 										if(adapter.browserDetails.browser == "safari")
 											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
 										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
