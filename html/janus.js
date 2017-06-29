@@ -1999,7 +1999,7 @@ function Janus(gatewayCallbacks) {
 				config.bitrate.timer = setInterval(function() {
 					config.pc.getStats()
 						.then(function(stats) {
-							stats.forEach(res => {
+							stats.forEach(function (res) {
 								if(res && (res.mediaType === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
 										res.type === "inbound-rtp" && res.id.indexOf("rtcp") < 0) {
 									config.bitrate.bsnow = res.bytesReceived;
