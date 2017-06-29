@@ -17,13 +17,19 @@
  * as events with the same transaction.
  *
  * The supported requests are \c register , \c unregister , \c call ,
- * \c accept, \c hold , \c unhold and \c hangup . \c register can be used,
+ * \c accept, \c info , \c message , \c dtmf_info , \c recording ,
+ * \c hold , \c unhold and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
- * to send an INVITE to a different SIPre URI through the plugin, while
+ * to send an INVITE to a different SIP URI through the plugin, while
  * \c accept is used to accept the call in case one is invited instead
- * of inviting; ; \c hold and \c unhold can be used respectively to put a
- * call on-hold and to resume it; finally, \c hangup can be used to terminate the
+ * of inviting; \c hold and \c unhold can be used respectively to put a
+ * call on-hold and to resume it; \c info allows you to send a generic
+ * SIP INFO request, while \c dtmf_info is focused on using INFO for DTMF
+ * instead; \c message is the method you use to send a SIP message
+ * to the other peer; \c recording is used, instead, to record the
+ * conversation to one or more .mjr files (depending on the direction you
+ * want to record); finally, \c hangup can be used to terminate the
  * communication at any time, either to hangup (BYE) an ongoing call or
  * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
  *
@@ -172,6 +178,13 @@ static struct janus_json_parameter dtmf_info_parameters[] = {
 	{"digit", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"duration", JANUS_JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter info_parameters[] = {
+	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter sipmessage_parameters[] = {
+	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -231,7 +244,8 @@ typedef enum janus_sipre_mqueue_event {
 	janus_sipre_mqueue_event_do_accept,
 	janus_sipre_mqueue_event_do_rcode,
 	janus_sipre_mqueue_event_do_update,
-	janus_sipre_mqueue_event_do_sipinfo,
+	janus_sipre_mqueue_event_do_info,
+	janus_sipre_mqueue_event_do_message,
 	janus_sipre_mqueue_event_do_bye,
 	janus_sipre_mqueue_event_do_destroy,
 	/* TODO Add other events here */
@@ -253,8 +267,10 @@ static const char *janus_sipre_mqueue_event_string(janus_sipre_mqueue_event even
 			return "rcode";
 		case janus_sipre_mqueue_event_do_update:
 			return "update";
-		case janus_sipre_mqueue_event_do_sipinfo:
-			return "sipinfo";
+		case janus_sipre_mqueue_event_do_info:
+			return "info";
+		case janus_sipre_mqueue_event_do_message:
+			return "message";
 		case janus_sipre_mqueue_event_do_bye:
 			return "bye";
 		case janus_sipre_mqueue_event_do_destroy:
@@ -624,6 +640,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg);
 int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg);
 int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg);
 void janus_sipre_cb_established(const struct sip_msg *msg, void *arg);
+void janus_sipre_cb_info(struct sip *sip, const struct sip_msg *msg, void *arg);
 void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg);
 void janus_sipre_cb_exit(void *arg);
 
@@ -2400,6 +2417,60 @@ static void *janus_sipre_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
+		} else if(!strcasecmp(request_text, "info")) {
+			/* Send a SIP INFO request: we'll need the payload type and content */
+			if(!(session->status == janus_sipre_call_status_inviting || session->status == janus_sipre_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sipre_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			JANUS_VALIDATE_JSON_OBJECT(root, info_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIPRE_ERROR_MISSING_ELEMENT, JANUS_SIPRE_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			const char *info_type = json_string_value(json_object_get(root, "type"));
+			const char *info_content = json_string_value(json_object_get(root, "content"));
+			json_t *info = json_object();
+			json_object_set_new(info, "type", json_string(info_type));
+			json_object_set_new(info, "content", json_string(info_content));
+			/* Send SIP INFO */
+			mqueue_push(mq, janus_sipre_mqueue_event_do_info,
+				janus_sipre_mqueue_payload_create(session, NULL, 0, info));
+			/* Notify the operation */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("infosent"));
+		} else if(!strcasecmp(request_text, "message")) {
+			/* Send a SIP MESSAGE request: we'll only need the content */
+			if(!(session->status == janus_sipre_call_status_inviting || session->status == janus_sipre_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sipre_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIPRE_ERROR_MISSING_ELEMENT, JANUS_SIPRE_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			const char *msg_content = json_string_value(json_object_get(root, "content"));
+			/* Send SIP MESSAGE */
+			mqueue_push(mq, janus_sipre_mqueue_event_do_message,
+				janus_sipre_mqueue_payload_create(session, NULL, 0, g_strdup(msg_content)));
+			/* Notify the operation */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("messagesent"));
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIPre INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
@@ -2436,9 +2507,12 @@ static void *janus_sipre_handler(void *data) {
 			}
 			char payload[64];
 			g_snprintf(payload, sizeof(payload), "Signal=%s\r\nDuration=%d", digit_text, duration_ms);
+			json_t *info = json_object();
+			json_object_set_new(info, "type", json_string("application/dtmf-relay"));
+			json_object_set_new(info, "content", json_string(payload));
 			/* Send "application/dtmf-relay" SIP INFO */
-			mqueue_push(mq, janus_sipre_mqueue_event_do_sipinfo,
-				janus_sipre_mqueue_payload_create(session, NULL, 0, g_strdup(payload)));
+			mqueue_push(mq, janus_sipre_mqueue_event_do_info,
+				janus_sipre_mqueue_payload_create(session, NULL, 0, info));
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("dtmfsent"));
@@ -3536,6 +3610,52 @@ void janus_sipre_cb_established(const struct sip_msg *msg, void *arg) {
 	/* FIXME Anything to do here? */
 }
 
+/* Called when an incoming SIP INFO arrives */
+void janus_sipre_cb_info(struct sip *sip, const struct sip_msg *msg, void *arg) {
+	janus_sipre_session *session = (janus_sipre_session *)arg;
+	if(session == NULL) {
+		JANUS_LOG(LOG_WARN, "[SIPre-??] janus_sipre_cb_info\n");
+		return;
+	}
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_info\n", session->account.username);
+	char *from = NULL;
+	re_sdprintf(&from, "%H", uri_encode, &msg->from.uri);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Sender: %s\n", session->account.username, from);
+	char dname[256];
+	dname[0] = '\0';
+	if(msg->from.dname.l > 0) {
+		g_snprintf(dname, sizeof(dname), "%.*s", (int)msg->from.dname.l, msg->from.dname.p);
+		JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Display: %s\n", session->account.username, dname);
+	}
+	char type[200];
+	type[0] = '\0';
+	if(msg->ctyp.type.l > 0) {
+		g_snprintf(type, sizeof(type), "%.*s", (int)msg->ctyp.type.l, msg->ctyp.type.p);
+		JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Type: %s\n", session->account.username, type);
+	}
+	const char *payload = (const char *)mbuf_buf(msg->mb);
+	char content[1024];
+	g_snprintf(content, sizeof(content), "%.*s", (int)mbuf_get_left(msg->mb), payload);
+	JANUS_LOG(LOG_HUGE, "[SIPre-%s]   -- Content: %s\n", session->account.username, content);
+	/* Notify the application */
+	json_t *info = json_object();
+	json_object_set_new(info, "sip", json_string("event"));
+	json_t *result = json_object();
+	json_object_set_new(result, "event", json_string("info"));
+	json_object_set_new(result, "sender", json_string(from));
+	if(strlen(dname)) {
+		json_object_set_new(result, "displayname", json_string(dname));
+	}
+	json_object_set_new(result, "type", json_string(type));
+	json_object_set_new(result, "content", json_string(content));
+	json_object_set_new(info, "result", result);
+	int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, info, NULL);
+	JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+	json_decref(info);
+	/* Send a 200 back */
+	mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 200, session));
+}
+
 /* Called when the session fails to connect or is terminated by the peer */
 void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
@@ -3845,7 +3965,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 					"application/sdp", NULL,
 					janus_sipre_cb_auth, session, FALSE,
 					janus_sipre_cb_offer, janus_sipre_cb_answer,
-					janus_sipre_cb_established, NULL, NULL,
+					janus_sipre_cb_established, janus_sipre_cb_info, NULL,
 					janus_sipre_cb_closed, session, NULL);
 			} else {
 				/* Connection already accepted */
@@ -3912,28 +4032,52 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			g_free(payload);
 			break;
 		}
-		case janus_sipre_mqueue_event_do_sipinfo: {
+		case janus_sipre_mqueue_event_do_info: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending SIP INFO (DTMF): %s\n", session->account.username, (char *)payload->data);
+			json_t *info = (json_t *)payload->data;
+			const char *type = json_string_value(json_object_get(info, "type"));
+			const char *content = json_string_value(json_object_get(info, "content"));
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending SIP INFO (%s, %s)\n", session->account.username, type, content);
 			/* Convert the SDP into a struct mbuf */
-			struct mbuf *mb = mbuf_alloc(strlen((char *)payload->data)+1);
-			mbuf_printf(mb, "%s", (char *)payload->data);
+			struct mbuf *mb = mbuf_alloc(strlen(content)+1);
+			mbuf_printf(mb, "%s", content);
 			mbuf_set_pos(mb, 0);
-			g_free(payload->data);
-			/* Send the 200 OK */
-			int err = sipsess_info(session->stack.sess, "application/dtmf-relay", mb, NULL, NULL);
+			/* Send the SIP INFO */
+			int err = sipsess_info(session->stack.sess, type, mb, NULL, NULL);
 			if(err != 0) {
 				JANUS_LOG(LOG_ERR, "Error attempting to send the SIP INFO: %d (%s)\n", err, strerror(err));
 				/* Tell the browser... */
 				json_t *event = json_object();
 				json_object_set_new(event, "sip", json_string("event"));
 				json_t *result = json_object();
-				json_object_set_new(result, "event", json_string("dtmferror"));
+				json_object_set_new(result, "event", json_string("infoerror"));
 				json_object_set_new(result, "code", json_integer(err));
 				json_object_set_new(result, "reason", json_string(strerror(err)));
 				json_object_set_new(event, "result", result);
 			}
+			mem_deref(mb);
+			json_decref(info);
+			g_free(payload);
+			break;
+		}
+		case janus_sipre_mqueue_event_do_message: {
+			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
+			janus_sipre_session *session = (janus_sipre_session *)payload->session;
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Sending SIP MESSAGE: %s\n", session->account.username, (char *)payload->data);
+			/* Convert the SDP into a struct mbuf */
+			struct mbuf *mb = mbuf_alloc(strlen((char *)payload->data)+1);
+			mbuf_printf(mb, "%s", (char *)payload->data);
+			mbuf_set_pos(mb, 0);
+			g_free(payload->data);
+			/* FIXME This is only a placeholder... there's no way to send SIP MESSAGE apparently? */
+			json_t *event = json_object();
+			json_object_set_new(event, "sip", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("messageerror"));
+			json_object_set_new(result, "code", json_integer(-1));
+			json_object_set_new(result, "reason", json_string("SIP MESSAGE currently unsupported"));
+			json_object_set_new(event, "result", result);
 			mem_deref(mb);
 			g_free(payload);
 			break;
