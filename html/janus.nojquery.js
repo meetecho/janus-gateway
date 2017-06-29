@@ -304,6 +304,9 @@ function Janus(gatewayCallbacks) {
 	if(iceServers === undefined || iceServers === null)
 		iceServers = [{urls: "stun:stun.l.google.com:19302"}];
 	var iceTransportPolicy = gatewayCallbacks.iceTransportPolicy;
+	var bundlePolicy = gatewayCallbacks.bundlePolicy;
+	if(!bundlePolicy)
+		bundlePolicy = "max-bundle";
 	// Whether IPv6 candidates should be gathered
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
@@ -1292,7 +1295,7 @@ function Janus(gatewayCallbacks) {
 		var config = pluginHandle.webrtcStuff;
 		Janus.debug("streamsDone:", stream);
 		config.myStream = stream;
-		var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy};
+		var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
 		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
 		var pc_constraints = {
 			"optional": [{"DtlsSrtpKeyAgreement": true}]
