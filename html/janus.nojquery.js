@@ -156,11 +156,10 @@ Janus.init = function(options) {
 					to.srcObject = from.srcObject;
 				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
+				} else {
+					Janus.error("Error reattaching stream to element");
 				}
-			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
-				to.src = from.src;
-			}
-			else {
+			} else {
 				to.srcObject = from.srcObject;
 			}
 		};
