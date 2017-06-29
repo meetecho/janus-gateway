@@ -311,6 +311,7 @@ typedef struct janus_sip_account {
 
 typedef struct janus_sip_media {
 	char *remote_ip;
+	gboolean earlymedia;
 	gboolean ready;
 	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
@@ -973,6 +974,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->callid = NULL;
 	session->sdp = NULL;
 	session->media.remote_ip = NULL;
+	session->media.earlymedia = FALSE;
 	session->media.ready = FALSE;
 	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
@@ -2026,7 +2028,7 @@ static void *janus_sip_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string("accepted"));
+				json_object_set_new(info, "event", json_string(answer ? "accepted" : "accepting"));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
@@ -2050,7 +2052,7 @@ static void *janus_sip_handler(void *data) {
 			g_free(sdp);
 			/* Send an ack back */
 			result = json_object();
-			json_object_set_new(result, "event", json_string("accepted"));
+			json_object_set_new(result, "event", json_string(answer ? "accepted" : "accepting"));
 			if(answer) {
 				/* Start the media */
 				session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
@@ -2078,6 +2080,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			session->media.earlymedia = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sip_call_status_closing;
@@ -2200,6 +2203,7 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			session->media.earlymedia = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sip_call_status_closing;
@@ -2615,6 +2619,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				}
 			} else if(callstate == nua_callstate_terminated &&
 					(session->stack->s_nh_i == nh || session->stack->s_nh_i == NULL)) {
+				session->media.earlymedia = FALSE;
 				session->media.ready = FALSE;
 				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_idle;
@@ -2909,9 +2914,29 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 		case nua_r_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 
+			gboolean in_progress = FALSE;
 			if(status < 200) {
-				/* Not ready yet (FIXME May this be pranswer?? we don't handle it yet...) */
-				break;
+				/* Not ready yet, either notify the user (e.g., "ringing") or handle early media (if it's a 183) */
+				if(status == 180) {
+					/* Ringing, notify the application */
+					json_t *ringing = json_object();
+					json_object_set_new(ringing, "sip", json_string("event"));
+					json_t *result = json_object();
+					json_object_set_new(result, "event", json_string("ringing"));
+					json_object_set_new(ringing, "result", result);
+					int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, ringing, NULL);
+					JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+					json_decref(ringing);
+					break;
+				} else if(status == 183) {
+					/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
+					if(!sip->sip_payload->pl_data)
+						break;
+					in_progress = TRUE;
+				} else {
+					/* Nothing to do, let's wait for a 200 OK */
+					break;
+				}
 			} else if(status == 401 || status == 407) {
 				char auth[256];
 				const char* scheme;
@@ -2959,7 +2984,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				break;
 			}
 			/* Send an ACK, if needed */
-			if(!session->media.autoack) {
+			if(!in_progress && !session->media.autoack) {
 				char *route = sip->sip_record_route ? url_as_string(session->stack->s_home, sip->sip_record_route->r_url) : NULL;
 				JANUS_LOG(LOG_INFO, "Sending ACK (route=%s)\n", route ? route : "none");
 				nua_ack(nh,
@@ -2978,6 +3003,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_ERR, "\tWe asked for mandatory SRTP but didn't get any in the reply!\n");
 				janus_sdp_free(sdp);
 				/* Hangup immediately */
+				session->media.earlymedia = FALSE;
 				session->media.ready = FALSE;
 				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_closing;
@@ -2991,6 +3017,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_ERR, "\tNo remote IP address found for RTP, something's wrong with the SDP!\n");
 				janus_sdp_free(sdp);
 				/* Hangup immediately */
+				session->media.earlymedia = FALSE;
 				session->media.ready = FALSE;
 				session->media.on_hold = FALSE;
 				session->status = janus_sip_call_status_closing;
@@ -3008,24 +3035,36 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
-			if(update) {
+			if(update && !session->media.earlymedia) {
 				/* Don't push to the browser if this is in response to a hold/unhold we sent ourselves */
 				JANUS_LOG(LOG_VERB, "This is an update to an existing call (possibly in response to hold/unhold)\n");
 				break;
 			}
-			GError *error = NULL;
-			char tname[16];
-			g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
-			g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
-			if(error != NULL) {
-				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+			if(!session->media.earlymedia) {
+				GError *error = NULL;
+				char tname[16];
+				g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+				g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
+				if(error != NULL) {
+					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+				}
 			}
-			/* Send SDP to the browser */
-			json_t *jsep = json_pack("{ssss}", "type", "answer", "sdp", fixed_sdp);
+			/* Send event back to the browser */
+			json_t *jsep = NULL;
+			if(!session->media.earlymedia) {
+				jsep = json_pack("{ssss}", "type", "answer", "sdp", fixed_sdp);
+			} else {
+				/* We've received the 200 OK after the 183, we can remove the flag now */
+				session->media.earlymedia = FALSE;
+			}
+			if(in_progress) {
+				/* If we just received the 183, set the flag instead so that we can handle the 200 OK differently */
+				session->media.earlymedia = TRUE;
+			}
 			json_t *call = json_object();
 			json_object_set_new(call, "sip", json_string("event"));
 			json_t *calling = json_object();
-			json_object_set_new(calling, "event", json_string("accepted"));
+			json_object_set_new(calling, "event", json_string(in_progress ? "progress" : "accepted"));
 			json_object_set_new(calling, "username", json_string(session->callee));
 			json_object_set_new(call, "result", calling);
 			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, call, jsep);
@@ -3036,7 +3075,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "event", json_string("accepted"));
+				json_object_set_new(info, "event", json_string(in_progress ? "progress" : "accepted"));
 				if(session->callid)
 					json_object_set_new(info, "call-id", json_string(session->callid));
 				json_object_set_new(info, "username", json_string(session->callee));
