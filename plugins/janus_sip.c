@@ -30,13 +30,19 @@
  * as events with the same transaction.
  *
  * The supported requests are \c register , \c unregister , \c call ,
- * \c accept, \c hold , \c unhold and \c hangup . \c register can be used,
+ * \c accept, \c info , \c message , \c dtmf_info , \c recording ,
+ * \c hold , \c unhold and \c hangup . \c register can be used,
  * as the name suggests, to register a username at a SIP registrar to
  * call and be called, while \c unregister unregisters it; \c call is used
  * to send an INVITE to a different SIP URI through the plugin, while
  * \c accept is used to accept the call in case one is invited instead
  * of inviting; \c hold and \c unhold can be used respectively to put a
- * call on-hold and to resume it; finally, \c hangup can be used to terminate the
+ * call on-hold and to resume it; \c info allows you to send a generic
+ * SIP INFO request, while \c dtmf_info is focused on using INFO for DTMF
+ * instead; \c message is the method you use to send a SIP message
+ * to the other peer; \c recording is used, instead, to record the
+ * conversation to one or more .mjr files (depending on the direction you
+ * want to record); finally, \c hangup can be used to terminate the
  * communication at any time, either to hangup (BYE) an ongoing call or
  * to cancel/decline (CANCEL/BYE) a call that hasn't started yet.
  *
@@ -170,6 +176,13 @@ static struct janus_json_parameter recording_parameters[] = {
 static struct janus_json_parameter dtmf_info_parameters[] = {
 	{"digit", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"duration", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
+static struct janus_json_parameter info_parameters[] = {
+	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+};
+static struct janus_json_parameter sipmessage_parameters[] = {
+	{"content", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 
 /* Useful stuff */
@@ -2402,6 +2415,59 @@ static void *janus_sip_handler(void *data) {
 			/* Notify the result */
 			result = json_object();
 			json_object_set_new(result, "event", json_string("recordingupdated"));
+		} else if(!strcasecmp(request_text, "info")) {
+			/* Send a SIP INFO request: we'll need the payload type and content */
+			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			JANUS_VALIDATE_JSON_OBJECT(root, info_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			const char *info_type = json_string_value(json_object_get(root, "type"));
+			const char *info_content = json_string_value(json_object_get(root, "content"));
+			nua_info(session->stack->s_nh_i,
+				SIPTAG_CONTENT_TYPE_STR(info_type),
+				SIPTAG_PAYLOAD_STR(info_content),
+				TAG_END());
+			/* Notify the operation */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("infosent"));
+		} else if(!strcasecmp(request_text, "message")) {
+			/* Send a SIP MESSAGE request: we'll only need the content */
+			if(!(session->status == janus_sip_call_status_inviting || session->status == janus_sip_call_status_incall)) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not in a call? status=%s)\n", janus_sip_call_status_string(session->status));
+				g_snprintf(error_cause, 512, "Wrong state (not in a call?)");
+				goto error;
+			}
+			if(session->callee == NULL) {
+				JANUS_LOG(LOG_ERR, "Wrong state (no callee?)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
+				goto error;
+			}
+			JANUS_VALIDATE_JSON_OBJECT(root, sipmessage_parameters,
+				error_code, error_cause, TRUE,
+				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
+			if(error_code != 0)
+				goto error;
+			const char *msg_content = json_string_value(json_object_get(root, "content"));
+			nua_message(session->stack->s_nh_i,
+				NUTAG_URL(session->callee),
+				SIPTAG_PAYLOAD_STR(msg_content),
+				TAG_END());
+			/* Notify the operation */
+			result = json_object();
+			json_object_set_new(result, "event", json_string("messagesent"));
 		} else if(!strcasecmp(request_text, "dtmf_info")) {
 			/* Send DMTF tones using SIP INFO
 			 * (https://tools.ietf.org/html/draft-kaplan-dispatch-info-dtmf-package-00)
@@ -2738,6 +2804,64 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			session->stack->s_nh_i = nh;
 			break;
 		}
+		case nua_i_info: {
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* We expect a payload */
+			if(!sip->sip_content_type || !sip->sip_content_type->c_type || !sip->sip_payload || !sip->sip_payload->pl_data) {
+				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				return;
+			}
+			const char *type = sip->sip_content_type->c_type;
+			char *payload = sip->sip_payload->pl_data;
+			/* Notify the application */
+			json_t *info = json_object();
+			json_object_set_new(info, "sip", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("info"));
+			char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+			json_object_set_new(result, "sender", json_string(caller_text));
+			su_free(session->stack->s_home, caller_text);
+			if(sip->sip_from && sip->sip_from->a_display && strlen(sip->sip_from->a_display) > 0) {
+				json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
+			}
+			json_object_set_new(result, "type", json_string(type));
+			json_object_set_new(result, "content", json_string(payload));
+			json_object_set_new(info, "result", result);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, info, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(info);
+			/* Send a 200 back */
+			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+			break;
+		}
+		case nua_i_message: {
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* We expect a payload */
+			if(!sip->sip_payload || !sip->sip_payload->pl_data) {
+				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
+				return;
+			}
+			char *payload = sip->sip_payload->pl_data;
+			/* Notify the application */
+			json_t *message = json_object();
+			json_object_set_new(message, "sip", json_string("event"));
+			json_t *result = json_object();
+			json_object_set_new(result, "event", json_string("message"));
+			char *caller_text = url_as_string(session->stack->s_home, sip->sip_from->a_url);
+			json_object_set_new(result, "sender", json_string(caller_text));
+			su_free(session->stack->s_home, caller_text);
+			if(sip->sip_from && sip->sip_from->a_display && strlen(sip->sip_from->a_display) > 0) {
+				json_object_set_new(result, "displayname", json_string(sip->sip_from->a_display));
+			}
+			json_object_set_new(result, "content", json_string(payload));
+			json_object_set_new(message, "result", result);
+			int ret = gateway->push_event(session->handle, &janus_sip_plugin, session->transaction, message, NULL);
+			JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+			json_decref(message);
+			/* Send a 200 back */
+			nua_respond(nh, 200, sip_status_phrase(200), TAG_END());
+			break;
+		}
 		case nua_i_options:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
 			/* FIXME Should we handle this message? for now we reply with a 405 Method Not Implemented */
@@ -2776,6 +2900,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_info:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* FIXME Should we notify the user, in case the SIP INFO returned an error? */
+			break;
+		case nua_r_message:
+			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
+			/* FIXME Should we notify the user, in case the SIP MESSAGE returned an error? */
 			break;
 		case nua_r_invite: {
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
@@ -3695,7 +3824,7 @@ gpointer janus_sip_sofia_thread(gpointer user_data) {
 	session->stack->s_nua = nua_create(session->stack->s_root,
 				janus_sip_sofia_callback,
 				session,
-				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS, UPDATE"),
+				SIPTAG_ALLOW_STR("INVITE, ACK, BYE, CANCEL, OPTIONS, UPDATE, MESSAGE, INFO"),
 				NUTAG_M_USERNAME(session->account.username),
 				NUTAG_URL(sip_url),
 				TAG_IF(session->account.sips, NUTAG_SIPS_URL(sips_url)),
