@@ -500,6 +500,8 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	curl_global_init(CURL_GLOBAL_ALL);
 #endif
 
+	g_atomic_int_set(&initialized, 1);
+
 	GError *error = NULL;
 	/* Start the sessions watchdog */
 	watchdog = g_thread_try_new("textroom watchdog", &janus_textroom_watchdog, NULL, &error);
@@ -515,7 +517,6 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the TextRoom handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
-	g_atomic_int_set(&initialized, 1);
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_TEXTROOM_NAME);
 	return 0;
 }
