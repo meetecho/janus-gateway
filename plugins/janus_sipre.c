@@ -465,6 +465,7 @@ typedef struct janus_sipre_stack {
 
 typedef struct janus_sipre_media {
 	char *remote_ip;
+	gboolean earlymedia;
 	gboolean ready;
 	gboolean autoack;
 	gboolean require_srtp, has_srtp_local, has_srtp_remote;
@@ -1089,6 +1090,7 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->callid = NULL;
 	session->sdp = NULL;
 	session->media.remote_ip = NULL;
+	session->media.earlymedia = FALSE;
 	session->media.ready = FALSE;
 	session->media.autoack = TRUE;
 	session->media.require_srtp = FALSE;
@@ -2084,6 +2086,7 @@ static void *janus_sipre_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			session->media.earlymedia = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sipre_call_status_closing;
@@ -2202,6 +2205,7 @@ static void *janus_sipre_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (no callee?)");
 				goto error;
 			}
+			session->media.earlymedia = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sipre_call_status_closing;
@@ -3311,7 +3315,7 @@ void janus_sipre_cb_register(int err, const struct sip_msg *msg, void *arg) {
 	}
 }
 
-/* Called when SIP progress (e.g., 180 Ringing) responses are received */
+/* Called when SIP progress (e.g., 180 Ringing or 183 Session Progress) responses are received */
 void janus_sipre_cb_progress(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	char reason[256];
@@ -3319,8 +3323,22 @@ void janus_sipre_cb_progress(const struct sip_msg *msg, void *arg) {
 	if(msg->reason.l > 0) {
 		g_snprintf(reason, (msg->reason.l < 255 ? msg->reason.l+1 : 255), "%s", msg->reason.p);
 	}
-	JANUS_LOG(LOG_HUGE, "[SIPre-%s] Session progress: %u %s\n", session->account.username, msg->scode, reason);
-	/* FIXME Anything we should do with this? Notify the user? */
+	/* Not ready yet, either notify the user (e.g., "ringing") or handle early media (if it's a 183) */
+	JANUS_LOG(LOG_WARN, "[SIPre-%s] Session progress: %u %s\n", session->account.username, msg->scode, reason);
+	if(msg->scode == 180) {
+		/* Ringing, notify the application */
+		json_t *ringing = json_object();
+		json_object_set_new(ringing, "sip", json_string("event"));
+		json_t *result = json_object();
+		json_object_set_new(result, "event", json_string("ringing"));
+		json_object_set_new(ringing, "result", result);
+		int ret = gateway->push_event(session->handle, &janus_sipre_plugin, session->transaction, ringing, NULL);
+		JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
+		json_decref(ringing);
+	} else if(msg->scode == 183) {
+		/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
+		(void)janus_sipre_cb_answer(msg, arg);
+	}
 }
 
 /* Called upon incoming INVITEs */
@@ -3502,10 +3520,17 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	janus_sipre_session *session = (janus_sipre_session *)arg;
 	JANUS_LOG(LOG_HUGE, "[SIPre-%s] janus_sipre_cb_answer\n", session->account.username);
+	gboolean in_progress = FALSE;
+	if(msg->scode == 183)
+		in_progress = TRUE;
 	/* Get the SDP */
 	const char *answer = (const char *)mbuf_buf(msg->mb);
 	if(answer == NULL) {
 		/* No SDP? */
+		if(in_progress) {
+			/* This was a 183, so we don't care */
+			return 0;
+		}
 		JANUS_LOG(LOG_WARN, "[SIPre-%s] No SDP in the answer?\n", session->account.username);
 		return EINVAL;
 	}
@@ -3529,6 +3554,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_ERR, "We asked for mandatory SRTP but didn't get any in the reply!\n");
 		janus_sdp_free(sdp);
 		/* Hangup immediately */
+		session->media.earlymedia = FALSE;
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
 		session->status = janus_sipre_call_status_closing;
@@ -3542,6 +3568,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_ERR, "No remote IP address found for RTP, something's wrong with the SDP!\n");
 		janus_sdp_free(sdp);
 		/* Hangup immediately */
+		session->media.earlymedia = FALSE;
 		session->media.ready = FALSE;
 		session->media.on_hold = FALSE;
 		session->status = janus_sipre_call_status_closing;
@@ -3559,24 +3586,36 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 	}
 	session->media.ready = TRUE;	/* FIXME Maybe we need a better way to signal this */
-	if(update) {
+	if(update && !session->media.earlymedia) {
 		/* Don't push to the browser if this is in response to a hold/unhold we sent ourselves */
 		JANUS_LOG(LOG_WARN, "This is an update to an existing call (possibly in response to hold/unhold)\n");
 		return 0;
 	}
-	GError *error = NULL;
-	char tname[16];
-	g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
-	g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
-	if(error != NULL) {
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+	if(!session->media.earlymedia) {
+		GError *error = NULL;
+		char tname[16];
+		g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
+		g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
+		if(error != NULL) {
+			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
+		}
 	}
-	/* Send SDP to the browser */
-	json_t *jsep = json_pack("{ssss}", "type", "answer", "sdp", sdp_answer);
+	/* Send event back to the browser */
+	json_t *jsep = NULL;
+	if(!session->media.earlymedia) {
+		jsep = json_pack("{ssss}", "type", "answer", "sdp", sdp_answer);
+	} else {
+		/* We've received the 200 OK after the 183, we can remove the flag now */
+		session->media.earlymedia = FALSE;
+	}
+	if(in_progress) {
+		/* If we just received the 183, set the flag instead so that we can handle the 200 OK differently */
+		session->media.earlymedia = TRUE;
+	}
 	json_t *call = json_object();
 	json_object_set_new(call, "sip", json_string("event"));
 	json_t *calling = json_object();
-	json_object_set_new(calling, "event", json_string("accepted"));
+	json_object_set_new(calling, "event", json_string(in_progress ? "progress" : "accepted"));
 	json_object_set_new(calling, "username", json_string(session->callee));
 	json_object_set_new(call, "result", calling);
 	if(!session->destroyed) {
@@ -3589,7 +3628,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
 		json_t *info = json_object();
-		json_object_set_new(info, "event", json_string("accepted"));
+		json_object_set_new(info, "event", json_string(in_progress ? "progress" : "accepted"));
 		if(session->callid)
 			json_object_set_new(info, "call-id", json_string(session->callid));
 		json_object_set_new(info, "username", json_string(session->callee));
@@ -3699,6 +3738,7 @@ void janus_sipre_cb_closed(int err, const struct sip_msg *msg, void *arg) {
 	/* Cleanup */
 	mem_deref(session->stack.sess);
 	session->stack.sess = NULL;
+	session->media.earlymedia = FALSE;
 	session->media.ready = FALSE;
 	session->media.on_hold = FALSE;
 	session->status = janus_sipre_call_status_idle;
@@ -3980,6 +4020,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 					if(payload->data == NULL) {
 						/* Send an error message on the current call */
 						err = sipsess_reject(session->stack.sess, payload->rcode, janus_sipre_error_reason(payload->rcode), NULL);
+						session->media.earlymedia = FALSE;
 						session->media.ready = FALSE;
 						session->media.on_hold = FALSE;
 						session->status = janus_sipre_call_status_idle;
@@ -4113,6 +4154,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				json_object_set_new(info, "reason", json_string("BYE"));
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
 			}
+			session->media.earlymedia = FALSE;
 			session->media.ready = FALSE;
 			session->media.on_hold = FALSE;
 			session->status = janus_sipre_call_status_idle;
