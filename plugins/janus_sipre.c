@@ -148,7 +148,6 @@ static struct janus_json_parameter register_parameters[] = {
 	{"sips", JANUS_JSON_BOOL, 0},
 	{"username", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"secret", JANUS_JSON_STRING, 0},
-	{"ha1_secret", JANUS_JSON_STRING, 0},
 	{"authuser", JANUS_JSON_STRING, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
 	{"refresh", JANUS_JSON_BOOL, 0}
@@ -192,7 +191,6 @@ static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
 static char *local_ip = NULL;
-static int keepalive_interval = 120;
 static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
@@ -438,7 +436,6 @@ typedef enum {
 
 typedef struct janus_sipre_account {
 	char *identity;
-	char *user_agent;		/* Used to override the general UA string */
 	gboolean sips;
 	char *username;
 	char *display_name;		/* Used for outgoing calls in the From header */
@@ -743,8 +740,8 @@ static void *janus_sipre_watchdog(void *data) {
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
 					sipsess_close_all(session->stack.sess_sock);
-					mem_deref(session->stack.dns_client);
-					mem_deref(session->stack.sipstack);
+					sip_close(session->stack.sipstack, FALSE);
+					session->stack.sipstack = NULL;
 					if(session->account.identity) {
 					    g_hash_table_remove(identities, session->account.identity);
 					    g_free(session->account.identity);
@@ -770,10 +767,6 @@ static void *janus_sipre_watchdog(void *data) {
 					if(session->account.display_name) {
 					    g_free(session->account.display_name);
 					    session->account.display_name = NULL;
-					}
-					if(session->account.user_agent) {
-					    g_free(session->account.user_agent);
-					    session->account.user_agent = NULL;
 					}
 					if(session->account.authuser) {
 					    g_free(session->account.authuser);
@@ -891,15 +884,13 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			}
 		}
 
-		item = janus_config_get_item_drilldown(config, "general", "keepalive_interval");
-		if(item && item->value) {
-			keepalive_interval = atoi(item->value);
-		}
-		JANUS_LOG(LOG_VERB, "SIPre keep-alive interval set to %d seconds\n", keepalive_interval);
-
 		item = janus_config_get_item_drilldown(config, "general", "register_ttl");
 		if(item && item->value) {
 			register_ttl = atol(item->value);
+			if(register_ttl <= 0) {
+				JANUS_LOG(LOG_WARN, "Invalid value of register_ttl, using default instead\n");
+				register_ttl = JANUS_DEFAULT_REGISTER_TTL;
+			}
 		}
 		JANUS_LOG(LOG_VERB, "SIPre registration TTL set to %d seconds\n", register_ttl);
 
@@ -1075,7 +1066,6 @@ void janus_sipre_create_session(janus_plugin_session *handle, int *error) {
 	session->account.sips = TRUE;
 	session->account.username = NULL;
 	session->account.display_name = NULL;
-	session->account.user_agent = NULL;
 	session->account.authuser = NULL;
 	session->account.secret = NULL;
 	session->account.secret_type = janus_sipre_secret_type_unknown;
@@ -1189,7 +1179,6 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
 	json_object_set_new(info, "display_name", session->account.display_name ? json_string(session->account.display_name) : NULL);
-	json_object_set_new(info, "user_agent", session->account.user_agent ? json_string(session->account.user_agent) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
 	json_object_set_new(info, "registration_status", json_string(janus_sipre_registration_status_string(session->account.registration_status)));
 	json_object_set_new(info, "call_status", json_string(janus_sipre_call_status_string(session->status)));
@@ -1542,7 +1531,7 @@ static void *janus_sipre_handler(void *data) {
 			if(reg_ttl && json_is_integer(reg_ttl))
 				ttl = json_integer_value(reg_ttl);
 			if(ttl <= 0)
-				ttl = JANUS_DEFAULT_REGISTER_TTL;
+				ttl = register_ttl;
 			session->stack.expires = ttl;
 
 			/* Parse display name */
@@ -1550,12 +1539,6 @@ static void *janus_sipre_handler(void *data) {
 			json_t *display_name = json_object_get(root, "display_name");
 			if(display_name && json_is_string(display_name))
 				display_name_text = json_string_value(display_name);
-
-			/* Parse user agent */
-			const char* user_agent_text = NULL;
-			json_t *user_agent = json_object_get(root, "user_agent");
-			if(user_agent && json_is_string(user_agent))
-				user_agent_text = json_string_value(user_agent);
 
 			/* Now the user part (always needed, even for the guest case) */
 			json_t *username = json_object_get(root, "username");
@@ -1589,31 +1572,17 @@ static void *janus_sipre_handler(void *data) {
 				send_register = FALSE;
 			} else {
 				json_t *secret = json_object_get(root, "secret");
-				json_t *ha1_secret = json_object_get(root, "ha1_secret");
 				json_t *authuser = json_object_get(root, "authuser");
-				if(!secret && !ha1_secret) {
+				if(!secret) {
 					g_free(user_id);
 					g_free(user_host);
-					JANUS_LOG(LOG_ERR, "Missing element (secret or ha1_secret)\n");
+					JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
 					error_code = JANUS_SIPRE_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (secret or ha1_secret)");
+					g_snprintf(error_cause, 512, "Missing element (secret)");
 					goto error;
 				}
-				if(secret && ha1_secret) {
-					g_free(user_id);
-					g_free(user_host);
-					JANUS_LOG(LOG_ERR, "Conflicting elements specified (secret and ha1_secret)\n");
-					error_code = JANUS_SIPRE_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Conflicting elements specified (secret and ha1_secret)");
-					goto error;
-				}
-				if(secret) {
-					secret_text = json_string_value(secret);
-					secret_type = janus_sipre_secret_type_plaintext;
-				} else {
-					secret_text = json_string_value(ha1_secret);
-					secret_type = janus_sipre_secret_type_hashed;
-				}
+				secret_text = json_string_value(secret);
+				secret_type = janus_sipre_secret_type_plaintext;
 				if(authuser) {
 					authuser_text = json_string_value(authuser);
 				}
@@ -1653,9 +1622,6 @@ static void *janus_sipre_handler(void *data) {
 				if(session->account.outbound_proxy != NULL)
 					g_free(session->account.outbound_proxy);
 				session->account.outbound_proxy = NULL;
-				if(session->account.user_agent != NULL)
-					g_free(session->account.user_agent);
-				session->account.user_agent = NULL;
 				session->account.registration_status = janus_sipre_registration_status_unregistered;
 			}
 			session->account.identity = g_strdup(username_text);
@@ -1667,9 +1633,6 @@ static void *janus_sipre_handler(void *data) {
 			session->account.secret_type = secret_type;
 			if(display_name_text) {
 				session->account.display_name = g_strdup(display_name_text);
-			}
-			if(user_agent_text) {
-				session->account.user_agent = g_strdup(user_agent_text);
 			}
 			if(proxy_text) {
 				session->account.proxy = g_strdup(proxy_text);
@@ -3777,7 +3740,8 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 				return;
 			}
 			/* Let's allocate the stack now */
-			err = sip_alloc(&session->stack.sipstack, session->stack.dns_client, 32, 32, 32, JANUS_SIPRE_NAME, janus_sipre_cb_exit, session);
+			err = sip_alloc(&session->stack.sipstack, session->stack.dns_client, 32, 32, 32,
+				(user_agent ? user_agent : JANUS_SIPRE_NAME), janus_sipre_cb_exit, session);
 			if(err) {
 				JANUS_LOG(LOG_ERR, "Failed to initialize libre SIP stack: %d (%s)\n", err, strerror(err));
 				mem_deref(session->stack.dns_client);
@@ -3801,7 +3765,7 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			err |= sip_transp_add(session->stack.sipstack, SIP_TRANSP_TLS, &laddrs, session->stack.tls);
 			err |= sipsess_listen(&session->stack.sess_sock, session->stack.sipstack, 32, janus_sipre_cb_incoming, session);
 			if(err) {
-				mem_deref(session->stack.sipstack);
+				sip_close(session->stack.sipstack, TRUE);
 				session->stack.sipstack = NULL;
 				mem_deref(session->stack.tls);
 				session->stack.tls = NULL;

@@ -15,6 +15,7 @@ behind_nat = no
 
 ; User-Agent string to be used
 ; user_agent = Cool WebRTC Gateway
+
 ; Expiration time for registrations
 register_ttl = 3600
 
