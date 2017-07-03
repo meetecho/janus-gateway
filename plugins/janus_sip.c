@@ -687,6 +687,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 				append = FALSE;
 				/* Look for the session this message belongs to */
 				janus_sip_session *session = NULL;
+				janus_mutex_lock(&sessions_mutex);
 				if(strlen(call_id))
 					session = g_hash_table_lookup(callids, call_id);
 				if(!session) {
@@ -711,6 +712,7 @@ static void janus_sip_sofia_logger(void *stream, char const *fmt, va_list ap) {
 						}
 					}
 				}
+				janus_mutex_unlock(&sessions_mutex);
 				if(session) {
 					/* Notify event handlers about the content of the whole outgoing SIP message */
 					json_t *info = json_object();
@@ -1551,7 +1553,9 @@ static void *janus_sip_handler(void *data) {
 			if(refresh) {
 				/* Cleanup old values */
 				if(session->account.identity != NULL) {
+					janus_mutex_lock(&sessions_mutex);
 					g_hash_table_remove(identities, session->account.identity);
+					janus_mutex_unlock(&sessions_mutex);
 					g_free(session->account.identity);
 				}
 				session->account.identity = NULL;
@@ -1581,7 +1585,9 @@ static void *janus_sip_handler(void *data) {
 				session->account.registration_status = janus_sip_registration_status_unregistered;
 			}
 			session->account.identity = g_strdup(username_text);
+			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(identities, session->account.identity, session);
+			janus_mutex_unlock(&sessions_mutex);
 			session->account.sips = sips;
 			session->account.username = g_strdup(user_id);
 			session->account.authuser = g_strdup(authuser_text ? authuser_text : user_id);
@@ -1896,7 +1902,9 @@ static void *janus_sip_handler(void *data) {
 			/* Send INVITE */
 			session->callee = g_strdup(uri_text);
 			session->callid = g_strdup(callid);
+			janus_mutex_lock(&sessions_mutex);
 			g_hash_table_insert(callids, session->callid, session);
+			janus_mutex_unlock(&sessions_mutex);
 			session->media.autoack = do_autoack;
 			nua_invite(session->stack->s_nh_i,
 				SIPTAG_FROM_STR(from_hdr),
@@ -2641,8 +2649,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					gateway->notify_event(&janus_sip_plugin, session->handle, info);
 				}
 				/* Get rid of any PeerConnection that may have been set up */
-				if(session->callid)
+				if(session->callid) {
+					janus_mutex_lock(&sessions_mutex);
 					g_hash_table_remove(callids, session->callid);
+					janus_mutex_unlock(&sessions_mutex);
+				}
 				g_free(session->callid);
 				session->callid = NULL;
 				g_free(session->transaction);
@@ -2733,8 +2744,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				/* New incoming call */
 				session->callee = g_strdup(url_as_string(session->stack->s_home, sip->sip_from->a_url));
 				session->callid = sip && sip->sip_call_id ? g_strdup(sip->sip_call_id->i_id) : NULL;
-				if(session->callid)
+				if(session->callid) {
+					janus_mutex_lock(&sessions_mutex);
 					g_hash_table_insert(callids, session->callid, session);
+					janus_mutex_unlock(&sessions_mutex);
+				}
 				session->status = janus_sip_call_status_invited;
 				/* Clean up SRTP stuff from before first, in case it's still needed */
 				janus_sip_srtp_cleanup(session);
