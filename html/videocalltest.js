@@ -134,7 +134,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
 										if(result["list"] !== undefined && result["list"] !== null) {
@@ -273,7 +273,7 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -308,13 +308,22 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
-									if($('#remotevideo').length === 0)
-										$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+									Janus.debug(stream);
+									if($('#remotevideo').length > 0) {
+										// Been here already: let's see if anything changed
+										var videoTracks = stream.getVideoTracks();
+										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
+											$('#novideo').remove();
+											if($("#remotevideo").get(0).videoWidth)
+												$('#remotevideo').show();
+										}
+									}
+									$('#videoright').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 									// Show the video, hide the spinner and show the resolution when we get a playing event
 									$("#remotevideo").bind("playing", function () {
 										$('#waitingvideo').remove();
-										$('#remotevideo').removeClass('hide');
+										if(this.videoWidth)
+											$('#remotevideo').removeClass('hide').show();
 										if(spinner !== null && spinner !== undefined)
 											spinner.stop();
 										spinner = null;
@@ -328,7 +337,7 @@ $(document).ready(function() {
 										// No remote video
 										$('#remotevideo').hide();
 										$('#videoright').append(
-											'<div class="no-video-container">' +
+											'<div id="novideo" class="no-video-container">' +
 												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 												'<span class="no-video-text">No remote video available</span>' +
 											'</div>');
@@ -400,6 +409,7 @@ $(document).ready(function() {
 									$('#myvideo').remove();
 									$('#remotevideo').remove();
 									$("#videoleft").parent().unblock();
+									$('.no-video-container').remove();
 									$('#callee').empty().hide();
 									yourusername = null;
 									$('#curbitrate').hide();
