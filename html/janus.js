@@ -243,8 +243,6 @@ function Janus(gatewayCallbacks) {
 		iceServers = [{urls: "stun:stun.l.google.com:19302"}];
 	var iceTransportPolicy = gatewayCallbacks.iceTransportPolicy;
 	var bundlePolicy = gatewayCallbacks.bundlePolicy;
-	if(!bundlePolicy)
-		bundlePolicy = "max-bundle";
 	// Whether IPv6 candidates should be gathered
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
