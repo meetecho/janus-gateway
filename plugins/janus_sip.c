@@ -2952,7 +2952,6 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					break;
 				}
 			} else if(status == 401 || status == 407) {
-				char auth[256];
 				const char* scheme;
 				const char* realm;
 				if(status == 401) {
@@ -2966,14 +2965,30 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					scheme = proxy_auth->au_scheme;
 					realm = msg_params_find(proxy_auth->au_params, "realm=");
 				}
+				char authuser[100], secret[100];
+				memset(authuser, 0, sizeof(authuser));
+				memset(secret, 0, sizeof(secret));
+				if(session->account.authuser && strchr(session->account.authuser, ':')) {
+					/* The authuser contains a colon: wrap it in quotes */
+					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
+				} else {
+					g_snprintf(authuser, sizeof(authuser), "%s", session->account.authuser);
+				}
+				if(session->account.secret && strchr(session->account.secret, ':')) {
+					/* The secret contains a colon: wrap it in quotes */
+					g_snprintf(secret, sizeof(secret), "\"%s\"", session->account.secret);
+				} else {
+					g_snprintf(secret, sizeof(secret), "%s", session->account.secret);
+				}
+				char auth[256];
 				memset(auth, 0, sizeof(auth));
 				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					scheme,
 					realm,
-					session->account.authuser ? session->account.authuser : "null",
+					authuser,
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
-					session->account.secret ? session->account.secret : "null");
+					secret);
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
 				/* Authenticate */
 				nua_authenticate(nh,
@@ -3135,15 +3150,30 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				sip_www_authenticate_t const* www_auth = sip->sip_www_authenticate;
 				char const* scheme = www_auth->au_scheme;
 				const char* realm = msg_params_find(www_auth->au_params, "realm=");
+				char authuser[100], secret[100];
+				memset(authuser, 0, sizeof(authuser));
+				memset(secret, 0, sizeof(secret));
+				if(session->account.authuser && strchr(session->account.authuser, ':')) {
+					/* The authuser contains a colon: wrap it in quotes */
+					g_snprintf(authuser, sizeof(authuser), "\"%s\"", session->account.authuser);
+				} else {
+					g_snprintf(authuser, sizeof(authuser), "%s", session->account.authuser);
+				}
+				if(session->account.secret && strchr(session->account.secret, ':')) {
+					/* The secret contains a colon: wrap it in quotes */
+					g_snprintf(secret, sizeof(secret), "\"%s\"", session->account.secret);
+				} else {
+					g_snprintf(secret, sizeof(secret), "%s", session->account.secret);
+				}
 				char auth[256];
 				memset(auth, 0, sizeof(auth));
 				g_snprintf(auth, sizeof(auth), "%s%s:%s:%s:%s%s",
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
 					scheme,
 					realm,
-					session->account.authuser ? session->account.authuser : "null",
+					authuser,
 					session->account.secret_type == janus_sip_secret_type_hashed ? "HA1+" : "",
-					session->account.secret);
+					secret);
 				JANUS_LOG(LOG_VERB, "\t%s\n", auth);
 				/* Authenticate */
 				nua_authenticate(nh,
