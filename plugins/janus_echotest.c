@@ -875,14 +875,14 @@ static void *janus_echotest_handler(void *data) {
 			goto error;
 		}
 		json_t *substream = json_object_get(root, "substream");
-		if(substream && (!json_is_integer(substream) || (json_integer_value(substream) < 0 && json_integer_value(substream) > 2))) {
+		if(substream && (!json_is_integer(substream) || json_integer_value(substream) < 0 || json_integer_value(substream) > 2)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (substream should be 0, 1 or 2)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid value (substream should be 0, 1 or 2)");
 			goto error;
 		}
 		json_t *temporal = json_object_get(root, "temporal");
-		if(temporal && (!json_is_integer(temporal) || (json_integer_value(temporal) < 0 && json_integer_value(temporal) > 2))) {
+		if(temporal && (!json_is_integer(temporal) || json_integer_value(temporal) < 0 || json_integer_value(temporal) > 2)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (temporal should be 0, 1 or 2)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
 			g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");

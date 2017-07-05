@@ -1851,7 +1851,7 @@ function Janus(gatewayCallbacks) {
 							}
 							if(insertAt < 0) {
 								// Append at the end
-								insertAt = lines.length-1;
+								insertAt = lines.length;
 							}
 							// Generate a couple of SSRCs
 							ssrc[1] = Math.floor(Math.random()*0xFFFFFFFF);
@@ -1876,7 +1876,7 @@ function Janus(gatewayCallbacks) {
 								}
 							}
 							lines.splice(insertAt, 0, 'a=ssrc-group:SIM ' + ssrc[0] + ' ' + ssrc[1] + ' ' + ssrc[2]);
-							offer.sdp = lines.join("\r\n");
+							offer.sdp = lines.join("\r\n") + "\r\n";
 						} else if(adapter.browserDetails.browser !== "firefox") {
 							Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
 						}

@@ -1455,6 +1455,9 @@ function Janus(gatewayCallbacks) {
 			}
 			var videoSupport = isVideoSendEnabled(media);
 			if(videoSupport === true && media != undefined && media != null) {
+				var simulcast = callbacks.simulcast === true ? true : false;
+				if(simulcast && !jsep && (media.video === undefined || media.video === false))
+					media.video = "hires";
 				if(media.video && media.video != 'screen' && media.video != 'window') {
 					var width = 0;
 					var height = 0, maxHeight = 0;
@@ -1784,7 +1787,12 @@ function Janus(gatewayCallbacks) {
 			return;
 		}
 		var config = pluginHandle.webrtcStuff;
-		Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
+		var simulcast = callbacks.simulcast === true ? true : false;
+		if(!simulcast) {
+			Janus.log("Creating offer (iceDone=" + config.iceDone + ")");
+		} else {
+			Janus.log("Creating offer (iceDone=" + config.iceDone + ", simulcast=" + simulcast + ")");
+		}
 		// https://code.google.com/p/webrtc/issues/detail?id=3508
 		var mediaConstraints = null;
 		if(adapter.browserDetails.browser == "firefox" || adapter.browserDetails.browser == "edge") {
@@ -1801,11 +1809,129 @@ function Janus(gatewayCallbacks) {
 			};
 		}
 		Janus.debug(mediaConstraints);
+		// Check if this is Firefox and we've been asked to do simulcasting
+		if(simulcast && adapter.browserDetails.browser === "firefox") {
+			// FIXME Based on https://gist.github.com/voluntas/088bc3cc62094730647b
+			Janus.log("Enabling Simulcasting for Firefox (RID)");
+			var sender = config.pc.getSenders()[1];
+			Janus.log(sender);
+			var parameters = sender.getParameters();
+			Janus.log(parameters);
+			sender.setParameters({encodings: [
+				{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
+				{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
+				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
+			]});
+		}
 		config.pc.createOffer(
 			function(offer) {
 				Janus.debug(offer);
 				if(config.mySdp === null || config.mySdp === undefined) {
 					Janus.log("Setting local description");
+					if(simulcast) {
+						// This SDP munging only works with Chrome
+						if(adapter.browserDetails.browser === "chrome") {
+							Janus.log("Enabling Simulcasting for Chrome (SDP munging)");
+							// Let's munge the SDP to add the attributes for enabling simulcasting
+							// (based on https://gist.github.com/ggarber/a19b4c33510028b9c657)
+							var lines = offer.sdp.split("\r\n");
+							var video = false;
+							var ssrc = [ -1 ], ssrc_fid = -1;
+							var cname = null, msid = null, mslabel = null, label = null;
+							var insertAt = -1;
+							for(var i=0; i<lines.length; i++) {
+								var mline = lines[i].match(/m=(\w+) */);
+								if(mline) {
+									var medium = mline[1];
+									if(medium === "video") {
+										// New video m-line: make sure it's the first one
+										if(ssrc[0] < 0) {
+											video = true;
+										} else {
+											// We're done, let's add the new attributes here
+											insertAt = i;
+											break;
+										}
+									} else {
+										// New non-video m-line: do we have what we were looking for?
+										if(ssrc[0] > -1) {
+											// We're done, let's add the new attributes here
+											insertAt = i;
+											break;
+										}
+									}
+									continue;
+								}
+								var fid = lines[i].match(/a=ssrc-group:FID (\d+) (\d+)/);
+								if(fid) {
+									ssrc[0] = fid[1];
+									ssrc_fid = fid[2];
+									lines.splice(i, 1); i--;
+									continue;
+								}
+								if(ssrc[0]) {
+									var match = lines[i].match('a=ssrc:' + ssrc[0] + ' cname:(.+)')
+									if(match) {
+										cname = match[1];
+									}
+									match = lines[i].match('a=ssrc:' + ssrc[0] + ' msid:(.+)')
+									if(match) {
+										msid = match[1];
+									}
+									match = lines[i].match('a=ssrc:' + ssrc[0] + ' mslabel:(.+)')
+									if(match) {
+										mslabel = match[1];
+									}
+									match = lines[i].match('a=ssrc:' + ssrc + ' label:(.+)')
+									if(match) {
+										label = match[1];
+									}
+									if(lines[i].indexOf('a=ssrc:' + ssrc_fid) === 0) {
+										lines.splice(i, 1); i--;
+										continue;
+									}
+									if(lines[i].indexOf('a=ssrc:' + ssrc[0]) === 0) {
+										lines.splice(i, 1); i--;
+										continue;
+									}
+								}
+								if(lines[i].length == 0) {
+									lines.splice(i, 1); i--;
+									continue;
+								}
+							}
+							if(insertAt < 0) {
+								// Append at the end
+								insertAt = lines.length;
+							}
+							// Generate a couple of SSRCs
+							ssrc[1] = Math.floor(Math.random()*0xFFFFFFFF);
+							ssrc[2] = Math.floor(Math.random()*0xFFFFFFFF);
+							// Add attributes to the SDP
+							for(var i=0; i<ssrc.length; i++) {
+								if(cname) {
+									lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' cname:' + cname);
+									insertAt++;
+								}
+								if(msid) {
+									lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' msid:' + msid);
+									insertAt++;
+								}
+								if(mslabel) {
+									lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' mslabel:' + msid);
+									insertAt++;
+								}
+								if(label) {
+									lines.splice(insertAt, 0, 'a=ssrc:' + ssrc[i] + ' label:' + msid);
+									insertAt++;
+								}
+							}
+							lines.splice(insertAt, 0, 'a=ssrc-group:SIM ' + ssrc[0] + ' ' + ssrc[1] + ' ' + ssrc[2]);
+							offer.sdp = lines.join("\r\n") + "\r\n";
+						} else if(adapter.browserDetails.browser !== "firefox") {
+							Janus.warn("simulcast=true, but this is not Chrome nor Firefox, ignoring");
+						}
+					}
 					config.mySdp = offer.sdp;
 					config.pc.setLocalDescription(offer);
 				}
