@@ -241,6 +241,7 @@ gboolean janus_h264_is_keyframe(char* buffer, int len);
 /*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
 typedef struct janus_vp8_simulcast_context {
 	uint16_t last_picid, base_picid, base_picid_prev;
+	uint8_t last_tlzi, base_tlzi, base_tlzi_prev;
 } janus_vp8_simulcast_context;
 
 /*! \brief Set (or reset) the context fields to their default values

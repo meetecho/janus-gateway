@@ -190,8 +190,10 @@ typedef struct janus_echotest_session {
 	uint32_t ssrc[3];		/* Only needed in case VP8 simulcasting is involved */
 	int rtpmapid_extmap_id;	/* Only needed in case Firefox's RID-based simulcasting is involved */
 	char *rid[3];			/* Only needed in case Firefox's RID-based simulcasting is involved */
-	int simulcast;			/* Which simulcast "layer" we should forward back */
-	int simulcast_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
+	int substream;			/* Which simulcast substream we should forward back */
+	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
+	int templayer;			/* Which simulcast temporal layer we should forward back */
+	int templayer_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	janus_vp8_simulcast_context simulcast_context;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc[3];	/* The Janus recorder instance for this user's video, if enabled (there may be more if we're simulcasting) */
@@ -399,8 +401,10 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->ssrc[0] = 0;
 	session->ssrc[1] = 0;
 	session->ssrc[2] = 0;
-	session->simulcast = -1;
-	session->simulcast_target = 0;
+	session->substream = -1;
+	session->substream_target = 0;
+	session->templayer = -1;
+	session->templayer_target = 0;
 	janus_vp8_simulcast_context_reset(&session->simulcast_context);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
@@ -451,8 +455,10 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 	if(session->ssrc[0] != 0) {
 		json_object_set_new(info, "simulcast", json_true());
-		json_object_set_new(info, "simulcast-level", json_integer(session->simulcast));
-		json_object_set_new(info, "simulcast-target", json_integer(session->simulcast_target));
+		json_object_set_new(info, "substream", json_integer(session->substream));
+		json_object_set_new(info, "substream-target", json_integer(session->substream_target));
+		json_object_set_new(info, "temporal-layer", json_integer(session->templayer));
+		json_object_set_new(info, "temporal-layer-target", json_integer(session->templayer_target));
 	}
 	if(session->arc || session->vrc[0] || session->drc) {
 		json_t *recording = json_object();
@@ -549,20 +555,20 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			if(payload == NULL)
 				return;
 			gboolean switched = FALSE;
-			if(session->simulcast != session->simulcast_target) {
+			if(session->substream != session->substream_target) {
 				/* There has been a change: let's wait for a keyframe on the target */
-				if(ssrc == session->ssrc[session->simulcast_target]) {
+				if(ssrc == session->ssrc[session->substream_target]) {
 					if(janus_vp8_is_keyframe(payload, plen)) {
 						uint32_t ssrc_old = 0;
-						if(session->simulcast != -1)
-							ssrc_old = session->ssrc[session->simulcast];
+						if(session->substream != -1)
+							ssrc_old = session->ssrc[session->substream];
 						JANUS_LOG(LOG_WARN, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
-						session->simulcast = session->simulcast_target;
+						session->substream = session->substream_target;
 						switched = TRUE;
 						/* Notify the user */
 						json_t *event = json_object();
 						json_object_set_new(event, "echotest", json_string("event"));
-						json_object_set_new(event, "simulcast", json_integer(session->simulcast));
+						json_object_set_new(event, "substream", json_integer(session->substream));
 						gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
 						json_decref(event);
 					} else {
@@ -570,11 +576,38 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 					}
 				}
 			}
-			if(ssrc != session->ssrc[session->simulcast]) {
+			if(ssrc != session->ssrc[session->substream]) {
 				JANUS_LOG(LOG_HUGE, "Dropping packet (it's from SSRC %"SCNu32", but we're only relaying SSRC %"SCNu32" now\n",
-					ssrc, session->ssrc[session->simulcast]);
+					ssrc, session->ssrc[session->substream]);
 				return;
 			}
+			/* Check if there's any temporal scalability to take into account */
+			uint16_t picid = 0;
+			uint8_t tlzi = 0;
+			uint8_t tid = 0;
+			uint8_t ybit = 0;
+			uint8_t keyidx = 0;
+			if(janus_vp8_parse_descriptor(payload, plen, &picid, &tlzi, &tid, &ybit, &keyidx) == 0) {
+				//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %u, %u, %u, %u\n", picid, tlzi, tid, ybit, keyidx);
+				if(session->templayer != session->templayer_target) {
+					/* FIXME We should be smarter in deciding when to switch */
+					session->templayer = session->templayer_target;
+					/* Notify the user */
+					json_t *event = json_object();
+					json_object_set_new(event, "echotest", json_string("event"));
+					json_object_set_new(event, "temporal", json_integer(session->templayer));
+					gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+					json_decref(event);
+				}
+				if(tid > session->templayer) {
+					JANUS_LOG(LOG_HUGE, "Dropping packet (it's temporal layer %d, but we're capping at %d)\n",
+						tid, session->templayer);
+					/* We increase the base sequence number, or there will be gaps when delivering later */
+					session->context.v_base_seq++;
+					return;
+				}
+			}
+			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(header, &session->context, TRUE, 4500);
 			janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
 			/* Send the frame back */
@@ -755,8 +788,10 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	session->ssrc[0] = 0;
 	session->ssrc[1] = 0;
 	session->ssrc[2] = 0;
-	session->simulcast = -1;
-	session->simulcast_target = 0;
+	session->substream = -1;
+	session->substream_target = 0;
+	session->templayer = -1;
+	session->templayer_target = 0;
 }
 
 /* Thread to handle incoming messages */
@@ -815,7 +850,8 @@ static void *janus_echotest_handler(void *data) {
 			session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
 			session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
-			session->simulcast_target = 0;	/* Let's start with low quality */
+			session->substream_target = 0;	/* Let's start with low quality */
+			session->templayer_target = 2;	/* Let's start with all temporal layers */
 		}
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
@@ -838,11 +874,18 @@ static void *janus_echotest_handler(void *data) {
 			g_snprintf(error_cause, 512, "Invalid value (bitrate should be a positive integer)");
 			goto error;
 		}
-		json_t *simulcast = json_object_get(root, "simulcast");
-		if(simulcast && (!json_is_integer(simulcast) || (json_integer_value(simulcast) < 0 && json_integer_value(simulcast) > 2))) {
-			JANUS_LOG(LOG_ERR, "Invalid element (simulcast should be 0, 1 or 2)\n");
+		json_t *substream = json_object_get(root, "substream");
+		if(substream && (!json_is_integer(substream) || (json_integer_value(substream) < 0 && json_integer_value(substream) > 2))) {
+			JANUS_LOG(LOG_ERR, "Invalid element (substream should be 0, 1 or 2)\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (simulcast should be 0, 1 or 2)");
+			g_snprintf(error_cause, 512, "Invalid value (substream should be 0, 1 or 2)");
+			goto error;
+		}
+		json_t *temporal = json_object_get(root, "temporal");
+		if(temporal && (!json_is_integer(temporal) || (json_integer_value(temporal) < 0 && json_integer_value(temporal) > 2))) {
+			JANUS_LOG(LOG_ERR, "Invalid element (temporal should be 0, 1 or 2)\n");
+			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid value (temporal should be 0, 1 or 2)");
 			goto error;
 		}
 		json_t *record = json_object_get(root, "record");
@@ -893,20 +936,40 @@ static void *janus_echotest_handler(void *data) {
 				/* FIXME How should we handle a subsequent "no limit" bitrate? */
 			}
 		}
-		if(simulcast) {
-			session->simulcast_target = json_integer_value(simulcast);
+		if(substream) {
+			session->substream_target = json_integer_value(substream);
 			JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
-				session->ssrc[session->simulcast], session->simulcast_target, session->simulcast);
-			if(session->simulcast_target == session->simulcast) {
+				session->ssrc[session->substream], session->substream_target, session->substream);
+			if(session->substream_target == session->substream) {
 				/* No need to do anything, we're already getting the right substream, so notify the user */
 				json_t *event = json_object();
 				json_object_set_new(event, "echotest", json_string("event"));
-				json_object_set_new(event, "simulcast", json_integer(session->simulcast));
+				json_object_set_new(event, "substream", json_integer(session->substream));
 				gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
 				json_decref(event);
 			} else {
 				/* We need to change substream, send a PLI */
-				JANUS_LOG(LOG_VERB, "Simulcasting change, sending a PLI to kickstart it\n");
+				JANUS_LOG(LOG_VERB, "Simulcasting substream change, sending a PLI to kickstart it\n");
+				char buf[12];
+				memset(buf, 0, 12);
+				janus_rtcp_pli((char *)&buf, 12);
+				gateway->relay_rtcp(session->handle, 1, buf, 12);
+			}
+		}
+		if(temporal) {
+			session->templayer_target = json_integer_value(temporal);
+			JANUS_LOG(LOG_VERB, "Setting video temporal layer to let through (simulcast): %d (was %d)\n",
+				session->templayer_target, session->templayer);
+			if(session->templayer_target == session->templayer) {
+				/* No need to do anything, we're already getting the right temporal, so notify the user */
+				json_t *event = json_object();
+				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "temporal", json_integer(session->templayer));
+				gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+				json_decref(event);
+			} else {
+				/* We need to change temporal, send a PLI */
+				JANUS_LOG(LOG_VERB, "Simulcasting temporal layer change, sending a PLI to kickstart it\n");
 				char buf[12];
 				memset(buf, 0, 12);
 				janus_rtcp_pli((char *)&buf, 12);
@@ -1076,10 +1139,10 @@ static void *janus_echotest_handler(void *data) {
 			session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
 		}
 
-		if(!audio && !video && !bitrate && !simulcast && !record && !msg_sdp) {
-			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, simulcast, record, jsep) found\n");
+		if(!audio && !video && !bitrate && !substream && !temporal && !record && !msg_sdp) {
+			JANUS_LOG(LOG_ERR, "No supported attributes (audio, video, bitrate, substream, temporal, record, jsep) found\n");
 			error_code = JANUS_ECHOTEST_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, simulcast, record, jsep) found");
+			g_snprintf(error_cause, 512, "Message error: no supported attributes (audio, video, bitrate, simulcast, temporal, record, jsep) found");
 			goto error;
 		}
 
@@ -1176,7 +1239,8 @@ static void *janus_echotest_handler(void *data) {
 				json_object_set_new(simulcast, "ssrc-0", json_integer(session->ssrc[0]));
 				json_object_set_new(simulcast, "ssrc-1", json_integer(session->ssrc[1]));
 				json_object_set_new(simulcast, "ssrc-2", json_integer(session->ssrc[2]));
-				json_object_set_new(simulcast, "simulcast", json_integer(session->simulcast));
+				json_object_set_new(simulcast, "substream", json_integer(session->substream));
+				json_object_set_new(simulcast, "temporal-layer", json_integer(session->templayer));
 				json_object_set_new(info, "simulcast", simulcast);
 			}
 			if(session->arc || session->vrc[0]) {
