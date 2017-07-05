@@ -665,7 +665,7 @@ gboolean janus_h264_is_keyframe(char* buffer, int len) {
 	return FALSE;
 }
 
-static int janus_vp8_parse_descriptor(char *buffer, int len,
+int janus_vp8_parse_descriptor(char *buffer, int len,
 		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx) {
 	if(!buffer || len < 0)
 		return -1;
@@ -726,7 +726,7 @@ static int janus_vp8_parse_descriptor(char *buffer, int len,
 	return 0;
 }
 
-static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid, uint8_t tl0picidx) {
+static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid) {
 	if(!buffer || len < 0)
 		return -1;
 	uint8_t vp8pd = *buffer;
@@ -754,12 +754,11 @@ static int janus_vp8_replace_descriptor(char *buffer, int len, uint16_t picid, u
 			}
 		}
 		if(lbit) {
-			/* Overwrite the TL0PICIDX octet */
+			/* FIXME Should we overwrite the TL0PICIDX octet? */
 			buffer++;
-			*buffer = tl0picidx;
 		}
 		if(tbit || kbit) {
-			/* TODO Overwrite the TID/Y/KEYIDX octet */
+			/* Should we overwrite the TID/Y/KEYIDX octet? */
 			buffer++;
 		}
 	}
@@ -773,9 +772,6 @@ void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context) {
 	context->last_picid = 0;
 	context->base_picid = 0;
 	context->base_picid_prev = 0;
-	context->last_tlzi = 0;
-	context->base_tlzi = 0;
-	context->base_tlzi_prev = 0;
 }
 
 void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simulcast_context *context, gboolean switched) {
@@ -789,16 +785,11 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 	/* Parse the identifiers in the VP8 payload descriptor */
 	if(janus_vp8_parse_descriptor(buffer, len, &picid, &tlzi, &tid, &ybit, &keyidx) < 0)
 		return;
-	//~ JANUS_LOG(LOG_WARN, "%"SCNu16", %"SCNu8", %"SCNu8", %"SCNu8", %"SCNu8"\n",
-		//~ picid, tlzi, tid, ybit, keyidx);
 	if(switched) {
 		context->base_picid_prev = context->last_picid;
 		context->base_picid = picid;
-		context->base_tlzi_prev = context->last_tlzi;
-		context->base_tlzi = tlzi;
 	}
 	context->last_picid = (picid-context->base_picid)+context->base_picid_prev+1;
-	context->last_tlzi = (tlzi-context->base_tlzi)+context->base_tlzi_prev+1;
 	/* Overwrite the values in the VP8 payload descriptors with the ones we have */
-	janus_vp8_replace_descriptor(buffer, len, context->last_picid, context->last_tlzi);
+	janus_vp8_replace_descriptor(buffer, len, context->last_picid);
 }

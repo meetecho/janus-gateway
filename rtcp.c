@@ -335,13 +335,8 @@ int janus_rtcp_fix_ssrc(rtcp_context *ctx, char *packet, int len, int fixssrc, u
 						brMantissa += (_ptrRTCPData[2] << 8);
 						brMantissa += (_ptrRTCPData[3]);
 						uint64_t bitRate = brMantissa << brExp;
-						if(numssrc == 1) {
-							JANUS_LOG(LOG_HUGE, "       -- -- -- REMB: %u * 2^%u = %"SCNu64" (%d SSRCs, %u)\n",
-								brMantissa, brExp, bitRate, numssrc, ntohl(remb->ssrc[0]));
-						} else {
-							JANUS_LOG(LOG_WARN, "       -- -- -- REMB: %u * 2^%u = %"SCNu64" (%d SSRCs, %u, %u, %u)\n",
-								brMantissa, brExp, bitRate, numssrc, ntohl(remb->ssrc[0]), ntohl(remb->ssrc[1]), ntohl(remb->ssrc[2]));
-						}
+						JANUS_LOG(LOG_HUGE, "       -- -- -- REMB: %u * 2^%u = %"SCNu64" (%d SSRCs, %u)\n",
+							brMantissa, brExp, bitRate, numssrc, ntohl(remb->ssrc[0]));
 					} else {
 						JANUS_LOG(LOG_HUGE, "     #%d AFB ?? -- PSFB (206)\n", pno);
 					}

@@ -3695,10 +3695,8 @@ void *janus_ice_send_thread(void *data) {
 						rtcp_fb *rtcpfb = (rtcp_fb *)(rtcpbuf+rrlen);
 						rtcp_remb *remb = (rtcp_remb *)rtcpfb->fci;
 						remb->ssrc[1] = htonl(stream->video_ssrc_peer_sim_1);
-						JANUS_LOG(LOG_WARN, "Setting SSRC #2 in REMB: %"SCNu32"\n", stream->video_ssrc_peer_sim_1);
 						if(stream->video_ssrc_peer_sim_2 && pkt->length >= 32) {
 							remb->ssrc[2] = htonl(stream->video_ssrc_peer_sim_2);
-							JANUS_LOG(LOG_WARN, "Setting SSRC #3 in REMB: %"SCNu32"\n", stream->video_ssrc_peer_sim_2);
 						}
 					}
 					/* Free old packet and update */

@@ -1766,9 +1766,9 @@ function Janus(gatewayCallbacks) {
 			var parameters = sender.getParameters();
 			Janus.log(parameters);
 			sender.setParameters({encodings: [
-				{ rid: "high", active: true, priority: "high", maxBitrate: 2000000 },
-				{ rid: "medium", active: true, priority: "medium", maxBitrate: 400000 },
-				{ rid: "low", active: true, priority: "medium", maxBitrate: 200000 }
+				{ rid: "high", active: true, priority: "high", maxBitrate: 1000000 },
+				{ rid: "medium", active: true, priority: "medium", maxBitrate: 300000 },
+				{ rid: "low", active: true, priority: "low", maxBitrate: 100000 }
 			]});
 		}
 		config.pc.createOffer(

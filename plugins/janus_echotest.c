@@ -897,12 +897,21 @@ static void *janus_echotest_handler(void *data) {
 			session->simulcast_target = json_integer_value(simulcast);
 			JANUS_LOG(LOG_VERB, "Setting video SSRC to let through (simulcast): %"SCNu32" (index %d, was %d)\n",
 				session->ssrc[session->simulcast], session->simulcast_target, session->simulcast);
-			/* Send a PLI */
-			JANUS_LOG(LOG_VERB, "Simulcasting change, sending a PLI to kickstart it\n");
-			char buf[12];
-			memset(buf, 0, 12);
-			janus_rtcp_pli((char *)&buf, 12);
-			gateway->relay_rtcp(session->handle, 1, buf, 12);
+			if(session->simulcast_target == session->simulcast) {
+				/* No need to do anything, we're already getting the right substream, so notify the user */
+				json_t *event = json_object();
+				json_object_set_new(event, "echotest", json_string("event"));
+				json_object_set_new(event, "simulcast", json_integer(session->simulcast));
+				gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+				json_decref(event);
+			} else {
+				/* We need to change substream, send a PLI */
+				JANUS_LOG(LOG_VERB, "Simulcasting change, sending a PLI to kickstart it\n");
+				char buf[12];
+				memset(buf, 0, 12);
+				janus_rtcp_pli((char *)&buf, 12);
+				gateway->relay_rtcp(session->handle, 1, buf, 12);
+			}
 		}
 		if(record) {
 			if(msg_sdp) {

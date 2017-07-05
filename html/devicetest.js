@@ -263,6 +263,13 @@ $(document).ready(function() {
 											$('#datasend').val('').attr('disabled', true);
 											$('#datarecv').val('');
 											$('#outputdeviceset').html('Output device<span class="caret"></span>');
+											return;
+										}
+										// Any loss?
+										var status = result["status"];
+										if(status === "slow_link") {
+											var bitrate = result["bitrate"];
+											toastr.warning("The bitrate has been cut to " + (bitrate/1000) + "kbps", "Packet loss?", {timeOut: 2000});
 										}
 									}
 									// Is simulcast in place?
@@ -278,7 +285,7 @@ $(document).ready(function() {
 													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-													echotest.send({message: { simulcast: 0}});
+													echotest.send({message: { simulcast: 0 }});
 												});
 											$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-success')
 												.unbind('click').click(function() {
@@ -286,7 +293,7 @@ $(document).ready(function() {
 													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-													echotest.send({message: { simulcast: 1}});
+													echotest.send({message: { simulcast: 1 }});
 												});
 											$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-success')
 												.unbind('click').click(function() {
@@ -294,7 +301,7 @@ $(document).ready(function() {
 													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
 													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-													echotest.send({message: { simulcast: 1}});
+													echotest.send({message: { simulcast: 2 }});
 												});
 										}
 										// We just received notice that there's been a switch, update the buttons
