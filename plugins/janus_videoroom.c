@@ -1163,6 +1163,8 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(media, "data", json_integer(participant->data));
 				json_object_set_new(info, "media", media);
 				json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
+				if(participant->ssrc[0] != 0)
+					json_object_set_new(info, "simulcast", json_true());
 				if(participant->arc || participant->vrc[0] || participant->drc) {
 					json_t *recording = json_object();
 					if(participant->arc && participant->arc->filename)
@@ -1171,7 +1173,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 						json_object_set_new(recording, "video", json_string(participant->vrc[0]->filename));
 					if(participant->vrc[1] && participant->vrc[1]->filename)
 						json_object_set_new(recording, "video-sim1", json_string(participant->vrc[1]->filename));
-					if(participant->vrc[2] && participant->vrc[0]->filename)
+					if(participant->vrc[2] && participant->vrc[2]->filename)
 						json_object_set_new(recording, "video-sim2", json_string(participant->vrc[2]->filename));
 					if(participant->drc && participant->drc->filename)
 						json_object_set_new(recording, "data", json_string(participant->drc->filename));
@@ -1199,6 +1201,13 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(media, "audio", json_integer(participant->audio));
 				json_object_set_new(media, "video", json_integer(participant->video));
 				json_object_set_new(media, "data", json_integer(participant->data));
+				if(feed->ssrc[0] != 0) {
+					json_object_set_new(info, "simulcast", json_true());
+					json_object_set_new(info, "substream", json_integer(participant->substream));
+					json_object_set_new(info, "substream-target", json_integer(participant->substream_target));
+					json_object_set_new(info, "temporal-layer", json_integer(participant->templayer));
+					json_object_set_new(info, "temporal-layer-target", json_integer(participant->templayer_target));
+				}
 				json_object_set_new(info, "media", media);
 			}
 		}
