@@ -1409,6 +1409,7 @@ static void *janus_sip_handler(void *data) {
 				if(!strcmp(type_text, "guest")) {
 					JANUS_LOG(LOG_INFO, "Registering as a guest\n");
 					guest = TRUE;
+					session->account.registration_status = janus_sip_registration_status_registered;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unknown type '%s', ignoring...\n", type_text);
 				}
@@ -1735,6 +1736,12 @@ static void *janus_sip_handler(void *data) {
 				JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (register first)");
+				goto error;
+			}
+			if(session->account.registration_status < janus_sip_registration_status_registered) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
+				error_code = JANUS_SIP_ERROR_WRONG_STATE;
+				g_snprintf(error_cause, 512, "Wrong state (not registered)");
 				goto error;
 			}
 			if(session->status >= janus_sip_call_status_inviting) {
