@@ -208,84 +208,96 @@ $(document).ready(function() {
 											$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 												.unbind('click').click(function() {
 													toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
-													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													if(!$('#sl-2').hasClass('btn-success'))
+														$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+													if(!$('#sl-1').hasClass('btn-success'))
+														$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 													echotest.send({message: { substream: 0 }});
 												});
-											$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-success')
+											$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 												.unbind('click').click(function() {
 													toastr.info("Switching simulcast substream, wait for it... (normal quality)", null, {timeOut: 2000});
-													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													if(!$('#sl-2').hasClass('btn-success'))
+														$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
 													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													if(!$('#sl-0').hasClass('btn-success'))
+														$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 													echotest.send({message: { substream: 1 }});
 												});
-											$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-success')
+											$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 												.unbind('click').click(function() {
 													toastr.info("Switching simulcast substream, wait for it... (higher quality)", null, {timeOut: 2000});
 													$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-													$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-													$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													if(!$('#sl-1').hasClass('btn-success'))
+														$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+													if(!$('#sl-0').hasClass('btn-success'))
+														$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 													echotest.send({message: { substream: 2 }});
 												});
 											$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 												.unbind('click').click(function() {
 													toastr.info("Capping simulcast temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
-													$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-													$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													if(!$('#tl-2').hasClass('btn-success'))
+														$('#tl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+													if(!$('#tl-1').hasClass('btn-success'))
+														$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
 													$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
 													echotest.send({message: { temporal: 0 }});
 												});
-											$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-success')
+											$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
 												.unbind('click').click(function() {
 													toastr.info("Capping simulcast temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
-													$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-													$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-													$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													if(!$('#tl-2').hasClass('btn-success'))
+														$('#tl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+													$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-info');
+													if(!$('#tl-0').hasClass('btn-success'))
+														$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 													echotest.send({message: { temporal: 1 }});
 												});
-											$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-success')
+											$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
 												.unbind('click').click(function() {
 													toastr.info("Capping simulcast temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
 													$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-													$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-													$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+													if(!$('#tl-1').hasClass('btn-success'))
+														$('#tl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+													if(!$('#tl-0').hasClass('btn-success'))
+														$('#tl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
 													echotest.send({message: { temporal: 2 }});
 												});
 										}
 										// We just received notice that there's been a switch, update the buttons
 										if(substream === 0) {
 											toastr.success("Switched simulcast substream! (lower quality)", null, {timeOut: 2000});
-											$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+											$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 										} else if(substream === 1) {
 											toastr.success("Switched simulcast substream! (normal quality)", null, {timeOut: 2000});
-											$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
-											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 										} else if(substream === 2) {
 											toastr.success("Switched simulcast substream! (higher quality)", null, {timeOut: 2000});
 											$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
-											$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-											$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+											$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 										}
 										if(temporal === 0) {
 											toastr.success("Capped simulcast temporal layer! (lowest FPS)", null, {timeOut: 2000});
-											$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-											$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+											$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
 											$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
 										} else if(temporal === 1) {
 											toastr.success("Capped simulcast temporal layer! (medium FPS)", null, {timeOut: 2000});
-											$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#tl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
 											$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
-											$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 										} else if(temporal === 2) {
 											toastr.success("Capped simulcast temporal layer! (highest FPS)", null, {timeOut: 2000});
 											$('#tl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
-											$('#tl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
-											$('#tl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-primary');
+											$('#tl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+											$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
 										}
 									}
 								},

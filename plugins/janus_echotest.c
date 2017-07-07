@@ -185,7 +185,7 @@ typedef struct janus_echotest_session {
 	gboolean has_data;
 	gboolean audio_active;
 	gboolean video_active;
-	uint64_t bitrate;
+	uint64_t bitrate, peer_bitrate;
 	janus_rtp_switching_context context;
 	uint32_t ssrc[3];		/* Only needed in case VP8 simulcasting is involved */
 	int rtpmapid_extmap_id;	/* Only needed in case Firefox's RID-based simulcasting is involved */
@@ -194,9 +194,10 @@ typedef struct janus_echotest_session {
 	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	int templayer;			/* Which simulcast temporal layer we should forward back */
 	int templayer_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
+	gint64 last_relayed;	/* When we relayed the last packet (used to detect when substreams become unavailable) */
 	janus_vp8_simulcast_context simulcast_context;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
-	janus_recorder *vrc[3];	/* The Janus recorder instance for this user's video, if enabled (there may be more if we're simulcasting) */
+	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	guint16 slowlink_count;
@@ -397,6 +398,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->video_active = TRUE;
 	janus_mutex_init(&session->rec_mutex);
 	session->bitrate = 0;	/* No limit */
+	session->peer_bitrate = 0;
 	janus_rtp_switching_context_reset(&session->context);
 	session->ssrc[0] = 0;
 	session->ssrc[1] = 0;
@@ -405,6 +407,7 @@ void janus_echotest_create_session(janus_plugin_session *handle, int *error) {
 	session->substream_target = 0;
 	session->templayer = -1;
 	session->templayer_target = 0;
+	session->last_relayed = 0;
 	janus_vp8_simulcast_context_reset(&session->simulcast_context);
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
@@ -453,6 +456,7 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
 	json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
 	json_object_set_new(info, "bitrate", json_integer(session->bitrate));
+	json_object_set_new(info, "peer-bitrate", json_integer(session->peer_bitrate));
 	if(session->ssrc[0] != 0) {
 		json_object_set_new(info, "simulcast", json_true());
 		json_object_set_new(info, "substream", json_integer(session->substream));
@@ -460,16 +464,12 @@ json_t *janus_echotest_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "temporal-layer", json_integer(session->templayer));
 		json_object_set_new(info, "temporal-layer-target", json_integer(session->templayer_target));
 	}
-	if(session->arc || session->vrc[0] || session->drc) {
+	if(session->arc || session->vrc || session->drc) {
 		json_t *recording = json_object();
 		if(session->arc && session->arc->filename)
 			json_object_set_new(recording, "audio", json_string(session->arc->filename));
-		if(session->vrc[0] && session->vrc[0]->filename)
-			json_object_set_new(recording, "video", json_string(session->vrc[0]->filename));
-		if(session->vrc[1] && session->vrc[1]->filename)
-			json_object_set_new(recording, "video-sim1", json_string(session->vrc[1]->filename));
-		if(session->vrc[2] && session->vrc[2]->filename)
-			json_object_set_new(recording, "video-sim2", json_string(session->vrc[2]->filename));
+		if(session->vrc && session->vrc->filename)
+			json_object_set_new(recording, "video", json_string(session->vrc->filename));
 		if(session->drc && session->drc->filename)
 			json_object_set_new(recording, "data", json_string(session->drc->filename));
 		json_object_set_new(info, "recording", recording);
@@ -525,7 +525,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 		if(session->destroyed)
 			return;
 		if(video && session->video_active && session->rtpmapid_extmap_id != -1) {
-			/* FIXME Experiments with Firefox simulcasting */
+			/* FIXME Just a way to debug Firefox simulcasting */
 			rtp_header *header = (rtp_header *)buf;
 			uint32_t seq_number = ntohs(header->seq_number);
 			uint32_t timestamp = ntohl(header->timestamp);
@@ -542,13 +542,6 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			uint32_t seq_number = ntohs(header->seq_number);
 			uint32_t timestamp = ntohl(header->timestamp);
 			uint32_t ssrc = ntohl(header->ssrc);
-			/* Save the frame if we're recording */
-			if(ssrc == session->ssrc[0])
-				janus_recorder_save_frame(session->vrc[0], buf, len);
-			else if(ssrc == session->ssrc[1])
-				janus_recorder_save_frame(session->vrc[1], buf, len);
-			else if(ssrc == session->ssrc[2])
-				janus_recorder_save_frame(session->vrc[2], buf, len);
 			/* Access the packet payload */
 			int plen = 0;
 			char *payload = janus_rtp_payload(buf, len, &plen);
@@ -557,30 +550,64 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			gboolean switched = FALSE;
 			if(session->substream != session->substream_target) {
 				/* There has been a change: let's wait for a keyframe on the target */
-				if(ssrc == session->ssrc[session->substream_target]) {
-					if(janus_vp8_is_keyframe(payload, plen)) {
+				int step = (session->substream < 1 && session->substream_target == 2);
+				if((ssrc == session->ssrc[session->substream_target]) || (step && ssrc == session->ssrc[step])) {
+					//~ if(janus_vp8_is_keyframe(payload, plen)) {
 						uint32_t ssrc_old = 0;
 						if(session->substream != -1)
 							ssrc_old = session->ssrc[session->substream];
 						JANUS_LOG(LOG_WARN, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
-						session->substream = session->substream_target;
+						session->substream = (ssrc == session->ssrc[session->substream_target] ? session->substream_target : step);
 						switched = TRUE;
 						/* Notify the user */
 						json_t *event = json_object();
 						json_object_set_new(event, "echotest", json_string("event"));
 						json_object_set_new(event, "substream", json_integer(session->substream));
-						gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+						gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 						json_decref(event);
-					} else {
-						JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
+					//~ } else {
+						//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
+					//~ }
+				}
+			}
+			/* If we haven't received our desired substream yet, let's drop temporarily */
+			if(session->last_relayed == 0) {
+				/* Let's start slow */
+				session->last_relayed = janus_get_monotonic_time();
+			} else {
+				/* Check if 250ms went by with no packet relayed */
+				gint64 now = janus_get_monotonic_time();
+				if(now-session->last_relayed >= 250000) {
+					session->last_relayed = now;
+					int substream = session->substream-1;
+					if(substream < 0)
+						substream = 0;
+					if(session->substream != substream) {
+						JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
+							session->substream, substream);
+						session->substream = substream;
+						/* Send a PLI */
+						JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
+						char rtcpbuf[12];
+						memset(rtcpbuf, 0, 12);
+						janus_rtcp_pli((char *)&rtcpbuf, 12);
+						gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
+						/* Notify the user */
+						json_t *event = json_object();
+						json_object_set_new(event, "echotest", json_string("event"));
+						json_object_set_new(event, "substream", json_integer(session->substream));
+						gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
+						json_decref(event);
 					}
 				}
 			}
+			/* Do we need to drop this? */
 			if(ssrc != session->ssrc[session->substream]) {
 				JANUS_LOG(LOG_HUGE, "Dropping packet (it's from SSRC %"SCNu32", but we're only relaying SSRC %"SCNu32" now\n",
 					ssrc, session->ssrc[session->substream]);
 				return;
 			}
+			session->last_relayed = janus_get_monotonic_time();
 			/* Check if there's any temporal scalability to take into account */
 			uint16_t picid = 0;
 			uint8_t tlzi = 0;
@@ -596,7 +623,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 					json_t *event = json_object();
 					json_object_set_new(event, "echotest", json_string("event"));
 					json_object_set_new(event, "temporal", json_integer(session->templayer));
-					gateway->push_event(session->handle, &janus_echotest_plugin, NULL, event, NULL);
+					gateway->push_event(handle, &janus_echotest_plugin, NULL, event, NULL);
 					json_decref(event);
 				}
 				if(tid > session->templayer) {
@@ -610,6 +637,8 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 			/* If we got here, update the RTP header and send the packet */
 			janus_rtp_header_update(header, &session->context, TRUE, 4500);
 			janus_vp8_simulcast_descriptor_update(payload, plen, &session->simulcast_context, switched);
+			/* Save the frame if we're recording */
+			janus_recorder_save_frame(session->vrc, buf, len);
 			/* Send the frame back */
 			gateway->relay_rtp(handle, video, buf, len);
 			/* Restore header or core statistics will be messed up */
@@ -618,7 +647,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 		} else {
 			if((!video && session->audio_active) || (video && session->video_active)) {
 				/* Save the frame if we're recording */
-				janus_recorder_save_frame(video ? session->vrc[0] : session->arc, buf, len);
+				janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
 				/* Send the frame back */
 				gateway->relay_rtp(handle, video, buf, len);
 			}
@@ -638,8 +667,24 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 		}
 		if(session->destroyed)
 			return;
-		if(session->bitrate > 0)
-			janus_rtcp_cap_remb(buf, len, session->bitrate);
+		guint64 bitrate = janus_rtcp_get_remb(buf, len);
+		if(bitrate > 0) {
+			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
+			session->peer_bitrate = bitrate;
+			if(session->bitrate > 0) {
+				char rtcpbuf[32];
+				int numssrc = 1;
+				if(session->ssrc[1])
+					numssrc++;
+				if(session->ssrc[2])
+					numssrc++;
+				int remblen = janus_rtcp_remb_ssrcs((char *)(&rtcpbuf), sizeof(rtcpbuf), session->bitrate, numssrc);
+				gateway->relay_rtcp(handle, 1, rtcpbuf, remblen);
+			} else {
+				gateway->relay_rtcp(handle, 1, buf, len);
+			}
+			return;
+		}
 		gateway->relay_rtcp(handle, video, buf, len);
 	}
 }
@@ -753,24 +798,12 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 		janus_recorder_free(session->arc);
 	}
 	session->arc = NULL;
-	if(session->vrc[0]) {
-		janus_recorder_close(session->vrc[0]);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc[0]->filename ? session->vrc[0]->filename : "??");
-		janus_recorder_free(session->vrc[0]);
+	if(session->vrc) {
+		janus_recorder_close(session->vrc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+		janus_recorder_free(session->vrc);
 	}
-	session->vrc[0] = NULL;
-	if(session->vrc[1]) {
-		janus_recorder_close(session->vrc[1]);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s (simulcasting #1)\n", session->vrc[1]->filename ? session->vrc[1]->filename : "??");
-		janus_recorder_free(session->vrc[1]);
-	}
-	session->vrc[1] = NULL;
-	if(session->vrc[2]) {
-		janus_recorder_close(session->vrc[2]);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s (simulcasting #2)\n", session->vrc[2]->filename ? session->vrc[2]->filename : "??");
-		janus_recorder_free(session->vrc[2]);
-	}
-	session->vrc[2] = NULL;
+	session->vrc = NULL;
 	if(session->drc) {
 		janus_recorder_close(session->drc);
 		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
@@ -785,6 +818,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
 	session->bitrate = 0;
+	session->peer_bitrate = 0;
 	session->ssrc[0] = 0;
 	session->ssrc[1] = 0;
 	session->ssrc[2] = 0;
@@ -792,6 +826,7 @@ void janus_echotest_hangup_media(janus_plugin_session *handle) {
 	session->substream_target = 0;
 	session->templayer = -1;
 	session->templayer_target = 0;
+	session->last_relayed = 0;
 }
 
 /* Thread to handle incoming messages */
@@ -850,8 +885,8 @@ static void *janus_echotest_handler(void *data) {
 			session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
 			session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
-			session->substream_target = 0;	/* Let's start with low quality */
-			session->templayer_target = 2;	/* Let's start with all temporal layers */
+			session->substream_target = 2;	/* Let's aim for the highest quality */
+			session->templayer_target = 2;	/* Let's aim for all temporal layers */
 		}
 		json_t *audio = json_object_get(root, "audio");
 		if(audio && !json_is_boolean(audio)) {
@@ -994,24 +1029,12 @@ static void *janus_echotest_handler(void *data) {
 					janus_recorder_free(session->arc);
 				}
 				session->arc = NULL;
-				if(session->vrc[0]) {
-					janus_recorder_close(session->vrc[0]);
-					JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc[0]->filename ? session->vrc[0]->filename : "??");
-					janus_recorder_free(session->vrc[0]);
+				if(session->vrc) {
+					janus_recorder_close(session->vrc);
+					JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
+					janus_recorder_free(session->vrc);
 				}
-				session->vrc[0] = NULL;
-				if(session->vrc[1]) {
-					janus_recorder_close(session->vrc[1]);
-					JANUS_LOG(LOG_INFO, "Closed video recording %s (simulcasting #1)\n", session->vrc[1]->filename ? session->vrc[1]->filename : "??");
-					janus_recorder_free(session->vrc[1]);
-				}
-				session->vrc[1] = NULL;
-				if(session->vrc[2]) {
-					janus_recorder_close(session->vrc[2]);
-					JANUS_LOG(LOG_INFO, "Closed video recording %s (simulcasting #2)\n", session->vrc[2]->filename ? session->vrc[2]->filename : "??");
-					janus_recorder_free(session->vrc[2]);
-				}
-				session->vrc[2] = NULL;
+				session->vrc = NULL;
 				if(session->drc) {
 					janus_recorder_close(session->drc);
 					JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
@@ -1049,56 +1072,18 @@ static void *janus_echotest_handler(void *data) {
 					if(recording_base) {
 						/* Use the filename and path we have been provided */
 						g_snprintf(filename, 255, "%s-video", recording_base);
-						session->vrc[0] = janus_recorder_create(NULL, "vp8", filename);
-						if(session->vrc[0] == NULL) {
+						session->vrc = janus_recorder_create(NULL, "vp8", filename);
+						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
-						}
-						if(session->ssrc[0] != 0) {
-							/* Create recordings for the other layers as well */
-							if(session->ssrc[1] != 0) {
-								g_snprintf(filename, 255, "%s-video-sim1", recording_base);
-								session->vrc[1] = janus_recorder_create(NULL, "vp8", filename);
-								if(session->vrc[1] == NULL) {
-									/* FIXME We should notify the fact the recorder could not be created */
-									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this EchoTest user!\n");
-								}
-							}
-							if(session->ssrc[2] != 0) {
-								g_snprintf(filename, 255, "%s-video-sim2", recording_base);
-								session->vrc[2] = janus_recorder_create(NULL, "vp8", filename);
-								if(session->vrc[2] == NULL) {
-									/* FIXME We should notify the fact the recorder could not be created */
-									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this EchoTest user!\n");
-								}
-							}
 						}
 					} else {
 						/* Build a filename */
 						g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video", session, now);
-						session->vrc[0] = janus_recorder_create(NULL, "vp8", filename);
-						if(session->vrc[0] == NULL) {
+						session->vrc = janus_recorder_create(NULL, "vp8", filename);
+						if(session->vrc == NULL) {
 							/* FIXME We should notify the fact the recorder could not be created */
 							JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this EchoTest user!\n");
-						}
-						if(session->ssrc[0] != 0) {
-							/* Create recordings for the other layers as well */
-							if(session->ssrc[1] != 0) {
-								g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video-sim1", session, now);
-								session->vrc[1] = janus_recorder_create(NULL, "vp8", filename);
-								if(session->vrc[1] == NULL) {
-									/* FIXME We should notify the fact the recorder could not be created */
-									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this EchoTest user!\n");
-								}
-							}
-							if(session->ssrc[2] != 0) {
-								g_snprintf(filename, 255, "echotest-%p-%"SCNi64"-video-sim2", session, now);
-								session->vrc[2] = janus_recorder_create(NULL, "vp8", filename);
-								if(session->vrc[2] == NULL) {
-									/* FIXME We should notify the fact the recorder could not be created */
-									JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this EchoTest user!\n");
-								}
-							}
 						}
 					}
 					/* Send a PLI */
@@ -1243,16 +1228,14 @@ static void *janus_echotest_handler(void *data) {
 				json_object_set_new(simulcast, "temporal-layer", json_integer(session->templayer));
 				json_object_set_new(info, "simulcast", simulcast);
 			}
-			if(session->arc || session->vrc[0]) {
+			if(session->arc || session->vrc || session->drc) {
 				json_t *recording = json_object();
 				if(session->arc && session->arc->filename)
 					json_object_set_new(recording, "audio", json_string(session->arc->filename));
-				if(session->vrc[0] && session->vrc[0]->filename)
-					json_object_set_new(recording, "video", json_string(session->vrc[0]->filename));
-				if(session->vrc[1] && session->vrc[1]->filename)
-					json_object_set_new(recording, "video-sim1", json_string(session->vrc[1]->filename));
-				if(session->vrc[2] && session->vrc[2]->filename)
-					json_object_set_new(recording, "video-sim2", json_string(session->vrc[2]->filename));
+				if(session->vrc && session->vrc->filename)
+					json_object_set_new(recording, "video", json_string(session->vrc->filename));
+				if(session->drc && session->drc->filename)
+					json_object_set_new(recording, "data", json_string(session->drc->filename));
 				json_object_set_new(info, "recording", recording);
 			}
 			gateway->notify_event(&janus_echotest_plugin, session->handle, info);
