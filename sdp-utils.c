@@ -1156,8 +1156,6 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					am->fmts = g_list_append(am->fmts, g_strdup(fmt_str));
 				fmt = fmt->next;
 			}
-			janus_sdp_attribute *aa = janus_sdp_attribute_create("sctmap", "5000 webrtc-datachannel 16");
-			am->attributes = g_list_append(am->attributes, aa);
 		}
 		temp = temp->next;
 	}
