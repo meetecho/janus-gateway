@@ -689,8 +689,14 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 		}
 		if(session->destroyed || session->peer->destroyed)
 			return;
-		if(session->bitrate > 0)
-			janus_rtcp_cap_remb(buf, len, session->bitrate);
+		guint64 bitrate = janus_rtcp_get_remb(buf, len);
+		if(bitrate > 0) {
+			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
+			if(session->bitrate > 0)
+				janus_rtcp_cap_remb(buf, len, session->bitrate);
+			gateway->relay_rtcp(session->peer->handle, 1, buf, len);
+			return;
+		}
 		gateway->relay_rtcp(session->peer->handle, video, buf, len);
 	}
 }
