@@ -539,7 +539,7 @@ typedef struct janus_videoroom_participant {
 	gboolean recording_active;	/* Whether this publisher has to be recorded or not */
 	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr */
 	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
-	janus_recorder *vrc[3];	/* The Janus recorder instance for this user's video, if enabled (there may be more if we're simulcasting) */
+	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this publisher's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
 	GSList *listeners;		/* Subscriptions to this publisher (who's watching this publisher)  */
@@ -565,6 +565,7 @@ typedef struct janus_videoroom_listener {
 	int substream_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	int templayer;			/* Which simulcast temporal layer we should forward, in case the publisher is simulcasting */
 	int templayer_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
+	gint64 last_relayed;	/* When we relayed the last packet (used to detect when substreams become unavailable) */
 	janus_vp8_simulcast_context simulcast_context;
 	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this publisher */
 	gboolean paused;
@@ -1165,16 +1166,12 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
 				if(participant->ssrc[0] != 0)
 					json_object_set_new(info, "simulcast", json_true());
-				if(participant->arc || participant->vrc[0] || participant->drc) {
+				if(participant->arc || participant->vrc || participant->drc) {
 					json_t *recording = json_object();
 					if(participant->arc && participant->arc->filename)
 						json_object_set_new(recording, "audio", json_string(participant->arc->filename));
-					if(participant->vrc[0] && participant->vrc[0]->filename)
-						json_object_set_new(recording, "video", json_string(participant->vrc[0]->filename));
-					if(participant->vrc[1] && participant->vrc[1]->filename)
-						json_object_set_new(recording, "video-sim1", json_string(participant->vrc[1]->filename));
-					if(participant->vrc[2] && participant->vrc[2]->filename)
-						json_object_set_new(recording, "video-sim2", json_string(participant->vrc[2]->filename));
+					if(participant->vrc && participant->vrc->filename)
+						json_object_set_new(recording, "video", json_string(participant->vrc->filename));
 					if(participant->drc && participant->drc->filename)
 						json_object_set_new(recording, "data", json_string(participant->drc->filename));
 					json_object_set_new(info, "recording", recording);
@@ -2430,9 +2427,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				rtp->ssrc = htonl(ssrc);
 			}
 			janus_mutex_unlock(&participant->rtp_forwarders_mutex);
+			/* Save the frame if we're recording */
+			janus_recorder_save_frame(video ? participant->vrc : participant->arc, buf, len);
 		}
-		/* Save the frame if we're recording */
-		janus_recorder_save_frame(video ? (sc < 0 ? participant->vrc[0] : participant->vrc[sc]) : participant->arc, buf, len);
 		/* Done, relay it */
 		janus_videoroom_rtp_relay_packet packet;
 		packet.data = rtp;
@@ -2646,51 +2643,19 @@ static void janus_videoroom_recorder_create(janus_videoroom_participant *partici
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-video", participant->recording_base);
-			participant->vrc[0] = janus_recorder_create(participant->room->rec_dir,
+			participant->vrc = janus_recorder_create(participant->room->rec_dir,
 				janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-			if(participant->vrc[0] == NULL) {
+			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
-			}
-			if(participant->ssrc[0] != 0) {
-				/* Create recordings for the other layers as well */
-				g_snprintf(filename, 255, "%s-video-sim1", participant->recording_base);
-				participant->vrc[1] = janus_recorder_create(participant->room->rec_dir,
-					janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-				if(participant->vrc[1] == NULL) {
-					JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this publisher!\n");
-				}
-				g_snprintf(filename, 255, "%s-video-sim2", participant->recording_base);
-				participant->vrc[2] = janus_recorder_create(participant->room->rec_dir,
-					janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-				if(participant->vrc[2] == NULL) {
-					JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this publisher!\n");
-				}
 			}
 		} else {
 			/* Build a filename */
 			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
 				participant->room->room_id, participant->user_id, now);
-			participant->vrc[0] = janus_recorder_create(participant->room->rec_dir,
+			participant->vrc = janus_recorder_create(participant->room->rec_dir,
 				janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-			if(participant->vrc[0] == NULL) {
+			if(participant->vrc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
-			}
-			if(participant->ssrc[0] != 0) {
-				/* Create recordings for the other layers as well */
-				g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video-sim1",
-					participant->room->room_id, participant->user_id, now);
-				participant->vrc[1] = janus_recorder_create(participant->room->rec_dir,
-					janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-				if(participant->vrc[1] == NULL) {
-					JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #1) for this publisher!\n");
-				}
-				g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video-sim2",
-					participant->room->room_id, participant->user_id, now);
-				participant->vrc[2] = janus_recorder_create(participant->room->rec_dir,
-					janus_videoroom_videocodec_name(participant->room->vcodec), filename);
-				if(participant->vrc[2] == NULL) {
-					JANUS_LOG(LOG_ERR, "Couldn't open an video recording file (simulcasting #2) for this publisher!\n");
-				}
 			}
 		}
 	}
@@ -2724,24 +2689,12 @@ static void janus_videoroom_recorder_close(janus_videoroom_participant *particip
 		janus_recorder_free(participant->arc);
 	}
 	participant->arc = NULL;
-	if(participant->vrc[0]) {
-		janus_recorder_close(participant->vrc[0]);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc[0]->filename ? participant->vrc[0]->filename : "??");
-		janus_recorder_free(participant->vrc[0]);
+	if(participant->vrc) {
+		janus_recorder_close(participant->vrc);
+		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
+		janus_recorder_free(participant->vrc);
 	}
-	participant->vrc[0] = NULL;
-	if(participant->vrc[1]) {
-		janus_recorder_close(participant->vrc[1]);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s (simulcasting #1)\n", participant->vrc[1]->filename ? participant->vrc[1]->filename : "??");
-		janus_recorder_free(participant->vrc[1]);
-	}
-	participant->vrc[1] = NULL;
-	if(participant->vrc[2]) {
-		janus_recorder_close(participant->vrc[2]);
-		JANUS_LOG(LOG_INFO, "Closed video recording %s (simulcasting #2)\n", participant->vrc[2]->filename ? participant->vrc[2]->filename : "??");
-		janus_recorder_free(participant->vrc[2]);
-	}
-	participant->vrc[2] = NULL;
+	participant->vrc = NULL;
 	if(participant->drc) {
 		janus_recorder_close(participant->drc);
 		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", participant->drc->filename ? participant->drc->filename : "??");
@@ -2985,9 +2938,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->recording_active = FALSE;
 				publisher->recording_base = NULL;
 				publisher->arc = NULL;
-				publisher->vrc[0] = NULL;
-				publisher->vrc[1] = NULL;
-				publisher->vrc[2] = NULL;
+				publisher->vrc = NULL;
 				publisher->drc = NULL;
 				janus_mutex_init(&publisher->rec_mutex);
 				publisher->firefox = FALSE;
@@ -3178,9 +3129,10 @@ static void *janus_videoroom_handler(void *data) {
 						listener->data = FALSE;	/* ... unless the publisher isn't sending any data */
 					listener->paused = TRUE;	/* We need an explicit start from the listener */
 					listener->substream = -1;
-					listener->substream_target = 0;
+					listener->substream_target = 2;
 					listener->templayer = -1;
 					listener->templayer_target = 2;
+					listener->last_relayed = 0;
 					janus_vp8_simulcast_context_reset(&listener->simulcast_context);
 					session->participant = listener;
 					janus_mutex_lock(&publisher->listeners_mutex);
@@ -3387,16 +3339,12 @@ static void *janus_videoroom_handler(void *data) {
 					json_object_set_new(info, "video_active", participant->video_active ? json_true() : json_false());
 					json_object_set_new(info, "data_active", participant->data_active ? json_true() : json_false());
 					json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
-					if(participant->arc || participant->vrc[0] || participant->drc) {
+					if(participant->arc || participant->vrc || participant->drc) {
 						json_t *recording = json_object();
 						if(participant->arc && participant->arc->filename)
 							json_object_set_new(recording, "audio", json_string(participant->arc->filename));
-						if(participant->vrc[0] && participant->vrc[0]->filename)
-							json_object_set_new(recording, "video", json_string(participant->vrc[0]->filename));
-						if(participant->vrc[1] && participant->vrc[1]->filename)
-							json_object_set_new(recording, "video-sim1", json_string(participant->vrc[1]->filename));
-						if(participant->vrc[2] && participant->vrc[2]->filename)
-							json_object_set_new(recording, "video-sim2", json_string(participant->vrc[2]->filename));
+						if(participant->vrc && participant->vrc->filename)
+							json_object_set_new(recording, "video", json_string(participant->vrc->filename));
 						if(participant->drc && participant->drc->filename)
 							json_object_set_new(recording, "data", json_string(participant->drc->filename));
 						json_object_set_new(info, "recording", recording);
@@ -4046,13 +3994,14 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 			gboolean switched = FALSE;
 			if(listener->substream != listener->substream_target) {
 				/* There has been a change: let's wait for a keyframe on the target */
-				if(ssrc == packet->ssrc[listener->substream_target]) {
-					if(janus_vp8_is_keyframe(payload, plen)) {
+				int step = (listener->substream < 1 && listener->substream_target == 2);
+				if(ssrc == packet->ssrc[listener->substream_target] || (step && ssrc == packet->ssrc[step])) {
+					//~ if(janus_vp8_is_keyframe(payload, plen)) {
 						uint32_t ssrc_old = 0;
 						if(listener->substream != -1)
 							ssrc_old = packet->ssrc[listener->substream];
 						JANUS_LOG(LOG_WARN, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
-						listener->substream = listener->substream_target;
+						listener->substream = (ssrc == packet->ssrc[listener->substream_target] ? listener->substream_target : step);;
 						switched = TRUE;
 						/* Notify the viewer */
 						json_t *event = json_object();
@@ -4061,8 +4010,41 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 						json_object_set_new(event, "substream", json_integer(listener->substream));
 						gateway->push_event(listener->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 						json_decref(event);
-					} else {
-						JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
+					//~ } else {
+						//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
+					//~ }
+				}
+			}
+			/* If we haven't received our desired substream yet, let's drop temporarily */
+			if(listener->last_relayed == 0) {
+				/* Let's start slow */
+				listener->last_relayed = janus_get_monotonic_time();
+			} else {
+				/* Check if 250ms went by with no packet relayed */
+				gint64 now = janus_get_monotonic_time();
+				if(now-listener->last_relayed >= 250000) {
+					listener->last_relayed = now;
+					int substream = listener->substream-1;
+					if(substream < 0)
+						substream = 0;
+					if(listener->substream != substream) {
+						JANUS_LOG(LOG_WARN, "No packet received on substream %d for a while, falling back to %d\n",
+							listener->substream, substream);
+						listener->substream = substream;
+						/* Send a PLI */
+						JANUS_LOG(LOG_VERB, "Just (re-)enabled video, sending a PLI to recover it\n");
+						char rtcpbuf[12];
+						memset(rtcpbuf, 0, 12);
+						janus_rtcp_pli((char *)&rtcpbuf, 12);
+						if(listener->feed && listener->feed->session && listener->feed->session->handle)
+							gateway->relay_rtcp(listener->feed->session->handle, 1, rtcpbuf, 12);
+						/* Notify the viewer */
+						json_t *event = json_object();
+						json_object_set_new(event, "videoroom", json_string("event"));
+						json_object_set_new(event, "room", json_integer(listener->room->room_id));
+						json_object_set_new(event, "substream", json_integer(listener->substream));
+						gateway->push_event(listener->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+						json_decref(event);
 					}
 				}
 			}
@@ -4071,6 +4053,7 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					ssrc, packet->ssrc[listener->substream]);
 				return;
 			}
+			listener->last_relayed = janus_get_monotonic_time();
 			/* Check if there's any temporal scalability to take into account */
 			uint16_t picid = 0;
 			uint8_t tlzi = 0;
@@ -4192,17 +4175,9 @@ static void janus_videoroom_participant_free(janus_videoroom_participant *p) {
 		janus_recorder_free(p->arc);
 		p->arc = NULL;
 	}
-	if(p->vrc[0]) {
-		janus_recorder_free(p->vrc[0]);
-		p->vrc[0] = NULL;
-	}
-	if(p->vrc[1]) {
-		janus_recorder_free(p->vrc[1]);
-		p->vrc[1] = NULL;
-	}
-	if(p->vrc[2]) {
-		janus_recorder_free(p->vrc[2]);
-		p->vrc[2] = NULL;
+	if(p->vrc) {
+		janus_recorder_free(p->vrc);
+		p->vrc = NULL;
 	}
 	if(p->drc) {
 		janus_recorder_free(p->drc);

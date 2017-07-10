@@ -568,6 +568,7 @@ function newRemoteFeed(id, display) {
 				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
 					clearInterval(bitrateTimer[remoteFeed.rfindex]);
 				bitrateTimer[remoteFeed.rfindex] = null;
+				remoteFeed.simulcastStarted = false;
 				$('#simulcast'+remoteFeed.rfindex).remove();
 			}
 		});
