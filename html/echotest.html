@@ -57,9 +57,12 @@
 						back to you. You can also try and cap the bitrate: such control
 						will tell the gateway to manipulate the RTCP REMB packets passing
 						through, in order to simulate a bandwidth limitation. In case
-						Simulcasting has been enabled, buttons will appear to allow you
-						to switch between lower and higher quality: notice that you may
-						have to increase the bandwidth to have the quality video appear.</p>
+						you're interested in testing simulcasting, add the <code>?simulcast=true</code>
+						query string to the url of this page and reload it: buttons will appear
+						to allow you to try and switch between lower and higher quality
+						versions of the video you're capturing: notice that you may have
+						to increase the bandwidth indicator to have the higher quality
+						versions appear, as the browser will not encode them otherwise.</p>
 						<p>Finally, this demo also includes Data Channels: whatever you
 						write in the text box under your local video, will be sent via
 						Data Channels to the plugins, modified by adding a fixed prefix,
@@ -109,24 +112,7 @@
 					<div class="col-md-6">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Stream <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span>
-									<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right hide">
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>
-												<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>
-												<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>
-											</div>
-										</div>
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>
-												<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>
-												<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>
-											</div>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Stream <span class="label label-primary hide" id="curres"></span> <span class="label label-info hide" id="curbitrate"></span></h3>
 							</div>
 							<div class="panel-body" id="videoright"></div>
 						</div>

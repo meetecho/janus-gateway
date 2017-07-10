@@ -54,6 +54,17 @@
 						No mixing is involved: all media are just relayed in a publisher/subscriber
 						approach. This means that the plugin acts as a SFU (Selective Forwarding Unit)
 						rather than an MCU (Multipoint Control Unit).</p>
+						<p>If you're interested in testing how simulcasting can be used within
+						the context of a videoconferencing application, just pass the
+						<code>?simulcast=true</code> query string to the url of this page and
+						reload it. If you're using a browser that does support simulcasting
+						(Chrome or Firefox) and the room is configured to force VP8, you'll
+						send multiple qualities of the video you're capturing. Notice that
+						simulcasting will only occur if the browser thinks there is enough
+						bandwidth, so you'll have to play with the Bandwidth selector to
+						increase it. New buttons to play with the feature will automatically
+						appear for viewers when receiving any simulcasted stream. Notice that
+						no simulcast support is needed for watching, only for publishing.</p>
 						<p>To use the demo, just insert a username to join the default room that
 						is configured. This will add you to the list of participants, and allow
 						you to automatically send your audio/video frames and receive the other

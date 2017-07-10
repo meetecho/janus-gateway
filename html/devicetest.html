@@ -55,8 +55,10 @@
 						pretty much as the regular Echo Test demo already does. Once done,
 						you'll be able to individually change the capture audio and/or video
 						device: this will result in the Echo Test channel being reset and
-						recreated, in order to use the device(s) you selected instead.</p>
-						<p>The feature exploits a functionality made available in the
+						recreated, in order to use the device(s) you selected instead. Just
+						as with the regular Echo Test demo, the <code>?simulcast=true</code>
+						query string will allow you to test simulcasting as well.</p>
+						<p>The demo exploits a functionality made available in the
 						<code>janus.js</code> library, meaning you should be able to
 						easily adapt all the other demos to follow the same approach as
 						well, and that you'll be able to do the same in your Janus-based
@@ -120,22 +122,6 @@
 								<h3 class="panel-title">Remote Stream
 									<span class="label label-primary hide" id="curres"></span>
 									<span class="label label-info hide" id="curbitrate"></span>
-									<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right hide">
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>
-												<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>
-												<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>
-											</div>
-										</div>
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="tl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2" style="width: 34%">TL 2</button>
-												<button id="tl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1" style="width: 33%">TL 1</button>
-												<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>
-											</div>
-										</div>
-									</div>
 									<div class="btn-group btn-group-xs pull-right hide" id="output-devices">
 										<div class="btn-group btn-group-xs">
 											<button id="outputdeviceset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
