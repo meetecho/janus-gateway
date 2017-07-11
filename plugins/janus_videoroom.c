@@ -282,6 +282,12 @@ static struct janus_json_parameter rtp_forward_parameters[] = {
 	{"video_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"video_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"video_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_port_2", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_ssrc_2", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_pt_2", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_port_3", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_ssrc_3", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"video_pt_3", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_port", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_ssrc", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio_pt", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
@@ -496,12 +502,13 @@ static GHashTable *sessions;
 static GList *old_sessions;
 static janus_mutex sessions_mutex;
 
-/* a host whose ports gets streamed rtp packets of the corresponding type. */
+/* A host whose ports gets streamed RTP packets of the corresponding type */
 typedef struct janus_videoroom_rtp_forwarder {
 	gboolean is_video;
 	gboolean is_data;
 	uint32_t ssrc;
 	int payload_type;
+	int substream;
 	struct sockaddr_in serv_addr;
 } janus_videoroom_rtp_forwarder;
 
@@ -553,7 +560,7 @@ typedef struct janus_videoroom_participant {
 static void janus_videoroom_participant_free(janus_videoroom_participant *p);
 static void janus_videoroom_rtp_forwarder_free_helper(gpointer data);
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_participant *p,
-	const gchar* host, int port, int pt, uint32_t ssrc, gboolean is_video, gboolean is_data);
+	const gchar* host, int port, int pt, uint32_t ssrc, int substream, gboolean is_video, gboolean is_data);
 
 typedef struct janus_videoroom_listener {
 	janus_videoroom_session *session;
@@ -605,7 +612,7 @@ typedef struct janus_videoroom_rtp_relay_packet {
 
 
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_participant *p,
-		const gchar* host, int port, int pt, uint32_t ssrc, gboolean is_video, gboolean is_data) {
+		const gchar* host, int port, int pt, uint32_t ssrc, int substream, gboolean is_video, gboolean is_data) {
 	if(!p || !host) {
 		return 0;
 	}
@@ -613,6 +620,7 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_particip
 	forward->is_video = is_video;
 	forward->payload_type = pt;
 	forward->ssrc = ssrc;
+	forward->substream = substream;
 	forward->is_data = is_data;
 	forward->serv_addr.sin_family = AF_INET;
 	inet_pton(AF_INET, host, &(forward->serv_addr.sin_addr));
@@ -624,8 +632,8 @@ static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_particip
 	}
 	g_hash_table_insert(p->rtp_forwarders, GUINT_TO_POINTER(stream_id), forward);
 	janus_mutex_unlock(&p->rtp_forwarders_mutex);
-	JANUS_LOG(LOG_VERB, "Added %s rtp_forward to participant %"SCNu64" host: %s:%d stream_id: %"SCNu32"\n",
-		is_data ? "data" : (is_video ? "video" : "audio"), p->user_id, host, port, stream_id);
+	JANUS_LOG(LOG_VERB, "Added %s/%d rtp_forward to participant %"SCNu64" host: %s:%d stream_id: %"SCNu32"\n",
+		is_data ? "data" : (is_video ? "video" : "audio"), substream, p->user_id, host, port, stream_id);
 	return stream_id;
 }
 
@@ -1715,21 +1723,43 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			goto plugin_response;
 		json_t *room = json_object_get(root, "room");
 		json_t *pub_id = json_object_get(root, "publisher_id");
-		int video_port = -1, video_pt = 0;
-		uint32_t video_ssrc = 0;
+		int video_port[3] = {-1, -1, -1}, video_pt[3] = {0, 0, 0};
+		uint32_t video_ssrc[3] = {0, 0, 0};
 		int audio_port = -1, audio_pt = 0;
 		uint32_t audio_ssrc = 0;
 		int data_port = -1;
+		/* There may be multiple target video ports (e.g., publisher simulcasting) */
 		json_t *vid_port = json_object_get(root, "video_port");
 		if(vid_port) {
-			video_port = json_integer_value(vid_port);
+			video_port[0] = json_integer_value(vid_port);
 			json_t *pt = json_object_get(root, "video_pt");
 			if(pt)
-				video_pt = json_integer_value(pt);
+				video_pt[0] = json_integer_value(pt);
 			json_t *ssrc = json_object_get(root, "video_ssrc");
 			if(ssrc)
-				video_ssrc = json_integer_value(ssrc);
+				video_ssrc[0] = json_integer_value(ssrc);
 		}
+		vid_port = json_object_get(root, "video_port_2");
+		if(vid_port) {
+			video_port[1] = json_integer_value(vid_port);
+			json_t *pt = json_object_get(root, "video_pt_2");
+			if(pt)
+				video_pt[1] = json_integer_value(pt);
+			json_t *ssrc = json_object_get(root, "video_ssrc_2");
+			if(ssrc)
+				video_ssrc[1] = json_integer_value(ssrc);
+		}
+		vid_port = json_object_get(root, "video_port_3");
+		if(vid_port) {
+			video_port[2] = json_integer_value(vid_port);
+			json_t *pt = json_object_get(root, "video_pt_3");
+			if(pt)
+				video_pt[2] = json_integer_value(pt);
+			json_t *ssrc = json_object_get(root, "video_ssrc_3");
+			if(ssrc)
+				video_ssrc[2] = json_integer_value(ssrc);
+		}
+		/* Audio target */
 		json_t *au_port = json_object_get(root, "audio_port");
 		if(au_port) {
 			audio_port = json_integer_value(au_port);
@@ -1740,6 +1770,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			if(ssrc)
 				audio_ssrc = json_integer_value(ssrc);
 		}
+		/* Data target */
 		json_t *d_port = json_object_get(root, "data_port");
 		if(d_port) {
 			data_port = json_integer_value(d_port);
@@ -1775,16 +1806,22 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			}
 		}
 		guint32 audio_handle = 0;
-		guint32 video_handle = 0;
+		guint32 video_handle[3] = {0, 0, 0};
 		guint32 data_handle = 0;
 		if(audio_port > 0) {
-			audio_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, audio_port, audio_pt, audio_ssrc, FALSE, FALSE);
+			audio_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, audio_port, audio_pt, audio_ssrc, 0, FALSE, FALSE);
 		}
-		if(video_port > 0) {
-			video_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port, video_pt, video_ssrc, TRUE, FALSE);
+		if(video_port[0] > 0) {
+			video_handle[0] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[0], video_pt[0], video_ssrc[0], 0, TRUE, FALSE);
+		}
+		if(video_port[1] > 0) {
+			video_handle[1] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[1], video_pt[1], video_ssrc[1], 1, TRUE, FALSE);
+		}
+		if(video_port[2] > 0) {
+			video_handle[2] = janus_videoroom_rtp_forwarder_add_helper(publisher, host, video_port[2], video_pt[2], video_ssrc[2], 2, TRUE, FALSE);
 		}
 		if(data_port > 0) {
-			data_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, data_port, 0, 0, FALSE, TRUE);
+			data_handle = janus_videoroom_rtp_forwarder_add_helper(publisher, host, data_port, 0, 0, 0, FALSE, TRUE);
 		}
 		janus_mutex_unlock(&videoroom->participants_mutex);
 		response = json_object();
@@ -1793,7 +1830,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			json_object_set_new(rtp_stream, "audio_stream_id", json_integer(audio_handle));
 			json_object_set_new(rtp_stream, "audio", json_integer(audio_port));
 		}
-		if(video_handle > 0) {
+		if(video_handle[0] > 0 || video_handle[1] > 0 || video_handle[2] > 0) {
 			/* Send a FIR to the new RTP forward publisher */
 			char buf[20];
 			janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
@@ -1804,8 +1841,18 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			JANUS_LOG(LOG_VERB, "New RTP forward publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
 			gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
 			/* Done */
-			json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle));
-			json_object_set_new(rtp_stream, "video", json_integer(video_port));
+			if(video_handle[0] > 0) {
+				json_object_set_new(rtp_stream, "video_stream_id", json_integer(video_handle[0]));
+				json_object_set_new(rtp_stream, "video", json_integer(video_port[0]));
+			}
+			if(video_handle[1] > 0) {
+				json_object_set_new(rtp_stream, "video_stream_id_2", json_integer(video_handle[1]));
+				json_object_set_new(rtp_stream, "video_2", json_integer(video_port[1]));
+			}
+			if(video_handle[2] > 0) {
+				json_object_set_new(rtp_stream, "video_stream_id_3", json_integer(video_handle[2]));
+				json_object_set_new(rtp_stream, "video_3", json_integer(video_port[2]));
+			}
 		}
 		if(data_handle > 0) {
 			json_object_set_new(rtp_stream, "data_stream_id", json_integer(data_handle));
@@ -2399,35 +2446,33 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		}
 		/* Set the payload type of the publisher */
 		rtp->type = video ? participant->video_pt : participant->audio_pt;
-		/* FIXME RTP forwarding becomes challenging when simulcasting is involved: what should we forward?
-		 * For now, let's keep it easy, and let's just forward the base layer if we're simulcasting */
-		if(sc < 1) {
-			/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
-			janus_mutex_lock(&participant->rtp_forwarders_mutex);
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, participant->rtp_forwarders);
-			while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
-				/* Check if payload type and/or SSRC need to be overwritten for this forwarder */
-				int pt = rtp->type;
-				uint32_t ssrc = ntohl(rtp->ssrc);
-				if(rtp_forward->payload_type > 0)
-					rtp->type = rtp_forward->payload_type;
-				if(rtp_forward->ssrc > 0)
-					rtp->ssrc = htonl(rtp_forward->ssrc);
-				if(video && rtp_forward->is_video) {
-					sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
-				}
-				else if(!video && !rtp_forward->is_video && !rtp_forward->is_data) {
-					sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
-				}
-				/* Restore original values of payload type and SSRC before going on */
-				rtp->type = pt;
-				rtp->ssrc = htonl(ssrc);
+		/* Forward RTP to the appropriate port for the rtp_forwarders associated with this publisher, if there are any */
+		janus_mutex_lock(&participant->rtp_forwarders_mutex);
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, participant->rtp_forwarders);
+		while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
+			/* Check if payload type and/or SSRC need to be overwritten for this forwarder */
+			int pt = rtp->type;
+			uint32_t ssrc = ntohl(rtp->ssrc);
+			if(rtp_forward->payload_type > 0)
+				rtp->type = rtp_forward->payload_type;
+			if(rtp_forward->ssrc > 0)
+				rtp->ssrc = htonl(rtp_forward->ssrc);
+			if(video && rtp_forward->is_video && rtp_forward->substream == sc) {
+				sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
+			} else if(!video && !rtp_forward->is_video && !rtp_forward->is_data) {
+				sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
 			}
-			janus_mutex_unlock(&participant->rtp_forwarders_mutex);
-			/* Save the frame if we're recording */
+			/* Restore original values of payload type and SSRC before going on */
+			rtp->type = pt;
+			rtp->ssrc = htonl(ssrc);
+		}
+		janus_mutex_unlock(&participant->rtp_forwarders_mutex);
+		if(sc < 1) {
+			/* Save the frame if we're recording
+			 * FIXME: for video, we're currently only recording the base substream, when simulcasting */
 			janus_recorder_save_frame(video ? participant->vrc : participant->arc, buf, len);
 		}
 		/* Done, relay it */

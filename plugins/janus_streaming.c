@@ -4492,7 +4492,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					/* There has been a change: let's wait for a keyframe on the target */
 					int step = (session->substream < 1 && session->substream_target == 2);
 					if(packet->substream == session->substream_target || (step && packet->substream == step)) {
-						//~ if(janus_vp8_is_keyframe(payload, plen)) {
+						if(janus_vp8_is_keyframe(payload, plen)) {
 							JANUS_LOG(LOG_WARN, "Received keyframe on substream %d, switching (was %d)\n",
 								packet->substream, session->substream);
 							session->substream = packet->substream;
@@ -4507,7 +4507,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 							json_decref(event);
 						//~ } else {
 							//~ JANUS_LOG(LOG_WARN, "Not a keyframe on SSRC %"SCNu32" yet, waiting before switching\n", ssrc);
-						//~ }
+						}
 					}
 				}
 				/* If we haven't received our desired substream yet, let's drop temporarily */
