@@ -495,7 +495,7 @@ int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt) {
 		GList *ma = m->attributes;
 		while(ma) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-			if(atoi(a->value) == pt) {
+			if(a->value && atoi(a->value) == pt) {
 				m->attributes = g_list_remove(m->attributes, a);
 				ma = m->attributes;
 				janus_sdp_attribute_destroy(a);

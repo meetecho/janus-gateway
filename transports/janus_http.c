@@ -285,6 +285,8 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 			return NULL;
 		} else {
 			for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+				if(ifa->ifa_addr == NULL)
+					continue;
 				family = ifa->ifa_addr->sa_family;
 				if(interface && strcasecmp(ifa->ifa_name, interface))
 					continue;
