@@ -404,6 +404,7 @@ typedef struct janus_recordplay_session {
 	guint video_keyframe_interval; /* keyframe request interval (ms) */
 	guint64 video_keyframe_request_last; /* timestamp of last keyframe request sent */
 	gint video_fir_seq;
+	guint32 simulcast_ssrc;	/* We don't support Simulcast in this plugin, so we'll stick to the base substream */
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
@@ -951,6 +952,15 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		}
 		if(session->destroyed)
 			return;
+		if(video && session->simulcast_ssrc) {
+			/* The user is simulcasting: drop everything except the base layer */
+			rtp_header *header = (rtp_header *)buf;
+			uint32_t ssrc = ntohl(header->ssrc);
+			if(ssrc != session->simulcast_ssrc) {
+				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+				return;
+			}
+		}
 		/* Are we recording? */
 		if(session->recorder) {
 			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
@@ -1005,6 +1015,7 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 		return;
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
+	session->simulcast_ssrc = 0;
 
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -1172,6 +1183,12 @@ static void *janus_recordplay_handler(void *data) {
 			janus_sdp_free(offer);
 			janus_sdp_free(answer);
 			JANUS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
+			/* If the user negotiated simulcasting, just stick with the base substream */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast) {
+				JANUS_LOG(LOG_WARN, "Recording client negotiated simulcasting, falling back to base substream...\n");
+				session->simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+			}
 			/* Done! */
 			result = json_object();
 			json_object_set_new(result, "status", json_string("recording"));
