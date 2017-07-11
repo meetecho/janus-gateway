@@ -1196,6 +1196,12 @@ static void *janus_echotest_handler(void *data) {
 					"%d%s %s\r\n", session->rtpmapid_extmap_id, direction, JANUS_RTP_EXTMAP_RTP_STREAM_ID);
 				janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_VIDEO), a);
 			}
+			if(janus_sdp_get_codec_pt(answer, "vp8") < 0) {
+				/* VP8 was not negotiated, if simulcasting was enabled then disable it here */
+				session->ssrc[0] = 0;
+				session->ssrc[1] = 0;
+				session->ssrc[2] = 0;
+			}
 			char *sdp = janus_sdp_write(answer);
 			janus_sdp_free(offer);
 			janus_sdp_free(answer);

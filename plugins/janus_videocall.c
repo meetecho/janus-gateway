@@ -1065,13 +1065,6 @@ static void *janus_videocall_handler(void *data) {
 			goto error;
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
-		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
-		if(msg_simulcast) {
-			JANUS_LOG(LOG_WARN, "VideoCall client (%s) is going to do simulcasting\n", session->username);
-			session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
-			session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
-			session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
-		}
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
@@ -1199,6 +1192,14 @@ static void *janus_videocall_handler(void *data) {
 				janus_mutex_unlock(&sessions_mutex);
 				JANUS_LOG(LOG_VERB, "%s is calling %s\n", session->username, session->peer->username);
 				JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
+				/* Check if this user will simulcast */
+				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+				if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
+					JANUS_LOG(LOG_WARN, "VideoCall caller (%s) is going to do simulcasting\n", session->username);
+					session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+					session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
+					session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+				}
 				/* Send SDP to our peer */
 				json_t *call = json_object();
 				json_object_set_new(call, "videocall", json_string("event"));
@@ -1243,6 +1244,23 @@ static void *janus_videocall_handler(void *data) {
 			session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
 			session->has_video = (strstr(msg_sdp, "m=video") != NULL);
 			session->has_data = (strstr(msg_sdp, "DTLS/SCTP") != NULL);
+			/* Check if this user will simulcast */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
+				JANUS_LOG(LOG_WARN, "VideoCall callee (%s) is going to do simulcasting\n", session->username);
+				session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+				session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
+				session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
+			} else {
+				session->ssrc[0] = 0;
+				session->ssrc[1] = 0;
+				session->ssrc[2] = 0;
+				if(session->peer) {
+					session->peer->ssrc[0] = 0;
+					session->peer->ssrc[1] = 0;
+					session->peer->ssrc[2] = 0;
+				}
+			}
 			/* Send SDP to our peer */
 			json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 			json_t *call = json_object();
