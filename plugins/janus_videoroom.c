@@ -148,8 +148,8 @@ rec_dir = <folder where recordings should be stored, when enabled>
 
 
 /* Plugin information */
-#define JANUS_VIDEOROOM_VERSION			8
-#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.8"
+#define JANUS_VIDEOROOM_VERSION			9
+#define JANUS_VIDEOROOM_VERSION_STRING	"0.0.9"
 #define JANUS_VIDEOROOM_DESCRIPTION		"This is a plugin implementing a videoconferencing SFU (Selective Forwarding Unit) for Janus, that is an audio/video router."
 #define JANUS_VIDEOROOM_NAME			"JANUS VideoRoom plugin"
 #define JANUS_VIDEOROOM_AUTHOR			"Meetecho s.r.l."

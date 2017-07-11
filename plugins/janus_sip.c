@@ -80,8 +80,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			6
-#define JANUS_SIP_VERSION_STRING	"0.0.6"
+#define JANUS_SIP_VERSION			7
+#define JANUS_SIP_VERSION_STRING	"0.0.7"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."

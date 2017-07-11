@@ -242,8 +242,8 @@
 
 
 /* Plugin information */
-#define JANUS_VIDEOCALL_VERSION			5
-#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.5"
+#define JANUS_VIDEOCALL_VERSION			6
+#define JANUS_VIDEOCALL_VERSION_STRING	"0.0.6"
 #define JANUS_VIDEOCALL_DESCRIPTION		"This is a simple video call plugin for Janus, allowing two WebRTC peers to call each other through the gateway."
 #define JANUS_VIDEOCALL_NAME			"JANUS VideoCall plugin"
 #define JANUS_VIDEOCALL_AUTHOR			"Meetecho s.r.l."
