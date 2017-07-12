@@ -134,6 +134,20 @@ $(document).ready(function() {
 								webrtcState: function(on) {
 									Janus.log("Janus says our WebRTC PeerConnection is " + (on ? "up" : "down") + " now");
 									$("#videolocal").parent().parent().unblock();
+									// This controls allows us to override the global room bitrate cap
+									$('#bitrate').parent().parent().removeClass('hide').show();
+									$('#bitrate a').click(function() {
+										var id = $(this).attr("id");
+										var bitrate = parseInt(id)*1000;
+										if(bitrate === 0) {
+											Janus.log("Not limiting bandwidth via REMB");
+										} else {
+											Janus.log("Capping bandwidth to " + bitrate + " via REMB");
+										}
+										$('#bitrateset').html($(this).html() + '<span class="caret"></span>').parent().removeClass('open');
+										sfutest.send({"message": { "request": "configure", "bitrate": bitrate }});
+										return false;
+									});
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
@@ -286,6 +300,8 @@ $(document).ready(function() {
 									$('#videolocal').html('<button id="publish" class="btn btn-primary">Publish</button>');
 									$('#publish').click(function() { publishOwnFeed(true); });
 									$("#videolocal").parent().parent().unblock();
+									$('#bitrate').parent().parent().addClass('hide');
+									$('#bitrate a').unbind('click');
 								}
 							});
 					},
@@ -432,6 +448,19 @@ function newRemoteFeed(id, display) {
 						}
 						Janus.log("Successfully attached to feed " + remoteFeed.rfid + " (" + remoteFeed.rfdisplay + ") in room " + msg["room"]);
 						$('#remote'+remoteFeed.rfindex).removeClass('hide').html(remoteFeed.rfdisplay).show();
+					} else if(event === "event") {
+						// Check if we got an event on a SVC-related event from this publisher
+						var spatial = msg["spatial_layer"];
+						var temporal = msg["temporal_layer"];
+						if((spatial !== null && spatial !== undefined) || (temporal !== null && temporal !== undefined)) {
+							if(!remoteFeed.svcStarted) {
+								remoteFeed.svcStarted = true;
+								// Add some new buttons
+								addSvcButtons(remoteFeed.rfindex);
+							}
+							// We just received notice that there's been a switch, update the buttons
+							updateSvcButtons(remoteFeed.rfindex, spatial, temporal);
+						}
 					} else if(msg["error"] !== undefined && msg["error"] !== null) {
 						bootbox.alert(msg["error"]);
 					} else {
@@ -487,51 +516,6 @@ function newRemoteFeed(id, display) {
 					var width = this.videoWidth;
 					var height = this.videoHeight;
 					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					// Enable the layer selection buttons
-					$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-success')
-						.unbind('click').click(function() {
-							toastr.success("Selected spatial layer 1 of " + remoteFeed.rfdisplay + "'s video (normal resolution)", null, {timeOut: 2000});
-							$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-success');
-							$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-primary');
-							var body = { request: "configure", spatial_layer: 1};
-							remoteFeed.send({message: body});
-						});
-					$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-primary')
-						.unbind('click').click(function() {
-							toastr.success("Selected spatial layer 0 of " + remoteFeed.rfdisplay + "'s video (smaller resolution)", null, {timeOut: 2000});
-							$('#sl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-primary');
-							$('#sl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-success');
-							var body = { request: "configure", spatial_layer: 0};
-							remoteFeed.send({message: body});
-						});
-					$('#tl'+remoteFeed.rfindex+'-2').removeClass('btn-primary btn-success').addClass('btn-success')
-						.unbind('click').click(function() {
-							toastr.success("Selected temporal layer 2 of " + remoteFeed.rfdisplay + "'s video (normal FPS)", null, {timeOut: 2000});
-							$('#tl'+remoteFeed.rfindex+'-2').removeClass('btn-primary btn-success').addClass('btn-success');
-							$('#tl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-primary');
-							$('#tl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-primary');
-							var body = { request: "configure", temporal_layer: 2};
-							remoteFeed.send({message: body});
-						});
-					$('#tl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-primary')
-						.unbind('click').click(function() {
-							toastr.success("Selected temporal layer 1 of " + remoteFeed.rfdisplay + "'s video (low FPS)", null, {timeOut: 2000});
-							$('#tl'+remoteFeed.rfindex+'-2').removeClass('btn-primary btn-success').addClass('btn-primary');
-							$('#tl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-success');
-							$('#tl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-primary');
-							var body = { request: "configure", temporal_layer: 1};
-							remoteFeed.send({message: body});
-						});
-					$('#tl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-primary')
-						.unbind('click').click(function() {
-							toastr.success("Selected temporal layer 0 of " + remoteFeed.rfdisplay + "'s video (lowest FPS)", {timeOut: 2000});
-							$('#tl'+remoteFeed.rfindex+'-2').removeClass('btn-primary btn-success').addClass('btn-primary');
-							$('#tl'+remoteFeed.rfindex+'-1').removeClass('btn-primary btn-success').addClass('btn-primary');
-							$('#tl'+remoteFeed.rfindex+'-0').removeClass('btn-primary btn-success').addClass('btn-success');
-							var body = { request: "configure", temporal_layer: 0};
-							remoteFeed.send({message: body});
-						});
-					$('#layers'+remoteFeed.rfindex).removeClass('hide');
 				});
 				Janus.attachMediaStream($('#remotevideo'+remoteFeed.rfindex).get(0), stream);
 				var videoTracks = stream.getVideoTracks();
@@ -576,4 +560,104 @@ function newRemoteFeed(id, display) {
 				$('#layers'+remoteFeed.rfindex).addClass('hide');
 			}
 		});
+}
+
+// Helpers to create SVC-related UI for a new viewer
+function addSvcButtons(feed) {
+	var index = feed;
+	$('#remote'+index).parent().append(
+		'<div id="layers'+index+'" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
+		'	<div class"row">' +
+		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
+		'			<button id="sl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal resolution" style="width: 50%">SL 1</button>' +
+		'			<button id="sl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to low resolution" style="width: 50%">SL 0</button>' +
+		'		</div>' +
+		'	</div>' +
+		'	<div class"row">' +
+		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
+		'			<button id="tl'+index+'-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 2 (high FPS)" style="width: 34%">TL 2</button>' +
+		'			<button id="tl'+index+'-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 1 (medium FPS)" style="width: 33%">TL 1</button>' +
+		'			<button id="tl'+index+'-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0 (low FPS)" style="width: 33%">TL 0</button>' +
+		'		</div>' +
+		'	</div>' +
+		'</div>'
+	);
+	// Enable the VP8 simulcast selection buttons
+	$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Switching SVC spatial layer, wait for it... (low resolution)", null, {timeOut: 2000});
+			if(!$('#sl' + index + '-1').hasClass('btn-success'))
+				$('#sl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+			$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			feeds[index].send({message: { request: "configure", spatial_layer: 0 }});
+		});
+	$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Switching SVC spatial layer, wait for it... (normal resolution)", null, {timeOut: 2000});
+			$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#sl' + index + '-0').hasClass('btn-success'))
+				$('#sl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			feeds[index].send({message: { request: "configure", spatial_layer: 1 }});
+		});
+	$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Capping SVC temporal layer, wait for it... (lowest FPS)", null, {timeOut: 2000});
+			if(!$('#tl' + index + '-2').hasClass('btn-success'))
+				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+			if(!$('#tl' + index + '-1').hasClass('btn-success'))
+				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+			$('#tl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			feeds[index].send({message: { request: "configure", temporal_layer: 0 }});
+		});
+	$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Capping SVC temporal layer, wait for it... (medium FPS)", null, {timeOut: 2000});
+			if(!$('#tl' + index + '-2').hasClass('btn-success'))
+				$('#tl' + index + '-2').removeClass('btn-primary btn-info').addClass('btn-primary');
+			$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-info');
+			if(!$('#tl' + index + '-0').hasClass('btn-success'))
+				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			feeds[index].send({message: { request: "configure", temporal_layer: 1 }});
+		});
+	$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary')
+		.unbind('click').click(function() {
+			toastr.info("Capping SVC temporal layer, wait for it... (highest FPS)", null, {timeOut: 2000});
+			$('#tl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+			if(!$('#tl' + index + '-1').hasClass('btn-success'))
+				$('#tl' + index + '-1').removeClass('btn-primary btn-info').addClass('btn-primary');
+			if(!$('#tl' + index + '-0').hasClass('btn-success'))
+				$('#tl' + index + '-0').removeClass('btn-primary btn-info').addClass('btn-primary');
+			feeds[index].send({message: { request: "configure", temporal_layer: 2 }});
+		});
+}
+
+function updateSvcButtons(feed, spatial, temporal) {
+	// Check the spatial layer
+	var index = feed;
+	if(spatial === 0) {
+		toastr.success("Switched SVC spatial layer! (lower resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#sl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+	} else if(spatial === 1) {
+		toastr.success("Switched SVC spatial layer! (normal resolution)", null, {timeOut: 2000});
+		$('#sl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#sl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	}
+	// Check the temporal layer
+	if(temporal === 0) {
+		toastr.success("Capped SVC temporal layer! (lowest FPS)", null, {timeOut: 2000});
+		$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl' + index + '-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+	} else if(temporal === 1) {
+		toastr.success("Capped SVC temporal layer! (medium FPS)", null, {timeOut: 2000});
+		$('#tl' + index + '-2').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl' + index + '-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	} else if(temporal === 2) {
+		toastr.success("Capped SVC temporal layer! (highest FPS)", null, {timeOut: 2000});
+		$('#tl' + index + '-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+		$('#tl' + index + '-1').removeClass('btn-primary btn-success').addClass('btn-primary');
+		$('#tl' + index + '-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	}
 }

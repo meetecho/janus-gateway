@@ -3483,7 +3483,15 @@ static void *janus_videoroom_handler(void *data) {
 						if(spatial_layer > 1) {
 							JANUS_LOG(LOG_WARN, "Spatial layer higher than 1, will probably be ignored\n");
 						}
-						if(spatial_layer != listener->target_spatial_layer) {
+						if(spatial_layer == listener->spatial_layer) {
+							/* No need to do anything, we're already getting the right spatial layer, so notify the user */
+							json_t *event = json_object();
+							json_object_set_new(event, "videoroom", json_string("event"));
+							json_object_set_new(event, "room", json_integer(listener->room->room_id));
+							json_object_set_new(event, "spatial_layer", json_integer(listener->spatial_layer));
+							gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
+							json_decref(event);
+						} else if(spatial_layer != listener->target_spatial_layer) {
 							/* Send a FIR to the new RTP forward publisher */
 							char buf[20];
 							janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
@@ -3500,6 +3508,15 @@ static void *janus_videoroom_handler(void *data) {
 						int temporal_layer = json_integer_value(temporal);
 						if(temporal_layer > 2) {
 							JANUS_LOG(LOG_WARN, "Temporal layer higher than 2, will probably be ignored\n");
+						}
+						if(temporal_layer == listener->temporal_layer) {
+							/* No need to do anything, we're already getting the right temporal layer, so notify the user */
+							json_t *event = json_object();
+							json_object_set_new(event, "videoroom", json_string("event"));
+							json_object_set_new(event, "room", json_integer(listener->room->room_id));
+							json_object_set_new(event, "temporal_layer", json_integer(listener->temporal_layer));
+							gateway->push_event(msg->handle, &janus_videoroom_plugin, NULL, event, NULL);
+							json_decref(event);
 						}
 						listener->target_temporal_layer = temporal_layer;
 					}
@@ -4133,6 +4150,13 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 						packet->temporal_layer, listener->target_temporal_layer);
 					listener->temporal_layer = packet->temporal_layer;
 					temporal_layer = listener->temporal_layer;
+					/* Notify the viewer */
+					json_t *event = json_object();
+					json_object_set_new(event, "videoroom", json_string("event"));
+					json_object_set_new(event, "room", json_integer(listener->room->room_id));
+					json_object_set_new(event, "temporal_layer", json_integer(listener->temporal_layer));
+					gateway->push_event(listener->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+					json_decref(event);
 				}
 			} else if(listener->target_temporal_layer < listener->temporal_layer) {
 				/* We need to downscale */
@@ -4141,6 +4165,13 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					JANUS_LOG(LOG_HUGE, "  -- Downscaling temporal layer: %u --> %u\n",
 						listener->temporal_layer, listener->target_temporal_layer);
 					listener->temporal_layer = listener->target_temporal_layer;
+					/* Notify the viewer */
+					json_t *event = json_object();
+					json_object_set_new(event, "videoroom", json_string("event"));
+					json_object_set_new(event, "room", json_integer(listener->room->room_id));
+					json_object_set_new(event, "temporal_layer", json_integer(listener->temporal_layer));
+					gateway->push_event(listener->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+					json_decref(event);
 				}
 			}
 			if(temporal_layer < packet->temporal_layer) {
@@ -4158,6 +4189,13 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 						packet->spatial_layer, listener->target_spatial_layer);
 					listener->spatial_layer = packet->spatial_layer;
 					spatial_layer = listener->spatial_layer;
+					/* Notify the viewer */
+					json_t *event = json_object();
+					json_object_set_new(event, "videoroom", json_string("event"));
+					json_object_set_new(event, "room", json_integer(listener->room->room_id));
+					json_object_set_new(event, "spatial_layer", json_integer(listener->spatial_layer));
+					gateway->push_event(listener->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+					json_decref(event);
 				}
 			} else if(listener->target_spatial_layer < listener->spatial_layer) {
 				/* We need to downscale */
@@ -4166,6 +4204,13 @@ static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data) 
 					JANUS_LOG(LOG_HUGE, "  -- Downscaling spatial layer: %u --> %u\n",
 						listener->spatial_layer, listener->target_spatial_layer);
 					listener->spatial_layer = listener->target_spatial_layer;
+					/* Notify the viewer */
+					json_t *event = json_object();
+					json_object_set_new(event, "videoroom", json_string("event"));
+					json_object_set_new(event, "room", json_integer(listener->room->room_id));
+					json_object_set_new(event, "spatial_layer", json_integer(listener->spatial_layer));
+					gateway->push_event(listener->session->handle, &janus_videoroom_plugin, NULL, event, NULL);
+					json_decref(event);
 				}
 			}
 			if(spatial_layer < packet->spatial_layer) {

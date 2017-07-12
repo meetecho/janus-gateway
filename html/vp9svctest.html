@@ -88,7 +88,24 @@
 					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Local Video <span class="label label-primary hide" id="publisher"></span></h3>
+								<h3 class="panel-title">Local Video <span class="label label-primary hide" id="publisher"></span>
+									<div class="btn-group btn-group-xs pull-right hide">
+										<div class="btn-group btn-group-xs">
+											<button id="bitrateset" autocomplete="off" class="btn btn-primary dropdown-toggle" data-toggle="dropdown">
+												Bandwidth<span class="caret"></span>
+											</button>
+											<ul id="bitrate" class="dropdown-menu" role="menu">
+												<li><a href="#" id="0">No limit</a></li>
+												<li><a href="#" id="128">Cap to 128kbit</a></li>
+												<li><a href="#" id="256">Cap to 256kbit</a></li>
+												<li><a href="#" id="512">Cap to 512kbit</a></li>
+												<li><a href="#" id="1024">Cap to 1mbit</a></li>
+												<li><a href="#" id="1500">Cap to 1.5mbit</a></li>
+												<li><a href="#" id="2000">Cap to 2mbit</a></li>
+											</ul>
+										</div>
+									</div>
+								</h3>
 							</div>
 							<div class="panel-body" id="videolocal"></div>
 						</div>
@@ -96,24 +113,7 @@
 					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video #1
-									<span class="label label-info hide" id="remote1"></span>
-									<div id="layers1" class="btn-group-vertical btn-group-vertical-xs pull-right hide">
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="sl1-1" type="button" class="btn btn-primary" style="width: 50%">SL 1</button>
-												<button id="sl1-0" type="button" class="btn btn-primary" style="width: 50%">SL 0</button>
-											</div>
-										</div>
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="tl1-2" type="button" class="btn btn-primary" style="width: 34%">TL 2</button>
-												<button id="tl1-1" type="button" class="btn btn-primary" style="width: 33%">TL 1</button>
-												<button id="tl1-0" type="button" class="btn btn-primary" style="width: 33%">TL 0</button>
-											</div>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Video #1 <span class="label label-info hide" id="remote1"></span></h3>
 							</div>
 							<div class="panel-body relative" id="videoremote1"></div>
 						</div>
@@ -121,24 +121,7 @@
 					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video #2
-									<span class="label label-info hide" id="remote2"></span>
-									<div id="layers2" class="btn-group-vertical btn-group-vertical-xs pull-right hide">
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="sl2-1" type="button" class="btn btn-primary" style="width: 50%">SL 1</button>
-												<button id="sl2-0" type="button" class="btn btn-primary" style="width: 50%">SL 0</button>
-											</div>
-										</div>
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="tl2-2" type="button" class="btn btn-primary" style="width: 34%">TL 2</button>
-												<button id="tl2-1" type="button" class="btn btn-primary" style="width: 33%">TL 1</button>
-												<button id="tl2-0" type="button" class="btn btn-primary" style="width: 33%">TL 0</button>
-											</div>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Video #2 <span class="label label-info hide" id="remote2"></span></h3>
 							</div>
 							<div class="panel-body relative" id="videoremote2"></div>
 						</div>
@@ -148,24 +131,7 @@
 					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video #3
-									<span class="label label-info hide" id="remote3"></span>
-									<div id="layers3" class="btn-group-vertical btn-group-vertical-xs pull-right hide">
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="sl3-1" type="button" class="btn btn-primary" style="width: 50%">SL 1</button>
-												<button id="sl3-0" type="button" class="btn btn-primary" style="width: 50%">SL 0</button>
-											</div>
-										</div>
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="tl3-2" type="button" class="btn btn-primary" style="width: 34%">TL 2</button>
-												<button id="tl3-1" type="button" class="btn btn-primary" style="width: 33%">TL 1</button>
-												<button id="tl3-0" type="button" class="btn btn-primary" style="width: 33%">TL 0</button>
-											</div>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Video #3 <span class="label label-info hide" id="remote3"></span></h3>
 							</div>
 							<div class="panel-body relative" id="videoremote3"></div>
 						</div>
@@ -173,24 +139,7 @@
 					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video #4
-									<span class="label label-info hide" id="remote4"></span>
-									<div id="layers4" class="btn-group-vertical btn-group-vertical-xs pull-right hide">
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="sl4-1" type="button" class="btn btn-primary" style="width: 50%">SL 1</button>
-												<button id="sl4-0" type="button" class="btn btn-primary" style="width: 50%">SL 0</button>
-											</div>
-										</div>
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="tl4-2" type="button" class="btn btn-primary" style="width: 34%">TL 2</button>
-												<button id="tl4-1" type="button" class="btn btn-primary" style="width: 33%">TL 1</button>
-												<button id="tl4-0" type="button" class="btn btn-primary" style="width: 33%">TL 0</button>
-											</div>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Video #4 <span class="label label-info hide" id="remote4"></span></h3>
 							</div>
 							<div class="panel-body relative" id="videoremote4"></div>
 						</div>
@@ -198,24 +147,7 @@
 					<div class="col-md-4">
 						<div class="panel panel-default">
 							<div class="panel-heading">
-								<h3 class="panel-title">Remote Video #5
-									<span class="label label-info hide" id="remote5"></span>
-									<div id="layers5" class="btn-group-vertical btn-group-vertical-xs pull-right hide">
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="sl5-1" type="button" class="btn btn-primary" style="width: 50%">SL 1</button>
-												<button id="sl5-0" type="button" class="btn btn-primary" style="width: 50%">SL 0</button>
-											</div>
-										</div>
-										<div class"row">
-											<div class="btn-group btn-group-xs" style="width: 100%">
-												<button id="tl5-2" type="button" class="btn btn-primary" style="width: 34%">TL 2</button>
-												<button id="tl5-1" type="button" class="btn btn-primary" style="width: 33%">TL 1</button>
-												<button id="tl5-0" type="button" class="btn btn-primary" style="width: 33%">TL 0</button>
-											</div>
-										</div>
-									</div>
-								</h3>
+								<h3 class="panel-title">Remote Video #5 <span class="label label-info hide" id="remote5"></span></h3>
 							</div>
 							<div class="panel-body relative" id="videoremote5"></div>
 						</div>
