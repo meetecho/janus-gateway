@@ -315,12 +315,6 @@ static struct janus_json_parameter recording_stop_parameters[] = {
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
 static janus_mutex config_mutex;
-static gint64 lastFrameTimestamp;
-static gint64 lastFrameTime = 0;
-static gint64 lastPackageTime = 0;
-static gint64 firstPackageTime = 0;
-static gint64 firstPackageTimestamp = 0;
-static gint64 counter;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -334,7 +328,6 @@ static void *janus_streaming_filesource_thread(void *data);
 static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *janus_streaming_relay_thread(void *data);
 static gboolean janus_streaming_is_keyframe(gint codec, char* buffer, int len);
-static void *janus_buffer_queqe_thread(void *data);
 
 typedef enum janus_streaming_type {
 	janus_streaming_type_none = 0,
@@ -444,7 +437,6 @@ typedef struct janus_streaming_mountpoint {
 	GList/*<unowned janus_streaming_session>*/ *listeners;
 	gint64 destroyed;
 	janus_mutex mutex;
-    GQueue *queued_packets;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints;
 static GList *old_mountpoints;
@@ -3059,16 +3051,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 		g_free(live_rtp);
 		return NULL;
 	}
-    
-    GError *errorBufferQueqe = NULL;
-    g_thread_try_new("buffer_queqe", &janus_buffer_queqe_thread, live_rtp, &errorBufferQueqe);
-    if(errorBufferQueqe != NULL) {
-        JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the buffer queqe thread...\n", errorBufferQueqe->code, errorBufferQueqe->message ? errorBufferQueqe->message : "??");
-        return NULL;
-    }
-    
-
-    
 	return live_rtp;
 }
 
@@ -3806,36 +3788,6 @@ static void *janus_streaming_filesource_thread(void *data) {
 	return NULL;
 }
 
-/*
- * Helper function to compare to given
- * notifications.
- negative value if a < b ; zero if a = b ; positive value if a > b
- */
-int packet_timestamp_cmp(const void *va, const void *vb)
-{
-    
-    janus_streaming_rtp_relay_packet *a = (janus_streaming_rtp_relay_packet *) va;
-    janus_streaming_rtp_relay_packet *b = (janus_streaming_rtp_relay_packet *) vb;
-    if (a->timestamp>b->timestamp) {
-        return 1;
-    }else if (a->timestamp==b->timestamp&&a->seq_number>b->seq_number){
-        return 1;
-    }else if(a->timestamp==b->timestamp&&a->seq_number==b->seq_number){
-        return 0;
-    }else{
-        return -1;
-    }
-}
-
-/*
- * Wrapper for notification_cmp to match glib's
- * compare functions signature.
- */
-int packet_timestamp_cmp_data(const void *va, const void *vb, void *data)
-{
-    return packet_timestamp_cmp(va, vb);
-}
-
 /* FIXME Test thread to relay RTP frames coming from gstreamer/ffmpeg/others */
 static void *janus_streaming_relay_thread(void *data) {
 	JANUS_LOG(LOG_VERB, "Starting streaming relay thread\n");
@@ -4078,20 +4030,6 @@ static void *janus_streaming_relay_thread(void *data) {
 					bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
 					rtp_header *rtp = (rtp_header *)buffer;
-                    
-                    gint32 time_offset = ntohl(rtp->timestamp) - lastFrameTimestamp;
-                    if(rtp->markerbit==1)
-                    {
-                        JANUS_PRINT("recv rtp package ssrc= %u , seq = %u, timestamp=%u, markerbit=%d, timestamp_offset = %.2fms, recv_time = %ld, recv_package_offset = %.2fms, recv_frame_offset = %.2fms\n", ntohl(rtp->ssrc), ntohs(rtp->seq_number), ntohl(rtp->timestamp), rtp->markerbit, time_offset/90.0f, source->last_received_video, (source->last_received_video - lastPackageTime)/1000.0f, (source->last_received_video - lastFrameTime)/1000.0f);
-                        lastFrameTimestamp = (gint64)ntohl(rtp->timestamp);
-                        lastFrameTime = source->last_received_video;
-                    }
-                    else
-                    {
-                        JANUS_PRINT("recv rtp package ssrc= %u , seq = %u, timestamp=%u, markerbit=%d, timestamp_offset = %.2fms, recv_time = %ld, recv_package_offset = %.2fms\n", ntohl(rtp->ssrc), ntohs(rtp->seq_number), ntohl(rtp->timestamp), rtp->markerbit, time_offset/90.0f, source->last_received_video, (source->last_received_video - lastPackageTime)/1000.0f);
-                    }
-                    
-                    lastPackageTime = source->last_received_video;
 					/* First of all, let's check if this is (part of) a keyframe that we may need to save it for future reference */
 					if(source->keyframe.enabled) {
 						if(source->keyframe.temp_ts > 0 && ntohl(rtp->timestamp) != source->keyframe.temp_ts) {
@@ -4168,20 +4106,9 @@ static void *janus_streaming_relay_thread(void *data) {
 						v_base_ts = ntohl(packet.data->timestamp);
 						v_base_seq_prev = v_last_seq;
 						v_base_seq = ntohs(packet.data->seq_number);
-                        
-                        firstPackageTime = janus_get_monotonic_time();
-                        firstPackageTimestamp = v_base_ts;
-                        counter = 0;
-                        
-                        if (mountpoint->queued_packets!=NULL) {
-                            g_queue_clear(mountpoint->queued_packets);
-                            
-                        }else{
-                            mountpoint->queued_packets = g_queue_new();
-                        }
 					}
 					v_last_ts = (ntohl(packet.data->timestamp)-v_base_ts)+v_base_ts_prev+4500;	/* FIXME We're assuming 15fps here... */
-//					packet.data->timestamp = htonl(v_last_ts);
+					packet.data->timestamp = htonl(v_last_ts);
 					v_last_seq = (ntohs(packet.data->seq_number)-v_base_seq)+v_base_seq_prev+1;
 					packet.data->seq_number = htons(v_last_seq);
 					//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
@@ -4192,56 +4119,9 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
-                    
-                    counter++;
-                    if(counter>2000 && counter%200==0)
-                    {
-//                        JANUS_PRINT("--------openrec sleep 30ms\n");
-//                        usleep(30000);
-                    }
-                    
 					/* Go! */
 					janus_mutex_lock(&mountpoint->mutex);
-					
-                    //准备插入的数据
-                    janus_streaming_rtp_relay_packet *pkt = (janus_streaming_rtp_relay_packet *)g_malloc0(sizeof(janus_streaming_rtp_relay_packet));
-                    
-                    memcpy(pkt, &packet, sizeof(janus_streaming_rtp_relay_packet));
-                    //深度拷贝数据
-                    pkt->data = g_malloc0(packet.length);
-                    memcpy(pkt->data, packet.data, packet.length);
-                    pkt->length = packet.length;
-                    
-                    //插入
-//                    g_queue_push_tail(mountpoint->queued_packets, pkt);
-                    //插入
-                    g_queue_insert_sorted(mountpoint->queued_packets, pkt, packet_timestamp_cmp_data, NULL);
-                    
-//                    if(!shouldSend && g_queue_get_length(mountpoint->queued_packets) > 5000)
-//                    {
-//                        shouldSend = TRUE;
-//                                            }
-//                    if(shouldSend && shouldSend%500==0)
-//                    {
-//                        usleep(50000);
-//                    }
-                    
-//                    if (shouldSend)
-//                    {
-//                        //取出数据
-//                        janus_streaming_rtp_relay_packet * pktNew = g_queue_pop_head(mountpoint->queued_packets);
-//                        
-//                        if (pktNew!=NULL) {
-//                            rtp_header *rtpNew = (rtp_header *)pktNew->data;
-//                            JANUS_PRINT("pop sort rtp package: ssrc=%u, seq=%u, timestamp=%u\n", ntohl(rtpNew->ssrc),pktNew->seq_number, pktNew->timestamp);
-//                            g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, pktNew);
-//                            if (pktNew->data!=NULL) {
-//                                g_free(pktNew->data);
-//                            }
-//                            g_free(pktNew);
-//                        }
-//                    }
-                    
+					g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, &packet);
 					janus_mutex_unlock(&mountpoint->mutex);
 					continue;
 				} else if(data_fd != -1 && fds[i].fd == data_fd) {
@@ -4361,59 +4241,6 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 	}
 
 	return;
-}
-
-
-static void *janus_buffer_queqe_thread(void *data) {
-    
-    JANUS_LOG(LOG_VERB, "Starting buffer queqe thread\n");
-    janus_streaming_mountpoint *mountpoint = (janus_streaming_mountpoint *)data;
-    if(mountpoint!=NULL)
-    {
-        int sendCount;
-        while(TRUE)
-        {
-            /* Go! */
-            janus_mutex_lock(&mountpoint->mutex);
-            
-            //取出数据
-            gint64 now = janus_get_monotonic_time();
-            sendCount = 0;
-            while(g_queue_get_length(mountpoint->queued_packets)>0)
-            {
-                janus_streaming_rtp_relay_packet * pkt = g_queue_peek_head(mountpoint->queued_packets);
-                gint32 timestamp_offset = pkt->timestamp - firstPackageTimestamp;
-                gint64 currentPackageRecvtime = firstPackageTime + timestamp_offset * 1000/90.0f;
-                if(now - currentPackageRecvtime>500000)
-                {
-                    pkt = g_queue_pop_head(mountpoint->queued_packets);
-                    if (pkt!=NULL)
-                    {
-                        rtp_header *rtpSend = (rtp_header *)pkt->data;
-                        JANUS_PRINT("pop package: ssrc=%u, seq=%u, timestamp=%u, now=%ld, first_package_timestamp=%ld, first_package_time=%ld, buffer_offset = %d\n", ntohl(rtpSend->ssrc), pkt->seq_number, pkt->timestamp, now, firstPackageTimestamp, firstPackageTime, (now - currentPackageRecvtime));
-                        g_list_foreach(mountpoint->listeners, janus_streaming_relay_rtp_packet, pkt);
-                        if (pkt->data!=NULL)
-                        {
-                            g_free(pkt->data);
-                        }
-                        g_free(pkt);
-                    }
-                    sendCount++;
-                }
-                else
-                {
-                    break;
-                }
-            }
-            
-            JANUS_PRINT("pop package: send_package_count = %d, left_buffer_queqe_length =%d \n", sendCount, g_queue_get_length(mountpoint->queued_packets));
-            
-        
-            janus_mutex_unlock(&mountpoint->mutex);
-            usleep(5000);
-        }
-    }
-    
 }
 
 /* Helpers to check if frame is a key frame (see post processor code) */
