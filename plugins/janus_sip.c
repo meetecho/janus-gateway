@@ -160,7 +160,12 @@ static struct janus_json_parameter call_parameters[] = {
 	{"uri", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"autoack", JANUS_JSON_BOOL, 0},
 	{"headers", JSON_OBJECT, 0},
-	{"srtp", JSON_STRING, 0}
+	{"srtp", JSON_STRING, 0},
+	/* The following are only needed in case "guest" registrations
+	 * still need an authenticated INVITE for some reason */
+	{"secret", JSON_STRING, 0},
+	{"ha1_secret", JSON_STRING, 0},
+	{"authuser", JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
 	{"srtp", JSON_STRING, 0}
@@ -1409,7 +1414,6 @@ static void *janus_sip_handler(void *data) {
 				if(!strcmp(type_text, "guest")) {
 					JANUS_LOG(LOG_INFO, "Registering as a guest\n");
 					guest = TRUE;
-					session->account.registration_status = janus_sip_registration_status_registered;
 				} else {
 					JANUS_LOG(LOG_WARN, "Unknown type '%s', ignoring...\n", type_text);
 				}
@@ -1738,7 +1742,8 @@ static void *janus_sip_handler(void *data) {
 				g_snprintf(error_cause, 512, "Wrong state (register first)");
 				goto error;
 			}
-			if(session->account.registration_status < janus_sip_registration_status_registered) {
+			if(session->account.registration_status != janus_sip_registration_status_registered &&
+					session->account.registration_status != janus_sip_registration_status_disabled) {
 				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIP_ERROR_WRONG_STATE;
 				g_snprintf(error_cause, 512, "Wrong state (not registered)");
@@ -1755,6 +1760,15 @@ static void *janus_sip_handler(void *data) {
 				JANUS_SIP_ERROR_MISSING_ELEMENT, JANUS_SIP_ERROR_INVALID_ELEMENT);
 			if(error_code != 0)
 				goto error;
+			json_t *secret = json_object_get(root, "secret");
+			json_t *ha1_secret = json_object_get(root, "ha1_secret");
+			json_t *authuser = json_object_get(root, "authuser");
+			if(secret && ha1_secret) {
+				JANUS_LOG(LOG_ERR, "Conflicting elements specified (secret and ha1_secret)\n");
+				error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
+				g_snprintf(error_cause, 512, "Conflicting elements specified (secret and ha1_secret)");
+				goto error;
+			}
 			json_t *uri = json_object_get(root, "uri");
 			/* Check if we need to ACK manually (e.g., for the Record-Route hack) */
 			json_t *autoack = json_object_get(root, "autoack");
@@ -1907,6 +1921,23 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(info, "call-id", json_string(callid));
 				json_object_set_new(info, "sdp", json_string(sdp));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
+			}
+			/* Check if there are new credentials to authenticate the INVITE */
+			if(authuser) {
+				JANUS_LOG(LOG_VERB, "Updating credentials (authuser) for authenticating the INVITE\n");
+				g_free(session->account.authuser);
+				session->account.authuser = g_strdup(json_string_value(authuser));
+			}
+			if(secret) {
+				JANUS_LOG(LOG_VERB, "Updating credentials (secret) for authenticating the INVITE\n");
+				g_free(session->account.secret);
+				session->account.secret = g_strdup(json_string_value(secret));
+				session->account.secret_type = janus_sip_secret_type_plaintext;
+			} else if(ha1_secret) {
+				JANUS_LOG(LOG_VERB, "Updating credentials (ha1_secret) for authenticating the INVITE\n");
+				g_free(session->account.secret);
+				session->account.secret = g_strdup(json_string_value(secret));
+				session->account.secret_type = janus_sip_secret_type_hashed;
 			}
 			/* Send INVITE */
 			session->callee = g_strdup(uri_text);
