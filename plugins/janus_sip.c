@@ -1077,6 +1077,8 @@ json_t *janus_sip_query_session(janus_plugin_session *handle) {
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
+	json_object_set_new(info, "authuser", session->account.authuser ? json_string(session->account.authuser) : NULL);
+	json_object_set_new(info, "secret", session->account.secret ? json_string("(hidden)") : NULL);
 	json_object_set_new(info, "display_name", session->account.display_name ? json_string(session->account.display_name) : NULL);
 	json_object_set_new(info, "user_agent", session->account.user_agent ? json_string(session->account.user_agent) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
@@ -1936,7 +1938,7 @@ static void *janus_sip_handler(void *data) {
 			} else if(ha1_secret) {
 				JANUS_LOG(LOG_VERB, "Updating credentials (ha1_secret) for authenticating the INVITE\n");
 				g_free(session->account.secret);
-				session->account.secret = g_strdup(json_string_value(secret));
+				session->account.secret = g_strdup(json_string_value(ha1_secret));
 				session->account.secret_type = janus_sip_secret_type_hashed;
 			}
 			/* Send INVITE */
