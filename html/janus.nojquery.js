@@ -1388,7 +1388,7 @@ function Janus(gatewayCallbacks) {
 		} else {
 			if(adapter.browserDetails.browser === "edge") {
 				// This is Edge, add an a=end-of-candidates at the end
-				jsep.sdp += "a=end-of-candidates\r\n";
+				jsep.sdp = mungeSdpForEdge(jsep.sdp);
 			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
@@ -1422,7 +1422,7 @@ function Janus(gatewayCallbacks) {
 			} else {
 				if(adapter.browserDetails.browser === "edge") {
 					// This is Edge, add an a=end-of-candidates at the end
-					jsep.sdp += "a=end-of-candidates\r\n";
+					jsep.sdp = mungeSdpForEdge(jsep.sdp);
 				}
 				config.pc.setRemoteDescription(
 						new RTCSessionDescription(jsep),
@@ -1759,7 +1759,7 @@ function Janus(gatewayCallbacks) {
 			}
 			if(adapter.browserDetails.browser === "edge") {
 				// This is Edge, add an a=end-of-candidates at the end
-				jsep.sdp += "a=end-of-candidates\r\n";
+				jsep.sdp = mungeSdpForEdge(jsep.sdp);
 			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
@@ -2183,6 +2183,32 @@ function Janus(gatewayCallbacks) {
 			config.dtmfSender = null;
 		}
 		pluginHandle.oncleanup();
+	}
+
+	// Helper method to munge an SDP to Edge, to add a=end-of-candidates to all m-lines
+	function mungeSdpForEdge(sdp) {
+		// See https://github.com/webrtc/adapter/issues/605
+		var lines = sdp.split("\r\n");
+		var firstMline = true;
+		for(var i=0; i<lines.length; i++) {
+			var mline = lines[i].match(/m=(\w+) */);
+			if(mline) {
+				if(firstMline) {
+					firstMline = false;
+					continue;
+				}
+				// Insert an a=end-of-candidates before this line
+				lines.splice(i, 0, "a=end-of-candidates"); i++;
+				continue;
+			}
+		}
+		// Regenerate SDP
+		sdp = lines.join("\r\n");
+		if(!sdp.endsWith("\r\n"))
+			sdp += "\r\n";
+		// Let's add a last a=end-of-candidates
+		sdp += "a=end-of-candidates\r\n";
+		return sdp;
 	}
 
 	// Helper methods to parse a media object
