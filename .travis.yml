@@ -1,0 +1,43 @@
+dist: trusty
+sudo: false 
+language: node_js
+
+env:
+  global:
+    - CPPFLAGS=-I${HOME}/srtp/include
+    - LDFLAGS=-L${HOME}/srtp/lib
+
+addons:
+  apt: 
+    packages:
+      - build-essential 
+      - libmicrohttpd-dev
+      - libjansson-dev
+      - libnice-dev
+      - libssl-dev
+      - libsrtp-dev
+      - libsofia-sip-ua-dev
+      - libglib2.0-dev
+      - libopus-dev
+      - libogg-dev
+      - libcurl4-openssl-dev
+      - pkg-config
+      - gengetopt
+      - libtool
+      - automake
+
+before_script:
+ - cd ..
+ - mkdir srtp
+ - wget https://github.com/cisco/libsrtp/archive/v2.0.0.tar.gz
+ - tar xfv v2.0.0.tar.gz
+ - cd libsrtp-2.0.0
+ - ./configure --prefix=${HOME}/srtp --enable-openssl
+ - make shared_library
+ - make install
+ - cd ../janus-gateway
+
+script:
+  - sh autogen.sh
+  - ./configure
+  - make
