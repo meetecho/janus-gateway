@@ -1,6 +1,6 @@
 dist: trusty
 sudo: false 
-language: node_js
+language: c
 
 env:
   global:
