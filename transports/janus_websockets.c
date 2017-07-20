@@ -1088,7 +1088,11 @@ static int janus_websockets_common_callback(
 #ifdef HAVE_LIBWEBSOCKETS_PEER_SIMPLE
 			lws_get_peer_simple(wsi, name, 256);
 #else
+#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+			lws_get_peer_addresses(wsi, lws_get_socket_fd(wsi), name, 256, ip, 256);
+#else
 			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
+#endif
 #endif
 			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s by %s\n", log_prefix, wsi, ip, name);
 			if(!janus_websockets_is_allowed(ip, admin)) {
