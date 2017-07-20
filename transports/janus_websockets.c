@@ -1085,7 +1085,7 @@ static int janus_websockets_common_callback(
 		case LWS_CALLBACK_ESTABLISHED: {
 			/* Is there any filtering we should apply? */
 			char name[256], ip[256];
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+#ifdef HAVE_LIBWEBSOCKETS_PEER_SIMPLE
 			lws_get_peer_simple(wsi, name, 256);
 #else
 			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
