@@ -1796,7 +1796,7 @@ static void *janus_textroom_handler(void *data) {
 			janus_textroom_message_free(msg);
 			continue;
 		}
-		if(session->destroyed) {
+		if(g_atomic_int_get(&session->destroyed)) {
 			janus_textroom_message_free(msg);
 			continue;
 		}
