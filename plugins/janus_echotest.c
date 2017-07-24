@@ -675,16 +675,18 @@ static void *janus_echotest_handler(void *data) {
 		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
 			session = (janus_echotest_session *)msg->handle->plugin_handle;
 		}
-		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_echotest_message_free(msg);
 			continue;
 		}
 		if(session->destroyed) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_echotest_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;

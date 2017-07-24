@@ -1362,14 +1362,17 @@ static void *janus_sip_handler(void *data) {
 		}
 		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_sip_message_free(msg);
 			continue;
 		}
 		if(session->destroyed) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_sip_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;
