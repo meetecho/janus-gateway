@@ -203,6 +203,12 @@ AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       ])
 AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
 
+AC_CHECK_LIB([crypto],
+             [RAND_egd],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], false)],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], true)]
+             )
+
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
              [AC_DEFINE(HAVE_PORTRANGE)],
@@ -598,6 +604,7 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                          ])
       ])
 
+AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
 AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
 
 AC_CONFIG_FILES([
@@ -624,7 +631,9 @@ AM_COND_IF([ENABLE_BORINGSSL],
 		[echo "DTLS set-timeout:          yes"],
 		[echo "DTLS set-timeout:          no"])
 	],
-	[echo "SSL/crypto library:        OpenSSL"
+	[AM_COND_IF([LIBRESSL_DETECTED],
+		[echo "SSL/crypto library:        LibreSSL"],
+		[echo "SSL/crypto library:        OpenSSL"])
 	 echo "DTLS set-timeout:          not available"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],

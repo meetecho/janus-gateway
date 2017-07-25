@@ -288,6 +288,16 @@ $(document).ready(function() {
 													}
 												}
 											});											
+										} else if(event === 'accepting') {
+											// Response to an offerless INVITE, let's wait for an 'accepted'
+										} else if(event === 'progress') {
+											Janus.log("There's early media from " + result["username"] + ", wairing for the call!");
+											Janus.log(jsep);
+											// Call can start already: handle the remote answer
+											if(jsep !== null && jsep !== undefined) {
+												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
+											}
+											toastr.info("Early media...");
 										} else if(event === 'accepted') {
 											Janus.log(result["username"] + " accepted the call!");
 											Janus.log(jsep);
@@ -295,6 +305,7 @@ $(document).ready(function() {
 											if(jsep !== null && jsep !== undefined) {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
+											toastr.success("Call accepted!");
 										} else if(event === 'hangup') {
 											if(incoming != null) {
 												incoming.modal('hide');
