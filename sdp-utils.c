@@ -495,7 +495,7 @@ int janus_sdp_remove_payload_type(janus_sdp *sdp, int pt) {
 		GList *ma = m->attributes;
 		while(ma) {
 			janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
-			if(atoi(a->value) == pt) {
+			if(a->value && atoi(a->value) == pt) {
 				m->attributes = g_list_remove(m->attributes, a);
 				ma = m->attributes;
 				janus_sdp_attribute_destroy(a);
@@ -1156,8 +1156,6 @@ janus_sdp *janus_sdp_generate_answer(janus_sdp *offer, ...) {
 					am->fmts = g_list_append(am->fmts, g_strdup(fmt_str));
 				fmt = fmt->next;
 			}
-			janus_sdp_attribute *aa = janus_sdp_attribute_create("sctmap", "5000 webrtc-datachannel 16");
-			am->attributes = g_list_append(am->attributes, aa);
 		}
 		temp = temp->next;
 	}

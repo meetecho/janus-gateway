@@ -156,11 +156,10 @@ Janus.init = function(options) {
 					to.srcObject = from.srcObject;
 				} else if(typeof to.src !== 'undefined') {
 					to.src = from.src;
+				} else {
+					Janus.error("Error reattaching stream to element");
 				}
-			} else if(adapter.browserDetails.browser === 'safari' || window.navigator.userAgent.match(/iPad/i) || window.navigator.userAgent.match(/iPhone/i)) {
-				to.src = from.src;
-			}
-			else {
+			} else {
 				to.srcObject = from.srcObject;
 			}
 		};
@@ -305,6 +304,7 @@ function Janus(gatewayCallbacks) {
 	if(iceServers === undefined || iceServers === null)
 		iceServers = [{urls: "stun:stun.l.google.com:19302"}];
 	var iceTransportPolicy = gatewayCallbacks.iceTransportPolicy;
+	var bundlePolicy = gatewayCallbacks.bundlePolicy;
 	// Whether IPv6 candidates should be gathered
 	var ipv6Support = gatewayCallbacks.ipv6;
 	if(ipv6Support === undefined || ipv6Support === null)
@@ -1293,7 +1293,7 @@ function Janus(gatewayCallbacks) {
 		var config = pluginHandle.webrtcStuff;
 		Janus.debug("streamsDone:", stream);
 		config.myStream = stream;
-		var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy};
+		var pc_config = {"iceServers": iceServers, "iceTransportPolicy": iceTransportPolicy, "bundlePolicy": bundlePolicy};
 		//~ var pc_constraints = {'mandatory': {'MozDontOfferDataChannel':true}};
 		var pc_constraints = {
 			"optional": [{"DtlsSrtpKeyAgreement": true}]
@@ -1386,10 +1386,6 @@ function Janus(gatewayCallbacks) {
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
 		} else {
-			if(adapter.browserDetails.browser === "edge") {
-				// This is Edge, add an a=end-of-candidates at the end
-				jsep.sdp += "a=end-of-candidates\r\n";
-			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
 					function() {
@@ -1420,10 +1416,6 @@ function Janus(gatewayCallbacks) {
 			if(jsep === null || jsep === undefined) {
 				createOffer(handleId, media, callbacks);
 			} else {
-				if(adapter.browserDetails.browser === "edge") {
-					// This is Edge, add an a=end-of-candidates at the end
-					jsep.sdp += "a=end-of-candidates\r\n";
-				}
 				config.pc.setRemoteDescription(
 						new RTCSessionDescription(jsep),
 						function() {
@@ -1757,10 +1749,6 @@ function Janus(gatewayCallbacks) {
 				callbacks.error("No PeerConnection: if this is an answer, use createAnswer and not handleRemoteJsep");
 				return;
 			}
-			if(adapter.browserDetails.browser === "edge") {
-				// This is Edge, add an a=end-of-candidates at the end
-				jsep.sdp += "a=end-of-candidates\r\n";
-			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
 					function() {
@@ -2048,9 +2036,20 @@ function Janus(gatewayCallbacks) {
 				config.bitrate.timer = setInterval(function() {
 					config.pc.getStats()
 						.then(function(stats) {
-							stats.forEach(res => {
-								if(res && (res.mediaType === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
+							stats.forEach(function (res) {
+								var inStats = false;
+								// Check if these are statistics on incoming media
+								if((res.mediaType === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
 										res.type === "inbound-rtp" && res.id.indexOf("rtcp") < 0) {
+									// New stats
+									inStats = true;
+								} else if(res.type == 'ssrc' && res.bytesReceived &&
+										medium === "video" && (res.googCodecName === "VP8" || res.googCodecName === "")) {
+									// Older Chromer versions
+									inStats = true;
+								}
+								// Parse stats now
+								if(inStats) {
 									config.bitrate.bsnow = res.bytesReceived;
 									config.bitrate.tsnow = res.timestamp;
 									if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
@@ -2059,6 +2058,7 @@ function Janus(gatewayCallbacks) {
 										config.bitrate.tsbefore = config.bitrate.tsnow;
 									} else {
 										// Calculate bitrate
+										var timePassed = config.bitrate.tsnow - config.bitrate.tsbefore;
 										if(adapter.browserDetails.browser == "safari")
 											timePassed = timePassed/1000;	// Apparently the timestamp is in microseconds, in Safari
 										var bitRate = Math.round((config.bitrate.bsnow - config.bitrate.bsbefore) * 8 / timePassed);
