@@ -2462,8 +2462,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		packet.timestamp = ntohl(packet.data->timestamp);
 		packet.seq_number = ntohs(packet.data->seq_number);
 		/* Go */
-		janus_mutex_lock(&participant->subscribers_mutex);
+		janus_mutex_lock_nodebug(&participant->subscribers_mutex);
 		g_slist_foreach(participant->subscribers, janus_videoroom_relay_rtp_packet, &packet);
+		janus_mutex_unlock_nodebug(&participant->subscribers_mutex);
 		
 		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
 		if(video && participant->video_active) {
@@ -2601,9 +2602,9 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	/* Save the message if we're recording */
 	janus_recorder_save_frame(participant->drc, text, strlen(text));
 	/* Relay to all listeners */
-	janus_mutex_lock(&participant->subscribers_mutex);
+	janus_mutex_lock_nodebug(&participant->subscribers_mutex);
 	g_slist_foreach(participant->subscribers, janus_videoroom_relay_data_packet, text);
-	janus_mutex_unlock(&participant->subscribers_mutex);
+	janus_mutex_unlock_nodebug(&participant->subscribers_mutex);
 	g_free(text);
 	g_clear_pointer(&participant, janus_videoroom_publisher_dereference_nodebug);
 }
