@@ -245,6 +245,7 @@ typedef enum janus_sipre_mqueue_event {
 	janus_sipre_mqueue_event_do_info,
 	janus_sipre_mqueue_event_do_message,
 	janus_sipre_mqueue_event_do_bye,
+	janus_sipre_mqueue_event_do_close,
 	janus_sipre_mqueue_event_do_destroy,
 	/* TODO Add other events here */
 	janus_sipre_mqueue_event_do_exit
@@ -271,6 +272,8 @@ static const char *janus_sipre_mqueue_event_string(janus_sipre_mqueue_event even
 			return "message";
 		case janus_sipre_mqueue_event_do_bye:
 			return "bye";
+		case janus_sipre_mqueue_event_do_close:
+			return "close";
 		case janus_sipre_mqueue_event_do_destroy:
 			return "destroy";
 		case janus_sipre_mqueue_event_do_exit:
@@ -739,64 +742,8 @@ static void *janus_sipre_watchdog(void *data) {
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
-					sipsess_close_all(session->stack.sess_sock);
-					sip_close(session->stack.sipstack, FALSE);
-					session->stack.sipstack = NULL;
-					if(session->account.identity) {
-					    g_hash_table_remove(identities, session->account.identity);
-					    g_free(session->account.identity);
-					    session->account.identity = NULL;
-					}
-					session->account.sips = TRUE;
-					if(session->account.proxy) {
-					    g_free(session->account.proxy);
-					    session->account.proxy = NULL;
-					}
-					if(session->account.outbound_proxy) {
-					    g_free(session->account.outbound_proxy);
-					    session->account.outbound_proxy = NULL;
-					}
-					if(session->account.secret) {
-					    g_free(session->account.secret);
-					    session->account.secret = NULL;
-					}
-					if(session->account.username) {
-					    g_free(session->account.username);
-					    session->account.username = NULL;
-					}
-					if(session->account.display_name) {
-					    g_free(session->account.display_name);
-					    session->account.display_name = NULL;
-					}
-					if(session->account.authuser) {
-					    g_free(session->account.authuser);
-					    session->account.authuser = NULL;
-					}
-					if(session->callee) {
-					    g_free(session->callee);
-					    session->callee = NULL;
-					}
-					if(session->callid) {
-					    g_hash_table_remove(callids, session->callid);
-					    g_free(session->callid);
-					    session->callid = NULL;
-					}
-					if(session->sdp) {
-					    janus_sdp_free(session->sdp);
-					    session->sdp = NULL;
-					}
-					if(session->transaction) {
-					    g_free(session->transaction);
-					    session->transaction = NULL;
-					}
-					if(session->media.remote_ip) {
-					    g_free(session->media.remote_ip);
-					    session->media.remote_ip = NULL;
-					}
-					janus_sipre_srtp_cleanup(session);
-					session->handle = NULL;
-					g_free(session);
-					session = NULL;
+					/* Destroy this SIP session in the queue handler */
+					mqueue_push(mq, janus_sipre_mqueue_event_do_destroy, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 					continue;
 				}
 				sl = sl->next;
@@ -1157,8 +1104,8 @@ void janus_sipre_destroy_session(janus_plugin_session *handle, int *error) {
 		JANUS_LOG(LOG_VERB, "Destroying SIPre session (%s)...\n", session->account.username ? session->account.username : "unregistered user");
 		/* Unregister */
 		mqueue_push(mq, janus_sipre_mqueue_event_do_unregister, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
-		/* Destroy re-related stuff for this SIP session */
-		mqueue_push(mq, janus_sipre_mqueue_event_do_destroy, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
+		/* Close re-related stuff for this SIP session */
+		mqueue_push(mq, janus_sipre_mqueue_event_do_close, janus_sipre_mqueue_payload_create(session, NULL, 0, NULL));
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
 	}
@@ -3714,7 +3661,64 @@ void janus_sipre_cb_exit(void *arg) {
 		JANUS_LOG(LOG_HUGE, "[SIPre-??] janus_sipre_cb_exit\n");
 		return;
 	}
+	if(!session->destroyed)
+		return;
 	JANUS_LOG(LOG_INFO, "[SIPre-%s] Cleaning SIP stack\n", session->account.username);
+	if(session->account.identity) {
+		g_hash_table_remove(identities, session->account.identity);
+		g_free(session->account.identity);
+		session->account.identity = NULL;
+	}
+	session->account.sips = TRUE;
+	if(session->account.proxy) {
+		g_free(session->account.proxy);
+		session->account.proxy = NULL;
+	}
+	if(session->account.outbound_proxy) {
+		g_free(session->account.outbound_proxy);
+		session->account.outbound_proxy = NULL;
+	}
+	if(session->account.secret) {
+		g_free(session->account.secret);
+		session->account.secret = NULL;
+	}
+	if(session->account.username) {
+		g_free(session->account.username);
+		session->account.username = NULL;
+	}
+	if(session->account.display_name) {
+		g_free(session->account.display_name);
+		session->account.display_name = NULL;
+	}
+	if(session->account.authuser) {
+		g_free(session->account.authuser);
+		session->account.authuser = NULL;
+	}
+	if(session->callee) {
+		g_free(session->callee);
+		session->callee = NULL;
+	}
+	if(session->callid) {
+		g_hash_table_remove(callids, session->callid);
+		g_free(session->callid);
+		session->callid = NULL;
+	}
+	if(session->sdp) {
+		janus_sdp_free(session->sdp);
+		session->sdp = NULL;
+	}
+	if(session->transaction) {
+		g_free(session->transaction);
+		session->transaction = NULL;
+	}
+	if(session->media.remote_ip) {
+		g_free(session->media.remote_ip);
+		session->media.remote_ip = NULL;
+	}
+	janus_sipre_srtp_cleanup(session);
+	session->handle = NULL;
+	g_free(session);
+	session = NULL;
 }
 
 /* Callback to implement SIP requests in the re_main loop thread */
@@ -4124,10 +4128,10 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			session->status = janus_sipre_call_status_idle;
 			break;
 		}
-		case janus_sipre_mqueue_event_do_destroy: {
+		case janus_sipre_mqueue_event_do_close: {
 			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
 			janus_sipre_session *session = (janus_sipre_session *)payload->session;
-			JANUS_LOG(LOG_VERB, "[SIPre-%s] Destroying session\n", session->account.username);
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Closing session\n", session->account.username);
 			/* FIXME How to correctly clean up? */
 			mem_deref(session->stack.reg);
 			session->stack.reg = NULL;
@@ -4135,6 +4139,16 @@ void janus_sipre_mqueue_handler(int id, void *data, void *arg) {
 			session->stack.sess = NULL;
 			mem_deref(session->stack.dns_client);
 			session->stack.dns_client = NULL;
+			break;
+		}
+		case janus_sipre_mqueue_event_do_destroy: {
+			janus_sipre_mqueue_payload *payload = (janus_sipre_mqueue_payload *)data;
+			janus_sipre_session *session = (janus_sipre_session *)payload->session;
+			JANUS_LOG(LOG_VERB, "[SIPre-%s] Destroying session\n", session->account.username);
+			/* Destroy the session and wrap up */
+			sipsess_close_all(session->stack.sess_sock);
+			sip_close(session->stack.sipstack, FALSE);
+			session->stack.sipstack = NULL;
 			break;
 		}
 		case janus_sipre_mqueue_event_do_exit:
