@@ -22,6 +22,7 @@
 #include "sdp.h"
 #include "utils.h"
 #include "debug.h"
+#include "events.h"
 
 
 /* Pre-parse SDP: is this SDP valid? how many audio/video lines? any features to take into account? */
@@ -505,6 +506,16 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 					g_slist_length(component->candidates), stream->stream_id, component->component_id);
 				/* Save for the summary, in case we need it */
 				component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(candidate));
+				/* Notify event handlers */
+				if(janus_events_is_enabled()) {
+					janus_session *session = (janus_session *)handle->session;
+					json_t *info = json_object();
+					json_object_set_new(info, "remote-candidate", json_string(candidate));
+					json_object_set_new(info, "stream_id", json_integer(stream->stream_id));
+					json_object_set_new(info, "component_id", json_integer(component->component_id));
+					janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+				}
+				/* See if we need to process this */
 				if(trickle) {
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_START)) {
 						/* This is a trickle candidate and ICE has started, we should process it right away */

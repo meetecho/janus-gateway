@@ -1576,7 +1576,7 @@ stoptimer:
 }
 
 /* Callbacks */
-void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data) {
+static void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data) {
 	janus_ice_handle *handle = (janus_ice_handle *)user_data;
 	if(!handle)
 		return;
@@ -1590,7 +1590,7 @@ void janus_ice_cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gp
 	stream->cdone = 1;
 }
 
-void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice) {
+static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice) {
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
 	if(!handle)
 		return;
@@ -1663,9 +1663,9 @@ void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_id, gui
 }
 
 #ifndef HAVE_LIBNICE_TCP
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice) {
+static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice) {
 #else
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice) {
+static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice) {
 #endif
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
 	if(!handle)
@@ -1769,9 +1769,9 @@ void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint co
 }
 
 #ifndef HAVE_LIBNICE_TCP
-void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *foundation, gpointer ice) {
+static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *foundation, gpointer ice) {
 #else
-void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice) {
+static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice) {
 #endif
 	janus_ice_handle *handle = (janus_ice_handle *)ice;
 #ifndef HAVE_LIBNICE_TCP
@@ -1913,6 +1913,16 @@ void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candida
 	/* Save for the summary, in case we need it */
 	component->remote_candidates = g_slist_append(component->remote_candidates, g_strdup(buffer));
 
+	/* Notify event handlers */
+	if(janus_events_is_enabled()) {
+		janus_session *session = (janus_session *)handle->session;
+		json_t *info = json_object();
+		json_object_set_new(info, "remote-candidate", json_string(buffer));
+		json_object_set_new(info, "stream_id", json_integer(stream_id));
+		json_object_set_new(info, "component_id", json_integer(component_id));
+		janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+	}
+
 candidatedone:
 #ifndef HAVE_LIBNICE_TCP
 	nice_candidate_free(candidate);
@@ -1920,7 +1930,7 @@ candidatedone:
 	return;
 }
 
-void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice) {
+static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice) {
 	janus_ice_component *component = (janus_ice_component *)ice;
 	if(!component) {
 		JANUS_LOG(LOG_ERR, "No component %d in stream %d??\n", component_id, stream_id);
@@ -2638,9 +2648,24 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 		if(log_candidates) {
 			/* Save for the summary, in case we need it */
 			component->local_candidates = g_slist_append(component->local_candidates, g_strdup(buffer));
+			/* Notify event handlers */
+			if(janus_events_is_enabled()) {
+				janus_session *session = (janus_session *)handle->session;
+				json_t *info = json_object();
+				json_object_set_new(info, "local-candidate", json_string(buffer));
+				json_object_set_new(info, "stream_id", json_integer(stream_id));
+				json_object_set_new(info, "component_id", json_integer(component_id));
+				janus_events_notify_handlers(JANUS_EVENT_TYPE_WEBRTC, session->session_id, handle->handle_id, info);
+			}
 		}
 		nice_candidate_free(c);
 	}
+	/* Since we're half-trickling, we need to notify the peer that these are all the
+	 * candidates we have for this media stream, via an end-of-candidates attribute:
+	 * https://tools.ietf.org/html/draft-ietf-mmusic-trickle-ice-02#section-4.1 */
+	janus_sdp_attribute *end = janus_sdp_attribute_create("end-of-candidates", NULL);
+	mline->attributes = g_list_append(mline->attributes, end);
+	/* Done */
 	g_slist_free(candidates);
 }
 

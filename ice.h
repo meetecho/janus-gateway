@@ -535,51 +535,9 @@ void janus_ice_component_free(GHashTable *container, janus_ice_component *compon
 ///@}
 
 
-/** @name Janus ICE handle callbacks
+/** @name Janus ICE media relaying callbacks
  */
 ///@{
-/*! \brief libnice callback to notify when candidates have been gathered for an ICE agent
- * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_candidate_gathering_done (NiceAgent *agent, guint stream_id, gpointer ice);
-/*! \brief libnice callback to notify when the state of a component changes for an ICE agent
- * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] component_id The component ID for which the callback applies
- * @param[in] state New ICE state of the component
- * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_component_state_changed (NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer ice);
-/*! \brief libnice callback to notify when a pair of candidates has been selected for an ICE agent
- * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] component_id The component ID for which the callback applies
- * @param[in] local Local candidate (or foundation)
- * @param[in] remote Remote candidate (or foundation)
- * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-#ifndef HAVE_LIBNICE_TCP
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, gchar *local, gchar *remote, gpointer ice);
-#else
-void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote, gpointer ice);
-#endif
-/*! \brief libnice callback to notify when a new remote candidate has been discovered for an ICE agent
- * @param[in] agent The libnice agent for which the callback applies
- * @param[in] candidate The libnice candidate that has been discovered
- * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-#ifndef HAVE_LIBNICE_TCP
-void janus_ice_cb_new_remote_candidate (NiceAgent *agent, guint stream_id, guint component_id, gchar *candidate, gpointer ice);
-#else
-void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *candidate, gpointer ice);
-#endif
-/*! \brief libnice callback to notify when data has been received by an ICE agent
- * @param[in] agent The libnice agent for which the callback applies
- * @param[in] stream_id The stream ID for which the callback applies
- * @param[in] component_id The component ID for which the callback applies
- * @param[in] len Length of the data buffer
- * @param[in] buf Data buffer
- * @param[in] ice Opaque pointer to the Janus ICE handle associated with the libnice ICE agent */
-void janus_ice_cb_nice_recv (NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer ice);
-
 /*! \brief Gateway RTP callback, called when a plugin has an RTP packet to send to a peer
  * @param[in] handle The Janus ICE handle associated with the peer
  * @param[in] video Whether this is an audio or a video frame

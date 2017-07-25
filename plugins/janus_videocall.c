@@ -1033,16 +1033,20 @@ static void *janus_videocall_handler(void *data) {
 			janus_videocall_message_free(msg);
 			continue;
 		}
+		janus_mutex_lock(&sessions_mutex);
 		janus_videocall_session *session = (janus_videocall_session *)msg->handle->plugin_handle;
 		if(!session) {
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
+			janus_mutex_unlock(&sessions_mutex);
 			janus_videocall_message_free(msg);
 			continue;
 		}
 		if(session->destroyed) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_videocall_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;
