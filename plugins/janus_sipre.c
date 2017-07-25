@@ -160,7 +160,11 @@ static struct janus_json_parameter call_parameters[] = {
 	{"uri", JANUS_JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"autoack", JANUS_JSON_BOOL, 0},
 	{"headers", JANUS_JSON_OBJECT, 0},
-	{"srtp", JANUS_JSON_STRING, 0}
+	{"srtp", JANUS_JSON_STRING, 0},
+	/* The following are only needed in case "guest" registrations
+	 * still need an authenticated INVITE for some reason */
+	{"secret", JSON_STRING, 0},
+	{"authuser", JSON_STRING, 0}
 };
 static struct janus_json_parameter accept_parameters[] = {
 	{"srtp", JANUS_JSON_STRING, 0}
@@ -433,7 +437,7 @@ static const char *janus_sipre_call_status_string(janus_sipre_call_status status
 
 typedef enum {
 	janus_sipre_secret_type_plaintext = 1,
-	janus_sipre_secret_type_hashed = 2,
+	janus_sipre_secret_type_hashed = 2,	/* FIXME Unused */
 	janus_sipre_secret_type_unknown
 } janus_sipre_secret_type;
 
@@ -1125,6 +1129,8 @@ json_t *janus_sipre_query_session(janus_plugin_session *handle) {
 	/* Provide some generic info, e.g., if we're in a call and with whom */
 	json_t *info = json_object();
 	json_object_set_new(info, "username", session->account.username ? json_string(session->account.username) : NULL);
+	json_object_set_new(info, "authuser", session->account.authuser ? json_string(session->account.authuser) : NULL);
+	json_object_set_new(info, "secret", session->account.secret ? json_string("(hidden)") : NULL);
 	json_object_set_new(info, "display_name", session->account.display_name ? json_string(session->account.display_name) : NULL);
 	json_object_set_new(info, "identity", session->account.identity ? json_string(session->account.identity) : NULL);
 	json_object_set_new(info, "registration_status", json_string(janus_sipre_registration_status_string(session->account.registration_status)));
@@ -1358,16 +1364,18 @@ static void *janus_sipre_handler(void *data) {
 		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
 			session = (janus_sipre_session *)msg->handle->plugin_handle;
 		}
-		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_sipre_message_free(msg);
 			continue;
 		}
 		if(session->destroyed) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_sipre_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;
@@ -1652,9 +1660,9 @@ static void *janus_sipre_handler(void *data) {
 			}
 		} else if(!strcasecmp(request_text, "unregister")) {
 			if(session->account.registration_status < janus_sipre_registration_status_registered) {
-				JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
+				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
-				g_snprintf(error_cause, 512, "Wrong state (register first)");
+				g_snprintf(error_cause, 512, "Wrong state (not registered)");
 				goto error;
 			}
 			/* Unregister now */
@@ -1666,10 +1674,11 @@ static void *janus_sipre_handler(void *data) {
 			json_object_set_new(result, "event", json_string("unregistering"));
 		} else if(!strcasecmp(request_text, "call")) {
 			/* Call another peer */
-			if(session->account.registration_status < janus_sipre_registration_status_registered) {
-				JANUS_LOG(LOG_ERR, "Wrong state (register first)\n");
+			if(session->account.registration_status != janus_sipre_registration_status_registered &&
+					session->account.registration_status != janus_sipre_registration_status_disabled) {
+				JANUS_LOG(LOG_ERR, "Wrong state (not registered)\n");
 				error_code = JANUS_SIPRE_ERROR_WRONG_STATE;
-				g_snprintf(error_cause, 512, "Wrong state (register first)");
+				g_snprintf(error_cause, 512, "Wrong state (not registered)");
 				goto error;
 			}
 			if(session->status >= janus_sipre_call_status_inviting) {
@@ -1684,6 +1693,8 @@ static void *janus_sipre_handler(void *data) {
 			if(error_code != 0)
 				goto error;
 			json_t *uri = json_object_get(root, "uri");
+			json_t *secret = json_object_get(root, "secret");
+			json_t *authuser = json_object_get(root, "authuser");
 			/* Check if we need to ACK manually (e.g., for the Record-Route hack) */
 			json_t *autoack = json_object_get(root, "autoack");
 			gboolean do_autoack = autoack ? json_is_true(autoack) : TRUE;
@@ -1825,6 +1836,18 @@ static void *janus_sipre_handler(void *data) {
 				json_object_set_new(info, "call-id", json_string(callid));
 				json_object_set_new(info, "sdp", json_string(sdp));
 				gateway->notify_event(&janus_sipre_plugin, session->handle, info);
+			}
+			/* Check if there are new credentials to authenticate the INVITE */
+			if(authuser) {
+				JANUS_LOG(LOG_VERB, "Updating credentials (authuser) for authenticating the INVITE\n");
+				g_free(session->account.authuser);
+				session->account.authuser = g_strdup(json_string_value(authuser));
+			}
+			if(secret) {
+				JANUS_LOG(LOG_VERB, "Updating credentials (secret) for authenticating the INVITE\n");
+				g_free(session->account.secret);
+				session->account.secret = g_strdup(json_string_value(secret));
+				session->account.secret_type = janus_sipre_secret_type_plaintext;
 			}
 			/* Enqueue the INVITE */
 			session->callee = g_strdup(uri_text);
