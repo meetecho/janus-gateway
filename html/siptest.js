@@ -206,12 +206,18 @@ $(document).ready(function() {
 										} else if(event === 'incomingcall') {
 											Janus.log("Incoming call from " + result["username"] + "!");
 											var doAudio = true, doVideo = true;
+											var offerlessInvite = false;
 											if(jsep !== null && jsep !== undefined) {
 												// What has been negotiated?
 												doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
 												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
 												Janus.debug("Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
 												Janus.debug("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
+											} else {
+												Janus.log("This call doesn't contain an offer... we'll need to provide one ourselves");
+												offerlessInvite = true;
+												// In case you want to offer video when reacting to an offerless call, set this to true
+												doVideo = false;
 											}
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
@@ -222,8 +228,11 @@ $(document).ready(function() {
 												rtpType = " (SDES-SRTP mandatory)";
 											// Notify user
 											bootbox.hideAll();
+											var extra = "";
+											if(offerlessInvite)
+												extra = " (no SDP offer provided)"
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!" + rtpType,
+												message: "Incoming call from " + result["username"] + "!" + rtpType + extra,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {
@@ -233,12 +242,15 @@ $(document).ready(function() {
 														callback: function() {
 															incoming = null;
 															$('#peer').val(result["username"]).attr('disabled', true);
-															sipcall.createAnswer(
+															// Notice that we can only answer if we got an offer: if this was
+															// an offerless call, we'll need to create an offer ourselves
+															var sipcallAction = (offerlessInvite ? sipcall.createOffer : sipcall.createAnswer);
+															sipcallAction(
 																{
 																	jsep: jsep,
 																	media: { audio: doAudio, video: doVideo },
 																	success: function(jsep) {
-																		Janus.debug("Got SDP! audio=" + doAudio + ", video=" + doVideo);
+																		Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
 																		Janus.debug(jsep);
 																		var body = { request: "accept" };
 																		// Note: as with "call", you can add a "srtp" attribute to
@@ -276,12 +288,24 @@ $(document).ready(function() {
 													}
 												}
 											});											
-										} else if(event === 'accepted') {
-											Janus.log(result["username"] + " accepted the call!");
-											// TODO Video call can start
+										} else if(event === 'accepting') {
+											// Response to an offerless INVITE, let's wait for an 'accepted'
+										} else if(event === 'progress') {
+											Janus.log("There's early media from " + result["username"] + ", wairing for the call!");
+											Janus.log(jsep);
+											// Call can start already: handle the remote answer
 											if(jsep !== null && jsep !== undefined) {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
+											toastr.info("Early media...");
+										} else if(event === 'accepted') {
+											Janus.log(result["username"] + " accepted the call!");
+											Janus.log(jsep);
+											// Call can start, now: handle the remote answer
+											if(jsep !== null && jsep !== undefined) {
+												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
+											}
+											toastr.success("Call accepted!");
 										} else if(event === 'hangup') {
 											if(incoming != null) {
 												incoming.modal('hide');

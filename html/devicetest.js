@@ -112,17 +112,15 @@ function initDevices(devices) {
 		// A different device has been selected: hangup the session, and set it up again
 		$('#audio-device, #video-device').attr('disabled', true);
 		$('#change-devices').attr('disabled', true);
-		echotest.hangup(true);
 		if(firstTime) {
 			firstTime = false;
 			restartCapture();
 			return;
 		}
+		echotest.hangup(true);
 		// Let's wait a couple of seconds before restarting
 		setTimeout(restartCapture, 2000);
 	});
-
-	//~ restartCapture();
 }
 
 function restartCapture() {
@@ -366,7 +364,8 @@ $(document).ready(function() {
 										echotest.send({"message": { "bitrate": bitrate }});
 										return false;
 									});
-									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox") {
+									if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox" ||
+											adapter.browserDetails.browser === "safari") {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
