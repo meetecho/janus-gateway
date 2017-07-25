@@ -601,6 +601,8 @@ PKG_CHECK_MODULES([EVENTS],
                   ])
 
 
+AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
+
 AC_CONFIG_FILES([
   Makefile
   html/Makefile
