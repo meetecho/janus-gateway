@@ -683,7 +683,6 @@ static void *janus_videoroom_watchdog(void *data) {
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
-					g_hash_table_steal(sessions, session->handle);
 					session_free(session);
 					continue;
 				}
@@ -1114,6 +1113,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Detaching this listener from its publisher is already done by hangup_media */
 		}
+		g_hash_table_remove(sessions, handle);
 	}
 	janus_mutex_unlock(&sessions_mutex);
 
