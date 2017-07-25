@@ -2401,7 +2401,9 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 		packet.timestamp = ntohl(packet.data->timestamp);
 		packet.seq_number = ntohs(packet.data->seq_number);
 		/* Go */
+		janus_mutex_lock_nodebug(&participant->listeners_mutex);
 		g_slist_foreach(participant->listeners, janus_videoroom_relay_rtp_packet, &packet);
+		janus_mutex_unlock_nodebug(&participant->listeners_mutex);
 		
 		/* Check if we need to send any REMB, FIR or PLI back to this publisher */
 		if(video && participant->video_active) {
@@ -2527,7 +2529,9 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	/* Save the message if we're recording */
 	janus_recorder_save_frame(participant->drc, text, strlen(text));
 	/* Relay to all listeners */
+	janus_mutex_lock_nodebug(&participant->listeners_mutex);
 	g_slist_foreach(participant->listeners, janus_videoroom_relay_data_packet, text);
+	janus_mutex_unlock_nodebug(&participant->listeners_mutex);
 	g_free(text);
 }
 
@@ -2772,16 +2776,18 @@ static void *janus_videoroom_handler(void *data) {
 		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
 			session = (janus_videoroom_session *)msg->handle->plugin_handle;
 		}
-		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_videoroom_message_free(msg);
 			continue;
 		}
 		if(session->destroyed) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_videoroom_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = NULL;

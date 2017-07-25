@@ -1383,10 +1383,6 @@ function Janus(gatewayCallbacks) {
 		if(jsep === null || jsep === undefined) {
 			createOffer(handleId, media, callbacks);
 		} else {
-			if(adapter.browserDetails.browser === "edge") {
-				// This is Edge, add an a=end-of-candidates at the end
-				jsep.sdp += "a=end-of-candidates\r\n";
-			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
 					function() {
@@ -1417,10 +1413,6 @@ function Janus(gatewayCallbacks) {
 			if(jsep === null || jsep === undefined) {
 				createOffer(handleId, media, callbacks);
 			} else {
-				if(adapter.browserDetails.browser === "edge") {
-					// This is Edge, add an a=end-of-candidates at the end
-					jsep.sdp += "a=end-of-candidates\r\n";
-				}
 				config.pc.setRemoteDescription(
 						new RTCSessionDescription(jsep),
 						function() {
@@ -1754,10 +1746,6 @@ function Janus(gatewayCallbacks) {
 				callbacks.error("No PeerConnection: if this is an answer, use createAnswer and not handleRemoteJsep");
 				return;
 			}
-			if(adapter.browserDetails.browser === "edge") {
-				// This is Edge, add an a=end-of-candidates at the end
-				jsep.sdp += "a=end-of-candidates\r\n";
-			}
 			config.pc.setRemoteDescription(
 					new RTCSessionDescription(jsep),
 					function() {
@@ -2046,8 +2034,19 @@ function Janus(gatewayCallbacks) {
 					config.pc.getStats()
 						.then(function(stats) {
 							stats.forEach(function (res) {
-								if(res && (res.mediaType === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
+								var inStats = false;
+								// Check if these are statistics on incoming media
+								if((res.mediaType === "video" || res.id.toLowerCase().indexOf("video") > -1) &&
 										res.type === "inbound-rtp" && res.id.indexOf("rtcp") < 0) {
+									// New stats
+									inStats = true;
+								} else if(res.type == 'ssrc' && res.bytesReceived &&
+										medium === "video" && (res.googCodecName === "VP8" || res.googCodecName === "")) {
+									// Older Chromer versions
+									inStats = true;
+								}
+								// Parse stats now
+								if(inStats) {
 									config.bitrate.bsnow = res.bytesReceived;
 									config.bitrate.tsnow = res.timestamp;
 									if(config.bitrate.bsbefore === null || config.bitrate.tsbefore === null) {
