@@ -2786,20 +2786,20 @@ static int janus_streaming_get_fd_port(int fd) {
 
 /* Helpers to destroy a streaming mountpoint. */
 static void janus_streaming_rtp_source_free(janus_streaming_rtp_source *source) {
-	if(source->audio_fd > 0) {
+	if(source->audio_fd > -1) {
 		close(source->audio_fd);
 	}
-	if(source->video_fd > 0) {
+	if(source->video_fd > -1) {
 		close(source->video_fd);
 	}
-	if(source->data_fd > 0) {
+	if(source->data_fd > -1) {
 		close(source->data_fd);
 	}
 #ifdef HAVE_LIBCURL
-	if(source->audio_rtcp_fd > 0) {
+	if(source->audio_rtcp_fd > -1) {
 		close(source->audio_rtcp_fd);
 	}
-	if(source->video_rtcp_fd > 0) {
+	if(source->video_rtcp_fd > -1) {
 		close(source->video_rtcp_fd);
 	}
 #endif
@@ -2944,7 +2944,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			"Video", "video", name ? name : tempname);
 		if(video_fd < 0) {
 			JANUS_LOG(LOG_ERR, "Can't bind to port %d for video...\n", vport);
-			if(audio_fd > 0)
+			if(audio_fd > -1)
 				close(audio_fd);
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
@@ -2957,9 +2957,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			"Data", "data", name ? name : tempname);
 		if(data_fd < 0) {
 			JANUS_LOG(LOG_ERR, "Can't bind to port %d for data...\n", dport);
-			if(audio_fd > 0)
+			if(audio_fd > -1)
 				close(audio_fd);
-			if(video_fd > 0)
+			if(video_fd > -1)
 				close(video_fd);
 			janus_mutex_unlock(&mountpoints_mutex);
 			return NULL;
@@ -3044,12 +3044,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	g_thread_try_new(tname, &janus_streaming_relay_thread, live_rtp, &error);
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP thread...\n", error->code, error->message ? error->message : "??");
-		if(live_rtp->name)
-			g_free(live_rtp->name);
-		if(description)
-			g_free(description);
-		if(live_rtp_source)
-			g_free(live_rtp_source);
+		g_free(live_rtp->name);
+		g_free(description);
+		g_free(live_rtp_source);
 		g_free(live_rtp);
 		return NULL;
 	}
@@ -3137,12 +3134,9 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 		g_thread_try_new(tname, &janus_streaming_filesource_thread, file_source, &error);
 		if(error != NULL) {
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the live filesource thread...\n", error->code, error->message ? error->message : "??");
-			if(file_source->name)
-				g_free(file_source->name);
-			if(description)
-				g_free(description);
-			if(file_source_source)
-				g_free(file_source_source);
+			g_free(file_source->name);
+			g_free(description);
+			g_free(file_source_source);
 			g_free(file_source);
 			return NULL;
 		}
@@ -3212,7 +3206,10 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 		}
 		port = ntohs(address.sin_port);
 		fds->rtcp_fd = janus_streaming_create_fd(port+1, mcast, iface, media, media, name);
-		if(getsockname(fds->rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
+		if(fds->rtcp_fd < 0) {
+			close(fds->fd);
+			port = -1;
+		} else if(getsockname(fds->rtcp_fd, (struct sockaddr *)&address, &len) < 0) {
 			close(fds->fd);
 			close(fds->rtcp_fd);
 			port = -1;
@@ -3408,12 +3405,11 @@ static int janus_streaming_rtsp_connect_to_server(janus_streaming_mountpoint *mp
 
 /* Helper to send an RTSP PLAY (either when we create the mountpoint, or when we try reconnecting) */
 static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
-	if(source == NULL)
+	if(source == NULL || source->curldata == NULL)
 		return -1;
 	/* Send an RTSP PLAY */
 	janus_mutex_lock(&source->rtsp_mutex);
-	if(source->curldata)
-		g_free(source->curldata->buffer);
+	g_free(source->curldata->buffer);
 	source->curldata->buffer = g_malloc0(1);
 	source->curldata->size = 0;
 	JANUS_LOG(LOG_VERB, "Sending PLAY request...\n");
@@ -3473,7 +3469,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 
 	/* Create the mountpoint and prepare the source */
 	janus_streaming_mountpoint *live_rtsp = g_malloc0(sizeof(janus_streaming_mountpoint));
-	live_rtsp->id = id ? id : janus_random_uint64();
+	live_rtsp->id = id;
 	live_rtsp->name = sourcename;
 	live_rtsp->description = description;
 	live_rtsp->enabled = TRUE;
@@ -3509,14 +3505,15 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	/* Now connect to the RTSP server */
 	if(janus_streaming_rtsp_connect_to_server(live_rtsp) < 0) {
 		/* Error connecting, get rid of the mountpoint */
-		janus_mutex_unlock(&mountpoints_mutex);
 		janus_streaming_mountpoint_free(live_rtsp);
+		janus_mutex_unlock(&mountpoints_mutex);
 		return NULL;
 	}
 	/* Send an RTSP PLAY, now */
 	if(janus_streaming_rtsp_play(live_rtsp_source) < 0) {
 		/* Error trying to play, get rid of the mountpoint */
 		janus_streaming_mountpoint_free(live_rtsp);
+		janus_mutex_unlock(&mountpoints_mutex);
 		return NULL;
 	}
 	/* Start the thread that will receive the media packets */
@@ -3527,6 +3524,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	if(error != NULL) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTSP thread...\n", error->code, error->message ? error->message : "??");
 		janus_streaming_mountpoint_free(live_rtsp);
+		janus_mutex_unlock(&mountpoints_mutex);
 		return NULL;
 	}
 	g_hash_table_insert(mountpoints, janus_uint64_dup(live_rtsp->id), live_rtsp);
@@ -3853,6 +3851,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					name, (now - source->reconnect_timer)/G_USEC_PER_SEC);
 				audio_fd = -1;
 				video_fd = -1;
+				data_fd = -1;
 				source->reconnect_timer = now;
 				source->reconnecting = TRUE;
 				/* Let's clean up the source first */
@@ -3862,23 +3861,23 @@ static void *janus_streaming_relay_thread(void *data) {
 					g_free(source->curldata->buffer);
 				g_free(source->curldata);
 				source->curldata = NULL;
-				if(source->audio_fd > 0) {
+				if(source->audio_fd > -1) {
 					close(source->audio_fd);
 				}
 				source->audio_fd = -1;
-				if(source->video_fd > 0) {
+				if(source->video_fd > -1) {
 					close(source->video_fd);
 				}
 				source->video_fd = -1;
-				if(source->data_fd > 0) {
+				if(source->data_fd > -1) {
 					close(source->data_fd);
 				}
 				source->data_fd = -1;
-				if(source->audio_rtcp_fd > 0) {
+				if(source->audio_rtcp_fd > -1) {
 					close(source->audio_rtcp_fd);
 				}
 				source->audio_rtcp_fd = -1;
-				if(source->video_rtcp_fd > 0) {
+				if(source->video_rtcp_fd > -1) {
 					close(source->video_rtcp_fd);
 				}
 				source->video_rtcp_fd = -1;
@@ -3896,7 +3895,8 @@ static void *janus_streaming_relay_thread(void *data) {
 						JANUS_LOG(LOG_WARN, "[%s] Reconnected to the RTSP server, streaming again\n", name);
 						audio_fd = source->audio_fd;
 						video_fd = source->video_fd;
-						ka_timeout = (source->ka_timeout*G_USEC_PER_SEC)/2;
+						data_fd = source->data_fd;
+						ka_timeout = ((gint64)source->ka_timeout*G_USEC_PER_SEC)/2;
 					}
 				}
 				source->reconnect_timer = janus_get_monotonic_time();
@@ -3913,7 +3913,7 @@ static void *janus_streaming_relay_thread(void *data) {
 		if(ka_timeout > 0) {
 			/* Let's be conservative and send a GET_PARAMETER when half of the timeout has passed */
 			now = janus_get_monotonic_time();
-			if(now-before > ka_timeout) {
+			if(now-before > ka_timeout && source->curldata) {
 				JANUS_LOG(LOG_VERB, "[%s] %"SCNi64"s passed, sending GET_PARAMETER\n", name, (now-before)/G_USEC_PER_SEC);
 				before = now;
 				/* Send an RTSP GET_PARAMETER */
@@ -3981,6 +3981,10 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					if(bytes < 0) {
+						/* Failed to read? */
+						continue;
+					}
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the audio channel...\n", bytes);
 					/* If paused, ignore this packet */
 					if(!mountpoint->enabled)
@@ -4030,6 +4034,10 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(video_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					if(bytes < 0) {
+						/* Failed to read? */
+						continue;
+					}
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
 					rtp_header *rtp = (rtp_header *)buffer;
 					/* First of all, let's check if this is (part of) a keyframe that we may need to save it for future reference */
@@ -4136,6 +4144,10 @@ static void *janus_streaming_relay_thread(void *data) {
 #endif
 					addrlen = sizeof(remote);
 					bytes = recvfrom(data_fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+					if(bytes < 0) {
+						/* Failed to read? */
+						continue;
+					}
 					/* Get a string out of the data */
 					char *text = g_malloc0(bytes+1);
 					memcpy(text, buffer, bytes);
@@ -4409,8 +4421,10 @@ static gboolean janus_streaming_is_keyframe(gint codec, char* buffer, int len) {
 					uint16_t *h = (uint16_t *)buffer;
 					int vp9h = ntohs(*h);
 					buffer += 2;
-					JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
-					return TRUE;
+					if(vp9w || vp9h) {
+						JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
+						return TRUE;
+					}
 				}
 			}
 		}
