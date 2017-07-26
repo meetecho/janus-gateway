@@ -287,11 +287,12 @@ int janus_network_detect_local_ip(janus_network_query_options addr_type, janus_n
 	}
 	if(fd != -1)
 		close(fd);
+	fd = -1;
 	if(!found && (addr_type == janus_network_query_options_ipv6 || addr_type == janus_network_query_options_any_ip)) {
 		/* Let's try IPv6 (FIXME Should probably use other internal methods) */
 		struct sockaddr_in6 addr;
 		socklen_t len;
-		int fd = socket(AF_INET6, SOCK_DGRAM, 0);
+		fd = socket(AF_INET6, SOCK_DGRAM, 0);
 		if(fd > -1) {
 			addr.sin6_family = AF_INET6;
 			addr.sin6_port = htons(1);

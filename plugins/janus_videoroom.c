@@ -456,7 +456,7 @@ typedef struct janus_videoroom {
 	gboolean is_private;		/* Whether this room is 'private' (as in hidden) or not */
 	gboolean require_pvtid;		/* Whether subscriptions in this room require a private_id */
 	int max_publishers;			/* Maximum number of concurrent publishers */
-	uint64_t bitrate;			/* Global bitrate limit */
+	uint32_t bitrate;			/* Global bitrate limit */
 	uint16_t fir_freq;			/* Regular FIR frequency (0=disabled) */
 	janus_videoroom_audiocodec acodec;	/* Audio codec to force on publishers*/
 	janus_videoroom_videocodec vcodec;	/* Video codec to force on publishers*/
@@ -526,7 +526,7 @@ typedef struct janus_videoroom_participant {
 	gboolean talking;			/* Whether this participant is currently talking (uses audio levels extension) */
 	gboolean data_active;
 	gboolean firefox;	/* We send Firefox users a different kind of FIR */
-	uint64_t bitrate;
+	uint32_t bitrate;
 	gint64 remb_startup;/* Incremental changes on REMB to reach the target at startup */
 	gint64 remb_latest;	/* Time of latest sent REMB (to avoid flooding) */
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
@@ -683,7 +683,6 @@ static void *janus_videoroom_watchdog(void *data) {
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
-					g_hash_table_steal(sessions, session->handle);
 					session_free(session);
 					continue;
 				}
@@ -923,7 +922,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	g_hash_table_iter_init(&iter, rooms);
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom *vr = value;
-		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds, %s audio codec, %s video codec\n",
+		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu32", max %d publishers, FIR frequency of %d seconds, %s audio codec, %s video codec\n",
 			vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq,
 			janus_videoroom_audiocodec_name(vr->acodec), janus_videoroom_videocodec_name(vr->vcodec));
 	}
@@ -1114,6 +1113,7 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		} else if(session->participant_type == janus_videoroom_p_type_subscriber) {
 			/* Detaching this listener from its publisher is already done by hangup_media */
 		}
+		g_hash_table_remove(sessions, handle);
 	}
 	janus_mutex_unlock(&sessions_mutex);
 
@@ -1527,7 +1527,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 				janus_config_add_item(config, cat, "is_private", "yes");
 			if(videoroom->require_pvtid)
 				janus_config_add_item(config, cat, "require_pvtid", "yes");
-			g_snprintf(value, BUFSIZ, "%"SCNu64, videoroom->bitrate);
+			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
 			janus_config_add_item(config, cat, "bitrate", value);
 			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
 			janus_config_add_item(config, cat, "publishers", value);
@@ -1557,7 +1557,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		g_hash_table_iter_init(&iter, rooms);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_videoroom *vr = value;
-			JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu64", max %d publishers, FIR frequency of %d seconds\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq);
+			JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu32", max %d publishers, FIR frequency of %d seconds\n", vr->room_id, vr->room_name, vr->bitrate, vr->max_publishers, vr->fir_freq);
 		}
 		janus_mutex_unlock(&rooms_mutex);
 		/* Send info back */
@@ -2380,10 +2380,16 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			if(rtp_forward->ssrc > 0)
 				rtp->ssrc = htonl(rtp_forward->ssrc);
 			if(video && rtp_forward->is_video) {
-				sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
+				if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
+					JANUS_LOG(LOG_HUGE, "Error forwarding RTP video packet for %s... %s (len=%d)...\n",
+						participant->display, strerror(errno), len);
+				}
 			}
 			else if(!video && !rtp_forward->is_video && !rtp_forward->is_data) {
-				sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
+				if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
+					JANUS_LOG(LOG_HUGE, "Error forwarding RTP audio packet for %s... %s (len=%d)...\n",
+						participant->display, strerror(errno), len);
+				}
 			}
 			/* Restore original values of payload type and SSRC before going on */
 			rtp->type = pt;
@@ -2418,12 +2424,12 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			}		
 			if(send_remb) {
 				/* We send a few incremental REMB messages at startup */
-				uint64_t bitrate = (participant->bitrate ? participant->bitrate : 256*1024);
+				uint32_t bitrate = (participant->bitrate ? participant->bitrate : 256*1024);
 				if(participant->remb_startup > 0) {
 					bitrate = bitrate/participant->remb_startup;
 					participant->remb_startup--;
 				}
-				JANUS_LOG(LOG_VERB, "Sending REMB (%s, %"SCNu64")\n", participant->display, bitrate);
+				JANUS_LOG(LOG_VERB, "Sending REMB (%s, %"SCNu32")\n", participant->display, bitrate);
 				char rtcpbuf[24];
 				janus_rtcp_remb((char *)(&rtcpbuf), 24, bitrate);
 				gateway->relay_rtcp(handle, video, rtcpbuf, 24);
@@ -2434,7 +2440,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 			if(video && participant->video_active && (participant->room->fir_freq > 0)) {
 				/* FIXME Very ugly hack to generate RTCP every tot seconds/frames */
 				gint64 now = janus_get_monotonic_time();
-				if((now-participant->fir_latest) >= (participant->room->fir_freq*G_USEC_PER_SEC)) {
+				if((now-participant->fir_latest) >= ((gint64)participant->room->fir_freq*G_USEC_PER_SEC)) {
 					/* FIXME We send a FIR every tot seconds */
 					participant->fir_latest = now;
 					char rtcpbuf[24];
@@ -2490,7 +2496,7 @@ void janus_videoroom_incoming_rtcp(janus_plugin_session *handle, int video, char
 				}
 			}
 		}
-		uint64_t bitrate = janus_rtcp_get_remb(buf, len);
+		uint32_t bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* FIXME We got a REMB from this listener, should we do something about it? */
 		}
@@ -2517,7 +2523,10 @@ void janus_videoroom_incoming_data(janus_plugin_session *handle, char *buf, int 
 	while(participant->udp_sock > 0 && g_hash_table_iter_next(&iter, NULL, &value)) {
 		janus_videoroom_rtp_forwarder* rtp_forward = (janus_videoroom_rtp_forwarder*)value;
 		if(rtp_forward->is_data) {
-			sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr));
+			if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
+				JANUS_LOG(LOG_HUGE, "Error forwarding data packet for %s... %s (len=%d)...\n",
+					participant->display, strerror(errno), len);
+			}
 		}
 	}
 	janus_mutex_unlock(&participant->rtp_forwarders_mutex);
@@ -2552,7 +2561,7 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 				json_t *event = json_object();
 				json_object_set_new(event, "videoroom", json_string("slow_link"));
 				/* Also add info on what the current bitrate cap is */
-				uint64_t bitrate = (publisher->bitrate ? publisher->bitrate : 256*1024);
+				uint32_t bitrate = (publisher->bitrate ? publisher->bitrate : 256*1024);
 				json_object_set_new(event, "current-bitrate", json_integer(bitrate));
 				gateway->push_event(session->handle, &janus_videoroom_plugin, NULL, event, NULL);
 				json_decref(event);
@@ -2989,7 +2998,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(bitrate) {
 					publisher->bitrate = json_integer_value(bitrate);
-					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64" (room %"SCNu64", user %"SCNu64")\n", publisher->bitrate, publisher->room->room_id, publisher->user_id);
+					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32" (room %"SCNu64", user %"SCNu64")\n", publisher->bitrate, publisher->room->room_id, publisher->user_id);
 				}
 				if(record) {
 					publisher->recording_active = json_is_true(record);
@@ -3220,7 +3229,7 @@ static void *janus_videoroom_handler(void *data) {
 				}
 				if(bitrate) {
 					participant->bitrate = json_integer_value(bitrate);
-					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64" (room %"SCNu64", user %"SCNu64")\n", participant->bitrate, participant->room->room_id, participant->user_id);
+					JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32" (room %"SCNu64", user %"SCNu64")\n", participant->bitrate, participant->room->room_id, participant->user_id);
 					/* Send a new REMB */
 					if(session->started)
 						participant->remb_latest = janus_get_monotonic_time();

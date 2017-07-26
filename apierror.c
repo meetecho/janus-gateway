@@ -53,5 +53,4 @@ const char *janus_get_api_error(int error) {
 		default:
 			return "Unknown error";
 	}
-	return "Unknown error";
 }
