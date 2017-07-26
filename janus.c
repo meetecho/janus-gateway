@@ -425,7 +425,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= session_timeout * G_USEC_PER_SEC && !session->timeout) {
+			if (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC && !session->timeout) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 
 				/* Notify the transport */
@@ -2466,9 +2466,11 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 	if(component->dtls) {
 		janus_dtls_srtp *dtls = component->dtls;
 		json_object_set_new(d, "fingerprint", json_string(janus_dtls_get_local_fingerprint()));
-		json_object_set_new(d, "remote-fingerprint", json_string(component->stream->remote_fingerprint));
-		json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
-		json_object_set_new(d, "dtls-role", json_string(janus_get_dtls_srtp_role(component->stream->dtls_role)));
+		if(component->stream) {
+			json_object_set_new(d, "remote-fingerprint", json_string(component->stream->remote_fingerprint));
+			json_object_set_new(d, "remote-fingerprint-hash", json_string(component->stream->remote_hashing));
+			json_object_set_new(d, "dtls-role", json_string(janus_get_dtls_srtp_role(component->stream->dtls_role)));
+		}
 		json_object_set_new(d, "dtls-state", json_string(janus_get_dtls_srtp_state(dtls->dtls_state)));
 		json_object_set_new(d, "retransmissions", json_integer(dtls->retransmissions));
 		json_object_set_new(d, "valid", dtls->srtp_valid ? json_true() : json_false());

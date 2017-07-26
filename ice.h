@@ -375,6 +375,14 @@ struct janus_ice_stream {
 	rtcp_context *audio_rtcp_ctx;
 	/*! \brief RTCP context for the video stream (may be bundled) */
 	rtcp_context *video_rtcp_ctx;
+	/*! \brief First received audio NTP timestamp */
+	gint64 audio_first_ntp_ts;
+	/*! \brief First received audio RTP timestamp */
+	guint32 audio_first_rtp_ts;
+	/*! \brief First received video NTP timestamp */
+	gint64 video_first_ntp_ts;
+	/*! \brief First received video NTP RTP timestamp */
+	guint32 video_first_rtp_ts;
 	/*! \brief Last sent audio RTP timestamp */
 	guint32 audio_last_ts;
 	/*! \brief Last sent video RTP timestamp */
