@@ -2667,8 +2667,7 @@ static void *janus_audiobridge_handler(void *data) {
 			participant->session = session;
 			participant->room = audiobridge;
 			participant->user_id = user_id;
-			if(participant->display != NULL)
-				g_free(participant->display);
+			g_free(participant->display);
 			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* By default, everyone's unmuted when joining */
 			participant->volume_gain = volume;
@@ -3185,10 +3184,8 @@ static void *janus_audiobridge_handler(void *data) {
 			janus_mutex_unlock(&participant->rec_mutex);
 			/* Done, join the new one */
 			participant->user_id = user_id;
-			if(display_text) {
-				g_free(participant->display);
-				participant->display = display_text ? g_strdup(display_text) : NULL;
-			}
+			g_free(participant->display);
+			participant->display = display_text ? g_strdup(display_text) : NULL;
 			participant->room = audiobridge;
 			participant->muted = muted ? json_is_true(muted) : FALSE;	/* When switching to a new room, you're unmuted by default */
 			participant->audio_active_packets = 0;
@@ -3764,7 +3761,10 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						forwarder->timestamp += 960;
 						rtph->timestamp = htonl(forwarder->timestamp);
 						/* Send RTP packet */
-						sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, (struct sockaddr*)&forwarder->serv_addr, sizeof(forwarder->serv_addr));
+						if(sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, (struct sockaddr*)&forwarder->serv_addr, sizeof(forwarder->serv_addr)) < 0) {
+							JANUS_LOG(LOG_HUGE, "Error forwarding mixed RTP packet for room %"SCNu64"... %s (len=%d)...\n",
+								audiobridge->room_id, strerror(errno), length+12);
+						}
 					}
 				}
 			}
@@ -3865,14 +3865,8 @@ static void *janus_audiobridge_participant_thread(void *data) {
 		}
 	}
 	/* We're done, get rid of the resources */
-	if(outpkt != NULL) {
-		if(outpkt->data != NULL) {
-			g_free(outpkt->data);
-			outpkt->data = NULL;
-		}
-		g_free(outpkt);
-		outpkt = NULL;
-	}
+	g_free(outpkt->data);
+	g_free(outpkt);
 	/* Empty the outgoing queue if there was something still in */
 	while(g_async_queue_length(participant->outbuf) > 0) {
 		janus_audiobridge_rtp_relay_packet *pkt = g_async_queue_pop(participant->outbuf);

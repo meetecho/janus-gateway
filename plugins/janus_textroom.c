@@ -734,17 +734,12 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 
 plugin_response:
 		{
-			if(error_code == 0 && !response) {
-				error_code = JANUS_TEXTROOM_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "Invalid response");
-			}
-			if(error_code != 0) {
+			if(!response) {
 				/* Prepare JSON error event */
-				json_t *event = json_object();
-				json_object_set_new(event, "textroom", json_string("event"));
-				json_object_set_new(event, "error_code", json_integer(error_code));
-				json_object_set_new(event, "error", json_string(error_cause));
-				response = event;
+				response = json_object();
+				json_object_set_new(response, "textroom", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
 			}
 			if(root != NULL)
 				json_decref(root);
@@ -1631,7 +1626,7 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 				janus_textroom_participant *top = value;
 				JANUS_LOG(LOG_VERB, "  >> To %s in %"SCNu64"\n", top->username, room_id);
 				gateway->relay_data(top->session->handle, event_text, strlen(event_text));
-				janus_mutex_unlock(&top->session->mutex);
+				janus_mutex_lock(&top->session->mutex);
 				g_hash_table_remove(top->session->rooms, &room_id);
 				janus_mutex_unlock(&top->session->mutex);
 				g_free(top->username);
@@ -1721,6 +1716,7 @@ void janus_textroom_hangup_media(janus_plugin_session *handle) {
 	if(session->rooms) {
 		GHashTableIter iter;
 		gpointer value;
+		janus_mutex_lock(&rooms_mutex);
 		g_hash_table_iter_init(&iter, session->rooms);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_textroom_participant *p = value;
