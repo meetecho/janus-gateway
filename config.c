@@ -128,51 +128,44 @@ janus_config *janus_config_parse(const char *config_file) {
 			char *end = strchr(line, ']');
 			if(end == NULL) {
 				JANUS_LOG(LOG_ERR, "Error parsing category at line %d: syntax error (%s)\n", line_number, filename);
-				janus_config_destroy(jc);
-				return NULL;
+				goto error;
 			}
 			*end = '\0';
 			line = trim(line);
 			if(strlen(line) == 0) {
 				JANUS_LOG(LOG_ERR, "Error parsing category at line %d: no name (%s)\n", line_number, filename);
-				janus_config_destroy(jc);
-				return NULL;
+				goto error;
 			}
 			cg = janus_config_add_category(jc, line);
 			if(cg == NULL) {
 				JANUS_LOG(LOG_ERR, "Error adding category %s (%s)\n", line, filename);
-				janus_config_destroy(jc);
-				return NULL;
+				goto error;
 			}
 		} else {
 			/* Item */
 			char *name = line, *value = strchr(line, '=');
 			if(value == NULL || value == line) {
 				JANUS_LOG(LOG_ERR, "Error parsing item at line %d (%s)\n", line_number, filename);
-				janus_config_destroy(jc);
-				return NULL;
+				goto error;
 			}
 			*value = '\0';
 			name = trim(name);
 			if(strlen(name) == 0) {
 				JANUS_LOG(LOG_ERR, "Error parsing item at line %d: no name (%s)\n", line_number, filename);
-				janus_config_destroy(jc);
-				return NULL;
+				goto error;
 			}
 			value++;
 			value = trim(value);
 			if(strlen(value) == 0) {
 				JANUS_LOG(LOG_ERR, "Error parsing item at line %d: no value (%s)\n", line_number, filename);
-				janus_config_destroy(jc);
-				return NULL;
+				goto error;
 			}
 			if(*value == '>') {
 				value++;
 				value = trim(value);
 				if(strlen(value) == 0) {
 					JANUS_LOG(LOG_ERR, "Error parsing item at line %d: no value (%s)\n", line_number, filename);
-					janus_config_destroy(jc);
-					return NULL;
+					goto error;
 				}
 			}
 			if(janus_config_add_item(jc, cg ? cg->name : NULL, name, value) == NULL) {
@@ -180,13 +173,17 @@ janus_config *janus_config_parse(const char *config_file) {
 					JANUS_LOG(LOG_ERR, "Error adding item %s (%s)\n", name, filename);
 				else
 					JANUS_LOG(LOG_ERR, "Error adding item %s to category %s (%s)\n", name, cg->name, filename);
-				janus_config_destroy(jc);
-				return NULL;
+				goto error;
 			}
 		}
 	}
 	fclose(file);
 	return jc;
+
+error:
+	fclose(file);
+	janus_config_destroy(jc);
+	return NULL;
 }
 
 janus_config *janus_config_create(const char *name) {
@@ -454,7 +451,7 @@ void janus_config_destroy(janus_config *config) {
 	}
 	if(config->categories) {
 		g_list_free_full(config->categories, janus_config_free_category);
-		config->items = NULL;
+		config->categories = NULL;
 	}
 	if(config->name)
 		g_free((gpointer)config->name);

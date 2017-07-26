@@ -359,7 +359,7 @@ typedef struct janus_videocall_session {
 	gboolean has_video;
 	gboolean audio_active;
 	gboolean video_active;
-	uint64_t bitrate;
+	uint32_t bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
@@ -689,7 +689,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 		}
 		if(session->destroyed || session->peer->destroyed)
 			return;
-		guint64 bitrate = janus_rtcp_get_remb(buf, len);
+		guint32 bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
 			if(session->bitrate > 0)
@@ -764,7 +764,7 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 				if(session->peer->bitrate < 64*1024)
 					session->peer->bitrate = 64*1024;
 			}
-			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
+			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu32"\n",
 				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->peer->bitrate : session->bitrate);
 			/* ... and send a new REMB back */
 			char rtcpbuf[24];
@@ -897,7 +897,6 @@ static void *janus_videocall_handler(void *data) {
 		json_t *request = json_object_get(root, "request");
 		const char *request_text = json_string_value(request);
 		json_t *result = NULL;
-		char *sdp_type = NULL, *sdp = NULL;
 		if(!strcasecmp(request_text, "list")) {
 			result = json_object();
 			json_t *list = json_array();
@@ -1031,7 +1030,6 @@ static void *janus_videocall_handler(void *data) {
 				g_atomic_int_set(&session->hangingup, 0);
 				int ret = gateway->push_event(peer->handle, &janus_videocall_plugin, NULL, call, jsep);
 				JANUS_LOG(LOG_VERB, "  >> Pushing event to peer: %d (%s)\n", ret, janus_get_api_error(ret));
-				g_free(sdp);
 				json_decref(call);
 				json_decref(jsep);
 				/* Send an ack back */
@@ -1114,7 +1112,7 @@ static void *janus_videocall_handler(void *data) {
 			}
 			if(bitrate) {
 				session->bitrate = json_integer_value(bitrate);
-				JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64"\n", session->bitrate);
+				JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32"\n", session->bitrate);
 				if(session->bitrate > 0) {
 					/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
 					char buf[24];
@@ -1281,17 +1279,13 @@ static void *janus_videocall_handler(void *data) {
 		}
 
 		/* Prepare JSON event */
-		json_t *jsep = sdp ? json_pack("{ssss}", "type", sdp_type, "sdp", sdp) : NULL;
 		json_t *event = json_object();
 		json_object_set_new(event, "videocall", json_string("event"));
 		if(result != NULL)
 			json_object_set_new(event, "result", result);
-		int ret = gateway->push_event(msg->handle, &janus_videocall_plugin, msg->transaction, event, jsep);
+		int ret = gateway->push_event(msg->handle, &janus_videocall_plugin, msg->transaction, event, NULL);
 		JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
-		g_free(sdp);
 		json_decref(event);
-		if(jsep)
-			json_decref(jsep);
 		janus_videocall_message_free(msg);
 		continue;
 		

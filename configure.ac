@@ -377,6 +377,10 @@ AC_CHECK_LIB([websockets],
 								  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], true)
 								  WS_MANUAL_LIBS="-lwebsockets"
 								  enable_websockets=yes
+								  AC_CHECK_LIB([websockets],
+							                   [lws_get_peer_simple],
+							                   [AC_DEFINE(HAVE_LIBWEBSOCKETS_PEER_SIMPLE)]
+							                  )
 							   ])
 							 ],
 							 [
