@@ -532,6 +532,7 @@ void *janus_pfunix_thread(void *data) {
 					janus_pfunix_client *client = g_hash_table_lookup(clients_by_fd, GINT_TO_POINTER(poll_fds[i].fd));
 					if(client == NULL) {
 						/* We're not handling this, ignore */
+						janus_mutex_unlock(&clients_mutex);
 						continue;
 					}
 					JANUS_LOG(LOG_INFO, "Unix Sockets client disconnected (%d)\n", poll_fds[i].fd);
@@ -584,7 +585,7 @@ void *janus_pfunix_thread(void *data) {
 			if(poll_fds[i].revents & POLLIN) {
 				if(poll_fds[i].fd == write_fd[0]) {
 					/* Read and ignore: we use this to unlock the poll if there's data to write */
-					res = read(poll_fds[i].fd, buffer, BUFFER_SIZE);
+					(void)read(poll_fds[i].fd, buffer, BUFFER_SIZE);
 				} else if(poll_fds[i].fd == pfd || poll_fds[i].fd == admin_pfd) {
 					/* Janus/Admin API: accept the new client (SOCK_SEQPACKET) or receive data (SOCK_DGRAM) */
 					struct sockaddr_un address;

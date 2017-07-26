@@ -184,7 +184,7 @@ typedef struct janus_echotest_session {
 	gboolean has_data;
 	gboolean audio_active;
 	gboolean video_active;
-	uint64_t bitrate;
+	uint32_t bitrate;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this user's data, if enabled */
@@ -515,7 +515,7 @@ void janus_echotest_incoming_rtcp(janus_plugin_session *handle, int video, char 
 		}
 		if(session->destroyed)
 			return;
-		guint64 bitrate = janus_rtcp_get_remb(buf, len);
+		guint32 bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
 			if(session->bitrate > 0)
@@ -583,7 +583,7 @@ void janus_echotest_slow_link(janus_plugin_session *handle, int uplink, int vide
 			session->bitrate = session->bitrate/2;
 			if(session->bitrate < 64*1024)
 				session->bitrate = 64*1024;
-			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
+			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu32"\n",
 				uplink ? "uplink" : "downlink", video ? "video" : "audio", session->bitrate);
 			/* ... and send a new REMB back */
 			char rtcpbuf[24];
@@ -759,7 +759,7 @@ static void *janus_echotest_handler(void *data) {
 		}
 		if(bitrate) {
 			session->bitrate = json_integer_value(bitrate);
-			JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64"\n", session->bitrate);
+			JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32"\n", session->bitrate);
 			if(session->bitrate > 0) {
 				/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
 				char buf[24];
