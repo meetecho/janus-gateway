@@ -1184,7 +1184,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		}
 		path = g_strsplit(basepath[1], "/", -1);
 		if(path == NULL || path[1] == NULL) {
-			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
+			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path ? path[1] : "");
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
@@ -1194,10 +1194,16 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
+			g_strfreev(basepath);
+			g_strfreev(path);
+			return ret;
 		}
 	}
-	if(firstround)
+	if(firstround) {
+		g_strfreev(basepath);
+		g_strfreev(path);
 		return ret;
+	}
 	JANUS_LOG(LOG_DBG, " ... parsing request...\n");
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);
@@ -1600,7 +1606,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		}
 		path = g_strsplit(basepath[1], "/", -1);
 		if(path == NULL || path[1] == NULL) {
-			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
+			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path ? path[1] : "");
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
@@ -1610,10 +1616,16 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
+			g_strfreev(basepath);
+			g_strfreev(path);
+			return ret;
 		}
 	}
-	if(firstround)
+	if(firstround) {
+		g_strfreev(basepath);
+		g_strfreev(path);
 		return ret;
+	}
 	JANUS_LOG(LOG_DBG, " ... parsing request...\n");
 	if(path != NULL && path[1] != NULL && strlen(path[1]) > 0) {
 		session_path = g_strdup(path[1]);

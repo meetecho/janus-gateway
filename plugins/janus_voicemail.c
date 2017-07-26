@@ -359,7 +359,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		int res = janus_mkdir(recordings_path, 0755);
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res != 0) {
-			JANUS_LOG(LOG_ERR, "%s", strerror(res));
+			JANUS_LOG(LOG_ERR, "%s", strerror(errno));
 			return -1;	/* No point going on... */
 		}
 	}
