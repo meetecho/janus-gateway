@@ -344,7 +344,7 @@ typedef struct janus_videocall_session {
 	gboolean has_video;
 	gboolean audio_active;
 	gboolean video_active;
-	uint64_t bitrate;
+	uint32_t bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
 	janus_recorder *arc;	/* The Janus recorder instance for this user's audio, if enabled */
@@ -679,7 +679,7 @@ void janus_videocall_incoming_rtcp(janus_plugin_session *handle, int video, char
 		}
 		if(g_atomic_int_get(&session->destroyed) || session->peer->destroyed)
 			return;
-		guint64 bitrate = janus_rtcp_get_remb(buf, len);
+		guint32 bitrate = janus_rtcp_get_remb(buf, len);
 		if(bitrate > 0) {
 			/* If a REMB arrived, make sure we cap it to our configuration, and send it as a video RTCP */
 			if(session->bitrate > 0)
@@ -758,7 +758,7 @@ void janus_videocall_slow_link(janus_plugin_session *handle, int uplink, int vid
 				if(session->peer->bitrate < 64*1024)
 					session->peer->bitrate = 64*1024;
 			}
-			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu64"\n",
+			JANUS_LOG(LOG_WARN, "Getting a lot of NACKs (slow %s) for %s, forcing a lower REMB: %"SCNu32"\n",
 				uplink ? "uplink" : "downlink", video ? "video" : "audio", uplink ? session->peer->bitrate : session->bitrate);
 			/* ... and send a new REMB back */
 			char rtcpbuf[24];
@@ -1144,7 +1144,7 @@ static void *janus_videocall_handler(void *data) {
 			}
 			if(bitrate) {
 				session->bitrate = json_integer_value(bitrate);
-				JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu64"\n", session->bitrate);
+				JANUS_LOG(LOG_VERB, "Setting video bitrate: %"SCNu32"\n", session->bitrate);
 				if(session->bitrate > 0) {
 					/* FIXME Generate a new REMB (especially useful for Firefox, which doesn't send any we can cap later) */
 					char buf[24];

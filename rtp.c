@@ -10,6 +10,7 @@
  * \ref protocols
  */
  
+#include <string.h>
 #include "rtp.h"
 #include "debug.h"
 
@@ -202,22 +203,7 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 	if(context == NULL)
 		return;
 	/* Reset the context values */
-	context->a_last_ssrc = 0;
-	context->a_last_ts = 0;
-	context->a_base_ts = 0;
-	context->a_base_ts_prev = 0;
-	context->v_last_ssrc = 0;
-	context->v_last_ts = 0;
-	context->v_base_ts = 0;
-	context->v_base_ts_prev = 0;
-	context->a_last_seq = 0;
-	context->a_base_seq = 0;
-	context->a_base_seq_prev = 0;
-	context->v_last_seq = 0;
-	context->v_base_seq = 0;
-	context->v_base_seq_prev = 0;
-	context->a_seq_reset = FALSE;
-	context->v_seq_reset = FALSE;
+	memset(context, 0, sizeof(*context));
 }
 
 void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {

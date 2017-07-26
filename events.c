@@ -191,6 +191,7 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 			JANUS_LOG(LOG_WARN, "Unknown event type '%d'\n", type);
 			json_decref(event);
 			json_decref(body);
+			va_end(args);
 			return;
 	}
 	json_object_set_new(event, "event", body);
