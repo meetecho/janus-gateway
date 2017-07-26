@@ -753,11 +753,23 @@ void janus_nosip_incoming_rtp(janus_plugin_session *handle, int video, char *buf
 						session, video ? "Video" : "Audio", janus_srtp_error_str(res), len, protected, timestamp, seq);
 				} else {
 					/* Forward the frame to the peer */
-					send((video ? session->media.video_rtp_fd : session->media.audio_rtp_fd), sbuf, protected, 0);
+					if(send((video ? session->media.video_rtp_fd : session->media.audio_rtp_fd), sbuf, protected, 0) < 0) {
+						rtp_header *header = (rtp_header *)&sbuf;
+						guint32 timestamp = ntohl(header->timestamp);
+						guint16 seq = ntohs(header->seq_number);
+						JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending %s SRTP packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
+							session, video ? "Video" : "Audio", strerror(errno), protected, timestamp, seq);
+					}
 				}
 			} else {
 				/* Forward the frame to the peer */
-				send((video ? session->media.video_rtp_fd : session->media.audio_rtp_fd), buf, len, 0);
+				if(send((video ? session->media.video_rtp_fd : session->media.audio_rtp_fd), buf, len, 0) < 0) {
+					rtp_header *header = (rtp_header *)&buf;
+					guint32 timestamp = ntohl(header->timestamp);
+					guint16 seq = ntohs(header->seq_number);
+					JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending %s RTP packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
+						session, video ? "Video" : "Audio", strerror(errno), len, timestamp, seq);
+				}
 			}
 		}
 	}
@@ -797,11 +809,17 @@ void janus_nosip_incoming_rtcp(janus_plugin_session *handle, int video, char *bu
 						janus_srtp_error_str(res), len, protected);
 				} else {
 					/* Forward the message to the peer */
-					send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), sbuf, protected, 0);
+					if(send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), sbuf, protected, 0) < 0) {
+						JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending SRTCP %s packet... %s (len=%d)...\n",
+							session, video ? "Video" : "Audio", strerror(errno), protected);
+					}
 				}
 			} else {
 				/* Forward the message to the peer */
-				send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), buf, len, 0);
+				if(send((video ? session->media.video_rtcp_fd : session->media.audio_rtcp_fd), buf, len, 0) < 0) {
+					JANUS_LOG(LOG_HUGE, "[NoSIP-%p] Error sending RTCP %s packet... %s (len=%d)...\n",
+						session, video ? "Video" : "Audio", strerror(errno), len);
+				}
 			}
 		}
 	}
@@ -879,16 +897,18 @@ static void *janus_nosip_handler(void *data) {
 		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
 			session = (janus_nosip_session *)msg->handle->plugin_handle;
 		}
-		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_nosip_message_free(msg);
 			continue;
 		}
 		if(session->destroyed) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_nosip_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;
@@ -1562,6 +1582,10 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 			if(session->media.audio_rtcp_fd == -1) {
 				session->media.audio_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
+			if(session->media.audio_rtp_fd == -1 || session->media.audio_rtcp_fd == -1) {
+				JANUS_LOG(LOG_ERR, "Error creating audio sockets...\n");
+				return -1;
+			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
@@ -1570,6 +1594,8 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 			inet_pton(AF_INET, local_ip, &audio_rtp_address.sin_addr.s_addr);
 			if(bind(session->media.audio_rtp_fd, (struct sockaddr *)(&audio_rtp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for audio RTP (port %d), trying a different one...\n", rtp_port);
+				close(session->media.audio_rtp_fd);
+				session->media.audio_rtp_fd = -1;
 				attempts--;
 				continue;
 			}
@@ -1583,6 +1609,8 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 				/* RTP socket is not valid anymore, reset it */
 				close(session->media.audio_rtp_fd);
 				session->media.audio_rtp_fd = -1;
+				close(session->media.audio_rtcp_fd);
+				session->media.audio_rtcp_fd = -1;
 				attempts--;
 				continue;
 			}
@@ -1603,6 +1631,10 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 			if(session->media.video_rtcp_fd == -1) {
 				session->media.video_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
+			if(session->media.video_rtp_fd == -1 || session->media.video_rtcp_fd == -1) {
+				JANUS_LOG(LOG_ERR, "Error creating video sockets...\n");
+				return -1;
+			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
@@ -1611,6 +1643,8 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 			inet_pton(AF_INET, local_ip, &video_rtp_address.sin_addr.s_addr);
 			if(bind(session->media.video_rtp_fd, (struct sockaddr *)(&video_rtp_address), sizeof(struct sockaddr)) < 0) {
 				JANUS_LOG(LOG_ERR, "Bind failed for video RTP (port %d), trying a different one...\n", rtp_port);
+				close(session->media.video_rtp_fd);
+				session->media.video_rtp_fd = -1;
 				attempts--;
 				continue;
 			}
@@ -1624,6 +1658,8 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 				/* RTP socket is not valid anymore, reset it */
 				close(session->media.video_rtp_fd);
 				session->media.video_rtp_fd = -1;
+				close(session->media.video_rtcp_fd);
+				session->media.video_rtcp_fd = -1;
 				attempts--;
 				continue;
 			}
@@ -1819,12 +1855,16 @@ static void *janus_nosip_relay_thread(void *data) {
 				if(pipe_fd != -1 && fds[i].fd == pipe_fd) {
 					/* Poll interrupted for a reason, go on */
 					int code = 0;
-					bytes = read(pipe_fd, &code, sizeof(int));
+					(void)read(pipe_fd, &code, sizeof(int));
 					break;
 				}
 				/* Got an RTP/RTCP packet */
 				addrlen = sizeof(remote);
 				bytes = recvfrom(fds[i].fd, buffer, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+				if(bytes < 0) {
+					/* Failed to read? */
+					continue;
+				}
 				/* Let's check what this is */
 				gboolean video = fds[i].fd == session->media.video_rtp_fd || fds[i].fd == session->media.video_rtcp_fd;
 				gboolean rtcp = fds[i].fd == session->media.audio_rtcp_fd || fds[i].fd == session->media.video_rtcp_fd;
