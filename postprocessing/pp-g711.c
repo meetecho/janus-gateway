@@ -157,6 +157,7 @@ int janus_pp_g711_process(FILE *file, janus_pp_frame_packet *list, int *working)
 	int bytes = 0, len = 0, steps = 0, last_seq = 0;
 	uint8_t *buffer = g_malloc0(1500);
 	int16_t samples[1500];
+	memset(samples, 0, sizeof(samples));
 	size_t num_samples = 160;
 	while(*working && tmp != NULL) {
 		if(tmp->prev != NULL && (tmp->seq - tmp->prev->seq > 1)) {

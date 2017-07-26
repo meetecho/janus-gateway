@@ -515,7 +515,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 						len--;
 						skipped++;
 						if(n_g > 0) {
-							int i=0;
+							uint i=0;
 							for(i=0; i<n_g; i++) {
 								/* Read the R bits */
 								vp9pd = *buffer;
