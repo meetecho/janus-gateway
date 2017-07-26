@@ -1184,7 +1184,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		}
 		path = g_strsplit(basepath[1], "/", -1);
 		if(path == NULL || path[1] == NULL) {
-			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
+			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path ? path[1] : "");
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
@@ -1606,7 +1606,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		}
 		path = g_strsplit(basepath[1], "/", -1);
 		if(path == NULL || path[1] == NULL) {
-			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path[1]);
+			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path ? path[1] : "");
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
 			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");

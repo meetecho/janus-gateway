@@ -3829,7 +3829,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	gint64 now = janus_get_monotonic_time(), before = now, ka_timeout = 0;
 	if(source->rtsp) {
 		source->reconnect_timer = now;
-		ka_timeout = (source->ka_timeout*G_USEC_PER_SEC)/2;
+		ka_timeout = ((gint64)source->ka_timeout*G_USEC_PER_SEC)/2;
 	}
 #endif
 	/* Loop */

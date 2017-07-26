@@ -1176,24 +1176,22 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						/* Forward the frame to the peer */
-						res = send(session->media.video_rtp_fd, sbuf, protected, 0);
-						if(res < 0) {
+						if(send(session->media.video_rtp_fd, sbuf, protected, 0) < 0) {
 							rtp_header *header = (rtp_header *)&sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-								session->account.username, strerror(res), protected, timestamp, seq);
+								session->account.username, strerror(errno), protected, timestamp, seq);
 						}
 					}
 				} else {
 					/* Forward the frame to the peer */
-					int res = send(session->media.video_rtp_fd, buf, len, 0);
-					if(res < 0) {
+					if(send(session->media.video_rtp_fd, buf, len, 0) < 0) {
 						rtp_header *header = (rtp_header *)&buf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP video packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-							session->account.username, strerror(res), len, timestamp, seq);
+							session->account.username, strerror(errno), len, timestamp, seq);
 					}
 				}
 			}
@@ -1224,24 +1222,22 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 							session->account.username, janus_srtp_error_str(res), len, protected, timestamp, seq);
 					} else {
 						/* Forward the frame to the peer */
-						res = send(session->media.audio_rtp_fd, sbuf, protected, 0);
-						if(res < 0) {
+						if(send(session->media.audio_rtp_fd, sbuf, protected, 0) < 0) {
 							rtp_header *header = (rtp_header *)&sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-								session->account.username, strerror(res), protected, timestamp, seq);
+								session->account.username, strerror(errno), protected, timestamp, seq);
 						}
 					}
 				} else {
 					/* Forward the frame to the peer */
-					int res = send(session->media.audio_rtp_fd, buf, len, 0);
-					if(res < 0) {
+					if(send(session->media.audio_rtp_fd, buf, len, 0) < 0) {
 						rtp_header *header = (rtp_header *)&buf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTP audio packet... %s (len=%d, ts=%"SCNu32", seq=%"SCNu16")...\n",
-							session->account.username, strerror(res), len, timestamp, seq);
+							session->account.username, strerror(errno), len, timestamp, seq);
 					}
 				}
 			}
@@ -1278,18 +1274,16 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 							session->account.username, janus_srtp_error_str(res), len, protected);
 					} else {
 						/* Forward the message to the peer */
-						res = send(session->media.video_rtcp_fd, sbuf, protected, 0);
-						if(res < 0) {
+						if(send(session->media.video_rtcp_fd, sbuf, protected, 0) < 0) {
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTCP video packet... %s (len=%d)...\n",
-								session->account.username, strerror(res), protected);
+								session->account.username, strerror(errno), protected);
 						}
 					}
 				} else {
 					/* Forward the message to the peer */
-					int res = send(session->media.video_rtcp_fd, buf, len, 0);
-					if(res < 0) {
+					if(send(session->media.video_rtcp_fd, buf, len, 0) < 0) {
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTCP video packet... %s (len=%d)...\n",
-							session->account.username, strerror(res), len);
+							session->account.username, strerror(errno), len);
 					}
 				}
 			}
@@ -1310,18 +1304,16 @@ void janus_sip_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 							session->account.username, janus_srtp_error_str(res), len, protected);
 					} else {
 						/* Forward the message to the peer */
-						res = send(session->media.audio_rtcp_fd, sbuf, protected, 0);
-						if(res < 0) {
+						if(send(session->media.audio_rtcp_fd, sbuf, protected, 0) < 0) {
 							JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending SRTCP audio packet... %s (len=%d)...\n",
-								session->account.username, strerror(res), protected);
+								session->account.username, strerror(errno), protected);
 						}
 					}
 				} else {
 					/* Forward the message to the peer */
-					int res = send(session->media.audio_rtcp_fd, buf, len, 0);
-					if(res < 0) {
+					if(send(session->media.audio_rtcp_fd, buf, len, 0) < 0) {
 						JANUS_LOG(LOG_HUGE, "[SIP-%s] Error sending RTCP audio packet... %s (len=%d)...\n",
-							session->account.username, strerror(res), len);
+							session->account.username, strerror(errno), len);
 					}
 				}
 			}
@@ -3534,6 +3526,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 			if(session->media.audio_rtcp_fd == -1) {
 				session->media.audio_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 			}
+			if(session->media.audio_rtp_fd == -1 || session->media.audio_rtcp_fd == -1) {
+				JANUS_LOG(LOG_ERR, "Error creating audio sockets...\n");
+				return -1;
+			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
@@ -3578,6 +3574,10 @@ static int janus_sip_allocate_local_ports(janus_sip_session *session) {
 			}
 			if(session->media.video_rtcp_fd == -1) {
 				session->media.video_rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+			}
+			if(session->media.video_rtp_fd == -1 || session->media.video_rtcp_fd == -1) {
+				JANUS_LOG(LOG_ERR, "Error creating video sockets...\n");
+				return -1;
 			}
 			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
 			if(rtp_port % 2)

@@ -780,7 +780,6 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if(fd < 0) {
 		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
-		close(fd);
 		return -1;
 	}
 	struct sockaddr_in address, remote;

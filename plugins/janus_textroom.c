@@ -735,14 +735,11 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 plugin_response:
 		{
 			if(!response) {
-				error_code = JANUS_TEXTROOM_ERROR_UNKNOWN_ERROR;
-				g_snprintf(error_cause, 512, "Invalid response");
 				/* Prepare JSON error event */
-				json_t *event = json_object();
-				json_object_set_new(event, "textroom", json_string("event"));
-				json_object_set_new(event, "error_code", json_integer(error_code));
-				json_object_set_new(event, "error", json_string(error_cause));
-				response = event;
+				response = json_object();
+				json_object_set_new(response, "textroom", json_string("event"));
+				json_object_set_new(response, "error_code", json_integer(error_code));
+				json_object_set_new(response, "error", json_string(error_cause));
 			}
 			if(root != NULL)
 				json_decref(root);

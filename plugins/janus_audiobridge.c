@@ -3761,10 +3761,9 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 						forwarder->timestamp += 960;
 						rtph->timestamp = htonl(forwarder->timestamp);
 						/* Send RTP packet */
-						int res = sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, (struct sockaddr*)&forwarder->serv_addr, sizeof(forwarder->serv_addr));
-						if(res < 0) {
+						if(sendto(audiobridge->rtp_udp_sock, rtpbuffer, length+12, 0, (struct sockaddr*)&forwarder->serv_addr, sizeof(forwarder->serv_addr)) < 0) {
 							JANUS_LOG(LOG_HUGE, "Error forwarding mixed RTP packet for room %"SCNu64"... %s (len=%d)...\n",
-								audiobridge->room_id, strerror(res), length+12);
+								audiobridge->room_id, strerror(errno), length+12);
 						}
 					}
 				}
