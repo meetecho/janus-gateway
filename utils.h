@@ -221,3 +221,19 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 	} while(0)
 
 #endif
+
+/*! \brief Helper method to parse a VP9 payload descriptor for SVC-related info (e.g., when SVC is enabled)
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @param[out] found Whether any SVC related info has been found or not
+ * @param[out] spatial_layer Spatial layer of the packet
+ * @param[out] temporal_layer Temporal layer of the packet
+ * @param[out] p Inter-picture predicted picture bit
+ * @param[out] d Inter-layer dependency used bit
+ * @param[out] u Switching up point bit
+ * @param[out] b Start of a frame bit
+ * @param[out] e End of a frame bit
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_vp9_parse_svc(char *buffer, int len, int *found,
+		int *spatial_layer, int *temporal_layer,
+		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e);
