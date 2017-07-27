@@ -49,6 +49,15 @@ admin_https = no				; Whether to enable HTTPS (default=no)
 ;admin_secure_ip = 192.168.0.1	; Whether we should bind this server to a specific IP address (v4 or v6) only
 ;admin_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
 
+; The HTTP servers created in Janus support CORS out of the box, but by
+; default they return a wildcard (*) in the 'Access-Control-Allow-Origin'
+; header. This works fine in most situations, except when we have to
+; respond to a credential request (withCredentials=true in the XHR). If
+; you need that, uncomment and set the 'allow_origin' below to specify
+; what must be returned in 'Access-Control-Allow-Origin'. More details:
+; https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS
+[cors]
+;allow_origin = http://foo.example
 
 ; Certificate and key to use for HTTPS.
 [certificates]
