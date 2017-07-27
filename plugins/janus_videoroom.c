@@ -3463,23 +3463,11 @@ static void *janus_videoroom_handler(void *data) {
 				goto error;
 			} else if(!strcasecmp(request_text, "start")) {
 				/* Start/restart receiving the publisher streams */
-				janus_videoroom_participant *publisher = listener->feed;
 				listener->paused = FALSE;
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(listener->room->room_id));
 				json_object_set_new(event, "started", json_string("ok"));
-				if(publisher) {
-					/* Send a FIR */
-					char buf[20];
-					janus_rtcp_fir((char *)&buf, 20, &publisher->fir_seq);
-					JANUS_LOG(LOG_VERB, "Resuming publisher, sending FIR to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
-					gateway->relay_rtcp(publisher->session->handle, 1, buf, 20);
-					/* Send a PLI too, just in case... */
-					janus_rtcp_pli((char *)&buf, 12);
-					JANUS_LOG(LOG_VERB, "Resuming publisher, sending PLI to %"SCNu64" (%s)\n", publisher->user_id, publisher->display ? publisher->display : "??");
-					gateway->relay_rtcp(publisher->session->handle, 1, buf, 12);
-				}
 			} else if(!strcasecmp(request_text, "configure")) {
 				JANUS_VALIDATE_JSON_OBJECT(root, configure_parameters,
 					error_code, error_cause, TRUE,
