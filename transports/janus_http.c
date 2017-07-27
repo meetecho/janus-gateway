@@ -202,6 +202,8 @@ static char *cert_pem_bytes = NULL, *cert_key_bytes = NULL;
 static struct MHD_Daemon *admin_ws = NULL, *admin_sws = NULL;
 static char *admin_ws_path = NULL;
 
+/* Custom Access-Control-Allow-Origin value, if specified */
+static char *allow_origin = NULL;
 
 /* REST and Admin/Monitor ACL list */
 GList *janus_http_access_list = NULL, *janus_http_admin_access_list = NULL;
@@ -553,6 +555,22 @@ static struct MHD_Daemon *janus_http_create_daemon(gboolean admin, char *path,
 	return daemon;
 }
 
+/* Static helper method to fill in the CORS headers */
+static void janus_http_add_cors_headers(janus_http_msg *msg, struct MHD_Response *response) {
+	if(msg == NULL || response == NULL)
+		return;
+	MHD_add_response_header(response, "Access-Control-Allow-Origin", allow_origin ? allow_origin : "*");
+	if(allow_origin) {
+		/* We need these two headers as well, in case Access-Control-Allow-Origin is custom */
+		MHD_add_response_header(response, "Access-Control-Allow-Credentials", "true");
+		MHD_add_response_header(response, "Vary", "Origin");
+	}
+	MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
+	if(msg->acrm)
+		MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
+	if(msg->acrh)
+		MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+}
 
 /* Transport implementation */
 int janus_http_init(janus_transport_callbacks *callback, const char *config_path) {
@@ -674,6 +692,13 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 			}
 			g_strfreev(list);
 			list = NULL;
+		}
+
+		/* Any custom value for the Access-Control-Allow-Origin header? */
+		item = janus_config_get_item_drilldown(config, "cors", "allow_origin");
+		if(item && item->value) {
+			allow_origin = g_strdup(item->value);
+			JANUS_LOG(LOG_INFO, "Restricting Access-Control-Allow-Origin to '%s'\n", allow_origin);
 		}
 
 		/* Start with the Janus API web server now */
@@ -869,6 +894,8 @@ void janus_http_destroy(void) {
 	if(cert_key_bytes != NULL)
 		g_free((gpointer)cert_key_bytes);
 	cert_key_bytes = NULL;
+	g_free(allow_origin);
+	allow_origin = NULL;
 
 	g_hash_table_destroy(messages);
 	g_hash_table_destroy(sessions);
@@ -1124,12 +1151,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	}
 	if (!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-		MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-		if(msg->acrm)
-			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-		if(msg->acrh)
-			MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+		janus_http_add_cors_headers(msg, response);
 		ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
 		MHD_destroy_response(response);
 	}
@@ -1146,12 +1168,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
 		}
@@ -1163,12 +1180,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		if(path == NULL || path[1] == NULL) {
 			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path ? path[1] : "");
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
 			g_strfreev(basepath);
@@ -1205,12 +1217,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 	if(session_path != NULL && handle_path != NULL && path[3] != NULL && strlen(path[3]) > 0) {
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-		MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-		if(msg->acrm)
-			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-		if(msg->acrh)
-			MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+		janus_http_add_cors_headers(msg, response);
 		ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 		MHD_destroy_response(response);
 		goto done;
@@ -1252,12 +1259,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		/* The info REST endpoint, if contacted through a GET, provides information on the gateway */
 		if(strcasecmp(method, "GET")) {
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
 			MHD_destroy_response(response);
 			goto done;
@@ -1278,12 +1280,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		if(session_id < 1) {
 			JANUS_LOG(LOG_ERR, "Invalid session %s\n", session_path);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
 			goto done;
@@ -1314,12 +1311,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			/* We consider a request authorized if either the proper API secret or a valid token has been provided */
 			if(!secret_authorized && !token_authorized) {
 				response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-				MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-				MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-				if(msg->acrm)
-					MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-				if(msg->acrh)
-					MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+				janus_http_add_cors_headers(msg, response);
 				ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
 				MHD_destroy_response(response);
 				goto done;
@@ -1344,12 +1336,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 			JANUS_LOG(LOG_ERR, "Invalid GET to %s, redirecting to %s\n", url, location);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 			MHD_add_response_header(response, "Location", location);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, 302, response);
 			MHD_destroy_response(response);
 			g_free(location);
@@ -1361,12 +1348,7 @@ int janus_http_handler(void *cls, struct MHD_Connection *connection, const char 
 		if(!session || g_atomic_int_get(&session->destroyed)) {
 			JANUS_LOG(LOG_ERR, "Couldn't find any session %"SCNu64"...\n", session_id);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
 			goto done;
@@ -1543,24 +1525,14 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	if (strcasecmp(method, "GET") && strcasecmp(method, "POST") && strcasecmp(method, "OPTIONS")) {
 		JANUS_LOG(LOG_ERR, "Unsupported method...\n");
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-		MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-		if(msg->acrm)
-			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-		if(msg->acrh)
-			MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+		janus_http_add_cors_headers(msg, response);
 		ret = MHD_queue_response(connection, MHD_HTTP_NOT_IMPLEMENTED, response);
 		MHD_destroy_response(response);
 		return ret;
 	}
 	if (!strcasecmp(method, "OPTIONS")) {
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-		MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-		if(msg->acrm)
-			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-		if(msg->acrh)
-			MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+		janus_http_add_cors_headers(msg, response);
 		ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
 		MHD_destroy_response(response);
 	}
@@ -1577,12 +1549,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		if(basepath[0] == NULL || basepath[1] == NULL || basepath[1][0] != '/') {
 			JANUS_LOG(LOG_ERR, "Invalid url %s\n", url);
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
 		}
@@ -1594,12 +1561,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 		if(path == NULL || path[1] == NULL) {
 			JANUS_LOG(LOG_ERR, "Invalid path %s (%s)\n", basepath[1], path ? path[1] : "");
 			response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-			MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-			if(msg->acrm)
-				MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-			if(msg->acrh)
-				MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+			janus_http_add_cors_headers(msg, response);
 			ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 			MHD_destroy_response(response);
 			g_strfreev(basepath);
@@ -1636,12 +1598,7 @@ int janus_http_admin_handler(void *cls, struct MHD_Connection *connection, const
 	if(session_path != NULL && handle_path != NULL && path[3] != NULL && strlen(path[3]) > 0) {
 		JANUS_LOG(LOG_ERR, "Too many components...\n");
 		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-		MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-		if(msg->acrm)
-			MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-		if(msg->acrh)
-			MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+		janus_http_add_cors_headers(msg, response);
 		ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
 		MHD_destroy_response(response);
 		goto done;
@@ -1871,12 +1828,7 @@ int janus_http_return_success(janus_transport_session *ts, char *payload) {
 		(void*)payload,
 		MHD_RESPMEM_MUST_FREE);
 	MHD_add_response_header(response, "Content-Type", "application/json");
-	MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-	MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
-	if(msg->acrm)
-		MHD_add_response_header(response, "Access-Control-Allow-Methods", msg->acrm);
-	if(msg->acrh)
-		MHD_add_response_header(response, "Access-Control-Allow-Headers", msg->acrh);
+	janus_http_add_cors_headers(msg, response);
 	int ret = MHD_queue_response(msg->connection, MHD_HTTP_OK, response);
 	MHD_destroy_response(response);
 	return ret;
