@@ -19,7 +19,7 @@
 
 
 /* Starting MTU value for the DTLS BIO filter */
-static int mtu = 1472;
+static int mtu = 1440;
 void janus_dtls_bio_filter_set_mtu(int start_mtu) {
 	if(start_mtu < 0) {
 		JANUS_LOG(LOG_ERR, "Invalid MTU...\n");
