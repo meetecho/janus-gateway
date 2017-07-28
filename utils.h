@@ -220,4 +220,67 @@ gboolean janus_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
 		} \
 	} while(0)
 
+/*! \brief Helper method to check if a VP8 frame is a keyframe or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_vp8_is_keyframe(char* buffer, int len);
+
+/*! \brief Helper method to check if a VP9 frame is a keyframe or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_vp9_is_keyframe(char* buffer, int len);
+
+/*! \brief Helper method to check if an H.264 frame is a keyframe or not
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @returns TRUE if it's a keyframe, FALSE otherwise */
+gboolean janus_h264_is_keyframe(char* buffer, int len);
+
+/*! \brief VP8 simulcasting context, in order to make sure SSRC changes result in coherent picid/temporal level increases */
+typedef struct janus_vp8_simulcast_context {
+	uint16_t last_picid, base_picid, base_picid_prev;
+	uint8_t last_tlzi, base_tlzi, base_tlzi_prev;
+} janus_vp8_simulcast_context;
+
+/*! \brief Set (or reset) the context fields to their default values
+ * @param[in] context The context to (re)set */
+void janus_vp8_simulcast_context_reset(janus_vp8_simulcast_context *context);
+
+/*! \brief Helper method to parse a VP8 payload descriptor for useful info (e.g., when simulcasting)
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @param[out] picid The Picture ID
+ * @param[out] tl0picidx Temporal level zero index
+ * @param[out] tid Temporal-layer index
+ * @param[out] y Layer sync bit
+ * @param[out] keyidx Temporal key frame index
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_vp8_parse_descriptor(char *buffer, int len,
+		uint16_t *picid, uint8_t *tl0picidx, uint8_t *tid, uint8_t *y, uint8_t *keyidx);
+
+/*! \brief Use the context info to update the RTP header of a packet, if needed
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @param[in] context The context to use as a reference
+ * @param[in] switched Whether there has been a source switch or not (important to compute offsets) */
+void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simulcast_context *context, gboolean switched);
+
+/*! \brief Helper method to parse a VP9 payload descriptor for SVC-related info (e.g., when SVC is enabled)
+ * @param[in] buffer The RTP payload to process
+ * @param[in] len The length of the RTP payload
+ * @param[out] found Whether any SVC related info has been found or not
+ * @param[out] spatial_layer Spatial layer of the packet
+ * @param[out] temporal_layer Temporal layer of the packet
+ * @param[out] p Inter-picture predicted picture bit
+ * @param[out] d Inter-layer dependency used bit
+ * @param[out] u Switching up point bit
+ * @param[out] b Start of a frame bit
+ * @param[out] e End of a frame bit
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_vp9_parse_svc(char *buffer, int len, int *found,
+		int *spatial_layer, int *temporal_layer,
+		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e);
+
 #endif
