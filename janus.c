@@ -1119,6 +1119,8 @@ int janus_process_incoming_request(janus_request *request) {
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
 								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
+								handle->audio_stream->video_ssrc_peer_sim_1 = handle->video_stream->video_ssrc_peer_sim_1;
+								handle->audio_stream->video_ssrc_peer_sim_2 = handle->video_stream->video_ssrc_peer_sim_2;
 								nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 								if(!handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 									nice_agent_attach_recv(handle->agent, handle->video_stream->stream_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
@@ -1345,9 +1347,30 @@ int janus_process_incoming_request(janus_request *request) {
 
 		/* Send the message to the plugin (which must eventually free transaction_text and unref the two objects, body and jsep) */
 		json_incref(body);
+		json_t *body_jsep = NULL;
+		if(jsep_sdp_stripped) {
+			body_jsep = json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped);
+			/* Check if VP8 simulcasting is enabled */
+			if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
+				if(handle->video_stream && handle->video_stream->video_ssrc_peer_sim_1) {
+					json_t *simulcast = json_object();
+					json_object_set(simulcast, "ssrc-0", json_integer(handle->video_stream->video_ssrc_peer));
+					json_object_set(simulcast, "ssrc-1", json_integer(handle->video_stream->video_ssrc_peer_sim_1));
+					if(handle->video_stream->video_ssrc_peer_sim_2)
+						json_object_set(simulcast, "ssrc-2", json_integer(handle->video_stream->video_ssrc_peer_sim_2));
+					json_object_set(body_jsep, "simulcast", simulcast);
+				} else if(handle->audio_stream && handle->audio_stream->video_ssrc_peer_sim_1) {
+					json_t *simulcast = json_object();
+					json_object_set(simulcast, "ssrc-0", json_integer(handle->audio_stream->video_ssrc_peer));
+					json_object_set(simulcast, "ssrc-1", json_integer(handle->audio_stream->video_ssrc_peer_sim_1));
+					if(handle->audio_stream->video_ssrc_peer_sim_2)
+						json_object_set(simulcast, "ssrc-2", json_integer(handle->audio_stream->video_ssrc_peer_sim_2));
+					json_object_set(body_jsep, "simulcast", simulcast);
+				}
+			}
+		};
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
-			g_strdup((char *)transaction_text), body,
-			jsep_sdp_stripped ? json_pack("{ssss}", "type", jsep_type, "sdp", jsep_sdp_stripped) : NULL);
+			g_strdup((char *)transaction_text), body, body_jsep);
 		g_free(jsep_type);
 		g_free(jsep_sdp_stripped);
 		if(result == NULL) {
@@ -2346,6 +2369,19 @@ json_t *janus_admin_stream_summary(janus_ice_stream *stream) {
 		json_object_set_new(ss, "video-peer", json_integer(stream->video_ssrc_peer));
 	if(stream->video_ssrc_peer_rtx)
 		json_object_set_new(ss, "video-peer-rtx", json_integer(stream->video_ssrc_peer_rtx));
+	if(stream->video_ssrc_peer_sim_1)
+		json_object_set_new(ss, "video-peer-sim-1", json_integer(stream->video_ssrc_peer_sim_1));
+	if(stream->video_ssrc_peer_sim_2)
+		json_object_set_new(ss, "video-peer-sim-2", json_integer(stream->video_ssrc_peer_sim_2));
+	if(stream->rid[0]) {
+		json_t *rid = json_array();
+		json_array_append_new(rid, json_string(stream->rid[0]));
+		if(stream->rid[1])
+			json_array_append_new(rid, json_string(stream->rid[1]));
+		if(stream->rid[1])
+			json_array_append_new(rid, json_string(stream->rid[2]));
+		json_object_set_new(ss, "rid", rid);
+	}
 	json_object_set_new(s, "ssrc", ss);
 	json_t *components = json_array();
 	if(stream->rtp_component) {
@@ -2881,6 +2917,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 						ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
 						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
 						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
+						ice_handle->audio_stream->video_ssrc_peer_sim_1 = ice_handle->video_stream->video_ssrc_peer_sim_1;
+						ice_handle->audio_stream->video_ssrc_peer_sim_2 = ice_handle->video_stream->video_ssrc_peer_sim_2;
 						nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 1, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
 						if(!ice_handle->force_rtcp_mux && !janus_ice_is_rtcpmux_forced())
 							nice_agent_attach_recv(ice_handle->agent, ice_handle->video_stream->stream_id, 2, g_main_loop_get_context (ice_handle->iceloop), NULL, NULL);
