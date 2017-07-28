@@ -733,7 +733,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 						uint32_t ssrc_old = 0;
 						if(session->peer->substream != -1)
 							ssrc_old = session->ssrc[session->peer->substream];
-						JANUS_LOG(LOG_WARN, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
+						JANUS_LOG(LOG_VERB, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
 						session->peer->substream = (ssrc == session->ssrc[session->peer->substream_target] ? session->peer->substream_target : step);
 						switched = TRUE;
 						/* Notify the peer */
@@ -1198,7 +1198,7 @@ static void *janus_videocall_handler(void *data) {
 				/* Check if this user will simulcast */
 				json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 				if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
-					JANUS_LOG(LOG_WARN, "VideoCall caller (%s) is going to do simulcasting\n", session->username);
+					JANUS_LOG(LOG_VERB, "VideoCall caller (%s) is going to do simulcasting\n", session->username);
 					session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 					session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
 					session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));
@@ -1249,7 +1249,7 @@ static void *janus_videocall_handler(void *data) {
 			/* Check if this user will simulcast */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast && janus_get_codec_pt(msg_sdp, "vp8") > 0) {
-				JANUS_LOG(LOG_WARN, "VideoCall callee (%s) is going to do simulcasting\n", session->username);
+				JANUS_LOG(LOG_VERB, "VideoCall callee (%s) is going to do simulcasting\n", session->username);
 				session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 				session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
 				session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));

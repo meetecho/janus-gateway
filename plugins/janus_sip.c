@@ -1977,7 +1977,7 @@ static void *janus_sip_handler(void *data) {
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
-				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting, falling back to base substream...\n");
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
 				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			}
 			/* Check if there are new credentials to authenticate the INVITE */
@@ -2132,7 +2132,7 @@ static void *janus_sip_handler(void *data) {
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
-				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting, falling back to base substream...\n");
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
 				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			}
 			/* Also notify event handlers */

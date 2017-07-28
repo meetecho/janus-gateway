@@ -4105,7 +4105,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						JANUS_LOG(LOG_WARN, "[%s] RTSP PLAY failed, trying again in a few seconds...\n", name);
 					} else {
 						/* Everything should be back to normal, let's update the file descriptors */
-						JANUS_LOG(LOG_WARN, "[%s] Reconnected to the RTSP server, streaming again\n", name);
+						JANUS_LOG(LOG_INFO, "[%s] Reconnected to the RTSP server, streaming again\n", name);
 						audio_fd = source->audio_fd;
 						video_fd[0] = source->video_fd[0];
 						data_fd = source->data_fd;
@@ -4507,7 +4507,7 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data) 
 					int step = (session->substream < 1 && session->substream_target == 2);
 					if(packet->substream == session->substream_target || (step && packet->substream == step)) {
 						if(janus_vp8_is_keyframe(payload, plen)) {
-							JANUS_LOG(LOG_WARN, "Received keyframe on substream %d, switching (was %d)\n",
+							JANUS_LOG(LOG_VERB, "Received keyframe on substream %d, switching (was %d)\n",
 								packet->substream, session->substream);
 							session->substream = packet->substream;
 							switched = TRUE;
