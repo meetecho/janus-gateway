@@ -800,3 +800,138 @@ void janus_vp8_simulcast_descriptor_update(char *buffer, int len, janus_vp8_simu
 	/* Overwrite the values in the VP8 payload descriptors with the ones we have */
 	janus_vp8_replace_descriptor(buffer, len, context->last_picid, context->last_tlzi);
 }
+
+/* Helper method to parse a VP9 RTP video frame and get some SVC-related info:
+ * notice that this only works with VP9, right now, on an experimental basis */
+int janus_vp9_parse_svc(char *buffer, int len, int *found,
+		int *spatial_layer, int *temporal_layer,
+		uint8_t *p, uint8_t *d, uint8_t *u, uint8_t *b, uint8_t *e) {
+	if(!buffer || len < 0)
+		return -1;
+	/* VP9 depay: */
+		/* https://tools.ietf.org/html/draft-ietf-payload-vp9-04 */
+	/* Read the first octet (VP9 Payload Descriptor) */
+	uint8_t vp9pd = *buffer;
+	uint8_t ibit = (vp9pd & 0x80) >> 7;
+	uint8_t pbit = (vp9pd & 0x40) >> 6;
+	uint8_t lbit = (vp9pd & 0x20) >> 5;
+	uint8_t fbit = (vp9pd & 0x10) >> 4;
+	uint8_t bbit = (vp9pd & 0x08) >> 3;
+	uint8_t ebit = (vp9pd & 0x04) >> 2;
+	uint8_t vbit = (vp9pd & 0x02) >> 1;
+	if(!lbit) {
+		/* No Layer indices present, no need to go on */
+		if(found)
+			*found = 0;
+		return 0;
+	}
+	/* Move to the next octet and see what's there */
+	buffer++;
+	len--;
+	if(ibit) {
+		/* Read the PictureID octet */
+		vp9pd = *buffer;
+		uint16_t picid = vp9pd, wholepicid = picid;
+		uint8_t mbit = (vp9pd & 0x80);
+		if(!mbit) {
+			buffer++;
+			len--;
+		} else {
+			memcpy(&picid, buffer, sizeof(uint16_t));
+			wholepicid = ntohs(picid);
+			picid = (wholepicid & 0x7FFF);
+			buffer += 2;
+			len -= 2;
+		}
+	}
+	if(lbit) {
+		/* Read the octet and parse the layer indices now */
+		vp9pd = *buffer;
+		int tlid = (vp9pd & 0xE0) >> 5;
+		uint8_t ubit = (vp9pd & 0x10) >> 4;
+		int slid = (vp9pd & 0x0E) >> 1;
+		uint8_t dbit = (vp9pd & 0x01);
+		JANUS_LOG(LOG_HUGE, "Parsed Layer indices: Temporal: %d (%u), Spatial: %d (%u)\n",
+			tlid, ubit, slid, dbit);
+		if(temporal_layer)
+			*temporal_layer = tlid;
+		if(spatial_layer)
+			*spatial_layer = slid;
+		if(p)
+			*p = pbit;
+		if(d)
+			*d = dbit;
+		if(u)
+			*u = ubit;
+		if(b)
+			*b = bbit;
+		if(e)
+			*e = ebit;
+		if(found)
+			*found = 1;
+		/* Go on, just to get to the SS, if available (which we currently ignore anyway) */
+		buffer++;
+		len--;
+		if(!fbit) {
+			/* Non-flexible mode, skip TL0PICIDX */
+			buffer++;
+			len--;
+		}
+	}
+	if(fbit && pbit) {
+		/* Skip reference indices */
+		uint8_t nbit = 1;
+		while(nbit) {
+			vp9pd = *buffer;
+			nbit = (vp9pd & 0x01);
+			buffer++;
+			len--;
+		}
+	}
+	if(vbit) {
+		/* Parse and skip SS */
+		vp9pd = *buffer;
+		int n_s = (vp9pd & 0xE0) >> 5;
+		n_s++;
+		JANUS_LOG(LOG_HUGE, "There are %d spatial layers\n", n_s);
+		uint8_t ybit = (vp9pd & 0x10);
+		uint8_t gbit = (vp9pd & 0x08);
+		if(ybit) {
+			/* Iterate on all spatial layers and get resolution */
+			buffer++;
+			len--;
+			int i=0;
+			for(i=0; i<n_s; i++) {
+				/* Been there, done that: skip skip skip */
+				buffer += 4;
+				len -= 4;
+			}
+		}
+		if(gbit) {
+			if(!ybit) {
+				buffer++;
+				len--;
+			}
+			uint8_t n_g = *buffer;
+			JANUS_LOG(LOG_HUGE, "There are %u frames in a GOF\n", n_g);
+			buffer++;
+			len--;
+			if(n_g > 0) {
+				int i=0;
+				for(i=0; i<n_g; i++) {
+					/* Read the R bits */
+					vp9pd = *buffer;
+					int r = (vp9pd & 0x0C) >> 2;
+					if(r > 0) {
+						/* Skip reference indices */
+						buffer += r;
+						len -= r;
+					}
+					buffer++;
+					len--;
+				}
+			}
+		}
+	}
+	return 0;
+}
