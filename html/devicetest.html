@@ -11,6 +11,7 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="devicetest.js"></script>
 <script>
@@ -25,6 +26,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.css"/>
 </head>
 <body>
 
@@ -53,8 +55,10 @@
 						pretty much as the regular Echo Test demo already does. Once done,
 						you'll be able to individually change the capture audio and/or video
 						device: this will result in the Echo Test channel being reset and
-						recreated, in order to use the device(s) you selected instead.</p>
-						<p>The feature exploits a functionality made available in the
+						recreated, in order to use the device(s) you selected instead. Just
+						as with the regular Echo Test demo, the <code>?simulcast=true</code>
+						query string will allow you to test simulcasting as well.</p>
+						<p>The demo exploits a functionality made available in the
 						<code>janus.js</code> library, meaning you should be able to
 						easily adapt all the other demos to follow the same approach as
 						well, and that you'll be able to do the same in your Janus-based
