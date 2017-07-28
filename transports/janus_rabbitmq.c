@@ -499,7 +499,7 @@ void janus_rabbitmq_destroy(void) {
 		g_async_queue_push(rmq_client->messages, &exit_message);
 		if(rmq_client->in_thread)
 			g_thread_join(rmq_client->in_thread);
-		if(rmq_client->in_thread)
+		if(rmq_client->out_thread)
 			g_thread_join(rmq_client->out_thread);
 		if(rmq_client->rmq_conn && rmq_client->rmq_channel) {
 			amqp_channel_close(rmq_client->rmq_conn, rmq_client->rmq_channel, AMQP_REPLY_SUCCESS);

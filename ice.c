@@ -331,7 +331,7 @@ static void janus_cleanup_nack_buffer(gint64 now, janus_ice_stream *stream) {
 		if(component->retransmit_buffer) {
 			GList *first = g_list_first(component->retransmit_buffer);
 			janus_rtp_packet *p = (janus_rtp_packet *)first->data;
-			while(p && (now - p->created >= max_nack_queue*1000)) {
+			while(p && (now - p->created >= (gint64)max_nack_queue*1000)) {
 				/* Packet is too old, get rid of it */
 				first->data = NULL;
 				component->retransmit_buffer = g_list_delete_link(component->retransmit_buffer, first);
@@ -454,7 +454,7 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 	}
 	janus_mutex_unlock(&old_handles_mutex);
 
-	if(janus_force_rtcpmux_blackhole_fd >= 0) {
+	if(janus_force_rtcpmux_blackhole_fd > -1) {
 		/* Also read the blackhole socket (unneeded RTCP components keepalives) and dump the packets */
 		char buffer[1500];
 		struct sockaddr_storage addr;
@@ -734,7 +734,7 @@ void janus_ice_deinit(void) {
 	janus_mutex_lock(&old_handles_mutex);
 	if(old_handles != NULL)
 		g_hash_table_destroy(old_handles);
-	if(janus_force_rtcpmux_blackhole_fd >= 0)
+	if(janus_force_rtcpmux_blackhole_fd > -1)
 		close(janus_force_rtcpmux_blackhole_fd);
 	old_handles = NULL;
 	janus_mutex_unlock(&old_handles_mutex);
@@ -778,6 +778,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
 	/* TODO Use the janus_network_address info to drive the socket creation */
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(fd < 0) {
+		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
+		return -1;
+	}
 	struct sockaddr_in address, remote;
 	address.sin_family = AF_INET;
 	address.sin_port = 0;
@@ -1329,6 +1333,12 @@ void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 		g_free(stream->rpass);
 		stream->rpass = NULL;
 	}
+	g_free(stream->rid[0]);
+	stream->rid[0] = NULL;
+	g_free(stream->rid[1]);
+	stream->rid[1] = NULL;
+	g_free(stream->rid[2]);
+	stream->rid[2] = NULL;
 	g_list_free(stream->audio_payload_types);
 	stream->audio_payload_types = NULL;
 	g_list_free(stream->video_payload_types);
@@ -1337,6 +1347,10 @@ void janus_ice_stream_free(GHashTable *streams, janus_ice_stream *stream) {
 	stream->audio_rtcp_ctx = NULL;
 	g_free(stream->video_rtcp_ctx);
 	stream->video_rtcp_ctx = NULL;
+	stream->audio_first_ntp_ts = 0;
+	stream->audio_first_rtp_ts = 0;
+	stream->video_first_ntp_ts = 0;
+	stream->video_first_rtp_ts = 0;
 	stream->audio_last_ts = 0;
 	stream->video_last_ts = 0;
 	g_free(stream);
@@ -1973,7 +1987,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			} else {
 				/* Bundled streams, check SSRC */
 				guint32 packet_ssrc = ntohl(header->ssrc);
-				video = ((stream->video_ssrc_peer == packet_ssrc || stream->video_ssrc_peer_rtx == packet_ssrc) ? 1 : 0);
+				video = ((stream->video_ssrc_peer == packet_ssrc
+					|| stream->video_ssrc_peer_rtx == packet_ssrc
+					|| stream->video_ssrc_peer_sim_1 == packet_ssrc
+					|| stream->video_ssrc_peer_sim_2 == packet_ssrc) ? 1 : 0);
 				if(!video && stream->audio_ssrc_peer != packet_ssrc) {
 					/* FIXME In case it happens, we should check what it is */
 					if(stream->audio_ssrc_peer == 0 || stream->video_ssrc_peer == 0) {
@@ -2018,6 +2035,12 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					/* FIXME This is a video retransmission: set the regular peer SSRC so
 					 * that we avoid outgoing SRTP errors in case we got the packet already */
 					header->ssrc = htonl(stream->video_ssrc_peer);
+				} else if(stream->video_ssrc_peer_sim_1 == packet_ssrc) {
+					/* FIXME Simulcast (1) */
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Simulcast #1 (SSRC %"SCNu32")...\n", handle->handle_id, packet_ssrc);
+				} else if(stream->video_ssrc_peer_sim_2 == packet_ssrc) {
+					/* FIXME Simulcast (2) */
+					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Simulcast #2 (SSRC %"SCNu32")...\n", handle->handle_id, packet_ssrc);
 				}
 				//~ JANUS_LOG(LOG_VERB, "[RTP] Bundling: this is %s (video=%"SCNu64", audio=%"SCNu64", got %ld)\n",
 					//~ video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, ntohl(header->ssrc));
@@ -2091,6 +2114,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 					}
 					janus_mutex_unlock(&component->mutex);
 				}
+
+				/* FIXME Don't handle RTCP or stats for the simulcasted SSRCs, for now */
+				if(video && ntohl(header->ssrc) != stream->video_ssrc_peer)
+					return;
 
 				/* Update the RTCP context as well */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
@@ -2251,12 +2278,25 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						} else {
 							/* Check the remote SSRC, compare it to what we have */
 							guint32 rtcp_ssrc = janus_rtcp_get_sender_ssrc(buf, len);
-							video = (stream->video_ssrc_peer == rtcp_ssrc ? 1 : 0);
+							if(rtcp_ssrc == stream->audio_ssrc_peer) {
+								video = 0;
+							} else if(rtcp_ssrc == stream->video_ssrc_peer) {
+								video = 1;
+							} else {
+								/* If we're simulcasting, let's compare to the other SSRCs too */
+								if((stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1) ||
+										(stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1)) {
+									/* FIXME RTCP for simulcasting SSRC, let's drop it for now... */
+									JANUS_LOG(LOG_HUGE, "Dropping RTCP packet for SSRC %"SCNu32"\n", rtcp_ssrc);
+									return;
+								}
+							}
 							JANUS_LOG(LOG_HUGE, "[%"SCNu64"] Incoming RTCP, bundling: this is %s (remote SSRC: video=%"SCNu32", audio=%"SCNu32", got %"SCNu32")\n",
 								handle->handle_id, video ? "video" : "audio", stream->video_ssrc_peer, stream->audio_ssrc_peer, rtcp_ssrc);
 						}
 					}
 				}
+
 				/* Let's process this RTCP (compound?) packet, and update the RTCP context for this stream in case */
 				rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
 				janus_rtcp_parse(rtcp_ctx, buf, buflen);
@@ -2918,7 +2958,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		}
 		audio_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
-		audio_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
+		audio_stream->video_ssrc_peer_rtx = 0;		/* FIXME Right now we don't know if and what this will be */
+		audio_stream->video_ssrc_peer_sim_1 = 0;	/* FIXME Right now we don't know if and what this will be */
+		audio_stream->video_ssrc_peer_sim_2 = 0;	/* FIXME Right now we don't know if and what this will be */
 		audio_stream->audio_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
 		audio_stream->audio_rtcp_ctx->tb = 48000;	/* May change later */
 		audio_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
@@ -3075,7 +3117,9 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_stream->dtls_role = offer ? JANUS_DTLS_ROLE_CLIENT : JANUS_DTLS_ROLE_ACTPASS;
 		video_stream->video_ssrc = janus_random_uint32();	/* FIXME Should we look for conflicts? */
 		video_stream->video_ssrc_peer = 0;	/* FIXME Right now we don't know what this will be */
-		video_stream->video_ssrc_peer_rtx = 0;	/* FIXME Right now we don't know what this will be */
+		video_stream->video_ssrc_peer_rtx = 0;		/* FIXME Right now we don't know if and what this will be */
+		video_stream->video_ssrc_peer_sim_1 = 0;	/* FIXME Right now we don't know if and what this will be */
+		video_stream->video_ssrc_peer_sim_2 = 0;	/* FIXME Right now we don't know if and what this will be */
 		video_stream->audio_ssrc = 0;
 		video_stream->audio_ssrc_peer = 0;
 		video_stream->video_rtcp_ctx = g_malloc0(sizeof(rtcp_context));
@@ -3274,7 +3318,7 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			return -1;
 		}
 		data_component->stream = data_stream;
-		data_component->stream_id = data_component->stream_id;
+		data_component->stream_id = data_stream->stream_id;
 		data_component->component_id = 1;
 		data_component->candidates = NULL;
 		data_component->local_candidates = NULL;
@@ -3381,7 +3425,7 @@ void *janus_ice_send_thread(void *data) {
 				janus_ice_component *component = handle->audio_stream->rtp_component;
 				GList *lastitem = g_list_last(component->in_stats.audio_bytes_lastsec);
 				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
-				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= no_media_timer*G_USEC_PER_SEC) {
+				if(!component->in_stats.audio_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of audio! */
 					component->in_stats.audio_notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive audio for more than %d seconds...\n", handle->handle_id, no_media_timer);
@@ -3390,7 +3434,7 @@ void *janus_ice_send_thread(void *data) {
 				if(!component->in_stats.video_notified_lastsec && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 					lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
 					last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
-					if(last && now-last->when >= no_media_timer*G_USEC_PER_SEC) {
+					if(last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 						/* We missed more than no_second_timer seconds of video! */
 						component->in_stats.video_notified_lastsec = TRUE;
 						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than %d seconds...\n", handle->handle_id, no_media_timer);
@@ -3402,7 +3446,7 @@ void *janus_ice_send_thread(void *data) {
 				janus_ice_component *component = handle->video_stream->rtp_component;
 				GList *lastitem = g_list_last(component->in_stats.video_bytes_lastsec);
 				janus_ice_stats_item *last = lastitem ? ((janus_ice_stats_item *)lastitem->data) : NULL;
-				if(!component->in_stats.video_notified_lastsec && last && now-last->when >= no_media_timer*G_USEC_PER_SEC) {
+				if(!component->in_stats.video_notified_lastsec && last && now-last->when >= (gint64)no_media_timer*G_USEC_PER_SEC) {
 					/* We missed more than no_second_timer seconds of video! */
 					component->in_stats.video_notified_lastsec = TRUE;
 					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Didn't receive video for more than a second...\n", handle->handle_id);
@@ -3477,9 +3521,7 @@ void *janus_ice_send_thread(void *data) {
 					sr->si.rtp_ts = htonl(stream->audio_last_ts);	/* FIXME */
 				} else {
 					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-					if(rtcp_ctx->fsr_ts == 0)
-						rtcp_ctx->fsr_ts = ntp;
-					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000);
+					uint32_t rtp_ts = ((ntp-stream->audio_first_ntp_ts)/1000)*(rtcp_ctx->tb/1000) + stream->audio_first_rtp_ts;
 					sr->si.rtp_ts = htonl(rtp_ts);
 				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.audio_packets);
@@ -3517,9 +3559,7 @@ void *janus_ice_send_thread(void *data) {
 					sr->si.rtp_ts = htonl(stream->video_last_ts);	/* FIXME */
 				} else {
 					int64_t ntp = tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
-					if(rtcp_ctx->fsr_ts == 0)
-						rtcp_ctx->fsr_ts = ntp;
-					uint32_t rtp_ts = ((ntp-rtcp_ctx->fsr_ts)/1000)*(rtcp_ctx->tb/1000);
+					uint32_t rtp_ts = ((ntp-stream->video_first_ntp_ts)/1000)*(rtcp_ctx->tb/1000) + stream->video_first_rtp_ts;
 					sr->si.rtp_ts = htonl(rtp_ts);
 				}
 				sr->si.s_packets = htonl(stream->rtp_component->out_stats.video_packets);
@@ -3533,7 +3573,7 @@ void *janus_ice_send_thread(void *data) {
 		}
 		/* We tell event handlers once per second about RTCP-related stuff
 		 * FIXME Should we really do this here? Would this slow down this thread and add delay? */
-		if(janus_ice_event_stats_period > 0 && now-audio_last_event >= janus_ice_event_stats_period*G_USEC_PER_SEC) {
+		if(janus_ice_event_stats_period > 0 && now-audio_last_event >= (gint64)janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 				janus_ice_stream *stream = handle->audio_stream;
 				if(stream && stream->audio_rtcp_ctx) {
@@ -3558,7 +3598,7 @@ void *janus_ice_send_thread(void *data) {
 			}
 			audio_last_event = now;
 		}
-		if(janus_ice_event_stats_period > 0 && now-video_last_event >= janus_ice_event_stats_period*G_USEC_PER_SEC) {
+		if(janus_ice_event_stats_period > 0 && now-video_last_event >= (gint64)janus_ice_event_stats_period*G_USEC_PER_SEC) {
 			if(janus_events_is_enabled() && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 				janus_ice_stream *stream = janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE) ? (handle->audio_stream ? handle->audio_stream : handle->video_stream) : (handle->video_stream);
 				if(stream && stream->video_rtcp_ctx) {
@@ -3661,7 +3701,7 @@ void *janus_ice_send_thread(void *data) {
 				}
 			} else {
 				/* Check if there's anything we need to do before sending */
-				uint64_t bitrate = janus_rtcp_get_remb(pkt->data, pkt->length);
+				uint32_t bitrate = janus_rtcp_get_remb(pkt->data, pkt->length);
 				if(bitrate > 0) {
 					/* There's a REMB, prepend a RR as it won't work otherwise */
 					int rrlen = 32;
@@ -3679,6 +3719,15 @@ void *janus_ice_send_thread(void *data) {
 					}
 					/* Append REMB */
 					memcpy(rtcpbuf+rrlen, pkt->data, pkt->length);
+					/* If we're simulcasting, set the extra SSRCs (the first one will be set by janus_rtcp_fix_ssrc) */
+					if(stream->video_ssrc_peer_sim_1 && pkt->length >= 28) {
+						rtcp_fb *rtcpfb = (rtcp_fb *)(rtcpbuf+rrlen);
+						rtcp_remb *remb = (rtcp_remb *)rtcpfb->fci;
+						remb->ssrc[1] = htonl(stream->video_ssrc_peer_sim_1);
+						if(stream->video_ssrc_peer_sim_2 && pkt->length >= 32) {
+							remb->ssrc[2] = htonl(stream->video_ssrc_peer_sim_2);
+						}
+					}
 					/* Free old packet and update */
 					char *prev_data = pkt->data;
 					pkt->data = rtcpbuf;
@@ -3819,6 +3868,12 @@ void *janus_ice_send_thread(void *data) {
 								component->out_stats.audio_packets++;
 								component->out_stats.audio_bytes += sent;
 								stream->audio_last_ts = timestamp;
+								if(stream->audio_first_ntp_ts == 0) {
+									struct timeval tv;
+									gettimeofday(&tv, NULL);
+									stream->audio_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+									stream->audio_first_rtp_ts = timestamp;
+								}
 								/* Let's check if this was G.711: in case we may need to change the timestamp base */
 								rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
 								int pt = header->type;
@@ -3828,6 +3883,12 @@ void *janus_ice_send_thread(void *data) {
 								component->out_stats.video_packets++;
 								component->out_stats.video_bytes += sent;
 								stream->video_last_ts = timestamp;
+								if(stream->video_first_ntp_ts == 0) {
+									struct timeval tv;
+									gettimeofday(&tv, NULL);
+									stream->video_first_ntp_ts = (gint64)tv.tv_sec*G_USEC_PER_SEC + tv.tv_usec;
+									stream->video_first_rtp_ts = timestamp;
+								}
 							}
 						}
 						if(max_nack_queue > 0) {

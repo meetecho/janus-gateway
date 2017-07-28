@@ -659,7 +659,6 @@ const char *janus_sdp_get_codec_rtpmap(const char *codec) {
 char *janus_sdp_write(janus_sdp *imported) {
 	if(!imported)
 		return NULL;
-	gboolean success = TRUE;
 	char *sdp = g_malloc0(JANUS_BUFSIZE), buffer[512];
 	*sdp = '\0';
 	/* v= */
@@ -764,11 +763,6 @@ char *janus_sdp_write(janus_sdp *imported) {
 			temp2 = temp2->next;
 		}
 		temp = temp->next;
-	}
-	if(!success) {
-		/* FIXME Never happens right now? */
-		g_free(sdp);
-		sdp = NULL;
 	}
 	return sdp;
 }

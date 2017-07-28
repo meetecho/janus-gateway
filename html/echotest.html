@@ -11,6 +11,7 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/4.1.0/bootbox.min.js"></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.min.js"></script>
 <script type="text/javascript" src="janus.js" ></script>
 <script type="text/javascript" src="echotest.js"></script>
 <script>
@@ -25,6 +26,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.7/cerulean/bootstrap.min.css" type="text/css"/>
 <link rel="stylesheet" href="css/demo.css" type="text/css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css" type="text/css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/2.1.3/toastr.css"/>
 </head>
 <body>
 
@@ -54,7 +56,13 @@
 						which will tell the gateway to drop the frames and not echo them
 						back to you. You can also try and cap the bitrate: such control
 						will tell the gateway to manipulate the RTCP REMB packets passing
-						through, in order to simulate a bandwidth limitation.</p>
+						through, in order to simulate a bandwidth limitation. In case
+						you're interested in testing simulcasting, add the <code>?simulcast=true</code>
+						query string to the url of this page and reload it: buttons will appear
+						to allow you to try and switch between lower and higher quality
+						versions of the video you're capturing: notice that you may have
+						to increase the bandwidth indicator to have the higher quality
+						versions appear, as the browser will not encode them otherwise.</p>
 						<p>Finally, this demo also includes Data Channels: whatever you
 						write in the text box under your local video, will be sent via
 						Data Channels to the plugins, modified by adding a fixed prefix,

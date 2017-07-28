@@ -263,8 +263,8 @@
 
 
 /* Plugin information */
-#define JANUS_RECORDPLAY_VERSION			3
-#define JANUS_RECORDPLAY_VERSION_STRING		"0.0.3"
+#define JANUS_RECORDPLAY_VERSION			4
+#define JANUS_RECORDPLAY_VERSION_STRING		"0.0.4"
 #define JANUS_RECORDPLAY_DESCRIPTION		"This is a trivial Record&Play plugin for Janus, to record WebRTC sessions and replay them."
 #define JANUS_RECORDPLAY_NAME				"JANUS Record&Play plugin"
 #define JANUS_RECORDPLAY_AUTHOR				"Meetecho s.r.l."
@@ -399,11 +399,12 @@ typedef struct janus_recordplay_session {
 	janus_recordplay_frame_packet *aframes;	/* Audio frames (for playout) */
 	janus_recordplay_frame_packet *vframes;	/* Video frames (for playout) */
 	guint video_remb_startup;
-	guint64 video_remb_last;
-	guint64 video_bitrate;
+	gint64 video_remb_last;
+	guint32 video_bitrate;
 	guint video_keyframe_interval; /* keyframe request interval (ms) */
 	guint64 video_keyframe_request_last; /* timestamp of last keyframe request sent */
 	gint video_fir_seq;
+	guint32 simulcast_ssrc;	/* We don't support Simulcast in this plugin, so we'll stick to the base substream */
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } janus_recordplay_session;
@@ -564,7 +565,7 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		int res = janus_mkdir(recordings_path, 0755);
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res != 0) {
-			JANUS_LOG(LOG_ERR, "%s", strerror(res));
+			JANUS_LOG(LOG_ERR, "%s", strerror(errno));
 			return -1;	/* No point going on... */
 		}
 	}
@@ -814,7 +815,7 @@ struct janus_plugin_result *janus_recordplay_handle_message(janus_plugin_session
 		json_t *video_bitrate_max = json_object_get(root, "video-bitrate-max");
 		if(video_bitrate_max) {
 			session->video_bitrate = json_integer_value(video_bitrate_max);
-			JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu64"\n", session->video_bitrate);
+			JANUS_LOG(LOG_VERB, "Video bitrate has been set to %"SCNu32"\n", session->video_bitrate);
 		}
 		json_t *video_keyframe_interval= json_object_get(root, "video-keyframe-interval");
 		if(video_keyframe_interval) {
@@ -907,11 +908,11 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 	/* Send a RR+SDES+REMB every five seconds, or ASAP while we are still
 	 * ramping up (first 4 RTP packets) */
 	gint64 now = janus_get_monotonic_time();
-	guint64 elapsed = now - session->video_remb_last;
+	gint64 elapsed = now - session->video_remb_last;
 	gboolean remb_rampup = session->video_remb_startup > 0;
 
 	if(remb_rampup || (elapsed >= 5*G_USEC_PER_SEC)) {
-		guint64 bitrate = session->video_bitrate;
+		guint32 bitrate = session->video_bitrate;
 
 		if(remb_rampup) {
 			bitrate = bitrate / session->video_remb_startup;
@@ -928,7 +929,7 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 
 	/* Request a keyframe on a regular basis (every session->video_keyframe_interval ms) */
 	elapsed = now - session->video_keyframe_request_last;
-	guint64 interval = (session->video_keyframe_interval / 1000) * G_USEC_PER_SEC;
+	gint64 interval = (gint64)(session->video_keyframe_interval / 1000) * G_USEC_PER_SEC;
 
 	if(elapsed >= interval) {
 		/* Send both a FIR and a PLI, just to be sure */
@@ -951,6 +952,15 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 		}
 		if(session->destroyed)
 			return;
+		if(video && session->simulcast_ssrc) {
+			/* The user is simulcasting: drop everything except the base layer */
+			rtp_header *header = (rtp_header *)buf;
+			uint32_t ssrc = ntohl(header->ssrc);
+			if(ssrc != session->simulcast_ssrc) {
+				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+				return;
+			}
+		}
 		/* Are we recording? */
 		if(session->recorder) {
 			janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
@@ -1005,6 +1015,7 @@ void janus_recordplay_hangup_media(janus_plugin_session *handle) {
 		return;
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
+	session->simulcast_ssrc = 0;
 
 	/* Send an event to the browser and tell it's over */
 	json_t *event = json_object();
@@ -1174,6 +1185,12 @@ static void *janus_recordplay_handler(void *data) {
 			janus_sdp_free(offer);
 			janus_sdp_free(answer);
 			JANUS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
+			/* If the user negotiated simulcasting, just stick with the base substream */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast) {
+				JANUS_LOG(LOG_WARN, "Recording client negotiated simulcasting, falling back to base substream...\n");
+				session->simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+			}
 			/* Done! */
 			result = json_object();
 			json_object_set_new(result, "status", json_string("recording"));
@@ -1424,13 +1441,13 @@ void janus_recordplay_update_recordings_list(void) {
 				old_recordings = g_list_append(old_recordings, &rec->id);
 			}
 		}
-		janus_mutex_unlock(&recordings_mutex);
 	}
 	/* Open dir */
 	DIR *dir = opendir(recordings_path);
 	if(!dir) {
 		JANUS_LOG(LOG_ERR, "Couldn't open folder...\n");
 		g_list_free(old_recordings);
+		janus_mutex_unlock(&recordings_mutex);
 		return;
 	}
 	struct dirent *recent = NULL;
@@ -1490,17 +1507,15 @@ void janus_recordplay_update_recordings_list(void) {
 		rec->date = g_strdup(date->value);
 		if(audio && audio->value) {
 			rec->arc_file = g_strdup(audio->value);
-			if(strstr(rec->arc_file, ".mjr")) {
-				char *ext = strstr(rec->arc_file, ".mjr");
+			char *ext = strstr(rec->arc_file, ".mjr");
+			if(ext != NULL)
 				*ext = '\0';
-			}
 		}
 		if(video && video->value) {
 			rec->vrc_file = g_strdup(video->value);
-			if(strstr(rec->vrc_file, ".mjr")) {
-				char *ext = strstr(rec->vrc_file, ".mjr");
+			char *ext = strstr(rec->vrc_file, ".mjr");
+			if(ext != NULL)
 				*ext = '\0';
-			}
 		}
 		rec->viewers = NULL;
 		rec->destroyed = 0;
@@ -1625,6 +1640,11 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 				/* This is the info header */
 				JANUS_LOG(LOG_VERB, "New .mjr header format\n");
 				bytes = fread(prebuffer, sizeof(char), len, file);
+				if(bytes < 0) {
+					JANUS_LOG(LOG_ERR, "Error reading from file... %s\n", strerror(errno));
+					fclose(file);
+					return NULL;
+				}
 				parsed_header = TRUE;
 				prebuffer[len] = '\0';
 				json_error_t error;
@@ -1751,6 +1771,10 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		}
 		/* Only read RTP header */
 		bytes = fread(prebuffer, sizeof(char), 16, file);
+		if(bytes < 0) {
+			JANUS_LOG(LOG_WARN, "Error reading RTP header, stopping here...\n");
+			break;
+		}
 		rtp_header *rtp = (rtp_header *)prebuffer;
 		JANUS_LOG(LOG_HUGE, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
