@@ -80,8 +80,8 @@
 
 
 /* Plugin information */
-#define JANUS_SIP_VERSION			6
-#define JANUS_SIP_VERSION_STRING	"0.0.6"
+#define JANUS_SIP_VERSION			7
+#define JANUS_SIP_VERSION_STRING	"0.0.7"
 #define JANUS_SIP_DESCRIPTION		"This is a simple SIP plugin for Janus, allowing WebRTC peers to register at a SIP server and call SIP user agents through the gateway."
 #define JANUS_SIP_NAME				"JANUS SIP plugin"
 #define JANUS_SIP_AUTHOR			"Meetecho s.r.l."
@@ -338,6 +338,7 @@ typedef struct janus_sip_media {
 	int local_video_rtp_port, remote_video_rtp_port;
 	int local_video_rtcp_port, remote_video_rtcp_port;
 	guint32 video_ssrc, video_ssrc_peer;
+	guint32 simulcast_ssrc;
 	int video_pt;
 	const char *video_pt_name;
 	srtp_t video_srtp_in, video_srtp_out;
@@ -1012,6 +1013,7 @@ void janus_sip_create_session(janus_plugin_session *handle, int *error) {
 	session->media.remote_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
 	session->media.video_ssrc_peer = 0;
+	session->media.simulcast_ssrc = 0;
 	session->media.video_pt = -1;
 	session->media.video_pt_name = NULL;
 	session->media.video_srtp_suite_in = 0;
@@ -1153,6 +1155,15 @@ void janus_sip_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			if(!session->media.video_send) {
 				/* Dropping video packet, peer doesn't want to receive it */
 				return;
+			}
+			if(session->media.simulcast_ssrc) {
+				/* The user is simulcasting: drop everything except the base layer */
+				rtp_header *header = (rtp_header *)buf;
+				uint32_t ssrc = ntohl(header->ssrc);
+				if(ssrc != session->media.simulcast_ssrc) {
+					JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
+					return;
+				}
 			}
 			if(session->media.video_ssrc == 0) {
 				rtp_header *header = (rtp_header *)buf;
@@ -1334,6 +1345,7 @@ void janus_sip_hangup_media(janus_plugin_session *handle) {
 		return;
 	if(g_atomic_int_add(&session->hangingup, 1))
 		return;
+	session->media.simulcast_ssrc = 0;
 	if(!(session->status == janus_sip_call_status_inviting ||
 		 session->status == janus_sip_call_status_invited ||
 		 session->status == janus_sip_call_status_incall))
@@ -1962,6 +1974,12 @@ static void *janus_sip_handler(void *data) {
 				json_object_set_new(info, "sdp", json_string(sdp));
 				gateway->notify_event(&janus_sip_plugin, session->handle, info);
 			}
+			/* If the user negotiated simulcasting, just stick with the base substream */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast) {
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting, falling back to base substream...\n");
+				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+			}
 			/* Check if there are new credentials to authenticate the INVITE */
 			if(authuser) {
 				JANUS_LOG(LOG_VERB, "Updating credentials (authuser) for authenticating the INVITE\n");
@@ -2111,6 +2129,12 @@ static void *janus_sip_handler(void *data) {
 			janus_sdp_free(session->sdp);
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
+			/* If the user negotiated simulcasting, just stick with the base substream */
+			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
+			if(msg_simulcast) {
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting, falling back to base substream...\n");
+				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
+			}
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
@@ -3969,6 +3993,7 @@ static void *janus_sip_relay_thread(void *data) {
 	session->media.local_video_rtp_port = 0;
 	session->media.local_video_rtcp_port = 0;
 	session->media.video_ssrc = 0;
+	session->media.simulcast_ssrc = 0;
 	if(session->media.pipefd[0] > 0) {
 		close(session->media.pipefd[0]);
 		session->media.pipefd[0] = -1;

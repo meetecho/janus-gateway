@@ -296,15 +296,37 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 							JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse candidate... (%d)\n", handle->handle_id, res);
 						}
 					}
-				}
-				if(!strcasecmp(a->name, "ssrc")) {
+				} else if(!strcasecmp(a->name, "rid")) {
+					/* This attribute is used by Firefox for simulcasting */
+					char rid[16];
+					if(sscanf(a->value, "%15s send", rid) != 1) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse rid attribute...\n", handle->handle_id);
+					} else {
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Parsed rid: %s\n", handle->handle_id, rid);
+						if(stream->rid[0] == NULL) {
+							stream->rid[0] = g_strdup(rid);
+						} else if(stream->rid[1] == NULL) {
+							stream->rid[1] = g_strdup(rid);
+						} else if(stream->rid[2] == NULL) {
+							stream->rid[2] = g_strdup(rid);
+						} else {
+							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Too many RTP Stream IDs, ignoring '%s'...\n", handle->handle_id, rid);
+						}
+					}
+				} else if(!strcasecmp(a->name, "ssrc-group")) {
+					/* FIXME This can be either FID or SIM */
+					int res = janus_sdp_parse_ssrc_group(stream, (const char *)a->value, m->type == JANUS_SDP_VIDEO);
+					if(res != 0) {
+						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse SSRC group attribute... (%d)\n", handle->handle_id, res);
+					}
+				} else if(!strcasecmp(a->name, "ssrc")) {
 					int res = janus_sdp_parse_ssrc(stream, (const char *)a->value, m->type == JANUS_SDP_VIDEO);
 					if(res != 0) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse SSRC attribute... (%d)\n", handle->handle_id, res);
 					}
 				}
 #ifdef HAVE_SCTP
-				if(!strcasecmp(a->name, "sctpmap")) {
+				else if(!strcasecmp(a->name, "sctpmap")) {
 					/* TODO Parse sctpmap line to get the UDP-port value and the number of channels */
 					JANUS_LOG(LOG_VERB, "Got a sctpmap attribute: %s\n", a->value);
 				}
@@ -545,6 +567,64 @@ int janus_sdp_parse_candidate(void *ice_stream, const char *candidate, int trick
 	return 0;
 }
 
+int janus_sdp_parse_ssrc_group(void *ice_stream, const char *group_attr, int video) {
+	if(ice_stream == NULL || group_attr == NULL)
+		return -1;
+	janus_ice_stream *stream = (janus_ice_stream *)ice_stream;
+	janus_ice_handle *handle = stream->handle;
+	if(handle == NULL)
+		return -2;
+	if(!video)
+		return -3;
+	gboolean fid = strstr(group_attr, "FID") != NULL;
+	gboolean sim = strstr(group_attr, "SIM") != NULL;
+	guint64 ssrc = 0;
+	gchar **list = g_strsplit(group_attr, " ", -1);
+	gchar *index = list[0];
+	if(index != NULL) {
+		int i=0;
+		while(index != NULL) {
+			if(i > 0 && strlen(index) > 0) {
+				ssrc = g_ascii_strtoull(index, NULL, 0);
+				switch(i) {
+					case 1:
+						stream->video_ssrc_peer = ssrc;
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer);
+						break;
+					case 2:
+						if(fid) {
+							stream->video_ssrc_peer_rtx = ssrc;
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (rtx): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_rtx);
+						} else if(sim) {
+							stream->video_ssrc_peer_sim_1 = ssrc;
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_1);
+						} else {
+							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
+						}
+						break;
+					case 3:
+						if(fid) {
+							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Found one too many retransmission SSRC (rtx): %"SCNu64"\n", handle->handle_id, ssrc);
+						} else if(sim) {
+							stream->video_ssrc_peer_sim_2 = ssrc;
+							JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_2);
+						} else {
+							JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
+						}
+						break;
+					default:
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with video SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
+						break;
+				}
+			}
+			i++;
+			index = list[i];
+		}
+	}
+	g_clear_pointer(&list, g_strfreev);
+	return 0;
+}
+
 int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 	if(ice_stream == NULL || ssrc_attr == NULL)
 		return -1;
@@ -558,18 +638,25 @@ int janus_sdp_parse_ssrc(void *ice_stream, const char *ssrc_attr, int video) {
 	if(video) {
 		if(stream->video_ssrc_peer == 0) {
 			stream->video_ssrc_peer = ssrc;
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %u\n", handle->handle_id, stream->video_ssrc_peer);
-		} else if(stream->video_ssrc_peer != ssrc) {
-			/* FIXME We assume the second SSRC we get is the one Chrome associates with retransmissions, e.g.
-			 * 	a=ssrc-group:FID 586466331 2053167359 (SSRC SSRC-rtx)
-			 * SSRC group FID: https://tools.ietf.org/html/rfc3388#section-7 */
-			stream->video_ssrc_peer_rtx = ssrc;
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (rtx): %u\n", handle->handle_id, stream->video_ssrc_peer_rtx);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC: %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer);
+		} else {
+			/* We already have a video SSRC: check if RID is involved, and we'll keep track of this for simulcasting */
+			if(stream->rid[0]) {
+				if(stream->video_ssrc_peer_sim_1 == 0) {
+					stream->video_ssrc_peer_sim_1 = ssrc;
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-1): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_1);
+				} else if(stream->video_ssrc_peer_sim_2 == 0) {
+					stream->video_ssrc_peer_sim_2 = ssrc;
+					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer video SSRC (sim-2): %"SCNu32"\n", handle->handle_id, stream->video_ssrc_peer_sim_2);
+				} else {
+					JANUS_LOG(LOG_WARN, "[%"SCNu64"] Don't know what to do with video SSRC: %"SCNu64"\n", handle->handle_id, ssrc);
+				}
+			}
 		}
 	} else {
 		if(stream->audio_ssrc_peer == 0) {
 			stream->audio_ssrc_peer = ssrc;
-			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer audio SSRC: %u\n", handle->handle_id, stream->audio_ssrc_peer);
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Peer audio SSRC: %"SCNu32"\n", handle->handle_id, stream->audio_ssrc_peer);
 		}
 	}
 	return 0;
@@ -647,6 +734,7 @@ int janus_sdp_anonymize(janus_sdp *anon) {
 					|| !strcasecmp(a->name, "mid")
 					|| !strcasecmp(a->name, "msid")
 					|| !strcasecmp(a->name, "msid-semantic")
+					|| !strcasecmp(a->name, "rid")
 					|| !strcasecmp(a->name, "rtcp")
 					|| !strcasecmp(a->name, "rtcp-mux")
 					|| !strcasecmp(a->name, "rtcp-rsize")
@@ -925,6 +1013,26 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" mslabel:janus", stream->video_ssrc);
 			m->attributes = g_list_append(m->attributes, a);
 			a = janus_sdp_attribute_create("ssrc", "%"SCNu32" label:janusv0", stream->video_ssrc);
+			m->attributes = g_list_append(m->attributes, a);
+		}
+		/* FIXME If the peer is Firefox and is negotiating simulcasting, add the rid attributes */
+		if(m->type == JANUS_SDP_VIDEO && stream->rid[0] != NULL) {
+			char rids[50];
+			rids[0] = '\0';
+			int i=0;
+			for(i=0; i<3; i++) {
+				if(stream->rid[i] == NULL)
+					continue;
+				a = janus_sdp_attribute_create("rid", "%s recv", stream->rid[i]);
+				m->attributes = g_list_append(m->attributes, a);
+				if(strlen(rids) == 0) {
+					g_strlcat(rids, stream->rid[i], sizeof(rids));
+				} else {
+					g_strlcat(rids, ";", sizeof(rids));
+					g_strlcat(rids, stream->rid[i], sizeof(rids));
+				}
+			}
+			a = janus_sdp_attribute_create("simulcast", " recv rid=%s", rids);
 			m->attributes = g_list_append(m->attributes, a);
 		}
 		/* And now the candidates */

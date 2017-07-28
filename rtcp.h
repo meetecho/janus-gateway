@@ -154,8 +154,8 @@ typedef struct rtcp_remb
 	char id[4];
 	/*! \brief Num SSRC, Br Exp, Br Mantissa (bit mask) */
 	uint32_t bitrate;
-	/*! \brief SSRC feedback */
-	uint32_t ssrc[1];
+	/*! \brief SSRC feedback (we expect at max three SSRCs in there) */
+	uint32_t ssrc[3];
 } rtcp_remb;
 
 
@@ -364,6 +364,14 @@ int janus_rtcp_sdes(char *packet, int len, const char *cname, int cnamelen);
  * @param[in] bitrate The bitrate to report (e.g., 128000)
  * @returns The message data length in bytes, if successful, -1 on errors */
 int janus_rtcp_remb(char *packet, int len, uint32_t bitrate);
+
+/*! \brief Method to generate a new RTCP REMB message to cap the reported bitrate, but for more SSRCs
+ * @param[in] packet The buffer data (MUST be at least 24 chars)
+ * @param[in] len The message data length in bytes (MUST be 24)
+ * @param[in] bitrate The bitrate to report (e.g., 128000)
+ * @param[in] numssrc The number of SSRCs to include in the request
+ * @returns The message data length in bytes, if successful, -1 on errors */
+int janus_rtcp_remb_ssrcs(char *packet, int len, uint32_t bitrate, uint8_t numssrc);
 
 /*! \brief Method to generate a new RTCP FIR message to request a key frame
  * @param[in] packet The buffer data (MUST be at least 20 chars)
