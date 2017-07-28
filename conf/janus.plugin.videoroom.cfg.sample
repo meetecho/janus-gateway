@@ -11,6 +11,7 @@
 ; fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 ; audiocodec = opus|isac32|isac16|pcmu|pcma (audio codec to force on publishers, default=opus)
 ; videocodec = vp8|vp9|h264 (video codec to force on publishers, default=vp8)
+; video_svc = yes|no (whether SVC support must be enabled; works only for VP9, default=no)
 ; audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must
 ;		be negotiated/used or not for new publishers, default=yes)
 ; audiolevel_event = yes|no (whether to emit event to other users or not, default=no)
@@ -39,3 +40,18 @@ fir_freq = 10
 ;videocodec = vp8
 record = false
 ;rec_dir = /path/to/recordings-folder
+
+
+; This other demo room here is only there in case you want to play with
+; the VP9 SVC support. Notice that you'll need a Chrome launched with
+; the flag that enables that support, or otherwise you'll be using just
+; plain VP9 (which is good if you want to test how this indeed affect
+; what receivers will get, whether they're encoding SVC or not).
+[5678]
+description = VP9-SVC Demo Room
+secret = adminpwd
+publishers = 6
+bitrate = 512000
+fir_freq = 10
+videocodec = vp9
+video_svc = true
