@@ -32,6 +32,9 @@
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
 ; videobufferkf = yes|no (whether the plugin should store the latest
 ;		keyframe and send it immediately for new viewers, EXPERIMENTAL)
+; videosimulcast = yes|no (do|don't enable video simulcasting)
+; videoport2 = second local port for receiving video frames (only for rtp, and simulcasting)
+; videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
 ; dataport = local port for receiving data messages to relay
 ; dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; databuffermsg = yes|no (whether the plugin should store the latest
