@@ -1374,6 +1374,7 @@ function Janus(gatewayCallbacks) {
 			}
 			return;
 		}
+		config.trickle = isTrickleEnabled(callbacks.trickle);
 		// Was a MediaStream object passed, or do we need to take care of that?
 		if(callbacks.stream !== null && callbacks.stream !== undefined) {
 			var stream = callbacks.stream;
@@ -1384,7 +1385,6 @@ function Janus(gatewayCallbacks) {
 			streamsDone(handleId, jsep, media, callbacks, stream);
 			return;
 		}
-		config.trickle = isTrickleEnabled(callbacks.trickle);
 		if(isAudioSendEnabled(media) || isVideoSendEnabled(media)) {
 			var constraints = { mandatory: {}, optional: []};
 			pluginHandle.consentDialog(true);
