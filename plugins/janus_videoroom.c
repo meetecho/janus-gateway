@@ -321,7 +321,10 @@ static struct janus_json_parameter listener_parameters[] = {
 	{"private_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"audio", JANUS_JSON_BOOL, 0},
 	{"video", JANUS_JSON_BOOL, 0},
-	{"data", JANUS_JSON_BOOL, 0}
+	{"data", JANUS_JSON_BOOL, 0},
+	{"offer_audio", JANUS_JSON_BOOL, 0},
+	{"offer_video", JANUS_JSON_BOOL, 0},
+	{"offer_data", JANUS_JSON_BOOL, 0}
 };
 
 /* Static configuration instance */
@@ -582,7 +585,9 @@ typedef struct janus_videoroom_listener {
 	int templayer_target;	/* As above, but to handle transitions (e.g., wait for keyframe) */
 	gint64 last_relayed;	/* When we relayed the last packet (used to detect when substreams become unavailable) */
 	janus_vp8_simulcast_context simulcast_context;
-	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this publisher */
+	gboolean audio, video, data;		/* Whether audio, video and/or data must be sent to this listener */
+	/* As above, but can't change dynamically (says whether something was negotiated at all in SDP) */
+	gboolean audio_offered, video_offered, data_offered;
 	gboolean paused;
 	gboolean kicked;	/* Whether this subscription belongs to a participant that has been kicked */
 	/* The following are only relevant if we're doing VP9 SVC, and are not to be confused with VP8
@@ -1229,9 +1234,9 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 						json_object_set_new(info, "feed_display", json_string(feed->display));
 				}
 				json_t *media = json_object();
-				json_object_set_new(media, "audio", json_integer(participant->audio));
-				json_object_set_new(media, "video", json_integer(participant->video));
-				json_object_set_new(media, "data", json_integer(participant->data));
+				json_object_set_new(media, "audio", json_integer(participant->audio_offered));
+				json_object_set_new(media, "video", json_integer(participant->video_offered));
+				json_object_set_new(media, "data", json_integer(participant->data_offered));
 				if(feed->ssrc[0] != 0) {
 					json_object_set_new(info, "simulcast", json_true());
 					json_object_set_new(info, "substream", json_integer(participant->substream));
@@ -3219,6 +3224,9 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *audio = json_object_get(root, "audio");
 				json_t *video = json_object_get(root, "video");
 				json_t *data = json_object_get(root, "data");
+				json_t *offer_audio = json_object_get(root, "offer_audio");
+				json_t *offer_video = json_object_get(root, "offer_video");
+				json_t *offer_data = json_object_get(root, "offer_data");
 				janus_mutex_lock(&videoroom->participants_mutex);
 				janus_videoroom_participant *owner = NULL;
 				janus_videoroom_participant *publisher = g_hash_table_lookup(videoroom->participants, &feed_id);
@@ -3247,15 +3255,33 @@ static void *janus_videoroom_handler(void *data) {
 					listener->pvt_id = pvt_id;
 					/* Initialize the listener context */
 					janus_rtp_switching_context_reset(&listener->context);
-					listener->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
+					listener->audio_offered = offer_audio ? json_is_true(offer_audio) : TRUE;	/* True by default */
 					if(!publisher->audio)
-						listener->audio = FALSE;	/* ... unless the publisher isn't sending any audio */
-					listener->video = video ? json_is_true(video) : TRUE;	/* True by default */
+						listener->audio_offered = FALSE;	/* ... unless the publisher isn't sending any audio */
+					listener->video_offered = offer_video ? json_is_true(offer_video) : TRUE;	/* True by default */
 					if(!publisher->video)
-						listener->video = FALSE;	/* ... unless the publisher isn't sending any video */
-					listener->data = data ? json_is_true(data) : TRUE;	/* True by default */
+						listener->video_offered = FALSE;	/* ... unless the publisher isn't sending any video */
+					listener->data_offered = offer_data ? json_is_true(offer_data) : TRUE;	/* True by default */
 					if(!publisher->data)
-						listener->data = FALSE;	/* ... unless the publisher isn't sending any data */
+						listener->data_offered = FALSE;	/* ... unless the publisher isn't sending any data */
+					if((!publisher->audio || !listener->audio_offered) &&
+							(!publisher->video || !listener->video_offered) &&
+							(!publisher->data || !listener->data_offered)) {
+						g_free(listener);
+						JANUS_LOG(LOG_ERR, "Can't offer an SDP with no audio, video or data\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
+						g_snprintf(error_cause, 512, "Can't offer an SDP with no audio, video or data");
+						goto error;
+					}
+					listener->audio = audio ? json_is_true(audio) : TRUE;	/* True by default */
+					if(!publisher->audio || !listener->audio_offered)
+						listener->audio = FALSE;	/* ... unless the publisher isn't sending any audio or we're skipping it */
+					listener->video = video ? json_is_true(video) : TRUE;	/* True by default */
+					if(!publisher->video || !listener->video_offered)
+						listener->video = FALSE;	/* ... unless the publisher isn't sending any video or we're skipping it */
+					listener->data = data ? json_is_true(data) : TRUE;	/* True by default */
+					if(!publisher->data || !listener->data_offered)
+						listener->data = FALSE;	/* ... unless the publisher isn't sending any data or we're skipping it */
 					listener->paused = TRUE;	/* We need an explicit start from the listener */
 					listener->substream = -1;
 					listener->substream_target = 2;
@@ -3290,7 +3316,25 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
 					/* Negotiate by sending the selected publisher SDP back */
 					if(publisher->sdp != NULL) {
-						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", publisher->sdp);
+						/* Check if there's something the original SDP has that we should remove */
+						char *sdp = publisher->sdp;
+						if((publisher->audio && !listener->audio_offered) ||
+								(publisher->video && !listener->video_offered) ||
+								(publisher->data && !listener->data_offered)) {
+							JANUS_LOG(LOG_VERB, "Munging SDP offer to adapt it to the listener's requirements\n");
+							janus_sdp *offer = janus_sdp_parse(publisher->sdp, NULL, 0);
+							if(publisher->audio && !listener->audio_offered)
+								janus_sdp_mline_remove(offer, JANUS_SDP_AUDIO);
+							if(publisher->video && !listener->video_offered)
+								janus_sdp_mline_remove(offer, JANUS_SDP_VIDEO);
+							if(publisher->data && !listener->data_offered)
+								janus_sdp_mline_remove(offer, JANUS_SDP_APPLICATION);
+							sdp = janus_sdp_write(offer);
+							janus_sdp_free(offer);
+						}
+						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
+						if(sdp != publisher->sdp)
+							g_free(sdp);
 						/* How long will the gateway take to push the event? */
 						g_atomic_int_set(&session->hangingup, 0);
 						gint64 start = janus_get_monotonic_time();
@@ -3579,11 +3623,11 @@ static void *janus_videoroom_handler(void *data) {
 				/* Update the audio/video/data flags, if set */
 				janus_videoroom_participant *publisher = listener->feed;
 				if(publisher) {
-					if(audio && publisher->audio)
+					if(audio && publisher->audio && listener->audio_offered)
 						listener->audio = json_is_true(audio);
-					if(video && publisher->video)
+					if(video && publisher->video && listener->video_offered)
 						listener->video = json_is_true(video);
-					if(data && publisher->data)
+					if(data && publisher->data && listener->data_offered)
 						listener->data = json_is_true(data);
 					/* Check if a simulcasting-related request is involved */
 					if(sc_substream && publisher->ssrc[0] != 0) {
