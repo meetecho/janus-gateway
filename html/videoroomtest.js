@@ -423,6 +423,10 @@ function newRemoteFeed(id, display) {
 				Janus.log("  -- This is a subscriber");
 				// We wait for the plugin to send us an offer
 				var listen = { "request": "join", "room": myroom, "ptype": "listener", "feed": id, "private_id": mypvtid };
+				// In case you don't want to receive audio, video or data, even if the
+				// publisher is sending them, set the 'offer_audio', 'offer_video' or
+				// 'offer_data' properties to false (they're true by default), e.g.:
+				// 		listen["offer_video"] = false;
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {
@@ -434,7 +438,9 @@ function newRemoteFeed(id, display) {
 				Janus.debug(msg);
 				var event = msg["videoroom"];
 				Janus.debug("Event: " + event);
-				if(event != undefined && event != null) {
+				if(msg["error"] !== undefined && msg["error"] !== null) {
+					bootbox.alert(msg["error"]);
+				} else if(event != undefined && event != null) {
 					if(event === "attached") {
 						// Subscriber created and attached
 						for(var i=1;i<6;i++) {
@@ -467,8 +473,6 @@ function newRemoteFeed(id, display) {
 							// We just received notice that there's been a switch, update the buttons
 							updateSimulcastButtons(remoteFeed.rfindex, substream, temporal);
 						}
-					} else if(msg["error"] !== undefined && msg["error"] !== null) {
-						bootbox.alert(msg["error"]);
 					} else {
 						// What has just happened?
 					}

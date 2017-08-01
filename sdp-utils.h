@@ -142,6 +142,14 @@ void janus_sdp_mline_destroy(janus_sdp_mline *mline);
  * @param[in] type The type of media to search
  * @returns The janus_sdp_mline instance, if found, or NULL otherwise */
 janus_sdp_mline *janus_sdp_mline_find(janus_sdp *sdp, janus_sdp_mtype type);
+/*! \brief Helper method to remove the janus_sdp_mline associated to a media type from the SDP
+ * @note This currently removes the first m-line of the specified type it finds: in
+ * general, it shouldn't be an issue as we currently only support a single stream
+ * of the same type per session anyway... this will need to be fixed in the future.
+ * @param[in] sdp The Janus SDP object to modify
+ * @param[in] type The type of media to remove
+ * @returns 0 if successful, a negative integer otherwise */
+int janus_sdp_mline_remove(janus_sdp *sdp, janus_sdp_mtype type);
 
 /*! \brief SDP a= attribute representation */
 typedef struct janus_sdp_attribute {
