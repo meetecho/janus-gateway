@@ -2275,7 +2275,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							} else {
 								/* If we're simulcasting, let's compare to the other SSRCs too */
 								if((stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1) ||
-										(stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1)) {
+										(stream->video_ssrc_peer_sim_2 && rtcp_ssrc == stream->video_ssrc_peer_sim_2)) {
 									/* FIXME RTCP for simulcasting SSRC, let's drop it for now... */
 									JANUS_LOG(LOG_HUGE, "Dropping RTCP packet for SSRC %"SCNu32"\n", rtcp_ssrc);
 									return;

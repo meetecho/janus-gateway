@@ -635,7 +635,7 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 	if(session->ssrc[0] != 0) {
 		json_object_set_new(info, "simulcast", json_true());
 	}
-	if(session->peer->ssrc[0] != 0) {
+	if(session->peer && session->peer->ssrc[0] != 0) {
 		json_object_set_new(info, "simulcast-peer", json_true());
 		json_object_set_new(info, "substream", json_integer(session->substream));
 		json_object_set_new(info, "substream-target", json_integer(session->substream_target));

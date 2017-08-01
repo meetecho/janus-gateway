@@ -1237,7 +1237,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				json_object_set_new(media, "audio", json_integer(participant->audio_offered));
 				json_object_set_new(media, "video", json_integer(participant->video_offered));
 				json_object_set_new(media, "data", json_integer(participant->data_offered));
-				if(feed->ssrc[0] != 0) {
+				if(feed && feed->ssrc[0] != 0) {
 					json_object_set_new(info, "simulcast", json_true());
 					json_object_set_new(info, "substream", json_integer(participant->substream));
 					json_object_set_new(info, "substream-target", json_integer(participant->substream_target));

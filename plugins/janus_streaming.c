@@ -3147,9 +3147,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					"Video", "video", name ? name : tempname);
 				if(video_fd[1] < 0) {
 					JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (2nd port)...\n", vport2);
-					if(audio_fd > 0)
+					if(audio_fd > -1)
 						close(audio_fd);
-					if(video_fd[0] > 0)
+					if(video_fd[0] > -1)
 						close(video_fd[0]);
 					janus_mutex_unlock(&mountpoints_mutex);
 					return NULL;
@@ -3160,11 +3160,11 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 					"Video", "video", name ? name : tempname);
 				if(video_fd[2] < 0) {
 					JANUS_LOG(LOG_ERR, "Can't bind to port %d for video (3rd port)...\n", vport3);
-					if(audio_fd > 0)
+					if(audio_fd > -1)
 						close(audio_fd);
-					if(video_fd[0] > 0)
+					if(video_fd[0] > -1)
 						close(video_fd[0]);
-					if(video_fd[1] > 0)
+					if(video_fd[1] > -1)
 						close(video_fd[1]);
 					janus_mutex_unlock(&mountpoints_mutex);
 					return NULL;
