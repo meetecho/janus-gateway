@@ -559,7 +559,7 @@ void janus_echotest_incoming_rtp(janus_plugin_session *handle, int video, char *
 						uint32_t ssrc_old = 0;
 						if(session->substream != -1)
 							ssrc_old = session->ssrc[session->substream];
-						JANUS_LOG(LOG_WARN, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
+						JANUS_LOG(LOG_VERB, "Received keyframe on SSRC %"SCNu32", switching (was %"SCNu32")\n", ssrc, ssrc_old);
 						session->substream = (ssrc == session->ssrc[session->substream_target] ? session->substream_target : step);
 						switched = TRUE;
 						/* Notify the user */
@@ -889,7 +889,7 @@ static void *janus_echotest_handler(void *data) {
 			session->perc = perc;
 		json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 		if(msg_simulcast) {
-			JANUS_LOG(LOG_WARN, "EchoTest client is going to do simulcasting\n");
+			JANUS_LOG(LOG_VERB, "EchoTest client is going to do simulcasting\n");
 			session->ssrc[0] = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			session->ssrc[1] = json_integer_value(json_object_get(msg_simulcast, "ssrc-1"));
 			session->ssrc[2] = json_integer_value(json_object_get(msg_simulcast, "ssrc-2"));

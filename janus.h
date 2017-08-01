@@ -73,9 +73,9 @@ janus_session *janus_session_create(guint64 session_id);
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
 janus_session *janus_session_find(guint64 session_id);
 /*! \brief Method to add an event to notify to the queue of notifications for this session
- * @param[in] session_id The Janus Gateway-Client session ID
+ * @param[in] session The Janus Gateway-Client session instance to notify
  * @param[in] event The event to notify as a Jansson JSON object */
-void janus_session_notify_event(guint64 session_id, json_t *event);
+void janus_session_notify_event(janus_session *session, json_t *event);
 /*! \brief Method to find an existing Janus Gateway-Client session scheduled to be destroyed from its ID
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
