@@ -1188,7 +1188,7 @@ static void *janus_recordplay_handler(void *data) {
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
-				JANUS_LOG(LOG_WARN, "Recording client negotiated simulcasting, falling back to base substream...\n");
+				JANUS_LOG(LOG_WARN, "Recording client negotiated simulcasting which we don't do here, falling back to base substream...\n");
 				session->simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			}
 			/* Done! */

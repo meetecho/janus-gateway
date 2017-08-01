@@ -1977,7 +1977,7 @@ static void *janus_sip_handler(void *data) {
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
-				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting, falling back to base substream...\n");
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
 				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			}
 			/* Check if there are new credentials to authenticate the INVITE */
@@ -2132,7 +2132,7 @@ static void *janus_sip_handler(void *data) {
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
 			if(msg_simulcast) {
-				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting, falling back to base substream...\n");
+				JANUS_LOG(LOG_WARN, "Client negotiated simulcasting which we don't do here, falling back to base substream...\n");
 				session->media.simulcast_ssrc = json_integer_value(json_object_get(msg_simulcast, "ssrc-0"));
 			}
 			/* Also notify event handlers */
@@ -3046,7 +3046,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					break;
 				} else if(status == 183) {
 					/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
-					if(!sip->sip_payload->pl_data)
+					if(!sip->sip_payload || !sip->sip_payload->pl_data)
 						break;
 					in_progress = TRUE;
 				} else {
@@ -3105,6 +3105,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(ssip == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				break;
+			}
+			if(sip->sip_payload == NULL) {
+				JANUS_LOG(LOG_ERR, "\tMissing SDP\n");
+				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 				break;
 			}
 			char sdperror[100];
