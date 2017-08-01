@@ -1069,6 +1069,7 @@ int janus_process_incoming_request(janus_request *request) {
 		handle = janus_ice_handle_create(session, opaque_id);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
+			janus_mutex_unlock(&session->mutex);
 			goto jsondone;
 		}
 		handle_id = handle->handle_id;
@@ -1099,6 +1100,7 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		janus_mutex_lock(&sessions_mutex);
+		janus_session_handles_clear(session);
 		g_hash_table_remove(sessions, &session->session_id);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
