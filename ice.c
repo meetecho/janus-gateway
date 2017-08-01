@@ -506,7 +506,7 @@ static void janus_ice_notify_media(janus_ice_handle *handle, gboolean video, gbo
 		json_object_set_new(event, "seconds", json_integer(no_media_timer));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
@@ -534,7 +534,7 @@ void janus_ice_notify_hangup(janus_ice_handle *handle, const char *reason) {
 		json_object_set_new(event, "reason", json_string(reason));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
@@ -1005,11 +1005,9 @@ janus_ice_handle *janus_ice_handle_create(void *gateway_session, const char *opa
 	janus_mutex_init(&handle->mutex);
 
 	/* Set up other stuff. */
-	janus_mutex_lock(&session->mutex);
 	if(session->ice_handles == NULL)
 		session->ice_handles = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	g_hash_table_insert(session->ice_handles, janus_uint64_dup(handle->handle_id), handle);
-	janus_mutex_unlock(&session->mutex);
 
 	return handle;
 }
@@ -1018,9 +1016,7 @@ janus_ice_handle *janus_ice_handle_find(void *gateway_session, guint64 handle_id
 	if(gateway_session == NULL)
 		return NULL;
 	janus_session *session = (janus_session *)gateway_session;
-	janus_mutex_lock(&session->mutex);
 	janus_ice_handle *handle = session->ice_handles ? g_hash_table_lookup(session->ice_handles, &handle_id) : NULL;
-	janus_mutex_unlock(&session->mutex);
 	return handle;
 }
 
@@ -1030,20 +1026,19 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	if(plugin == NULL)
 		return JANUS_ERROR_PLUGIN_NOT_FOUND;
 	janus_session *session = (janus_session *)gateway_session;
+	if(session->destroy)
+		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
-	janus_mutex_lock(&session->mutex);
 	if(handle->app != NULL) {
 		/* This handle is already attached to a plugin */
-		janus_mutex_unlock(&session->mutex);
 		return JANUS_ERROR_PLUGIN_ATTACH;
 	}
 	int error = 0;
 	janus_plugin_session *session_handle = g_malloc0(sizeof(janus_plugin_session));
 	if(session_handle == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		janus_mutex_unlock(&session->mutex);
 		return JANUS_ERROR_UNKNOWN;	/* FIXME Do we need something like "Internal Server Error"? */
 	}
 	session_handle->gateway_handle = handle;
@@ -1052,7 +1047,6 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	plugin->create_session(session_handle, &error);
 	if(error) {
 		/* TODO Make error struct to pass verbose information */
-		janus_mutex_unlock(&session->mutex);
 		return error;
 	}
 	handle->app = plugin;
@@ -1061,7 +1055,6 @@ gint janus_ice_handle_attach_plugin(void *gateway_session, guint64 handle_id, ja
 	janus_mutex_lock(&old_plugin_sessions_mutex);
 	g_hash_table_remove(old_plugin_sessions, session_handle);
 	janus_mutex_unlock(&old_plugin_sessions_mutex);
-	janus_mutex_unlock(&session->mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
@@ -1076,7 +1069,6 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
-	janus_mutex_lock(&session->mutex);
 	janus_plugin *plugin_t = (janus_plugin *)handle->app;
 	if(plugin_t == NULL) {
 		/* There was no plugin attached, probably something went wrong there */
@@ -1098,7 +1090,6 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 			}
 			g_main_loop_quit(handle->iceloop);
 		}
-		janus_mutex_unlock(&session->mutex);
 		return 0;
 	}
 	JANUS_LOG(LOG_INFO, "Detaching handle from %s\n", plugin_t->get_name());
@@ -1139,8 +1130,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	json_object_set_new(event, "sender", json_integer(handle_id));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
-	janus_mutex_unlock(&session->mutex);
+	janus_session_notify_event(session, event);
 	/* We only actually destroy the handle later */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Handle detached (error=%d), scheduling destruction\n", handle_id, error);
 	janus_mutex_lock(&old_handles_mutex);
@@ -1490,7 +1480,7 @@ janus_slow_link_update(janus_ice_component *component, janus_ice_handle *handle,
 			json_object_set_new(event, "nacks", json_integer(sl_nack_recent_cnt));
 			/* Send the event */
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-			janus_session_notify_event(session->session_id, event);
+			janus_session_notify_event(session, event);
 			/* Finally, notify event handlers */
 			if(janus_events_is_enabled()) {
 				json_t *info = json_object();
@@ -2285,7 +2275,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							} else {
 								/* If we're simulcasting, let's compare to the other SSRCs too */
 								if((stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1) ||
-										(stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1)) {
+										(stream->video_ssrc_peer_sim_2 && rtcp_ssrc == stream->video_ssrc_peer_sim_2)) {
 									/* FIXME RTCP for simulcasting SSRC, let's drop it for now... */
 									JANUS_LOG(LOG_HUGE, "Dropping RTCP packet for SSRC %"SCNu32"\n", rtcp_ssrc);
 									return;
@@ -4118,7 +4108,7 @@ void janus_ice_dtls_handshake_done(janus_ice_handle *handle, janus_ice_component
 	json_object_set_new(event, "sender", json_integer(handle->handle_id));
 	/* Send the event */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending event to transport...\n", handle->handle_id);
-	janus_session_notify_event(session->session_id, event);
+	janus_session_notify_event(session, event);
 	/* Notify event handlers as well */
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
