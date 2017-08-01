@@ -95,6 +95,24 @@ janus_sdp_mline *janus_sdp_mline_find(janus_sdp *sdp, janus_sdp_mtype type) {
 	return NULL;
 }
 
+int janus_sdp_mline_remove(janus_sdp *sdp, janus_sdp_mtype type) {
+	if(sdp == NULL)
+		return -1;
+	GList *ml = sdp->m_lines;
+	while(ml) {
+		janus_sdp_mline *m = (janus_sdp_mline *)ml->data;
+		if(m->type == type) {
+			/* Found! */
+			sdp->m_lines = g_list_remove(sdp->m_lines, m);
+			janus_sdp_mline_destroy(m);
+			return 0;
+		}
+		ml = ml->next;
+	}
+	/* If we got here, we couldn't the m-line */
+	return -2;
+}
+
 janus_sdp_attribute *janus_sdp_attribute_create(const char *name, const char *value, ...) {
 	if(!name)
 		return NULL;

@@ -639,8 +639,10 @@ gboolean janus_vp9_is_keyframe(char* buffer, int len) {
 				uint16_t *h = (uint16_t *)buffer;
 				int vp9h = ntohs(*h);
 				buffer += 2;
-				JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
-				return TRUE;
+				if(vp9w || vp9h) {
+					JANUS_LOG(LOG_WARN, "Got a VP9 key frame: %dx%d\n", vp9w, vp9h);
+					return TRUE;
+				}
 			}
 		}
 	}
