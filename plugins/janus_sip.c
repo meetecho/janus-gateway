@@ -3046,7 +3046,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 					break;
 				} else if(status == 183) {
 					/* If's a Session Progress: check if there's an SDP, and if so, treat it like a 200 */
-					if(!sip->sip_payload->pl_data)
+					if(!sip->sip_payload || !sip->sip_payload->pl_data)
 						break;
 					in_progress = TRUE;
 				} else {
@@ -3105,6 +3105,11 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(ssip == NULL) {
 				JANUS_LOG(LOG_ERR, "\tInvalid SIP stack\n");
 				nua_respond(nh, 500, sip_status_phrase(500), TAG_END());
+				break;
+			}
+			if(sip->sip_payload == NULL) {
+				JANUS_LOG(LOG_ERR, "\tMissing SDP\n");
+				nua_respond(nh, 488, sip_status_phrase(488), TAG_END());
 				break;
 			}
 			char sdperror[100];
