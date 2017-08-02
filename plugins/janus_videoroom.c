@@ -344,7 +344,7 @@ static struct janus_json_parameter listener_parameters[] = {
 /* Static configuration instance */
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
-static janus_mutex config_mutex;
+static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -509,7 +509,7 @@ typedef struct janus_videoroom {
 	janus_mutex participants_mutex;/* Mutex to protect room properties */
 } janus_videoroom;
 static GHashTable *rooms;
-static janus_mutex rooms_mutex;
+static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static GList *old_rooms;
 static char *admin_key = NULL;
 static void janus_videoroom_free(janus_videoroom *room);
@@ -525,7 +525,7 @@ typedef struct janus_videoroom_session {
 } janus_videoroom_session;
 static GHashTable *sessions;
 static GList *old_sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* A host whose ports gets streamed RTP packets of the corresponding type */
 typedef struct janus_videoroom_rtp_forwarder {
@@ -796,13 +796,10 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
-	janus_mutex_init(&config_mutex);
 
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify) janus_videoroom_free);
-	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&sessions_mutex);
 
 	messages = g_async_queue_new_full((GDestroyNotify) janus_videoroom_message_free);
 

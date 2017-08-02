@@ -331,7 +331,7 @@ static struct janus_json_parameter simulcast_parameters[] = {
 /* Static configuration instance */
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
-static janus_mutex config_mutex;
+static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -527,7 +527,7 @@ typedef struct janus_streaming_session {
 } janus_streaming_session;
 static GHashTable *sessions;
 static GList *old_sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Packets we get from outside and relay */
 typedef struct janus_streaming_rtp_relay_packet {
@@ -648,10 +648,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL)
 		janus_config_print(config);
 
-	janus_mutex_init(&config_mutex);
-
 	mountpoints = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	janus_mutex_init(&mountpoints_mutex);
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
 		/* Any admin key to limit who can "create"? */
@@ -1073,7 +1070,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	janus_mutex_unlock(&mountpoints_mutex);
 
 	sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;

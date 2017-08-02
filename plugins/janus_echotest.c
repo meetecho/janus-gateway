@@ -206,7 +206,7 @@ typedef struct janus_echotest_session {
 } janus_echotest_session;
 static GHashTable *sessions;
 static GList *old_sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_echotest_message_free(janus_echotest_message *msg) {
 	if(!msg || msg == &exit_message)
@@ -302,7 +302,6 @@ int janus_echotest_init(janus_callbacks *callback, const char *config_path) {
 	config = NULL;
 	
 	sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_echotest_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
