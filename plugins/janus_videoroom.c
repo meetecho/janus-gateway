@@ -89,11 +89,12 @@ rec_dir = <folder where recordings should be stored, when enabled>
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests. 
  * 
- * \c create , \c destroy , \c exists, \c list, \c allowed, \c kick and
+ * \c create , \c destroy , \c edit , \c exists, \c list, \c allowed, \c kick and
  * and \c listparticipants are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
  * \c create allows you to create a new video room dynamically, as an
- * alternative to using the configuration file; \c destroy removes a
+ * alternative to using the configuration file; \c edit allows you to
+ * dynamically edit some room properties (e.g., the PIN); \c destroy removes a
  * video room and destroys it, kicking all the users out as part of the
  * process; \c exists allows you to check whether a specific video room
  * exists; finally, \c list lists all the available rooms, while \c
@@ -239,6 +240,19 @@ static struct janus_json_parameter create_parameters[] = {
 	{"playoutdelay_ext", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"rec_dir", JSON_STRING, 0},
+	{"permanent", JANUS_JSON_BOOL, 0}
+};
+static struct janus_json_parameter edit_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"secret", JSON_STRING, 0},
+	{"new_description", JSON_STRING, 0},
+	{"new_is_private", JANUS_JSON_BOOL, 0},
+	{"new_secret", JSON_STRING, 0},
+	{"new_pin", JSON_STRING, 0},
+	{"new_require_pvtid", JANUS_JSON_BOOL, 0},
+	{"new_bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_fir_freq", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
+	{"new_publishers", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"permanent", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter room_parameters[] = {
@@ -1652,6 +1666,126 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 		}
 		goto plugin_response;
+	} else if(!strcasecmp(request_text, "edit")) {
+		/* Edit the properties for an existing videoroom */
+		JANUS_LOG(LOG_VERB, "Attempt to edit the properties of an existing videoroom room\n");
+		JANUS_VALIDATE_JSON_OBJECT(root, edit_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_VIDEOROOM_ERROR_MISSING_ELEMENT, JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto plugin_response;
+		/* We only allow for a limited set of properties to be edited */
+		json_t *desc = json_object_get(root, "new_description");
+		json_t *is_private = json_object_get(root, "new_is_private");
+		json_t *req_pvtid = json_object_get(root, "new_require_pvtid");
+		json_t *secret = json_object_get(root, "new_secret");
+		json_t *pin = json_object_get(root, "new_pin");
+		json_t *bitrate = json_object_get(root, "new_bitrate");
+		json_t *fir_freq = json_object_get(root, "new_fir_freq");
+		json_t *publishers = json_object_get(root, "new_publishers");
+		json_t *permanent = json_object_get(root, "permanent");
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't edit room permanently\n");
+			error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't edit room permanently");
+			goto plugin_response;
+		}
+		janus_mutex_lock(&rooms_mutex);
+		janus_videoroom *videoroom = NULL;
+		error_code = janus_videoroom_access_room(root, TRUE, FALSE, &videoroom, error_cause, sizeof(error_cause));
+		if(error_code != 0) {
+			janus_mutex_unlock(&rooms_mutex);
+			goto plugin_response;
+		}
+		/* Edit the room properties that were provided */
+		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
+			char *old_description = videoroom->room_name;
+			char *new_description = g_strdup(json_string_value(desc));
+			videoroom->room_name = new_description;
+			g_free(old_description);
+		}
+		if(is_private)
+			videoroom->is_private = json_is_true(is_private);
+		if(req_pvtid)
+			videoroom->require_pvtid = json_is_true(req_pvtid);
+		if(publishers)
+			videoroom->max_publishers = json_integer_value(publishers);
+		if(bitrate) {
+			videoroom->bitrate = json_integer_value(bitrate);
+			if(videoroom->bitrate > 0 && videoroom->bitrate < 64000)
+				videoroom->bitrate = 64000;	/* Don't go below 64k */
+		}
+		if(fir_freq)
+			videoroom->fir_freq = json_integer_value(fir_freq);
+		if(secret && strlen(json_string_value(secret)) > 0) {
+			char *old_secret = videoroom->room_secret;
+			char *new_secret = g_strdup(json_string_value(secret));
+			videoroom->room_secret = new_secret;
+			g_free(old_secret);
+		}
+		if(pin && strlen(json_string_value(pin)) > 0) {
+			char *old_pin = videoroom->room_pin;
+			char *new_pin = g_strdup(json_string_value(pin));
+			videoroom->room_pin = new_pin;
+			g_free(old_pin);
+		}
+		if(save) {
+			/* This room is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Modifying room %"SCNu64" permanently in config file\n", videoroom->room_id);
+			janus_mutex_lock(&config_mutex);
+			char cat[BUFSIZ], value[BUFSIZ];
+			/* The room ID is the category */
+			g_snprintf(cat, BUFSIZ, "%"SCNu64, videoroom->room_id);
+			/* Remove the old category first */
+			janus_config_remove_category(config, cat);
+			/* Now write the room details again */
+			janus_config_add_category(config, cat);
+			janus_config_add_item(config, cat, "description", videoroom->room_name);
+			if(videoroom->is_private)
+				janus_config_add_item(config, cat, "is_private", "yes");
+			if(videoroom->require_pvtid)
+				janus_config_add_item(config, cat, "require_pvtid", "yes");
+			g_snprintf(value, BUFSIZ, "%"SCNu32, videoroom->bitrate);
+			janus_config_add_item(config, cat, "bitrate", value);
+			g_snprintf(value, BUFSIZ, "%d", videoroom->max_publishers);
+			janus_config_add_item(config, cat, "publishers", value);
+			if(videoroom->fir_freq) {
+				g_snprintf(value, BUFSIZ, "%"SCNu16, videoroom->fir_freq);
+				janus_config_add_item(config, cat, "fir_freq", value);
+			}
+			janus_config_add_item(config, cat, "audiocodec", janus_videoroom_audiocodec_name(videoroom->acodec));
+			janus_config_add_item(config, cat, "videocodec", janus_videoroom_videocodec_name(videoroom->vcodec));
+			if(videoroom->do_svc)
+				janus_config_add_item(config, cat, "video_svc", "yes");
+			if(videoroom->room_secret)
+				janus_config_add_item(config, cat, "secret", videoroom->room_secret);
+			if(videoroom->room_pin)
+				janus_config_add_item(config, cat, "pin", videoroom->room_pin);
+			if(videoroom->record)
+				janus_config_add_item(config, cat, "record", "yes");
+			if(videoroom->rec_dir)
+				janus_config_add_item(config, cat, "rec_dir", videoroom->rec_dir);
+			/* Save modified configuration */
+			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the room changes are not permanent */
+			janus_mutex_unlock(&config_mutex);
+		}
+		janus_mutex_unlock(&rooms_mutex);
+		/* Send info back */
+		response = json_object();
+		json_object_set_new(response, "videoroom", json_string("edited"));
+		json_object_set_new(response, "room", json_integer(videoroom->room_id));
+		json_object_set_new(response, "permanent", save ? json_true() : json_false());
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("edited"));
+			json_object_set_new(info, "room", json_integer(videoroom->room_id));
+			gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
+		}
+		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing videoroom room\n");
 		JANUS_VALIDATE_JSON_OBJECT(root, destroy_parameters,
@@ -1718,13 +1852,15 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
 			janus_config_remove_category(config, cat);
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_VIDEOROOM_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the room destruction is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Done */
 		response = json_object();
 		json_object_set_new(response, "videoroom", json_string("destroyed"));
 		json_object_set_new(response, "room", json_integer(room_id));
+		json_object_set_new(response, "permanent", save ? json_true() : json_false());
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms (but private ones) and their details (except for the secret, of course...) */

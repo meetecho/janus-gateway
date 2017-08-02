@@ -15,7 +15,7 @@
  * a "setup" message, by which the user initializes the PeerConnection
  * itself. Apart from that, all other messages can be exchanged directly
  * via Data Channels. For room management purposes, though, requests like
- * "create", "destroy", "list" and "exists" are available through the
+ * "create", "edit", "destroy", "list" and "exists" are available through the
  * Janus API as well: notice that in this case you'll have to use "request"
  * and not "textroom" as the name of the request.
  *
@@ -142,12 +142,21 @@ static struct janus_json_parameter adminkey_parameters[] = {
 	{"admin_key", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
 static struct janus_json_parameter create_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"description", JSON_STRING, 0},
 	{"secret", JSON_STRING, 0},
 	{"pin", JSON_STRING, 0},
 	{"post", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"allowed", JSON_ARRAY, 0}
+};
+static struct janus_json_parameter edit_parameters[] = {
+	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
+	{"description", JSON_STRING, 0},
+	{"secret", JSON_STRING, 0},
+	{"pin", JSON_STRING, 0},
+	{"post", JSON_STRING, 0},
+	{"is_private", JANUS_JSON_BOOL, 0}
 };
 static struct janus_json_parameter allowed_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -695,6 +704,7 @@ struct janus_plugin_result *janus_textroom_handle_message(janus_plugin_session *
 	if(!strcasecmp(request_text, "list")
 			|| !strcasecmp(request_text, "exists")
 			|| !strcasecmp(request_text, "create")
+			|| !strcasecmp(request_text, "edit")
 			|| !strcasecmp(request_text, "destroy")) {
 		/* These requests typically only belong to the datachannel
 		 * messaging, but for admin purposes we might use them on
@@ -1559,6 +1569,116 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			json_object_set_new(reply, "room", json_integer(room_id));
 			json_object_set_new(reply, "exists", room_exists ? json_true() : json_false());
 		}
+	} else if(!strcasecmp(request_text, "edit")) {
+		JANUS_VALIDATE_JSON_OBJECT(root, edit_parameters,
+			error_code, error_cause, TRUE,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT);
+		if(error_code != 0)
+			goto msg_response;
+		/* We only allow for a limited set of properties to be edited */
+		json_t *room = json_object_get(root, "room");
+		json_t *desc = json_object_get(root, "new_description");
+		json_t *secret = json_object_get(root, "new_secret");
+		json_t *is_private = json_object_get(root, "new_is_private");
+		json_t *pin = json_object_get(root, "new_pin");
+		json_t *post = json_object_get(root, "new_post");
+		json_t *permanent = json_object_get(root, "permanent");
+		gboolean save = permanent ? json_is_true(permanent) : FALSE;
+		if(save && config == NULL) {
+			JANUS_LOG(LOG_ERR, "No configuration file, can't edit room permanently\n");
+			error_code = JANUS_TEXTROOM_ERROR_UNKNOWN_ERROR;
+			g_snprintf(error_cause, 512, "No configuration file, can't edit room permanently");
+			goto msg_response;
+		}
+		guint64 room_id = json_integer_value(room);
+		janus_mutex_lock(&rooms_mutex);
+		janus_textroom_room *textroom = g_hash_table_lookup(rooms, &room_id);
+		if(textroom == NULL) {
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			error_code = JANUS_TEXTROOM_ERROR_NO_SUCH_ROOM;
+			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			goto msg_response;
+		}
+		janus_mutex_lock(&textroom->mutex);
+		/* A secret may be required for this action */
+		JANUS_CHECK_SECRET(textroom->room_secret, root, "secret", error_code, error_cause,
+			JANUS_TEXTROOM_ERROR_MISSING_ELEMENT, JANUS_TEXTROOM_ERROR_INVALID_ELEMENT, JANUS_TEXTROOM_ERROR_UNAUTHORIZED);
+		if(error_code != 0) {
+			janus_mutex_unlock(&textroom->mutex);
+			janus_mutex_unlock(&rooms_mutex);
+			goto msg_response;
+		}
+		/* Edit the room properties that were provided */
+		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
+			char *old_description = textroom->room_name;
+			char *new_description = g_strdup(json_string_value(desc));
+			textroom->room_name = new_description;
+			g_free(old_description);
+		}
+		if(is_private)
+			textroom->is_private = json_is_true(is_private);
+		if(secret && strlen(json_string_value(secret)) > 0) {
+			char *old_secret = textroom->room_secret;
+			char *new_secret = g_strdup(json_string_value(secret));
+			textroom->room_secret = new_secret;
+			g_free(old_secret);
+		}
+		if(post && strlen(json_string_value(post)) > 0) {
+			char *old_post = textroom->http_backend;
+			char *new_post = g_strdup(json_string_value(post));
+			textroom->http_backend = new_post;
+			g_free(old_post);
+		}
+		if(pin && strlen(json_string_value(pin)) > 0) {
+			char *old_pin = textroom->room_pin;
+			char *new_pin = g_strdup(json_string_value(pin));
+			textroom->room_pin = new_pin;
+			g_free(old_pin);
+		}
+		if(save) {
+			/* This change is permanent: save to the configuration file too
+			 * FIXME: We should check if anything fails... */
+			JANUS_LOG(LOG_VERB, "Modifying room %"SCNu64" permanently in config file\n", room_id);
+			janus_mutex_lock(&config_mutex);
+			char cat[BUFSIZ];
+			/* The room ID is the category */
+			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
+			/* Remove the old category first */
+			janus_config_remove_category(config, cat);
+			/* Now write the room details again */
+			janus_config_add_category(config, cat);
+			janus_config_add_item(config, cat, "description", textroom->room_name);
+			if(textroom->is_private)
+				janus_config_add_item(config, cat, "is_private", "yes");
+			if(textroom->room_secret)
+				janus_config_add_item(config, cat, "secret", textroom->room_secret);
+			if(textroom->room_pin)
+				janus_config_add_item(config, cat, "pin", textroom->room_pin);
+			if(textroom->http_backend)
+				janus_config_add_item(config, cat, "post", textroom->http_backend);
+			/* Save modified configuration */
+			if(janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the room changes are not permanent */
+			janus_mutex_unlock(&config_mutex);
+		}
+		janus_mutex_unlock(&textroom->mutex);
+		janus_mutex_unlock(&rooms_mutex);
+		if(!internal) {
+			/* Send response back */
+			reply = json_object();
+			/* Notice that we reply differently if the request came via Janus API */
+			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "edited"));
+			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
+		}
+		/* Also notify event handlers */
+		if(notify_events && gateway->events_is_enabled()) {
+			json_t *info = json_object();
+			json_object_set_new(info, "event", json_string("edited"));
+			json_object_set_new(info, "room", json_integer(room_id));
+			gateway->notify_event(&janus_textroom_plugin, session->handle, info);
+		}
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_VALIDATE_JSON_OBJECT(root, room_parameters,
 			error_code, error_cause, TRUE,
@@ -1605,7 +1725,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			g_snprintf(cat, BUFSIZ, "%"SCNu64, room_id);
 			janus_config_remove_category(config, cat);
 			/* Save modified configuration */
-			janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE);
+			if(janus_config_save(config, config_folder, JANUS_TEXTROOM_PACKAGE) < 0)
+				save = FALSE;	/* This will notify the user the room destruction is not permanent */
 			janus_mutex_unlock(&config_mutex);
 		}
 		/* Notify all participants */
@@ -1642,6 +1763,8 @@ janus_plugin_result *janus_textroom_handle_incoming_request(janus_plugin_session
 			reply = json_object();
 			/* Notice that we reply differently if the request came via Janus API */
 			json_object_set_new(reply, "textroom", json_string(json == NULL ? "success" : "destroyed"));
+			json_object_set_new(reply, "room", json_integer(room_id));
+			json_object_set_new(reply, "permanent", save ? json_true() : json_false());
 		}
 		/* We'll let the watchdog worry about freeing resources */
 		old_rooms = g_list_append(old_rooms, textroom);
