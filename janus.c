@@ -450,7 +450,10 @@ static gboolean janus_check_sessions(gpointer user_data) {
 			gint64 now = janus_get_monotonic_time();
 			if (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC && !g_atomic_int_get(&session->timeout)) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
-
+				/* Mark the session as over, we'll deal with it later */
+				session->timeout = 1;
+				/* Remove all handles */
+				janus_session_handles_clear(session);
 				/* Notify the transport */
 				if(session->source) {
 					json_t *event = janus_create_message("timeout", session->session_id, NULL);
