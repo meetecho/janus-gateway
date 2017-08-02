@@ -137,7 +137,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 \verbatim
 {
 	"request" : "edit",
-	"room" : <unique numeric ID of the room to destroy>,
+	"room" : <unique numeric ID of the room to edit>,
 	"secret" : "<room secret, mandatory if configured>",
 	"new_description" : "<new pretty name of the room, optional>",
 	"new_secret" : "<new password required to edit/destroy the room, optional>",
