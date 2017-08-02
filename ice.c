@@ -934,17 +934,14 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 		return JANUS_ERROR_PLUGIN_NOT_FOUND;
 	if(handle == NULL)
 		return JANUS_ERROR_HANDLE_NOT_FOUND;
-	janus_mutex_lock(&session->mutex);
 	if(handle->app != NULL) {
 		/* This handle is already attached to a plugin */
-		janus_mutex_unlock(&session->mutex);
 		return JANUS_ERROR_PLUGIN_ATTACH;
 	}
 	int error = 0;
 	janus_plugin_session *session_handle = g_malloc0(sizeof(janus_plugin_session));
 	if(session_handle == NULL) {
 		JANUS_LOG(LOG_FATAL, "Memory error!\n");
-		janus_mutex_unlock(&session->mutex);
 		return JANUS_ERROR_UNKNOWN;	/* FIXME Do we need something like "Internal Server Error"? */
 	}
 	session_handle->gateway_handle = handle;
@@ -967,7 +964,6 @@ gint janus_ice_handle_attach_plugin(void *core_session, janus_ice_handle *handle
 	janus_mutex_lock(&old_plugin_sessions_mutex);
 	g_hash_table_remove(old_plugin_sessions, session_handle);
 	janus_mutex_unlock(&old_plugin_sessions_mutex);
-	janus_mutex_unlock(&session->mutex);
 	/* Notify event handlers */
 	if(janus_events_is_enabled())
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_HANDLE,
@@ -2184,7 +2180,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 							} else {
 								/* If we're simulcasting, let's compare to the other SSRCs too */
 								if((stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1) ||
-										(stream->video_ssrc_peer_sim_1 && rtcp_ssrc == stream->video_ssrc_peer_sim_1)) {
+										(stream->video_ssrc_peer_sim_2 && rtcp_ssrc == stream->video_ssrc_peer_sim_2)) {
 									/* FIXME RTCP for simulcasting SSRC, let's drop it for now... */
 									JANUS_LOG(LOG_HUGE, "Dropping RTCP packet for SSRC %"SCNu32"\n", rtcp_ssrc);
 									return;
