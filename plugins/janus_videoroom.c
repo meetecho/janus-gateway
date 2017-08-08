@@ -61,7 +61,7 @@ pin = <optional password needed for joining the room>
 require_pvtid = yes|no (whether subscriptions are required to provide a valid
              a valid private_id to associate with a publisher, default=no)
 publishers = <max number of concurrent senders> (e.g., 6 for a video
-             conference or 1 for a webinar)
+             conference or 1 for a webinar, default=3)
 bitrate = <max video bitrate for senders> (e.g., 128000)
 fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 audiocodec = opus|isac32|isac16|pcmu|pcma|g722 (audio codec to force on publishers, default=opus)
