@@ -3444,9 +3444,9 @@ static int janus_streaming_rtsp_parse_sdp(const char *buffer, const char *name, 
 	} while(port == -1);
 
 	if(IN_MULTICAST(ntohl(mcast))) {
-		g_snprintf(transport, 1024, "RTP/AVP;multicast;client_port=%d-%d", port, port+1);
+		g_snprintf(transport, 1024, "RTP/AVP/UDP;multicast;client_port=%d-%d", port, port+1);
 	} else {
-		g_snprintf(transport, 1024, "RTP/AVP;unicast;client_port=%d-%d", port, port+1);
+		g_snprintf(transport, 1024, "RTP/AVP/UDP;unicast;client_port=%d-%d", port, port+1);
 	}
 
 	return 0;
