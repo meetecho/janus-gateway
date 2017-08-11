@@ -1,0 +1,29 @@
+Source: janus-gateway
+Section: utils
+Priority: options
+Maintainer: Michael Zanetti <michael.zanetti@guh.io>
+Build-depends: debhelper (>= 0.0.0),
+               libmicrohttpd-dev,
+               libjansson-dev,
+               libnice-dev,
+               libssl-dev,
+               libsofia-sip-ua-dev,
+               libglib2.0-dev,
+               libopus-dev,
+               libogg-dev,
+               libcurl4-openssl-dev,
+               libwebsockets-dev,
+               pkg-config,
+               gengetopt,
+               libtool,
+               automake,
+               libsrtp2-dev,
+               libusrsctp1-dev,
+Standards-Version: 3.9.3
+
+Package: janus-gateway
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+Description: The Janus Gateway
+  The janus gateway

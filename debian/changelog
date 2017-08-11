@@ -1,0 +1,5 @@
+janus-gateway (0.1) xenial; urgency=medium
+
+  * Initial release. (Closes: #XXXXXX)
+
+ -- Michael Zanetti <michael.zanetti@guh.io>  Thu, 22 Jun 2017 10:56:51 +0200

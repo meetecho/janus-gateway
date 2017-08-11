@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	./autogen.sh
+	dh_auto_configure
+
+override_dh_auto_install:
+	dh_auto_install
+	for i in `ls debian/janus-gateway/etc/janus/*.sample`; do mv $$i `echo $$i | sed s/.sample//`; done
