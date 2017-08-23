@@ -72,7 +72,7 @@ audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 audiolevel_event = yes|no (whether to emit event to other users or not)
 audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
-videoorientation_ext = yes|no (whether the video-orientation RTP extension must be
+videoorient_ext = yes|no (whether the video-orientation RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
