@@ -59,7 +59,7 @@ instance, is very simple:
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
        opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
-       libtool autoconf automake
+       libtool autoconf automake 
 
 Notice that you may have to `yum install epel-release` as well if you're
 attempting an installation on a CentOS machine instead.
@@ -69,7 +69,7 @@ On Ubuntu or Debian, it would require something like this:
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
 		libopus-dev libogg-dev libcurl4-openssl-dev pkg-config gengetopt \
-		libtool automake
+		libtool automake cmake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
@@ -239,14 +239,13 @@ to generate the configure file. After that, configure and compile as
 usual to start the whole compilation process:
 
 	./configure --prefix=/opt/janus
-	make
-	make install
+	make && sudo make install
 
 Since Janus requires configuration files for both the core and its
 modules in order to work, you'll probably also want to install the
 default configuration files to use, which you can do this way:
 
-	make configs
+	sudo make configs
 
 Remember to only do this once, or otherwise a subsequent `make configs`
 will overwrite any configuration file you may have modified in the
