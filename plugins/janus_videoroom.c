@@ -2616,7 +2616,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		rtp_header *rtp = (rtp_header *)buf;
 		uint32_t ssrc = ntohl(rtp->ssrc);
-		int sc = -1;
+		int sc = 0;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
 			if(ssrc == participant->ssrc[0])
