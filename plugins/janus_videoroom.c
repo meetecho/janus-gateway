@@ -61,7 +61,7 @@ pin = <optional password needed for joining the room>
 require_pvtid = yes|no (whether subscriptions are required to provide a valid
              a valid private_id to associate with a publisher, default=no)
 publishers = <max number of concurrent senders> (e.g., 6 for a video
-             conference or 1 for a webinar)
+             conference or 1 for a webinar, default=3)
 bitrate = <max video bitrate for senders> (e.g., 128000)
 fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 audiocodec = opus|isac32|isac16|pcmu|pcma|g722 (audio codec to force on publishers, default=opus)
@@ -72,7 +72,7 @@ audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 audiolevel_event = yes|no (whether to emit event to other users or not)
 audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
-videoorientation_ext = yes|no (whether the video-orientation RTP extension must be
+videoorient_ext = yes|no (whether the video-orientation RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
