@@ -2646,7 +2646,7 @@ static void *janus_streaming_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "status", json_string("starting"));
+				json_object_set_new(info, "event", json_string("starting"));
 				if(session->mountpoint != NULL)
 					json_object_set_new(info, "id", json_integer(session->mountpoint->id));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
@@ -2665,7 +2665,7 @@ static void *janus_streaming_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "status", json_string("pausing"));
+				json_object_set_new(info, "event", json_string("pausing"));
 				if(session->mountpoint != NULL)
 					json_object_set_new(info, "id", json_integer(session->mountpoint->id));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
@@ -2788,7 +2788,7 @@ static void *janus_streaming_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "status", json_string("switching"));
+				json_object_set_new(info, "event", json_string("switching"));
 				json_object_set_new(info, "id", json_integer(id_value));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
 			}
@@ -2823,7 +2823,7 @@ static void *janus_streaming_handler(void *data) {
 			/* Also notify event handlers */
 			if(notify_events && gateway->events_is_enabled()) {
 				json_t *info = json_object();
-				json_object_set_new(info, "status", json_string("stopping"));
+				json_object_set_new(info, "event", json_string("stopping"));
 				if(mp)
 					json_object_set_new(info, "id", json_integer(mp->id));
 				gateway->notify_event(&janus_streaming_plugin, session->handle, info);
