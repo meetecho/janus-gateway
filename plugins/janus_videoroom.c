@@ -1209,9 +1209,9 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				if(participant->listeners)
 					json_object_set_new(info, "viewers", json_integer(g_slist_length(participant->listeners)));
 				json_t *media = json_object();
-				json_object_set_new(media, "audio", json_integer(participant->audio));
-				json_object_set_new(media, "video", json_integer(participant->video));
-				json_object_set_new(media, "data", json_integer(participant->data));
+				json_object_set_new(media, "audio", participant->audio ? json_true() : json_false());
+				json_object_set_new(media, "video", participant->video ? json_true() : json_false());
+				json_object_set_new(media, "data", participant->data ? json_true() : json_false());
 				json_object_set_new(info, "media", media);
 				json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
 				if(participant->ssrc[0] != 0)
@@ -4080,9 +4080,11 @@ static void *janus_videoroom_handler(void *data) {
 				while(temp) {
 					/* Which media are available? */
 					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+					if(m->type == JANUS_SDP_AUDIO && m->port > 0 &&
+							m->direction != JANUS_SDP_RECVONLY && m->direction != JANUS_SDP_INACTIVE) {
 						participant->audio = TRUE;
-					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 &&
+							m->direction != JANUS_SDP_RECVONLY && m->direction != JANUS_SDP_INACTIVE) {
 						participant->video = TRUE;
 					} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 						participant->data = TRUE;
@@ -4135,9 +4137,9 @@ static void *janus_videoroom_handler(void *data) {
 				temp = answer->m_lines;
 				while(temp) {
 					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+					if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
 						participant->audio = TRUE;
-					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
 						participant->video = TRUE;
 					} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 						participant->data = TRUE;
