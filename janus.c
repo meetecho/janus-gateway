@@ -404,16 +404,52 @@ static GMainContext *sessions_watchdog_context = NULL;
 static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
 
-	JANUS_LOG(LOG_DBG, "Cleaning up session %"SCNu64"...\n", session->session_id);
+	JANUS_LOG(LOG_INFO, "Cleaning up session %"SCNu64"...\n", session->session_id);
 	janus_session_destroy(session->session_id);
 
 	return G_SOURCE_REMOVE;
 }
 
+static void janus_session_schedule_destruction(janus_session *session,
+		gboolean lock_sessions, gboolean remove_key, gboolean notify_transport) {
+	if(session == NULL || !g_atomic_int_compare_and_exchange(&session->destroy, 0, 1))
+		return;
+	if(lock_sessions)
+		janus_mutex_lock(&sessions_mutex);
+	/* Schedule the session for deletion */
+	janus_mutex_lock(&session->mutex);
+	/* Remove all handles */
+	if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, session->ice_handles);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			janus_ice_handle *h = value;
+			if(!h || g_atomic_int_get(&stop)) {
+				continue;
+			}
+			janus_ice_handle_destroy(session, h->handle_id);
+			g_hash_table_iter_remove(&iter);
+		}
+	}
+	janus_mutex_unlock(&session->mutex);
+	if(remove_key)
+		g_hash_table_remove(sessions, &session->session_id);
+	g_hash_table_replace(old_sessions, janus_uint64_dup(session->session_id), session);
+	GSource *timeout_source = g_timeout_source_new_seconds(3);
+	g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
+	g_source_attach(timeout_source, sessions_watchdog_context);
+	g_source_unref(timeout_source);
+	if(lock_sessions)
+		janus_mutex_unlock(&sessions_mutex);
+	/* Notify the source that the session has been destroyed */
+	if(notify_transport && session->source && session->source->transport)
+		session->source->transport->session_over(session->source->instance, session->session_id, FALSE);
+}
+
 static gboolean janus_check_sessions(gpointer user_data) {
 	if(session_timeout < 1)		/* Session timeouts are disabled */
 		return G_SOURCE_CONTINUE;
-	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
 		GHashTableIter iter;
@@ -421,30 +457,15 @@ static gboolean janus_check_sessions(gpointer user_data) {
 		g_hash_table_iter_init(&iter, sessions);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-			if (!session || session->destroy) {
+			if (!session || g_atomic_int_get(&session->destroy)) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC && !session->timeout) {
+			if (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC &&
+					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 				/* Mark the session as over, we'll deal with it later */
-				janus_mutex_lock(&session->mutex);
-				session->timeout = 1;
-				/* Remove all handles */
-				if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
-					GHashTableIter iter;
-					gpointer value;
-					g_hash_table_iter_init(&iter, session->ice_handles);
-					while(g_hash_table_iter_next(&iter, NULL, &value)) {
-						janus_ice_handle *h = value;
-						if(!h || g_atomic_int_get(&stop)) {
-							continue;
-						}
-						janus_ice_handle_destroy(session, h->handle_id);
-						g_hash_table_iter_remove(&iter);
-					}
-				}
-				janus_mutex_unlock(&session->mutex);
+				janus_session_schedule_destruction(session, FALSE, FALSE, FALSE);
 				/* Notify the transport */
 				if(session->source) {
 					json_t *event = json_object();
@@ -461,13 +482,7 @@ static gboolean janus_check_sessions(gpointer user_data) {
 
 				/* FIXME Is this safe? apparently it causes hash table errors on the console */
 				g_hash_table_iter_remove(&iter);
-				g_hash_table_insert(old_sessions, janus_uint64_dup(session->session_id), session);
-
-				/* Schedule the session for deletion */
-				GSource *timeout_source = g_timeout_source_new_seconds(3);
-				g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
-				g_source_attach(timeout_source, watchdog_context);
-				g_source_unref(timeout_source);
+				g_hash_table_replace(old_sessions, janus_uint64_dup(session->session_id), session);
 			}
 		}
 	}
@@ -511,8 +526,8 @@ janus_session *janus_session_create(guint64 session_id) {
 	}
 	session->session_id = session_id;
 	session->source = NULL;
-	session->destroy = 0;
-	session->timeout = 0;
+	g_atomic_int_set(&session->destroy, 0);
+	g_atomic_int_set(&session->timeout, 0);
 	session->last_activity = janus_get_monotonic_time();
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
@@ -531,12 +546,13 @@ janus_session *janus_session_find(guint64 session_id) {
 janus_session *janus_session_find_destroyed(guint64 session_id) {
 	janus_mutex_lock(&sessions_mutex);
 	janus_session *session = g_hash_table_lookup(old_sessions, &session_id);
+	g_hash_table_remove(old_sessions, &session_id);
 	janus_mutex_unlock(&sessions_mutex);
 	return session;
 }
 
 void janus_session_notify_event(janus_session *session, json_t *event) {
-	if(session != NULL && !session->destroy && session->source != NULL && session->source->transport != NULL) {
+	if(session != NULL && !g_atomic_int_get(&session->destroy) && session->source != NULL && session->source->transport != NULL) {
 		/* Send this to the transport client */
 		JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
 		session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
@@ -868,35 +884,8 @@ int janus_process_incoming_request(janus_request *request) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
 		}
-		janus_mutex_lock(&sessions_mutex);
-		/* Schedule the session for deletion */
-		janus_mutex_lock(&session->mutex);
-		session->destroy = 1;
-		/* Remove all handles */
-		if(session->ice_handles != NULL && g_hash_table_size(session->ice_handles) > 0) {
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, session->ice_handles);
-			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				janus_ice_handle *h = value;
-				if(!h || g_atomic_int_get(&stop)) {
-					continue;
-				}
-				janus_ice_handle_destroy(session, h->handle_id);
-				g_hash_table_iter_remove(&iter);
-			}
-		}
-		janus_mutex_unlock(&session->mutex);
-		g_hash_table_remove(sessions, &session->session_id);
-		g_hash_table_insert(old_sessions, janus_uint64_dup(session->session_id), session);
-		GSource *timeout_source = g_timeout_source_new_seconds(3);
-		g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
-		g_source_attach(timeout_source, sessions_watchdog_context);
-		g_source_unref(timeout_source);
-		janus_mutex_unlock(&sessions_mutex);
-		/* Notify the source that the session has been destroyed */
-		if(session->source && session->source->transport)
-			session->source->transport->session_over(session->source->instance, session->session_id, FALSE);
+		/* Mark the session as destroyed */
+		janus_session_schedule_destruction(session, TRUE, TRUE, TRUE);
 
 		/* Prepare JSON reply */
 		json_t *reply = json_object();
@@ -2600,11 +2589,13 @@ void janus_transport_gone(janus_transport *plugin, void *transport) {
 		g_hash_table_iter_init(&iter, sessions);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			janus_session *session = (janus_session *) value;
-			if(!session || session->destroy || session->timeout || session->last_activity == 0)
+			if(!session || g_atomic_int_get(&session->destroy) || g_atomic_int_get(&session->timeout) || session->last_activity == 0)
 				continue;
 			if(session->source && session->source->instance == transport) {
 				JANUS_LOG(LOG_VERB, "  -- Marking Session %"SCNu64" as over\n", session->session_id);
-				session->last_activity = 0;	/* This will trigger a timeout */
+				/* Mark the session as destroyed */
+				janus_session_schedule_destruction(session, FALSE, FALSE, FALSE);
+				g_hash_table_iter_remove(&iter);
 			}
 		}
 	}
@@ -2710,7 +2701,7 @@ int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *
 	if(!ice_handle || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP))
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	janus_session *session = ice_handle->session;
-	if(!session || session->destroy)
+	if(!session || g_atomic_int_get(&session->destroy))
 		return JANUS_ERROR_SESSION_NOT_FOUND;
 	/* Make sure this is a JSON object */
 	if(!json_is_object(message)) {
