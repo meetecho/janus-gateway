@@ -238,7 +238,7 @@ typedef struct janus_nosip_session {
 } janus_nosip_session;
 static GHashTable *sessions;
 static GList *old_sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 /* SRTP stuff (in case we need SDES) */
@@ -479,7 +479,6 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 #endif
 
 	sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_nosip_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
