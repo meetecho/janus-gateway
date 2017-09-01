@@ -527,7 +527,7 @@ static GHashTable *sessions;
 static GList *old_sessions;
 static GHashTable *identities;
 static GHashTable *callids;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 /* SRTP stuff (in case we need SDES) */

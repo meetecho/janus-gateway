@@ -61,7 +61,7 @@ pin = <optional password needed for joining the room>
 require_pvtid = yes|no (whether subscriptions are required to provide a valid
              a valid private_id to associate with a publisher, default=no)
 publishers = <max number of concurrent senders> (e.g., 6 for a video
-             conference or 1 for a webinar)
+             conference or 1 for a webinar, default=3)
 bitrate = <max video bitrate for senders> (e.g., 128000)
 fir_freq = <send a FIR to publishers every fir_freq seconds> (0=disable)
 audiocodec = opus|isac32|isac16|pcmu|pcma|g722 (audio codec to force on publishers, default=opus)
@@ -72,7 +72,7 @@ audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 audiolevel_event = yes|no (whether to emit event to other users or not)
 audio_active_packets = 100 (number of packets with audio level, default=100, 2 seconds)
 audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
-videoorientation_ext = yes|no (whether the video-orientation RTP extension must be
+videoorient_ext = yes|no (whether the video-orientation RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
@@ -344,7 +344,7 @@ static struct janus_json_parameter listener_parameters[] = {
 /* Static configuration instance */
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
-static janus_mutex config_mutex;
+static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -509,7 +509,7 @@ typedef struct janus_videoroom {
 	janus_mutex participants_mutex;/* Mutex to protect room properties */
 } janus_videoroom;
 static GHashTable *rooms;
-static janus_mutex rooms_mutex;
+static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static GList *old_rooms;
 static char *admin_key = NULL;
 static void janus_videoroom_free(janus_videoroom *room);
@@ -525,7 +525,7 @@ typedef struct janus_videoroom_session {
 } janus_videoroom_session;
 static GHashTable *sessions;
 static GList *old_sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* A host whose ports gets streamed RTP packets of the corresponding type */
 typedef struct janus_videoroom_rtp_forwarder {
@@ -796,13 +796,10 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
-	janus_mutex_init(&config_mutex);
 
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify) janus_videoroom_free);
-	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&sessions_mutex);
 
 	messages = g_async_queue_new_full((GDestroyNotify) janus_videoroom_message_free);
 
@@ -1212,9 +1209,9 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 				if(participant->listeners)
 					json_object_set_new(info, "viewers", json_integer(g_slist_length(participant->listeners)));
 				json_t *media = json_object();
-				json_object_set_new(media, "audio", json_integer(participant->audio));
-				json_object_set_new(media, "video", json_integer(participant->video));
-				json_object_set_new(media, "data", json_integer(participant->data));
+				json_object_set_new(media, "audio", participant->audio ? json_true() : json_false());
+				json_object_set_new(media, "video", participant->video ? json_true() : json_false());
+				json_object_set_new(media, "data", participant->data ? json_true() : json_false());
 				json_object_set_new(info, "media", media);
 				json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
 				if(participant->ssrc[0] != 0)
@@ -2619,7 +2616,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		rtp_header *rtp = (rtp_header *)buf;
 		uint32_t ssrc = ntohl(rtp->ssrc);
-		int sc = -1;
+		int sc = 0;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
 			if(ssrc == participant->ssrc[0])
@@ -4083,9 +4080,11 @@ static void *janus_videoroom_handler(void *data) {
 				while(temp) {
 					/* Which media are available? */
 					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+					if(m->type == JANUS_SDP_AUDIO && m->port > 0 &&
+							m->direction != JANUS_SDP_RECVONLY && m->direction != JANUS_SDP_INACTIVE) {
 						participant->audio = TRUE;
-					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 &&
+							m->direction != JANUS_SDP_RECVONLY && m->direction != JANUS_SDP_INACTIVE) {
 						participant->video = TRUE;
 					} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 						participant->data = TRUE;
@@ -4138,9 +4137,9 @@ static void *janus_videoroom_handler(void *data) {
 				temp = answer->m_lines;
 				while(temp) {
 					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-					if(m->type == JANUS_SDP_AUDIO && m->port > 0) {
+					if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
 						participant->audio = TRUE;
-					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0) {
+					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
 						participant->video = TRUE;
 					} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
 						participant->data = TRUE;

@@ -383,7 +383,7 @@ typedef struct janus_videocall_session {
 } janus_videocall_session;
 static GHashTable *sessions;
 static GList *old_sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 /* Error codes */
@@ -471,7 +471,6 @@ int janus_videocall_init(janus_callbacks *callback, const char *config_path) {
 	config = NULL;
 	
 	sessions = g_hash_table_new(g_str_hash, g_str_equal);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_videocall_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
