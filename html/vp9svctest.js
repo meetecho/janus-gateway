@@ -151,7 +151,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message (publisher) :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var event = msg["videoroom"];
 									Janus.debug("Event: " + event);
 									if(event != undefined && event != null) {
@@ -256,7 +256,7 @@ $(document).ready(function() {
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
 									mystream = stream;
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videolocal').empty();
 									$('#videojoin').hide();
 									$('#videos').removeClass('hide').show();
@@ -425,7 +425,7 @@ function newRemoteFeed(id, display) {
 			},
 			onmessage: function(msg, jsep) {
 				Janus.debug(" ::: Got a message (listener) :::");
-				Janus.debug(JSON.stringify(msg));
+				Janus.debug(msg);
 				var event = msg["videoroom"];
 				Janus.debug("Event: " + event);
 				if(event != undefined && event != null) {
@@ -498,11 +498,19 @@ function newRemoteFeed(id, display) {
 			},
 			onremotestream: function(stream) {
 				Janus.debug("Remote feed #" + remoteFeed.rfindex);
-				if($('#remotevideo'+remoteFeed.rfindex).length === 0) {
-					// No remote video yet
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
-					$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
+				if($('#remotevideo'+remoteFeed.rfindex).length > 0) {
+					// Been here already: let's see if anything changed
+					var videoTracks = stream.getVideoTracks();
+					if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
+						$('#novideo'+remoteFeed.rfindex).remove();
+						if($("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth)
+							$('#remotevideo'+remoteFeed.rfindex).show();
+					}
+					return;
 				}
+				// No remote video yet
+				$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered" id="waitingvideo' + remoteFeed.rfindex + '" width=320 height=240 />');
+				$('#videoremote'+remoteFeed.rfindex).append('<video class="rounded centered relative hide" id="remotevideo' + remoteFeed.rfindex + '" width="100%" height="100%" autoplay/>');
 				$('#videoremote'+remoteFeed.rfindex).append(
 					'<span class="label label-primary hide" id="curres'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
 					'<span class="label label-info hide" id="curbitrate'+remoteFeed.rfindex+'" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>');
@@ -512,7 +520,8 @@ function newRemoteFeed(id, display) {
 						remoteFeed.spinner.stop();
 					remoteFeed.spinner = null;
 					$('#waitingvideo'+remoteFeed.rfindex).remove();
-					$('#remotevideo'+remoteFeed.rfindex).removeClass('hide');
+					if(this.videoWidth)
+						$('#remotevideo'+remoteFeed.rfindex).removeClass('hide').show();
 					var width = this.videoWidth;
 					var height = this.videoHeight;
 					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
@@ -523,7 +532,7 @@ function newRemoteFeed(id, display) {
 					// No remote video
 					$('#remotevideo'+remoteFeed.rfindex).hide();
 					$('#videoremote'+remoteFeed.rfindex).append(
-						'<div class="no-video-container">' +
+						'<div id="novideo'+remoteFeed.rfindex+'" class="no-video-container">' +
 							'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
 							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
 						'</div>');
@@ -546,7 +555,9 @@ function newRemoteFeed(id, display) {
 				if(remoteFeed.spinner !== undefined && remoteFeed.spinner !== null)
 					remoteFeed.spinner.stop();
 				remoteFeed.spinner = null;
+				$('#remotevideo'+remoteFeed.rfindex).remove();
 				$('#waitingvideo'+remoteFeed.rfindex).remove();
+				$('#novideo'+remoteFeed.rfindex).remove();
 				$('#curbitrate'+remoteFeed.rfindex).remove();
 				$('#curres'+remoteFeed.rfindex).remove();
 				if(bitrateTimer[remoteFeed.rfindex] !== null && bitrateTimer[remoteFeed.rfindex] !== null) 
