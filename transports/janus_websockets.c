@@ -146,7 +146,7 @@ static struct libwebsocket_context *wss = NULL, *swss = NULL,
 #endif
 /* libwebsockets sessions that have been closed */
 static GList *old_wss;
-static janus_mutex old_wss_mutex;
+static janus_mutex old_wss_mutex = JANUS_MUTEX_INITIALIZER;
 /* Callbacks for HTTP-related events (automatically rejected) */
 static int janus_websockets_callback_http(
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
@@ -428,7 +428,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		JANUS_LOG(LOG_VERB, "libwebsockets logging: %d\n", ws_log_level);
 		lws_set_log_level(ws_log_level, NULL);
 		old_wss = NULL;
-		janus_mutex_init(&old_wss_mutex);
 
 		/* Any ACL for either the Janus or Admin API? */
 		item = janus_config_get_item_drilldown(config, "general", "ws_acl");

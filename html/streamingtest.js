@@ -108,7 +108,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
 										if(result["status"] !== undefined && result["status"] !== null) {
@@ -161,13 +161,23 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
-									if($('#remotevideo').length === 0)
-										$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+									Janus.debug(stream);
+									if($('#remotevideo').length > 0) {
+										// Been here already: let's see if anything changed
+										var videoTracks = stream.getVideoTracks();
+										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
+											$('#novideo').remove();
+											if($("#remotevideo").get(0).videoWidth)
+												$('#remotevideo').show();
+										}
+										return;
+									}
+									$('#stream').append('<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
 									// Show the stream and hide the spinner when we get a playing event
 									$("#remotevideo").bind("playing", function () {
 										$('#waitingvideo').remove();
-										$('#remotevideo').removeClass('hide');
+										if(this.videoWidth)
+											$('#remotevideo').removeClass('hide').show();
 										if(spinner !== null && spinner !== undefined)
 											spinner.stop();
 										spinner = null;
@@ -205,11 +215,22 @@ $(document).ready(function() {
 										}, 1000);
 									}
 									Janus.attachMediaStream($('#remotevideo').get(0), stream);
+									var videoTracks = stream.getVideoTracks();
+									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
+										// No remote video
+										$('#remotevideo').hide();
+										$('#stream').append(
+											'<div id="novideo" class="no-video-container">' +
+												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
+												'<span class="no-video-text">No remote video available</span>' +
+											'</div>');
+									}
 								},
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#waitingvideo').remove();
 									$('#remotevideo').remove();
+									$('.no-video-container').remove();
 									$('#bitrate').attr('disabled', true);
 									$('#bitrateset').html('Bandwidth<span class="caret"></span>');
 									$('#curbitrate').hide();

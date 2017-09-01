@@ -108,7 +108,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									if(msg["error"] !== undefined && msg["error"] !== null) {
 										bootbox.alert(msg["error"]);
 									}

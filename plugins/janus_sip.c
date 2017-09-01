@@ -374,7 +374,7 @@ static GHashTable *sessions;
 static GList *old_sessions;
 static GHashTable *identities;
 static GHashTable *callids;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 #undef SU_ROOT_MAGIC_T
@@ -865,7 +865,6 @@ int janus_sip_init(janus_callbacks *callback, const char *config_path) {
 	sessions = g_hash_table_new(NULL, NULL);
 	callids = g_hash_table_new(g_str_hash, g_str_equal);
 	identities = g_hash_table_new(g_str_hash, g_str_equal);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_sip_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;

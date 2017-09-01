@@ -236,7 +236,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									if(jsep !== undefined && jsep !== null) {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
@@ -289,7 +289,7 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									if($('#myvideo').length === 0) {
 										$('#videos').removeClass('hide').show();
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -320,37 +320,38 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
-									if($('#peervideo').length === 0) {
-										$('#videos').removeClass('hide').show();
-										$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
-										// Show the video, hide the spinner and show the resolution when we get a playing event
-										$("#peervideo").bind("playing", function () {
-											$('#waitingvideo').remove();
-											$('#peervideo').removeClass('hide');
-											if(spinner !== null && spinner !== undefined)
-												spinner.stop();
-											spinner = null;
-											var width = this.videoWidth;
-											var height = this.videoHeight;
-											$('#curres').removeClass('hide').text(width+'x'+height).show();
-											if(adapter.browserDetails.browser === "firefox") {
-												// Firefox Stable has a bug: width and height are not immediately available after a playing
-												setTimeout(function() {
-													var width = $("#peervideo").get(0).videoWidth;
-													var height = $("#peervideo").get(0).videoHeight;
-													$('#curres').removeClass('hide').text(width+'x'+height).show();
-												}, 2000);
-											}
-										});
+									Janus.debug(stream);
+									if($('#peervideo').length > 0) {
+										// Been here already: let's see if anything changed
+										var videoTracks = stream.getVideoTracks();
+										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
+											$('#novideo').remove();
+											if($("#peervideo").get(0).videoWidth)
+												$('#peervideo').show();
+										}
+										return;
 									}
+									$('#videos').removeClass('hide').show();
+									$('#videoright').append('<video class="rounded centered hide" id="peervideo" width=320 height=240 autoplay/>');
+									// Show the video, hide the spinner and show the resolution when we get a playing event
+									$("#peervideo").bind("playing", function () {
+										$('#waitingvideo').remove();
+										if(this.videoWidth)
+											$('#peervideo').removeClass('hide').show();
+										if(spinner !== null && spinner !== undefined)
+											spinner.stop();
+										spinner = null;
+										var width = this.videoWidth;
+										var height = this.videoHeight;
+										$('#curres').removeClass('hide').text(width+'x'+height).show();
+									});
 									Janus.attachMediaStream($('#peervideo').get(0), stream);
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks === null || videoTracks === undefined || videoTracks.length === 0 || videoTracks[0].muted) {
 										// No remote video
 										$('#peervideo').hide();
 										$('#videoright').append(
-											'<div class="no-video-container">' +
+											'<div id="novideo" class="no-video-container">' +
 												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 												'<span class="no-video-text">No remote video available</span>' +
 											'</div>');
@@ -422,6 +423,7 @@ $(document).ready(function() {
 									$('#myvideo').remove();
 									$('#waitingvideo').remove();
 									$('#peervideo').remove();
+									$('.no-video-container').remove();
 									audioenabled = true;
 									$('#toggleaudio').attr('disabled', true).html("Disable audio").removeClass("btn-success").addClass("btn-danger");
 									videoenabled = true;
