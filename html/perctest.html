@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>Janus WebRTC Gateway: PERC-Lite Video Room Demo</title>
-<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/3.4.3/adapter.min.js" ></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/5.0.1/adapter.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" ></script>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.0.2/js/bootstrap.min.js"></script>
@@ -59,6 +59,12 @@
 						and all attempts to interact with PERC-enabled browsers will fail. Apart from this,
 						no specific control is exposed: this demo is only meant to show how PERC-encrypted
 						streams and communication can still work through Janus.</p>
+						<p>Considering streams are encrypted and Janus cannot access the packets, beware that
+						this currently prevents features like Simulcasting and VP9 SVC to work, as those require
+						Janus to inspect (and sometimes manipulate) the payload descriptors. This will be fixed
+						in the future, when support for the
+						<a target="_blank" href="https://tools.ietf.org/html/draft-ietf-avtext-framemarking">Frame Marking</a>
+						extension will be implemented.</p>
 						<p>Press the <code>Start</code> button above to launch the demo.</p>
 					</div>
 				</div>
