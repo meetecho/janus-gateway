@@ -125,7 +125,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var event = msg["voicemail"];
 									Janus.debug("Event: " + event);
 									if(event != undefined && event != null) {

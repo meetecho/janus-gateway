@@ -130,7 +130,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									var result = msg["result"];
 									if(result !== null && result !== undefined) {
 										if(result["status"] !== undefined && result["status"] !== null) {
@@ -231,7 +231,7 @@ $(document).ready(function() {
 									if(playing === true)
 										return;
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videotitle').html("Recording...");
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
@@ -252,20 +252,22 @@ $(document).ready(function() {
 									if(playing === false)
 										return;
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
+									if($('#thevideo').length > 0) {
+										// Been here already
+										return;
+									}
 									$('#videotitle').html(selectedRecordingInfo);
 									$('#stop').unbind('click').click(stop);
 									$('#video').removeClass('hide').show();
-									if($('#thevideo').length === 0) {
-										$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
-										// No remote video yet
-										$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
-										if(spinner == null) {
-											var target = document.getElementById('videobox');
-											spinner = new Spinner({top:100}).spin(target);
-										} else {
-											spinner.spin();
-										}
+									$('#videobox').append('<video class="rounded centered hide" id="thevideo" width=320 height=240 autoplay/>');
+									// No remote video yet
+									$('#videobox').append('<video class="rounded centered" id="waitingvideo" width=320 height=240 />');
+									if(spinner == null) {
+										var target = document.getElementById('videobox');
+										spinner = new Spinner({top:100}).spin(target);
+									} else {
+										spinner.spin();
 									}
 									// Show the video, hide the spinner and show the resolution when we get a playing event
 									$("#thevideo").bind("playing", function () {
