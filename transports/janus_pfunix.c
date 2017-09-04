@@ -129,7 +129,7 @@ typedef struct janus_pfunix_client {
 	gboolean session_timeout;	/* Whether a Janus session timeout occurred in the core */
 } janus_pfunix_client;
 static GHashTable *clients = NULL, *clients_by_fd = NULL, *clients_by_path = NULL;
-static janus_mutex clients_mutex;
+static janus_mutex clients_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 /* Helper to create a named Unix Socket out of the path to link to */
@@ -289,7 +289,6 @@ int janus_pfunix_init(janus_transport_callbacks *callback, const char *config_pa
 	clients = g_hash_table_new(NULL, NULL);
 	clients_by_fd = g_hash_table_new(NULL, NULL);
 	clients_by_path = g_hash_table_new(g_str_hash, g_str_equal);
-	janus_mutex_init(&clients_mutex);
 
 	/* Start the Unix Sockets service thread */
 	GError *error = NULL;

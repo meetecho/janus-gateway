@@ -125,7 +125,7 @@ typedef struct janus_http_msg {
 	json_t *response;					/* The response from the core */
 } janus_http_msg;
 static GHashTable *messages = NULL;
-static janus_mutex messages_mutex;
+static janus_mutex messages_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 /* Helper for long poll: HTTP events to push per session */
@@ -872,7 +872,6 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	http_admin_api_enabled = admin_ws || admin_sws;
 
 	messages = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&messages_mutex);
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	old_sessions = NULL;
 	janus_mutex_init(&sessions_mutex);
