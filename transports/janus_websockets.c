@@ -292,6 +292,7 @@ static const char *janus_websockets_reason_string(enum libwebsocket_callback_rea
 		CASE_STR(LWS_CALLBACK_UNLOCK_POLL);
 		CASE_STR(LWS_CALLBACK_OPENSSL_CONTEXT_REQUIRES_PRIVATE_KEY);
 		CASE_STR(LWS_CALLBACK_USER);
+		CASE_STR(LWS_CALLBACK_RECEIVE_PONG);
 		default:
 			break;
 	}
@@ -467,6 +468,36 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			list = NULL;
 		}
 
+		/* Check if we need to enable the transport level ping/pong mechanism */
+		int pingpong_trigger = 0, pingpong_timeout = 0;
+		item = janus_config_get_item_drilldown(config, "general", "pingpong_trigger");
+		if(item && item->value) {
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+			pingpong_trigger = atoi(item->value);
+			if(pingpong_trigger < 0) {
+				JANUS_LOG(LOG_WARN, "Invalid value for pingpong_trigger (%d), ignoring...\n", pingpong_trigger);
+				pingpong_trigger = 0;
+			}
+#else
+			JANUS_LOG(LOG_WARN, "WebSockets ping/pong only supported in libwebsockets >= 2.1\n");
+#endif
+		}
+		item = janus_config_get_item_drilldown(config, "general", "pingpong_timeout");
+		if(item && item->value) {
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+			pingpong_timeout = atoi(item->value);
+			if(pingpong_timeout < 0) {
+				JANUS_LOG(LOG_WARN, "Invalid value for pingpong_timeout (%d), ignoring...\n", pingpong_timeout);
+				pingpong_timeout = 0;
+			}
+#else
+			JANUS_LOG(LOG_WARN, "WebSockets ping/pong only supported in libwebsockets >= 2.1\n");
+#endif
+		}
+		if((pingpong_trigger && !pingpong_timeout) || (!pingpong_trigger && pingpong_timeout)) {
+			JANUS_LOG(LOG_WARN, "pingpong_trigger and pingpong_timeout not both set, ignoring...\n");
+		}
+
 		/* Setup the Janus API WebSockets server(s) */
 		item = janus_config_get_item_drilldown(config, "general", "ws");
 		if(!item || !item->value || !janus_is_true(item->value)) {
@@ -506,6 +537,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+			if(pingpong_trigger > 0 && pingpong_timeout > 0) {
+				info.ws_ping_pong_interval = pingpong_trigger;
+				info.timeout_secs = pingpong_timeout;
+			}
+#endif
 			/* Create the WebSocket context */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			wss = lws_create_context(&info);
@@ -571,6 +608,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #else
 				info.options = 0;
 #endif
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+				if(pingpong_trigger > 0 && pingpong_timeout > 0) {
+					info.ws_ping_pong_interval = pingpong_trigger;
+					info.timeout_secs = pingpong_timeout;
+				}
+#endif
 				/* Create the secure WebSocket context */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 				swss = lws_create_context(&info);
@@ -624,6 +667,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+			if(pingpong_trigger > 0 && pingpong_timeout > 0) {
+				info.ws_ping_pong_interval = pingpong_trigger;
+				info.timeout_secs = pingpong_timeout;
+			}
+#endif
 			/* Create the WebSocket context */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			admin_wss = lws_create_context(&info);
@@ -688,6 +737,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 #else
 				info.options = 0;
+#endif
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+				if(pingpong_trigger > 0 && pingpong_timeout > 0) {
+					info.ws_ping_pong_interval = pingpong_trigger;
+					info.timeout_secs = pingpong_timeout;
+				}
 #endif
 				/* Create the secure WebSocket context */
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI

@@ -2104,7 +2104,7 @@ function Janus(gatewayCallbacks) {
 									// New stats
 									inStats = true;
 								} else if(res.type == 'ssrc' && res.bytesReceived &&
-										medium === "video" && (res.googCodecName === "VP8" || res.googCodecName === "")) {
+										(res.googCodecName === "VP8" || res.googCodecName === "")) {
 									// Older Chromer versions
 									inStats = true;
 								}
