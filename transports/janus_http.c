@@ -125,7 +125,7 @@ typedef struct janus_http_msg {
 	json_t *response;					/* The response from the core */
 } janus_http_msg;
 static GHashTable *messages = NULL;
-static janus_mutex messages_mutex;
+static janus_mutex messages_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_http_msg_destroy(void *msg) {
 	if(!msg)
@@ -153,7 +153,7 @@ typedef struct janus_http_session {
 /* We keep track of created sessions as we handle long polls */
 const char *keepalive_id = "keepalive";
 GHashTable *sessions = NULL;
-janus_mutex sessions_mutex;
+janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_http_session_destroy(janus_http_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -860,9 +860,7 @@ int janus_http_init(janus_transport_callbacks *callback, const char *config_path
 	http_admin_api_enabled = admin_ws || admin_sws;
 
 	messages = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_transport_session_destroy);
-	janus_mutex_init(&messages_mutex);
 	sessions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_http_session_destroy);
-	janus_mutex_init(&sessions_mutex);
 	
 	/* Done */
 	g_atomic_int_set(&initialized, 1);

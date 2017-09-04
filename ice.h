@@ -449,6 +449,10 @@ struct janus_ice_component {
 	GSource *dtlsrt_source;
 	/*! \brief DTLS-SRTP stack */
 	janus_dtls_srtp *dtls;
+	/*! \brief Whether we should do NACKs (in or out) for audio */
+	gboolean do_audio_nacks;
+	/*! \brief Whether we should do NACKs (in or out) for video */
+	gboolean do_video_nacks;
 	/*! \brief List of previously sent janus_rtp_packet RTP packets, in case we receive NACKs */
 	GList *retransmit_buffer;
 	/*! \brief Last time a log message about sending retransmits was printed */

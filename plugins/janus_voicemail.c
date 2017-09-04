@@ -206,7 +206,7 @@ typedef struct janus_voicemail_session {
 	janus_refcount ref;
 } janus_voicemail_session;
 static GHashTable *sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_voicemail_session_destroy(janus_voicemail_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -301,7 +301,6 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 	
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_voicemail_session_destroy);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_voicemail_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;

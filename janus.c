@@ -448,11 +448,10 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				continue;
 			}
 			gint64 now = janus_get_monotonic_time();
-			if (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC && !g_atomic_int_get(&session->timeout)) {
+			if (now - session->last_activity >= (gint64)session_timeout * G_USEC_PER_SEC &&
+					!g_atomic_int_compare_and_exchange(&session->timeout, 0, 1)) {
 				JANUS_LOG(LOG_INFO, "Timeout expired for session %"SCNu64"...\n", session->session_id);
 				/* Mark the session as over, we'll deal with it later */
-				session->timeout = 1;
-				/* Remove all handles */
 				janus_session_handles_clear(session);
 				/* Notify the transport */
 				if(session->source) {
@@ -468,8 +467,6 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				/* FIXME Is this safe? apparently it causes hash table errors on the console */
 				g_hash_table_iter_remove(&iter);
 
-				/* Mark the session as over, we'll deal with it later */
-				g_atomic_int_set(&session->timeout, 1);
 				janus_session_destroy(session);
 			}
 		}
@@ -1103,7 +1100,6 @@ int janus_process_incoming_request(janus_request *request) {
 			goto jsondone;
 		}
 		janus_mutex_lock(&sessions_mutex);
-		janus_session_handles_clear(session);
 		g_hash_table_remove(sessions, &session->session_id);
 		janus_mutex_unlock(&sessions_mutex);
 		/* Notify the source that the session has been destroyed */
@@ -2466,7 +2462,9 @@ void janus_transport_gone(janus_transport *plugin, janus_transport_session *tran
 				continue;
 			if(session->source && session->source->instance == transport) {
 				JANUS_LOG(LOG_VERB, "  -- Marking Session %"SCNu64" as over\n", session->session_id);
-				session->last_activity = 0;	/* This will trigger a timeout */
+				/* Mark the session as destroyed */
+				janus_session_destroy(session);
+				g_hash_table_iter_remove(&iter);
 			}
 		}
 	}

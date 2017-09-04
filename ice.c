@@ -2020,6 +2020,10 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 
 				/* Keep track of RTP sequence numbers, in case we need to NACK them */
 				/* 	Note: unsigned int overflow/underflow wraps (defined behavior) */
+				if((!video && !component->do_audio_nacks) || (video && !component->do_video_nacks)) {
+					/* ... unless NACKs are disabled for this medium */
+					return;
+				}
 				guint16 new_seqn = ntohs(header->seq_number);
 				guint16 cur_seqn;
 				int last_seqs_len = 0;
@@ -2200,7 +2204,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				gint64 now = janus_get_monotonic_time();
 				GSList *nacks = janus_rtcp_get_nacks(buf, buflen);
 				guint nacks_count = g_slist_length(nacks);
-				if(nacks_count) {
+				if(nacks_count && ((!video && component->do_audio_nacks) || (video && component->do_video_nacks))) {
 					/* Handle NACK */
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"]     Just got some NACKS (%d) we should handle...\n", handle->handle_id, nacks_count);
 					GSList *list = nacks;
@@ -2936,6 +2940,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		audio_rtp->icefailed_detected = 0;
 		audio_rtp->dtlsrt_source = NULL;
 		audio_rtp->dtls = NULL;
+		audio_rtp->do_audio_nacks = FALSE;
+		audio_rtp->do_video_nacks = FALSE;
 		audio_rtp->retransmit_buffer = NULL;
 		audio_rtp->retransmit_log_ts = 0;
 		audio_rtp->retransmit_recent_cnt = 0;
@@ -3003,6 +3009,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			audio_rtcp->icefailed_detected = 0;
 			audio_rtcp->dtlsrt_source = NULL;
 			audio_rtcp->dtls = NULL;
+			audio_rtcp->do_audio_nacks = FALSE;
+			audio_rtcp->do_video_nacks = FALSE;
 			audio_rtcp->retransmit_buffer = NULL;
 			audio_rtcp->retransmit_log_ts = 0;
 			audio_rtcp->retransmit_recent_cnt = 0;
@@ -3108,6 +3116,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		video_rtp->icefailed_detected = 0;
 		video_rtp->dtlsrt_source = NULL;
 		video_rtp->dtls = NULL;
+		video_rtp->do_audio_nacks = FALSE;
+		video_rtp->do_video_nacks = FALSE;
 		video_rtp->retransmit_buffer = NULL;
 		video_rtp->retransmit_log_ts = 0;
 		video_rtp->retransmit_recent_cnt = 0;
@@ -3175,6 +3185,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 			video_rtcp->icefailed_detected = 0;
 			video_rtcp->dtlsrt_source = NULL;
 			video_rtcp->dtls = NULL;
+			video_rtcp->do_audio_nacks = FALSE;
+			video_rtcp->do_video_nacks = FALSE;
 			video_rtcp->retransmit_buffer = NULL;
 			video_rtcp->retransmit_log_ts = 0;
 			video_rtcp->retransmit_recent_cnt = 0;
@@ -3271,6 +3283,8 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 		data_component->icefailed_detected = 0;
 		data_component->dtlsrt_source = NULL;
 		data_component->dtls = NULL;
+		data_component->do_audio_nacks = FALSE;
+		data_component->do_video_nacks = FALSE;
 		data_component->retransmit_buffer = NULL;
 		data_component->retransmit_log_ts = 0;
 		data_component->retransmit_recent_cnt = 0;
@@ -3836,6 +3850,15 @@ void *janus_ice_send_thread(void *data) {
 						}
 						if(max_nack_queue > 0) {
 							/* Save the packet for retransmissions that may be needed later */
+							if((pkt->type == JANUS_ICE_PACKET_AUDIO && !component->do_audio_nacks) ||
+									(pkt->type == JANUS_ICE_PACKET_VIDEO && !component->do_video_nacks)) {
+								/* ... unless NACKs are disabled for this medium */
+								g_free(pkt->data);
+								pkt->data = NULL;
+								g_free(pkt);
+								pkt = NULL;
+								continue;
+							}
 							janus_rtp_packet *p = (janus_rtp_packet *)g_malloc0(sizeof(janus_rtp_packet));
 							if(p == NULL) {
 								JANUS_LOG(LOG_FATAL, "Memory error!\n");

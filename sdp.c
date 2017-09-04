@@ -309,6 +309,16 @@ int janus_sdp_process(void *ice_handle, janus_sdp *remote_sdp) {
 					if(res != 0) {
 						JANUS_LOG(LOG_ERR, "[%"SCNu64"] Failed to parse SSRC attribute... (%d)\n", handle->handle_id, res);
 					}
+				} else if(!strcasecmp(a->name, "rtcp-fb")) {
+					if(a->value && strstr(a->value, "nack") && stream->rtp_component) {
+						if(m->type == JANUS_SDP_AUDIO) {
+							/* Enable NACKs for audio */
+							stream->rtp_component->do_audio_nacks = TRUE;
+						} else if(m->type == JANUS_SDP_VIDEO) {
+							/* Enable NACKs for video */
+							stream->rtp_component->do_video_nacks = TRUE;
+						}
+					}
 				}
 #ifdef HAVE_SCTP
 				else if(!strcasecmp(a->name, "sctpmap")) {
