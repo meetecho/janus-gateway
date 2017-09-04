@@ -185,7 +185,7 @@ static struct janus_json_parameter message_parameters[] = {
 /* Static configuration instance */
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
-static janus_mutex config_mutex;
+static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -213,7 +213,7 @@ typedef struct janus_textroom_room {
 	janus_refcount ref;
 } janus_textroom_room;
 static GHashTable *rooms;
-static janus_mutex rooms_mutex;
+static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
 
 typedef struct janus_textroom_session {
@@ -228,7 +228,7 @@ typedef struct janus_textroom_session {
 	janus_refcount ref;
 } janus_textroom_session;
 static GHashTable *sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 typedef struct janus_textroom_participant {
 	janus_textroom_session *session;
@@ -387,12 +387,8 @@ int janus_textroom_init(janus_callbacks *callback, const char *config_path) {
 	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
-	janus_mutex_init(&config_mutex);
-	
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_textroom_room_destroy);
-	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_textroom_session_destroy);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_textroom_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;

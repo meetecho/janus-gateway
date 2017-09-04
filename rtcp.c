@@ -541,7 +541,7 @@ int janus_rtcp_report_block(rtcp_context *ctx, report_block *rb) {
 	rb->flcnpl = htonl(lost | fraction);
 	if(ctx->lsr > 0) {
 		rb->lsr = htonl(ctx->lsr);
-		rb->delay = htonl(((now - ctx->lsr_ts) / 1000000) << 16);
+		rb->delay = htonl(((now - ctx->lsr_ts) << 16) / 1000000);
 	} else {
 		rb->lsr = 0;
 		rb->delay = 0;

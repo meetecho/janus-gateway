@@ -137,7 +137,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 \verbatim
 {
 	"request" : "edit",
-	"room" : <unique numeric ID of the room to destroy>,
+	"room" : <unique numeric ID of the room to edit>,
 	"secret" : "<room secret, mandatory if configured>",
 	"new_description" : "<new pretty name of the room, optional>",
 	"new_secret" : "<new password required to edit/destroy the room, optional>",
@@ -724,7 +724,7 @@ static struct janus_json_parameter stop_rtp_forward_parameters[] = {
 /* Static configuration instance */
 static janus_config *config = NULL;
 static const char *config_folder = NULL;
-static janus_mutex config_mutex;
+static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -776,7 +776,7 @@ typedef struct janus_audiobridge_room {
 	janus_refcount ref;			/* Reference counter for this room */
 } janus_audiobridge_room;
 static GHashTable *rooms;
-static janus_mutex rooms_mutex;
+static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
 
 typedef struct janus_audiobridge_session {
@@ -791,7 +791,7 @@ typedef struct janus_audiobridge_session {
 	janus_refcount ref;
 } janus_audiobridge_session;
 static GHashTable *sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_audiobridge_session_destroy(janus_audiobridge_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -1025,12 +1025,9 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 	config_folder = config_path;
 	if(config != NULL)
 		janus_config_print(config);
-	janus_mutex_init(&config_mutex);
 	
 	rooms = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_audiobridge_room_destroy);
-	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_audiobridge_session_destroy);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_audiobridge_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;

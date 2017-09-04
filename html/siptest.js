@@ -148,7 +148,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									// Any error?
 									var error = msg["error"];
 									if(error != null && error != undefined) {
@@ -325,7 +325,7 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -352,34 +352,43 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
-									if($('#remotevideo').length === 0) {
-										$('#videoright').parent().find('h3').html(
-											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
-										$('#videoright').append(
-											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
-										for(var i=0; i<12; i++) {
-											if(i<10)
-												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
-											else if(i == 10)
-												$('#dtmf').append('<button class="btn btn-info dtmf">#</button>');
-											else if(i == 11)
-												$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
+									Janus.debug(stream);
+									if($('#remotevideo').length > 0) {
+										// Been here already: let's see if anything changed
+										var videoTracks = stream.getVideoTracks();
+										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
+											$('#novideo').remove();
+											if($("#remotevideo").get(0).videoWidth)
+												$('#remotevideo').show();
 										}
-										$('.dtmf').click(function() {
-											if(adapter.browserDetails.browser === 'chrome') {
-												// Send DTMF tone (inband)
-												sipcall.dtmf({dtmf: { tones: $(this).text()}});
-											} else {
-												// Try sending the DTMF tone using SIP INFO
-												sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
-											}
-										});
+										return;
 									}
+									$('#videoright').parent().find('h3').html(
+										'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
+									$('#videoright').append(
+										'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+									for(var i=0; i<12; i++) {
+										if(i<10)
+											$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
+										else if(i == 10)
+											$('#dtmf').append('<button class="btn btn-info dtmf">#</button>');
+										else if(i == 11)
+											$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
+									}
+									$('.dtmf').click(function() {
+										if(adapter.browserDetails.browser === 'chrome') {
+											// Send DTMF tone (inband)
+											sipcall.dtmf({dtmf: { tones: $(this).text()}});
+										} else {
+											// Try sending the DTMF tone using SIP INFO
+											sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
+										}
+									});
 									// Show the peer and hide the spinner when we get a playing event
 									$("#remotevideo").bind("playing", function () {
 										$('#waitingvideo').remove();
-										$('#remotevideo').removeClass('hide');
+										if(this.videoWidth)
+											$('#remotevideo').removeClass('hide').show();
 										if(spinner !== null && spinner !== undefined)
 											spinner.stop();
 										spinner = null;
@@ -390,7 +399,7 @@ $(document).ready(function() {
 										// No remote video
 										$('#remotevideo').hide();
 										$('#videoright').append(
-											'<div class="no-video-container">' +
+											'<div id="novideo" class="no-video-container">' +
 												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 												'<span class="no-video-text">No remote video available</span>' +
 											'</div>');

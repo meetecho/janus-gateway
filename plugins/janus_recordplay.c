@@ -387,7 +387,7 @@ typedef struct janus_recordplay_recording {
 	janus_mutex mutex;			/* Mutex for this recording */
 } janus_recordplay_recording;
 static GHashTable *recordings = NULL;
-static janus_mutex recordings_mutex;
+static janus_mutex recordings_mutex = JANUS_MUTEX_INITIALIZER;
 
 typedef struct janus_recordplay_session {
 	janus_plugin_session *handle;
@@ -414,7 +414,7 @@ typedef struct janus_recordplay_session {
 	janus_refcount ref;
 } janus_recordplay_session;
 static GHashTable *sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_recordplay_session_destroy(janus_recordplay_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
@@ -569,11 +569,9 @@ int janus_recordplay_init(janus_callbacks *callback, const char *config_path) {
 		}
 	}
 	recordings = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_recordplay_recording_destroy);
-	janus_mutex_init(&recordings_mutex);
 	janus_recordplay_update_recordings_list();
 	
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_recordplay_session_destroy);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_recordplay_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;

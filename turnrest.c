@@ -30,7 +30,7 @@
 static const char *api_server = NULL;
 static const char *api_key = NULL;
 static gboolean api_http_get = FALSE;
-static janus_mutex api_mutex;
+static janus_mutex api_mutex = JANUS_MUTEX_INITIALIZER;
 
 
 /* Buffer we use to receive the response via libcurl */
@@ -62,7 +62,6 @@ static size_t janus_turnrest_callback(void *payload, size_t size, size_t nmemb, 
 void janus_turnrest_init(void) {
 	/* Initialize libcurl, needed for contacting the TURN REST API backend */
 	curl_global_init(CURL_GLOBAL_ALL);
-	janus_mutex_init(&api_mutex);
 }
 
 void janus_turnrest_deinit(void) {
