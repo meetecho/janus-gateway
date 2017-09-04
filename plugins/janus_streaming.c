@@ -3759,8 +3759,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	live_rtsp->codecs.audio_fmtp = doaudio ? (afmtp ? g_strdup(afmtp) : NULL) : NULL;
 	live_rtsp->codecs.video_rtpmap = dovideo ? (vrtpmap ? g_strdup(vrtpmap) : NULL) : NULL;
 	live_rtsp->codecs.video_fmtp = dovideo ? (vfmtp ? g_strdup(vfmtp) : NULL) : NULL;
-		live_rtsp->codecs.audio_rtpmap, live_rtsp->codecs.audio_fmtp,
-		live_rtsp->codecs.video_rtpmap, live_rtsp->codecs.video_fmtp);
 	/* Now connect to the RTSP server */
 	if(janus_streaming_rtsp_connect_to_server(live_rtsp) < 0) {
 		/* Error connecting, get rid of the mountpoint */
