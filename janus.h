@@ -53,9 +53,9 @@ typedef struct janus_session {
 	/*! \brief Pointer to the request instance (and the transport that originated the session) */
 	janus_request *source;
 	/*! \brief Flag to trigger a lazy session destruction */
-	gint destroy:1;
+	volatile gint destroy;
 	/*! \brief Flag to notify there's been a session timeout */
-	gint timeout:1;
+	volatile gint timeout;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 } janus_session;
