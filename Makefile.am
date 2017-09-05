@@ -29,7 +29,7 @@ bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
 header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
-	rtcp.h rtp.h sdp-utils.h ip-utils.h utils.h
+	rtcp.h rtp.h sdp-utils.h ip-utils.h utils.h text2pcap.h
 
 pluginsheaderdir = $(includedir)/janus/plugins
 pluginsheader_HEADERS = plugins/plugin.h
@@ -130,6 +130,8 @@ janus_SOURCES = \
 	utils.h \
 	version.c \
 	version.h \
+	text2pcap.c \
+	text2pcap.h \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
