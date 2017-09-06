@@ -2715,6 +2715,7 @@ ldd janus | grep asan
  *    - Presentation at <a href="https://www.youtube.com/watch?v=WfNciKbsP80">WebRTC Meetup Tokyo #12</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=gArqopeNQY0">DevDay Napoli</a> (in Italian);
  *    - Presentation on Event Handlers at <a href="http://bofh.nikhef.nl/events/FOSDEM/2017/K.3.401/janus.vp8.webm">FOSDEM 2017</a>;
+ *    - Presentation on different SIP options in Janus at <a href="https://www.youtube.com/watch?v=anmyMC6Ovl8&t=25112s">OpenSIPS 2017</a>;
  *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>. \n\n
  *    .
  * -# <b>Why is Janus called like that?</b>\n
