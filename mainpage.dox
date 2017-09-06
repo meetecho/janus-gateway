@@ -2707,13 +2707,15 @@ ldd janus | grep asan
  *    what Janus can do and how to use it.\n\n
  *    There are several videos available that you can find online, here
  *    are some of them as quick pointers:
- *    - Presentations at <a href="https://www.youtube.com/watch?v=u0PyXgAC8m4">#vuc485</a>
- *    and <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">#vuc584</a>;
- *    - Presentation at <a href="https://www.youtube.com/watch?v=SFeWYewoL7Q">OpenSIPS summit</a>;
- *    - Presentation at <a href="https://www.youtube.com/watch?v=yvt-vMHW83c">Kamailio World</a>;
+ *    - Presentations at <a href="https://www.youtube.com/watch?v=u0PyXgAC8m4">#vuc485</a>,
+ *    <a href="https://www.youtube.com/watch?v=VnflQF7oCLA">#vuc584</a>
+ *    and <a href="https://www.youtube.com/watch?v=XnQ7ECOpRIU">#vuc640</a> (last one more focused on IETF remote participation);
+ *    - Presentation at <a href="https://www.youtube.com/watch?v=SFeWYewoL7Q">OpenSIPS summit 2016</a>;
+ *    - Presentation at <a href="https://www.youtube.com/watch?v=yvt-vMHW83c">Kamailio World 2016</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=WfNciKbsP80">WebRTC Meetup Tokyo #12</a>;
  *    - Presentation at <a href="https://www.youtube.com/watch?v=gArqopeNQY0">DevDay Napoli</a> (in Italian);
- *    - Presentation on Event Handlers at <a href="http://bofh.nikhef.nl/events/FOSDEM/2017/K.3.401/janus.vp8.webm">FOSDEM 2017</a>. \n\n
+ *    - Presentation on Event Handlers at <a href="http://bofh.nikhef.nl/events/FOSDEM/2017/K.3.401/janus.vp8.webm">FOSDEM 2017</a>;
+ *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>. \n\n
  *    .
  * -# <b>Why is Janus called like that?</b>\n
  *    .
