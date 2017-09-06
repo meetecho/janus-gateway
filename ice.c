@@ -1948,6 +1948,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		JANUS_LOG(LOG_ERR, "No handle for stream %d??\n", stream_id);
 		return;
 	}
+	janus_session *session = (janus_session *)handle->session;
 	if(!component->dtls) {	/* Still waiting for the DTLS stack */
 		JANUS_LOG(LOG_WARN, "[%"SCNu64"] Still waiting for the DTLS stack for component %d in stream %d...\n", handle->handle_id, component_id, stream_id);
 		return;
@@ -2064,7 +2065,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 				/* Do we need to dump this packet for debugging? */
 				if(g_atomic_int_get(&handle->dump_packets))
-					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTP, TRUE, buf, buflen, NULL);
+					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTP, TRUE, buf, buflen,
+						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 				/* Pass the data to the responsible plugin */
 				janus_plugin *plugin = (janus_plugin *)handle->app;
 				if(plugin && plugin->incoming_rtp)
@@ -2239,7 +2241,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			} else {
 				/* Do we need to dump this packet for debugging? */
 				if(g_atomic_int_get(&handle->dump_packets))
-					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTCP, TRUE, buf, buflen, NULL);
+					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTCP, TRUE, buf, buflen,
+						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 				/* Check if there's an RTCP BYE: in case, let's wrap up */
 				if(janus_rtcp_has_bye(buf, buflen)) {
 					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
@@ -3768,7 +3771,8 @@ void *janus_ice_send_thread(void *data) {
 				}
 				/* Do we need to dump this packet for debugging? */
 				if(g_atomic_int_get(&handle->dump_packets))
-					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTCP, FALSE, sbuf, pkt->length, NULL);
+					janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTCP, FALSE, sbuf, pkt->length,
+						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 				/* Encrypt SRTCP */
 				int protected = pkt->length;
 				int res = 0;
@@ -3861,7 +3865,8 @@ void *janus_ice_send_thread(void *data) {
 					}
 					/* Do we need to dump this packet for debugging? */
 					if(g_atomic_int_get(&handle->dump_packets))
-						janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTP, FALSE, sbuf, pkt->length, NULL);
+						janus_text2pcap_dump(handle->text2pcap, JANUS_TEXT2PCAP_RTP, FALSE, sbuf, pkt->length,
+							"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 					/* Encrypt SRTP */
 					int protected = pkt->length;
 					int res = srtp_protect(component->dtls->srtp_out, sbuf, &protected);

@@ -80,10 +80,10 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
  * @param[in] incoming Whether this is an incoming or outgoing packet
  * @param[in] buf Packet data to dump
  * @param[in] len Size of the packet data to dump
- * @param[in] custom Optional string to append to the line
+ * @param[in] format Format for the optional string to append to the line, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_text2pcap_dump(janus_text2pcap *instance,
-	janus_text2pcap_packet type, gboolean incoming, char *buf, int len, char *custom);
+	janus_text2pcap_packet type, gboolean incoming, char *buf, int len, const char *format, ...) G_GNUC_PRINTF(6, 7);
 
 /*! \brief Close a text2pcap recorder
  * @param[in] instance Instance of the janus_text2pcap recorder to close

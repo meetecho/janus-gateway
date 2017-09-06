@@ -105,7 +105,7 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, i
 }
 
 int janus_text2pcap_dump(janus_text2pcap *instance,
-		janus_text2pcap_packet type, gboolean incoming, char *buf, int len, char *custom) {
+		janus_text2pcap_packet type, gboolean incoming, char *buf, int len, const char *format, ...) {
 	if(instance == NULL || buf == NULL || len < 1)
 		return -1;
 	janus_mutex_lock_nodebug(&instance->mutex);
@@ -135,7 +135,13 @@ int janus_text2pcap_dump(janus_text2pcap *instance,
 	}
 	g_strlcat(buffer, " ", sizeof(buffer));
 	g_strlcat(buffer, janus_text2pcap_packet_string(type), sizeof(buffer));
-	if(custom && strlen(custom)) {
+	if(format) {
+		/* This callback has variable arguments (error string) */
+		char custom[512];
+		va_list ap;
+		va_start(ap, format);
+		g_vsnprintf(custom, sizeof(custom), format, ap);
+		va_end(ap);
 		g_strlcat(buffer, " ", sizeof(buffer));
 		g_strlcat(buffer, custom, sizeof(buffer));
 	}
