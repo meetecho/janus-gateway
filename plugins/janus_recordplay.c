@@ -378,8 +378,10 @@ typedef struct janus_recordplay_recording {
 	char *date;			/* Time of the recording */
 	char *arc_file;		/* Audio file name */
 	const char *acodec;	/* Codec used for audio, if available */
+	int audio_pt;		/* Payload types to use for audio when playing recordings */
 	char *vrc_file;		/* Video file name */
 	const char *vcodec;	/* Codec used for video, if available */
+	int video_pt;		/* Payload types to use for audio when playing recordings */
 	gboolean completed;	/* Whether this recording was completed or still going on */
 	char *offer;		/* The SDP offer that will be sent to watchers */
 	GList *viewers;		/* List of users watching this recording */
@@ -393,7 +395,7 @@ typedef struct janus_recordplay_session {
 	janus_plugin_session *handle;
 	gboolean active;
 	gboolean recorder;		/* Whether this session is used to record or to replay a WebRTC session */
-	gboolean firefox;	/* We send Firefox users a different kind of FIR */
+	gboolean firefox;		/* We send Firefox users a different kind of FIR */
 	janus_recordplay_recording *recording;
 	janus_recorder *arc;	/* Audio recorder */
 	janus_recorder *vrc;	/* Video recorder */
@@ -422,7 +424,7 @@ static void *janus_recordplay_playout_thread(void *data);
 /* Helper to send RTCP feedback back to recorders, if needed */
 void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video, char *buf, int len);
 
-/* To make things easier, we use static payload types for viewers */
+/* To make things easier, we use static payload types for viewers (unless it's for G.711 or G.722) */
 #define AUDIO_PT		111
 #define VIDEO_PT		100
 
@@ -583,11 +585,11 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		s_name, "1.1.1.1",
 		JANUS_SDP_OA_AUDIO, offer_audio,
 		JANUS_SDP_OA_AUDIO_CODEC, rec->acodec,
-		JANUS_SDP_OA_AUDIO_PT, AUDIO_PT,
+		JANUS_SDP_OA_AUDIO_PT, rec->audio_pt,
 		JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_VIDEO, offer_video,
 		JANUS_SDP_OA_VIDEO_CODEC, rec->vcodec,
-		JANUS_SDP_OA_VIDEO_PT, VIDEO_PT,
+		JANUS_SDP_OA_VIDEO_PT, rec->video_pt,
 		JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
 		JANUS_SDP_OA_DATA, FALSE,
 		JANUS_SDP_OA_DONE);
@@ -1325,6 +1327,17 @@ static void *janus_recordplay_handler(void *data) {
 				}
 				temp = temp->next;
 			}
+			rec->audio_pt = AUDIO_PT;
+			if(rec->acodec) {
+				/* Some audio codecs have a fixed payload type that we can't mess with */
+				if(!strcasecmp(rec->acodec, "pcmu"))
+					rec->audio_pt = 0;
+				else if(!strcasecmp(rec->acodec, "pcma"))
+					rec->audio_pt = 8;
+				else if(!strcasecmp(rec->acodec, "g722"))
+					rec->audio_pt = 9;
+			}
+			rec->video_pt = VIDEO_PT;
 			/* Create a date string */
 			time_t t = time(NULL);
 			struct tm *tmv = localtime(&t);
@@ -1710,6 +1723,17 @@ void janus_recordplay_update_recordings_list(void) {
 			/* Check which codec is in this recording */
 			rec->vcodec = janus_recordplay_parse_codec(recordings_path, rec->vrc_file);
 		}
+		rec->audio_pt = AUDIO_PT;
+		if(rec->acodec) {
+			/* Some audio codecs have a fixed payload type that we can't mess with */
+			if(!strcasecmp(rec->acodec, "pcmu"))
+				rec->audio_pt = 0;
+			else if(!strcasecmp(rec->acodec, "pcma"))
+				rec->audio_pt = 8;
+			else if(!strcasecmp(rec->acodec, "g722"))
+				rec->audio_pt = 9;
+		}
+		rec->video_pt = VIDEO_PT;
 		rec->viewers = NULL;
 		rec->destroyed = 0;
 		rec->completed = TRUE;
@@ -2130,7 +2154,10 @@ static void *janus_recordplay_playout_thread(void *data) {
 	memset(buffer, 0, 1500);
 	int bytes = 0;
 	int64_t ts_diff = 0, passed = 0;
-	
+
+	int audio_pt = session->recording->audio_pt;
+	int video_pt = session->recording->video_pt;
+
 	while(!session->destroyed && session->active && !session->recording->destroyed && (audio || video)) {
 		if(!asent && !vsent) {
 			/* We skipped the last round, so sleep a bit (5ms) */
@@ -2147,7 +2174,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, audio->len);
 				/* Update payload type */
 				rtp_header *rtp = (rtp_header *)buffer;
-				rtp->type = AUDIO_PT;
+				rtp->type = audio_pt;
 				if(gateway != NULL)
 					gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
 				gettimeofday(&now, NULL);
@@ -2188,7 +2215,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, audio->len);
 					/* Update payload type */
 					rtp_header *rtp = (rtp_header *)buffer;
-					rtp->type = AUDIO_PT;
+					rtp->type = audio_pt;
 					if(gateway != NULL)
 						gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
 					asent = TRUE;
@@ -2207,7 +2234,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
 					/* Update payload type */
 					rtp_header *rtp = (rtp_header *)buffer;
-					rtp->type = VIDEO_PT;
+					rtp->type = video_pt;
 					if(gateway != NULL)
 						gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
 					video = video->next;
@@ -2252,7 +2279,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 							JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
 						/* Update payload type */
 						rtp_header *rtp = (rtp_header *)buffer;
-						rtp->type = VIDEO_PT;
+						rtp->type = video_pt;
 						if(gateway != NULL)
 							gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
 						video = video->next;

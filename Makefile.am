@@ -402,6 +402,8 @@ man1_MANS += postprocessing/janus-pp-rec.1
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-g711.c \
 	postprocessing/pp-g711.h \
+	postprocessing/pp-g722.c \
+	postprocessing/pp-g722.h \
 	postprocessing/pp-h264.c \
 	postprocessing/pp-h264.h \
 	postprocessing/pp-opus.c \
