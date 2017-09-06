@@ -2506,6 +2506,12 @@ ldd janus | grep asan
  * 		<td>Client-side PHP/javascript implementation of the Janus and Admin APIs</td>
  * </tr>
  * <tr>
+ * 		<td>PHP</td>
+ * 		<td><a href="https://github.com/mvnrsa">Marnus van Niekerk</a></td>
+ * 		<td><a href="https://github.com/mvnrsa/JanusPHPclass">Janus PHP Class</a></td>
+ * 		<td>Client-side PHP Class implementing the Janus Admin API</td>
+ * </tr>
+ * <tr>
  * 		<td>Golang</td>
  * 		<td><a href="https://github.com/nowylie">Nicholas Wylie</a></td>
  * 		<td><a href="https://github.com/nowylie/go-janus">go-janus</a></td>
