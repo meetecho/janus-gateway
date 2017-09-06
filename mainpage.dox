@@ -1836,8 +1836,9 @@ POST /admin/12345678/98765432
  * all plugins make use of when they're interested in recordings.
  *
  * The syntax for the \c start_text2pcap command is trivial, as all you
- * need to specify are information on the handle to dump, and information
- * on the target file (target folder and filename):
+ * need to specify are information on the handle to dump, information
+ * on the target file (target folder and filename), and whether to truncate
+ * packets or not before dumping them:
  *
 \verbatim
 POST /admin/12345678/98765432
@@ -1845,6 +1846,7 @@ POST /admin/12345678/98765432
 	"janus" : "start_text2pcap",
 	"folder" : "<folder to save the dump to; optional, current folder if missing>",
 	"filename" : "<filename of the dump; optional, random filename if missing>",
+	"truncate" : "<number of bytes to truncate at; optional, truncate=0 (don't truncate) if missing>",
 	"transaction" : "<random alphanumeric string>",
 	"admin_secret" : "<password specified in janus.cfg, if any>"
 }

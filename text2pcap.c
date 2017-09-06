@@ -49,7 +49,9 @@ const char *janus_text2pcap_packet_string(janus_text2pcap_packet type) {
 	return NULL;
 }
 
-janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename) {
+janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, int truncate) {
+	if(truncate < 0)
+		return NULL;
 	/* Create the text2pcap instance */
 	janus_text2pcap *tp = g_malloc0(sizeof(janus_text2pcap));
 	if(tp == NULL) {
@@ -58,6 +60,7 @@ janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename) {
 	}
 	tp->filename = NULL;
 	tp->file = NULL;
+	tp->truncate = truncate;
 	g_atomic_int_set(&tp->writable, 0);
 	if(dir != NULL) {
 		/* Create the directory, if needed */
@@ -124,7 +127,8 @@ int janus_text2pcap_dump(janus_text2pcap *instance,
 	memset(buffer, 0, sizeof(buffer));
 	g_snprintf(buffer, sizeof(buffer), "%s %s 000000 ", incoming ? "I" : "O", timestamp);
 	int i=0;
-	for(i=0; i<len; i++) {
+	int stop = instance->truncate ? (len > instance->truncate ? instance->truncate : len) : len;
+	for(i=0; i<stop; i++) {
 		memset(byte, 0, sizeof(byte));
 		g_snprintf(byte, sizeof(byte), " %02x", (unsigned char)buf[i]);
 		g_strlcat(buffer, byte, sizeof(buffer));

@@ -134,7 +134,8 @@ static struct janus_json_parameter nmt_parameters[] = {
 };
 static struct janus_json_parameter text2pcap_parameters[] = {
 	{"folder", JSON_STRING, 0},
-	{"filename", JSON_STRING, 0}
+	{"filename", JSON_STRING, 0},
+	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 
 /* Admin/Monitor helpers */
@@ -2212,11 +2213,12 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			}
 			const char *folder = json_string_value(json_object_get(root, "folder"));
 			const char *filename = json_string_value(json_object_get(root, "filename"));
+			int truncate = json_integer_value(json_object_get(root, "truncate"));
 			if(handle->text2pcap != NULL) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "text2pcap already started");
 				goto jsondone;
 			}
-			handle->text2pcap = janus_text2pcap_create(folder, filename);
+			handle->text2pcap = janus_text2pcap_create(folder, filename, truncate);
 			if(handle->text2pcap == NULL) {
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error starting text2pcap dump");
 				goto jsondone;

@@ -49,6 +49,8 @@ typedef struct janus_text2pcap {
 	char *filename;
 	/*! \brief Pointer to the file handle */
 	FILE *file;
+	/*! \brief Number of bytes to truncate at */
+	int truncate;
 	/*! \brief Whether we can write to this file or not */
 	volatile int writable;
 	/*! \brief Mutex to lock/unlock this recorder instance */ 
@@ -68,8 +70,9 @@ const char *janus_text2pcap_packet_string(janus_text2pcap_packet type);
  * is passed, a random filename will be used.
  * @param[in] dir Path of the directory to save the recording into (will try to create it if it doesn't exist)
  * @param[in] filename Filename to use for the recording
+ * @param[in] truncate Number of bytes to truncate each packet at (0 to not truncate at all)
  * @returns A valid janus_text2pcap instance in case of success, NULL otherwise */
-janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename);
+janus_text2pcap *janus_text2pcap_create(const char *dir, const char *filename, int truncate);
 
 /*! \brief Dump an RTP or RTCP packet
  * @param[in] instance Instance of the janus_text2pcap recorder to dump the packet to
