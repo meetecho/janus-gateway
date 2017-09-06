@@ -2666,6 +2666,44 @@ ldd janus | grep asan
  * anywhere in this documentation, feel free to refer to the group for
  * generic help, or to the Issues page for bugs in the implementation.\n\n
  *
+ * <hr>
+ *
+ * -# <a href="#janus">What is Janus?</a>\n
+ * -# <a href="#meetecho">What is Meetecho?</a>\n
+ * -# <a href="#pronounce">Now that we're at it, how is Meetecho pronounced??</a>\n
+ * -# <a href="#videos">I just started with Janus and am overwhelmed by the amount of info, documentation, etc... any easy way to dive in?</a>\n
+ * -# <a href="#origin">Why is Janus called like that?</a>\n
+ * -# <a href="#license">Is the license AGPLv3 or GPLv3? Do you provide alternative license mechanisms as well?</a>\n
+ * -# <a href="#OS">On what OS can I install Janus?</a>\n
+ * -# <a href="#datachans">Are Data Channels supported?</a>\n
+ * -# <a href="#usrsctp">I don't care about Data Channels, do I have to compile usrsctp anyway?</a>\n
+ * -# <a href="#usrsctperr">I can't install usrsctp, I'm getting errors about dereferencing pointers?</a>\n
+ * -# <a href="#gateway">Can I use Janus as a gateway to my Freeswitch/Kamailio/Asterisk/other SIP infrastructure?</a>\n
+ * -# <a href="#jssip">Can I use existing SIP stacks (e.g., JsSIP) with Janus?</a>\n
+ * -# <a href="#transcoding">Does Janus support transcoding?</a>\n
+ * -# <a href="#recording">Does Janus support recording?</a>\n
+ * -# <a href="#websockets">Can I use WebSockets instead of plain HTTP to interact with Janus?</a>\n
+ * -# <a href="#rabbitmq">Can I use RabbitMQ instead of HTTP/WebSockets to interact with Janus?</a>\n
+ * -# <a href="#unixsockets">Can I use Unix Sockets instead of HTTP/WebSockets/RabbitMQ to interact with Janus?</a>\n
+ * -# <a href="#mqtt">Can I use MQTT instead of HTTP/WebSockets/RabbitMQ/Unix Sockets to interact with Janus?</a>\n
+ * -# <a href="#transports">What about \<my favourite control protocol\> instead?</a>\n
+ * -# <a href="#demos">I've launched Janus, how do I try the demos?</a>\n
+ * -# <a href="#certificates">I'm trying the demos, but I get "Janus down" or certificate errors!</a>\n
+ * -# <a href="#nodejs">Can I use Janus with node.js or other frameworks?</a>\n
+ * -# <a href="#monitoring">How do I monitor/manage my Janus instance?</a>\n
+ * -# <a href="#plugins">I want to write my own plugin, where do I start?</a>\n
+ * -# <a href="#ulimit">I'm using the VideoRoom plugin and, when several users are handled, I get
+ *    a "Too many open files" errors and Janus crashes</a>\n
+ * -# <a href="#https">When I enable the HTTPS web server in Janus, the CPU goes crazy</a>\n
+ * -# <a href="#turn">I enabled TURN in the Janus configuration, but my clients behind a firewall can't connect</a>\n
+ * -# <a href="#benchmark">Is there any benchmark on Janus performances?</a>\n
+ * -# <a href="#scaling">How do I scale Janus?</a>\n
+ * -# <a href="#requests">Can you implement a feature/plugin/application I want?</a>\n
+ * -# <a href="#learning">I want to learn more on Janus!</a>\n
+ *
+ * <hr>
+ *
+ * \anchor janus
  * -# <b>What is Janus?</b>\n
  *    .
  *    Janus is an open source WebRTC gateway and server written by <a href="http://www.meetecho.com">Meetecho</a>,
@@ -2676,6 +2714,7 @@ ldd janus | grep asan
  *    and tons of other stuff using the same box! And if what you need is
  *    not there, you can always write your own module and expand Janus.\n\n
  *    .
+ * \anchor meetecho
  * -# <b>What is Meetecho?</b>\n
  *    .
  *    Meetecho is a company founded by a few researchers, post-docs and
@@ -2685,6 +2724,7 @@ ldd janus | grep asan
  *    of our research efforts. Our web conferencing platform and Janus
  *    are part of those efforts.\n\n
  *    .
+ * \anchor pronounce
  * -# <b>Now that we're at it, how is Meetecho pronounced??</b>\n
  *    .
  *    We're being asked that a lot! We've heard so many variants and different
@@ -2696,6 +2736,7 @@ ldd janus | grep asan
  *    story short, it doesn't really matter how you pronounce it: just
  *    do it and help us be famous! :-)\n\n
  *    .
+ * \anchor videos
  * -# <b>I just started with Janus and am overwhelmed by the amount of info, documentation, etc... any easy way to dive in?</b>\n
  *    .
  *    Fair point! Janus and its concepts/APIs can be a lot to digest in a short time...
@@ -2718,6 +2759,7 @@ ldd janus | grep asan
  *    - Presentation on different SIP options in Janus at <a href="https://www.youtube.com/watch?v=anmyMC6Ovl8&t=25112s">OpenSIPS 2017</a>;
  *    - Presentation on WebRTC load testing at <a href="https://www.youtube.com/watch?v=SnvTAsYtZ5s">Kamailio World 2017</a>. \n\n
  *    .
+ * \anchor origin
  * -# <b>Why is Janus called like that?</b>\n
  *    .
  *    Quoting <a href="http://en.wikipedia.org/wiki/Janus">Wikipedia</a>:
@@ -2732,6 +2774,7 @@ ldd janus | grep asan
  *    awesome and mythology rules... ;-)  
  *    \n\n
  *    .
+ * \anchor license
  * -# <b>Is the license AGPLv3 or GPLv3? Do you provide alternative license mechanisms as well?</b>\n
  *    .
  *    Janus is licensend under the GPLv3 licence. At the very beginning
@@ -2752,6 +2795,7 @@ ldd janus | grep asan
  *    needs, we have a <a href="https://janus.conf.meetecho.com/support">commercial license</a>
  *    offering as well.\n\n
  *    .
+ * \anchor OS
  * -# <b>On what OS can I install Janus?</b>\n
  *    .
  *    At the moment only Linux is officially supported. Anyway, Janus does
@@ -2761,6 +2805,7 @@ ldd janus | grep asan
  *    by a Janus contributor: anyway, please beware that Windows support is behind the current
  *    version of development.\n\n
  *    .
+ * \anchor datachans
  * -# <b>Are Data Channels supported?</b>\n
  *    .
  *    Yes they are! Starting from version \c 0.0.3 of Janus, we added a first
@@ -2772,6 +2817,7 @@ ldd janus | grep asan
  *    you'll have to resort to text-based encodings like Base64 to share
  *    binary data through Janus.\n\n
  *    .
+ * \anchor usrsctp
  * -# <b>I don't care about Data Channels, do I have to compile usrsctp anyway?</b>\n
  *    .
  *    Support for Data Channels is optional, so if you didn't install the library
@@ -2782,6 +2828,7 @@ ldd janus | grep asan
  *    an existing install, issue a \c make \c clean before compiling again, or
  *    you might encounter issues with pre-existing symbols.\n\n
  *    .
+ * \anchor usrsctperr
  * -# <b>I can't install usrsctp, I'm getting errors about dereferencing pointers?</b>\n
  *    .
  *    Apparently recent compilers are stricter with respect to some code
@@ -2797,6 +2844,7 @@ ldd janus | grep asan
  *    Another solution seems to be removing all the \c -O2 occurrences
  *    in the generated \c configure script.\n\n
  *    .
+ * \anchor gateway
  * -# <b>Can I use Janus as a gateway to my Freeswitch/Kamailio/Asterisk/other SIP infrastructure?</b>\n
  *    .
  *    Of course! One of the modules we provide out of the box is a SIP
@@ -2810,6 +2858,7 @@ ldd janus | grep asan
  *    implementations. SDES-SRTP is also supported on the SIP side in case
  *    it is required.\n\n
  *    .
+ * \anchor jssip
  * -# <b>Can I use existing SIP stacks (e.g., JsSIP) with Janus?</b>\n
  *    .
  *    Janus uses a custom JSON-based protocol for all the communication
@@ -2824,6 +2873,7 @@ ldd janus | grep asan
  *    in an easy way, without having to worry about the details and complexity
  *    of SIP within JavaScript.\n\n
  *    .
+ * \anchor transcoding
  * -# <b>Does Janus support transcoding?</b>\n
  *    .
  *    Janus is a simple intermediary between WebRTC users and server-side
@@ -2836,6 +2886,7 @@ ldd janus | grep asan
  *    there are several existing tools and third-party implementations that
  *    could be leveraged for the purpose.\n\n
  *    .
+ * \anchor recording
  * -# <b>Does Janus support recording?</b>\n
  *    .
  *    Yep! The Janus core provides an integrated way of recording all
@@ -2847,6 +2898,7 @@ ldd janus | grep asan
  *    an external tool. For more information on this, check the
  *    <a href="https://janus.conf.meetecho.com/docs/janus-pp-rec_8c.html#details">documentation</a>.\n\n
  *    .
+ * \anchor websockets
  * -# <b>Can I use WebSockets instead of plain HTTP to interact with Janus?</b>\n
  *    .
  *    Since version \c 0.0.4, you can! At first we chose a REST-based plain HTTP communication
@@ -2863,6 +2915,7 @@ ldd janus | grep asan
  *    server side integrators as well, e.g., in terms of overhead and use of
  *    resources. For more information, check the \ref WS page. \n\n
  *    .
+ * \anchor rabbitmq
  * -# <b>Can I use RabbitMQ instead of HTTP/WebSockets to interact with Janus?</b>\n
  *    .
  *    Since version \c 0.0.6, you can! This is a feature that several
@@ -2874,6 +2927,7 @@ ldd janus | grep asan
  *    or without HTTP and WebSockets, depending on your requirements.
  *    For more information, check the \ref rabbit page. \n\n
  *    .
+ * \anchor unixsockets
  * -# <b>Can I use Unix Sockets instead of HTTP/WebSockets/RabbitMQ to interact with Janus?</b>\n
  *    .
  *    Since version \c 0.2.1, you can! More specifically, you can use a
@@ -2881,12 +2935,14 @@ ldd janus | grep asan
  *    Notice that this feature is only available when installing Janus on a Linux machine.
  *    For more information, check the \ref unix page. \n\n
  *    .
+ * \anchor mqtt
  * -# <b>Can I use MQTT instead of HTTP/WebSockets/RabbitMQ/Unix Sockets to interact with Janus?</b>\n
  *    .
  *    Since version \c 0.2.1, you can! This was a very welcome contribution by
  *    a Janus user, as it makes it even easier to have Janus interact with IoT deployments.
  *    For more information, check the \ref mqtt page. \n\n
  *    .
+ * \anchor transports
  * -# <b>What about \<my favourite control protocol\> instead?</b>\n
  *    .
  *    Since version \c 0.1.0, the transports for the Janus API have been made
@@ -2896,6 +2952,7 @@ ldd janus | grep asan
  *    work. If no plugin has been implemented, you may even want to do so
  *    yourself, or ask for ours or others help.\n\n
  *    .
+ * \anchor demos
  * -# <b>I've launched Janus, how do I try the demos?</b>\n
  *    .
  *    The demos are available in the \c html folder in the project. That
@@ -2904,6 +2961,7 @@ ldd janus | grep asan
  *    webserver. Details about how to deploy Janus are provided in
  *    \ref deploy.\n\n
  *    .
+ * \anchor certificates
  * -# <b>I'm trying the demos, but I get "Janus down" or certificate errors!</b>\n
  *    .
  *    Again, make sure you've read and are following the instructions on how to
@@ -2914,6 +2972,7 @@ ldd janus | grep asan
  *    using an insecure certificate for Janus itself. All of these problems
  *    are explained and solved easily in the \ref deploy documentation.\n\n
  *    .
+ * \anchor nodejs
  * -# <b>Can I use Janus with node.js or other frameworks?</b>\n
  *    .
  *    Not natively, but since interaction with Janus is demanded to
@@ -2929,7 +2988,9 @@ ldd janus | grep asan
  *    you decide to write your own Janus API wrapper, don't hesitate to let
  *    us know so that we can advertise yours there too!\n\n
  *    .
+ * \anchor monitoring
  * -# <b>How do I monitor/manage my Janus instance?</b>\n
+ *    .
  *    Since version \c 0.2.2 there are a couple of different ways you can do
  *    that. The first and most immediate one is making use of the Admin API,
  *    which you can find documented in the \ref admin page. It is a request/response
@@ -2948,6 +3009,7 @@ ldd janus | grep asan
  *    page from where this effort was merged. More guidelines and implementations
  *    will definitely follow. \n\n
  *    .
+ * \anchor plugins
  * -# <b>I want to write my own plugin, where do I start?</b>\n
  *    .
  *    Great! Depending on the kind of plugin you want to implement (application plugin,
@@ -2965,6 +3027,7 @@ ldd janus | grep asan
  *    If you need any help with this, feel free to ask for help on the Google group:
  *    we're always excited whenever new Janus plugins are realized!\n\n
  *    .
+ * \anchor ulimit
  * -# <b>I'm using the VideoRoom plugin and, when several users are handled, I get
  *    a "Too many open files" errors and Janus crashes</b>\n
  *    .
@@ -2978,6 +3041,7 @@ ldd janus | grep asan
  *    this refer to the guide provided by the MongoDB developers:
  *    http://docs.mongodb.org/manual/reference/ulimit/ \n\n
  *    .
+ * \anchor https
  * -# <b>When I enable the HTTPS web server in Janus, the CPU goes crazy</b>\n
  *    .
  *    As discussed in a recent <a href="https://groups.google.com/forum/?pli=1#!topic/meetecho-janus/lD8A0VqXsNs">post</a>
@@ -2991,6 +3055,7 @@ ldd janus | grep asan
  *    that takes care of this on its behalf. Refer to the \ref deploy section
  *    for more details about this.\n\n
  *    .
+ * \anchor turn
  * -# <b>I enabled TURN in the Janus configuration, but my clients behind a firewall can't connect</b>\n
  *    .
  *    As explained in the \c janus.cfg documentation, the TURN settings you
@@ -3012,6 +3077,7 @@ ldd janus | grep asan
  *    Janus some other way, please refer to the related way of specifying
  *    STUN and TURN servers instead.\n\n
  *    .
+ * \anchor benchmark
  * -# <b>Is there any benchmark on Janus performances?</b>\n
  *    .
  *    Benchmarking Janus is not an easy task, especially if we consider
@@ -3032,7 +3098,9 @@ ldd janus | grep asan
  *    <a href="https://groups.google.com/forum/?pli=1#!topic/meetecho-janus/ydGcbMt7IX0">post</a>
  *    on our Google group too.\n\n
  *    .
+ * \anchor scaling
  * -# <b>How do I scale Janus?</b>\n
+ *    .
  *    This question is way too generic to answer here. As explained in the previous
  *    point, Janus is not an easily measurable entity, as it very much depends
  *    on which of the plugins you're involving in the scenarios that interest you
@@ -3053,6 +3121,7 @@ ldd janus | grep asan
  *    Should you be interested in implementing scalability in your application and
  *    need help, <a href="https://janus.conf.meetecho.com/support">contact us</a>.\n\n
  *    .
+ * \anchor requests
  * -# <b>Can you implement a feature/plugin/application I want?</b>\n
  *    .
  *    We're constantly working on new features and on improving what's
@@ -3068,7 +3137,9 @@ ldd janus | grep asan
  *    <a href="https://janus.conf.meetecho.com/support">contacting us</a>
  *    for a sponsored development or consulting.\n\n
  *    .
+ * \anchor learning
  * -# <b>I want to learn more on Janus!</b>\n
+ *    .
  *    That's great! The first obvious suggestion is of course to carefully
  *    read the documentation here: we worked hard on it and are constantly
  *    expanding it, so it should always be the first source of information
