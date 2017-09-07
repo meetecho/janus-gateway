@@ -2662,11 +2662,6 @@ void janus_ice_candidates_to_sdp(janus_ice_handle *handle, janus_sdp_mline *mlin
 		}
 		nice_candidate_free(c);
 	}
-	/* Since we're half-trickling, we need to notify the peer that these are all the
-	 * candidates we have for this media stream, via an end-of-candidates attribute:
-	 * https://tools.ietf.org/html/draft-ietf-mmusic-trickle-ice-02#section-4.1 */
-	janus_sdp_attribute *end = janus_sdp_attribute_create("end-of-candidates", NULL);
-	mline->attributes = g_list_append(mline->attributes, end);
 	/* Done */
 	g_slist_free(candidates);
 }
