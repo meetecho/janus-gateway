@@ -768,6 +768,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	wss_janus_api_enabled = wss || swss;
 	wss_admin_api_enabled = admin_wss || admin_swss;
 
+	g_atomic_int_set(&initialized, 1);
+
 	GError *error = NULL;
 	/* Start the WebSocket service threads */
 	if(wss != NULL) {
@@ -804,7 +806,6 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	}
 
 	/* Done */
-	g_atomic_int_set(&initialized, 1);
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_WEBSOCKETS_NAME);
 	return 0;
 }
