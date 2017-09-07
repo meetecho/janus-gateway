@@ -354,7 +354,7 @@ AC_SUBST([MHD_LIBS])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
 
 AC_CHECK_LIB([websockets],
-			 [lws_create_context],
+			 [lws_create_vhost],
 			 [
 			   AS_IF([test "x$enable_websockets" != "xno"],
 			   [
