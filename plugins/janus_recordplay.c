@@ -2158,6 +2158,11 @@ static void *janus_recordplay_playout_thread(void *data) {
 	int audio_pt = session->recording->audio_pt;
 	int video_pt = session->recording->video_pt;
 
+	int akhz = 48;
+	if(audio_pt == 0 || audio_pt == 8 || audio_pt == 9)
+		akhz = 8;
+	int vkhz = 90;
+
 	while(!session->destroyed && session->active && !session->recording->destroyed && (audio || video)) {
 		if(!asent && !vsent) {
 			/* We skipped the last round, so sleep a bit (5ms) */
@@ -2185,7 +2190,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 			} else {
 				/* What's the timestamp skip from the previous packet? */
 				ts_diff = audio->ts - audio->prev->ts;
-				ts_diff = (ts_diff*1000)/48;	/* FIXME We're assuming Opus and 48khz */
+				ts_diff = (ts_diff*1000)/akhz;
 				/* Check if it's time to send */
 				gettimeofday(&now, NULL);
 				d_s = now.tv_sec - abefore.tv_sec;
@@ -2246,7 +2251,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 			} else {
 				/* What's the timestamp skip from the previous packet? */
 				ts_diff = video->ts - video->prev->ts;
-				ts_diff = (ts_diff*1000)/90;
+				ts_diff = (ts_diff*1000)/vkhz;
 				/* Check if it's time to send */
 				gettimeofday(&now, NULL);
 				d_s = now.tv_sec - vbefore.tv_sec;
