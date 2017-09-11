@@ -70,7 +70,7 @@ do
 done
 
 # Set variables saved to file during loop
-source $TMPFILE; echo /bin/rm -f $TMPFILE; cat $TMPFILE
+source $TMPFILE; /bin/rm -f $TMPFILE
 
 # Name of output file
 if [ $# -gt 1 ]
