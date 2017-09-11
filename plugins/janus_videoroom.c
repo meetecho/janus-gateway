@@ -1214,7 +1214,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 					json_object_set_new(media, "audio_codec", json_string(janus_videoroom_audiocodec_name(participant->room->acodec)));
 				json_object_set_new(media, "video", participant->video ? json_true() : json_false());
 				if(participant->video)
-					json_object_set_new(media, "video_codec", json_string(janus_videoroom_videocodec_name(participant->room->acodec)));
+					json_object_set_new(media, "video_codec", json_string(janus_videoroom_videocodec_name(participant->room->vcodec)));
 				json_object_set_new(media, "data", participant->data ? json_true() : json_false());
 				json_object_set_new(info, "media", media);
 				json_object_set_new(info, "bitrate", json_integer(participant->bitrate));
@@ -2507,7 +2507,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			if(participant->audio)
 				json_object_set_new(pl, "audio_codec", json_string(janus_videoroom_audiocodec_name(participant->room->acodec)));
 			if(participant->video)
-				json_object_set_new(pl, "video_codec", json_string(janus_videoroom_videocodec_name(participant->room->acodec)));
+				json_object_set_new(pl, "video_codec", json_string(janus_videoroom_videocodec_name(participant->room->vcodec)));
 			json_array_append_new(list, pl);
 			json_t *pub = json_object();
 			json_object_set_new(pub, "videoroom", json_string("event"));
@@ -3330,7 +3330,7 @@ static void *janus_videoroom_handler(void *data) {
 					if(p->audio)
 						json_object_set_new(pl, "audio_codec", json_string(janus_videoroom_audiocodec_name(p->room->acodec)));
 					if(p->video)
-						json_object_set_new(pl, "video_codec", json_string(janus_videoroom_videocodec_name(p->room->acodec)));
+						json_object_set_new(pl, "video_codec", json_string(janus_videoroom_videocodec_name(p->room->vcodec)));
 					if(p->audio_level_extmap_id > 0)
 						json_object_set_new(pl, "talking", p->talking ? json_true() : json_false());
 					json_array_append_new(list, pl);
@@ -4166,7 +4166,7 @@ static void *janus_videoroom_handler(void *data) {
 					if(participant->audio)
 						json_object_set_new(event, "audio_codec", json_string(janus_videoroom_audiocodec_name(participant->room->acodec)));
 					if(participant->video)
-						json_object_set_new(event, "video_codec", json_string(janus_videoroom_videocodec_name(participant->room->acodec)));
+						json_object_set_new(event, "video_codec", json_string(janus_videoroom_videocodec_name(participant->room->vcodec)));
 				}
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
 				if(participant->firefox) {	/* Don't add any b=AS attribute for Chrome */
