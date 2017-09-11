@@ -1074,7 +1074,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 		/* There was no plugin attached, probably something went wrong there */
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 		janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-		if(handle->iceloop) {
+		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1106,7 +1106,7 @@ gint janus_ice_handle_destroy(void *gateway_session, guint64 handle_id) {
 	/* Get rid of the handle now */
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT);
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP);
-	if(handle->iceloop) {
+	if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 		if(handle->audio_id > 0) {
 			nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1196,7 +1196,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
 	if(handle->send_thread == NULL) {
 		/* Get rid of the loop */
-		if(handle->iceloop) {
+		if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 			if(handle->audio_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
@@ -1220,7 +1220,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 					break;
 				}
 			}
-			if(handle->iceloop && g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
 				g_main_loop_quit(handle->iceloop);
 				g_main_context_wakeup(handle->icectx);
@@ -3402,11 +3402,9 @@ void *janus_ice_send_thread(void *data) {
 					pkt = NULL;
 				}
 			}
-			if(handle->iceloop) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				g_main_loop_quit(handle->iceloop);
-				handle->iceloop = NULL;
 				g_main_context_wakeup(handle->icectx);
-				handle->icectx = NULL;
 			}
 			continue;
 		}
