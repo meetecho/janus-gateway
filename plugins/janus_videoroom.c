@@ -2624,7 +2624,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
 		rtp_header *rtp = (rtp_header *)buf;
 		uint32_t ssrc = ntohl(rtp->ssrc);
-		int sc = 0;
+		int sc = -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
 		if(video && participant->ssrc[0] != 0) {
 			if(ssrc == participant->ssrc[0])
@@ -2653,7 +2653,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 				rtp->type = rtp_forward->payload_type;
 			if(rtp_forward->ssrc > 0)
 				rtp->ssrc = htonl(rtp_forward->ssrc);
-			if(video && rtp_forward->is_video && rtp_forward->substream == sc) {
+			if(video && rtp_forward->is_video && (sc == -1 || rtp_forward->substream == sc)) {
 				if(sendto(participant->udp_sock, buf, len, 0, (struct sockaddr*)&rtp_forward->serv_addr, sizeof(rtp_forward->serv_addr)) < 0) {
 					JANUS_LOG(LOG_HUGE, "Error forwarding RTP video packet for %s... %s (len=%d)...\n",
 						participant->display, strerror(errno), len);
