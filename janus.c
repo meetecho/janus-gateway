@@ -132,6 +132,11 @@ static struct janus_json_parameter mnq_parameters[] = {
 static struct janus_json_parameter nmt_parameters[] = {
 	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter text2pcap_parameters[] = {
+	{"folder", JSON_STRING, 0},
+	{"filename", JSON_STRING, 0},
+	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -2197,6 +2202,54 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		goto jsondone;
 	} else {
 		/* Handle-related */
+		if(!strcasecmp(message_text, "start_text2pcap")) {
+			/* Start dumping RTP and RTCP packets to a text2pcap file */
+			JANUS_VALIDATE_JSON_OBJECT(root, text2pcap_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			const char *folder = json_string_value(json_object_get(root, "folder"));
+			const char *filename = json_string_value(json_object_get(root, "filename"));
+			int truncate = json_integer_value(json_object_get(root, "truncate"));
+			if(handle->text2pcap != NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "text2pcap already started");
+				goto jsondone;
+			}
+			handle->text2pcap = janus_text2pcap_create(folder, filename, truncate);
+			if(handle->text2pcap == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error starting text2pcap dump");
+				goto jsondone;
+			}
+			g_atomic_int_set(&handle->dump_packets, 1);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "stop_text2pcap")) {
+			/* Stop dumping RTP and RTCP packets to a text2pcap file */
+			if(handle->text2pcap == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "text2pcap not started");
+				goto jsondone;
+			}
+			if(g_atomic_int_compare_and_exchange(&handle->dump_packets, 1, 0)) {
+				janus_text2pcap_close(handle->text2pcap);
+				g_clear_pointer(&handle->text2pcap, janus_text2pcap_free);
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		}
+		/* If this is not a request to start/stop debugging to text2pcap, it must be a handle_info */
 		if(strcasecmp(message_text, "handle_info")) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
@@ -2272,6 +2325,11 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "pending-trickles", json_integer(g_list_length(handle->pending_trickles)));
 		if(handle->queued_packets)
 			json_object_set_new(info, "queued-packets", json_integer(g_async_queue_length(handle->queued_packets)));
+		if(g_atomic_int_get(&handle->dump_packets)) {
+			json_object_set_new(info, "dump-to-text2pcap", json_true());
+			if(handle->text2pcap && handle->text2pcap->filename)
+			json_object_set_new(info, "text2pcap-file", json_string(handle->text2pcap->filename));
+		}
 		json_t *streams = json_array();
 		if(handle->audio_stream) {
 			json_t *s = janus_admin_stream_summary(handle->audio_stream);

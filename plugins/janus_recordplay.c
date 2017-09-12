@@ -486,9 +486,11 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				bytes = fread(prebuffer, sizeof(char), 5, file);
 				if(prebuffer[0] == 'v') {
 					JANUS_LOG(LOG_VERB, "This is an old video recording, assuming VP8\n");
+					fclose(file);
 					return preferred_video_codecs[0];
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_VERB, "This is an old audio recording, assuming Opus\n");
+					fclose(file);
 					return preferred_audio_codecs[0];
 				}
 			}
