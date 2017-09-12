@@ -4344,6 +4344,7 @@ gint main(int argc, char *argv[])
 	watchdog = NULL;
 	g_main_loop_unref(watchdog_loop);
 	g_main_context_unref(sessions_watchdog_context);
+	sessions_watchdog_context = NULL;
 
 	if(config)
 		janus_config_destroy(config);
