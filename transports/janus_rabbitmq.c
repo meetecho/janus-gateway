@@ -631,8 +631,10 @@ void *janus_rmq_out_thread(void *data) {
       if (!payload_text) {
         JANUS_LOG(LOG_ERR, "Error while attempting to send message to "
                   "RabbitMq: Null payload\n");
-        json_decref(response->payload);
-        response->payload = NULL;
+        if (response->payload && json_is_object(response->payload)) {
+          json_decref(response->payload);
+          response->payload = NULL;
+        }
         goto cont;
       }
 			json_decref(response->payload);
