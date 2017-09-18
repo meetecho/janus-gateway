@@ -521,7 +521,6 @@ void *janus_rmq_in_thread(void *data) {
 		return NULL;
 	}
 	JANUS_LOG(LOG_VERB, "Joining RabbitMQ in thread\n");
-
 	struct timeval timeout;
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 20000;
@@ -629,6 +628,13 @@ void *janus_rmq_out_thread(void *data) {
 			janus_mutex_lock(&rmq_client->mutex);
 			/* Gotcha! Convert json_t to string */
 			char *payload_text = json_dumps(response->payload, json_format);
+      if (!payload_text) {
+        JANUS_LOG(LOG_ERR, "Error while attempting to send message to "
+                  "RabbitMq: Null payload\n");
+        json_decref(response->payload);
+        response->payload = NULL;
+        goto cont;
+      }
 			json_decref(response->payload);
 			response->payload = NULL;
 			JANUS_LOG(LOG_VERB, "Sending %s API message to RabbitMQ (%zu bytes)...\n", response->admin ? "Admin" : "Janus", strlen(payload_text));
@@ -652,6 +658,7 @@ void *janus_rmq_out_thread(void *data) {
 			if(status != AMQP_STATUS_OK) {
 				JANUS_LOG(LOG_ERR, "Error publishing... %d, %s\n", status, amqp_error_string2(status));
 			}
+    cont:
 			g_free(response->correlation_id);
 			response->correlation_id = NULL;
 			g_free(response->reply_to);
