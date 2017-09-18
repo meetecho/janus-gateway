@@ -17,8 +17,8 @@
 
 #include <inttypes.h>
 #include <glib.h>
-#include <srtp/srtp.h>
 
+#include "rtp.h"
 #include "sctp.h"
 #include "dtls-bio.h"
 
@@ -80,6 +80,8 @@ typedef struct janus_dtls_srtp {
 	janus_mutex srtp_mutex;
 	/*! \brief Whether this DTLS stack is now ready to be used for messages as well (e.g., SCTP encapsulation) */
 	int ready;
+	/*! \brief The number of retransmissions that have occurred for this DTLS instance so far */
+	int retransmissions;
 #ifdef HAVE_SCTP
 	/*! \brief SCTP association, if DataChannels are involved */
 	janus_sctp_association *sctp;
@@ -150,12 +152,6 @@ void janus_dtls_notify_data(janus_dtls_srtp *dtls, char *buf, int len);
  * @param[in] stack Opaque pointer to the janus_dtls_srtp instance to use
  * @returns true if a retransmission is still needed, false otherwise */
 gboolean janus_dtls_retry(gpointer stack);
-
-
-/*! \brief Helper method to get a string representation of a libsrtp error code
- * @param[in] error The libsrtp error code
- * @returns A string representation of the error code */
-const gchar *janus_get_srtp_error(int error);
 
 /*! \brief Helper method to get a string representation of a Janus DTLS state
  * @param[in] state The Janus DTLS state

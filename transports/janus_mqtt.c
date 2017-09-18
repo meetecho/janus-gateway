@@ -91,6 +91,9 @@ janus_transport *create(void) {
 static gboolean janus_mqtt_api_enabled_ = FALSE;
 static gboolean janus_mqtt_admin_api_enabled_ = FALSE;
 
+/* Event handlers */
+static gboolean notify_events = TRUE;
+
 /* JSON serialization options */
 static size_t json_format_ = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
@@ -101,6 +104,8 @@ typedef struct janus_mqtt_context {
 	struct {
 		int keep_alive_interval;
 		int cleansession;
+		char *username;
+		char *password;
 	} connect;
 	struct {
 		int timeout;
@@ -181,10 +186,10 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 	const char *client_id = g_strdup((client_id_item && client_id_item->value) ? client_id_item->value : "guest");
 
 	janus_config_item *username_item = janus_config_get_item_drilldown(config, "general", "username");
-	const char *username = g_strdup((username_item && username_item->value) ? username_item->value : "guest");
+	ctx->connect.username = g_strdup((username_item && username_item->value) ? username_item->value : "guest");
 	
 	janus_config_item *password_item = janus_config_get_item_drilldown(config, "general", "password");
-	const char *password = g_strdup((password_item && password_item->value) ? password_item->value : "guest");
+	ctx->connect.password = g_strdup((password_item && password_item->value) ? password_item->value : "guest");
 
 	janus_config_item *json_item = janus_config_get_item_drilldown(config, "general", "json");
 	if(json_item && json_item->value) {
@@ -202,6 +207,14 @@ int janus_mqtt_init(janus_transport_callbacks *callback, const char *config_path
 			JANUS_LOG(LOG_WARN, "Unsupported JSON format option '%s', using default (indented)\n", json_item->value);
 			json_format_ = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 		}
+	}
+
+	/* Check if we need to send events to handlers */
+	janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+	if(events != NULL && events->value != NULL)
+		notify_events = janus_is_true(events->value);
+	if(!notify_events && callback->events_is_enabled()) {
+		JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_MQTT_NAME);
 	}
 
 	/* Connect configuration */
@@ -327,8 +340,6 @@ error:
 	janus_mqtt_client_destroy_context(&ctx);
 	g_free((char *)url);
 	g_free((char *)client_id);
-	g_free((char *)username);
-	g_free((char *)password);
 	g_free(config);
 
 	return -1;
@@ -409,6 +420,14 @@ void janus_mqtt_session_over(void *context, guint64 session_id, gboolean timeout
 void janus_mqtt_client_connection_lost(void *context, char *cause) {
 	JANUS_LOG(LOG_INFO, "MQTT connection lost cause of %s. Reconnecting...\n", cause);
 	/* Automatic reconnect */
+
+	/* Notify handlers about this transport being gone */
+	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
+	if(notify_events && ctx && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("reconnecting"));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
 }
 
 int janus_mqtt_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message) {
@@ -438,6 +457,8 @@ int janus_mqtt_client_connect(janus_mqtt_context *ctx) {
 	MQTTAsync_connectOptions options = MQTTAsync_connectOptions_initializer;
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
 	options.cleansession = ctx->connect.cleansession;
+	options.username = ctx->connect.username;
+	options.password = ctx->connect.password;
 	options.automaticReconnect = TRUE;
 	options.onSuccess = janus_mqtt_client_connect_success;
 	options.onFailure = janus_mqtt_client_connect_failure;
@@ -462,12 +483,28 @@ void janus_mqtt_client_connect_success(void *context, MQTTAsync_successData *res
 			JANUS_LOG(LOG_ERR, "Can't subscribe to MQTT admin topic: %s, return code: %d\n", ctx->admin.subscribe.topic, rc);
 		}
 	}
+
+	/* Notify handlers about this new transport */
+	if(notify_events && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("connected"));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
 }
 
 void janus_mqtt_client_connect_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = response ? response->code : 0;
 	JANUS_LOG(LOG_ERR, "MQTT client has been failed connecting to the broker, return code: %d. Reconnecting...\n", rc);
 	/* Automatic reconnect */
+
+	/* Notify handlers about this transport failure */
+	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
+	if(notify_events && ctx && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("failed"));
+		json_object_set_new(info, "code", json_integer(rc));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
 }
 
 int janus_mqtt_client_reconnect(janus_mqtt_context *ctx) {
@@ -505,7 +542,14 @@ int janus_mqtt_client_disconnect(janus_mqtt_context *ctx) {
 void janus_mqtt_client_disconnect_success(void *context, MQTTAsync_successData *response) {
 	JANUS_LOG(LOG_INFO, "MQTT client has been successfully disconnected. Destroying the client...\n");
 
+	/* Notify handlers about this transport being gone */
 	janus_mqtt_context *ctx = (janus_mqtt_context *)context;
+	if(notify_events && ctx && ctx->gateway && ctx->gateway->events_is_enabled()) {
+		json_t *info = json_object();
+		json_object_set_new(info, "event", json_string("disconnected"));
+		ctx->gateway->notify_event(&janus_mqtt_transport_, context, info);
+	}
+
 	janus_mqtt_client_destroy_context(&ctx);
 }
 
@@ -627,6 +671,8 @@ void janus_mqtt_client_destroy_context(janus_mqtt_context **ptr) {
 		MQTTAsync_destroy(&ctx->client);
 		g_free(ctx->subscribe.topic);
 		g_free(ctx->publish.topic);
+		g_free(ctx->connect.username);
+		g_free(ctx->connect.password);
 		g_free(ctx->admin.subscribe.topic);
 		g_free(ctx->admin.publish.topic);
 		g_free(ctx);

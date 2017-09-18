@@ -16,7 +16,7 @@ you can use. If you encounter issues, though, please submit an issue
 on [github](https://github.com/meetecho/janus-gateway/issues) instead.
 
 
-##Dependencies
+## Dependencies
 To install it, you'll need to satisfy the following dependencies:
 
 * [Jansson](http://www.digip.org/jansson/)
@@ -44,7 +44,8 @@ A couple of plugins depend on a few more libraries:
 * [libopus](http://opus-codec.org/) (only needed for the bridge plugin)
 * [libogg](http://xiph.org/ogg/) (only needed for the voicemail plugin)
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
-interested in RTSP support in the Streaming plugin)
+interested in RTSP support in the Streaming plugin or in the sample
+Event Handler plugin)
 
 Additionally, you'll need the following libraries and tools:
 
@@ -61,7 +62,7 @@ instance, is very simple:
        opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
        libtool autoconf automake
 
-Notice that you may have to ```yum install epel-release``` as well if you're
+Notice that you may have to `yum install epel-release` as well if you're
 attempting an installation on a CentOS machine instead.
 
 On Ubuntu or Debian, it would require something like this:
@@ -82,10 +83,20 @@ the case for libnice, that has to installed using boneyard repository:
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
 14.04 LTS). In that case, you'll have to [install it manually](http://www.opus-codec.org).
 
-If your distro ships a pre-1.5 version of libsrtp, it may be better to
-uninstall that version and [install 1.5 manually](https://github.com/cisco/libsrtp/releases).
+* *Note:* For custom installations of libnice, you can run
+`pkg-config --cflags --libs nice` to make sure Janus can find the
+installation. If not, you may need to set the `PKG_CONFIG_PATH`
+environment variable prior to compiling Janus, eg.
+`export PKG_CONFIG_PATH=/path/to/libnice/lib/pkgconfig`
+
+In case you're interested in compiling the sample Event Handler plugin,
+you'll need to install the development version of libcurl as well (usually
+`libcurl-devel` on Fedora/CentOS, `libcurl4-openssl-dev` on Ubuntu/Debian).
+
+If your distro ships a pre-1.5 version of libsrtp, you'll have to
+uninstall that version and [install 1.5 or 2.0.0 manually](https://github.com/cisco/libsrtp/releases).
 In fact, 1.4.x is known to cause several issues with WebRTC. Installation
-is quite straightforward:
+of version 1.5.4 is quite straightforward:
 
 	wget https://github.com/cisco/libsrtp/archive/v1.5.4.tar.gz
 	tar xfv v1.5.4.tar.gz
@@ -93,8 +104,21 @@ is quite straightforward:
 	./configure --prefix=/usr --enable-openssl
 	make shared_library && sudo make install
 
-* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
-script if you're installing on a x86_64 distribution.
+The instructions for version 2.0.0 is practically the same:
+
+	wget https://github.com/cisco/libsrtp/archive/v2.0.0.tar.gz
+	tar xfv v2.0.0.tar.gz
+	cd libsrtp-2.0.0
+	./configure --prefix=/usr --enable-openssl
+	make shared_library && sudo make install
+
+The Janus configure script autodetects which one you have installed and
+links to the correct library automatically, choosing v2.0.0 if both are
+installed. If you want v1.5.4 to be picked, pass `--disable-libsrtp2`
+when configuring Janus to force it to use the older version instead.
+
+* *Note:* when installing libsrtp, no matter which version, you may need to pass
+`--libdir=/usr/lib64` to the configure script if you're installing on a x86_64 distribution.
 
 If you want to make use of BoringSSL instead of OpenSSL (e.g., because
 you want to take advantage of `--enable-dtls-settimeout`), you'll have
@@ -118,11 +142,16 @@ to manually install it to a specific location. Use the following steps:
 	sudo cp build/crypto/libcrypto.a /opt/boringssl/lib/
 
 Once the library is installed, you'll have to pass an additional
-```--enable-boringssl``` flag to the configure script, as by default
-Janus will be build assuming OpenSSL will be used. If you were using
+`--enable-boringssl` flag to the configure script, as by default
+Janus will be built assuming OpenSSL will be used. By default, Janus
+expects BoringSSL to be installed in `/opt/boringssl` -- if it's
+installed in another location, pass the path to the configure script
+as such: `--enable-boringssl=/path/to/boringssl` If you were using
 OpenSSL and want to switch to BoringSSL, make sure you also do a
-```make clean``` in the Janus folder before compiling with the new
-BoringSSL support.
+`make clean` in the Janus folder before compiling with the new
+BoringSSL support. If you enabled BoringSSL support and also want Janus
+to detect and react to DTLS timeouts with faster retransmissions, then
+pass `--enable-dtls-settimeout` to the configure script too.
 
 For what concerns usrsctp, which is needed for Data Channels support, it
 is usually not available in repositories, so if you're interested in
@@ -134,7 +163,7 @@ pretty easy and standard process:
 	./bootstrap
 	./configure --prefix=/usr && make && sudo make install
 
-* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+* *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
 
 The same applies for libwebsockets, which is needed for the optional
@@ -182,10 +211,11 @@ following steps:
 	cd rabbitmq-c
 	git submodule init
 	git submodule update
-	autoreconf -i
-	./configure --prefix=/usr && make && sudo make install
+	mkdir build && cd build
+	cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+	make && sudo make install
 
-* *Note:* you may need to pass --libdir=/usr/lib64 to the configure
+* *Note:* you may need to pass `--libdir=/usr/lib64` to the configure
 script if you're installing on a x86_64 distribution.
 
 To conclude, should you be interested in building the gateway
@@ -203,7 +233,7 @@ On Ubuntu/Debian:
 	aptitude install doxygen graphviz
 
 
-##Compile
+## Compile
 Once you have installed all the dependencies, get the code:
 
 	git clone https://github.com/meetecho/janus-gateway.git
@@ -226,7 +256,7 @@ default configuration files to use, which you can do this way:
 
 	make configs
 
-Remember to only do this once, or otherwise a subsequent ```make configs```
+Remember to only do this once, or otherwise a subsequent `make configs`
 will overwrite any configuration file you may have modified in the
 meanwhile.
 
@@ -286,7 +316,7 @@ when configuring Janus as well:
 
 Everything else works exactly the same way as on Linux.
 
-##Configure and start
+## Configure and start
 To start the gateway, you can use the janus executable. There are several
 things you can configure, either in a configuration file:
 
@@ -296,7 +326,7 @@ or on the command line:
 
 	<installdir>/bin/janus --help
 
-	janus 0.2.1
+	janus 0.2.5
 
 	Usage: janus [OPTIONS]...
 
@@ -340,8 +370,11 @@ or on the command line:
                                   (default=off)
 	-u, --rtcp-mux                Whether to force rtcp-mux or not (whether RTP
                                   and RTCP will always be muxed)  (default=off)
-	-q, --max-nack-queue=number   Maximum size of the NACK queue per user for
-                                  retransmissions
+	-q, --max-nack-queue=number   Maximum size of the NACK queue (in ms) per user
+                                  for retransmissions
+	-t, --no-media-timer=number   Time (in s) that should pass with no media
+                                  (audio or video) being received before Janus
+                                  notifies you about this
 	-r, --rtp-port-range=min-max  Port range to use for RTP/RTCP (only available
 								  if the installed libnice supports it)
 	-d, --debug-level=1-7         Debug/logging level (0=disable debugging,
@@ -354,6 +387,7 @@ or on the command line:
                                   default)
 	-A, --token-auth              Enable token-based authentication for all
                                   requests  (default=off)
+	-e, --event-handlers          Enable event handlers  (default=off)
 
 Options passed through the command line have the precedence on those
 specified in the configuration file. To start the gateway, simply run:
@@ -364,14 +398,14 @@ This will start the gateway, and have it look at the configuration file.
 
 As far as transports are concerned (that is, with respect to how you can
 interact with your Janus instance), using the default configuration files
-provided after issuing a ```make configs``` will result in Janus only
+provided after issuing a `make configs` will result in Janus only
 enabling an HTTP webserver (port 8088) and a plain WebSocket server (8188),
 assuming the related transport modules have been compiled, of course.
 To enable HTTPS or Secure WebSockets support, edit the related transport
 configuration file accordingly. You can also change the base path that
-the webserver uses: by default this is ```/janus```, but you can change
-it to anything you want and with any nesting you want (e.g., ```/mypath```,
-```/my/path```, or ```/my/really/nested/path```). This is done to allow
+the webserver uses: by default this is `/janus`, but you can change
+it to anything you want and with any nesting you want (e.g., `/mypath`,
+`/my/path`, or `/my/really/nested/path`). This is done to allow
 you to more easily customize rules in any frontend you may have (e.g.,
 Apache in front of your services). Please notice that the path configuration
 is not provided for WebSockets, instead, as it is not needed there. The
@@ -379,17 +413,17 @@ RabbitMQ module, if compiled, is disabled by default, so you'll have
 to enable it manually if interested in it.
 
 To test whether it's working correctly, you can use the demos provided
-with this package in the ```html``` folder: these are exactly the same demos
+with this package in the `html` folder: these are exactly the same demos
 available online on the [project website](http://janus.conf.meetecho.com/).
 Just copy the file it contains in a webserver, or use a userspace webserver
-to serve the files in the ```html``` folder (e.g., with php or python),
+to serve the files in the `html` folder (e.g., with php or python),
 and open the index.html page in either Chrome or Firefox. A list of demo
 pages exploiting the different plugins will be available. Remember to
 edit the transport/port details in the demo JavaScript files if you
 changed any transport-related configuration from its defaults.
 
 
-##Help us!
+## Help us!
 Any thought, feedback or (hopefully not!) insult is welcome!
 
 Developed by [@meetecho](https://github.com/meetecho)

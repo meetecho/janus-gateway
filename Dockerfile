@@ -45,16 +45,18 @@ RUN git clone https://boringssl.googlesource.com/boringssl && cd boringssl \
     && cp build/crypto/libcrypto.a /opt/boringssl/lib/ && cd
 
 # Rabbit MQ
-RUN git clone https://github.com/alanxz/rabbitmq-c && cd rabbitmq-c && git checkout 2ca1774 \
-    && git submodule init && git submodule update && autoreconf -i \
-    && ./configure --prefix=/usr && make && make install && cd
+#RUN git clone https://github.com/alanxz/rabbitmq-c && cd rabbitmq-c && git checkout 2ca1774 \
+#    && git submodule init && git submodule update && autoreconf -i \
+#    && ./configure --prefix=/usr && make && make install && cd
 
 # Install Janus itself
 COPY / janus-gateway
 RUN cd janus-gateway && sh autogen.sh && ./configure --prefix=/usr/local \
     --enable-boringssl --enable-post-processing --disable-websockets --disable-mqtt --disable-docs \
+    --enable-data-channels --disable-plugin-audiobridge --disable-plugin-echotest --disable-plugin-recordplay \ 
+    --disable-plugin-sip --disable-plugin-streaming --disable-plugin-videocall --disable-plugin-videoroom \
+    --disable-plugin-voicemail --disable-plugin-textroom \ 
     && make && make configs && make install && cd
-
 # Command to execute for starting janus
 ENTRYPOINT ["/usr/local/bin/janus"]
 CMD ["-d4"]

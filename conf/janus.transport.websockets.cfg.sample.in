@@ -3,6 +3,9 @@
 [general]
 json = indented				; Whether the JSON messages should be indented (default),
 							; plain (no indentation) or compact (no indentation and no spaces)
+;pingpong_trigger = 30		; After how many seconds of idle, a PING should be sent
+;pingpong_timeout = 10		; After how many seconds of not getting a PONG, a timeout should be detected
+
 ws = yes					; Whether to enable the WebSockets API
 ws_port = 8188				; WebSockets server port
 ;ws_interface = eth0		; Whether we should bind this server to a specific interface only
