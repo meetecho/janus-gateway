@@ -2807,6 +2807,8 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						component->in_stats.audio.nacks += nacks_count;
 					}
 					janus_mutex_unlock(&component->mutex);
+				}
+				if (nacks_count) {
 					g_slist_free(nacks);
 					nacks = NULL;
 				}
