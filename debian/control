@@ -29,7 +29,6 @@ Build-Depends:
  libavcodec-dev,
  libavformat-dev,
  pkg-config,
- rename:native,
  libusrsctp1-dev,
 Build-Depends-Indep:
  doxygen,
