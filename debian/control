@@ -24,7 +24,7 @@ Build-Depends:
  libsofia-sip-ua-dev,
  libsrtp2-dev | libsrtp0-dev,
  libssl-dev,
- libwebsockets-dev (>> 1.3),
+ libwebsockets-dev,
  libavutil-dev,
  libavcodec-dev,
  libavformat-dev,
@@ -32,7 +32,6 @@ Build-Depends:
  libusrsctp1-dev,
 Build-Depends-Indep:
  doxygen,
- rename,
  graphviz,
 Standards-Version: 4.0.0
 Homepage: http://janus.conf.meetecho.com
