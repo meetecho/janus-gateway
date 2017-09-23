@@ -12,7 +12,7 @@ Build-Depends:
  dh-autoreconf,
  dh-systemd,
  dpkg-dev,
- gengetopt::native,
+ gengetopt:native,
  libcurl4-openssl-dev,
  libglib2.0-dev,
  libjansson-dev,
@@ -29,6 +29,7 @@ Build-Depends:
  libavcodec-dev,
  libavformat-dev,
  pkg-config,
+ rename:native,
  libusrsctp1-dev,
 Build-Depends-Indep:
  doxygen,
