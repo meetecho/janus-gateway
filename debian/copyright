@@ -1,0 +1,33 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: janus
+Source: https://github.com/meetecho/janus-gateway
+ git://github.com/meetecho/janus-gateway
+
+Files: *
+Copyright: 2014-2017 Meetecho
+License-Grant:
+ GNU General Public License v3
+License: GPL-3 with OpenSSL exception
+ If you modify this Program, or any covered work, by linking or
+ combining it with OpenSSL (or a modified version of that library),
+ containing parts covered by the terms of OpenSSL License, the licensors
+ of this Program grant you additional permission to convey the resulting
+ work. Corresponding Source for a  non-source form of such a combination
+ shall include the source code for the parts of openssl used as well as
+ that of the covered work.
+Comment:
+ The OpenSSL exception is stated as an added paragraph to section 7 in
+ the file COPYING at the root of upstream source.
+ .
+ The exception is assumed to apply to all code copyright Meetecho 
+ More info at <https://github.com/meetecho/janus-gateway/issues/713>.
+
+Files: debian/*
+Copyright:
+  2015, Saúl Ibarra Corretgé <saul@ag-projects.com>
+  2016, Victor Seva <vseva@debian.org>
+  2016-2017, Jonas Smedegaard <dr@jones.dk>
+License: GPL-3
+
+License: GPL-3
+License-Reference: /usr/share/common-licenses/GPL-3

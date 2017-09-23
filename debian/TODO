@@ -1,0 +1,6 @@
+  * Package usrsctp: <https://github.com/sctplab/usrsctp>.
+  * Package javascript libraries (and move package janus-demos to main):
+    + webrtc-adapter
+    + jquery-BlockUI
+    + BootBox
+    + Blueimp-md5

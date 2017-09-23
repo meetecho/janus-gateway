@@ -1,29 +1,129 @@
-Source: janus-gateway
-Section: utils
-Priority: options
-Maintainer: Michael Zanetti <michael.zanetti@guh.io>
-Build-depends: debhelper (>= 0.0.0),
-               libmicrohttpd-dev,
-               libjansson-dev,
-               libnice-dev,
-               libssl-dev,
-               libsofia-sip-ua-dev,
-               libglib2.0-dev,
-               libopus-dev,
-               libogg-dev,
-               libcurl4-openssl-dev,
-               libwebsockets-dev,
-               pkg-config,
-               gengetopt:native,
-               libtool,
-               automake,
-               libsrtp2-dev,
-               libusrsctp1-dev,
-Standards-Version: 3.9.3
+Source: janus
+Section: comm
+Priority: optional
+Maintainer: Debian VoIP Team <pkg-voip-maintainers@lists.alioth.debian.org>
+Uploaders:
+ Jonas Smedegaard <dr@jones.dk>,
+ Victor Seva <vseva@debian.org>,
+ Saúl Ibarra Corretgé <saul@ag-projects.com>,
+Build-Depends:
+ autotools-dev,
+ debhelper,
+ dh-autoreconf,
+ dh-systemd,
+ dpkg-dev,
+ gengetopt,
+ libcurl4-openssl-dev,
+ libglib2.0-dev,
+ libjansson-dev,
+ libmicrohttpd-dev,
+ libnice-dev,
+ libogg-dev,
+ libopus-dev,
+ librabbitmq-dev,
+ libsofia-sip-ua-dev,
+ libsrtp2-dev | libsrtp0-dev,
+ libssl-dev,
+ libwebsockets-dev (>> 1.3),
+ libavutil-dev,
+ libavcodec-dev,
+ libavformat-dev,
+ pkg-config,
+ rename,
+ libusrsctp1-dev,
+Build-Depends-Indep:
+ doxygen,
+ graphviz,
+Standards-Version: 4.0.0
+Homepage: http://janus.conf.meetecho.com
 
-Package: janus-gateway
+Package: janus
 Architecture: any
-Depends: ${shlibs:Depends},
-         ${misc:Depends},
-Description: The Janus Gateway
-  The janus gateway
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Recommends:
+ ssl-cert,
+Suggests:
+ janus-tools,
+ janus-doc,
+Description: general purpose WebRTC gateway
+ Janus is a general purpose WebRTC Gateway with a minimal footprint.
+ .
+ As such, it provides no functionality per se other than implementing
+ the means to set up a WebRTC media communication with a browser,
+ exchanging JSON messages with it, and relaying RTP/RTCP and messages
+ between browsers and the server-side application logic they are
+ attached to. Any specific feature/application are implemented in server
+ side plugins, that browsers contact via the gateway to take advantage
+ of the functionality they provide.
+ .
+ Example uses for Janus are applications involving echo tests,
+ conference bridges, media recorders, and SIP gateways.
+
+Package: janus-dev
+Section: devel
+Architecture: any
+Depends:
+ janus (=${binary:Version}),
+ ${misc:Depends},
+ libcurl4-openssl-dev,
+ libglib2.0-dev,
+ libjansson-dev,
+ libnice-dev,
+ libsrtp2-dev | libsrtp0-dev,
+Suggests:
+ janus-doc,
+Description: general purpose WebRTC gateway - development files
+ Janus is a general purpose WebRTC Gateway with a minimal footprint.
+ .
+ This package contains headers for plugin development.
+
+Package: janus-tools
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: Open Source, general purpose, WebRTC gateway - helper tools
+ Janus is a general purpose WebRTC Gateway with a minimal footprint.
+ .
+ This package contains the helper tool janus-pp-rec to post-process
+ Janus recordings.
+
+Package: janus-doc
+Section: doc
+Architecture: all
+Depends:
+ ${misc:Depends},
+ libjs-jquery,
+ libjs-bootstrap,
+ libjs-bootswatch,
+Description: Open Source, general purpose, WebRTC gateway - documentation
+ Janus is a general purpose WebRTC Gateway with a minimal footprint.
+ .
+ This package contains the html documentation for Janus.
+
+Package: janus-demos
+Section: contrib/comm
+Architecture: all
+Depends:
+ ${misc:Depends},
+ libjs-jquery,
+ libjs-bootstrap,
+ libjs-bootswatch,
+ libjs-spin.js,
+ fonts-font-awesome,
+Suggests:
+ janus,
+ gstreamer1.0-tools,
+ gstreamer1.0-plugins-good,
+ gstreamer1.0-x,
+Description: Open Source, general purpose, WebRTC gateway - demos
+ Janus is a general purpose WebRTC Gateway with a minimal footprint.
+ .
+ This package contains a set of demo html applications using Janus.
+ .
+ The demos require online referenced Javascript code.
+ .
+ Packages gstreamer1.0-plugins-good gstreamer1.0-x are needed for
+ included example streaming script.

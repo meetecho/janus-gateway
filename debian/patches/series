@@ -1,0 +1,3 @@
+1001_try_enable_docs_by_default.patch
+2001_use_snakeoil_cert.patch
+add-libusrsctp-to-deps

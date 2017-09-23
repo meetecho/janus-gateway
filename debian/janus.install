@@ -1,0 +1,4 @@
+etc/janus
+usr/bin/janus
+usr/lib/*/janus/*/libjanus_*.so
+usr/lib/*/janus/*/libjanus_*.so.*

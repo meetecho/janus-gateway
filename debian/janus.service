@@ -1,0 +1,13 @@
+[Unit]
+Description=Janus WebRTC gateway
+After=network.target
+Documentation=https://janus.conf.meetecho.com/docs/index.html
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/janus -o
+Restart=on-abnormal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

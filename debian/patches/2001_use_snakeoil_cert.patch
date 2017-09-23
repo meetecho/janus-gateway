@@ -1,0 +1,44 @@
+Description: Use snakeoil certificate by default
+Author: Jonas Smedegaard <dr@jones.dk>
+Last-Update: 2017-03-13
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+Index: janus-gateway-upstream/conf/janus.cfg.sample.in
+===================================================================
+--- janus-gateway-upstream.orig/conf/janus.cfg.sample.in
++++ janus-gateway-upstream/conf/janus.cfg.sample.in
+@@ -62,8 +62,8 @@ admin_secret = janusoverlord	; String th
+ 
+ ; Certificate and key to use for DTLS.
+ [certificates]
+-cert_pem = @certdir@/mycert.pem
+-cert_key = @certdir@/mycert.key
++cert_pem = /etc/ssl/certs/ssl-cert-snakeoil.pem
++cert_key = /etc/ssl/private/ssl-cert-snakeoil.key
+ 
+ 
+ ; Media-related stuff: you can configure whether if you want
+Index: janus-gateway-upstream/conf/janus.transport.http.cfg.sample.in
+===================================================================
+--- janus-gateway-upstream.orig/conf/janus.transport.http.cfg.sample.in
++++ janus-gateway-upstream/conf/janus.transport.http.cfg.sample.in
+@@ -61,5 +61,5 @@ admin_https = no				; Whether to enable
+ 
+ ; Certificate and key to use for HTTPS.
+ [certificates]
+-cert_pem = @certdir@/mycert.pem
+-cert_key = @certdir@/mycert.key
++cert_pem = /etc/ssl/certs/ssl-cert-snakeoil.pem
++cert_key = /etc/ssl/private/ssl-cert-snakeoil.key
+Index: janus-gateway-upstream/conf/janus.transport.websockets.cfg.sample.in
+===================================================================
+--- janus-gateway-upstream.orig/conf/janus.transport.websockets.cfg.sample.in
++++ janus-gateway-upstream/conf/janus.transport.websockets.cfg.sample.in
+@@ -34,5 +34,5 @@ admin_wss = no					; Whether to enable t
+ 
+ ; Certificate and key to use for any secure WebSocket server, if needed.
+ [certificates]
+-cert_pem = @certdir@/mycert.pem
+-cert_key = @certdir@/mycert.key
++cert_pem = /etc/ssl/certs/ssl-cert-snakeoil.pem
++cert_key = /etc/ssl/private/ssl-cert-snakeoil.key

@@ -1,5 +1,86 @@
-janus-gateway (0.1) xenial; urgency=medium
+janus (0.2.5) unstable; urgency=medium
 
-  * Initial release. (Closes: #XXXXXX)
+  * build git master
 
- -- Michael Zanetti <michael.zanetti@guh.io>  Thu, 22 Jun 2017 10:56:51 +0200
+ -- Michael Zanetti <michael.zanetti@guh.io>  Fri, 22 Sep 2017 13:38:53 -0400
+
+janus (0.2.4-2) unstable; urgency=medium
+
+  * Declare compliance with Debian Policy 4.0.0.
+  * Update package relations:
+    + Relax to build-depend unversioned on debhelper dpkg-dev: Needed
+      versions satisfied even in oldstable.
+    + Stop explicitly depend on lsb-base sysvinit-utils: Core packages,
+      and needed versions satisfied even in oldstable.
+
+ -- Jonas Smedegaard <dr@jones.dk>  Fri, 28 Jul 2017 13:38:53 -0400
+
+janus (0.2.4-1) unstable; urgency=medium
+
+  [ upstream ]
+  * New release.
+
+  [ Jonas Smedegaard ]
+  * Unfuzz patches.
+  * Advertise DEP3 format in patch headers.
+
+ -- Jonas Smedegaard <dr@jones.dk>  Fri, 28 Jul 2017 12:35:16 -0400
+
+janus (0.2.3-1) unstable; urgency=medium
+
+  [ upstream ]
+  * New release.
+
+  [ Jonas Smedegaard ]
+  * Fix have janus-demos suggest gstreamer1.0-x.
+  * Fix and modernize SysV init script.
+    Recommend recent sysvinit-utils.
+  * Stop work around wrongly installed headers: Fixed upstream.
+  * Build-depend on libsrtp2-dev for all archs, with libsrtp0-dev as
+    fallback (not only on libsrtp0-dev for some archs).
+  * Stop repackage upstream tarball: No longer includes non-free
+    embedded ICC profile.
+  * Update copyright info: Extend coverage for main upstream author.
+  * Drop all patches cherrypicked upstream: Now applied.
+  * Drop patch 2002: Fixed upstream.
+  * Unfuzz patches 1001 1003.
+
+ -- Jonas Smedegaard <dr@jones.dk>  Mon, 12 Jun 2017 17:22:48 +0200
+
+janus (0.2.2+dfsg-4) unstable; urgency=medium
+
+  * Fix patch 1001.
+
+ -- Jonas Smedegaard <dr@jones.dk>  Thu, 16 Mar 2017 13:52:27 +0100
+
+janus (0.2.2+dfsg-3) unstable; urgency=medium
+
+  [ Victor Seva ]
+  * Fix typo in janus-demos short description.
+    Thanks to Lorenzo Miniero.
+
+  [ Jonas Smedegaard ]
+  * Build-depend on libsrtp0-dev on archs not yet supported by
+    libsrtp2-dev.
+  * Add patch 1001 to try build documentation by default.
+  * Stop explicitly enable documentation.
+    Revert to build-depend-indep (not build-depend) on doxygen graphviz.
+    See bug#857853.
+
+ -- Jonas Smedegaard <dr@jones.dk>  Thu, 16 Mar 2017 12:45:57 +0100
+
+janus (0.2.2+dfsg-2) unstable; urgency=medium
+
+  * Fix build-depend (not build-depend-indep, for now) on doxygen
+    graphviz.
+    Closes: Bug#857853. Thanks to Adrian Bunk.
+
+ -- Jonas Smedegaard <dr@jones.dk>  Thu, 16 Mar 2017 01:03:15 +0100
+
+janus (0.2.2+dfsg-1) unstable; urgency=medium
+
+  [ Jonas Smedegaard & Victor Seva ]
+  * Initial package.
+    Closes: Bug#849059.
+
+ -- Jonas Smedegaard <dr@jones.dk>  Tue, 14 Mar 2017 12:40:48 +0100

@@ -1,0 +1,29 @@
+#!/bin/sh
+# Copyright © 2016-2017  Jonas Smedegaard <dr@jones.dk>
+# Description: helper script to update copyright_hints
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -eu
+
+# extract metadata from binary media files, and
+# skip binary media files without copyright/licensing metadata
+export DEB_COPYRIGHT_EXTRACT_EXTS="png"
+export DEB_COPYRIGHT_CHECK_IGNORE_EXTS="alaw mulaw mjr"
+
+make -f /usr/share/cdbs/1/rules/utils.mk pre-build || true
+make -f /usr/share/cdbs/1/rules/utils.mk clean DEB_COPYRIGHT_CHECK_STRICT=1
+
+# unconditionally merge changes - safe to do with git-tracked package
+[ ! -f debian/copyright_newhints ] || mv -f debian/copyright_newhints debian/copyright_hints

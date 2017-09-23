@@ -1,0 +1,30 @@
+Description: Try build documentation by default
+Author: Jonas Smedegaard <dr@jones.dk>
+Last-Update: 2017-03-16
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/configure.ac
++++ b/configure.ac
+@@ -35,10 +35,10 @@
+ ##
+ 
+ AC_ARG_ENABLE([docs],
+-              [AS_HELP_STRING([--enable-docs],
+-                              [Enable building documentation])],
++              [AS_HELP_STRING([--disable-docs],
++                              [Disable building documentation])],
+               [],
+-              [enable_docs=no])
++              [enable_docs=maybe])
+ 
+ AC_ARG_ENABLE([data-channels],
+               [AS_HELP_STRING([--disable-data-channels],
+@@ -318,6 +318,8 @@
+       [
+         AS_IF([test "x$enable_docs" = "xyes"],
+               [AC_MSG_ERROR([doxygen or dot not found. See README.md for installation instructions or remove --enable-docs])])
++      ],[
++        enable_docs=yes
+       ])
+ AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
+ 

@@ -1,0 +1,22 @@
+#!/bin/sh
+# kFreeBSD do not accept scripts as interpreters, using #!/bin/sh and sourcing.
+if [ true != "$INIT_D_SCRIPT_SOURCED" ] ; then
+    set "$0" "$@"; INIT_D_SCRIPT_SOURCED=true . /lib/init/init-d-script
+fi
+### BEGIN INIT INFO
+# Provides:          janus
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Janus WebRTC gateway
+# Description:       General purpose WebRTC Gateway.
+### END INIT INFO
+
+# Author: Jonas Smedegaard <dr@jones.dk>
+
+DESC="Janus WebRTC gateway"
+DAEMON=/usr/bin/janus
+
+# This may be overridden in /etc/default/janus
+DAEMON_ARGS=${DAEMON_ARGS:---pid-file=$PIDFILE --disable-colors}

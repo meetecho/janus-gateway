@@ -1,12 +1,19 @@
 #!/usr/bin/make -f
 
+# output every command that modifies files on the build system.
+#DH_VERBOSE = 1
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/buildflags.mk
+
 %:
-	dh $@
+	dh $@  --with autoreconf,systemd
 
 override_dh_auto_configure:
-	./autogen.sh
-	dh_auto_configure
+	dh_auto_configure -- --enable-post-processing
 
-override_dh_auto_install:
-	dh_auto_install
-	for i in `ls debian/janus-gateway/etc/janus/*.sample`; do mv $$i `echo $$i | sed s/.sample//`; done
+override_dh_install:
+	rename 's/\.sample$$//' debian/tmp/etc/janus/*.sample
+	rm -f debian/tmp/usr/share/janus/streams/test_*
+	dh_install

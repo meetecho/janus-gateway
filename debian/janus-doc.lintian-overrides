@@ -1,0 +1,2 @@
+# false positive: file is not plain jquery but custom code from Doxygen
+embedded-javascript-library usr/share/doc/janus-doc/html/jquery.js please use libjs-jquery
