@@ -412,6 +412,8 @@ void janus_pfunix_session_over(void *transport, guint64 session_id, gboolean tim
 	if(transport == NULL || !timeout)
 		return;
 	/* FIXME Should we really close the connection in case of a timeout? */
+        // mzanetti: no, we most definitely shouldn't
+        return;
 	janus_pfunix_client *client = (janus_pfunix_client *)transport;
 	janus_mutex_lock(&clients_mutex);
 	if(g_hash_table_lookup(clients, client) != NULL) {
