@@ -12,7 +12,7 @@ Build-Depends:
  dh-autoreconf,
  dh-systemd,
  dpkg-dev,
- gengetopt,
+ gengetopt::native,
  libcurl4-openssl-dev,
  libglib2.0-dev,
  libjansson-dev,
