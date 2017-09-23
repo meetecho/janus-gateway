@@ -29,10 +29,10 @@ Build-Depends:
  libavcodec-dev,
  libavformat-dev,
  pkg-config,
- rename,
  libusrsctp1-dev,
 Build-Depends-Indep:
  doxygen,
+ rename,
  graphviz,
 Standards-Version: 4.0.0
 Homepage: http://janus.conf.meetecho.com
