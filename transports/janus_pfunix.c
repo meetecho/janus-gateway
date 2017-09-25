@@ -495,6 +495,7 @@ void *janus_pfunix_thread(void *data) {
 			continue;
 		if(res < 0) {
 			JANUS_LOG(LOG_ERR, "poll() failed\n");
+			fprintf(stderr,"Error while polling: %s\n",strerror(errno));
 			break;
 		}
 		int i = 0;
