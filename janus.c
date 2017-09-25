@@ -3980,7 +3980,7 @@ gint main(int argc, char *argv[])
 				JANUS_LOG(LOG_INFO, "Loading event handler plugin '%s'...\n", eventent->d_name);
 				memset(eventpath, 0, 1024);
 				g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
-				void *event = dlopen(eventpath, RTLD_LAZY);
+				void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
 				if (!event) {
 					JANUS_LOG(LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
 				} else {
@@ -4108,7 +4108,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 1024);
 		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
-		void *plugin = dlopen(pluginpath, RTLD_LOCAL | RTLD_LAZY);
+		void *plugin = dlopen(pluginpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!plugin) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
 		} else {
@@ -4236,7 +4236,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading transport plugin '%s'...\n", transportent->d_name);
 		memset(transportpath, 0, 1024);
 		g_snprintf(transportpath, 1024, "%s/%s", path, transportent->d_name);
-		void *transport = dlopen(transportpath, RTLD_LOCAL | RTLD_LAZY);
+		void *transport = dlopen(transportpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!transport) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
 		} else {
