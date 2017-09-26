@@ -35,7 +35,8 @@ before_script:
  - cmake -DCMAKE_CXX_FLAGS="-lrt" ..
  - make
  - cd ..
- - cp -Rv include ${HOME}/install/boringssl
+ - mkdir -p ${HOME}/install/boringssl/include
+ - cp -Rv include/ ${HOME}/install/boringssl/include
  - mkdir -p ${HOME}/install/boringssl/lib
  - cp build/ssl/libssl.a build/crypto/libcrypto.a ${HOME}/install/boringssl/lib
 # install usrsctp
