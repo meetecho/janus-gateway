@@ -3,11 +3,6 @@ sudo: false
 language: C
 compiler: gcc
 
-env:
-  global:
-    - CPPFLAGS="-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include -I${HOME}/install/usrsctp/include -I${HOME}/install/rabbit/include"
-    - LDFLAGS="-L${HOME}/install/srtp/lib -L${HOME}/install/boringssl/lib -L${HOME}/install/usrsctp/lib -L${HOME}/install/rabbit/lib"
-
 addons:
   apt: 
     packages:
@@ -64,5 +59,7 @@ before_script:
 
 script:
   - sh autogen.sh
+  - export CPPFLAGS="-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include -I${HOME}/install/usrsctp/include -I${HOME}/install/rabbit/include"
+  - export LDFLAGS="-L${HOME}/install/srtp/lib -L${HOME}/install/boringssl/lib -L${HOME}/install/usrsctp/lib -L${HOME}/install/rabbit/lib"
   - ./configure --enable-boringssl --disable-plugin-audiobridge --disable-plugin-echotest --disable-plugin-recordplay --disable-plugin-sip --disable-plugin-streaming ----disable-plugin-videocall --disable-plugin-videoroom --disable-plugin-voicemail --disable-plugin-textroom --enable-post-processing
   - make
