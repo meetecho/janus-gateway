@@ -1,0 +1,72 @@
+dist: trusty
+sudo: false 
+language: C
+
+env:
+  global:
+    - CPPFLAGS=-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include
+    - LDFLAGS=-L${HOME}/install/srtp/lib -I${HOME}/install/boringssl/lib
+
+addons:
+  apt: 
+    packages:
+      - build-essential 
+      - libmicrohttpd-dev
+      - libjansson-dev
+      - libnice-dev
+      - libssl-dev
+      - libsofia-sip-ua-dev
+      - libglib2.0-dev
+      - libcurl4-openssl-dev
+      - pkg-config
+      - gengetopt
+      - libtool
+      - automake
+      - cmake
+
+before_script:
+ - cd ..
+# create install directories
+ - mkdir -p install/srtp install/boringssl install/usrsctp install/rabbit
+# install libsrtp
+ - wget https://github.com/cisco/libsrtp/archive/v2.0.0.tar.gz
+ - tar xfv v2.0.0.tar.gz
+ - cd libsrtp-2.0.0
+ - ./configure --prefix=${HOME}/install/srtp --enable-openssl
+ - make shared_library && make install
+# install boringssl
+ - cd ..
+ - git clone https://boringssl.googlesource.com/boringssl
+ - cd boringssl
+ - sed -i s/" -Werror"//g CMakeLists.tx
+ - mkdir -p build
+ - cd build
+ - cmake -DCMAKE_CXX_FLAGS="-lrt" ..
+ - make
+ - cd ..
+ - cp -R include ${HOME}/install/boringssl
+ - mkdir -p ${HOME}/install/boringssl/lib
+ - cp build/ssl/libssl.a build/crypto/libcrypto.a ${HOME}/install/boringssl/lib
+# install usrsctp
+ - cd ..
+ - git clone https://github.com/sctplab/usrsctp
+ - cd usrsctp
+ - ./bootstrap
+ - ./configure --prefix=${HOME}/install/usrsctp
+ - make && make install
+# install rabbitmq
+ - cd ..
+ - git clone https://github.com/alanxz/rabbitmq-c
+ - cd rabbitmq-c
+ - git submodule init
+ - git submodule update
+ - mkdir build && cd build
+ - cmake -DCMAKE_INSTALL_PREFIX=${HOME}/install/rabbit ..
+ - make && make install && cd ..
+# back to janus 
+ - cd ../janus-gateway
+
+script:
+  - sh autogen.sh
+  - ./configure --enable-boringssl --disable-plugin-audiobridge --disable-plugin-echotest --disable-plugin-recordplay --disable-plugin-sip --disable-plugin-streaming ----disable-plugin-videocall --disable-plugin-videoroom --disable-plugin-voicemail --disable-plugin-textroom --enable-post-processing
+  - make
