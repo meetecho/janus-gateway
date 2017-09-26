@@ -4,8 +4,8 @@ language: C
 
 env:
   global:
-    - CPPFLAGS=-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include -${HOME}/install/usrsctp/include -${HOME}/install/rabbit/include
-    - LDFLAGS=-L${HOME}/install/srtp/lib -I${HOME}/install/boringssl/lib -${HOME}/install/usrsctp/lib -${HOME}/install/rabbit/lib
+    - CPPFLAGS="-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include -${HOME}/install/usrsctp/include -${HOME}/install/rabbit/include"
+    - LDFLAGS="-L${HOME}/install/srtp/lib -I${HOME}/install/boringssl/lib -${HOME}/install/usrsctp/lib -${HOME}/install/rabbit/lib"
 
 addons:
   apt: 
@@ -38,7 +38,7 @@ before_script:
  - cd ..
  - git clone https://boringssl.googlesource.com/boringssl
  - cd boringssl
- - sed -i s/" -Werror"//g CMakeLists.tx
+ - sed -i s/" -Werror"//g CMakeLists.txt
  - mkdir -p build
  - cd build
  - cmake -DCMAKE_CXX_FLAGS="-lrt" ..
