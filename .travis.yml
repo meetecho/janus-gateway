@@ -1,6 +1,7 @@
 dist: trusty
 sudo: false 
 language: C
+compiler: gcc
 
 env:
   global:
@@ -10,7 +11,6 @@ env:
 addons:
   apt: 
     packages:
-      - build-essential 
       - libmicrohttpd-dev
       - libjansson-dev
       - libnice-dev
@@ -18,11 +18,7 @@ addons:
       - libsofia-sip-ua-dev
       - libglib2.0-dev
       - libcurl4-openssl-dev
-      - pkg-config
       - gengetopt
-      - libtool
-      - automake
-      - cmake
 
 before_script:
  - cd ..
