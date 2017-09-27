@@ -444,6 +444,9 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 			if (!handle) {
 				continue;
 			}
+			if(g_main_loop_is_running(handle->iceloop)) {
+				continue;
+			}
 			/* Schedule the ICE handle for deletion */
 			g_hash_table_iter_remove(&iter);
 			GSource *timeout_source = g_timeout_source_new_seconds(3);
@@ -1244,9 +1247,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	janus_mutex_lock(&handle->mutex);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	if(handle->iceloop != NULL) {
-		if(g_main_loop_is_running(handle->iceloop)) {
-			g_main_loop_quit(handle->iceloop);
-		}
 		g_main_loop_unref (handle->iceloop);
 		handle->iceloop = NULL;
 	}
