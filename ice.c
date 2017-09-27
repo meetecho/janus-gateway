@@ -444,7 +444,7 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 			if (!handle) {
 				continue;
 			}
-			if(g_main_loop_is_running(handle->iceloop)) {
+			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				continue;
 			}
 			/* Schedule the ICE handle for deletion */
