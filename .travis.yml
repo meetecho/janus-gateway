@@ -61,5 +61,5 @@ script:
   - sh autogen.sh
   - export CPPFLAGS="-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include -I${HOME}/install/usrsctp/include -I${HOME}/install/rabbit/include"
   - export LDFLAGS="-L${HOME}/install/srtp/lib -L${HOME}/install/boringssl/lib -L${HOME}/install/usrsctp/lib -L${HOME}/install/rabbit/lib"
-  - ./configure --enable-boringssl="${HOME}/install/boringssl" --disable-all-plugins --enable-post-processing
+  - ./configure --enable-boringssl="${HOME}/install/boringssl" --disable-all-plugins
   - make
