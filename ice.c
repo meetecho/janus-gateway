@@ -2426,15 +2426,11 @@ void *janus_ice_thread(void *data) {
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
-	/* This handle has been destroyed, wait a bit and then free all the resources */
-	g_usleep (1*G_USEC_PER_SEC);
-	if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
-		//~ janus_ice_free(handle);
-	} else {
+	if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		janus_ice_webrtc_free(handle);
 	}
 	g_thread_unref(g_thread_self());
+	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
 	return NULL;
 }
 
