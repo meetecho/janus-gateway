@@ -20,6 +20,14 @@ addons:
       - libglib2.0-dev
       - libcurl4-openssl-dev
       - gengetopt
+  coverity_scan:
+    project:
+      name: "dazzl-tv/janus-gateway"
+      description: "Build submitted via Travis CI"
+    notification_email: manux@rioungo.fr
+    build_command_prepend: "./travis.sh janus_configure"
+    build_command:   "./travis.sh janus_build"
+    branch_pattern: coverity_scan
 
 before_script:
  - cd ..
@@ -64,18 +72,5 @@ before_script:
  - cd ../janus-gateway
 
 script:
-  - sh autogen.sh
-  - export CPPFLAGS="-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include -I${HOME}/install/usrsctp/include -I${HOME}/install/rabbit/include"
-  - export LDFLAGS="-L${HOME}/install/srtp/lib -L${HOME}/install/boringssl/lib -L${HOME}/install/usrsctp/lib -L${HOME}/install/rabbit/lib"
-  - ./configure --enable-boringssl="${HOME}/install/boringssl" --disable-all-plugins
-  - if [ "${COVERITY_SCAN_BRANCH}" != 1 ]; then make ; fi
+  - if [ "${COVERITY_SCAN_BRANCH}" != 1 ]; then ./travis.sh janus_all ; fi
 
-addons:
-  coverity_scan:
-    project:
-      name: "dazzl-tv/janus-gateway"
-      description: "Build submitted via Travis CI"
-    notification_email: manux@rioungo.fr
-#   build_command_prepend: "./configure; make clean"
-    build_command:   "make"
-    branch_pattern: coverity_scan
