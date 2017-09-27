@@ -3,6 +3,13 @@ Janus WebRTC Gateway
 [![Docker Repository on Quay](https://quay.io/repository/dazzl/janus-gateway/status "Docker Repository on Quay")](https://quay.io/repository/dazzl/janus-gateway)
 
 Janus is an open source, general purpose, WebRTC server designed and developed by [Meetecho](http://www.meetecho.com). This version of the server is tailored for Linux systems, although it can be compiled for, and installed on, MacOS machines as well. Windows is not supported, but if that's a requirement, Janus is known to work in the "Windows Subsystem for Linux" on Windows 10.
+=======
+[![Travis status](https://api.travis-ci.org/dazzl-tv/janus-gateway.png "Travis status")](https://api.travis-ci.org/dazzl-tv/janus-gateway.png)
+
+Janus is an open source, general purpose, WebRTC gateway designed and
+developed by [Meetecho](http://www.meetecho.com). This version
+of the gateway can only be installed on Linux systems: next versions
+will take into account cross compilation on different environments.
 
 For some online demos and documentations, make sure you pay the [project website](https://janus.conf.meetecho.com/) a visit!
 
