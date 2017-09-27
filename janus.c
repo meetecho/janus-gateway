@@ -1095,15 +1095,6 @@ int janus_process_incoming_request(janus_request *request) {
 						goto jsondone;
 					}
 				}
-				if(janus_sdp_process(handle, parsed_sdp) < 0) {
-					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
-					janus_sdp_free(parsed_sdp);
-					g_free(jsep_type);
-					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
-					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Error processing SDP");
-					janus_mutex_unlock(&handle->mutex);
-					goto jsondone;
-				}
 				if(!offer) {
 					/* Set remote candidates now (we received an answer) */
 					if(bundle) {
@@ -1121,6 +1112,18 @@ int janus_process_incoming_request(janus_request *request) {
 					} else {
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE);
 					}
+				}
+				if(janus_sdp_process(handle, parsed_sdp) < 0) {
+					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
+					janus_sdp_free(parsed_sdp);
+					g_free(jsep_type);
+					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
+					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Error processing SDP");
+					janus_mutex_unlock(&handle->mutex);
+					goto jsondone;
+				}
+				if(!offer) {
+					/* Set remote candidates now (we received an answer) */
 					if(janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
 						JANUS_LOG(LOG_HUGE, "[%"SCNu64"]   -- bundle is supported by the browser, getting rid of one of the RTP/RTCP components, if any...\n", handle->handle_id);
 						if(audio) {
