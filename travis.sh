@@ -16,6 +16,8 @@ janus_all() {
   janus_build
 }
 
+set -ev
+
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 {janus_configure|janus_build|janus_all}"
   exit 1
