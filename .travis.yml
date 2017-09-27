@@ -3,6 +3,12 @@ sudo: false
 language: C
 compiler: gcc
 
+env:
+  global:
+   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+   #   via the "travis encrypt" command using the project repo's public key
+   - secure: "uoqtYvZyc3cjw0FaQtxKKeVvjY1aVyz6T/nQb234ASeW4NFBOw/Sx0muszlEIBRXCTAcbj4GhmNeG5ZGeZAK2dcVliktVR7W97BPFBBqODB/eUUj0O8FvPKOZU2NEWzr+45EDLpO24KW3Q25rZQb4dFhiMrzUdrWw7XlSWxcsLT6JbhtKiOw558Sdyxnv7bInappedOVWNT7IBiUi4fLyb1n2zaL6QWO5xWCPGDb3y7K4VvdYRep3N5o+v9lFzdqQanl/TnuL7gbtLnZC+ch9hwdHMQNdTMNivxVKeSsDly0f8OhYB6HqL+61QlBd61MSGP/RFlpSAaJ5fFe+sl1Lk/tuJOVPmTYKVcQXbhgrhZ28oQcaiam0t7EwqLJeaySRnbi3WWp9PLiPfxvVkq69VS5GN3uhZmnYzIWw4JzReTeysoLKkc+/AxGJkWd0YhYBJUggQHyNUzH2aaKSs0SIKzKCKf3KSJXBPca1ZlGha9TbbHXc8jkPL3nKxm/xGbRlojBatF2cAvLR8hRiSR17OHmzUT4L7dxVxIf++M4x4WJsyuPpc3Re9fwbxnQKjbOOTaSN30yOewlNKoLT7AxyOZ940huh6zE9ugk/xnmaM3YkUpY98pC6giIK772L6Buz8uSFNHSV4kycWq2qEaIPA/kw3eMIOuVTNWDoye/GKo="
+
 addons:
   apt: 
     packages:
@@ -62,4 +68,14 @@ script:
   - export CPPFLAGS="-I${HOME}/install/srtp/include -I${HOME}/install/boringssl/include -I${HOME}/install/usrsctp/include -I${HOME}/install/rabbit/include"
   - export LDFLAGS="-L${HOME}/install/srtp/lib -L${HOME}/install/boringssl/lib -L${HOME}/install/usrsctp/lib -L${HOME}/install/rabbit/lib"
   - ./configure --enable-boringssl="${HOME}/install/boringssl" --disable-all-plugins
-  - make
+  - if [ "${COVERITY_SCAN_BRANCH}" != 1 ]; then make ; fi
+
+addons:
+  coverity_scan:
+    project:
+      name: "dazzl-tv/janus-gateway"
+      description: "Build submitted via Travis CI"
+    notification_email: manux@rioungo.fr
+#   build_command_prepend: "./configure; make clean"
+    build_command:   "make"
+    branch_pattern: coverity_scan
