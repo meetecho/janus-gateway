@@ -139,3 +139,508 @@
 	...
 	fun:main
 }
+
+# GLib Valgrind suppressions file
+#
+# This provides a list of suppressions for all of GLib (including GIO), for all
+# Valgrind tools (memcheck, drd, helgrind, etc.) for the false positives and
+# deliberate one-time leaks which GLib causes to be reported when running under
+# Valgrind.
+#
+# When running an application which links to GLib under Valgrind, you can pass
+# this suppression file to Valgrind using --suppressions=/path/to/glib-2.0.supp.
+#
+# http://valgrind.org/docs/manual/manual-core.html#manual-core.suppress
+#
+# Note that there is currently no way for Valgrind to load this automatically
+# (https://bugs.kde.org/show_bug.cgi?id=160905), so the best GLib can currently
+# do is to install this file as part of its development package.
+#
+# This file should be updated if GLib introduces a new deliberate one-time leak,
+# or another false race positive in Valgrind: please file bugs at:
+#
+# https://bugzilla.gnome.org/enter_bug.cgi?product=glib
+
+{
+	gnutls-init-calloc
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:gtls_gnutls_init
+}
+
+{
+	gnutls-init-realloc
+	Memcheck:Leak
+	fun:realloc
+	...
+	fun:gtls_gnutls_init
+}
+
+{
+	g-tls-backend-gnutls-init
+	Memcheck:Leak
+	fun:g_once_impl
+	fun:g_tls_backend_gnutls_init
+}
+
+{
+	p11-tokens-init
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:create_tokens_inlock
+	fun:initialize_module_inlock_reentrant
+}
+
+{
+	gobject-init-malloc
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:gobject_init_ctor
+}
+
+{
+	gobject-init-realloc
+	Memcheck:Leak
+	fun:realloc
+	...
+	fun:gobject_init_ctor
+}
+
+{
+	gobject-init-calloc
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:gobject_init_ctor
+}
+
+{
+	g-type-register-dynamic
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:g_type_register_dynamic
+}
+
+{
+	g-type-register-static
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:g_type_register_static
+}
+
+{
+	g-type-register-static-realloc
+	Memcheck:Leak
+	fun:realloc
+	...
+	fun:g_type_register_static
+}
+
+{
+	g-type-register-static-calloc
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:g_type_register_static
+}
+
+{
+	g-type-add-interface-dynamic
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:g_type_add_interface_dynamic
+}
+
+{
+	g-type-add-interface-static
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:g_type_add_interface_static
+}
+
+{
+	g-test-rand-init
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:g_rand_new_with_seed_array
+	fun:test_run_seed
+	...
+	fun:g_test_run
+}
+
+{
+	g-test-rand-init2
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:g_rand_new_with_seed_array
+	...
+	fun:get_global_random
+	...
+	fun:g_test_init
+}
+
+{
+	g-quark-table-new
+	Memcheck:Leak
+	fun:g_hash_table_new
+	...
+	fun:quark_new
+}
+
+{
+	g-quark-table-resize
+	Memcheck:Leak
+	fun:g_hash_table_resize
+	...
+	fun:quark_new
+}
+
+{
+	g-type-interface-init
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:type_iface_vtable_base_init_Wm
+}
+
+{
+	g-type-class-init
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:type_class_init_Wm
+}
+
+{
+	g-io-module-default-singleton-malloc
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:g_type_create_instance
+	...
+	fun:_g_io_module_get_default
+}
+
+{
+	g-io-module-default-singleton-module
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:g_module_open
+	...
+	fun:_g_io_module_get_default
+}
+
+{
+	g-get-language-names
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:g_get_language_names
+}
+
+{
+	g-static-mutex
+	Memcheck:Leak
+	fun:malloc
+	...
+	fun:g_static_mutex_get_mutex_impl
+}
+
+{
+	g-system-thread-init
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:g_system_thread_new
+}
+
+{
+	g-io-module-default-proxy-resolver-gnome
+	Memcheck:Leak
+	fun:calloc
+	...
+	fun:g_proxy_resolver_gnome_init
+	...
+	fun:_g_io_module_get_default
+}
+
+# memcheck checks that the third argument to ioctl() is a valid pointer, but
+# some ioctls use that argument as an integer
+{
+   ioctl-with-non-pointer-param
+   Memcheck:Param
+   ioctl(generic)
+   fun:ioctl
+   fun:btrfs_reflink_with_progress
+}
+
+{
+	g-private-get
+	drd:ConflictingAccess
+	fun:g_private_get
+}
+{
+	g-private-get-helgrind
+	Helgrind:Race
+	fun:g_private_get
+}
+
+
+{
+	g-private-set
+	drd:ConflictingAccess
+	fun:g_private_set
+}
+{
+	g-private-set-helgrind
+	Helgrind:Race
+	fun:g_private_set
+}
+
+{
+	g-type-construct-free
+	drd:ConflictingAccess
+	fun:g_type_free_instance
+}
+{
+	g-type-construct-free-helgrind
+	Helgrind:Race
+	fun:g_type_free_instance
+}
+
+{
+	g-variant-unref
+	drd:ConflictingAccess
+	fun:g_variant_unref
+}
+{
+	g-variant-unref-helgrind
+	Helgrind:Race
+	fun:g_variant_unref
+}
+
+{
+	g-unix-signals-main
+	drd:ConflictingAccess
+	fun:_g_main_create_unix_signal_watch
+}
+{
+	g-unix-signals-dispatch
+	drd:ConflictingAccess
+	...
+	fun:dispatch_unix_signals*
+}
+{
+	g-unix-signals-dispatch-helgrind
+	Helgrind:Race
+	...
+	fun:dispatch_unix_signals*
+}
+{
+	g-unix-signals-other
+	drd:ConflictingAccess
+	fun:g_unix_signal_watch*
+}
+{
+	g-unix-signals-other-helgrind
+	Helgrind:Race
+	fun:g_unix_signal_watch*
+}
+{
+	g-unix-signals-handler
+	drd:ConflictingAccess
+	fun:g_unix_signal_handler*
+}
+{
+	g-unix-signals-handler-helgrind
+	Helgrind:Race
+	fun:g_unix_signal_handler*
+}
+{
+	g-unix-signals-worker
+	drd:ConflictingAccess
+	fun:glib_worker_main
+}
+{
+	g-unix-signals-worker-helgrind
+	Helgrind:Race
+	fun:glib_worker_main
+}
+
+{
+	g-wakeup-acknowledge
+	drd:ConflictingAccess
+	fun:read
+	fun:g_wakeup_acknowledge
+}
+
+{
+	g-type-fundamental
+	drd:ConflictingAccess
+	fun:g_type_fundamental
+}
+{
+	g-type-fundamental-helgrind
+	Helgrind:Race
+	fun:g_type_fundamental
+}
+{
+	g-type-class-peek-static
+	drd:ConflictingAccess
+	fun:g_type_class_peek_static
+}
+{
+	g-type-class-peek-static-helgrind
+	Helgrind:Race
+	fun:g_type_class_peek_static
+}
+{
+	g-type-is-a
+	drd:ConflictingAccess
+	...
+	fun:g_type_is_a
+}
+{
+	g-type-is-a-helgrind
+	Helgrind:Race
+	...
+	fun:g_type_is_a
+}
+
+{
+	g-inet-address-get-type
+	drd:ConflictingAccess
+	fun:g_inet_address_get_type
+}
+{
+	g-inet-address-get-type-helgrind
+	Helgrind:Race
+	fun:g_inet_address_get_type
+}
+
+# From: https://github.com/fredericgermain/valgrind/blob/master/glibc-2.X-drd.supp
+{
+	drd-libc-stdio
+	drd:ConflictingAccess
+	obj:*/lib*/libc-*
+}
+{
+	drd-libc-recv
+	drd:ConflictingAccess
+	fun:recv
+}
+{
+	drd-libc-send
+	drd:ConflictingAccess
+	fun:send
+}
+
+# GSources do an opportunistic ref count check
+{
+	g-source-set-ready-time
+	drd:ConflictingAccess
+	fun:g_source_set_ready_time
+}
+{
+	g-source-set-ready-time-helgrind
+	Helgrind:Race
+	fun:g_source_set_ready_time
+}
+
+{
+	g-source-iter-next
+	Helgrind:Race
+	fun:g_source_iter_next
+	fun:g_main_context_*
+	fun:g_main_context_iterate
+}
+
+{
+	g-object-instance-private
+	drd:ConflictingAccess
+	fun:*_get_instance_private
+}
+{
+	g-object-instance-private-helgrind
+	Helgrind:Race
+	fun:*_get_instance_private
+}
+
+# GLib legitimately calls pthread_cond_signal without a mutex held
+{
+	g-task-thread-complete
+	drd:CondErr
+	...
+	fun:g_cond_signal
+	fun:g_task_thread_complete
+}
+{
+	g-task-thread-complete
+	Helgrind:Misc
+	...
+	fun:g_cond_signal
+	fun:g_task_thread_complete
+}
+
+# False positive, but I can't explain how (FIXME)
+{
+	g-task-cond
+	Helgrind:Misc
+	...
+	fun:g_cond_clear
+	fun:g_task_finalize
+}
+
+# Real race, but is_cancelled() is an opportunistic function anyway
+{
+	g-cancellable-is-cancelled
+	Helgrind:Race
+	fun:g_cancellable_is_cancelled
+}
+
+# False positive
+{
+	g-main-context-cond
+	Helgrind:Misc
+	...
+	fun:g_cond_clear
+	fun:g_main_context_unref
+}
+
+# False positives
+{
+	g-source-unlocked
+	Helgrind:Race
+	fun:g_source_*_unlocked
+}
+{
+	g-source-internal
+	Helgrind:Race
+	fun:g_source_*_internal
+}
+
+# False positive
+{
+	g_object_real_dispose
+	Helgrind:Race
+	fun:g_object_real_dispose
+}
+
+# False positive
+{
+	g_object_new_valist
+	Helgrind:Race
+	...
+	fun:g_object_new_valist
+}
+
