@@ -1323,6 +1323,8 @@ function Janus(gatewayCallbacks) {
 		config.pc.ontrack = function(event) {
 			Janus.log("Handling Remote Track");
 			Janus.debug(event);
+			if(!event.streams)
+				return;
 			config.remoteStream = event.streams[0];
 			pluginHandle.onremotestream(config.remoteStream);
 		};

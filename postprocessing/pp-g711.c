@@ -39,7 +39,7 @@ typedef struct janus_pp_g711_wav {
 	char data[4];
 	uint32_t blocksize;
 } janus_pp_g711_wav;
-FILE *wav_file = NULL;
+static FILE *wav_file = NULL;
 
 
 /* mu-law decoding table */
@@ -167,7 +167,7 @@ int janus_pp_g711_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			int i=0;
 			for(i=0; i<(tmp->seq-tmp->prev->seq-1); i++) {
 				/* FIXME We should actually also look at the timestamp differences */
-				JANUS_LOG(LOG_WARN, "[FILL] writing silence (seq=%"SCNu16", index=%"SCNu16")\n",
+				JANUS_LOG(LOG_WARN, "[FILL] Writing silence (seq=%"SCNu16", index=%"SCNu16")\n",
 					tmp->prev->seq+i+1, i+1);
 				/* Add silence */
 				memset(samples, 0, num_samples*2);
@@ -200,7 +200,7 @@ int janus_pp_g711_process(FILE *file, janus_pp_frame_packet *list, int *working)
 			last_seq = tmp->seq;
 			steps++;
 		}
-		JANUS_LOG(LOG_VERB, "writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
+		JANUS_LOG(LOG_VERB, "Writing %d bytes out of %d (seq=%"SCNu16", step=%"SCNu16", ts=%"SCNu64", time=%"SCNu64"s)\n",
 			bytes, tmp->len, tmp->seq, diff, tmp->ts, (tmp->ts-list->ts)/8000);
 		/* Decode and save to wav */
 		uint8_t *data = (uint8_t *)buffer;
