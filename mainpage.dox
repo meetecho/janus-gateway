@@ -209,6 +209,8 @@ Janus.init({
  * - \c destroyOnUnload: whether we should destroy automatically try and
  * destroy this session via Janus API when \c onbeforeunload is called (true by default);
  * - \c token , \c apisecret: optional parameters only needed in case you're \ref auth ;
+ * - \c authkey: optional parameter only needed in case you want to protect the session
+ * with an authorization key, that all requests for the session will need to provide;
  * - a set of callbacks to be notified about events, namely:
  * 		- \c success: the session was successfully created and is ready to be used;
  * 		- \c error: the session was NOT successfully created;

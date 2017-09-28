@@ -16,7 +16,7 @@
 /*! \brief Success (no error) */
 #define JANUS_OK								0
 
-/*! \brief Unauthorized (can only happen when using apisecret/auth token) */
+/*! \brief Unauthorized (can only happen when using apisecret/auth token or session auth keys) */
 #define JANUS_ERROR_UNAUTHORIZED				403
 /*! \brief Unauthorized access to a plugin (can only happen when using auth token) */
 #define JANUS_ERROR_UNAUTHORIZED_PLUGIN			405
