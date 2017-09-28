@@ -132,6 +132,11 @@ static struct janus_json_parameter mnq_parameters[] = {
 static struct janus_json_parameter nmt_parameters[] = {
 	{"no_media_timer", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE}
 };
+static struct janus_json_parameter text2pcap_parameters[] = {
+	{"folder", JSON_STRING, 0},
+	{"filename", JSON_STRING, 0},
+	{"truncate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
+};
 
 /* Admin/Monitor helpers */
 json_t *janus_admin_stream_summary(janus_ice_stream *stream);
@@ -1121,6 +1126,8 @@ int janus_process_incoming_request(janus_request *request) {
 						if(audio) {
 							/* Get rid of video and data, if present */
 							if(handle->streams && handle->video_stream) {
+								if(handle->audio_stream->rtp_component && handle->video_stream->rtp_component)
+									handle->audio_stream->rtp_component->do_video_nacks = handle->video_stream->rtp_component->do_video_nacks;
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
 								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
@@ -1142,6 +1149,8 @@ int janus_process_incoming_request(janus_request *request) {
 							handle->data_stream = NULL;
 							handle->data_id = 0;
 							if(!video) {
+								if(handle->audio_stream->rtp_component)
+									handle->audio_stream->rtp_component->do_video_nacks = FALSE;
 								handle->audio_stream->video_ssrc = 0;
 								handle->audio_stream->video_ssrc_peer = 0;
 								g_free(handle->audio_stream->video_rtcp_ctx);
@@ -2197,6 +2206,54 @@ int janus_process_incoming_admin_request(janus_request *request) {
 		goto jsondone;
 	} else {
 		/* Handle-related */
+		if(!strcasecmp(message_text, "start_text2pcap")) {
+			/* Start dumping RTP and RTCP packets to a text2pcap file */
+			JANUS_VALIDATE_JSON_OBJECT(root, text2pcap_parameters,
+				error_code, error_cause, FALSE,
+				JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+			if(error_code != 0) {
+				ret = janus_process_error_string(request, session_id, transaction_text, error_code, error_cause);
+				goto jsondone;
+			}
+			const char *folder = json_string_value(json_object_get(root, "folder"));
+			const char *filename = json_string_value(json_object_get(root, "filename"));
+			int truncate = json_integer_value(json_object_get(root, "truncate"));
+			if(handle->text2pcap != NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "text2pcap already started");
+				goto jsondone;
+			}
+			handle->text2pcap = janus_text2pcap_create(folder, filename, truncate);
+			if(handle->text2pcap == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error starting text2pcap dump");
+				goto jsondone;
+			}
+			g_atomic_int_set(&handle->dump_packets, 1);
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		} else if(!strcasecmp(message_text, "stop_text2pcap")) {
+			/* Stop dumping RTP and RTCP packets to a text2pcap file */
+			if(handle->text2pcap == NULL) {
+				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "text2pcap not started");
+				goto jsondone;
+			}
+			if(g_atomic_int_compare_and_exchange(&handle->dump_packets, 1, 0)) {
+				janus_text2pcap_close(handle->text2pcap);
+				g_clear_pointer(&handle->text2pcap, janus_text2pcap_free);
+			}
+			/* Prepare JSON reply */
+			json_t *reply = json_object();
+			json_object_set_new(reply, "janus", json_string("success"));
+			json_object_set_new(reply, "transaction", json_string(transaction_text));
+			/* Send the success reply */
+			ret = janus_process_success(request, reply);
+			goto jsondone;
+		}
+		/* If this is not a request to start/stop debugging to text2pcap, it must be a handle_info */
 		if(strcasecmp(message_text, "handle_info")) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_INVALID_REQUEST_PATH, "Unhandled request '%s' at this path", message_text);
 			goto jsondone;
@@ -2272,6 +2329,11 @@ int janus_process_incoming_admin_request(janus_request *request) {
 			json_object_set_new(info, "pending-trickles", json_integer(g_list_length(handle->pending_trickles)));
 		if(handle->queued_packets)
 			json_object_set_new(info, "queued-packets", json_integer(g_async_queue_length(handle->queued_packets)));
+		if(g_atomic_int_get(&handle->dump_packets)) {
+			json_object_set_new(info, "dump-to-text2pcap", json_true());
+			if(handle->text2pcap && handle->text2pcap->filename)
+			json_object_set_new(info, "text2pcap-file", json_string(handle->text2pcap->filename));
+		}
 		json_t *streams = json_array();
 		if(handle->audio_stream) {
 			json_t *s = janus_admin_stream_summary(handle->audio_stream);
@@ -2487,7 +2549,9 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio_packets));
 			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
-			json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
+			json_object_set_new(in_stats, "do_audio_nacks", component->do_audio_nacks ? json_true() : json_false());
+			if(component->do_audio_nacks)
+				json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
 			/* Compute the last second stuff too */
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
@@ -2505,7 +2569,9 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			json_object_set_new(in_stats, "video_packets", json_integer(component->in_stats.video_packets));
 			json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
-			json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
+			json_object_set_new(in_stats, "do_video_nacks", component->do_video_nacks ? json_true() : json_false());
+			if(component->do_video_nacks)
+				json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
 			/* Compute the last second stuff too */
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
@@ -2923,6 +2989,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				if(audio) {
 					/* Get rid of video and data, if present */
 					if(ice_handle->streams && ice_handle->video_stream) {
+						if(ice_handle->audio_stream->rtp_component && ice_handle->video_stream->rtp_component)
+							ice_handle->audio_stream->rtp_component->do_video_nacks = ice_handle->video_stream->rtp_component->do_video_nacks;
 						ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
 						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
 						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
@@ -2944,6 +3012,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					ice_handle->data_stream = NULL;
 					ice_handle->data_id = 0;
 					if(!video) {
+						if(ice_handle->audio_stream->rtp_component)
+							ice_handle->audio_stream->rtp_component->do_video_nacks = FALSE;
 						ice_handle->audio_stream->video_ssrc = 0;
 						ice_handle->audio_stream->video_ssrc_peer = 0;
 						g_free(ice_handle->audio_stream->video_rtcp_ctx);
@@ -3922,7 +3992,7 @@ gint main(int argc, char *argv[])
 				JANUS_LOG(LOG_INFO, "Loading event handler plugin '%s'...\n", eventent->d_name);
 				memset(eventpath, 0, 1024);
 				g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
-				void *event = dlopen(eventpath, RTLD_LAZY);
+				void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
 				if (!event) {
 					JANUS_LOG(LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
 				} else {
@@ -4050,7 +4120,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 1024);
 		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
-		void *plugin = dlopen(pluginpath, RTLD_LOCAL | RTLD_LAZY);
+		void *plugin = dlopen(pluginpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!plugin) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
 		} else {
@@ -4178,7 +4248,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading transport plugin '%s'...\n", transportent->d_name);
 		memset(transportpath, 0, 1024);
 		g_snprintf(transportpath, 1024, "%s/%s", path, transportent->d_name);
-		void *transport = dlopen(transportpath, RTLD_LOCAL | RTLD_LAZY);
+		void *transport = dlopen(transportpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!transport) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
 		} else {
@@ -4286,6 +4356,7 @@ gint main(int argc, char *argv[])
 	watchdog = NULL;
 	g_main_loop_unref(watchdog_loop);
 	g_main_context_unref(sessions_watchdog_context);
+	sessions_watchdog_context = NULL;
 
 	if(config)
 		janus_config_destroy(config);

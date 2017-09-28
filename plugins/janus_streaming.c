@@ -655,6 +655,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 
 	mountpoints = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+
+	/* Threads will expect this to be set */
+	g_atomic_int_set(&initialized, 1);
+
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
 		/* Any admin key to limit who can "create"? */
@@ -1088,7 +1092,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
-	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
 	/* Start the sessions watchdog */
@@ -4235,6 +4238,10 @@ static void *janus_streaming_relay_thread(void *data) {
 		/* Wait for some data */
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
+			if(errno == EINTR) {
+				JANUS_LOG(LOG_HUGE, "[%s] Got an EINTR (%s), ignoring...\n", name, strerror(errno));
+				continue;
+			}
 			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", name, errno, strerror(errno));
 			mountpoint->enabled = FALSE;
 			break;

@@ -24,6 +24,7 @@
 #include "dtls.h"
 #include "sctp.h"
 #include "rtcp.h"
+#include "text2pcap.h"
 #include "utils.h"
 #include "plugins/plugin.h"
 
@@ -335,6 +336,10 @@ struct janus_ice_handle {
 	guint srtp_errors_count;
 	/*! \brief Count of the recent SRTP replay errors, in order to avoid spamming the logs */
 	gint last_srtp_error;
+	/*! \brief Flag to decide whether or not packets need to be dumped to a text2pcap file */
+	volatile gint dump_packets;
+	/*! \brief In case this session must be saved to text2pcap, the instance to dump packets to */
+	janus_text2pcap *text2pcap;
 	/*! \brief Mutex to lock/unlock the ICE session */
 	janus_mutex mutex;
 };

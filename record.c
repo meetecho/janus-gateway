@@ -69,7 +69,9 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	}
 	if(!strcasecmp(codec, "vp8") || !strcasecmp(codec, "vp9") || !strcasecmp(codec, "h264")) {
 		type = JANUS_RECORDER_VIDEO;
-	} else if(!strcasecmp(codec, "opus") || !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")) {
+	} else if(!strcasecmp(codec, "opus")
+			|| !strcasecmp(codec, "g711") || !strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma")
+			|| !strcasecmp(codec, "g722")) {
 		type = JANUS_RECORDER_AUDIO;
 		if(!strcasecmp(codec, "pcmu") || !strcasecmp(codec, "pcma"))
 			codec = "g711";

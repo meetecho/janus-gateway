@@ -99,8 +99,8 @@ janus_transport *create(void) {
 /* Useful stuff */
 static gint initialized = 0, stopping = 0;
 static janus_transport_callbacks *gateway = NULL;
-static gboolean wss_janus_api_enabled = FALSE;
-static gboolean wss_admin_api_enabled = FALSE;
+static gboolean ws_janus_api_enabled = FALSE;
+static gboolean ws_admin_api_enabled = FALSE;
 static gboolean notify_events = TRUE;
 
 /* JSON serialization options */
@@ -110,20 +110,14 @@ static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 /* Logging */
 static int ws_log_level = 0;
 
-/* WebSockets per-service thread */
-static GThread *wss_thread = NULL, *swss_thread = NULL,
-		*admin_wss_thread = NULL, *admin_swss_thread = NULL;
+/* WebSockets service thread */
+static GThread *ws_thread = NULL;
 void *janus_websockets_thread(void *data);
 
 
 /* WebSocket client session */
 typedef struct janus_websockets_client {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	struct lws *wsi;						/* The libwebsockets client instance */
-#else
-	struct libwebsocket_context *context;	/* The libwebsockets client context */
-	struct libwebsocket *wsi;				/* The libwebsockets client instance */
-#endif
 	GAsyncQueue *messages;					/* Queue of outgoing messages to push */
 	char *incoming;							/* Buffer containing the incoming message to process (in case there are fragments) */
 	unsigned char *buffer;					/* Buffer containing the message to send */
@@ -136,123 +130,61 @@ typedef struct janus_websockets_client {
 } janus_websockets_client;
 
 
-/* libwebsockets WS context(s) */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-static struct lws_context *wss = NULL, *swss = NULL,
-	*admin_wss = NULL, *admin_swss = NULL;
-#else
-static struct libwebsocket_context *wss = NULL, *swss = NULL,
-	*admin_wss = NULL, *admin_swss = NULL;
-#endif
+/* libwebsockets WS context */
+static struct lws_context *wsc = NULL;
 /* libwebsockets sessions that have been closed */
 static GList *old_wss;
 static janus_mutex old_wss_mutex = JANUS_MUTEX_INITIALIZER;
 /* Callbacks for HTTP-related events (automatically rejected) */
 static int janus_websockets_callback_http(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len);
 static int janus_websockets_callback_https(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len);
 /* Callbacks for WebSockets-related events */
 static int janus_websockets_callback(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len);
 static int janus_websockets_callback_secure(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len);
 static int janus_websockets_admin_callback(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len);
 static int janus_websockets_admin_callback_secure(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len);
 /* Protocol mappings */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-static struct lws_protocols wss_protocols[] = {
-#else
-static struct libwebsocket_protocols wss_protocols[] = {
-#endif
+static struct lws_protocols ws_protocols[] = {
 	{ "http-only", janus_websockets_callback_http, 0, 0 },
 	{ "janus-protocol", janus_websockets_callback, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-static struct lws_protocols swss_protocols[] = {
-#else
-static struct libwebsocket_protocols swss_protocols[] = {
-#endif
+static struct lws_protocols sws_protocols[] = {
 	{ "http-only", janus_websockets_callback_https, 0, 0 },
 	{ "janus-protocol", janus_websockets_callback_secure, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-static struct lws_protocols admin_wss_protocols[] = {
-#else
-static struct libwebsocket_protocols admin_wss_protocols[] = {
-#endif
+static struct lws_protocols admin_ws_protocols[] = {
 	{ "http-only", janus_websockets_callback_http, 0, 0 },
 	{ "janus-admin-protocol", janus_websockets_admin_callback, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-static struct lws_protocols admin_swss_protocols[] = {
-#else
-static struct libwebsocket_protocols admin_swss_protocols[] = {
-#endif
+static struct lws_protocols admin_sws_protocols[] = {
 	{ "http-only", janus_websockets_callback_https, 0, 0 },
 	{ "janus-admin-protocol", janus_websockets_admin_callback_secure, sizeof(janus_websockets_client), 0 },
 	{ NULL, NULL, 0 }
 };
 /* Helper for debugging reasons */
 #define CASE_STR(name) case name: return #name
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 static const char *janus_websockets_reason_string(enum lws_callback_reasons reason) {
-#else
-static const char *janus_websockets_reason_string(enum libwebsocket_callback_reasons reason) {
-#endif
 	switch(reason) {
 		CASE_STR(LWS_CALLBACK_ESTABLISHED);
 		CASE_STR(LWS_CALLBACK_CLIENT_CONNECTION_ERROR);
@@ -379,11 +311,14 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-	JANUS_LOG(LOG_INFO, "libwebsockets >= 1.6 available, using new API\n");
-#else
-	JANUS_LOG(LOG_INFO, "libwebsockets < 1.6 available, using old API\n");
-#endif
+	/* Prepare the common context */
+	struct lws_context_creation_info wscinfo;
+	memset(&wscinfo, 0, sizeof wscinfo);
+	wscinfo.options |= LWS_SERVER_OPTION_EXPLICIT_VHOSTS;
+
+	/* We use vhosts on the same context to address both APIs, secure or not */
+	struct lws_vhost *wss = NULL, *swss = NULL,
+		*admin_wss = NULL, *admin_swss = NULL;
 
 	/* Read configuration */
 	char filename[255];
@@ -497,6 +432,20 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 		if((pingpong_trigger && !pingpong_timeout) || (!pingpong_trigger && pingpong_timeout)) {
 			JANUS_LOG(LOG_WARN, "pingpong_trigger and pingpong_timeout not both set, ignoring...\n");
 		}
+#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
+		if(pingpong_trigger > 0 && pingpong_timeout > 0) {
+			wscinfo.ws_ping_pong_interval = pingpong_trigger;
+			wscinfo.timeout_secs = pingpong_timeout;
+		}
+#endif
+
+		/* Create the base context */
+		wsc = lws_create_context(&wscinfo);
+		if(wsc == NULL) {
+			JANUS_LOG(LOG_ERR, "Error creating libwebsockets context...\n");
+			janus_config_destroy(config);
+			return -1;	/* No point in keeping the plugin loaded */
+		}
 
 		/* Setup the Janus API WebSockets server(s) */
 		item = janus_config_get_item_drilldown(config, "general", "ws");
@@ -526,29 +475,15 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			memset(&info, 0, sizeof info);
 			info.port = wsport;
 			info.iface = ip ? ip : interface;
-			info.protocols = wss_protocols;
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+			info.protocols = ws_protocols;
 			info.extensions = NULL;
-#else
-			info.extensions = libwebsocket_get_internal_extensions();
-#endif
 			info.ssl_cert_filepath = NULL;
 			info.ssl_private_key_filepath = NULL;
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
-			if(pingpong_trigger > 0 && pingpong_timeout > 0) {
-				info.ws_ping_pong_interval = pingpong_trigger;
-				info.timeout_secs = pingpong_timeout;
-			}
-#endif
 			/* Create the WebSocket context */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			wss = lws_create_context(&info);
-#else
-			wss = libwebsocket_create_context(&info);
-#endif
+			wss = lws_create_vhost(wsc, &info);
 			if(wss == NULL) {
 				JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
 			} else {
@@ -593,12 +528,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				memset(&info, 0, sizeof info);
 				info.port = wsport;
 				info.iface = ip ? ip : interface;
-				info.protocols = swss_protocols;
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+				info.protocols = sws_protocols;
 				info.extensions = NULL;
-#else
-				info.extensions = libwebsocket_get_internal_extensions();
-#endif
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
 				info.gid = -1;
@@ -608,18 +539,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #else
 				info.options = 0;
 #endif
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
-				if(pingpong_trigger > 0 && pingpong_timeout > 0) {
-					info.ws_ping_pong_interval = pingpong_trigger;
-					info.timeout_secs = pingpong_timeout;
-				}
-#endif
 				/* Create the secure WebSocket context */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-				swss = lws_create_context(&info);
-#else
-				swss = libwebsocket_create_context(&info);
-#endif
+				swss = lws_create_vhost(wsc, &info);
 				if(swss == NULL) {
 					JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
 				} else {
@@ -656,29 +577,15 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			memset(&info, 0, sizeof info);
 			info.port = wsport;
 			info.iface = ip ? ip : interface;
-			info.protocols = admin_wss_protocols;
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+			info.protocols = admin_ws_protocols;
 			info.extensions = NULL;
-#else
-			info.extensions = libwebsocket_get_internal_extensions();
-#endif
 			info.ssl_cert_filepath = NULL;
 			info.ssl_private_key_filepath = NULL;
 			info.gid = -1;
 			info.uid = -1;
 			info.options = 0;
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
-			if(pingpong_trigger > 0 && pingpong_timeout > 0) {
-				info.ws_ping_pong_interval = pingpong_trigger;
-				info.timeout_secs = pingpong_timeout;
-			}
-#endif
 			/* Create the WebSocket context */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-			admin_wss = lws_create_context(&info);
-#else
-			admin_wss = libwebsocket_create_context(&info);
-#endif
+			admin_wss = lws_create_vhost(wsc, &info);
 			if(admin_wss == NULL) {
 				JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
 			} else {
@@ -723,12 +630,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 				memset(&info, 0, sizeof info);
 				info.port = wsport;
 				info.iface = ip ? ip : interface;
-				info.protocols = admin_swss_protocols;
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
+				info.protocols = admin_sws_protocols;
 				info.extensions = NULL;
-#else
-				info.extensions = libwebsocket_get_internal_extensions();
-#endif
 				info.ssl_cert_filepath = server_pem;
 				info.ssl_private_key_filepath = server_key;
 				info.gid = -1;
@@ -738,18 +641,8 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 #else
 				info.options = 0;
 #endif
-#if LWS_LIBRARY_VERSION_MAJOR >= 2 && LWS_LIBRARY_VERSION_MINOR >= 1
-				if(pingpong_trigger > 0 && pingpong_timeout > 0) {
-					info.ws_ping_pong_interval = pingpong_trigger;
-					info.timeout_secs = pingpong_timeout;
-				}
-#endif
 				/* Create the secure WebSocket context */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-				admin_swss = lws_create_context(&info);
-#else
-				admin_swss = libwebsocket_create_context(&info);
-#endif
+				admin_swss = lws_create_vhost(wsc, &info);
 				if(admin_swss == NULL) {
 					JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
 				} else {
@@ -763,48 +656,26 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 	config = NULL;
 	if(!wss && !swss && !admin_wss && !admin_swss) {
 		JANUS_LOG(LOG_WARN, "No WebSockets server started, giving up...\n");
+		lws_context_destroy(wsc);
 		return -1;	/* No point in keeping the plugin loaded */
 	}
-	wss_janus_api_enabled = wss || swss;
-	wss_admin_api_enabled = admin_wss || admin_swss;
+	ws_janus_api_enabled = wss || swss;
+	ws_admin_api_enabled = admin_wss || admin_swss;
+
+	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
-	/* Start the WebSocket service threads */
-	if(wss != NULL) {
-		wss_thread = g_thread_try_new("ws thread", &janus_websockets_thread, wss, &error);
-		if(!wss_thread) {
+	/* Start the WebSocket service thread */
+	if(ws_janus_api_enabled || ws_admin_api_enabled) {
+		ws_thread = g_thread_try_new("ws thread", &janus_websockets_thread, wsc, &error);
+		if(!ws_thread) {
 			g_atomic_int_set(&initialized, 0);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the WebSockets thread...\n", error->code, error->message ? error->message : "??");
 			return -1;
 		}
 	}
-	if(swss != NULL) {
-		swss_thread = g_thread_try_new("sws thread", &janus_websockets_thread, swss, &error);
-		if(!swss_thread) {
-			g_atomic_int_set(&initialized, 0);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Secure WebSockets thread...\n", error->code, error->message ? error->message : "??");
-			return -1;
-		}
-	}
-	if(admin_wss != NULL) {
-		admin_wss_thread = g_thread_try_new("admin ws thread", &janus_websockets_thread, admin_wss, &error);
-		if(!admin_wss_thread) {
-			g_atomic_int_set(&initialized, 0);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Admin WebSockets thread...\n", error->code, error->message ? error->message : "??");
-			return -1;
-		}
-	}
-	if(admin_swss != NULL) {
-		admin_swss_thread = g_thread_try_new("admin sws thread", &janus_websockets_thread, admin_swss, &error);
-		if(!admin_swss_thread) {
-			g_atomic_int_set(&initialized, 0);
-			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Secure Admin WebSockets thread...\n", error->code, error->message ? error->message : "??");
-			return -1;
-		}
-	}
 
 	/* Done */
-	g_atomic_int_set(&initialized, 1);
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_WEBSOCKETS_NAME);
 	return 0;
 }
@@ -814,56 +685,16 @@ void janus_websockets_destroy(void) {
 		return;
 	g_atomic_int_set(&stopping, 1);
 
-	/* Stop the service threads */
-	if(wss_thread != NULL) {
-		g_thread_join(wss_thread);
-		wss_thread = NULL;
-	}
-	if(swss_thread != NULL) {
-		g_thread_join(swss_thread);
-		swss_thread = NULL;
-	}
-	if(admin_wss_thread != NULL) {
-		g_thread_join(admin_wss_thread);
-		admin_wss_thread = NULL;
-	}
-	if(admin_swss_thread != NULL) {
-		g_thread_join(admin_swss_thread);
-		admin_swss_thread = NULL;
+	/* Stop the service thread */
+	if(ws_thread != NULL) {
+		g_thread_join(ws_thread);
+		ws_thread = NULL;
 	}
 
-	/* Destroy the contexts */
-	if(wss != NULL) {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-		lws_context_destroy(wss);
-#else
-		libwebsocket_context_destroy(wss);
-#endif
-		wss = NULL;
-	}
-	if(swss != NULL) {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-		lws_context_destroy(swss);
-#else
-		libwebsocket_context_destroy(swss);
-#endif
-		swss = NULL;
-	}
-	if(admin_wss != NULL) {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-		lws_context_destroy(admin_wss);
-#else
-		libwebsocket_context_destroy(admin_wss);
-#endif
-		admin_wss = NULL;
-	}
-	if(admin_swss != NULL) {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
-		lws_context_destroy(admin_swss);
-#else
-		libwebsocket_context_destroy(admin_swss);
-#endif
-		admin_swss = NULL;
+	/* Destroy the context */
+	if(wsc != NULL) {
+		lws_context_destroy(wsc);
+		wsc = NULL;
 	}
 
 	g_atomic_int_set(&initialized, 0);
@@ -873,11 +704,7 @@ void janus_websockets_destroy(void) {
 
 static void janus_websockets_destroy_client(
 		janus_websockets_client *ws_client,
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
-#else
-		struct libwebsocket *wsi,
-#endif
 		const char *log_prefix) {
 	if(!ws_client || ws_client->destroy)
 		return;
@@ -897,9 +724,6 @@ static void janus_websockets_destroy_client(
 	janus_mutex_lock(&ws_client->mutex);
 	JANUS_LOG(LOG_INFO, "[%s-%p] Destroying WebSocket client\n", log_prefix, wsi);
 	ws_client->destroy = 1;
-#ifndef HAVE_LIBWEBSOCKETS_NEWAPI
-	ws_client->context = NULL;
-#endif
 	ws_client->wsi = NULL;
 	/* Remove messages queue too, if needed */
 	if(ws_client->messages != NULL) {
@@ -950,11 +774,11 @@ const char *janus_websockets_get_package(void) {
 }
 
 gboolean janus_websockets_is_janus_api_enabled(void) {
-	return wss_janus_api_enabled;
+	return ws_janus_api_enabled;
 }
 
 gboolean janus_websockets_is_admin_api_enabled(void) {
-	return wss_admin_api_enabled;
+	return ws_admin_api_enabled;
 }
 
 int janus_websockets_send_message(void *transport, void *request_id, gboolean admin, json_t *message) {
@@ -967,11 +791,7 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 	/* Make sure this is not related to a closed /freed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
 	janus_websockets_client *client = (janus_websockets_client *)transport;
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	if(g_list_find(old_wss, client) != NULL || !client->wsi) {
-#else
-	if(g_list_find(old_wss, client) != NULL || !client->context || !client->wsi) {
-#endif
 		json_decref(message);
 		message = NULL;
 		transport = NULL;
@@ -982,11 +802,7 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
 	g_async_queue_push(client->messages, payload);
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	lws_callback_on_writable(client->wsi);
-#else
-	libwebsocket_callback_on_writable(client->context, client->wsi);
-#endif
 	janus_mutex_unlock(&client->mutex);
 	janus_mutex_unlock(&old_wss_mutex);
 	json_decref(message);
@@ -1004,18 +820,10 @@ void janus_websockets_session_over(void *transport, guint64 session_id, gboolean
 	janus_websockets_client *client = (janus_websockets_client *)transport;
 	/* Make sure this is not related to a closed WebSocket session */
 	janus_mutex_lock(&old_wss_mutex);
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	if(g_list_find(old_wss, client) == NULL && client->wsi){
-#else
-	if(g_list_find(old_wss, client) == NULL && client->context && client->wsi){
-#endif
 		janus_mutex_lock(&client->mutex);
 		client->session_timeout = 1;
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		lws_callback_on_writable(client->wsi);
-#else
-		libwebsocket_callback_on_writable(client->context, client->wsi);
-#endif
 		janus_mutex_unlock(&client->mutex);
 	}
 	janus_mutex_unlock(&old_wss_mutex);
@@ -1024,70 +832,38 @@ void janus_websockets_session_over(void *transport, guint64 session_id, gboolean
 
 /* Thread */
 void *janus_websockets_thread(void *data) {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	struct lws_context *service = (struct lws_context *)data;
-#else
-	struct libwebsocket_context *service = (struct libwebsocket_context *)data;
-#endif
 	if(service == NULL) {
 		JANUS_LOG(LOG_ERR, "Invalid service\n");
 		return NULL;
 	}
 
-	const char *type = NULL;
-	if(service == wss)
-		type = "WebSocket (Janus API)";
-	else if(service == swss)
-		type = "Secure WebSocket (Janus API)";
-	else if(service == admin_wss)
-		type = "WebSocket (Admin API)";
-	else if(service == admin_swss)
-		type = "Secure WebSocket (Admin API)";
-
-	JANUS_LOG(LOG_INFO, "%s thread started\n", type);
+	JANUS_LOG(LOG_INFO, "WebSockets thread started\n");
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* libwebsockets is single thread, we cycle through events here */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		lws_service(service, 50);
-#else
-		libwebsocket_service(service, 50);
-#endif
 	}
 
 	/* Get rid of the WebSockets server */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	lws_cancel_service(service);
-#else
-	libwebsocket_cancel_service(service);
-#endif
 	/* Done */
-	JANUS_LOG(LOG_INFO, "%s thread ended\n", type);
+	JANUS_LOG(LOG_INFO, "WebSockets thread ended\n");
 	return NULL;
 }
 
 
 /* WebSockets */
 static int janus_websockets_callback_http(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len)
 {
 	/* This endpoint cannot be used for HTTP */
 	switch(reason) {
 		case LWS_CALLBACK_HTTP:
 			JANUS_LOG(LOG_VERB, "Rejecting incoming HTTP request on WebSockets endpoint\n");
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			lws_return_http_status(wsi, 403, NULL);
-#else
-			libwebsockets_return_http_status(this, wsi, 403, NULL);
-#endif
 			/* Close and free connection */
 			return -1;
 		case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION:
@@ -1103,34 +879,18 @@ static int janus_websockets_callback_http(
 }
 
 static int janus_websockets_callback_https(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len)
 {
 	/* We just forward the event to the HTTP handler */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	return janus_websockets_callback_http(wsi, reason, user, in, len);
-#else
-	return janus_websockets_callback_http(this, wsi, reason, user, in, len);
-#endif
 }
 
 /* This callback handles Janus API requests */
 static int janus_websockets_common_callback(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len, gboolean admin)
 {
 	const char *log_prefix = admin ? "AdminWSS" : "WSS";
@@ -1142,21 +902,13 @@ static int janus_websockets_common_callback(
 #ifdef HAVE_LIBWEBSOCKETS_PEER_SIMPLE
 			lws_get_peer_simple(wsi, name, 256);
 #else
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			lws_get_peer_addresses(wsi, lws_get_socket_fd(wsi), name, 256, ip, 256);
-#else
-			libwebsockets_get_peer_addresses(this, wsi, libwebsocket_get_socket_fd(wsi), name, 256, ip, 256);
-#endif
 #endif
 			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection opened from %s by %s\n", log_prefix, wsi, ip, name);
 			if(!janus_websockets_is_allowed(ip, admin)) {
 				JANUS_LOG(LOG_ERR, "[%s-%p] IP %s is unauthorized to connect to the WebSockets %s API interface\n", log_prefix, wsi, ip, admin ? "Admin" : "Janus");
 				/* Close the connection */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 				lws_callback_on_writable(wsi);
-#else
-				libwebsocket_callback_on_writable(this, wsi);
-#endif
 				return -1;
 			}
 			JANUS_LOG(LOG_VERB, "[%s-%p] WebSocket connection accepted\n", log_prefix, wsi);
@@ -1170,9 +922,6 @@ static int janus_websockets_common_callback(
 				old_wss = g_list_remove(old_wss, ws_client);
 			janus_mutex_unlock(&old_wss_mutex);
 			/* Prepare the session */
-#ifndef HAVE_LIBWEBSOCKETS_NEWAPI
-			ws_client->context = this;
-#endif
 			ws_client->wsi = wsi;
 			ws_client->messages = g_async_queue_new();
 			ws_client->buffer = NULL;
@@ -1183,11 +932,7 @@ static int janus_websockets_common_callback(
 			ws_client->destroy = 0;
 			janus_mutex_init(&ws_client->mutex);
 			/* Let us know when the WebSocket channel becomes writeable */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			lws_callback_on_writable(wsi);
-#else
-			libwebsocket_callback_on_writable(this, wsi);
-#endif
 			JANUS_LOG(LOG_VERB, "[%s-%p]   -- Ready to be used!\n", log_prefix, wsi);
 			/* Notify handlers about this new transport */
 			if(notify_events && gateway->events_is_enabled()) {
@@ -1201,20 +946,12 @@ static int janus_websockets_common_callback(
 		}
 		case LWS_CALLBACK_RECEIVE: {
 			JANUS_LOG(LOG_HUGE, "[%s-%p] Got %zu bytes:\n", log_prefix, wsi, len);
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			if(ws_client == NULL || ws_client->wsi == NULL) {
-#else
-			if(ws_client == NULL || ws_client->context == NULL || ws_client->wsi == NULL) {
-#endif
 				JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);
 				return -1;
 			}
 			/* Is this a new message, or part of a fragmented one? */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			const size_t remaining = lws_remaining_packet_payload(wsi);
-#else
-			const size_t remaining = libwebsockets_remaining_packet_payload(wsi);
-#endif
 			if(ws_client->incoming == NULL) {
 				JANUS_LOG(LOG_HUGE, "[%s-%p] First fragment: %zu bytes, %zu remaining\n", log_prefix, wsi, len, remaining);
 				ws_client->incoming = g_malloc0(len+1);
@@ -1229,11 +966,7 @@ static int janus_websockets_common_callback(
 				ws_client->incoming[offset+len] = '\0';
 				JANUS_LOG(LOG_HUGE, "%s\n", ws_client->incoming+offset);
 			}
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			if(remaining > 0 || !lws_is_final_fragment(wsi)) {
-#else
-			if(remaining > 0 || !libwebsocket_is_final_fragment(wsi)) {
-#endif
 				/* Still waiting for some more fragments */
 				JANUS_LOG(LOG_HUGE, "[%s-%p] Waiting for more fragments\n", log_prefix, wsi);
 				return 0;
@@ -1249,11 +982,7 @@ static int janus_websockets_common_callback(
 			return 0;
 		}
 		case LWS_CALLBACK_SERVER_WRITEABLE: {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 			if(ws_client == NULL || ws_client->wsi == NULL) {
-#else
-			if(ws_client == NULL || ws_client->context == NULL || ws_client->wsi == NULL) {
-#endif
 				JANUS_LOG(LOG_ERR, "[%s-%p] Invalid WebSocket client instance...\n", log_prefix, wsi);
 				return -1;
 			}
@@ -1264,11 +993,7 @@ static int janus_websockets_common_callback(
 						&& !ws_client->destroy && !g_atomic_int_get(&stopping)) {
 					JANUS_LOG(LOG_HUGE, "[%s-%p] Completing pending WebSocket write (still need to write last %d bytes)...\n",
 						log_prefix, wsi, ws_client->bufpending);
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 					int sent = lws_write(wsi, ws_client->buffer + ws_client->bufoffset, ws_client->bufpending, LWS_WRITE_TEXT);
-#else
-					int sent = libwebsocket_write(wsi, ws_client->buffer + ws_client->bufoffset, ws_client->bufpending, LWS_WRITE_TEXT);
-#endif
 					JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Sent %d/%d bytes\n", log_prefix, wsi, sent, ws_client->bufpending);
 					if(sent > -1 && sent < ws_client->bufpending) {
 						/* We still couldn't send everything that was left, we'll try and complete this in the next round */
@@ -1280,11 +1005,7 @@ static int janus_websockets_common_callback(
 						ws_client->bufoffset = 0;
 					}
 					/* Done for this round, check the next response/notification later */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 					lws_callback_on_writable(wsi);
-#else
-					libwebsocket_callback_on_writable(this, wsi);
-#endif
 					janus_mutex_unlock(&ws_client->mutex);
 					return 0;
 				}
@@ -1306,11 +1027,7 @@ static int janus_websockets_common_callback(
 					}
 					memcpy(ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, response, strlen(response));
 					JANUS_LOG(LOG_HUGE, "[%s-%p] Sending WebSocket message (%zu bytes)...\n", log_prefix, wsi, strlen(response));
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 					int sent = lws_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-#else
-					int sent = libwebsocket_write(wsi, ws_client->buffer + LWS_SEND_BUFFER_PRE_PADDING, strlen(response), LWS_WRITE_TEXT);
-#endif
 					JANUS_LOG(LOG_HUGE, "[%s-%p]   -- Sent %d/%zu bytes\n", log_prefix, wsi, sent, strlen(response));
 					if(sent > -1 && sent < (int)strlen(response)) {
 						/* We couldn't send everything in a single write, we'll complete this in the next round */
@@ -1322,11 +1039,7 @@ static int janus_websockets_common_callback(
 					/* We can get rid of the message */
 					free(response);
 					/* Done for this round, check the next response/notification later */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 					lws_callback_on_writable(wsi);
-#else
-					libwebsocket_callback_on_writable(this, wsi);
-#endif
 					janus_mutex_unlock(&ws_client->mutex);
 					return 0;
 				}
@@ -1359,76 +1072,36 @@ static int janus_websockets_common_callback(
 
 /* This callback handles Janus API requests */
 static int janus_websockets_callback(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len)
 {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	return janus_websockets_common_callback(wsi, reason, user, in, len, FALSE);
-#else
-	return janus_websockets_common_callback(this, wsi, reason, user, in, len, FALSE);
-#endif
 }
 
 static int janus_websockets_callback_secure(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len)
 {
 	/* We just forward the event to the Janus API handler */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	return janus_websockets_callback(wsi, reason, user, in, len);
-#else
-	return janus_websockets_callback(this, wsi, reason, user, in, len);
-#endif
 }
 
 /* This callback handles Admin API requests */
 static int janus_websockets_admin_callback(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len)
 {
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	return janus_websockets_common_callback(wsi, reason, user, in, len, TRUE);
-#else
-	return janus_websockets_common_callback(this, wsi, reason, user, in, len, TRUE);
-#endif
 }
 
 static int janus_websockets_admin_callback_secure(
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 		struct lws *wsi,
 		enum lws_callback_reasons reason,
-#else
-		struct libwebsocket_context *this,
-		struct libwebsocket *wsi,
-		enum libwebsocket_callback_reasons reason,
-#endif
 		void *user, void *in, size_t len)
 {
 	/* We just forward the event to the Admin API handler */
-#ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	return janus_websockets_admin_callback(wsi, reason, user, in, len);
-#else
-	return janus_websockets_admin_callback(this, wsi, reason, user, in, len);
-#endif
 }
