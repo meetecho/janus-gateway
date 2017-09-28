@@ -170,8 +170,10 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
-													Janus.debug("  >> [" + id + "] " + display);
-													newRemoteFeed(id, display)
+													var audio = list[f]["audio_codec"];
+													var video = list[f]["video_codec"];
+													Janus.debug("  >> [" + id + "] " + display + " (audio: " + audio + ", video: " + video + ")");
+													newRemoteFeed(id, display, audio, video);
 												}
 											}
 										} else if(event === "destroyed") {
@@ -189,8 +191,10 @@ $(document).ready(function() {
 												for(var f in list) {
 													var id = list[f]["id"];
 													var display = list[f]["display"];
-													Janus.debug("  >> [" + id + "] " + display);
-													newRemoteFeed(id, display)
+													var audio = list[f]["audio_codec"];
+													var video = list[f]["video_codec"];
+													Janus.debug("  >> [" + id + "] " + display + " (audio: " + audio + ", video: " + video + ")");
+													newRemoteFeed(id, display, audio, video);
 												}
 											} else if(msg["leaving"] !== undefined && msg["leaving"] !== null) {
 												// One of the publishers has gone away?
@@ -252,6 +256,25 @@ $(document).ready(function() {
 										Janus.debug("Handling SDP as well...");
 										Janus.debug(jsep);
 										sfutest.handleRemoteJsep({jsep: jsep});
+										// Check if any of the media we wanted to publish has
+										// been rejected (e.g., wrong or unsupported codec)
+										var audio = msg["audio_codec"];
+										if(mystream && mystream.getAudioTracks() && mystream.getAudioTracks().length > 0 && !audio) {
+											// Audio has been rejected
+											toastr.warning("Our audio stream has been rejected, viewers won't hear us");
+										}
+										var video = msg["video_codec"];
+										if(mystream && mystream.getVideoTracks() && mystream.getVideoTracks().length > 0 && !video) {
+											// Video has been rejected
+											toastr.warning("Our video stream has been rejected, viewers won't hear us");
+											// Hide the webcam video
+											$('#myvideo').hide();
+											$('#videolocal').append(
+												'<div class="no-video-container">' +
+													'<i class="fa fa-video-camera fa-5 no-video-icon" style="height: 100%;"></i>' +
+													'<span class="no-video-text" style="font-size: 16px;">Video rejected, no webcam</span>' +
+												'</div>');
+										}
 									}
 								},
 								onlocalstream: function(stream) {
@@ -409,7 +432,7 @@ function unpublishOwnFeed() {
 	sfutest.send({"message": unpublish});
 }
 
-function newRemoteFeed(id, display) {
+function newRemoteFeed(id, display, audio, video) {
 	// A new feed has been published, create a new plugin handle and attach to it as a listener
 	var remoteFeed = null;
 	janus.attach(
@@ -427,6 +450,11 @@ function newRemoteFeed(id, display) {
 				// publisher is sending them, set the 'offer_audio', 'offer_video' or
 				// 'offer_data' properties to false (they're true by default), e.g.:
 				// 		listen["offer_video"] = false;
+				// For example, if the publisher is VP8 and this is Safari, let's avoid video
+				if(video === "vp8" && adapter.browserDetails.browser === "safari") {
+					toastr.warning("Publisher is using VP8, but Safari doesn't support it: disabling video");
+					listen["offer_video"] = false;
+				}
 				remoteFeed.send({"message": listen});
 			},
 			error: function(error) {

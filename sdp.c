@@ -1050,6 +1050,11 @@ char *janus_sdp_merge(void *ice_handle, janus_sdp *anon) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX) &&
 				(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO))
 			janus_ice_candidates_to_sdp(handle, m, stream->stream_id, 2);
+		/* Since we're half-trickling, we need to notify the peer that these are all the
+		 * candidates we have for this media stream, via an end-of-candidates attribute:
+		 * https://tools.ietf.org/html/draft-ietf-mmusic-trickle-ice-02#section-4.1 */
+		janus_sdp_attribute *end = janus_sdp_attribute_create("end-of-candidates", NULL);
+		m->attributes = g_list_append(m->attributes, end);
 		/* Next */
 		temp = temp->next;
 	}
