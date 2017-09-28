@@ -6,7 +6,7 @@ WORKDIR /root
 # Upgrade and instal basic tools
 RUN apt-get update && apt-get upgrade -y && apt-get install -y ca-certificates \
     && apt-get install -y --no-install-recommends git curl wget \
-    && apt-get install -y --no-install-recommends zsh
+    && apt-get install -y --no-install-recommends zsh ssh-client
 
 # Install build tools
 RUN apt-get install -y --no-install-recommends libtool build-essential automake cmake
