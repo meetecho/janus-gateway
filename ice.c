@@ -447,6 +447,9 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				continue;
 			}
+			if(handle->icethread != NULL) {
+				continue;
+			}
 			/* Schedule the ICE handle for deletion */
 			g_hash_table_iter_remove(&iter);
 			GSource *timeout_source = g_timeout_source_new_seconds(3);
@@ -1238,7 +1241,6 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			}
 		}
 	}
-	handle->icethread = NULL;
 }
 
 void janus_ice_webrtc_free(janus_ice_handle *handle) {
@@ -1254,7 +1256,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 		g_main_context_unref (handle->icectx);
 		handle->icectx = NULL;
 	}
-	handle->icethread = NULL;
 	if(handle->streams != NULL) {
 		janus_ice_stream_free(handle->streams, handle->audio_stream);
 		handle->audio_stream = NULL;
@@ -2430,6 +2431,7 @@ void *janus_ice_thread(void *data) {
 		janus_ice_webrtc_free(handle);
 	}
 	g_thread_unref(g_thread_self());
+	handle->icethread = NULL;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended!\n", handle->handle_id);
 	return NULL;
 }
