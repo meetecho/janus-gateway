@@ -6,13 +6,13 @@
  * the gateway and all the plugins need to implement to interact with
  * each other. The structures to make the communication possible are
  * defined here as well.
- * 
+ *
  * In particular, the gateway implements the \c janus_callbacks interface.
  * This means that, as a plugin, you can use the methods it exposes to
  * contact the gateway, e.g., in order to have it relay a message, event
  * or RTP/RTCP packet to the peer you're handling. In particular, the
  * methods the gateway exposes to plugins are:
- * 
+ *
  * - \c push_event(): to send a JSON message/event to the peer (with or without
  * an attached JSEP formatted SDP to negotiate a WebRTC PeerConnection);
  * the syntax of the message/event is completely up to you, the only
@@ -21,14 +21,14 @@
  * - \c relay_rtp(): to send/relay the peer an RTP packet;
  * - \c relay_rtcp(): to send/relay the peer an RTCP message.
  * - \c relay_data(): to send/relay the peer a SCTP DataChannel message.
- * 
+ *
  * On the other hand, a plugin that wants to register at the gateway
  * needs to implement the \c janus_plugin interface. Besides, as a
  * plugin is a shared object, and as such external to the gateway itself,
  * in order to be dynamically loaded at startup it needs to implement
  * the \c create_p() hook as well, that should return a pointer to the
  * plugin instance. This is an example of such a step:
- * 
+ *
 \verbatim
 static janus_plugin myplugin = {
 	[..]
@@ -39,14 +39,14 @@ janus_plugin *create(void) {
 	return &myplugin;
 }
 \endverbatim
- * 
+ *
  * This will make sure that your plugin is loaded at startup by the gateway,
  * if it is deployed in the proper folder.
- * 
+ *
  * As anticipated and described in the above example, a plugin must basically
  * be an instance of the \c janus_plugin type. As such, it must implement
  * the following methods and callbacks for the gateway:
- * 
+ *
  * - \c init(): this is called by the gateway as soon as your plugin is started;
  * this is where you should setup your plugin (e.g., static stuff and reading
  * the configuration file);
@@ -68,7 +68,7 @@ janus_plugin *create(void) {
  * - \c hangup_media(): a callback to notify you the peer PeerConnection has been closed (e.g., after a DTLS alert);
  * - \c query_session(): this method is called by the gateway to get plugin-specific info on a session between you and a peer;
  * - \c destroy_session(): this method is called by the gateway to destroy a session between you and a peer.
- * 
+ *
  * All the above methods and callbacks, except for \c incoming_rtp ,
  * \c incoming_rtcp , \c incoming_data and \c slow_link , are mandatory:
  * the Janus core will reject a plugin that doesn't implement any of the
@@ -81,7 +81,7 @@ janus_plugin *create(void) {
  * can be left out. Finally, \c slow_link is just there as a helper, some
  * additional information you may be interested about, but you're not
  * forced to receive it if you don't care.
- * 
+ *
  * The gateway \c janus_callbacks interface is provided to a plugin, together
  * with the path to the configurations files folder, in the \c init() method.
  * This path can be used to read and parse a configuration file for the
@@ -91,7 +91,7 @@ janus_plugin *create(void) {
  * as it doesn't collide with existing ones. Besides, the existing plugins
  * use the same INI format for configuration files the gateway uses (relying
  * on the \c janus_config helpers for the purpose) but again, if you prefer
- * a different format (XML, JSON, etc.) that's up to you. 
+ * a different format (XML, JSON, etc.) that's up to you.
  *
  * Both the the gateway and a plugin can have several different sessions
  * with the same and/or different peers: to match a specific session,
@@ -99,15 +99,15 @@ janus_plugin *create(void) {
  * is what all the communication between the plugins and the gateway
  * (that is, both methods invoked by the gateway and callbacks invoked by
  * the plugins) will make use of. See the janus_videoroom.c plugin for
- * an example of multiple handles associated to the same peer. 
- * 
+ * an example of multiple handles associated to the same peer.
+ *
  * All messages/requests/events sent to and received from a plugin are
  * asynchronous, meaning there's no way to immediately reply to a message
  * sent by a browser, for instance. Messages/requests coming from browsers
  * in a \c handle_message() callback, though, have a transaction
  * identifier, which you can use in a \c push_event() reply to allow the
  * browser to match it to the original request, if needed.
- * 
+ *
  * As anticipated, both \c handle_message() and \c push_event() can attach
  * a JSEP/SDP payload. This means that a browser, for instance, can attach
  * a JSEP/SDP offer to negotiate a WebRTC PeerConnection with a plugin: the plugin
@@ -122,14 +122,14 @@ janus_plugin *create(void) {
  * the media flowing around, and as such it's them who are responsible for
  * what concerns the codec negotiation in a JSEP/SDP offer/answer. This
  * normally is not something you need to worry about, especially if you're
- * just moving SDP around (e.g., janus_echotest.c or janus_videocall.c). 
+ * just moving SDP around (e.g., janus_echotest.c or janus_videocall.c).
  * If your plugin is going to generate media frames (e.g., as janus_audiobridge.c),
  * you only support some codecs (e.g., Opus in janus_audiobridge.c) or you
- * want to use the same SDP offer for several different sessions (e.g., a webinar), 
+ * want to use the same SDP offer for several different sessions (e.g., a webinar),
  * you need to make sure that your offer/answer does not contain anything
  * you don't support. Besides, you also need to make sure that you use
- * SDP-provided information (e.g., payload types) coherently. 
- * 
+ * SDP-provided information (e.g., payload types) coherently.
+ *
  * \todo Right now plugins can only interact with peers, through the gateway.
  * Besides, a single PeerConnection can at the moment be used by only one
  * plugin, as that plugin is actually the "owner" of the PeerConnection itself.
@@ -138,7 +138,7 @@ janus_plugin *create(void) {
  * or as additional sources/sinks for the same PeerConnection of the same peer
  * (e.g., to add recording functionality to a video conference using a
  * different plugin).
- * 
+ *
  * \ingroup pluginapi
  * \ref pluginapi
  */
@@ -155,32 +155,30 @@ janus_plugin *create(void) {
 #include <inttypes.h>
 
 #include <glib.h>
-#include <jansson.h>
-
 
 /*! \brief Version of the API, to match the one plugins were compiled against
- * 
+ *
  * \note This was added in version 0.0.7 of the gateway, to address changes
  * to the API that might break existing plugin or the core itself. All
  * plugins MUST implement the get_api_compatibility() method to make
  * this work. Do NOT try to launch a pre 0.0.7 plugin on a >= 0.0.7
  * gateway or it will crash.
- * 
+ *
  */
 #define JANUS_PLUGIN_API_VERSION	8
 
 /*! \brief Initialization of all plugin properties to NULL
- * 
+ *
  * \note This was added in version 0.0.8 of the gateway, to address changes
  * to the API that might break existing plugin or the core itself. All
  * plugins MUST add this as the FIRST line when initializing their
  * plugin structure, e.g.:
- * 
+ *
 \verbatim
 static janus_plugin janus_echotest_plugin =
 	{
 		JANUS_PLUGIN_INIT,
-		
+
 		.init = janus_echotest_init,
 		[..]
 \endverbatim
@@ -216,6 +214,9 @@ typedef struct janus_plugin janus_plugin;
 typedef struct janus_plugin_session janus_plugin_session;
 /*! \brief Result of individual requests passed to plugins */
 typedef struct janus_plugin_result janus_plugin_result;
+
+/* Use forward declaration to avoid including jansson.h */
+typedef struct json_t json_t;
 
 /*! \brief Plugin-Gateway session mapping */
 struct janus_plugin_session {
@@ -288,7 +289,7 @@ struct janus_plugin {
 	/*! \brief Method to handle incoming SCTP/DataChannel data from a peer (text only, for the moment)
 	 * \note We currently only support text data, binary data will follow... please also notice that
 	 * DataChannels send unterminated strings, so you'll have to terminate them with a \0 yourself to
-	 * use them. 
+	 * use them.
 	 * @param[in] handle The plugin/gateway session used for this peer
 	 * @param[in] buf The message data (buffer)
 	 * @param[in] len The buffer lenght */

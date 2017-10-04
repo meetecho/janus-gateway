@@ -4,12 +4,14 @@
  * \brief  Plugin-Gateway communication (implementation)
  * \details  Implementation of the janus_plugin_result stuff: all the
  * important things related to the actual plugin API is in plugin.h.
- * 
+ *
  * \ingroup pluginapi
  * \ref pluginapi
  */
 
 #include "plugin.h"
+
+#include <jansson.h>
 
 #include "../apierror.h"
 #include "../debug.h"
