@@ -100,12 +100,34 @@ do { \
 			snprintf(janus_log_src, sizeof(janus_log_src), \
 			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
 		} \
-		JANUS_PRINT("%s%s%s" format, \
+    if (g_str_has_prefix(__FILE__, "dazzl_")) { \
+      char dazzl_module[64]; \
+      char *start_pos, *end_pos; \
+      bzero(dazzl_module, 64); \
+      start_pos = g_strstr_len(__FILE__, 6, "_"); \
+      if (start_pos) { \
+        start_pos++; \
+        end_pos = g_strstr_len(__FILE__, 62, "."); \
+        if (end_pos) \
+          strncpy(dazzl_module, start_pos, end_pos - start_pos); \
+      } \
+		  JANUS_PRINT("%s%s%s%s%s%s%s" format, \
+			janus_log_ts, \
+      ANSI_COLOR_GREEN"[Dazzl]"ANSI_COLOR_RESET" ", \
+      ANSI_COLOR_GREEN"[", \
+      dazzl_module, \
+      "]"ANSI_COLOR_RESET" ", \
+			janus_log_prefix[level | ((int)janus_log_colors << 3)], \
+			janus_log_src, \
+			##__VA_ARGS__); \
+    } else { \
+		  JANUS_PRINT("%s%s%s" format, \
 			janus_log_ts, \
 			janus_log_prefix[level | ((int)janus_log_colors << 3)], \
 			janus_log_src, \
 			##__VA_ARGS__); \
-	} \
+	  } \
+  }\
 } while (0)
 ///@}
 
