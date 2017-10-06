@@ -444,9 +444,12 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 			if (!handle) {
 				continue;
 			}
+			/* Be sure that iceloop is not running, before freeing */
 			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+				g_main_loop_quit(handle->iceloop);
 				continue;
 			}
+			/* Be sure that icethread has finished, before freeing*/
 			if(handle->icethread != NULL) {
 				continue;
 			}
