@@ -355,6 +355,8 @@ static GThread *watchdog;
 static void *janus_videoroom_handler(void *data);
 static void janus_videoroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_videoroom_relay_data_packet(gpointer data, gpointer user_data);
+static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle);
+
 
 typedef enum janus_videoroom_p_type {
 	janus_videoroom_p_type_none = 0,
@@ -1081,6 +1083,14 @@ const char *janus_videoroom_get_package(void) {
 	return JANUS_VIDEOROOM_PACKAGE;
 }
 
+static janus_videoroom_session *janus_videoroom_lookup_session(janus_plugin_session *handle) {
+	janus_videoroom_session *session = NULL;
+	if (g_hash_table_contains(sessions,handle)) {
+		session = (janus_videoroom_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_videoroom_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1138,23 +1148,25 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
 		return;
-	}	
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle; 
+	}
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No VideoRoom session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_WARN, "VideoRoom session already marked as destroyed...\n");
 		return;
 	}
 	JANUS_LOG(LOG_VERB, "Removing VideoRoom session...\n");
 	/* Cleaning up and removing the session is done in a lazy way */
-	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
 		/* Any related WebRTC PeerConnection is not available anymore either */
-		janus_videoroom_hangup_media(handle);
+		janus_videoroom_hangup_media_internal(handle);
 		session->destroyed = janus_get_monotonic_time();
 		old_sessions = g_list_append(old_sessions, session);
 		if(session->participant_type == janus_videoroom_p_type_publisher) {
@@ -1178,7 +1190,6 @@ void janus_videoroom_destroy_session(janus_plugin_session *handle, int *error) {
 		g_hash_table_remove(sessions, handle);
 	}
 	janus_mutex_unlock(&sessions_mutex);
-
 	return;
 }
 
@@ -1186,8 +1197,10 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}	
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
@@ -1272,6 +1285,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 		}
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	janus_mutex_unlock(&sessions_mutex);
 	return info;
 }
 
@@ -1326,6 +1340,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	json_t *root = message;
 	json_t *response = NULL;
 
+	janus_mutex_lock(&sessions_mutex);
+
 	if(message == NULL) {
 		JANUS_LOG(LOG_ERR, "No message??\n");
 		error_code = JANUS_VIDEOROOM_ERROR_NO_MESSAGE;
@@ -1333,7 +1349,8 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		goto plugin_response;
 	}
 
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
+
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
@@ -2445,6 +2462,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		msg->jsep = jsep;
 		g_async_queue_push(messages, msg);
 
+		janus_mutex_unlock(&sessions_mutex);
 		return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
@@ -2454,6 +2472,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 
 plugin_response:
 		{
+			janus_mutex_unlock(&sessions_mutex);
 			if(error_code == 0 && !response) {
 				error_code = JANUS_VIDEOROOM_ERROR_UNKNOWN_ERROR;
 				g_snprintf(error_cause, 512, "Invalid response");
@@ -2481,13 +2500,17 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
 
 	/* Media relaying can start now */
@@ -2563,6 +2586,7 @@ void janus_videoroom_setup_media(janus_plugin_session *handle) {
 			}
 		}
 	}
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -2976,20 +3000,22 @@ static void janus_videoroom_recorder_close(janus_videoroom_participant *particip
 	participant->drc = NULL;
 }
 
-void janus_videoroom_hangup_media(janus_plugin_session *handle) {
+static void janus_videoroom_hangup_media_internal(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_videoroom_session *session = (janus_videoroom_session *)handle->plugin_handle;	
+	janus_videoroom_session *session = janus_videoroom_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
 	session->started = FALSE;
-	if(session->destroyed)
+	if(session->destroyed) {
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	}
+	if(g_atomic_int_add(&session->hangingup, 1)) {
 		return;
+	}
 	/* Send an event to the browser and tell the PeerConnection is over */
 	if(session->participant_type == janus_videoroom_p_type_publisher) {
 		/* This publisher just 'unpublished' */
@@ -3064,6 +3090,12 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 	}
 }
 
+void janus_videoroom_hangup_media(janus_plugin_session *handle) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_videoroom_hangup_media_internal(handle);
+	janus_mutex_unlock(&sessions_mutex);
+}
+
 /* Thread to handle incoming messages */
 static void *janus_videoroom_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining VideoRoom handler thread\n");
@@ -3081,11 +3113,8 @@ static void *janus_videoroom_handler(void *data) {
 			janus_videoroom_message_free(msg);
 			continue;
 		}
-		janus_videoroom_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_videoroom_session *)msg->handle->plugin_handle;
-		}
+		janus_videoroom_session *session = janus_videoroom_lookup_session(msg->handle);
 		if(!session) {
 			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
