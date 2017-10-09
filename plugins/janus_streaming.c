@@ -1193,6 +1193,14 @@ const char *janus_streaming_get_package(void) {
 	return JANUS_STREAMING_PACKAGE;
 }
 
+static janus_streaming_session *janus_streaming_lookup_session(janus_plugin_session *handle) {
+	janus_streaming_session *session = NULL;
+	if (g_hash_table_contains(sessions,handle)) {
+		session = (janus_streaming_session *)handle->plugin_handle;
+	}
+	return session;
+}
+
 void janus_streaming_create_session(janus_plugin_session *handle, int *error) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		*error = -1;
@@ -1218,8 +1226,10 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 		*error = -1;
 		return;
 	}
-	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_streaming_session *session = janus_streaming_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		*error = -2;
 		return;
@@ -1231,7 +1241,6 @@ void janus_streaming_destroy_session(janus_plugin_session *handle, int *error) {
 		mp->listeners = g_list_remove_all(mp->listeners, session);
 		janus_mutex_unlock(&mp->mutex);
 	}
-	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
 		session->destroyed = janus_get_monotonic_time();
 		g_hash_table_remove(sessions, handle);
@@ -1246,8 +1255,10 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
 		return NULL;
 	}
-	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_streaming_session *session = janus_streaming_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return NULL;
 	}
@@ -1260,6 +1271,7 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 		json_object_set_new(info, "mountpoint_name", mp->name ? json_string(mp->name) : NULL);
 	}
 	json_object_set_new(info, "destroyed", json_integer(session->destroyed));
+	janus_mutex_unlock(&sessions_mutex);
 	return info;
 }
 
@@ -1274,6 +1286,8 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 	json_t *response = NULL;
 	struct ifaddrs *ifas = NULL;
 
+	janus_mutex_lock(&sessions_mutex);
+
 	if(message == NULL) {
 		JANUS_LOG(LOG_ERR, "No message??\n");
 		error_code = JANUS_STREAMING_ERROR_NO_MESSAGE;
@@ -1281,7 +1295,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		goto plugin_response;
 	}
 
-	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
+	janus_streaming_session *session = janus_streaming_lookup_session(handle);
 	if(!session) {
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;
@@ -2290,7 +2304,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		msg->jsep = jsep;
 
 		g_async_queue_push(messages, msg);
-
+		janus_mutex_unlock(&sessions_mutex);
 		return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 	} else {
 		JANUS_LOG(LOG_VERB, "Unknown request '%s'\n", request_text);
@@ -2300,6 +2314,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 
 plugin_response:
 		{
+			janus_mutex_unlock(&sessions_mutex);
 			if(ifas) {
 				freeifaddrs(ifas);
 			}
@@ -2331,13 +2346,17 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_streaming_session *session = janus_streaming_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	g_atomic_int_set(&session->hangingup, 0);
 	/* We only start streaming towards this user when we get this event */
 	janus_rtp_switching_context_reset(&session->context);
@@ -2378,6 +2397,7 @@ void janus_streaming_setup_media(janus_plugin_session *handle) {
 	int ret = gateway->push_event(handle, &janus_streaming_plugin, NULL, event, NULL);
 	JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
 	json_decref(event);
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 void janus_streaming_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
@@ -2402,15 +2422,21 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
 	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
 		return;
-	janus_streaming_session *session = (janus_streaming_session *)handle->plugin_handle;
+	janus_mutex_lock(&sessions_mutex);
+	janus_streaming_session *session = janus_streaming_lookup_session(handle);
 	if(!session) {
+		janus_mutex_unlock(&sessions_mutex);
 		JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 		return;
 	}
-	if(session->destroyed)
+	if(session->destroyed) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
-	if(g_atomic_int_add(&session->hangingup, 1))
+	}
+	if(g_atomic_int_add(&session->hangingup, 1)) {
+		janus_mutex_unlock(&sessions_mutex);
 		return;
+	}
 	session->substream = -1;
 	session->substream_target = 0;
 	session->templayer = -1;
@@ -2424,6 +2450,7 @@ void janus_streaming_hangup_media(janus_plugin_session *handle) {
 	msg->transaction = NULL;
 	msg->jsep = NULL;
 	g_async_queue_push(messages, msg);
+	janus_mutex_unlock(&sessions_mutex);
 }
 
 /* Thread to handle incoming messages */
@@ -2443,14 +2470,11 @@ static void *janus_streaming_handler(void *data) {
 			janus_streaming_message_free(msg);
 			continue;
 		}
-		janus_streaming_session *session = NULL;
 		janus_mutex_lock(&sessions_mutex);
-		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
-			session = (janus_streaming_session *)msg->handle->plugin_handle;
-		}
+		janus_streaming_session *session = janus_streaming_lookup_session(msg->handle);
 		if(!session) {
-			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_mutex_unlock(&sessions_mutex);
+			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_streaming_message_free(msg);
 			continue;
 		}
