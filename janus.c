@@ -1126,6 +1126,8 @@ int janus_process_incoming_request(janus_request *request) {
 						if(audio) {
 							/* Get rid of video and data, if present */
 							if(handle->streams && handle->video_stream) {
+								if(handle->audio_stream->rtp_component && handle->video_stream->rtp_component)
+									handle->audio_stream->rtp_component->do_video_nacks = handle->video_stream->rtp_component->do_video_nacks;
 								handle->audio_stream->video_ssrc = handle->video_stream->video_ssrc;
 								handle->audio_stream->video_ssrc_peer = handle->video_stream->video_ssrc_peer;
 								handle->audio_stream->video_ssrc_peer_rtx = handle->video_stream->video_ssrc_peer_rtx;
@@ -1147,6 +1149,8 @@ int janus_process_incoming_request(janus_request *request) {
 							handle->data_stream = NULL;
 							handle->data_id = 0;
 							if(!video) {
+								if(handle->audio_stream->rtp_component)
+									handle->audio_stream->rtp_component->do_video_nacks = FALSE;
 								handle->audio_stream->video_ssrc = 0;
 								handle->audio_stream->video_ssrc_peer = 0;
 								g_free(handle->audio_stream->video_rtcp_ctx);
@@ -2545,7 +2549,9 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AUDIO)) {
 			json_object_set_new(in_stats, "audio_packets", json_integer(component->in_stats.audio_packets));
 			json_object_set_new(in_stats, "audio_bytes", json_integer(component->in_stats.audio_bytes));
-			json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
+			json_object_set_new(in_stats, "do_audio_nacks", component->do_audio_nacks ? json_true() : json_false());
+			if(component->do_audio_nacks)
+				json_object_set_new(in_stats, "audio_nacks", json_integer(component->in_stats.audio_nacks));
 			/* Compute the last second stuff too */
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
@@ -2563,7 +2569,9 @@ json_t *janus_admin_component_summary(janus_ice_component *component) {
 		if(handle && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_VIDEO)) {
 			json_object_set_new(in_stats, "video_packets", json_integer(component->in_stats.video_packets));
 			json_object_set_new(in_stats, "video_bytes", json_integer(component->in_stats.video_bytes));
-			json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
+			json_object_set_new(in_stats, "do_video_nacks", component->do_video_nacks ? json_true() : json_false());
+			if(component->do_video_nacks)
+				json_object_set_new(in_stats, "video_nacks", json_integer(component->in_stats.video_nacks));
 			/* Compute the last second stuff too */
 			gint64 now = janus_get_monotonic_time();
 			guint64 bytes = 0;
@@ -2981,6 +2989,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 				if(audio) {
 					/* Get rid of video and data, if present */
 					if(ice_handle->streams && ice_handle->video_stream) {
+						if(ice_handle->audio_stream->rtp_component && ice_handle->video_stream->rtp_component)
+							ice_handle->audio_stream->rtp_component->do_video_nacks = ice_handle->video_stream->rtp_component->do_video_nacks;
 						ice_handle->audio_stream->video_ssrc = ice_handle->video_stream->video_ssrc;
 						ice_handle->audio_stream->video_ssrc_peer = ice_handle->video_stream->video_ssrc_peer;
 						ice_handle->audio_stream->video_ssrc_peer_rtx = ice_handle->video_stream->video_ssrc_peer_rtx;
@@ -3002,6 +3012,8 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 					ice_handle->data_stream = NULL;
 					ice_handle->data_id = 0;
 					if(!video) {
+						if(ice_handle->audio_stream->rtp_component)
+							ice_handle->audio_stream->rtp_component->do_video_nacks = FALSE;
 						ice_handle->audio_stream->video_ssrc = 0;
 						ice_handle->audio_stream->video_ssrc_peer = 0;
 						g_free(ice_handle->audio_stream->video_rtcp_ctx);
@@ -3980,7 +3992,7 @@ gint main(int argc, char *argv[])
 				JANUS_LOG(LOG_INFO, "Loading event handler plugin '%s'...\n", eventent->d_name);
 				memset(eventpath, 0, 1024);
 				g_snprintf(eventpath, 1024, "%s/%s", path, eventent->d_name);
-				void *event = dlopen(eventpath, RTLD_LAZY);
+				void *event = dlopen(eventpath, RTLD_NOW | RTLD_GLOBAL);
 				if (!event) {
 					JANUS_LOG(LOG_ERR, "\tCouldn't load event handler plugin '%s': %s\n", eventent->d_name, dlerror());
 				} else {
@@ -4108,7 +4120,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading plugin '%s'...\n", pluginent->d_name);
 		memset(pluginpath, 0, 1024);
 		g_snprintf(pluginpath, 1024, "%s/%s", path, pluginent->d_name);
-		void *plugin = dlopen(pluginpath, RTLD_LOCAL | RTLD_LAZY);
+		void *plugin = dlopen(pluginpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!plugin) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load plugin '%s': %s\n", pluginent->d_name, dlerror());
 		} else {
@@ -4236,7 +4248,7 @@ gint main(int argc, char *argv[])
 		JANUS_LOG(LOG_INFO, "Loading transport plugin '%s'...\n", transportent->d_name);
 		memset(transportpath, 0, 1024);
 		g_snprintf(transportpath, 1024, "%s/%s", path, transportent->d_name);
-		void *transport = dlopen(transportpath, RTLD_LOCAL | RTLD_LAZY);
+		void *transport = dlopen(transportpath, RTLD_NOW | RTLD_GLOBAL);
 		if (!transport) {
 			JANUS_LOG(LOG_ERR, "\tCouldn't load transport plugin '%s': %s\n", transportent->d_name, dlerror());
 		} else {

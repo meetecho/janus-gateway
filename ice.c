@@ -1974,6 +1974,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
 			rtp_header *header = (rtp_header *)buf;
+			guint32 packet_ssrc = ntohl(header->ssrc);
 			/* Is this audio or video? */
 			int video = 0;
 			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_BUNDLE)) {
@@ -1981,7 +1982,6 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				video = (stream->stream_id == handle->video_id ? 1 : 0);
 			} else {
 				/* Bundled streams, check SSRC */
-				guint32 packet_ssrc = ntohl(header->ssrc);
 				video = ((stream->video_ssrc_peer == packet_ssrc
 					|| stream->video_ssrc_peer_rtx == packet_ssrc
 					|| stream->video_ssrc_peer_sim_1 == packet_ssrc
@@ -2115,7 +2115,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 				}
 
 				/* FIXME Don't handle RTCP or stats for the simulcasted SSRCs, for now */
-				if(video && ntohl(header->ssrc) != stream->video_ssrc_peer)
+				if(video && packet_ssrc != stream->video_ssrc_peer)
 					return;
 
 				/* Update the RTCP context as well */
