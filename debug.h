@@ -113,10 +113,9 @@ do { \
         if (end_pos) \
           strncpy(dazzl_module, start_pos, end_pos - start_pos); \
       } \
-		  JANUS_PRINT("%s%s%s%s%s%s%s" format, \
+		  JANUS_PRINT("%s%s%s%s%s%s" format, \
 			janus_log_ts, \
-      ANSI_COLOR_GREEN"[Dazzl]"ANSI_COLOR_RESET" ", \
-      ANSI_COLOR_GREEN"[", \
+      ANSI_COLOR_GREEN"[Dazzl:", \
       dazzl_module, \
       "]"ANSI_COLOR_RESET" ", \
 			janus_log_prefix[level | ((int)janus_log_colors << 3)], \
