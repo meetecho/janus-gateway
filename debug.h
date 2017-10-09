@@ -13,6 +13,8 @@
 
 #include <glib.h>
 #include <glib/gprintf.h>
+#include <string.h>
+#include <strings.h>
 #include "log.h"
 
 extern int janus_log_level;
