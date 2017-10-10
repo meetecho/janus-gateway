@@ -11,6 +11,11 @@
 ; audio_level_average = 25 (average value of audio level, 127=muted, 0='too loud', default=25)
 ; record = true|false (whether this room should be recorded, default=false)
 ; record_file = /path/to/recording.wav (where to save the recording)
+; rtp_forward_host = host address to forward RTP packets of mixed audio to
+; rtp_forward_port = port to forward RTP packets of mixed audio to
+; rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
+; rtp_forward_ptype = payload type to use when streaming (optional: 100 used if missing)
+; rtp_forward_always_on = true|false, whether silence should be forwarded when the room is empty (optional: false used if missing)
 
 [general]
 ;admin_key = supersecret		; If set, rooms can be created via API only
