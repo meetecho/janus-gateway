@@ -3818,7 +3818,7 @@ static void *janus_sip_relay_thread(void *data) {
 						session->media.video_rtcp_fd = -1;
 						continue;
 					}
-					/* FIXME Should we be more tolerand of ICMP errors on RTP sockets as well? */
+					/* FIXME Should we be more tolerant of ICMP errors on RTP sockets as well? */
 				}
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling %d (socket #%d): %s...\n", session->account.username,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
