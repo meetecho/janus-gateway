@@ -407,9 +407,9 @@ int janus_rabbitmq_init(janus_transport_callbacks *callback, const char *config_
 			JANUS_LOG(LOG_FATAL, "Can't connect to RabbitMQ server: error logging in... %s, %s\n", amqp_error_string2(result.library_error), amqp_method_name(result.reply.id));
 			goto error;
 		}
-    g_free(vhost);
-    g_free(username);
-    g_free(password);
+    g_free((gpointer)vhost);
+    g_free((gpointer)username);
+    g_free((gpointer)password);
 		rmq_client->rmq_channel = 1;
 		JANUS_LOG(LOG_VERB, "Opening channel...\n");
 		amqp_channel_open(rmq_client->rmq_conn, rmq_client->rmq_channel);
