@@ -3810,14 +3810,15 @@ static void *janus_sip_relay_thread(void *data) {
 							session->account.username, strerror(error));
 						close(session->media.audio_rtcp_fd);
 						session->media.audio_rtcp_fd = -1;
+						continue;
 					} else if(fds[i].fd == session->media.video_rtcp_fd) {
 						JANUS_LOG(LOG_WARN, "[SIP-%s] Got a '%s' on the video RTCP socket, closing it\n",
 							session->account.username, strerror(error));
 						close(session->media.video_rtcp_fd);
 						session->media.video_rtcp_fd = -1;
+						continue;
 					}
-					/* FIXME Should we do the same with the RTP sockets as well? We may risk overreacting, there... */
-					continue;
+					/* FIXME Should we be more tolerand of ICMP errors on RTP sockets as well? */
 				}
 				JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling %d (socket #%d): %s...\n", session->account.username,
 					fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
