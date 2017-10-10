@@ -446,11 +446,18 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 			}
 			/* Be sure that iceloop is not running, before freeing */
 			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
+				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup delayed because iceloop is still running...\n", handle->handle_id);
 				g_main_loop_quit(handle->iceloop);
 				continue;
 			}
 			/* Be sure that icethread has finished, before freeing*/
 			if(handle->icethread != NULL) {
+				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup delayed because icethread is still running...\n", handle->handle_id);
+				continue;
+			}
+			/* Be sure that ice send thread has finished, before freeing*/
+			if (g_atomic_int_get(&handle->send_thread_created) && handle->send_thread != NULL) {
+				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup delayed because icesendthread is still running...\n", handle->handle_id);
 				continue;
 			}
 			/* Schedule the ICE handle for deletion */
@@ -1210,7 +1217,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		janus_ice_notify_hangup(handle, reason);
 	}
 	if(handle->queued_packets != NULL)
-		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
 	if(handle->send_thread == NULL) {
 		/* Get rid of the loop */
 		if(handle->iceloop != NULL) {
@@ -4002,6 +4009,7 @@ void *janus_ice_send_thread(void *data) {
 	}
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread leaving...\n", handle->handle_id);
 	g_thread_unref(g_thread_self());
+	handle->send_thread = NULL;
 	return NULL;
 }
 
