@@ -29,7 +29,7 @@
 #include "turnrest.h"
 #include "dtls.h"
 #include "sdp.h"
-#include "rtp.h"
+#include "rtpsrtp.h"
 #include "rtcp.h"
 #include "apierror.h"
 #include "ip-utils.h"
@@ -266,12 +266,12 @@ static gboolean janus_is_dtls(gchar *buf) {
 }
 
 static gboolean janus_is_rtp(gchar *buf) {
-	rtp_header *header = (rtp_header *)buf;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
 	return ((header->type < 64) || (header->type >= 96));
 }
 
 static gboolean janus_is_rtcp(gchar *buf) {
-	rtp_header *header = (rtp_header *)buf;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
 	return ((header->type >= 64) && (header->type < 96));
 }
 
@@ -1973,7 +1973,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 		if(!component->dtls || !component->dtls->srtp_valid || !component->dtls->srtp_in) {
 			JANUS_LOG(LOG_WARN, "[%"SCNu64"]     Missing valid SRTP session (packet arrived too early?), skipping...\n", handle->handle_id);
 		} else {
-			rtp_header *header = (rtp_header *)buf;
+			janus_rtp_header *header = (janus_rtp_header *)buf;
 			guint32 packet_ssrc = ntohl(header->ssrc);
 			/* Is this audio or video? */
 			int video = 0;
@@ -2046,7 +2046,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 			if(res != srtp_err_status_ok) {
 				if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 					/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
-					rtp_header *header = (rtp_header *)buf;
+					janus_rtp_header *header = (janus_rtp_header *)buf;
 					guint32 timestamp = ntohl(header->timestamp);
 					guint16 seq = ntohs(header->seq_number);
 					JANUS_LOG(LOG_ERR, "[%"SCNu64"]     SRTP unprotect error: %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")\n", handle->handle_id, janus_srtp_error_str(res), len, buflen, timestamp, seq);
@@ -2325,7 +2325,7 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						while(rp) {
 							janus_rtp_packet *p = (janus_rtp_packet *)rp->data;
 							if(p) {
-								rtp_header *rh = (rtp_header *)p->data;
+								janus_rtp_header *rh = (janus_rtp_header *)p->data;
 								if(ntohs(rh->seq_number) == seqnr) {
 									/* Should we retransmit this packet? */
 									if((p->last_retransmit > 0) && (now-p->last_retransmit < MAX_NACK_IGNORE)) {
@@ -3841,7 +3841,7 @@ void *janus_ice_send_thread(void *data) {
 				component->noerrorlog = FALSE;
 				if(pkt->encrypted) {
 					/* Already RTP (probably a retransmission?) */
-					rtp_header *header = (rtp_header *)pkt->data;
+					janus_rtp_header *header = (janus_rtp_header *)pkt->data;
 					JANUS_LOG(LOG_HUGE, "[%"SCNu64"] ... Retransmitting seq.nr %"SCNu16"\n\n", handle->handle_id, ntohs(header->seq_number));
 					int sent = nice_agent_send(handle->agent, stream->stream_id, component->component_id, pkt->length, (const gchar *)pkt->data);
 					if(sent < pkt->length) {
@@ -3853,7 +3853,7 @@ void *janus_ice_send_thread(void *data) {
 					memcpy(sbuf, pkt->data, pkt->length);
 					if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PLAN_B)) {
 						/* Overwrite SSRC */
-						rtp_header *header = (rtp_header *)sbuf;
+						janus_rtp_header *header = (janus_rtp_header *)sbuf;
 						header->ssrc = htonl(video ? stream->video_ssrc : stream->audio_ssrc);
 					}
 					/* Do we need to dump this packet for debugging? */
@@ -3868,7 +3868,7 @@ void *janus_ice_send_thread(void *data) {
 						handle->srtp_errors_count++;
 						handle->last_srtp_error = res;
 						/* If we're debugging, though, print every occurrence */
-						rtp_header *header = (rtp_header *)sbuf;
+						janus_rtp_header *header = (janus_rtp_header *)sbuf;
 						guint32 timestamp = ntohl(header->timestamp);
 						guint16 seq = ntohs(header->seq_number);
 						JANUS_LOG(LOG_DBG, "[%"SCNu64"] ... SRTP protect error... %s (len=%d-->%d, ts=%"SCNu32", seq=%"SCNu16")...\n", handle->handle_id, janus_srtp_error_str(res), pkt->length, protected, timestamp, seq);
@@ -3881,7 +3881,7 @@ void *janus_ice_send_thread(void *data) {
 						/* Update stats */
 						if(sent > 0) {
 							/* Update the RTCP context as well */
-							rtp_header *header = (rtp_header *)sbuf;
+							janus_rtp_header *header = (janus_rtp_header *)sbuf;
 							guint32 timestamp = ntohl(header->timestamp);
 							if(pkt->type == JANUS_ICE_PACKET_AUDIO) {
 								component->out_stats.audio_packets++;

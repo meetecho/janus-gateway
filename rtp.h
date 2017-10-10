@@ -26,31 +26,7 @@
 #include <string.h>
 #include <glib.h>
 
-#ifdef HAVE_SRTP_2
-#include <srtp2/srtp.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
-int srtp_crypto_get_random(uint8_t *key, int len);
-#else
-#include <srtp/srtp.h>
-#include <srtp/crypto_kernel.h>
-#define srtp_err_status_t err_status_t
-#define srtp_err_status_ok err_status_ok
-#define srtp_err_status_replay_fail err_status_replay_fail
-#define srtp_err_status_replay_old err_status_replay_old
-#define srtp_crypto_policy_set_rtp_default crypto_policy_set_rtp_default
-#define srtp_crypto_policy_set_rtcp_default crypto_policy_set_rtcp_default
-#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
-#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
-#define srtp_crypto_get_random crypto_get_random
-#endif
-
 #define RTP_HEADER_SIZE	12
-
-/* SRTP stuff (http://tools.ietf.org/html/rfc3711) */
-#define SRTP_MASTER_KEY_LENGTH	16
-#define SRTP_MASTER_SALT_LENGTH	14
-#define SRTP_MASTER_LENGTH (SRTP_MASTER_KEY_LENGTH + SRTP_MASTER_SALT_LENGTH)
 
 /*! \brief RTP Header (http://tools.ietf.org/html/rfc3550#section-5.1) */
 typedef struct rtp_header
@@ -75,6 +51,7 @@ typedef struct rtp_header
 	uint32_t ssrc;
 	uint32_t csrc[16];
 } rtp_header;
+typedef rtp_header janus_rtp_header;
 
 /*! \brief RTP packet */
 typedef struct janus_rtp_packet {
@@ -184,11 +161,6 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
  * @param[in] context The context to use as a reference
  * @param[in] video Whether this is an audio or a video packet
  * @param[in] step The expected timestamp step */
-void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
-
-/*! \brief Helper method to get a string representation of a libsrtp error code
- * @param[in] error The libsrtp error code
- * @returns A string representation of the error code */
-const char *janus_srtp_error_str(int error);
+void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
 
 #endif
