@@ -75,7 +75,9 @@ rtp_forward_always_on = true|false, whether silence should be forwarded when the
  * process the mixer audio stream. You can add new RTP forwarders with
  * the \c rtp_forward request; a \c stop_rtp_forward request removes an
  * existing RTP forwarder; \c listforwarders lists all the current RTP
- * forwarders on a specific AudioBridge room instance.
+ * forwarders on a specific AudioBridge room instance. As an alternative,
+ * you can configure a single static RTP forwarder in the plugin
+ * configuration file.
  *
  * \c create can be used to create a new audio room, and has to be
  * formatted as follows:
