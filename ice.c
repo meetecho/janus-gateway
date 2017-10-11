@@ -446,18 +446,18 @@ static gboolean janus_ice_handles_check(gpointer user_data) {
 			}
 			/* Be sure that iceloop is not running, before freeing */
 			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup delayed because iceloop is still running...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup skipped because iceloop is still running...\n", handle->handle_id);
 				g_main_loop_quit(handle->iceloop);
 				continue;
 			}
 			/* Be sure that icethread has finished, before freeing*/
 			if(handle->icethread != NULL) {
-				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup delayed because icethread is still running...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup skipped because icethread is still running...\n", handle->handle_id);
 				continue;
 			}
 			/* Be sure that ice send thread has finished, before freeing*/
 			if (g_atomic_int_get(&handle->send_thread_created) && handle->send_thread != NULL) {
-				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup delayed because icesendthread is still running...\n", handle->handle_id);
+				JANUS_LOG(LOG_WARN, "Handle %"SCNu64" cleanup skipped because icesendthread is still running...\n", handle->handle_id);
 				continue;
 			}
 			/* Schedule the ICE handle for deletion */
@@ -1218,37 +1218,35 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 	}
 	if(handle->queued_packets != NULL)
 		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
-	if(handle->send_thread == NULL) {
-		/* Get rid of the loop */
-		if(handle->iceloop != NULL) {
-			if(handle->audio_id > 0) {
-				nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
-					nice_agent_attach_recv(handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+	/* Get rid of the loop */
+	if(handle->iceloop != NULL) {
+		if(handle->audio_id > 0) {
+			nice_agent_attach_recv(handle->agent, handle->audio_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
+				nice_agent_attach_recv(handle->agent, handle->audio_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+		}
+		if(handle->video_id > 0) {
+			nice_agent_attach_recv(handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+			if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
+				nice_agent_attach_recv(handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+		}
+		if(handle->data_id > 0) {
+			nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
+		}
+		gint64 waited = 0;
+		while(handle->iceloop && !g_main_loop_is_running(handle->iceloop)) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", handle->handle_id);
+			g_usleep (100000);
+			waited += 100000;
+			if(waited >= G_USEC_PER_SEC) {
+				JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", handle->handle_id);
+				break;
 			}
-			if(handle->video_id > 0) {
-				nice_agent_attach_recv(handle->agent, handle->video_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-				if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_RTCPMUX))
-					nice_agent_attach_recv(handle->agent, handle->video_id, 2, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-			}
-			if(handle->data_id > 0) {
-				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
-			}
-			gint64 waited = 0;
-			while(handle->iceloop && !g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", handle->handle_id);
-				g_usleep (100000);
-				waited += 100000;
-				if(waited >= G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", handle->handle_id);
-					break;
-				}
-			}
-			if(g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
-				g_main_loop_quit(handle->iceloop);
-				g_main_context_wakeup(handle->icectx);
-			}
+		}
+		if(g_main_loop_is_running(handle->iceloop)) {
+			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
+			g_main_loop_quit(handle->iceloop);
+			g_main_context_wakeup(handle->icectx);
 		}
 	}
 }
