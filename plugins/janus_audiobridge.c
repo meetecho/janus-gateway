@@ -30,6 +30,7 @@ audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 	negotiated/used or not for new joins, default=yes)
 record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
+rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
 rtp_forward_host = host address to forward RTP packets of mixed audio to
 rtp_forward_port = port to forward RTP packets of mixed audio to
 rtp_forward_ssrc = SSRC to use to use when streaming (optional: stream_id used if missing)
@@ -868,7 +869,7 @@ typedef struct janus_audiobridge_rtp_forwarder {
 	uint32_t timestamp;
 	gboolean always_on;
 } janus_audiobridge_rtp_forwarder;
-static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room, const gchar* host, uint16_t port, uint32_t ssrc, int pt, gboolean always_on) {
+static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room *room, const gchar* host, uint16_t port, uint32_t ssrc, int pt, gboolean always_on, guint32 stream_id) {
 	if(room == NULL || host == NULL)
 		return 0;
 	janus_audiobridge_rtp_forwarder *rf = g_malloc0(sizeof(janus_audiobridge_rtp_forwarder));
@@ -882,16 +883,27 @@ static guint32 janus_audiobridge_rtp_forwarder_add_helper(janus_audiobridge_room
 	rf->seq_number = 0;
 	rf->timestamp = 0;
 	rf->always_on = always_on;
+
 	janus_mutex_lock(&room->rtp_mutex);
-	guint32 stream_id = janus_random_uint32();
-	while(g_hash_table_lookup(room->rtp_forwarders, GUINT_TO_POINTER(stream_id)) != NULL) {
-		stream_id = janus_random_uint32();
+
+	guint32 actual_stream_id;
+	if(stream_id > 0) {
+		actual_stream_id = stream_id;
+	} else {
+		actual_stream_id = janus_random_uint32();
 	}
-	g_hash_table_insert(room->rtp_forwarders, GUINT_TO_POINTER(stream_id), rf);
+
+	while(g_hash_table_lookup(room->rtp_forwarders, GUINT_TO_POINTER(actual_stream_id)) != NULL) {
+		actual_stream_id = janus_random_uint32();
+	}
+	g_hash_table_insert(room->rtp_forwarders, GUINT_TO_POINTER(actual_stream_id), rf);
+
 	janus_mutex_unlock(&room->rtp_mutex);
+
 	JANUS_LOG(LOG_VERB, "Added RTP forwarder to room %"SCNu64": %s:%d (ID: %"SCNu32")\n",
-		room->room_id, host, port, stream_id);
-	return stream_id;
+		room->room_id, host, port, actual_stream_id);
+
+	return actual_stream_id;
 }
 
 
@@ -1005,6 +1017,11 @@ static int janus_audiobridge_create_opus_encoder_if_needed(janus_audiobridge_roo
 }
 
 static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *cat, janus_audiobridge_room *audiobridge) {
+	guint32 forwarder_id = 0;
+	janus_config_item *forwarder_id_item = janus_config_get_item(cat, "rtp_forward_id");
+	if(forwarder_id_item != NULL && forwarder_id_item->value != NULL)
+		forwarder_id = atoi(forwarder_id_item->value);
+
 	guint32 ssrc_value = 0;
 	janus_config_item *ssrc = janus_config_get_item(cat, "rtp_forward_ssrc");
 	if(ssrc != NULL && ssrc->value != NULL)
@@ -1051,7 +1068,7 @@ static int janus_audiobridge_create_static_rtp_forwarder(janus_config_category *
 		return -1;
 	}
 
-	janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ssrc_value, ptype, always_on);
+	janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ssrc_value, ptype, always_on, forwarder_id);
 
 	janus_mutex_unlock(&audiobridge->mutex);
 	janus_mutex_unlock(&rooms_mutex);
@@ -2323,7 +2340,7 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 			goto plugin_response;
 		}
 
-		guint32 stream_id = janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ssrc_value, ptype, always_on);
+		guint32 stream_id = janus_audiobridge_rtp_forwarder_add_helper(audiobridge, host, port, ssrc_value, ptype, always_on, 0);
 		janus_mutex_unlock(&audiobridge->mutex);
 		janus_mutex_unlock(&rooms_mutex);
 
