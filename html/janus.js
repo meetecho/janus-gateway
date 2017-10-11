@@ -48,11 +48,15 @@ Janus.useDefaultDependencies = function (deps) {
 	var f = (deps && deps.fetch) || fetch;
 	var p = (deps && deps.Promise) || Promise;
 	var socketCls = (deps && deps.WebSocket) || WebSocket;
+	var newRTCPeerConnection = (deps && deps.newRTCPeerConnection) ||
+		function(pc_config, pc_constraints) { return new RTCPeerConnection(pc_config, pc_constraints)}
+
 	return {
 		newWebSocket: function(server, proto) { return new socketCls(server, proto); },
 		isArray: function(arr) { return Array.isArray(arr); },
 		checkJanusExtension: function() { return document.querySelector('#janus-extension-installed') !== null; },
 		webRTCAdapter: (deps && deps.adapter) || adapter,
+		newRTCPeerConnection: newRTCPeerConnection,
 		httpAPICall: function(url, options) {
 			var fetchOptions = {method: options.verb, cache: 'no-cache'};
 			if(options.withCredentials !== undefined) {
@@ -108,11 +112,15 @@ Janus.useDefaultDependencies = function (deps) {
 Janus.useOldDependencies = function (deps) {
 	var jq = (deps && deps.jQuery) || jQuery;
 	var socketCls = (deps && deps.WebSocket) || WebSocket;
+	var newRTCPeerConnection = (deps && deps.newRTCPeerConnection) ||
+		function(pc_config, pc_constraints) { return new RTCPeerConnection(pc_config, pc_constraints)}
+
 	return {
 		newWebSocket: function(server, proto) { return new socketCls(server, proto); },
 		isArray: function(arr) { return jq.isArray(arr); },
 		checkJanusExtension: function() { return jq('#janus-extension-installed').length > 0; },
 		webRTCAdapter: (deps && deps.adapter) || adapter,
+		newRTCPeerConnection: newRTCPeerConnection,
 		httpAPICall: function(url, options) {
 			var payload = options.body !== undefined ? {
 				contentType: 'application/json',
@@ -202,6 +210,7 @@ Janus.init = function(options) {
 		var usedDependencies = options.dependencies || Janus.useDefaultDependencies();
 		Janus.isArray = usedDependencies.isArray;
 		Janus.webRTCAdapter = usedDependencies.webRTCAdapter;
+		Janus.newRTCPeerConnection = usedDependencies.newRTCPeerConnection;
 		Janus.httpAPICall = usedDependencies.httpAPICall;
 		Janus.checkJanusExtension = usedDependencies.checkJanusExtension;
 		Janus.newWebSocket = usedDependencies.newWebSocket;
@@ -1320,7 +1329,7 @@ function Janus(gatewayCallbacks) {
 		}
 		Janus.log("Creating PeerConnection");
 		Janus.debug(pc_constraints);
-		config.pc = new RTCPeerConnection(pc_config, pc_constraints);
+		config.pc = Janus.newRTCPeerConnection(pc_config, pc_constraints);
 		Janus.debug(config.pc);
 		if(config.pc.getStats) {	// FIXME
 			config.volume.value = 0;
@@ -1566,7 +1575,7 @@ function Janus(gatewayCallbacks) {
 						Janus.log("Adding media constraint (screen capture)");
 						Janus.debug(constraints);
 						navigator.mediaDevices.getUserMedia(constraints)
-							.then(function(stream) { 
+							.then(function(stream) {
 								if(useAudio){
 									navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 									.then(function (audioStream) {
@@ -1575,7 +1584,7 @@ function Janus(gatewayCallbacks) {
 									})
 								} else {
 									gsmCallback(null, stream);
-								} 
+								}
 							})
 							.catch(function(error) { pluginHandle.consentDialog(false); gsmCallback(error); });
 					};
