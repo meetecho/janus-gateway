@@ -1106,7 +1106,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			return;
 		if(video && session->simulcast_ssrc) {
 			/* The user is simulcasting: drop everything except the base layer */
-			rtp_header *header = (rtp_header *)buf;
+			janus_rtp_header *header = (janus_rtp_header *)buf;
 			uint32_t ssrc = ntohl(header->ssrc);
 			if(ssrc != session->simulcast_ssrc) {
 				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
@@ -1936,7 +1936,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		}
 		/* Only read RTP header */
 		bytes = fread(prebuffer, sizeof(char), 16, file);
-		rtp_header *rtp = (rtp_header *)prebuffer;
+		janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
 		if(last_ts == 0) {
 			first_ts = ntohl(rtp->timestamp);
 			if(first_ts > 1000*1000)	/* Just used to check whether a packet is pre- or post-reset */
@@ -1983,7 +1983,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			JANUS_LOG(LOG_WARN, "Error reading RTP header, stopping here...\n");
 			break;
 		}
-		rtp_header *rtp = (rtp_header *)prebuffer;
+		janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_HUGE, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 		/* Generate frame packet and insert in the ordered list */
@@ -2180,7 +2180,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 				if(bytes != audio->len)
 					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, audio->len);
 				/* Update payload type */
-				rtp_header *rtp = (rtp_header *)buffer;
+				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 				rtp->type = audio_pt;
 				if(gateway != NULL)
 					gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
@@ -2221,7 +2221,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					if(bytes != audio->len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, audio->len);
 					/* Update payload type */
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = audio_pt;
 					if(gateway != NULL)
 						gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
@@ -2240,7 +2240,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					if(bytes != video->len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
 					/* Update payload type */
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = video_pt;
 					if(gateway != NULL)
 						gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
@@ -2285,7 +2285,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 						if(bytes != video->len)
 							JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
 						/* Update payload type */
-						rtp_header *rtp = (rtp_header *)buffer;
+						janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 						rtp->type = video_pt;
 						if(gateway != NULL)
 							gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
