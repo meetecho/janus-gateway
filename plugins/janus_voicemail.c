@@ -570,7 +570,7 @@ void janus_voicemail_incoming_rtp(janus_plugin_session *handle, int video, char 
 		return;
 	}
 	/* Save the frame */
-	rtp_header *rtp = (rtp_header *)buf;
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
 	uint16_t seq = ntohs(rtp->seq_number);
 	if(session->seq == 0)
 		session->seq = seq;
