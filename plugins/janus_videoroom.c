@@ -78,7 +78,11 @@ playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
-notify_joining = yes|no (whether to notify all participants when a new participant joins the room)
+notify_joining = true|false (optional, whether to notify all participants when a new
+            participant joins the room. The Videoroom plugin by design only notifies
+            new feeds (publishers), and enabling this may result extra notification
+            traffic. This flag is particularly useful when enabled with \c require_pvtid
+            for admin to manage listening only participants. default=false)
 \endverbatim
  *
  * Note that recording will work with all codecs except iSAC.
