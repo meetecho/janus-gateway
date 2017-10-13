@@ -537,7 +537,7 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 /* Packets we get from outside and relay */
 typedef struct janus_streaming_rtp_relay_packet {
-	rtp_header *data;
+	janus_rtp_header *data;
 	gint length;
 	gboolean is_rtp;	/* This may be a data packet and not RTP */
 	gboolean is_video;
@@ -3849,7 +3849,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	/* Set up RTP */
 	gint16 seq = 1;
 	gint32 ts = 0;
-	rtp_header *header = (rtp_header *)buf;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
 	header->type = mountpoint->codecs.audio_pt;
@@ -3968,7 +3968,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	/* Set up RTP */
 	gint16 seq = 1;
 	gint32 ts = 0;
-	rtp_header *header = (rtp_header *)buf;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
 	header->type = mountpoint->codecs.audio_pt;
@@ -4277,7 +4277,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* If paused, ignore this packet */
 					if(!mountpoint->enabled)
 						continue;
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					/* Relay on all sessions */
@@ -4336,7 +4336,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						continue;
 					}
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					/* First of all, let's check if this is (part of) a keyframe that we may need to save it for future reference */
 					if(source->keyframe.enabled) {
 						if(source->keyframe.temp_ts > 0 && ntohl(rtp->timestamp) != source->keyframe.temp_ts) {
@@ -4377,7 +4377,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						} else {
 							gboolean kf = FALSE;
 							/* Parse RTP header first */
-							rtp_header *header = (rtp_header *)buffer;
+							janus_rtp_header *header = (janus_rtp_header *)buffer;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "Checking if packet (size=%d, seq=%"SCNu16", ts=%"SCNu32") is a key frame...\n",
@@ -4480,7 +4480,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					memcpy(text, buffer, bytes);
 					*(text+bytes) = '\0';
 					/* Relay on all sessions */
-					packet.data = (rtp_header *)text;
+					packet.data = (janus_rtp_header *)text;
 					packet.length = bytes+1;
 					packet.is_rtp = FALSE;
 					/* Is there a recorder? */

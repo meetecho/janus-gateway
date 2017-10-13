@@ -612,7 +612,7 @@ typedef struct janus_videoroom_listener {
 static void janus_videoroom_listener_free(janus_videoroom_listener *l);
 
 typedef struct janus_videoroom_rtp_relay_packet {
-	rtp_header *data;
+	janus_rtp_header *data;
 	gint length;
 	gboolean is_video;
 	uint32_t ssrc[3];
@@ -2622,7 +2622,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	}
 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
-		rtp_header *rtp = (rtp_header *)buf;
+		janus_rtp_header *rtp = (janus_rtp_header *)buf;
 		uint32_t ssrc = ntohl(rtp->ssrc);
 		int sc = -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */

@@ -702,7 +702,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 			return;
 		if(video && session->video_active && session->rtpmapid_extmap_id != -1) {
 			/* FIXME Just a way to debug Firefox simulcasting */
-			rtp_header *header = (rtp_header *)buf;
+			janus_rtp_header *header = (janus_rtp_header *)buf;
 			uint32_t seq_number = ntohs(header->seq_number);
 			uint32_t timestamp = ntohl(header->timestamp);
 			uint32_t ssrc = ntohl(header->ssrc);
@@ -714,7 +714,7 @@ void janus_videocall_incoming_rtp(janus_plugin_session *handle, int video, char 
 		}
 		if(video && session->video_active && session->ssrc[0] != 0) {
 			/* Handle simulcast: don't relay if it's not the SSRC we wanted to handle */
-			rtp_header *header = (rtp_header *)buf;
+			janus_rtp_header *header = (janus_rtp_header *)buf;
 			uint32_t seq_number = ntohs(header->seq_number);
 			uint32_t timestamp = ntohl(header->timestamp);
 			uint32_t ssrc = ntohl(header->ssrc);
