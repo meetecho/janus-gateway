@@ -74,6 +74,7 @@
 #include "../mutex.h"
 #include "../record.h"
 #include "../rtp.h"
+#include "../rtpsrtp.h"
 #include "../rtcp.h"
 #include "../sdp-utils.h"
 #include "../utils.h"
