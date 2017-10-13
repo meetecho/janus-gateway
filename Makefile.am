@@ -64,6 +64,9 @@ stream_DATA = $(NULL)
 recordingsdir = $(datadir)/janus/recordings
 recordings_DATA = $(NULL)
 
+luadir = $(datadir)/janus/lua
+lua_DATA = $(NULL)
+
 demosdir = $(datadir)/janus/demos
 demos_DATA = $(NULL)
 
@@ -77,7 +80,8 @@ demos_DATA = $(NULL)
 	    s|[@]eventdir[@]|$(eventdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
 	    s|[@]demosdir[@]|$(demosdir)|;\
-	    s|[@]streamdir[@]|$(streamdir)|" \
+	    s|[@]streamdir[@]|$(streamdir)|; \
+	    s|[@]luadir[@]|$(luadir)|" \
 	$< > $@ || rm $@
 
 EXTRA_DIST += conf/janus.cfg.sample.in
@@ -394,6 +398,22 @@ plugins_libjanus_textroom_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.textroom.cfg.sample
 EXTRA_DIST += conf/janus.plugin.textroom.cfg.sample
 endif
+
+if ENABLE_PLUGIN_LUA
+plugin_LTLIBRARIES += plugins/libjanus_lua.la
+plugins_libjanus_lua_la_SOURCES = plugins/janus_lua.c plugins/janus_lua_extra.c plugins/janus_lua_extra.h
+plugins_libjanus_lua_la_CFLAGS = $(plugins_cflags) $(LUA_CFLAGS)
+plugins_libjanus_lua_la_LDFLAGS = $(plugins_ldflags) $(LUA_LDFLAGS) $(LUA_LIBS)
+plugins_libjanus_lua_la_LIBADD = $(plugins_libadd) $(LUA_LIBADD)
+conf_DATA += conf/janus.plugin.lua.cfg.sample
+lua_DATA += \
+	plugins/lua/echotest.lua \
+	plugins/lua/videoroom.lua \
+	plugins/lua/janus-logger.lua \
+	plugins/lua/janus-sdp.lua
+EXTRA_DIST += conf/janus.plugin.lua.cfg.sample.in
+endif
+
 
 ##
 # Post-processing
