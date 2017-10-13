@@ -844,7 +844,7 @@ typedef struct janus_audiobridge_participant {
 
 /* Packets we get from gstreamer and relay */
 typedef struct janus_audiobridge_rtp_relay_packet {
-	rtp_header *data;
+	janus_rtp_header *data;
 	gint length;
 	uint32_t ssrc;
 	uint32_t timestamp;
@@ -2437,7 +2437,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			participant->reset = FALSE;
 		}
 		/* Decode frame (Opus -> slinear) */
-		rtp_header *rtp = (rtp_header *)buf;
+		janus_rtp_header *rtp = (janus_rtp_header *)buf;
 		janus_audiobridge_rtp_relay_packet *pkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
 		pkt->data = g_malloc0(BUFFER_SAMPLES*sizeof(opus_int16));
 		pkt->ssrc = 0;
@@ -3712,7 +3712,7 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 
 	/* Base RTP packet, in case there are forwarders involved */
 	unsigned char *rtpbuffer = g_malloc0(1500);
-	rtp_header *rtph = (rtp_header *)rtpbuffer;
+	janus_rtp_header *rtph = (janus_rtp_header *)rtpbuffer;
 	rtph->version = 2;
 
 	/* Timer */
@@ -3960,7 +3960,7 @@ static void *janus_audiobridge_participant_thread(void *data) {
 
 	/* Output buffer */
 	janus_audiobridge_rtp_relay_packet *outpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));
-	outpkt->data = (rtp_header *)g_malloc0(1500);
+	outpkt->data = (janus_rtp_header *)g_malloc0(1500);
 	outpkt->ssrc = 0;
 	outpkt->timestamp = 0;
 	outpkt->seq_number = 0;
