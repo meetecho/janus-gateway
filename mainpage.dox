@@ -96,6 +96,7 @@
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b Lua: https://www.lua.org/download.html (\c optional, only needed for the Lua plugin)
  *
  */
 

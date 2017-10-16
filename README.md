@@ -45,6 +45,7 @@ A couple of plugins depend on a few more libraries:
 * [libcurl](https://curl.haxx.se/libcurl/) (only needed if you are
 interested in RTSP support in the Streaming plugin or in the sample
 Event Handler plugin)
+* [Lua](https://www.lua.org/download.html) (only needed for the Lua plugin)
 
 Additionally, you'll need the following libraries and tools:
 
@@ -58,8 +59,8 @@ instance, is very simple:
 
     yum install libmicrohttpd-devel jansson-devel libnice-devel \
        openssl-devel libsrtp-devel sofia-sip-devel glib-devel \
-       opus-devel libogg-devel libcurl-devel pkgconfig gengetopt \
-       libtool autoconf automake
+       opus-devel libogg-devel libcurl-devel lua-devel \
+       pkgconfig gengetopt libtool autoconf automake
 
 Notice that you may have to `yum install epel-release` as well if you're
 attempting an installation on a CentOS machine instead.
@@ -68,8 +69,8 @@ On Ubuntu or Debian, it would require something like this:
 
 	aptitude install libmicrohttpd-dev libjansson-dev libnice-dev \
 		libssl-dev libsrtp-dev libsofia-sip-ua-dev libglib2.0-dev \
-		libopus-dev libogg-dev libcurl4-openssl-dev pkg-config gengetopt \
-		libtool automake
+		libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
+		pkg-config gengetopt libtool automake
 
 * *Note:* please notice that libopus may not be available out of the box
 on Ubuntu or Debian, unless you're using a recent version (e.g., Ubuntu
