@@ -376,6 +376,31 @@ function handleMessage(id, tr, msg, jsep)
 					-- Modify properties for a session, and/or start publishing
 					logger.print("Received a " .. request .. " by a " .. s["pType"] .. ": " .. s["roomId"])
 					if s["pType"] == "publisher" then
+						-- Prepare a response
+						local event = { videoroom = "event", room = s["roomId"], configured = "ok" }
+						-- Check if there's an SDP offer
+						answerjson = nil
+						if cojsep ~= nil then
+							-- Make sure the publisher is sendonly
+							local room = rooms[s["roomId"]]
+							local sdpoffer = string.gsub(cojsep["sdp"], "sendrecv", "sendonly")
+							local offer = sdp.parse(sdpoffer)
+							logger.print("Got offer from publisher: " .. sdp.render(offer))
+							local answer = sdp.generateAnswer(offer, {
+								audio = true, audioCodec = room.audioCodec,
+								video = true, videoCodec = room.videoCodec,
+								data = true })
+							logger.print("Generated answer for publisher: " .. sdp.render(answer))
+							local jsepanswer = { type = "answer", sdp = sdp.render(answer) }
+							answerjson = json.encode(jsepanswer)
+							-- Prepare a revised version of the offer to send to subscribers
+							sdpoffer = string.gsub(jsepanswer.sdp, "recvonly", "sendonly")
+							s["sdp"] = sdpoffer
+							-- Prepare the event to send back
+							event["audio_codec"] = room.audioCodec
+							event["video_codec"] = room.videoCodec
+						end
+						-- Check what we need to configure
 						if comsg["audio"] == true then
 							logger.print("Enabling audio")
 							configureMedium(id, "audio", "out", true)
@@ -414,30 +439,7 @@ function handleMessage(id, tr, msg, jsep)
 							setPliFreq(id, comsg["fir_freq"])
 							s["pliFreq"] = comsg["fir_freq"]
 						end
-						-- Prepare a response
-						local event = { videoroom = "event", room = s["roomId"], configured = "ok" }
-						-- Check if there's an SDP offer
-						answerjson = nil
-						if cojsep ~= nil then
-							-- Make sure the publisher is sendonly
-							local room = rooms[s["roomId"]]
-							local sdpoffer = string.gsub(cojsep["sdp"], "sendrecv", "sendonly")
-							local offer = sdp.parse(sdpoffer)
-							logger.print("Got offer from publisher: " .. sdp.render(offer))
-							local answer = sdp.generateAnswer(offer, {
-								audio = true, audioCodec = room.audioCodec,
-								video = true, videoCodec = room.videoCodec,
-								data = true })
-							logger.print("Generated answer for publisher: " .. sdp.render(answer))
-							local jsepanswer = { type = "answer", sdp = sdp.render(answer) }
-							answerjson = json.encode(jsepanswer)
-							-- Prepare a revised version of the offer to send to subscribers
-							sdpoffer = string.gsub(jsepanswer.sdp, "recvonly", "sendonly")
-							s["sdp"] = sdpoffer
-							-- Prepare the event to send back
-							event["audio_codec"] = room.audioCodec
-							event["video_codec"] = room.videoCodec
-						end
+						-- Done
 						eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, answerjson)
 					elseif s["pType"] == "subscriber" then
