@@ -12,13 +12,14 @@
  
 #include <string.h>
 #include "rtp.h"
+#include "rtpsrtp.h"
 #include "debug.h"
 
 char *janus_rtp_payload(char *buf, int len, int *plen) {
 	if(!buf || len < 12)
 		return NULL;
 
-	rtp_header *rtp = (rtp_header *)buf;
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -109,7 +110,7 @@ static int janus_rtp_header_extension_find(char *buf, int len, int id,
 		uint8_t *byte, uint32_t *word, char **ref) {
 	if(!buf || len < 12)
 		return -1;
-	rtp_header *rtp = (rtp_header *)buf;
+	janus_rtp_header *rtp = (janus_rtp_header *)buf;
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
@@ -229,7 +230,7 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 	memset(context, 0, sizeof(*context));
 }
 
-void janus_rtp_header_update(rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
+void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
 	if(header == NULL || context == NULL || step < 1)
 		return;
 	uint32_t ssrc = ntohl(header->ssrc);

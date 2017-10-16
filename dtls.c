@@ -15,7 +15,6 @@
 #include "janus.h"
 #include "debug.h"
 #include "dtls.h"
-#include "rtp.h"
 #include "rtcp.h"
 #include "events.h"
 
