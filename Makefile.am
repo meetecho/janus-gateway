@@ -29,7 +29,7 @@ bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
 header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
-	rtcp.h rtp.h sdp-utils.h ip-utils.h utils.h refcount.h
+	rtcp.h rtp.h rtpsrtp.h sdp-utils.h ip-utils.h utils.h refcount.h text2pcap.h
 
 pluginsheaderdir = $(includedir)/janus/plugins
 pluginsheader_HEADERS = plugins/plugin.h
@@ -117,6 +117,7 @@ janus_SOURCES = \
 	rtcp.h \
 	rtp.c \
 	rtp.h \
+	rtpsrtp.h \
 	sctp.c \
 	sctp.h \
 	sdp.c \
@@ -131,6 +132,8 @@ janus_SOURCES = \
 	utils.h \
 	version.c \
 	version.h \
+	text2pcap.c \
+	text2pcap.h \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
@@ -404,6 +407,8 @@ man1_MANS += postprocessing/janus-pp-rec.1
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-g711.c \
 	postprocessing/pp-g711.h \
+	postprocessing/pp-g722.c \
+	postprocessing/pp-g722.h \
 	postprocessing/pp-h264.c \
 	postprocessing/pp-h264.h \
 	postprocessing/pp-opus.c \

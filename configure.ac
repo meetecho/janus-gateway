@@ -353,39 +353,24 @@ AC_SUBST([MHD_CFLAGS])
 AC_SUBST([MHD_LIBS])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
 
-AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], false)
 AC_CHECK_LIB([websockets],
-             [libwebsocket_create_context],
-             [
-               AS_IF([test "x$enable_websockets" != "xno"],
-               [
-                  AC_DEFINE(HAVE_WEBSOCKETS)
-                  WS_MANUAL_LIBS="-lwebsockets"
-                  enable_websockets=yes
-               ])
-             ],
-             [
-				AC_CHECK_LIB([websockets],
-							 [lws_create_context],
-							 [
-							   AS_IF([test "x$enable_websockets" != "xno"],
-							   [
-								  AC_DEFINE(HAVE_WEBSOCKETS)
-								  AC_DEFINE(HAVE_LIBWEBSOCKETS_NEWAPI)
-								  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], true)
-								  WS_MANUAL_LIBS="-lwebsockets"
-								  enable_websockets=yes
-								  AC_CHECK_LIB([websockets],
-							                   [lws_get_peer_simple],
-							                   [AC_DEFINE(HAVE_LIBWEBSOCKETS_PEER_SIMPLE)]
-							                  )
-							   ])
-							 ],
-							 [
-							   AS_IF([test "x$enable_websockets" = "xyes"],
-									 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
-							 ])
-             ])
+			 [lws_create_vhost],
+			 [
+			   AS_IF([test "x$enable_websockets" != "xno"],
+			   [
+				  AC_DEFINE(HAVE_WEBSOCKETS)
+				  WS_MANUAL_LIBS="-lwebsockets"
+				  enable_websockets=yes
+				  AC_CHECK_LIB([websockets],
+							   [lws_get_peer_simple],
+							   [AC_DEFINE(HAVE_LIBWEBSOCKETS_PEER_SIMPLE)]
+							  )
+			   ])
+			 ],
+			 [
+			   AS_IF([test "x$enable_websockets" = "xyes"],
+					 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
+			 ])
 AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
 AC_SUBST(WS_MANUAL_LIBS)
 
@@ -646,11 +631,7 @@ AM_COND_IF([ENABLE_REST],
 	[echo "    REST (HTTP/HTTPS):     yes"],
 	[echo "    REST (HTTP/HTTPS):     no"])
 AM_COND_IF([ENABLE_WEBSOCKETS],
-	[
-     AM_COND_IF([ENABLE_WEBSOCKETS_NEWAPI],
-		[echo "    WebSockets:            yes (new API)"],
-		[echo "    WebSockets:            yes (old API)"])
-	],
+	[echo "    WebSockets:            yes"],
 	[echo "    WebSockets:            no"])
 AM_COND_IF([ENABLE_RABBITMQ],
 	[echo "    RabbitMQ:              yes"],

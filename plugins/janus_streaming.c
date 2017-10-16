@@ -608,7 +608,7 @@ static void janus_streaming_message_free(janus_streaming_message *msg) {
 
 /* Packets we get from outside and relay */
 typedef struct janus_streaming_rtp_relay_packet {
-	rtp_header *data;
+	janus_rtp_header *data;
 	gint length;
 	gboolean is_rtp;	/* This may be a data packet and not RTP */
 	gboolean is_video;
@@ -663,6 +663,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 
 	mountpoints = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, (GDestroyNotify)janus_streaming_mountpoint_destroy);
+
+	/* Threads will expect this to be set */
+	g_atomic_int_set(&initialized, 1);
+
 	/* Parse configuration to populate the mountpoints */
 	if(config != NULL) {
 		/* Any admin key to limit who can "create"? */
@@ -1096,7 +1100,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 	messages = g_async_queue_new_full((GDestroyNotify) janus_streaming_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
-	g_atomic_int_set(&initialized, 1);
 
 	/* Launch the thread that will handle incoming messages */
 	GError *error = NULL;
@@ -1943,7 +1946,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
 		/* Remove mountpoint from the hashtable: this will get it destroyed eventually */
-		g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
+		g_hash_table_remove(mountpoints, &id_value);
 		/* FIXME Should we kick the current viewers as well? */
 		janus_mutex_lock(&mp->mutex);
 		GList *viewer = g_list_first(mp->listeners);
@@ -1961,10 +1964,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				session->paused = FALSE;
 				session->mountpoint = NULL;
 				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-				janus_refcount_decrease(&session->ref);
-				janus_refcount_decrease(&mp->ref);
 				gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 				gateway->close_pc(session->handle);
+				janus_refcount_decrease(&session->ref);
+				janus_refcount_decrease(&mp->ref);
 			}
 			mp->listeners = g_list_remove_all(mp->listeners, session);
 			viewer = g_list_first(mp->listeners);
@@ -3914,7 +3917,7 @@ static void *janus_streaming_ondemand_thread(void *data) {
 	/* Set up RTP */
 	gint16 seq = 1;
 	gint32 ts = 0;
-	rtp_header *header = (rtp_header *)buf;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
 	header->type = mountpoint->codecs.audio_pt;
@@ -4039,7 +4042,7 @@ static void *janus_streaming_filesource_thread(void *data) {
 	/* Set up RTP */
 	gint16 seq = 1;
 	gint32 ts = 0;
-	rtp_header *header = (rtp_header *)buf;
+	janus_rtp_header *header = (janus_rtp_header *)buf;
 	header->version = 2;
 	header->markerbit = 1;
 	header->type = mountpoint->codecs.audio_pt;
@@ -4316,6 +4319,10 @@ static void *janus_streaming_relay_thread(void *data) {
 		/* Wait for some data */
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
+			if(errno == EINTR) {
+				JANUS_LOG(LOG_HUGE, "[%s] Got an EINTR (%s), ignoring...\n", name, strerror(errno));
+				continue;
+			}
 			JANUS_LOG(LOG_ERR, "[%s] Error polling... %d (%s)\n", name, errno, strerror(errno));
 			mountpoint->enabled = FALSE;
 			break;
@@ -4357,7 +4364,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					/* If paused, ignore this packet */
 					if(!mountpoint->enabled)
 						continue;
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					//~ JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
 						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					/* Relay on all sessions */
@@ -4416,7 +4423,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						continue;
 					}
 					//~ JANUS_LOG(LOG_VERB, "************************\nGot %d bytes on the video channel...\n", bytes);
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					/* First of all, let's check if this is (part of) a keyframe that we may need to save it for future reference */
 					if(source->keyframe.enabled) {
 						if(source->keyframe.temp_ts > 0 && ntohl(rtp->timestamp) != source->keyframe.temp_ts) {
@@ -4457,7 +4464,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						} else {
 							gboolean kf = FALSE;
 							/* Parse RTP header first */
-							rtp_header *header = (rtp_header *)buffer;
+							janus_rtp_header *header = (janus_rtp_header *)buffer;
 							guint32 timestamp = ntohl(header->timestamp);
 							guint16 seq = ntohs(header->seq_number);
 							JANUS_LOG(LOG_HUGE, "Checking if packet (size=%d, seq=%"SCNu16", ts=%"SCNu32") is a key frame...\n",
@@ -4560,7 +4567,7 @@ static void *janus_streaming_relay_thread(void *data) {
 					memcpy(text, buffer, bytes);
 					*(text+bytes) = '\0';
 					/* Relay on all sessions */
-					packet.data = (rtp_header *)text;
+					packet.data = (janus_rtp_header *)text;
 					packet.length = bytes+1;
 					packet.is_rtp = FALSE;
 					/* Is there a recorder? */
@@ -4604,10 +4611,10 @@ static void *janus_streaming_relay_thread(void *data) {
 			session->paused = FALSE;
 			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-			janus_refcount_decrease(&session->ref);
-			janus_refcount_decrease(&mountpoint->ref);
 			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 			gateway->close_pc(session->handle);
+			janus_refcount_decrease(&session->ref);
+			janus_refcount_decrease(&mountpoint->ref);
 		}
 		mountpoint->listeners = g_list_remove_all(mountpoint->listeners, session);
 		viewer = g_list_first(mountpoint->listeners);
