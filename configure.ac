@@ -554,9 +554,16 @@ PKG_CHECK_MODULES([LUA],
                     AS_IF([test "x$enable_plugin_lua" = "xmaybe"],
                           [enable_plugin_lua=yes])
                   ],
-                  [
-                    AS_IF([test "x$enable_plugin_lua" = "xyes"],
-                          [AC_MSG_ERROR([lua-libs not found. See README.md for installation instructions or use --disable-plugin-lua])])
+                  [PKG_CHECK_MODULES([LUA],
+                                     [lua5.3],
+                                     [
+                                       AS_IF([test "x$enable_plugin_lua" = "xmaybe"],
+                                             [enable_plugin_lua=yes])
+                                     ],
+                                     [
+                                       AS_IF([test "x$enable_plugin_lua" = "xyes"],
+                                             [AC_MSG_ERROR([lua-libs not found. See README.md for installation instructions or use --disable-plugin-lua])])
+                                     ])
                   ])
 AC_SUBST([LUA_CFLAGS])
 AC_SUBST([LUA_LIBS])
