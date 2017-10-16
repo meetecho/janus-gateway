@@ -1214,7 +1214,8 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			handle->handle_id, reason, plugin->get_name());
 		if(plugin && plugin->hangup_media)
 			plugin->hangup_media(handle->app_handle);
-		janus_ice_notify_hangup(handle, reason);
+		//janus_ice_notify_hangup(handle, reason);
+		handle->hangup_reason=reason;
 	}
 	if(handle->queued_packets != NULL)
 		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
@@ -1312,6 +1313,10 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	}
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
+	if (!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP) && handle->hangup_reason) {
+		janus_ice_notify_hangup(handle,handle->hangup_reason);
+	}
+	handle->hangup_reason = NULL;
 	janus_mutex_unlock(&handle->mutex);
 	JANUS_LOG(LOG_INFO, "[%"SCNu64"] WebRTC resources freed\n", handle->handle_id);
 }
