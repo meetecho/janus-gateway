@@ -1940,7 +1940,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 		}
 		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %"SCNu64"\n", id_value);
 		/* Remove mountpoint from the hashtable: this will get it destroyed eventually */
-		g_hash_table_remove(mountpoints, GINT_TO_POINTER(id_value));
+		g_hash_table_remove(mountpoints, &id_value);
 		/* FIXME Should we kick the current viewers as well? */
 		janus_mutex_lock(&mp->mutex);
 		GList *viewer = g_list_first(mp->listeners);
@@ -1958,10 +1958,10 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				session->paused = FALSE;
 				session->mountpoint = NULL;
 				/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-				janus_refcount_decrease(&session->ref);
-				janus_refcount_decrease(&mp->ref);
 				gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 				gateway->close_pc(session->handle);
+				janus_refcount_decrease(&session->ref);
+				janus_refcount_decrease(&mp->ref);
 			}
 			mp->listeners = g_list_remove_all(mp->listeners, session);
 			viewer = g_list_first(mp->listeners);
@@ -4590,10 +4590,10 @@ static void *janus_streaming_relay_thread(void *data) {
 			session->paused = FALSE;
 			session->mountpoint = NULL;
 			/* Tell the core to tear down the PeerConnection, hangup_media will do the rest */
-			janus_refcount_decrease(&session->ref);
-			janus_refcount_decrease(&mountpoint->ref);
 			gateway->push_event(session->handle, &janus_streaming_plugin, NULL, event, NULL);
 			gateway->close_pc(session->handle);
+			janus_refcount_decrease(&session->ref);
+			janus_refcount_decrease(&mountpoint->ref);
 		}
 		mountpoint->listeners = g_list_remove_all(mountpoint->listeners, session);
 		viewer = g_list_first(mountpoint->listeners);
