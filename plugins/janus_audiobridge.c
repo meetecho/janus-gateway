@@ -30,6 +30,10 @@ audiolevel_ext = yes|no (whether the ssrc-audio-level RTP extension must be
 	negotiated/used or not for new joins, default=yes)
 record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
+
+	[The following lines are only needed if you want the mixed audio
+	to be automatically forwarded via plain RTP to an external component
+	(e.g., an ffmpeg script, or a gstreamer pipeline) for processing]
 rtp_forward_id = numeric RTP forwarder ID for referencing it via API (optional: random ID used if missing)
 rtp_forward_host = host address to forward RTP packets of mixed audio to
 rtp_forward_port = port to forward RTP packets of mixed audio to
