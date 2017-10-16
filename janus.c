@@ -1000,7 +1000,7 @@ int janus_process_incoming_request(janus_request *request) {
 					waited += 100000;
 					if(waited >= 3*G_USEC_PER_SEC) {
 						JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited 3 seconds, that's enough!\n", handle->handle_id);
-						ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, "Still cleaning a previous session");
+						ret = janus_process_error_string(request, session_id, transaction_text, JANUS_ERROR_WEBRTC_STATE, (char *)"Still cleaning a previous session");
 						goto jsondone;
 					}
 				}
