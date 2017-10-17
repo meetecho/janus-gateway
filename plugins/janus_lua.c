@@ -288,26 +288,38 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_lua_relay_data_packet(gpointer data, gpointer user_data);
 
 
-/* Helper struct to address outgoing notifications containing SDPs */
-typedef struct janus_lua_negotiation_event {
-	janus_lua_session *session;		/* Who this event is for */
-	char *transaction;				/* Notification transaction, if any */
-	json_t *event;					/* Content of the notification itself */
-	json_t *jsep;					/* Content of JSEP SDP */
-} janus_lua_negotiation_event;
-/* Helper thread to push events that include a negotiation, as in that case
- * we might keep the Lua state busy longer than usual and cause delays */
-static void *janus_lua_pushevent_helper(void *data) {
-	janus_lua_negotiation_event *ne = (janus_lua_negotiation_event *)data;
-	if(ne == NULL)
+/* Helper struct to address outgoing notifications, e.g., involving PeerConnections */
+typedef enum janus_lua_async_event_type {
+	janus_lua_async_event_type_none = 0,
+	janus_lua_async_event_type_pushevent,
+	janus_lua_async_event_type_closepc
+} janus_lua_async_event_type;
+typedef struct janus_lua_async_event {
+	janus_lua_session *session;			/* Who this event is for */
+	janus_lua_async_event_type type;	/* What this event is about */
+	char *transaction;					/* Notification transaction, if any */
+	json_t *event;						/* Content of the notification, if any */
+	json_t *jsep;						/* Content of JSEP SDP, if any */
+} janus_lua_async_event;
+/* Helper thread to push events that need to be asynchronous, e.g., for those
+ * that would keep the Lua state busy longer than usual and cause delays,
+ * or those that might actually result in a deadlock if done synchronously */
+static void *janus_lua_async_event_helper(void *data) {
+	janus_lua_async_event *asev = (janus_lua_async_event *)data;
+	if(asev == NULL)
 		return NULL;
-	/* Send the event */
-	gateway->push_event(ne->session->handle, &janus_lua_plugin, ne->transaction, ne->event, ne->jsep);
-	json_decref(ne->event);
-	json_decref(ne->jsep);
-	g_free(ne->transaction);
-	janus_refcount_decrease(&ne->session->ref);
-	g_free(ne);
+	if(asev->type == janus_lua_async_event_type_pushevent) {
+		/* Send the event */
+		gateway->push_event(asev->session->handle, &janus_lua_plugin, asev->transaction, asev->event, asev->jsep);
+	} else if(asev->type == janus_lua_async_event_type_closepc) {
+		/* Close the PeerConnection */
+		gateway->close_pc(asev->session->handle);
+	}
+	json_decref(asev->event);
+	json_decref(asev->jsep);
+	g_free(asev->transaction);
+	janus_refcount_decrease(&asev->session->ref);
+	g_free(asev);
 	return NULL;
 }
 
@@ -366,19 +378,22 @@ static int janus_lua_method_pushevent(lua_State *s) {
 	/* If there's an SDP attached, create a thread to send the event asynchronously:
 	 * sending it here would keep the locked Lua state busy much longer than intended */
 	if(jsep != NULL) {
-		janus_lua_negotiation_event *ne = g_malloc0(sizeof(janus_lua_negotiation_event));
-		ne->session = session;
-		ne->transaction = transaction ? g_strdup(transaction) : NULL;
-		ne->event = event;
-		ne->jsep = jsep;
+		janus_lua_async_event *asev = g_malloc0(sizeof(janus_lua_async_event));
+		asev->session = session;
+		asev->type = janus_lua_async_event_type_pushevent;
+		asev->transaction = transaction ? g_strdup(transaction) : NULL;
+		asev->event = event;
+		asev->jsep = jsep;
 		GError *error = NULL;
-		g_thread_try_new("lua event", janus_lua_pushevent_helper, ne, &error);
+		g_thread_try_new("lua pushevent", janus_lua_async_event_helper, asev, &error);
 		if(error != NULL) {
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua pushevent thread...\n",
 				error->code, error->message ? error->message : "??");
 			json_decref(event);
 			json_decref(jsep);
+			g_free(asev->transaction);
 			janus_refcount_decrease(&session->ref);
+			g_free(asev);
 		}
 		/* Return a success/error right away */
 		lua_pushnumber(s, error ? 1 : 0);
@@ -443,10 +458,24 @@ static int janus_lua_method_closepc(lua_State *s) {
 	}
 	janus_refcount_increase(&session->ref);
 	janus_mutex_unlock(&sessions_mutex);
-	/* Close the PeerConnection */
-	gateway->close_pc(session->handle);
-	janus_refcount_decrease(&session->ref);
-	lua_pushnumber(s, 0);
+	/* We call close_pc from a thread, instead of calling it from here directly.
+	 * In fact, a call to close_pc will result in the core invoking hangup_media
+	 * synchronously, so from the same thread that originated the close_pc call.
+	 * Since hangup_media tries to lock the Lua state mutex, in order to notify
+	 * the Lua script, doing this without a thread would result in a deadlock. */
+	janus_lua_async_event *asev = g_malloc0(sizeof(janus_lua_async_event));
+	asev->session = session;
+	asev->type = janus_lua_async_event_type_closepc;
+	GError *error = NULL;
+	g_thread_try_new("lua closepc", janus_lua_async_event_helper, asev, &error);
+	if(error != NULL) {
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua closepc thread...\n",
+			error->code, error->message ? error->message : "??");
+		janus_refcount_decrease(&session->ref);
+		g_free(asev);
+	}
+	/* Return a success/error right away */
+	lua_pushnumber(s, error ? 1 : 0);
 	return 1;
 }
 
@@ -1063,9 +1092,11 @@ void janus_lua_destroy(void) {
 	}
 
 	/* Deinit the Lua script, in case it's needed */
+	janus_mutex_lock(&lua_mutex);
 	lua_State *t = lua_newthread(state);
 	lua_getglobal(t, "destroy");
 	lua_call(t, 0, 0);
+	janus_mutex_unlock(&lua_mutex);
 
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_destroy(sessions);
@@ -1076,8 +1107,10 @@ void janus_lua_destroy(void) {
 	events = NULL;
 	janus_mutex_unlock(&sessions_mutex);
 
+	janus_mutex_lock(&lua_mutex);
 	lua_close(state);
 	state = NULL;
+	janus_mutex_unlock(&lua_mutex);
 
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
@@ -1453,6 +1486,16 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 	session->pli_freq = 0;
 	session->pli_latest = 0;
 	janus_rtp_switching_context_reset(&session->rtpctx);
+
+	/* Get rid of the recipients */
+	janus_mutex_lock(&session->recipients_mutex);
+	while(session->recipients) {
+		janus_lua_session *recipient = (janus_lua_session *)session->recipients->data;
+		session->recipients = g_slist_remove(session->recipients, recipient);
+		janus_refcount_decrease(&session->ref);
+		janus_refcount_decrease(&recipient->ref);
+	}
+	janus_mutex_unlock(&session->recipients_mutex);
 
 	/* Notify the Lua script */
 	janus_mutex_lock(&lua_mutex);
