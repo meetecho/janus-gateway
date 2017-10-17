@@ -210,7 +210,7 @@ function handleMessage(id, tr, msg, jsep)
 			local p = sessions[partId]
 			if p ~= nil and p.id ~= id and p.sdp ~= nil and p.started == true then
 				response.participants[#response.participants+1] = {
-					id = p.id,
+					id = p.userId,
 					display = p.display,
 					audio_codec = room.audioCodec,
 					video_codec = room.videoCodec

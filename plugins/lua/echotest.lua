@@ -182,9 +182,9 @@ function processRequest(id, msg)
 			fnbase = "lua-echotest-" .. id .. "-" .. require 'socket'.gettime()
 		end
 		startRecording(id,
-			"audio", "opus", fnbase .. "-audio", 
-			"video", "vp8", fnbase .. "-video", 
-			"data", "text", fnbase .. "-data"
+			"audio", "opus", "/tmp", fnbase .. "-audio",
+			"video", "vp8", "/tmp", fnbase .. "-video",
+			"data", "text", "/tmp", fnbase .. "-data"
 		) 
 	elseif msg["record"] == false then
 		stopRecording(id, "audio", "video", "data")

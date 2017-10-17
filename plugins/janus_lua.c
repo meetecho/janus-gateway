@@ -836,8 +836,10 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		i++; n--;
 		const char *codec = lua_tostring(s, i);
 		i++; n--;
+		const char *folder = lua_tostring(s, i);
+		i++; n--;
 		const char *filename = lua_tostring(s, i);
-		janus_recorder *rc = janus_recorder_create(NULL, codec, filename);
+		janus_recorder *rc = janus_recorder_create(folder, codec, filename);
 		if(rc == NULL) {
 			JANUS_LOG(LOG_ERR, "Error creating '%s' recorder...\n", type);
 			goto error;
