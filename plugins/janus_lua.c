@@ -810,8 +810,8 @@ static int janus_lua_method_relaydata(lua_State *s) {
 static int janus_lua_method_startrecording(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
-	if(n != 4 && n != 7 && n != 10) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4, 7 or 10)", n);
+	if(n != 5 && n != 9 && n != 13) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 5, 9 or 13)", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
