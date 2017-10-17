@@ -33,7 +33,8 @@
  * - \c hangupMedia(): called when a users's WebRTC PeerConnection goes down;
  * - \c resumeScheduler(): called by the C scheduler to resume coroutines.
  *
- * While \c init(), \c destroy() and \c resumeScheduler() don't need any
+ * While \c init() expects a path to a config file (which you can ignore if
+ * unneeded), and \c destroy() and \c resumeScheduler() don't need any
  * argument, all other functions expect at the very least a numeric session
  * identifier, that will uniquely address a user in the plugin. Such a
  * value is created dynamically by the C code, and so all the Lua script
@@ -978,6 +979,10 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 		return -1;
 	}
 	char *lua_file = g_strdup(script->value);
+	char *lua_config = NULL;
+	janus_config_item *conf = janus_config_get_item_drilldown(config, "general", "config");
+	if(conf && conf->value)
+		lua_config = g_strdup(conf->value);
 	janus_config_destroy(config);
 
 	/* Initialize Lua */
@@ -1052,7 +1057,8 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	/* Init the Lua script, in case it's needed */
 	lua_State *t = lua_newthread(state);
 	lua_getglobal(t, "init");
-	lua_call(t, 0, 0);
+	lua_pushstring(t, lua_config);
+	lua_call(t, 1, 0);
 
 	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_session_destroy);
 	ids = g_hash_table_new(NULL, NULL);
@@ -1068,11 +1074,13 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 		lua_close(state);
 		g_free(lua_folder);
 		g_free(lua_file);
+		g_free(lua_config);
 		return -1;
 	}
 
 	g_free(lua_folder);
 	g_free(lua_file);
+	g_free(lua_config);
 
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;

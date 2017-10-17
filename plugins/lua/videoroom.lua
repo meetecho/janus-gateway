@@ -46,8 +46,13 @@ errors = {
 
 
 -- Methods
-function init()
+function init(config)
 	-- This is where we initialize the plugin, for static properties
+	logger.print("Initializing...")
+	if config ~= nil then
+		-- TODO Should we actually have code to parse a janus.plugin.videoroom.cfg file here?
+		logger.print("Configuration file provided (" .. config .. "), but we don't need it")
+	end
 	logger.print("Initialized")
 end
 

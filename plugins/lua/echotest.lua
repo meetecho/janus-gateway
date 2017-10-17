@@ -22,8 +22,12 @@ sessions = {}
 tasks = {}
 
 -- Methods
-function init()
+function init(config)
 	-- This is where we initialize the plugin, for static properties
+	logger.print("Initializing...")
+	if config ~= nil then
+		logger.print("Configuration file provided (" .. config .. "), but we don't need it")
+	end
 	logger.print("Initialized")
 end
 
