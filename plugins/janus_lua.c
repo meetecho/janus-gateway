@@ -1350,6 +1350,9 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 	/* Is this session allowed to send media? */
 	if((video && !session->send_video) || (!video && !session->send_audio))
 		return;
+	/* Are we recording? */
+	janus_recorder_save_frame(video ? session->vrc : session->arc, buf, len);
+	/* Handle the packet */
 	rtp_header *rtp = (rtp_header *)buf;
 	janus_lua_rtp_relay_packet packet;
 	packet.data = rtp;
@@ -1441,6 +1444,8 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 	/* Is this session allowed to send data? */
 	if(!session->send_data)
 		return;
+	/* Are we recording? */
+	janus_recorder_save_frame(session->drc, buf, len);
 	/* Get a string out of the data */
 	char *text = g_malloc0(len+1);
 	if(text == NULL) {
