@@ -19,8 +19,8 @@
  *
 \endverbatim
  *
- * \ingroup plugins
- * \ref plugins
+ * \ingroup luapapi
+ * \ref luapapi
  */
 
 #ifndef _JANUS_LUA_EXTRA_H

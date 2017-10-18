@@ -402,7 +402,7 @@ endif
 
 if ENABLE_PLUGIN_LUA
 plugin_LTLIBRARIES += plugins/libjanus_lua.la
-plugins_libjanus_lua_la_SOURCES = plugins/janus_lua.c plugins/janus_lua_extra.c plugins/janus_lua_extra.h
+plugins_libjanus_lua_la_SOURCES = plugins/janus_lua.c plugins/janus_lua_data.h plugins/janus_lua_extra.c plugins/janus_lua_extra.h
 plugins_libjanus_lua_la_CFLAGS = $(plugins_cflags) $(LUA_CFLAGS)
 plugins_libjanus_lua_la_LDFLAGS = $(plugins_ldflags) $(LUA_LDFLAGS) $(LUA_LIBS)
 plugins_libjanus_lua_la_LIBADD = $(plugins_libadd) $(LUA_LIBADD)

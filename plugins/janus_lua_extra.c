@@ -19,10 +19,11 @@
  *
 \endverbatim
  *
- * \ingroup plugins
- * \ref plugins
+ * \ingroup luapapi
+ * \ref luapapi
  */
 
+#include "janus_lua_data.h"
 #include "janus_lua_extra.h"
 
 
