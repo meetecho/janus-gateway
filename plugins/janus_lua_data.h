@@ -41,6 +41,10 @@
 #include "record.h"
 #include "utils.h"
 
+/* Core pointer and related flags */
+extern volatile gint initialized, stopping;
+extern janus_callbacks *gateway;
+
 /* Lua state: we define state and mutex as extern */
 extern lua_State *state;
 extern janus_mutex lua_mutex;

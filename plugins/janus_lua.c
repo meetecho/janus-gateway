@@ -195,8 +195,8 @@ janus_plugin *create(void) {
 }
 
 /* Useful stuff */
-static volatile gint initialized = 0, stopping = 0;
-static janus_callbacks *gateway = NULL;
+volatile gint initialized = 0, stopping = 0;
+janus_callbacks *gateway = NULL;
 
 /* Lua stuff */
 lua_State *state = NULL;
