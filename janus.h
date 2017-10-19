@@ -33,6 +33,7 @@
 #include "ice.h"
 #include "sctp.h"
 #include "transports/transport.h"
+#include "events/eventhandler.h"
 #include "plugins/plugin.h"
 
 
@@ -52,9 +53,9 @@ typedef struct janus_session {
 	/*! \brief Pointer to the request instance (and the transport that originated the session) */
 	janus_request *source;
 	/*! \brief Flag to trigger a lazy session destruction */
-	gint destroy:1;
+	volatile gint destroy;
 	/*! \brief Flag to notify there's been a session timeout */
-	gint timeout:1;
+	volatile gint timeout;
 	/*! \brief Mutex to lock/unlock this session */
 	janus_mutex mutex;
 } janus_session;
@@ -72,9 +73,9 @@ janus_session *janus_session_create(guint64 session_id);
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
 janus_session *janus_session_find(guint64 session_id);
 /*! \brief Method to add an event to notify to the queue of notifications for this session
- * @param[in] session_id The Janus Gateway-Client session ID
+ * @param[in] session The Janus Gateway-Client session instance to notify
  * @param[in] event The event to notify as a Jansson JSON object */
-void janus_session_notify_event(guint64 session_id, json_t *event);
+void janus_session_notify_event(janus_session *session, json_t *event);
 /*! \brief Method to find an existing Janus Gateway-Client session scheduled to be destroyed from its ID
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
@@ -166,11 +167,33 @@ int janus_process_error(janus_request *request, uint64_t session_id, const char 
  * @param[in] value The janus_transport instance to destroy
  * @param[in] user_data User provided data (unused) */
 void janus_transport_close(void *key, void *value, void *user_data);
-/*! \brief Callback (g_hash_table_foreach) invoked when it's time to close a transport plugin 
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to close a transport plugin
  * @param[in] key Key of the transports hash table (package name)
  * @param[in] value The janus_transport instance to close
  * @param[in] user_data User provided data (unused) */
 void janus_transportso_close(void *key, void *value, void *user_data);
+///@}
+
+/** @name Janus event handler plugin management
+ * The core doesn't notify anyone, except session originators, and only
+ * then only about stuff relevant to them. In order to allow for a more
+ * apt management of core and plugin related events on a broader sense,
+ * event handler plugins are needed. These event handler plugins are
+ * shared objects that need to implement the interfaces defined in
+ * eventhandler.h and as such are dynamically loaded by the gateway at
+ * startup, and unloaded when the gateway closes.
+ */
+///@{
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to destroy an eventhandler instance
+ * @param[in] key Key of the events hash table (package name)
+ * @param[in] value The janus_eventhandler instance to destroy
+ * @param[in] user_data User provided data (unused) */
+void janus_eventhandler_close(void *key, void *value, void *user_data);
+/*! \brief Callback (g_hash_table_foreach) invoked when it's time to close an eventhandler plugin
+ * @param[in] key Key of the events hash table (package name)
+ * @param[in] value The janus_eventhandler instance to close
+ * @param[in] user_data User provided data (unused) */
+void janus_eventhandlerso_close(void *key, void *value, void *user_data);
 ///@}
 
 /** @name Janus plugin management

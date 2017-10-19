@@ -176,6 +176,7 @@ static struct janus_json_parameter request_parameters[] = {
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
+static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -224,7 +225,7 @@ typedef struct janus_voicemail_session {
 } janus_voicemail_session;
 static GHashTable *sessions;
 static GList *old_sessions;
-static janus_mutex sessions_mutex;
+static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static char *recordings_path = NULL;
 static char *recordings_base = NULL;
@@ -265,8 +266,7 @@ int ogg_flush(janus_voicemail_session *session);
 
 
 /* VoiceMail watchdog/garbage collector (sort of) */
-void *janus_voicemail_watchdog(void *data);
-void *janus_voicemail_watchdog(void *data) {
+static void *janus_voicemail_watchdog(void *data) {
 	JANUS_LOG(LOG_INFO, "VoiceMail watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
@@ -324,7 +324,6 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_print(config);
 	
 	sessions = g_hash_table_new(NULL, NULL);
-	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) janus_voicemail_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
@@ -337,6 +336,12 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		janus_config_item *base = janus_config_get_item_drilldown(config, "general", "base");
 		if(base && base->value)
 			recordings_base = g_strdup(base->value);
+		janus_config_item *events = janus_config_get_item_drilldown(config, "general", "events");
+		if(events != NULL && events->value != NULL)
+			notify_events = janus_is_true(events->value);
+		if(!notify_events && callback->events_is_enabled()) {
+			JANUS_LOG(LOG_WARN, "Notification of events to handlers disabled for %s\n", JANUS_VOICEMAIL_NAME);
+		}
 		/* Done */
 		janus_config_destroy(config);
 		config = NULL;
@@ -353,7 +358,7 @@ int janus_voicemail_init(janus_callbacks *callback, const char *config_path) {
 		int res = janus_mkdir(recordings_path, 0755);
 		JANUS_LOG(LOG_VERB, "Creating folder: %d\n", res);
 		if(res != 0) {
-			JANUS_LOG(LOG_ERR, "%s", strerror(res));
+			JANUS_LOG(LOG_ERR, "%s", strerror(errno));
 			return -1;	/* No point going on... */
 		}
 	}
@@ -634,16 +639,18 @@ static void *janus_voicemail_handler(void *data) {
 		if(g_hash_table_lookup(sessions, msg->handle) != NULL ) {
 			session = (janus_voicemail_session *)msg->handle->plugin_handle;
 		}
-		janus_mutex_unlock(&sessions_mutex);
 		if(!session) {
+			janus_mutex_unlock(&sessions_mutex);
 			JANUS_LOG(LOG_ERR, "No session associated with this handle...\n");
 			janus_voicemail_message_free(msg);
 			continue;
 		}
 		if(session->destroyed) {
+			janus_mutex_unlock(&sessions_mutex);
 			janus_voicemail_message_free(msg);
 			continue;
 		}
+		janus_mutex_unlock(&sessions_mutex);
 		/* Handle request */
 		error_code = 0;
 		root = msg->message;
@@ -709,6 +716,12 @@ static void *janus_voicemail_handler(void *data) {
 			event = json_object();
 			json_object_set_new(event, "voicemail", json_string("event"));
 			json_object_set_new(event, "status", json_string(session->started ? "started" : "starting"));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("starting"));
+				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
+			}
 		} else if(!strcasecmp(request_text, "stop")) {
 			/* Stop the recording */
 			session->started = FALSE;
@@ -726,6 +739,12 @@ static void *janus_voicemail_handler(void *data) {
 			char url[1024];
 			g_snprintf(url, 1024, "%s/janus-voicemail-%"SCNu64".opus", recordings_base, session->recording_id);
 			json_object_set_new(event, "recording", json_string(url));
+			/* Also notify event handlers */
+			if(notify_events && gateway->events_is_enabled()) {
+				json_t *info = json_object();
+				json_object_set_new(info, "event", json_string("done"));
+				gateway->notify_event(&janus_voicemail_plugin, session->handle, info);
+			}
 		} else {
 			JANUS_LOG(LOG_ERR, "Unknown request '%s'\n", request_text);
 			error_code = JANUS_VOICEMAIL_ERROR_INVALID_REQUEST;

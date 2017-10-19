@@ -19,7 +19,7 @@
 
 
 /* Starting MTU value for the DTLS BIO filter */
-static int mtu = 1472;
+static int mtu = 1440;
 void janus_dtls_bio_filter_set_mtu(int start_mtu) {
 	if(start_mtu < 0) {
 		JANUS_LOG(LOG_ERR, "Invalid MTU...\n");
@@ -36,7 +36,7 @@ int janus_dtls_bio_filter_new(BIO *h);
 int janus_dtls_bio_filter_free(BIO *data);
 
 /* Filter initialization */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 static BIO_METHOD janus_dtls_bio_filter_methods = {
 	BIO_TYPE_FILTER,
 	"janus filter",
@@ -53,7 +53,7 @@ static BIO_METHOD janus_dtls_bio_filter_methods = {
 static BIO_METHOD *janus_dtls_bio_filter_methods = NULL;
 #endif
 int janus_dtls_bio_filter_init(void) {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	/* No initialization needed for OpenSSL pre-1.1.0 */
 #else
 	janus_dtls_bio_filter_methods = BIO_meth_new(BIO_TYPE_FILTER | BIO_get_new_index(), "janus filter");
@@ -67,7 +67,7 @@ int janus_dtls_bio_filter_init(void) {
 	return 0;
 }
 BIO_METHOD *BIO_janus_dtls_filter(void) {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	return(&janus_dtls_bio_filter_methods);
 #else
 	return janus_dtls_bio_filter_methods;
@@ -88,7 +88,7 @@ int janus_dtls_bio_filter_new(BIO *bio) {
 	janus_mutex_init(&filter->mutex);
 	
 	/* Set the BIO as initialized */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	bio->init = 1;
 	bio->ptr = filter;
 	bio->flags = 0;
@@ -105,7 +105,7 @@ int janus_dtls_bio_filter_free(BIO *bio) {
 		return 0;
 		
 	/* Get rid of the filter state */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	janus_dtls_bio_filter *filter = (janus_dtls_bio_filter *)bio->ptr;
 #else
 	janus_dtls_bio_filter *filter = (janus_dtls_bio_filter *)BIO_get_data(bio);
@@ -115,7 +115,7 @@ int janus_dtls_bio_filter_free(BIO *bio) {
 		filter->packets = NULL;
 		g_free(filter);
 	}
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	bio->ptr = NULL;
 	bio->init = 0;
 	bio->flags = 0;
@@ -129,7 +129,7 @@ int janus_dtls_bio_filter_free(BIO *bio) {
 int janus_dtls_bio_filter_write(BIO *bio, const char *in, int inl) {
 	JANUS_LOG(LOG_HUGE, "janus_dtls_bio_filter_write: %p, %d\n", in, inl);
 	/* Forward data to the write BIO */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	long ret = BIO_write(bio->next_bio, in, inl);
 #else
 	long ret = BIO_write(BIO_next(bio), in, inl);
@@ -137,7 +137,7 @@ int janus_dtls_bio_filter_write(BIO *bio, const char *in, int inl) {
 	JANUS_LOG(LOG_HUGE, "  -- %ld\n", ret);
 	
 	/* Keep track of the packet, as we'll advertize them one by one after a pending check */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	janus_dtls_bio_filter *filter = (janus_dtls_bio_filter *)bio->ptr;
 #else
 	janus_dtls_bio_filter *filter = (janus_dtls_bio_filter *)BIO_get_data(bio);
@@ -164,7 +164,7 @@ long janus_dtls_bio_filter_ctrl(BIO *bio, int cmd, long num, void *ptr) {
 			return 0L;
 		case BIO_CTRL_PENDING: {
 			/* We only advertize one packet at a time, as they may be fragmented */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 			janus_dtls_bio_filter *filter = (janus_dtls_bio_filter *)bio->ptr;
 #else
 			janus_dtls_bio_filter *filter = (janus_dtls_bio_filter *)BIO_get_data(bio);

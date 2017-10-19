@@ -19,17 +19,37 @@
 ; audio = yes|no (do/don't stream audio)
 ; video = yes|no (do/don't stream video)
 ;    The following options are only valid for the 'rtp' type:
+; data = yes|no (do/don't stream text via datachannels)
 ; audioport = local port for receiving audio frames
 ; audiomcast = multicast group port for receiving audio frames, if any
+; audioiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; audiopt = <audio RTP payload type> (e.g., 111)
 ; audiortpmap = RTP map of the audio codec (e.g., opus/48000/2)
 ; videoport = local port for receiving video frames
 ; videomcast = multicast group port for receiving video frames, if any
+; videoiface = network interface or IP address to bind to, if any (binds to all otherwise)
 ; videopt = <video RTP payload type> (e.g., 100)
 ; videortpmap = RTP map of the video codec (e.g., VP8/90000)
 ; videobufferkf = yes|no (whether the plugin should store the latest
 ;		keyframe and send it immediately for new viewers, EXPERIMENTAL)
+; videosimulcast = yes|no (do|don't enable video simulcasting)
+; videoport2 = second local port for receiving video frames (only for rtp, and simulcasting)
+; videoport3 = third local port for receiving video frames (only for rtp, and simulcasting)
+; dataport = local port for receiving data messages to relay
+; dataiface = network interface or IP address to bind to, if any (binds to all otherwise)
+; databuffermsg = yes|no (whether the plugin should store the latest
+;		message and send it immediately for new viewers)
+;
+; The following options are only valid for the 'rstp' type:
 ; url = RTSP stream URL (only for restreaming RTSP)
+; rtsp_user = RTSP authorization username (only if type=rtsp)
+; rtsp_pwd = RTSP authorization password (only if type=rtsp)
+; rtspiface = network interface or IP address to bind to, if any (binds to all otherwise), when receiving RTSP streams
+;
+; Notice that, for 'rtsp' mountpoints, normally the plugin uses the exact
+; SDP rtpmap and fmtp attributes the remote camera or RTSP server sent.
+; In case the values set remotely are known to conflict with WebRTC viewers,
+; you can override both using the settings introduced above.
 ;
 ; To test the [gstreamer-sample] example, check the test_gstreamer.sh
 ; script in the plugins/streams folder. To test the live and on-demand
@@ -40,6 +60,8 @@
 [general]
 ;admin_key = supersecret		; If set, mountpoints can be created via API
 								; only if this key is provided in the request
+;events = no					; Whether events should be sent to event
+								; handlers (default is yes)
 
 [gstreamer-sample]
 type = rtp
@@ -115,6 +137,7 @@ secret = adminpwd
 ; authentication will only work if you installed libcurl >= 7.45.0)
 ; NOTE WELL: the plugin does NOT transcode, so the RTSP stream MUST be
 ; in a format the browser can digest (e.g., VP8 or H.264 baseline for video)
+; Again, you can override rtpmap and/or fmtp, if needed
 ;
 ;[rtsp-test]
 ;type = rtsp

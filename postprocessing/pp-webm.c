@@ -167,7 +167,7 @@ int janus_pp_webm_preprocess(FILE *file, janus_pp_frame_packet *list, int vp8) {
 			uint8_t xbit = (vp8pd & 0x80);
 			uint8_t sbit = (vp8pd & 0x10);
 			/* Read the Extended control bits octet */
-			if (xbit) {
+			if(xbit) {
 				buffer++;
 				vp8pd = *buffer;
 				uint8_t ibit = (vp8pd & 0x80);
@@ -515,7 +515,7 @@ int janus_pp_webm_process(FILE *file, janus_pp_frame_packet *list, int vp8, int 
 						len--;
 						skipped++;
 						if(n_g > 0) {
-							int i=0;
+							uint i=0;
 							for(i=0; i<n_g; i++) {
 								/* Read the R bits */
 								vp9pd = *buffer;

@@ -6,7 +6,10 @@
 ; 'unlimited' (which means a thread per connection, as specified by the
 ; libmicrohttpd documentation), using a number will make use of a thread
 ; pool instead. Since long polls are involved, make sure you choose a
-; value that doesn't keep new connections waiting.
+; value that doesn't keep new connections waiting. Notice that by default
+; all the web servers will try and bind on both IPv4 and IPv6: if you
+; want to only bind to IPv4 addresses (e.g., because your system does not
+; support IPv6), you should set the web server 'ip' property to '0.0.0.0'.
 [general]
 json = indented				; Whether the JSON messages should be indented (default),
 							; plain (no indentation) or compact (no indentation and no spaces)
@@ -46,6 +49,15 @@ admin_https = no				; Whether to enable HTTPS (default=no)
 ;admin_secure_ip = 192.168.0.1	; Whether we should bind this server to a specific IP address (v4 or v6) only
 ;admin_acl = 127.,192.168.0.	; Only allow requests coming from this comma separated list of addresses
 
+; The HTTP servers created in Janus support CORS out of the box, but by
+; default they return a wildcard (*) in the 'Access-Control-Allow-Origin'
+; header. This works fine in most situations, except when we have to
+; respond to a credential request (withCredentials=true in the XHR). If
+; you need that, uncomment and set the 'allow_origin' below to specify
+; what must be returned in 'Access-Control-Allow-Origin'. More details:
+; https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS
+[cors]
+;allow_origin = http://foo.example
 
 ; Certificate and key to use for HTTPS.
 [certificates]

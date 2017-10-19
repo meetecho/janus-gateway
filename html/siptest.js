@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var sipcall = null;
+var opaqueId = "siptest-"+Janus.randomString(12);
+
 var started = false;
 var spinner = null;
 
@@ -82,6 +84,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.sip",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									sipcall = pluginHandle;
@@ -145,13 +148,14 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									// Any error?
 									var error = msg["error"];
 									if(error != null && error != undefined) {
 										if(!registered) {
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#authuser').removeAttr('disabled');
 											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
@@ -175,6 +179,7 @@ $(document).ready(function() {
 											Janus.warn("Registration failed: " + result["code"] + " " + result["reason"]);
 											$('#server').removeAttr('disabled');
 											$('#username').removeAttr('disabled');
+											$('#authuser').removeAttr('disabled');
 											$('#displayname').removeAttr('disabled');
 											$('#password').removeAttr('disabled');
 											$('#register').removeAttr('disabled').click(registerUsername);
@@ -201,12 +206,18 @@ $(document).ready(function() {
 										} else if(event === 'incomingcall') {
 											Janus.log("Incoming call from " + result["username"] + "!");
 											var doAudio = true, doVideo = true;
+											var offerlessInvite = false;
 											if(jsep !== null && jsep !== undefined) {
 												// What has been negotiated?
 												doAudio = (jsep.sdp.indexOf("m=audio ") > -1);
 												doVideo = (jsep.sdp.indexOf("m=video ") > -1);
 												Janus.debug("Audio " + (doAudio ? "has" : "has NOT") + " been negotiated");
 												Janus.debug("Video " + (doVideo ? "has" : "has NOT") + " been negotiated");
+											} else {
+												Janus.log("This call doesn't contain an offer... we'll need to provide one ourselves");
+												offerlessInvite = true;
+												// In case you want to offer video when reacting to an offerless call, set this to true
+												doVideo = false;
 											}
 											// Any security offered? A missing "srtp" attribute means plain RTP
 											var rtpType = "";
@@ -217,8 +228,11 @@ $(document).ready(function() {
 												rtpType = " (SDES-SRTP mandatory)";
 											// Notify user
 											bootbox.hideAll();
+											var extra = "";
+											if(offerlessInvite)
+												extra = " (no SDP offer provided)"
 											incoming = bootbox.dialog({
-												message: "Incoming call from " + result["username"] + "!" + rtpType,
+												message: "Incoming call from " + result["username"] + "!" + rtpType + extra,
 												title: "Incoming call",
 												closeButton: false,
 												buttons: {
@@ -228,12 +242,15 @@ $(document).ready(function() {
 														callback: function() {
 															incoming = null;
 															$('#peer').val(result["username"]).attr('disabled', true);
-															sipcall.createAnswer(
+															// Notice that we can only answer if we got an offer: if this was
+															// an offerless call, we'll need to create an offer ourselves
+															var sipcallAction = (offerlessInvite ? sipcall.createOffer : sipcall.createAnswer);
+															sipcallAction(
 																{
 																	jsep: jsep,
 																	media: { audio: doAudio, video: doVideo },
 																	success: function(jsep) {
-																		Janus.debug("Got SDP! audio=" + doAudio + ", video=" + doVideo);
+																		Janus.debug("Got SDP " + jsep.type + "! audio=" + doAudio + ", video=" + doVideo);
 																		Janus.debug(jsep);
 																		var body = { request: "accept" };
 																		// Note: as with "call", you can add a "srtp" attribute to
@@ -271,12 +288,24 @@ $(document).ready(function() {
 													}
 												}
 											});											
-										} else if(event === 'accepted') {
-											Janus.log(result["username"] + " accepted the call!");
-											// TODO Video call can start
+										} else if(event === 'accepting') {
+											// Response to an offerless INVITE, let's wait for an 'accepted'
+										} else if(event === 'progress') {
+											Janus.log("There's early media from " + result["username"] + ", wairing for the call!");
+											Janus.log(jsep);
+											// Call can start already: handle the remote answer
 											if(jsep !== null && jsep !== undefined) {
 												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
 											}
+											toastr.info("Early media...");
+										} else if(event === 'accepted') {
+											Janus.log(result["username"] + " accepted the call!");
+											Janus.log(jsep);
+											// Call can start, now: handle the remote answer
+											if(jsep !== null && jsep !== undefined) {
+												sipcall.handleRemoteJsep({jsep: jsep, error: doHangup });
+											}
+											toastr.success("Call accepted!");
 										} else if(event === 'hangup') {
 											if(incoming != null) {
 												incoming.modal('hide');
@@ -296,7 +325,7 @@ $(document).ready(function() {
 								},
 								onlocalstream: function(stream) {
 									Janus.debug(" ::: Got a local stream :::");
-									Janus.debug(JSON.stringify(stream));
+									Janus.debug(stream);
 									$('#videos').removeClass('hide').show();
 									if($('#myvideo').length === 0)
 										$('#videoleft').append('<video class="rounded centered" id="myvideo" width=320 height=240 autoplay muted="muted"/>');
@@ -323,34 +352,43 @@ $(document).ready(function() {
 								},
 								onremotestream: function(stream) {
 									Janus.debug(" ::: Got a remote stream :::");
-									Janus.debug(JSON.stringify(stream));
-									if($('#remotevideo').length === 0) {
-										$('#videoright').parent().find('h3').html(
-											'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
-										$('#videoright').append(
-											'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
-										for(var i=0; i<12; i++) {
-											if(i<10)
-												$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
-											else if(i == 10)
-												$('#dtmf').append('<button class="btn btn-info dtmf">#</button>');
-											else if(i == 11)
-												$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
+									Janus.debug(stream);
+									if($('#remotevideo').length > 0) {
+										// Been here already: let's see if anything changed
+										var videoTracks = stream.getVideoTracks();
+										if(videoTracks && videoTracks.length > 0 && !videoTracks[0].muted) {
+											$('#novideo').remove();
+											if($("#remotevideo").get(0).videoWidth)
+												$('#remotevideo').show();
 										}
-										$('.dtmf').click(function() {
-											if(adapter.browserDetails.browser === 'chrome') {
-												// Send DTMF tone (inband)
-												sipcall.dtmf({dtmf: { tones: $(this).text()}});
-											} else {
-												// Try sending the DTMF tone using SIP INFO
-												sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
-											}
-										});
+										return;
 									}
+									$('#videoright').parent().find('h3').html(
+										'Send DTMF: <span id="dtmf" class="btn-group btn-group-xs"></span>');
+									$('#videoright').append(
+										'<video class="rounded centered hide" id="remotevideo" width=320 height=240 autoplay/>');
+									for(var i=0; i<12; i++) {
+										if(i<10)
+											$('#dtmf').append('<button class="btn btn-info dtmf">' + i + '</button>');
+										else if(i == 10)
+											$('#dtmf').append('<button class="btn btn-info dtmf">#</button>');
+										else if(i == 11)
+											$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
+									}
+									$('.dtmf').click(function() {
+										if(adapter.browserDetails.browser === 'chrome') {
+											// Send DTMF tone (inband)
+											sipcall.dtmf({dtmf: { tones: $(this).text()}});
+										} else {
+											// Try sending the DTMF tone using SIP INFO
+											sipcall.send({message: {request: "dtmf_info", digit: $(this).text()}});
+										}
+									});
 									// Show the peer and hide the spinner when we get a playing event
 									$("#remotevideo").bind("playing", function () {
 										$('#waitingvideo').remove();
-										$('#remotevideo').removeClass('hide');
+										if(this.videoWidth)
+											$('#remotevideo').removeClass('hide').show();
 										if(spinner !== null && spinner !== undefined)
 											spinner.stop();
 										spinner = null;
@@ -361,7 +399,7 @@ $(document).ready(function() {
 										// No remote video
 										$('#remotevideo').hide();
 										$('#videoright').append(
-											'<div class="no-video-container">' +
+											'<div id="novideo" class="no-video-container">' +
 												'<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
 												'<span class="no-video-text">No remote video available</span>' +
 											'</div>');
@@ -413,15 +451,24 @@ function registerUsername() {
 	// Try a registration
 	$('#server').attr('disabled', true);
 	$('#username').attr('disabled', true);
+	$('#authuser').attr('disabled', true);
 	$('#displayname').attr('disabled', true);
 	$('#password').attr('disabled', true);
 	$('#register').attr('disabled', true).unbind('click');
 	$('#registerset').attr('disabled', true);
+	// Let's see if the user provided a server address
+	// 		NOTE WELL! Even though the attribute we set in the request is called "proxy",
+	//		this is actually the _registrar_. If you want to set an outbound proxy (for this
+	//		REGISTER request and for all INVITEs that will follow), you'll need to set the
+	//		"outbound_proxy" property in the request instead. The two are of course not
+	//		mutually exclusive. If you set neither, the domain part of the user identity
+	//		will be used as the target of the REGISTER request the plugin might send.
 	var sipserver = $('#server').val();
 	if(sipserver !== "" && sipserver.indexOf("sip:") != 0 && sipserver.indexOf("sips:") !=0) {
 		bootbox.alert("Please insert a valid SIP server (e.g., sip:192.168.0.1:5060)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -434,33 +481,36 @@ function registerUsername() {
 			"request" : "register",
 			"type" : "guest"
 		};
-		if(sipserver !== "")
+		if(sipserver !== "") {
 			register["proxy"] = sipserver;
-		var username = $('#username').val();
-		if(username !== undefined && username !== null) {
-			if(username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
-				bootbox.alert('Usernames are optional for guests: if you want to specify one anyway, though, please insert a valid SIP address (e.g., sip:goofy@example.com)');
-				$('#server').removeAttr('disabled');
-				$('#username').removeAttr('disabled');
-				$('#displayname').removeAttr('disabled');
-				$('#register').removeAttr('disabled').click(registerUsername);
-				$('#registerset').removeAttr('disabled');
-				return;
-			}
-			register.username = username;
+			// Uncomment this if you want to see an outbound proxy too
+			//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		}
+		var username = $('#username').val();
+		if(!username === "" || username.indexOf("sip:") != 0 || username.indexOf("@") < 0) {
+			bootbox.alert("Please insert a valid SIP address (e.g., sip:goofy@example.com): this doesn't need to exist for guests, but is required");
+			$('#server').removeAttr('disabled');
+			$('#username').removeAttr('disabled');
+			$('#authuser').removeAttr('disabled');
+			$('#displayname').removeAttr('disabled');
+			$('#register').removeAttr('disabled').click(registerUsername);
+			$('#registerset').removeAttr('disabled');
+			return;
+		}
+		register.username = username;
 		var displayname = $('#displayname').val();
-		if (displayname) {
+		if(displayname) {
 			register.display_name = displayname;
 		}
 		if(sipserver === "") {
-			bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+			bootbox.confirm("You didn't specify a SIP Registrar to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
 				function(result) {
 					if(result) {
 						sipcall.send({"message": register});
 					} else {
 						$('#server').removeAttr('disabled');
 						$('#username').removeAttr('disabled');
+						$('#authuser').removeAttr('disabled');
 						$('#displayname').removeAttr('disabled');
 						$('#register').removeAttr('disabled').click(registerUsername);
 						$('#registerset').removeAttr('disabled');
@@ -476,6 +526,7 @@ function registerUsername() {
 		bootbox.alert('Please insert a valid SIP identity address (e.g., sip:goofy@example.com)');
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -487,6 +538,7 @@ function registerUsername() {
 		bootbox.alert("Insert the username secret (e.g., mypassword)");
 		$('#server').removeAttr('disabled');
 		$('#username').removeAttr('disabled');
+		$('#authuser').removeAttr('disabled');
 		$('#displayname').removeAttr('disabled');
 		$('#password').removeAttr('disabled');
 		$('#register').removeAttr('disabled').click(registerUsername);
@@ -497,8 +549,15 @@ function registerUsername() {
 		"request" : "register",
 		"username" : username
 	};
+	// By default, the SIP plugin tries to extract the username part from the SIP
+	// identity to register; if the username is different, you can provide it here
+	var authuser = $('#authuser').val();
+	if(authuser !== "") {
+		register.authuser = authuser;
+	}
+	// The display name is only needed when you want a friendly name to appear when you call someone
 	var displayname = $('#displayname').val();
-	if (displayname) {
+	if(displayname !== "") {
 		register.display_name = displayname;
 	}
 	if(selectedApproach === "secret") {
@@ -510,13 +569,14 @@ function registerUsername() {
 		register["ha1_secret"] = md5(sip_user+':'+sip_domain+':'+password);
 	}
 	if(sipserver === "") {
-		bootbox.confirm("You didn't specify a SIP Proxy to use: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP proxy instead'",
+		bootbox.confirm("You didn't specify a SIP Registrar: this will cause the plugin to try and conduct a standard (<a href='https://tools.ietf.org/html/rfc3263' target='_blank'>RFC3263</a>) lookup. If this is not what you want or you don't know what this means, hit Cancel and provide a SIP Registrar instead'",
 			function(result) {
 				if(result) {
 					sipcall.send({"message": register});
 				} else {
 					$('#server').removeAttr('disabled');
 					$('#username').removeAttr('disabled');
+					$('#authuser').removeAttr('disabled');
 					$('#displayname').removeAttr('disabled');
 					$('#password').removeAttr('disabled');
 					$('#register').removeAttr('disabled').click(registerUsername);
@@ -525,6 +585,8 @@ function registerUsername() {
 			}); 
 	} else {
 		register["proxy"] = sipserver;
+		// Uncomment this if you want to see an outbound proxy too
+		//~ register["outbound_proxy"] = "sip:outbound.example.com";
 		sipcall.send({"message": register});
 	}
 }
