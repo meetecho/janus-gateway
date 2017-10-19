@@ -832,12 +832,21 @@ static int janus_lua_method_startrecording(lua_State *s) {
 			drc = rc;
 		}
 	}
-	if(arc)
+	if(arc) {
 		session->arc = arc;
-	if(vrc)
+	}
+	if(vrc) {
 		session->vrc = vrc;
-	if(drc)
+		/* Also send a keyframe request */
+		session->pli_latest = janus_get_monotonic_time();
+		char rtcpbuf[12];
+		janus_rtcp_pli((char *)&rtcpbuf, 12);
+		JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
+		gateway->relay_rtcp(session->handle, 1, rtcpbuf, 12);
+	}
+	if(drc) {
 		session->drc = drc;
+	}
 	janus_refcount_decrease(&session->ref);
 	goto done;
 
