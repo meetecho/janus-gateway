@@ -25,6 +25,10 @@
 #ifndef _JANUS_LUA_DATA_H
 #define _JANUS_LUA_DATA_H
 
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
+
 #include "plugin.h"
 
 #include "debug.h"
@@ -36,6 +40,10 @@
 #include "sdp-utils.h"
 #include "record.h"
 #include "utils.h"
+
+/* Lua state: we define state and mutex as extern */
+extern lua_State *state;
+extern janus_mutex lua_mutex;
 
 /* Lua session: we keep only the barebone stuff here, the rest will be in the Lua script */
 typedef struct janus_lua_session {

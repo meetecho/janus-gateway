@@ -199,8 +199,8 @@ static volatile gint initialized = 0, stopping = 0;
 static janus_callbacks *gateway = NULL;
 
 /* Lua stuff */
-static lua_State *state = NULL;
-static janus_mutex lua_mutex = JANUS_MUTEX_INITIALIZER;
+lua_State *state = NULL;
+janus_mutex lua_mutex = JANUS_MUTEX_INITIALIZER;
 static const char *lua_functions[] = {
 	"init", "destroy", "resumeScheduler",
 	"createSession", "destroySession", "querySession",
