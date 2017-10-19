@@ -145,6 +145,106 @@ function JANUSSDP.removePayloadType(sdp, pt)
 	end
 end
 
+function JANUSSDP.generateOffer(options)
+	-- Let's set some defaults for the options, in case none were given
+	if options == nil then options = {} end
+	if options.audio == nil then options.audio = true end
+	if options.audio == true and options.audioPt == nil then options.audioPt = 111 end
+	if options.audio == true and options.audioCodec == nil then
+		options.audioCodec = "opus"
+	end
+	if options.audio == true then
+		if options.audioCodec == "opus" then
+			options.audioRtpmap = "opus/48000/2"
+		elseif options.audioCodec == "pcmu" then
+			options.audioRtpmap = "PCMU/8000"
+			options.audioPt = 0
+		elseif options.audioCodec == "pcma" then
+			options.audioRtpmap = "PCMA/8000"
+			options.audioPt = 8
+		elseif options.audioCodec == "g722" then
+			options.audioRtpmap = "G722/8000"
+			options.audioPt = 9
+		elseif options.audioCodec == "isac16" then
+			options.audioRtpmap = "ISAC/16000"
+		elseif options.audioCodec == "isac32" then
+			options.audioRtpmap = "ISAC/32000"
+		else
+			-- Unsupported codec
+			options.audio = false
+		end
+	end
+	if options.audioDir == nil then options.audioDir = "sendrecv" end
+	if options.video == nil then options.video = true end
+	if options.video == true and options.videoPt == nil then options.videoPt = 96 end
+	if options.video == true and options.videoCodec == nil then
+		options.videoCodec = "vp8"
+	end
+	if options.video == true then
+		if options.videoCodec == "vp8" then
+			options.videoRtpmap = "VP8/90000"
+		elseif options.videoCodec == "vp9" then
+			options.videoRtpmap = "VP9/90000"
+		elseif options.videoCodec == "h264" then
+			options.videoRtpmap = "H264/90000"
+		else
+			-- Unsupported codec
+			options.video = false
+		end
+	end
+	if options.videoDir == nil then options.videoDir = "sendrecv" end
+	if options.videoRtcpfb == nil then options.videoRtcpfb = true end
+	if options.data == nil then options.data = false end
+	if options.data == true then options.dataDir = "sendrecv" end
+	local address = options.address
+	if address == nil then address = "127.0.0.1" end
+	local ipv6 = false
+	if options.ipv6 == true then ipv6 = true end
+	local sessionName = options.sessionName
+	if options.sessionName == nil then options.sessionName = "Janus Lua session" end
+	-- Do we have enough for an offer?
+	if options.audio == false and options.video == false and options.data == false then return nil end
+	-- Let's prepare the offer
+	local offer = {}
+	-- Let's start from the session-level attributes
+	offer[#offer+1] = { type = "v", name = "0" }
+	offer[#offer+1] = { type = "o", name = "- " .. math.floor(math.random(4294967296)) .. " 1 IN " ..
+		(ipv6 == true and "IP6 " or "IP4 ") .. address }
+	offer[#offer+1] = { type = "s", name = options.sessionName }
+	offer[#offer+1] = { type = "t", name = "0 0" }
+	offer[#offer+1] = { type = "c", name = "IN " .. (ipv6 == true and "IP6 " or "IP4 ") .. address }
+	-- Now let's add the media lines
+	if options.audio == true then
+		offer[#offer+1] = { type = "m", name = "audio 9 UDP/TLS/RTP/SAVPF " .. options.audioPt }
+		offer[#offer+1] = { type = "c", name = "IN " .. (ipv6 == true and "IP6 " or "IP4 ") .. address }
+		offer[#offer+1] = { type = "a", name = options.audioDir }
+		offer[#offer+1] = { type = "a", name = "rtpmap", value = options.audioPt .. " " .. options.audioRtpmap }
+	end
+	if options.video == true then
+		offer[#offer+1] = { type = "m", name = "video 9 UDP/TLS/RTP/SAVPF " .. options.videoPt }
+		offer[#offer+1] = { type = "c", name = "IN " .. (ipv6 == true and "IP6 " or "IP4 ") .. address }
+		offer[#offer+1] = { type = "a", name = options.videoDir }
+		offer[#offer+1] = { type = "a", name = "rtpmap", value = options.videoPt .. " " .. options.videoRtpmap }
+		if options.videoCodec == "h264" then
+			offer[#offer+1] = { type = "a", name = "fmtp", value = options.videoPt .. " profile-level-id=42e01f;packetization-mode=1" }
+		end
+		if options.videoRtcpfb == true then
+			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " ccm fir" }
+			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " nack" }
+			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " nack pli" }
+			offer[#offer+1] = { type = "a", name = "rtcp-fb", value = options.videoPt .. " goog-remb" }
+		end
+	end
+	if options.data == true then
+		offer[#offer+1] = { type = "m", name = "application 9 DTLS/SCTP 5000" }
+		offer[#offer+1] = { type = "c", name = "IN " .. (ipv6 == true and "IP6 " or "IP4 ") .. address }
+		offer[#offer+1] = { type = "a", name = "sendrecv" }
+		offer[#offer+1] = { type = "a", name = "sctmap", value = "5000 webrtc-datachannel 16" }
+	end
+	-- Done
+	return offer
+end
+
 function JANUSSDP.generateAnswer(offer, options)
 	if offer == nil then
 		return nil
