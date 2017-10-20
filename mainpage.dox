@@ -617,19 +617,18 @@ janus.attach(
  *    incurring the overhead of a full build of the Janus Gateway.
  *
  * \section auto-build-js-modules Building modules using make
- * Each supported variant may be enabled by passing a corresponding \c --enable-javascript-*-module=yes flag
- * to \c configure before invoking \c make to build the Janus Gateway.
+ * Each supported variant may be enabled by passing a corresponding \c &ndash;&ndash;enable-javascript-*-module flag
+ * (with or without a \c =yes directive) to \c configure before invoking \c make to build the Janus Gateway.
  * Please note: if you do not pass any such flag, by default no modules will be built.
  *
  * The following table provides a summary of available module formats and their corresponding \c configure options:
  *
- * <table>
- * <caption id="js-module-support">Available JavaScript module formats</caption>
- * <tr><th>Module format (syntax)</th><th>File name</th><th>\c configure flag to pass</th></tr>
- * <tr><td>ECMAScript</td><td>janus.es.js</td><td>\c --enable-javascript-es-module=yes </td></tr>
- * <tr><td>Universal Module Definition (UMD)</td><td>janus.umd.js</td><td>\c --enable-javascript-umd-module=yes </td></tr>
- * <tr><td>CommonJS</td><td>janus.cjs.js</td><td>\c --enable-javascript-common-js-module=yes </td></tr>
- * <tr><td>Immediately Invoked Function Expression (IIFE)</td><td>janus.iife.js</td><td>\c --enable-javascript-iffe-module=yes </td></tr>
+ * <table class="table table-striped">
+ * <tr><th>Module format (syntax)</th><th>File name</th><th>configure flag to pass</th></tr>
+ * <tr><td>ECMAScript</td><td>janus.es.js</td><td>\c &ndash;&ndash;enable-javascript-es-module</td></tr>
+ * <tr><td>Universal Module Definition (UMD)</td><td>janus.umd.js</td><td>\c &ndash;&ndash;enable-javascript-umd-module</td></tr>
+ * <tr><td>CommonJS</td><td>janus.cjs.js</td><td>\c &ndash;&ndash;enable-javascript-common-js-module</td></tr>
+ * <tr><td>Immediately Invoked Function Expression (IIFE)</td><td>janus.iife.js</td><td>\c &ndash;&ndash;enable-javascript-iffe-module</td></tr>
  * </table>
  *
  * When built and installed, these module variants may be found in the \c $PREFIX/share/janus/javascript
