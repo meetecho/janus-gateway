@@ -448,21 +448,25 @@ endif
 
 if ENABLE_JAVASCRIPT_ES_MODULE
 jsmodules_DATA += npm/bundles/janus.es.js
+EXTRA_DIST += npm/bundles/janus.es.js
 CLEANFILES += npm/bundles/janus.es.js
 endif
 
 if ENABLE_JAVASCRIPT_UMD_MODULE
 jsmodules_DATA += npm/bundles/janus.umd.js
+EXTRA_DIST += npm/bundles/janus.umd.js
 CLEANFILES += npm/bundles/janus.umd.js
 endif
 
 if ENABLE_JAVASCRIPT_IIFE_MODULE
 jsmodules_DATA += npm/bundles/janus.iife.js
+EXTRA_DIST += npm/bundles/janus.iife.js
 CLEANFILES += npm/bundles/janus.iife.js
 endif
 
 if ENABLE_JAVASCRIPT_COMMON_JS_MODULE
 jsmodules_DATA += npm/bundles/janus.cjs.js
+EXTRA_DIST += npm/bundles/janus.cjs.js
 CLEANFILES += npm/bundles/janus.cjs.js
 endif
 
