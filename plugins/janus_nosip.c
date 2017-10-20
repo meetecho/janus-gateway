@@ -1610,7 +1610,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 				JANUS_LOG(LOG_ERR, "Error creating audio sockets...\n");
 				return -1;
 			}
-			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
+			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
 			audio_rtp_address.sin_family = AF_INET;
@@ -1659,7 +1659,7 @@ static int janus_nosip_allocate_local_ports(janus_nosip_session *session) {
 				JANUS_LOG(LOG_ERR, "Error creating video sockets...\n");
 				return -1;
 			}
-			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
+			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
 			video_rtp_address.sin_family = AF_INET;
