@@ -96,6 +96,7 @@
  * - \b libogg: http://xiph.org/ogg/ (\c optional, only needed for the voicemail plugin)
  * - \b libcurl: https://curl.haxx.se/libcurl/ (\c optional, only needed for the TURN REST API,
  * RTSP support in the Streaming plugin and the sample Event Handler plugin)
+ * - \b npm: https://docs.npmjs.com/ (\c optional, used during build for generating JavaScript modules)
  *
  */
 
@@ -157,7 +158,10 @@
  *
  * <hr>
  *
- * As a first step, you should include the \c janus.js library in your project:
+ * As a first step, you should include the Janus library in your project.
+ * Depending on your needs you can either use \c janus.js or one of the generated
+ * JavaScript module variants of it. For available module syntaxes and how to build the
+ * corresponding variants, see: \ref js-modules
  *
 \verbatim
 <script type="text/javascript" src="janus.js" ></script>
@@ -185,6 +189,23 @@ Janus.init({
    callback: function() {
 	   // Done!
    });
+ \endverbatim
+ *
+ * \note When using one of the JavaScript module variants of \c janus.js, you
+ * will need to import the \c Janus symbol from the module first. See also: \ref js-modules
+ * For example, using the ECMAScript module variant, the above example should be altered to:
+ *
+ *
+ \verbatim
+import * as Janus from './janus.es.js'
+
+Janus.init({
+   debug: true,
+   dependencies: Janus.useDefaultDependencies(), // or: Janus.useOldDependencies() to get the behaviour of previous Janus versions
+   callback: function() {
+	   // Done!
+   });
+});
  \endverbatim
  *
  * Once the library has been initialized, you can start creating sessions.
@@ -580,6 +601,65 @@ janus.attach(
  *
  * This is it! For more information about the API, have a look at the
  * demo pages that are available in the \b html folder in this package.
+ *
+ */
+
+/*!\page js-modules Using janus.js as JavaScript module
+ *
+ * To facilitate integration of \c janus.js within modular JavaScript code bases,
+ * you can instruct the build system(s) to generate a modular variants of \c janus.js.
+ * Generated modules may then be copied to your own JavaScript projects and seamlessly integrated with your own project's build system.
+ *
+ * Building the modules can be done in two ways:
+ *
+ * -# As part of a regular build of the Janus Gateway, using \c make, by enabling the integrated support via \c configure
+ * -# By running NPM commands manually. This may be useful if you are looking to build just the JavaScript modules without
+ *    incurring the overhead of a full build of the Janus Gateway.
+ *
+ * \section auto-build-js-modules Building modules using make
+ * Each supported variant may be enabled by passing a corresponding \c --enable-javascript-*-module=yes flag
+ * to \c configure before invoking \c make to build the Janus Gateway.
+ * Please note: if you do not pass any such flag, by default no modules will be built.
+ *
+ * The following table provides a summary of available module formats and their corresponding \c configure options:
+ *
+ * <table>
+ * <caption id="js-module-support">Available JavaScript module formats</caption>
+ * <tr><th>Module format (syntax)</th><th>File name</th><th>\c configure flag to pass</th></tr>
+ * <tr><td>ECMAScript</td><td>janus.es.js</td><td>\c --enable-javascript-es-module=yes </td></tr>
+ * <tr><td>Universal Module Definition (UMD)</td><td>janus.umd.js</td><td>\c --enable-javascript-umd-module=yes </td></tr>
+ * <tr><td>CommonJS</td><td>janus.cjs.js</td><td>\c --enable-javascript-common-js-module=yes </td></tr>
+ * <tr><td>Immediately Invoked Function Expression (IIFE)</td><td>janus.iife.js</td><td>\c --enable-javascript-iffe-module=yes </td></tr>
+ * </table>
+ *
+ * When built and installed, these module variants may be found in the \c $PREFIX/share/janus/javascript
+ * folder, alongside the \c janus.js file itself (assuming \c $PREFIX the installation directory passed to \c configure).
+ *
+ * \note Building the JavaScript modules still requires NPM and may involve an \c install which means \c npm must be able
+ * to download dependencies. By default \c configure will attempt to auto-detect available \c npm on your PATH, but
+ * if you have installed NPM outside the PATH you can override this by passing the (full) path to your \c npm executable, e.g.:
+ *
+ \verbatim
+ ./configure NPM=/path/to/my/custom/npm --enable-javascript-es-module=yes
+ \endverbatim
+ *
+ * \section manual-build-modules Building modules manually with NPM
+ * You can also opt to build modules by invoking \c npm manually. The \c npm subdirectory contains the necessary
+ * configuration files to get you started:
+ *
+ \verbatim
+ cd ./npm
+ npm install
+ npm run rollup -- --o /path/to/desired/output/file-name.js --f cjs # or es, iffe, umd, amd, ...
+ \endverbatim
+ *
+ * Using \c npm directly is useful if you want to build the JavaScript modules only, without building the Janus Gateway itself
+ * or if you are looking for advanced customisation options or alternative formats which are not integrated in \c configure yet.
+ * As you may have surmised from the example command, the actual build consists mostly of invoking \c rollup with the
+ * correct parameters. For more information on available parameters, please refer to the \c rollup documentation:
+ *
+ * -# https://rollupjs.org/#command-line-flags
+ * -# https://rollupjs.org/#configuration-files
  *
  */
 
