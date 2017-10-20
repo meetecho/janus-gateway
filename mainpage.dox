@@ -617,7 +617,7 @@ janus.attach(
  *    incurring the overhead of a full build of the Janus Gateway.
  *
  * \section auto-build-js-modules Building modules using make
- * Each supported variant may be enabled by passing a corresponding \c &ndash;&ndash;enable-javascript-*-module flag
+ * Each supported variant may be enabled by passing a corresponding \c --enable-javascript-*-module flag
  * (with or without a \c =yes directive) to \c configure before invoking \c make to build the Janus Gateway.
  * Please note: if you do not pass any such flag, by default no modules will be built.
  *
@@ -625,11 +625,13 @@ janus.attach(
  *
  * <table class="table table-striped">
  * <tr><th>Module format (syntax)</th><th>File name</th><th>configure flag to pass</th></tr>
- * <tr><td>ECMAScript</td><td>janus.es.js</td><td>\c &ndash;&ndash;enable-javascript-es-module</td></tr>
- * <tr><td>Universal Module Definition (UMD)</td><td>janus.umd.js</td><td>\c &ndash;&ndash;enable-javascript-umd-module</td></tr>
- * <tr><td>CommonJS</td><td>janus.cjs.js</td><td>\c &ndash;&ndash;enable-javascript-common-js-module</td></tr>
- * <tr><td>Immediately Invoked Function Expression (IIFE)</td><td>janus.iife.js</td><td>\c &ndash;&ndash;enable-javascript-iffe-module</td></tr>
+ * <tr><td>ECMAScript</td><td>janus.es.js</td><td>\c --enable-javascript-es-module</td></tr>
+ * <tr><td>Universal Module Definition (UMD)</td><td>janus.umd.js</td><td>\c --enable-javascript-umd-module</td></tr>
+ * <tr><td>CommonJS</td><td>janus.cjs.js</td><td>\c --enable-javascript-common-js-module</td></tr>
+ * <tr><td>Immediately Invoked Function Expression (IIFE)</td><td>janus.iife.js</td><td>\c --enable-javascript-iffe-module</td></tr>
  * </table>
+ *
+ * The \c --enable-all-js-modules shortcut is available, in case you want to enable and build them all.
  *
  * When built and installed, these module variants may be found in the \c $PREFIX/share/janus/javascript
  * folder, alongside the \c janus.js file itself (assuming \c $PREFIX the installation directory passed to \c configure).
@@ -2366,11 +2368,11 @@ var servers = [ws_server, http_server];
  *
  * \section daemon Running Janus as a daemon
  * Since version \c 0.1.0, you can run Janus as a daemon application. To
- * do so, just pass either \c -b or <code>\--daemon</code> as a command line
+ * do so, just pass either \c -b or \c --daemon as a command line
  * argument, and Janus will be daemonized. Just beware, though, that
  * since this results in stdout/stdin/stderr being closed, you MUST
  * specify a log file for Janus to use, either via command line (\c -L
- * or <code>\--log-file</code>) or in \c janus.cfg.
+ * or \c --log-file ) or in \c janus.cfg.
  *
  * \section bg Running in background
  * Another simple way to run Janus in the background is to just append the
