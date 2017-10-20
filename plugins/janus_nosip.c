@@ -159,6 +159,8 @@ static gboolean notify_events = TRUE;
 static janus_callbacks *gateway = NULL;
 
 static char *local_ip = NULL;
+static uint16_t rtp_range_min = 10000;
+static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -452,6 +454,28 @@ int janus_nosip_init(janus_callbacks *callback, const char *config_path) {
 					}
 				}
 			}
+		}
+
+		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		if(item && item->value) {
+			/* Split in min and max port */
+			char *maxport = strrchr(item->value, '-');
+			if(maxport != NULL) {
+				*maxport = '\0';
+				maxport++;
+				rtp_range_min = atoi(item->value);
+				rtp_range_max = atoi(maxport);
+				maxport--;
+				*maxport = '-';
+			}
+			if(rtp_range_min > rtp_range_max) {
+				uint16_t temp_port = rtp_range_min;
+				rtp_range_min = rtp_range_max;
+				rtp_range_max = temp_port;
+			}
+			if(rtp_range_max == 0)
+				rtp_range_max = 65535;
+			JANUS_LOG(LOG_VERB, "NoSIP RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
 		}
 
 		item = janus_config_get_item_drilldown(config, "general", "events");
