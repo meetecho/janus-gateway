@@ -3719,7 +3719,7 @@ gint main(int argc, char *argv[])
 			*maxport = '-';
 		}
 		if(rtp_min_port > rtp_max_port) {
-			int temp_port = rtp_min_port;
+			uint16_t temp_port = rtp_min_port;
 			rtp_min_port = rtp_max_port;
 			rtp_max_port = temp_port;
 		}
