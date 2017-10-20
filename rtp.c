@@ -231,7 +231,7 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context) {
 }
 
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step) {
-	if(header == NULL || context == NULL || step < 1)
+	if(header == NULL || context == NULL || step < 0)
 		return;
 	uint32_t ssrc = ntohl(header->ssrc);
 	uint32_t timestamp = ntohl(header->timestamp);
