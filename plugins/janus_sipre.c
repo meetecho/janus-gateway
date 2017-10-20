@@ -200,6 +200,8 @@ static gboolean behind_nat = FALSE;
 static char *user_agent;
 #define JANUS_DEFAULT_REGISTER_TTL	3600
 static uint32_t register_ttl = JANUS_DEFAULT_REGISTER_TTL;
+static uint16_t rtp_range_min = 10000;
+static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
 static GThread *watchdog;
@@ -858,6 +860,28 @@ int janus_sipre_init(janus_callbacks *callback, const char *config_path) {
 			user_agent = g_strdup("Janus WebRTC Gateway SIPre Plugin "JANUS_SIPRE_VERSION_STRING);
 		}
 		JANUS_LOG(LOG_VERB, "SIPre User-Agent set to %s\n", user_agent);
+
+		item = janus_config_get_item_drilldown(config, "general", "rtp_port_range");
+		if(item && item->value) {
+			/* Split in min and max port */
+			char *maxport = strrchr(item->value, '-');
+			if(maxport != NULL) {
+				*maxport = '\0';
+				maxport++;
+				rtp_range_min = atoi(item->value);
+				rtp_range_max = atoi(maxport);
+				maxport--;
+				*maxport = '-';
+			}
+			if(rtp_range_min > rtp_range_max) {
+				uint16_t temp_port = rtp_range_min;
+				rtp_range_min = rtp_range_max;
+				rtp_range_max = temp_port;
+			}
+			if(rtp_range_max == 0)
+				rtp_range_max = 65535;
+			JANUS_LOG(LOG_VERB, "SIPre RTP/RTCP port range: %u -- %u\n", rtp_range_min, rtp_range_max);
+		}
 
 		item = janus_config_get_item_drilldown(config, "general", "events");
 		if(item != NULL && item->value != NULL) {
@@ -2754,7 +2778,7 @@ static int janus_sipre_allocate_local_ports(janus_sipre_session *session) {
 				JANUS_LOG(LOG_ERR, "Error creating audio sockets...\n");
 				return -1;
 			}
-			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
+			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
 			audio_rtp_address.sin_family = AF_INET;
@@ -2803,7 +2827,7 @@ static int janus_sipre_allocate_local_ports(janus_sipre_session *session) {
 				JANUS_LOG(LOG_ERR, "Error creating video sockets...\n");
 				return -1;
 			}
-			int rtp_port = g_random_int_range(10000, 60000);	/* FIXME Should this be configurable? */
+			int rtp_port = g_random_int_range(rtp_range_min, rtp_range_max);
 			if(rtp_port % 2)
 				rtp_port++;	/* Pick an even port for RTP */
 			video_rtp_address.sin_family = AF_INET;
