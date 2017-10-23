@@ -88,6 +88,8 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
                      [enable_plugin_sip=no])
+               AS_IF([test "x$enable_plugin_nosip" != "xyes"],
+                     [enable_plugin_nosip=no])
                AS_IF([test "x$enable_plugin_streaming" != "xyes"],
                      [enable_plugin_streaming=no])
                AS_IF([test "x$enable_plugin_textroom" != "xyes"],
@@ -476,6 +478,13 @@ AC_ARG_ENABLE([plugin-sip],
                      [enable_plugin_sip=no])],
               [enable_plugin_sip=maybe])
 
+AC_ARG_ENABLE([plugin-nosip],
+              [AS_HELP_STRING([--disable-plugin-nosip],
+                              [Disable nosip plugin])],
+              [AS_IF([test "x$enable_plugin_nosip" != "xyes"],
+                     [enable_plugin_nosip=no])],
+              [enable_plugin_nosip=yes])
+
 AC_ARG_ENABLE([plugin-streaming],
               [AS_HELP_STRING([--disable-plugin-streaming],
                               [Disable streaming plugin])],
@@ -554,6 +563,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" 
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_NOSIP], [test "x$enable_plugin_nosip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
@@ -719,6 +729,9 @@ AM_COND_IF([ENABLE_PLUGIN_VIDEOCALL],
 AM_COND_IF([ENABLE_PLUGIN_SIP],
 	[echo "    SIP Gateway:           yes"],
 	[echo "    SIP Gateway:           no"])
+AM_COND_IF([ENABLE_PLUGIN_NOSIP],
+	[echo "    NoSIP (RTP Bridge):    yes"],
+	[echo "    NoSIP (RTP Bridge):    no"])
 AM_COND_IF([ENABLE_PLUGIN_AUDIOBRIDGE],
 	[echo "    Audio Bridge:          yes"],
 	[echo "    Audio Bridge:          no"])
