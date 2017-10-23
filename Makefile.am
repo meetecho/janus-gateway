@@ -162,8 +162,8 @@ man1_MANS = janus.1
 
 BUILT_SOURCES = cmdline.c cmdline.h version.c
 
-cmdline.c: janus.ggo
-	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
+cmdline.c: janus.c
+	gengetopt --set-package="janus" --set-version="$(VERSION)" < janus.ggo
 
 directory = .git
 dir_target = $(directory)-$(wildcard $(directory))
