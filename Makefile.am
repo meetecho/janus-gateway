@@ -339,6 +339,16 @@ conf_DATA += conf/janus.plugin.sip.cfg.sample
 EXTRA_DIST += conf/janus.plugin.sip.cfg.sample
 endif
 
+if ENABLE_PLUGIN_SIPRE
+plugin_LTLIBRARIES += plugins/libjanus_sipre.la
+plugins_libjanus_sipre_la_SOURCES = plugins/janus_sipre.c
+plugins_libjanus_sipre_la_CFLAGS = $(plugins_cflags) $(LIBRE_CFLAGS)
+plugins_libjanus_sipre_la_LDFLAGS = $(plugins_ldflags) $(LIBRE_LDFLAGS) $(LIBRE_LIBS)
+plugins_libjanus_sipre_la_LIBADD = $(plugins_libadd) $(LIBRE_LIBADD)
+conf_DATA += conf/janus.plugin.sipre.cfg.sample
+EXTRA_DIST += conf/janus.plugin.sipre.cfg.sample
+endif
+
 if ENABLE_PLUGIN_NOSIP
 plugin_LTLIBRARIES += plugins/libjanus_nosip.la
 plugins_libjanus_nosip_la_SOURCES = plugins/janus_nosip.c
