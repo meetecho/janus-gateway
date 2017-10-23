@@ -1426,7 +1426,7 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 			}
 			/* Check if this is a renegotiation or update */
-			json_object_set(body_jsep, "update", renegotiation ? TRUE : FALSE);
+			json_object_set(body_jsep, "update", renegotiation ? json_true() : json_false());
 		};
 		janus_plugin_result *result = plugin_t->handle_message(handle->app_handle,
 			g_strdup((char *)transaction_text), body, body_jsep);

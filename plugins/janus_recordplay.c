@@ -1285,6 +1285,8 @@ static void *janus_recordplay_handler(void *data) {
 			}
 			/* Check if this is a new recorder, or if an update is taking place (i.e., ICE restart) */
 			guint64 id = 0;
+			gboolean audio = FALSE, video = FALSE;
+			janus_recordplay_recording *rec = NULL;
 			if(sdp_update) {
 				/* Renegotiation: make sure the user provided an offer, and send answer */
 				JANUS_LOG(LOG_VERB, "Request to refresh existing recorder\n");
@@ -1295,7 +1297,10 @@ static void *janus_recordplay_handler(void *data) {
 					goto error;
 				}
 				id = session->recording->id;
+				rec = session->recording;
 				session->sdp_version++;		/* This needs to be increased when it changes */
+				audio = (session->arc != NULL);
+				video = (session->vrc != NULL);
 				sdp_update = TRUE;
 			} else {
 				/* New recorder */
@@ -1307,7 +1312,7 @@ static void *janus_recordplay_handler(void *data) {
 					}
 				}
 				JANUS_LOG(LOG_VERB, "Starting new recording with ID %"SCNu64"\n", id);
-				janus_recordplay_recording *rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
+				rec = (janus_recordplay_recording *)g_malloc0(sizeof(janus_recordplay_recording));
 				rec->id = id;
 				rec->name = g_strdup(name_text);
 				rec->viewers = NULL;
@@ -1318,7 +1323,6 @@ static void *janus_recordplay_handler(void *data) {
 				janus_refcount_increase(&rec->ref);	/* This is for the user writing the recording */
 				janus_mutex_init(&rec->mutex);
 				/* Check which codec we should record for audio and/or video */
-				gboolean audio = FALSE, video = FALSE;
 				GList *temp = offer->m_lines;
 				while(temp) {
 					/* Which media are available? */
@@ -1395,6 +1399,7 @@ static void *janus_recordplay_handler(void *data) {
 					rec->vrc_file = g_strdup(filename);
 					session->vrc = janus_recorder_create(recordings_path, rec->vcodec, rec->vrc_file);
 				}
+				session->recording = rec;
 				session->sdp_version = 1;	/* This needs to be increased when it changes */
 				session->sdp_sessid = janus_get_real_time();
 			}
@@ -1410,7 +1415,7 @@ static void *janus_recordplay_handler(void *data) {
 				JANUS_SDP_OA_DONE);
 			g_free(answer->s_name);
 			char s_name[100];
-			g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, session->recording->id);
+			g_snprintf(s_name, sizeof(s_name), "Recording %"SCNu64, rec->id);
 			answer->s_name = g_strdup(s_name);
 			/* Let's overwrite a couple o= fields, in case this is a renegotiation */
 			answer->o_sessid = session->sdp_sessid;
