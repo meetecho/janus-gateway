@@ -2716,29 +2716,35 @@ ldd janus | grep asan
  * <table class="table table-striped">
  * <tr><th>Language</th><th>Author</th><th>Project</th><th>Description</th></tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/ndarilek">Nolan Darilek</a></td>
  * 		<td><a href="https://github.com/ndarilek/node-janus">node-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway</td>
  * </tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/DamonOehlman">Damon Oehlman</a></td>
  * 		<td><a href="https://github.com/rtc-io/rtc-janus">rtc-janus</a></td>
  *		<td>node and browserify compatible integration layer for the Janus WebRTC gateway:
  * experimental and incomplete as per the author words, but a good starting point</td>
  * </tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://github.com/cargomedia">Cargo Media</a></td>
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-js">janus-gateway-js</a></td>
  * 		<td>Simple JavaScript client for janus-gateway that runs in the browser as well as in Node.js</td>
  * </tr>
  * <tr>
- * 		<td>node-js</td>
+ * 		<td>JavaScript/node</td>
  * 		<td><a href="https://www.sipwise.com/">sip:wise</a></td>
  * 		<td><a href="https://www.npmjs.com/~sipwise">admin/videoroom client</a></td>
  * 		<td>Node.js clients that implement the Admin API and VideoRoom functionality</td>
+ * </tr>
+ * <tr>
+ * 		<td>JavaScript/node</td>
+ * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
+ * 		<td><a href="https://github.com/mquander/minijanus.js">minijanus.js</a></td>
+ * 		<td>A super-simplistic and -minimal wrapper for talking to the Janus signalling API</td>
  * </tr>
  * <tr>
  * 		<td>ruby</td>
