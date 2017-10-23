@@ -4074,12 +4074,16 @@ gint main(int argc, char *argv[])
 #ifdef REFCOUNT_DEBUG
 	/* Any reference counters that are still up while we're leaving? (debug-mode only) */
 	janus_mutex_lock(&counters_mutex);
-	JANUS_PRINT("Debugging reference counters: %d still allocated\n", g_hash_table_size(counters));
-	GHashTableIter iter;
-	gpointer value;
-	g_hash_table_iter_init(&iter, counters);
-	while(g_hash_table_iter_next(&iter, NULL, &value)) {
-		JANUS_PRINT("  -- %p\n", value);
+	if(counters && g_hash_table_size(counters) > 0) {
+		JANUS_PRINT("Debugging reference counters: %d still allocated\n", g_hash_table_size(counters));
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, counters);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			JANUS_PRINT("  -- %p\n", value);
+		}
+	} else {
+		JANUS_PRINT("Debugging reference counters: 0 still allocated\n");
 	}
 	janus_mutex_unlock(&counters_mutex);
 #endif
