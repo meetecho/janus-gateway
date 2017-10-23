@@ -4362,11 +4362,11 @@ gint main(int argc, char *argv[])
 		janus_config_destroy(config);
 
 	JANUS_LOG(LOG_INFO, "Closing transport plugins:\n");
-	if(transports != NULL) {
+	if(transports != NULL && g_hash_table_size(transports) > 0) {
 		g_hash_table_foreach(transports, janus_transport_close, NULL);
 		g_hash_table_destroy(transports);
 	}
-	if(transports_so != NULL) {
+	if(transports_so != NULL && g_hash_table_size(transports_so) > 0) {
 		g_hash_table_foreach(transports_so, janus_transportso_close, NULL);
 		g_hash_table_destroy(transports_so);
 	}
@@ -4387,22 +4387,22 @@ gint main(int argc, char *argv[])
 	janus_auth_deinit();
 
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
-	if(plugins != NULL) {
+	if(plugins != NULL && g_hash_table_size(plugins) > 0) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);
 		g_hash_table_destroy(plugins);
 	}
-	if(plugins_so != NULL) {
+	if(plugins_so != NULL && g_hash_table_size(plugins_so) > 0) {
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
 		g_hash_table_destroy(plugins_so);
 	}
 
 	JANUS_LOG(LOG_INFO, "Closing event handlers:\n");
 	janus_events_deinit();
-	if(eventhandlers != NULL) {
+	if(eventhandlers != NULL && g_hash_table_size(eventhandlers) > 0) {
 		g_hash_table_foreach(eventhandlers, janus_eventhandler_close, NULL);
 		g_hash_table_destroy(eventhandlers);
 	}
-	if(eventhandlers_so != NULL) {
+	if(eventhandlers_so != NULL && g_hash_table_size(eventhandlers_so) > 0) {
 		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
 		g_hash_table_destroy(eventhandlers_so);
 	}
