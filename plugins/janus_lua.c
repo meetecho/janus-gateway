@@ -195,11 +195,11 @@ janus_plugin *create(void) {
 }
 
 /* Useful stuff */
-volatile gint initialized = 0, stopping = 0;
-janus_callbacks *gateway = NULL;
+volatile gint lua_initialized = 0, lua_stopping = 0;
+janus_callbacks *janus_core = NULL;
 
 /* Lua stuff */
-lua_State *state = NULL;
+lua_State *lua_state = NULL;
 janus_mutex lua_mutex = JANUS_MUTEX_INITIALIZER;
 static const char *lua_functions[] = {
 	"init", "destroy", "resumeScheduler",
@@ -223,8 +223,8 @@ typedef enum janus_lua_event {
 
 
 /* janus_lua_session is defined in janus_lua_data.h, but it's managed here */
-GHashTable *sessions, *ids;
-janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
+GHashTable *lua_sessions, *lua_ids;
+janus_mutex lua_lua_sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_lua_session_destroy(janus_lua_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1)) {
@@ -237,7 +237,7 @@ static void janus_lua_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
-	g_hash_table_remove(ids, GUINT_TO_POINTER(session->id));
+	g_hash_table_remove(lua_ids, GUINT_TO_POINTER(session->id));
 	janus_recorder_free(session->arc);
 	janus_recorder_free(session->vrc);
 	janus_recorder_free(session->drc);
@@ -278,10 +278,10 @@ static void *janus_lua_async_event_helper(void *data) {
 		return NULL;
 	if(asev->type == janus_lua_async_event_type_pushevent) {
 		/* Send the event */
-		gateway->push_event(asev->session->handle, &janus_lua_plugin, asev->transaction, asev->event, asev->jsep);
+		janus_core->push_event(asev->session->handle, &janus_lua_plugin, asev->transaction, asev->event, asev->jsep);
 	} else if(asev->type == janus_lua_async_event_type_closepc) {
 		/* Close the PeerConnection */
-		gateway->close_pc(asev->session->handle);
+		janus_core->close_pc(asev->session->handle);
 	}
 	json_decref(asev->event);
 	json_decref(asev->jsep);
@@ -331,10 +331,10 @@ static int janus_lua_method_pushevent(lua_State *s) {
 		}
 	}
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		json_decref(event);
 		if(jsep)
 			json_decref(jsep);
@@ -342,7 +342,7 @@ static int janus_lua_method_pushevent(lua_State *s) {
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* If there's an SDP attached, create a thread to send the event asynchronously:
 	 * sending it here would keep the locked Lua state busy much longer than intended */
 	if(jsep != NULL) {
@@ -368,7 +368,7 @@ static int janus_lua_method_pushevent(lua_State *s) {
 		return 1;
 	}
 	/* No SDP, send the event now */
-	int res = gateway->push_event(session->handle, &janus_lua_plugin, transaction, event, NULL);
+	int res = janus_core->push_event(session->handle, &janus_lua_plugin, transaction, event, NULL);
 	janus_refcount_decrease(&session->ref);
 	json_decref(event);
 	lua_pushnumber(s, res);
@@ -394,13 +394,13 @@ static int janus_lua_method_notifyevent(lua_State *s) {
 		return 1;
 	}
 	/* Find the session (optional) */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session != NULL)
 		janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Notify the event */
-	gateway->notify_event(&janus_lua_plugin, session ? session->handle : NULL, event);
+	janus_core->notify_event(&janus_lua_plugin, session ? session->handle : NULL, event);
 	if(session != NULL)
 		janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
@@ -417,15 +417,15 @@ static int janus_lua_method_closepc(lua_State *s) {
 	}
 	guint32 id = lua_tonumber(s, 1);
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* We call close_pc from a thread, instead of calling it from here directly.
 	 * In fact, a call to close_pc will result in the core invoking hangup_media
 	 * synchronously, so from the same thread that originated the close_pc call.
@@ -460,15 +460,15 @@ static int janus_lua_method_configuremedium(lua_State *s) {
 	const char *direction = lua_tostring(s, 3);
 	int enabled = lua_toboolean(s, 4);
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Modify the session media property */
 	if(medium && direction) {
 		if(!strcasecmp(medium, "audio")) {
@@ -507,25 +507,25 @@ static int janus_lua_method_addrecipient(lua_State *s) {
 	guint32 id = lua_tonumber(s, 1);
 	guint32 rid = lua_tonumber(s, 2);
 	/* Find the sessions */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_lua_session *recipient = g_hash_table_lookup(ids, GUINT_TO_POINTER(rid));
+	janus_lua_session *recipient = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(rid));
 	if(recipient == NULL || g_atomic_int_get(&recipient->destroyed)) {
 		janus_refcount_decrease(&session->ref);
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&recipient->ref);
 	/* Add to the list of recipients */
 	janus_mutex_lock(&session->recipients_mutex);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	if(g_slist_find(session->recipients, recipient) == NULL) {
 		janus_refcount_increase(&session->ref);
 		janus_refcount_increase(&recipient->ref);
@@ -550,25 +550,25 @@ static int janus_lua_method_removerecipient(lua_State *s) {
 	guint32 id = lua_tonumber(s, 1);
 	guint32 rid = lua_tonumber(s, 2);
 	/* Find the sessions */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_lua_session *recipient = g_hash_table_lookup(ids, GUINT_TO_POINTER(rid));
+	janus_lua_session *recipient = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(rid));
 	if(recipient == NULL) {
 		janus_refcount_decrease(&session->ref);
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&recipient->ref);
 	/* Remove from the list of recipients */
 	janus_mutex_lock(&session->recipients_mutex);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	gboolean unref = FALSE;
 	if(g_slist_find(session->recipients, recipient) != NULL) {
 		session->recipients = g_slist_remove(session->recipients, recipient);
@@ -597,21 +597,21 @@ static int janus_lua_method_setbitrate(lua_State *s) {
 	guint32 id = lua_tonumber(s, 1);
 	guint32 bitrate = lua_tonumber(s, 2);
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	session->bitrate = bitrate;
 	/* Send a REMB right away too, if the PeerConnection is up */
 	if(session->bitrate > 0 && g_atomic_int_get(&session->started)) {
 		char rtcpbuf[24];
 		janus_rtcp_remb((char *)(&rtcpbuf), 24, session->bitrate);
-		gateway->relay_rtcp(session->handle, 1, rtcpbuf, 24);
+		janus_core->relay_rtcp(session->handle, 1, rtcpbuf, 24);
 	}
 	/* Done */
 	janus_refcount_decrease(&session->ref);
@@ -630,15 +630,15 @@ static int janus_lua_method_setplifreq(lua_State *s) {
 	guint32 id = lua_tonumber(s, 1);
 	guint16 pli_freq = lua_tonumber(s, 2);
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	session->pli_freq = pli_freq;
 	/* Done */
 	janus_refcount_decrease(&session->ref);
@@ -656,21 +656,21 @@ static int janus_lua_method_sendpli(lua_State *s) {
 	}
 	guint32 id = lua_tonumber(s, 1);
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send a PLI */
 	session->pli_latest = janus_get_monotonic_time();
 	char rtcpbuf[12];
 	janus_rtcp_pli((char *)&rtcpbuf, 12);
 	JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-	gateway->relay_rtcp(session->handle, 1, rtcpbuf, 12);
+	janus_core->relay_rtcp(session->handle, 1, rtcpbuf, 12);
 	/* Done */
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
@@ -695,16 +695,16 @@ static int janus_lua_method_relayrtp(lua_State *s) {
 		return 1;
 	}
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the RTP packet */
-	gateway->relay_rtp(session->handle, is_video, (char *)payload, len);
+	janus_core->relay_rtp(session->handle, is_video, (char *)payload, len);
 	lua_pushnumber(s, 0);
 	return 1;
 }
@@ -727,16 +727,16 @@ static int janus_lua_method_relayrtcp(lua_State *s) {
 		return 1;
 	}
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the RTCP packet */
-	gateway->relay_rtcp(session->handle, is_video, (char *)payload, len);
+	janus_core->relay_rtcp(session->handle, is_video, (char *)payload, len);
 	lua_pushnumber(s, 0);
 	return 1;
 }
@@ -758,17 +758,17 @@ static int janus_lua_method_relaydata(lua_State *s) {
 		return 1;
 	}
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Send the RTP packet */
-	gateway->relay_data(session->handle, (char *)payload, len);
+	janus_core->relay_data(session->handle, (char *)payload, len);
 	janus_refcount_decrease(&session->ref);
 	lua_pushnumber(s, 0);
 	return 1;
@@ -784,16 +784,16 @@ static int janus_lua_method_startrecording(lua_State *s) {
 	}
 	guint32 id = lua_tonumber(s, 1);
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
 	janus_mutex_lock(&session->rec_mutex);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Iterate on all arguments, to see what we're being asked to record */
 	n--;
 	int i = 1;
@@ -842,7 +842,7 @@ static int janus_lua_method_startrecording(lua_State *s) {
 		char rtcpbuf[12];
 		janus_rtcp_pli((char *)&rtcpbuf, 12);
 		JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-		gateway->relay_rtcp(session->handle, 1, rtcpbuf, 12);
+		janus_core->relay_rtcp(session->handle, 1, rtcpbuf, 12);
 	}
 	if(drc) {
 		session->drc = drc;
@@ -877,16 +877,16 @@ static int janus_lua_method_stoprecording(lua_State *s) {
 	}
 	guint32 id = lua_tonumber(s, 1);
 	/* Find the session */
-	janus_mutex_lock(&sessions_mutex);
-	janus_lua_session *session = g_hash_table_lookup(ids, GUINT_TO_POINTER(id));
+	janus_mutex_lock(&lua_sessions_mutex);
+	janus_lua_session *session = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id));
 	if(session == NULL || g_atomic_int_get(&session->destroyed)) {
-		janus_mutex_unlock(&sessions_mutex);
+		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
 	janus_mutex_lock(&session->rec_mutex);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 	/* Iterate on all arguments, to see what which recording we're being asked to stop */
 	n--;
 	int i = 1;
@@ -923,7 +923,7 @@ static int janus_lua_method_stoprecording(lua_State *s) {
 
 /* Plugin implementation */
 int janus_lua_init(janus_callbacks *callback, const char *config_path) {
-	if(g_atomic_int_get(&stopping)) {
+	if(g_atomic_int_get(&lua_stopping)) {
 		/* Still stopping from before */
 		return -1;
 	}
@@ -962,47 +962,47 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	janus_config_destroy(config);
 
 	/* Initialize Lua */
-	state = luaL_newstate();
-	luaL_openlibs(state);
+	lua_state = luaL_newstate();
+	luaL_openlibs(lua_state);
 
 	if(lua_folder != NULL) {
 		/* Add the script folder to the path, so that we can load other scripts from there */
-		lua_getglobal(state, "package");
-		lua_getfield(state, -1, "path");
-		const char *cur_path = lua_tostring(state, -1);
+		lua_getglobal(lua_state, "package");
+		lua_getfield(lua_state, -1, "path");
+		const char *cur_path = lua_tostring(lua_state, -1);
 		char new_path[1024];
 		memset(new_path, 0, sizeof(new_path));
 		g_snprintf(new_path, sizeof(new_path), "%s;%s/?.lua", cur_path, lua_folder);
-		lua_pop(state, 1);
-		lua_pushstring(state, new_path);
-		lua_setfield(state, -2, "path");
-		lua_pop(state, 1);
+		lua_pop(lua_state, 1);
+		lua_pushstring(lua_state, new_path);
+		lua_setfield(lua_state, -2, "path");
+		lua_pop(lua_state, 1);
 	}
 
 	/* Register our functions */
-	lua_register(state, "pokeScheduler", janus_lua_method_pokescheduler);
-	lua_register(state, "pushEvent", janus_lua_method_pushevent);
-	lua_register(state, "notifyEvent", janus_lua_method_notifyevent);
-	lua_register(state, "closePc", janus_lua_method_closepc);
-	lua_register(state, "configureMedium", janus_lua_method_configuremedium);
-	lua_register(state, "addRecipient", janus_lua_method_addrecipient);
-	lua_register(state, "removeRecipient", janus_lua_method_removerecipient);
-	lua_register(state, "setBitrate", janus_lua_method_setbitrate);
-	lua_register(state, "setPliFreq", janus_lua_method_setplifreq);
-	lua_register(state, "sendPli", janus_lua_method_sendpli);
-	lua_register(state, "relayRtp", janus_lua_method_relayrtp);
-	lua_register(state, "relayRtcp", janus_lua_method_relayrtcp);
-	lua_register(state, "relayData", janus_lua_method_relaydata);
-	lua_register(state, "startRecording", janus_lua_method_startrecording);
-	lua_register(state, "stopRecording", janus_lua_method_stoprecording);
+	lua_register(lua_state, "pokeScheduler", janus_lua_method_pokescheduler);
+	lua_register(lua_state, "pushEvent", janus_lua_method_pushevent);
+	lua_register(lua_state, "notifyEvent", janus_lua_method_notifyevent);
+	lua_register(lua_state, "closePc", janus_lua_method_closepc);
+	lua_register(lua_state, "configureMedium", janus_lua_method_configuremedium);
+	lua_register(lua_state, "addRecipient", janus_lua_method_addrecipient);
+	lua_register(lua_state, "removeRecipient", janus_lua_method_removerecipient);
+	lua_register(lua_state, "setBitrate", janus_lua_method_setbitrate);
+	lua_register(lua_state, "setPliFreq", janus_lua_method_setplifreq);
+	lua_register(lua_state, "sendPli", janus_lua_method_sendpli);
+	lua_register(lua_state, "relayRtp", janus_lua_method_relayrtp);
+	lua_register(lua_state, "relayRtcp", janus_lua_method_relayrtcp);
+	lua_register(lua_state, "relayData", janus_lua_method_relaydata);
+	lua_register(lua_state, "startRecording", janus_lua_method_startrecording);
+	lua_register(lua_state, "stopRecording", janus_lua_method_stoprecording);
 	/* Register all extra functions, if any were added */
-	janus_lua_register_extra_functions(state);
+	janus_lua_register_extra_functions(lua_state);
 
 	/* Now load the script */
-	int err = luaL_dofile(state, lua_file);
+	int err = luaL_dofile(lua_state, lua_file);
 	if(err) {
-		JANUS_LOG(LOG_ERR, "Error loading Lua script %s: %s\n", lua_file, lua_tostring(state, -1));
-		lua_close(state);
+		JANUS_LOG(LOG_ERR, "Error loading Lua script %s: %s\n", lua_file, lua_tostring(lua_state, -1));
+		lua_close(lua_state);
 		g_free(lua_folder);
 		g_free(lua_file);
 		return -1;
@@ -1010,10 +1010,10 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	/* Make sure that all the functions we need are there */
 	uint i=0;
 	for(i=0; i<lua_funcsize; i++) {
-		lua_getglobal(state, lua_functions[i]);
-		if(lua_isfunction(state, lua_gettop(state)) == 0) {
+		lua_getglobal(lua_state, lua_functions[i]);
+		if(lua_isfunction(lua_state, lua_gettop(lua_state)) == 0) {
 			JANUS_LOG(LOG_ERR, "Function '%s' is missing in %s\n", lua_functions[i], lua_file);
-			lua_close(state);
+			lua_close(lua_state);
 			g_free(lua_folder);
 			g_free(lua_file);
 			return -1;
@@ -1021,33 +1021,33 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	}
 	/* Some Lua functions are optional, e.g., those to directly handle RTP, RTCP and data,
 	 * as those will typically be kept at a C level, with Lua only dictating the logic */
-	lua_getglobal(state, "incomingRtp");
-	if(lua_isfunction(state, lua_gettop(state)) != 0)
+	lua_getglobal(lua_state, "incomingRtp");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_rtp = TRUE;
-	lua_getglobal(state, "incomingRtcp");
-	if(lua_isfunction(state, lua_gettop(state)) != 0)
+	lua_getglobal(lua_state, "incomingRtcp");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_rtcp = TRUE;
-	lua_getglobal(state, "incomingData");
-	if(lua_isfunction(state, lua_gettop(state)) != 0)
+	lua_getglobal(lua_state, "incomingData");
+	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_data = TRUE;
 	/* Init the Lua script, in case it's needed */
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "init");
 	lua_pushstring(t, lua_config);
 	lua_call(t, 1, 0);
 
-	sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_session_destroy);
-	ids = g_hash_table_new(NULL, NULL);
+	lua_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_session_destroy);
+	lua_ids = g_hash_table_new(NULL, NULL);
 	events = g_async_queue_new();
 
 	/* Launch the scheduler thread (which will be responsible for resuming asynchronous coroutines) */
 	GError *error = NULL;
 	scheduler_thread = g_thread_try_new("lua scheduler", janus_lua_scheduler, NULL, &error);
 	if(error != NULL) {
-		g_atomic_int_set(&initialized, 0);
+		g_atomic_int_set(&lua_initialized, 0);
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua scheduler thread...\n",
 			error->code, error->message ? error->message : "??");
-		lua_close(state);
+		lua_close(lua_state);
 		g_free(lua_folder);
 		g_free(lua_file);
 		g_free(lua_config);
@@ -1059,17 +1059,17 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	g_free(lua_config);
 
 	/* This is the callback we'll need to invoke to contact the gateway */
-	gateway = callback;
-	g_atomic_int_set(&initialized, 1);
+	janus_core = callback;
+	g_atomic_int_set(&lua_initialized, 1);
 
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_LUA_NAME);
 	return 0;
 }
 
 void janus_lua_destroy(void) {
-	if(!g_atomic_int_get(&initialized))
+	if(!g_atomic_int_get(&lua_initialized))
 		return;
-	g_atomic_int_set(&stopping, 1);
+	g_atomic_int_set(&lua_stopping, 1);
 
 	g_async_queue_push(events, GUINT_TO_POINTER(janus_lua_event_exit));
 	if(scheduler_thread != NULL) {
@@ -1079,27 +1079,27 @@ void janus_lua_destroy(void) {
 
 	/* Deinit the Lua script, in case it's needed */
 	janus_mutex_lock(&lua_mutex);
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "destroy");
 	lua_call(t, 0, 0);
 	janus_mutex_unlock(&lua_mutex);
 
-	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_destroy(sessions);
-	sessions = NULL;
-	g_hash_table_destroy(ids);
-	ids = NULL;
+	janus_mutex_lock(&lua_sessions_mutex);
+	g_hash_table_destroy(lua_sessions);
+	lua_sessions = NULL;
+	g_hash_table_destroy(lua_ids);
+	lua_ids = NULL;
 	g_async_queue_unref(events);
 	events = NULL;
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_unlock(&lua_sessions_mutex);
 
 	janus_mutex_lock(&lua_mutex);
-	lua_close(state);
-	state = NULL;
+	lua_close(lua_state);
+	lua_state = NULL;
 	janus_mutex_unlock(&lua_mutex);
 
-	g_atomic_int_set(&initialized, 0);
-	g_atomic_int_set(&stopping, 0);
+	g_atomic_int_set(&lua_initialized, 0);
+	g_atomic_int_set(&lua_stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_LUA_NAME);
 }
 
@@ -1133,15 +1133,15 @@ const char *janus_lua_get_package(void) {
 }
 
 void janus_lua_create_session(janus_plugin_session *handle, int *error) {
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		*error = -1;
 		return;
 	}	
-	janus_mutex_lock(&sessions_mutex);
+	janus_mutex_lock(&lua_sessions_mutex);
 	guint32 id = 0;
 	while(id == 0) {
 		id = janus_random_uint32();
-		if(g_hash_table_lookup(ids, GUINT_TO_POINTER(id))) {
+		if(g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(id))) {
 			id = 0;
 			continue;
 		}
@@ -1155,13 +1155,13 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	g_atomic_int_set(&session->destroyed, 0);
 	janus_refcount_init(&session->ref, janus_lua_session_free);
 	handle->plugin_handle = session;
-	g_hash_table_insert(sessions, handle, session);
-	g_hash_table_insert(ids, GUINT_TO_POINTER(session->id), session);
-	janus_mutex_unlock(&sessions_mutex);
+	g_hash_table_insert(lua_sessions, handle, session);
+	g_hash_table_insert(lua_ids, GUINT_TO_POINTER(session->id), session);
+	janus_mutex_unlock(&lua_sessions_mutex);
 
 	/* Notify the Lua script */
 	janus_mutex_lock(&lua_mutex);
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "createSession");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 0);
@@ -1171,7 +1171,7 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 }
 
 void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		*error = -1;
 		return;
 	}	
@@ -1183,13 +1183,13 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	guint32 id = session->id;
 	JANUS_LOG(LOG_VERB, "Removing Lua session %"SCNu32"...\n", id);
-	janus_mutex_lock(&sessions_mutex);
-	g_hash_table_remove(sessions, handle);
-	janus_mutex_unlock(&sessions_mutex);
+	janus_mutex_lock(&lua_sessions_mutex);
+	g_hash_table_remove(lua_sessions, handle);
+	janus_mutex_unlock(&lua_sessions_mutex);
 
 	/* Notify the Lua script */
 	janus_mutex_lock(&lua_mutex);
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "destroySession");
 	lua_pushnumber(t, id);
 	lua_call(t, 1, 0);
@@ -1199,7 +1199,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 }
 
 json_t *janus_lua_query_session(janus_plugin_session *handle) {
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized)) {
+	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized)) {
 		return NULL;
 	}	
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
@@ -1209,7 +1209,7 @@ json_t *janus_lua_query_session(janus_plugin_session *handle) {
 	}
 	/* Ask the Lua script for information on this session */
 	janus_mutex_lock(&lua_mutex);
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "querySession");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 1);
@@ -1227,8 +1227,8 @@ json_t *janus_lua_query_session(janus_plugin_session *handle) {
 }
 
 struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handle, char *transaction, json_t *message, json_t *jsep) {
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
-		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&stopping) ? "Shutting down" : "Plugin not initialized", NULL);
+	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, g_atomic_int_get(&lua_stopping) ? "Shutting down" : "Plugin not initialized", NULL);
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
 	if(!session)
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
@@ -1240,7 +1240,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	json_decref(jsep);
 	/* Invoke the script function */
 	janus_mutex_lock(&lua_mutex);
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "handleMessage");
 	lua_pushnumber(t, session->id);
 	lua_pushstring(t, transaction);
@@ -1278,7 +1278,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 
 void janus_lua_setup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "WebRTC media is now available\n");
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;	
 	if(!session) {
@@ -1293,7 +1293,7 @@ void janus_lua_setup_media(janus_plugin_session *handle) {
 
 	/* Notify the Lua script */
 	janus_mutex_lock(&lua_mutex);
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "setupMedia");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 0);
@@ -1301,7 +1301,7 @@ void janus_lua_setup_media(janus_plugin_session *handle) {
 }
 
 void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;	
 	if(!session) {
@@ -1314,7 +1314,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 	if(has_incoming_rtp) {
 		/* Yep, pass the data to the Lua script and return */
 		janus_mutex_lock(&lua_mutex);
-		lua_State *t = lua_newthread(state);
+		lua_State *t = lua_newthread(lua_state);
 		lua_pushnumber(t, session->id);
 		lua_pushboolean(t, video);
 		lua_pushlstring(t, buf, len);
@@ -1351,13 +1351,13 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 			char rtcpbuf[12];
 			janus_rtcp_pli((char *)&rtcpbuf, 12);
 			JANUS_LOG(LOG_HUGE, "Sending PLI to session %"SCNu32"\n", session->id);
-			gateway->relay_rtcp(handle, 1, rtcpbuf, 12);
+			janus_core->relay_rtcp(handle, 1, rtcpbuf, 12);
 		}
 	}
 }
 
 void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
 	if(!session) {
@@ -1370,7 +1370,7 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 	if(has_incoming_rtcp) {
 		/* Yep, pass the data to the Lua script and return */
 		janus_mutex_lock(&lua_mutex);
-		lua_State *t = lua_newthread(state);
+		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "incomingRtcp");
 		lua_pushnumber(t, session->id);
 		lua_pushboolean(t, video);
@@ -1386,16 +1386,16 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		if(session->bitrate > 0) {
 			char rtcpbuf[24];
 			janus_rtcp_remb((char *)(&rtcpbuf), 24, session->bitrate);
-			gateway->relay_rtcp(handle, 1, rtcpbuf, 24);
+			janus_core->relay_rtcp(handle, 1, rtcpbuf, 24);
 		} else {
-			gateway->relay_rtcp(handle, 1, buf, len);
+			janus_core->relay_rtcp(handle, 1, buf, len);
 		}
 		return;
 	}
 }
 
 void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
 	if(!session) {
@@ -1408,7 +1408,7 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 	if(has_incoming_data) {
 		/* Yep, pass the data to the Lua script and return */
 		janus_mutex_lock(&lua_mutex);
-		lua_State *t = lua_newthread(state);
+		lua_State *t = lua_newthread(lua_state);
 		lua_getglobal(t, "incomingData");
 		lua_pushnumber(t, session->id);
 		lua_pushlstring(t, buf, len);
@@ -1439,7 +1439,7 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 }
 
 void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video) {
-	if(handle == NULL || handle->stopped || g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(handle == NULL || handle->stopped || g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
 	if(!session) {
@@ -1453,7 +1453,7 @@ void janus_lua_slow_link(janus_plugin_session *handle, int uplink, int video) {
 
 void janus_lua_hangup_media(janus_plugin_session *handle) {
 	JANUS_LOG(LOG_INFO, "No WebRTC media anymore\n");
-	if(g_atomic_int_get(&stopping) || !g_atomic_int_get(&initialized))
+	if(g_atomic_int_get(&lua_stopping) || !g_atomic_int_get(&lua_initialized))
 		return;
 	janus_lua_session *session = (janus_lua_session *)handle->plugin_handle;
 	if(!session) {
@@ -1490,7 +1490,7 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 
 	/* Notify the Lua script */
 	janus_mutex_lock(&lua_mutex);
-	lua_State *t = lua_newthread(state);
+	lua_State *t = lua_newthread(lua_state);
 	lua_getglobal(t, "hangupMedia");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 0);
@@ -1517,8 +1517,8 @@ static void janus_lua_relay_rtp_packet(gpointer data, gpointer user_data) {
 	/* Fix sequence number and timestamp (publisher switching may be involved) */
 	janus_rtp_header_update(packet->data, &session->rtpctx, packet->is_video, packet->is_video ? 4500 : 960);
 	/* Send the packet */
-	if(gateway != NULL)
-		gateway->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
+	if(janus_core != NULL)
+		janus_core->relay_rtp(session->handle, packet->is_video, (char *)packet->data, packet->length);
 	/* Restore the timestamp and sequence number to what the publisher set them to */
 	packet->data->timestamp = htonl(packet->timestamp);
 	packet->data->seq_number = htons(packet->seq_number);
@@ -1532,10 +1532,10 @@ static void janus_lua_relay_data_packet(gpointer data, gpointer user_data) {
 		return;
 	}
 	char *text = (char *)user_data;
-	if(gateway != NULL && text != NULL) {
+	if(janus_core != NULL && text != NULL) {
 		JANUS_LOG(LOG_VERB, "Forwarding DataChannel message (%zu bytes) to session %"SCNu32": %s\n",
 			strlen(text), session->id, text);
-		gateway->relay_data(session->handle, text, strlen(text));
+		janus_core->relay_data(session->handle, text, strlen(text));
 	}
 	return;
 }
@@ -1546,14 +1546,14 @@ static void *janus_lua_scheduler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining Lua scheduler thread\n");
 	janus_lua_event *event = NULL;
 	/* Wait until there are events to process */
-	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
+	while(g_atomic_int_get(&lua_initialized) && !g_atomic_int_get(&lua_stopping)) {
 		event = g_async_queue_pop(events);
 		if(event == GUINT_TO_POINTER(janus_lua_event_exit))
 			break;
 		if(event == GUINT_TO_POINTER(janus_lua_event_resume)) {
 			/* There are coroutines to resume */
 			janus_mutex_lock(&lua_mutex);
-			lua_State *t = lua_newthread(state);
+			lua_State *t = lua_newthread(lua_state);
 			lua_getglobal(t, "resumeScheduler");
 			lua_call(t, 0, 0);
 			janus_mutex_unlock(&lua_mutex);

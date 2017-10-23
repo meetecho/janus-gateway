@@ -42,11 +42,11 @@
 #include "utils.h"
 
 /* Core pointer and related flags */
-extern volatile gint initialized, stopping;
-extern janus_callbacks *gateway;
+extern volatile gint lua_initialized, lua_stopping;
+extern janus_callbacks *janus_core;
 
 /* Lua state: we define state and mutex as extern */
-extern lua_State *state;
+extern lua_State *lua_state;
 extern janus_mutex lua_mutex;
 
 /* Lua session: we keep only the barebone stuff here, the rest will be in the Lua script */
@@ -78,7 +78,7 @@ typedef struct janus_lua_session {
 	/* Reference counter */
 	janus_refcount ref;
 } janus_lua_session;
-extern GHashTable *sessions, *ids;
-extern janus_mutex sessions_mutex;
+extern GHashTable *lua_sessions, *lua_ids;
+extern janus_mutex lua_sessions_mutex;
 
 #endif
