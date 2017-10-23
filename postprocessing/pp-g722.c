@@ -179,7 +179,11 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 		avpacket.data = (uint8_t *)buffer;
 		avpacket.size = bytes;
 		int err = 0, got_frame = 0;
+#if LIBAVCODEC_VER_AT_LEAST(55,28)
 		AVFrame *frame = av_frame_alloc();
+#else
+		AVFrame *frame = avcodec_alloc_frame();
+#endif
 		err = avcodec_decode_audio4(dec_ctx, frame, &got_frame, &avpacket);
 		if(err < 0 || !got_frame) {
 			JANUS_LOG(LOG_ERR, "Error decoding audio frame... (%d)\n", err);
@@ -195,7 +199,11 @@ int janus_pp_g722_process(FILE *file, janus_pp_frame_packet *list, int *working)
 				fflush(wav_file);
 			}
 		}
+#if LIBAVCODEC_VER_AT_LEAST(55,28)
 		av_frame_free(&frame);
+#else
+		avcodec_free_frame(&frame);
+#endif
 		tmp = tmp->next;
 	}
 	g_free(buffer);
