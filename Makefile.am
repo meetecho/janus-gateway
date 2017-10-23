@@ -67,6 +67,9 @@ recordings_DATA = $(NULL)
 demosdir = $(datadir)/janus/demos
 demos_DATA = $(NULL)
 
+jsmodulesdir = $(datadir)/janus/javascript
+jsmodules_DATA = html/janus.js
+
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
@@ -447,6 +450,44 @@ endif
 
 if ENABLE_DOCS
 SUBDIRS += docs
+endif
+
+##
+# JavaScript module flavours for janus.js
+##
+
+if ENABLE_JAVASCRIPT_ES_MODULE
+jsmodules_DATA += npm/bundles/janus.es.js
+EXTRA_DIST += npm/bundles/janus.es.js
+CLEANFILES += npm/bundles/janus.es.js
+endif
+
+if ENABLE_JAVASCRIPT_UMD_MODULE
+jsmodules_DATA += npm/bundles/janus.umd.js
+EXTRA_DIST += npm/bundles/janus.umd.js
+CLEANFILES += npm/bundles/janus.umd.js
+endif
+
+if ENABLE_JAVASCRIPT_IIFE_MODULE
+jsmodules_DATA += npm/bundles/janus.iife.js
+EXTRA_DIST += npm/bundles/janus.iife.js
+CLEANFILES += npm/bundles/janus.iife.js
+endif
+
+if ENABLE_JAVASCRIPT_COMMON_JS_MODULE
+jsmodules_DATA += npm/bundles/janus.cjs.js
+EXTRA_DIST += npm/bundles/janus.cjs.js
+CLEANFILES += npm/bundles/janus.cjs.js
+endif
+
+if ENABLE_JAVASCRIPT_MODULES
+
+npm/node_modules/rollup/bin/rollup: npm/package.json
+	cd npm && $(NPM) install && touch node_modules/rollup/bin/rollup
+
+npm/bundles/janus.%.js: html/janus.js npm/node_modules/rollup/bin/rollup npm/rollup.config.js npm/module.js
+	cd npm && $(NPM) run rollup -- --o $(patsubst npm/%,%,$@) --f $*
+
 endif
 
 ##
