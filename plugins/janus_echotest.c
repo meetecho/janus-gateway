@@ -1213,7 +1213,6 @@ static void *janus_echotest_handler(void *data) {
 			}
 			/* Check which codecs we ended up using */
 			janus_sdp_find_first_codecs(answer, &session->acodec, &session->vcodec);
-			JANUS_LOG(LOG_WARN, "%s, %s\n", session->acodec, session->vcodec);
 			if(session->acodec == NULL)
 				session->has_audio = FALSE;
 			if(session->vcodec == NULL)
