@@ -1374,6 +1374,7 @@ static void *janus_videocall_handler(void *data) {
 				} else {
 					/* We've started recording, send a PLI and go on */
 					char filename[255];
+					janus_recorder *rc = NULL;
 					gint64 now = janus_get_real_time();
 					if(session->has_audio) {
 						/* FIXME We assume we're recording Opus, here */
@@ -1381,8 +1382,8 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", recording_base);
-							session->arc = janus_recorder_create(NULL, "opus", filename, session->perc);
-							if(session->arc == NULL) {
+							rc = janus_recorder_create(NULL, "opus", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
 							}
@@ -1392,12 +1393,15 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(session->peer && session->peer->username) ? session->peer->username : "unknown",
 								now);
-							session->arc = janus_recorder_create(NULL, "opus", filename, session->perc);
-							if(session->arc == NULL) {
+							rc = janus_recorder_create(NULL, "opus", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
 							}
 						}
+						if(session->perc)
+							janus_recorder_enable_perc(rc);
+						session->arc = rc;
 					}
 					if(session->has_video) {
 						/* FIXME We assume we're recording VP8, here */
@@ -1405,8 +1409,8 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-video", recording_base);
-							session->vrc = janus_recorder_create(NULL, "vp8", filename, session->perc);
-							if(session->vrc == NULL) {
+							rc = janus_recorder_create(NULL, "vp8", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
 							}
@@ -1416,12 +1420,15 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(session->peer && session->peer->username) ? session->peer->username : "unknown",
 								now);
-							session->vrc = janus_recorder_create(NULL, "vp8", filename, session->perc);
-							if(session->vrc == NULL) {
+							rc = janus_recorder_create(NULL, "vp8", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
 							}
 						}
+						if(session->perc)
+							janus_recorder_enable_perc(rc);
+						session->vrc = rc;
 						/* Send a PLI */
 						JANUS_LOG(LOG_VERB, "Recording video, sending a PLI to kickstart it\n");
 						char buf[12];
@@ -1433,8 +1440,8 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-data", recording_base);
-							session->drc = janus_recorder_create(NULL, "text", filename, session->perc);
-							if(session->drc == NULL) {
+							rc = janus_recorder_create(NULL, "text", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open a data recording file for this VideoCall user!\n");
 							}
@@ -1444,12 +1451,14 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(session->peer && session->peer->username) ? session->peer->username : "unknown",
 								now);
-							session->drc = janus_recorder_create(NULL, "text", filename, session->perc);
-							if(session->drc == NULL) {
+							rc = janus_recorder_create(NULL, "text", filename);
+							if(rc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open a data recording file for this VideoCall user!\n");
 							}
 						}
+						/* Note: PERC doesn't apply to datachannels as of now */
+						session->drc = rc;
 					}
 				}
 				janus_mutex_unlock(&session->rec_mutex);

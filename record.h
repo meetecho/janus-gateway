@@ -71,9 +71,13 @@ void janus_recorder_deinit(void);
  * @param[in] dir Path of the directory to save the recording into (will try to create it if it doesn't exist)
  * @param[in] codec Codec the packets to record are encoded in ("vp8", "opus", "h264", "g711", "vp9")
  * @param[in] filename Filename to use for the recording
- * @param[in] perc Whether this recording is for a PERC session
  * @returns A valid janus_recorder instance in case of success, NULL otherwise */
-janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename, gboolean perc);
+janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename);
+/*! \brief Mark this recorder as for a PERC session, which means payload will be encrypted
+ * \note This will only be possible BEFORE the first frame is written, as it needs to
+ * be reflected in the .mjr header: doing this after that will return an error
+ * @returns 0 in case of success, a negative integer otherwise */
+int janus_recorder_enable_perc(janus_recorder *recorder);
 /*! \brief Save an RTP frame in the recorder
  * @param[in] recorder The janus_recorder instance to save the frame to
  * @param[in] buffer The frame data to save

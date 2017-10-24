@@ -61,7 +61,7 @@ void janus_recorder_deinit(void) {
 }
 
 
-janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename, gboolean perc) {
+janus_recorder *janus_recorder_create(const char *dir, const char *codec, const char *filename) {
 	janus_recorder_medium type = JANUS_RECORDER_AUDIO;
 	if(codec == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing codec information\n");
@@ -158,7 +158,6 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 		rc->dir = g_strdup(dir);
 	rc->filename = g_strdup(newname);
 	rc->type = type;
-	rc->perc = perc;
 	/* Write the first part of the header */
 	fwrite(header, sizeof(char), strlen(header), rc->file);
 	rc->writable = TRUE;
@@ -166,6 +165,16 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	rc->header = FALSE;
 	janus_mutex_init(&rc->mutex);
 	return rc;
+}
+
+int janus_recorder_enable_perc(janus_recorder *recorder) {
+	if(!recorder)
+		return -1;
+	if(!recorder->header) {
+		recorder->perc = TRUE;
+		return 0;
+	}
+	return -1;
 }
 
 int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint length) {

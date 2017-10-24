@@ -2942,69 +2942,78 @@ void janus_videoroom_slow_link(janus_plugin_session *handle, int uplink, int vid
 
 static void janus_videoroom_recorder_create(janus_videoroom_participant *participant, gboolean audio, gboolean video, gboolean data) {
 	char filename[255];
+	janus_recorder *rc = NULL;
 	gint64 now = janus_get_real_time();
 	if(audio) {
 		memset(filename, 0, 255);
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-audio", participant->recording_base);
-			participant->arc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_audiocodec_name(participant->room->acodec), filename, participant->room->perc);
-			if(participant->arc == NULL) {
+			rc = janus_recorder_create(participant->room->rec_dir,
+				janus_videoroom_audiocodec_name(participant->room->acodec), filename);
+			if(rc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 			}
 		} else {
 			/* Build a filename */
 			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-audio",
 				participant->room->room_id, participant->user_id, now);
-			participant->arc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_audiocodec_name(participant->room->acodec), filename, participant->room->perc);
-			if(participant->arc == NULL) {
+			rc = janus_recorder_create(participant->room->rec_dir,
+				janus_videoroom_audiocodec_name(participant->room->acodec), filename);
+			if(rc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this publisher!\n");
 			}
 		}
+		if(participant->room->perc)
+			janus_recorder_enable_perc(rc);
+		participant->arc = rc;
 	}
 	if(video) {
 		memset(filename, 0, 255);
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-video", participant->recording_base);
-			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_videocodec_name(participant->room->vcodec), filename, participant->room->perc);
-			if(participant->vrc == NULL) {
+			rc = janus_recorder_create(participant->room->rec_dir,
+				janus_videoroom_videocodec_name(participant->room->vcodec), filename);
+			if(rc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
 		} else {
 			/* Build a filename */
 			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-video",
 				participant->room->room_id, participant->user_id, now);
-			participant->vrc = janus_recorder_create(participant->room->rec_dir,
-				janus_videoroom_videocodec_name(participant->room->vcodec), filename, participant->room->perc);
-			if(participant->vrc == NULL) {
+			rc = janus_recorder_create(participant->room->rec_dir,
+				janus_videoroom_videocodec_name(participant->room->vcodec), filename);
+			if(rc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this publisher!\n");
 			}
 		}
+		if(participant->room->perc)
+			janus_recorder_enable_perc(rc);
+		participant->vrc = rc;
 	}
 	if(data) {
 		memset(filename, 0, 255);
 		if(participant->recording_base) {
 			/* Use the filename and path we have been provided */
 			g_snprintf(filename, 255, "%s-data", participant->recording_base);
-			participant->drc = janus_recorder_create(participant->room->rec_dir,
-				"text", filename, participant->room->perc);
-			if(participant->drc == NULL) {
+			rc = janus_recorder_create(participant->room->rec_dir,
+				"text", filename);
+			if(rc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an data recording file for this publisher!\n");
 			}
 		} else {
 			/* Build a filename */
 			g_snprintf(filename, 255, "videoroom-%"SCNu64"-user-%"SCNu64"-%"SCNi64"-data",
 				participant->room->room_id, participant->user_id, now);
-			participant->drc = janus_recorder_create(participant->room->rec_dir,
-				"text", filename, participant->room->perc);
-			if(participant->drc == NULL) {
+			rc = janus_recorder_create(participant->room->rec_dir,
+				"text", filename);
+			if(rc == NULL) {
 				JANUS_LOG(LOG_ERR, "Couldn't open an data recording file for this publisher!\n");
 			}
 		}
+		/* Note: PERC doesn't apply to datachannels as of now */
+		participant->drc = rc;
 	}
 }
 

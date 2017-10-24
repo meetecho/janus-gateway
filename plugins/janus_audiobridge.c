@@ -3194,7 +3194,7 @@ static void *janus_audiobridge_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", recording_base);
-							participant->arc = janus_recorder_create(NULL, "opus", filename, FALSE);
+							participant->arc = janus_recorder_create(NULL, "opus", filename);
 							if(participant->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");
@@ -3203,7 +3203,7 @@ static void *janus_audiobridge_handler(void *data) {
 							/* Build a filename */
 							g_snprintf(filename, 255, "audiobridge-%"SCNu64"-%"SCNu64"-%"SCNi64"-audio",
 								participant->user_id, participant->room->room_id, now);
-							participant->arc = janus_recorder_create(NULL, "opus", filename, FALSE);
+							participant->arc = janus_recorder_create(NULL, "opus", filename);
 							if(participant->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this participant!\n");

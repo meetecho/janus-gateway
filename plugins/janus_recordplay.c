@@ -1350,6 +1350,7 @@ static void *janus_recordplay_handler(void *data) {
 			char outstr[200];
 			strftime(outstr, sizeof(outstr), "%Y-%m-%d %H:%M:%S", tmv);
 			rec->date = g_strdup(outstr);
+			janus_recorder *rc = NULL;
 			if(audio) {
 				char filename[256];
 				if(filename_text != NULL) {
@@ -1358,7 +1359,10 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-audio", id);
 				}
 				rec->arc_file = g_strdup(filename);
-				session->arc = janus_recorder_create(recordings_path, rec->acodec, rec->arc_file, perc);
+				rc = janus_recorder_create(recordings_path, rec->acodec, rec->arc_file);
+				if(perc)
+					janus_recorder_enable_perc(rc);
+				session->arc = rc;
 			}
 			if(video) {
 				char filename[256];
@@ -1368,7 +1372,10 @@ static void *janus_recordplay_handler(void *data) {
 					g_snprintf(filename, 256, "rec-%"SCNu64"-video", id);
 				}
 				rec->vrc_file = g_strdup(filename);
-				session->vrc = janus_recorder_create(recordings_path, rec->vcodec, rec->vrc_file, perc);
+				rc = janus_recorder_create(recordings_path, rec->vcodec, rec->vrc_file);
+				if(perc)
+					janus_recorder_enable_perc(rc);
+				session->vrc = rc;
 			}
 			session->recorder = TRUE;
 			session->recording = rec;
