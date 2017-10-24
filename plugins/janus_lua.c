@@ -224,7 +224,7 @@ typedef enum janus_lua_event {
 
 /* janus_lua_session is defined in janus_lua_data.h, but it's managed here */
 GHashTable *lua_sessions, *lua_ids;
-janus_mutex lua_lua_sessions_mutex = JANUS_MUTEX_INITIALIZER;
+janus_mutex lua_sessions_mutex = JANUS_MUTEX_INITIALIZER;
 
 static void janus_lua_session_destroy(janus_lua_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1)) {
