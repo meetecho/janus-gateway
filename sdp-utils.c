@@ -20,6 +20,16 @@
 
 #define JANUS_BUFSIZE	8192
 
+/* Preferred codecs when negotiating audio/video, and number of supported codecs */
+const char *janus_preferred_audio_codecs[] = {
+	"opus", "pcmu", "pcma", "g722", "isac16", "isac32"
+};
+uint janus_audio_codecs = sizeof(janus_preferred_audio_codecs)/sizeof(*janus_preferred_audio_codecs);
+const char *janus_preferred_video_codecs[] = {
+	"vp8", "vp9", "h264"
+};
+uint janus_video_codecs = sizeof(janus_preferred_video_codecs)/sizeof(*janus_preferred_video_codecs);
+
 void janus_sdp_free(janus_sdp *sdp) {
 	if(!sdp)
 		return;
@@ -783,6 +793,97 @@ char *janus_sdp_write(janus_sdp *imported) {
 		temp = temp->next;
 	}
 	return sdp;
+}
+
+void janus_sdp_find_preferred_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec) {
+	if(sdp == NULL)
+		return;
+	gboolean audio = FALSE, video = FALSE;
+	GList *temp = sdp->m_lines;
+	while(temp) {
+		/* Which media are available? */
+		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
+			if(audio == FALSE) {
+				uint i=0;
+				for(i=0; i<janus_audio_codecs; i++) {
+					if(janus_sdp_get_codec_pt(sdp, janus_preferred_audio_codecs[i]) > 0) {
+						audio = TRUE;
+						if(acodec)
+							*acodec = janus_preferred_audio_codecs[i];
+						break;
+					}
+				}
+			}
+		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
+			if(video == FALSE) {
+				uint i=0;
+				for(i=0; i<janus_video_codecs; i++) {
+					if(janus_sdp_get_codec_pt(sdp, janus_preferred_video_codecs[i]) > 0) {
+						if(vcodec)
+							*vcodec = janus_preferred_video_codecs[i];
+						break;
+					}
+				}
+			}
+		}
+		if(audio && video)
+			break;
+		temp = temp->next;
+	}
+}
+
+void janus_sdp_find_first_codecs(janus_sdp *sdp, const char **acodec, const char **vcodec) {
+	if(sdp == NULL)
+		return;
+	gboolean audio = FALSE, video = FALSE;
+	GList *temp = sdp->m_lines;
+	while(temp) {
+		/* Which media are available? */
+		janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
+		if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
+			if(audio == FALSE && m->ptypes) {
+				int pt = GPOINTER_TO_INT(m->ptypes->data);
+				const char *codec = janus_sdp_get_codec_name(sdp, pt);
+				codec = janus_sdp_match_preferred_codec(m->type, (char *)codec);
+				if(codec) {
+					audio = TRUE;
+					if(acodec)
+						*acodec = codec;
+				}
+			}
+		} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
+			if(video == FALSE && m->ptypes) {
+				int pt = GPOINTER_TO_INT(m->ptypes->data);
+				const char *codec = janus_sdp_get_codec_name(sdp, pt);
+				codec = janus_sdp_match_preferred_codec(m->type, (char *)codec);
+				if(codec) {
+					video = TRUE;
+					if(vcodec)
+						*vcodec = codec;
+				}
+			}
+		}
+		if(audio && video)
+			break;
+		temp = temp->next;
+	}
+}
+
+const char *janus_sdp_match_preferred_codec(janus_sdp_mtype type, char *codec) {
+	if(codec == NULL)
+		return NULL;
+	if(type != JANUS_SDP_AUDIO && type != JANUS_SDP_VIDEO)
+		return NULL;
+	gboolean video = (type == JANUS_SDP_VIDEO);
+	uint i=0;
+	for(i=0; i<(video ? janus_video_codecs : janus_audio_codecs); i++) {
+		if(!strcasecmp(codec, (video ? janus_preferred_video_codecs[i] : janus_preferred_audio_codecs[i]))) {
+			/* Found! */
+			return video ? janus_preferred_video_codecs[i] : janus_preferred_audio_codecs[i];
+		}
+	}
+	return NULL;
 }
 
 janus_sdp *janus_sdp_new(const char *name, const char *address) {
