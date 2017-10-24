@@ -2077,8 +2077,10 @@ static void *janus_sipre_handler(void *data) {
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
+				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
@@ -2941,11 +2943,15 @@ static void janus_sipre_connect_sockets(janus_sipre_session *session, struct soc
 /* Thread to relay RTP/RTCP frames coming from the SIPre peer */
 static void *janus_sipre_relay_thread(void *data) {
 	janus_sipre_session *session = (janus_sipre_session *)data;
-	if(!session || !session->account.username || !session->callee) {
+	if(!session) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_refcount_increase(&session->ref);
+	if(!session->account.username || !session->callee) {
+		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
 	JANUS_LOG(LOG_VERB, "Starting relay thread (%s <--> %s)\n", session->account.username, session->callee);
 
 	gboolean have_server_ip = TRUE;
@@ -3630,8 +3636,10 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "siprertp %s", session->account.username);
+		janus_refcount_increase(&session->ref);
 		g_thread_try_new(tname, janus_sipre_relay_thread, session, &error);
 		if(error != NULL) {
+			janus_refcount_decrease(&session->ref);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 		}
 	}

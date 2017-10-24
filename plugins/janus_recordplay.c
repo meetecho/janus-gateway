@@ -1041,8 +1041,10 @@ void janus_recordplay_setup_media(janus_plugin_session *handle) {
 	session->active = TRUE;
 	if(!session->recorder) {
 		GError *error = NULL;
+		janus_refcount_increase(&session->ref);
 		g_thread_try_new("recordplay playout thread", &janus_recordplay_playout_thread, session, &error);
 		if(error != NULL) {
+			janus_refcount_decrease(&session->ref);
 			/* FIXME Should we notify this back to the user somehow? */
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Record&Play playout thread...\n", error->code, error->message ? error->message : "??");
 			if(gateway) {
@@ -2099,7 +2101,6 @@ static void *janus_recordplay_playout_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_refcount_increase(&session->ref);
 	if(!session->recording) {
 		janus_refcount_decrease(&session->ref);
 		JANUS_LOG(LOG_ERR, "No recording object, can't start playout thread...\n");

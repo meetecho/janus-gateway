@@ -163,7 +163,6 @@ static uint16_t rtp_range_min = 10000;
 static uint16_t rtp_range_max = 60000;
 
 static GThread *handler_thread;
-static GThread *watchdog;
 static void *janus_nosip_handler(void *data);
 
 typedef struct janus_nosip_message {
@@ -513,10 +512,6 @@ void janus_nosip_destroy(void) {
 	if(handler_thread != NULL) {
 		g_thread_join(handler_thread);
 		handler_thread = NULL;
-	}
-	if(watchdog != NULL) {
-		g_thread_join(watchdog);
-		watchdog = NULL;
 	}
 	/* FIXME We should destroy the sessions cleanly */
 	janus_mutex_lock(&sessions_mutex);
@@ -1120,8 +1115,10 @@ static void *janus_nosip_handler(void *data) {
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "nosiprtp %p", session);
+				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_nosip_relay_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
@@ -1725,7 +1722,6 @@ static void *janus_nosip_relay_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_refcount_increase(&session->ref);
 	JANUS_LOG(LOG_INFO, "[NoSIP-%p] Starting relay thread\n", session);
 
 	gboolean have_server_ip = TRUE;

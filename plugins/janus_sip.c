@@ -1682,8 +1682,10 @@ static void *janus_sip_handler(void *data) {
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "sip %s", session->account.username);
+				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_sip_sofia_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the SIP Sofia thread...\n", error->code, error->message ? error->message : "??");
 					error_code = JANUS_SIP_ERROR_UNKNOWN_ERROR;
 					g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the SIP Sofia thread", error->code, error->message ? error->message : "??");
@@ -2181,8 +2183,10 @@ static void *janus_sip_handler(void *data) {
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
@@ -3192,8 +3196,10 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 				GError *error = NULL;
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "siprtp %s", session->account.username);
+				janus_refcount_increase(&session->ref);
 				g_thread_try_new(tname, janus_sip_relay_thread, session, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the RTP/RTCP thread...\n", error->code, error->message ? error->message : "??");
 				}
 			}
@@ -3702,11 +3708,15 @@ static void janus_sip_connect_sockets(janus_sip_session *session, struct sockadd
 /* Thread to relay RTP/RTCP frames coming from the SIP peer */
 static void *janus_sip_relay_thread(void *data) {
 	janus_sip_session *session = (janus_sip_session *)data;
-	if(!session || !session->account.username || !session->callee) {
+	if(!session) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_refcount_increase(&session->ref);
+	if(!session->account.username || !session->callee) {
+		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
 	JANUS_LOG(LOG_VERB, "Starting relay thread (%s <--> %s)\n", session->account.username, session->callee);
 
 	gboolean have_server_ip = TRUE;
@@ -4039,11 +4049,15 @@ static void *janus_sip_relay_thread(void *data) {
 /* Sofia Event thread */
 gpointer janus_sip_sofia_thread(gpointer user_data) {
 	janus_sip_session *session = (janus_sip_session *)user_data;
-	if(session == NULL || session->account.username == NULL) {
+	if(session == NULL) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_refcount_increase(&session->ref);
+	if(session->account.username == NULL) {
+		janus_refcount_decrease(&session->ref);
+		g_thread_unref(g_thread_self());
+		return NULL;
+	}
 	JANUS_LOG(LOG_VERB, "Joining sofia loop thread (%s)...\n", session->account.username);
 	session->stack = g_malloc0(sizeof(ssip_t));
 	if(session->stack == NULL) {
