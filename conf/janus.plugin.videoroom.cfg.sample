@@ -23,6 +23,11 @@
 ;		be negotiated/used or not for new publishers, default=yes)
 ; record = true|false (whether this room should be recorded, default=false)
 ; rec_dir = <folder where recordings should be stored, when enabled>
+; notify_joining = true|false (optional, whether to notify all participants when a new
+;               participant joins the room. The Videoroom plugin by design only notifies
+;               new feeds (publishers), and enabling this may result extra notification
+;               traffic. This flag is particularly useful when enabled with require_pvtid
+;               for admin to manage listening only participants. default=false)
 
 [general]
 ;admin_key = supersecret		; If set, rooms can be created via API only

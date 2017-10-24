@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.2.6],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -88,6 +88,10 @@ AC_ARG_ENABLE([all-plugins],
                      [enable_plugin_recordplay=no])
                AS_IF([test "x$enable_plugin_sip" != "xyes"],
                      [enable_plugin_sip=no])
+               AS_IF([test "x$enable_plugin_sipre" != "xyes"],
+                     [enable_plugin_sipre=no])
+               AS_IF([test "x$enable_plugin_nosip" != "xyes"],
+                     [enable_plugin_nosip=no])
                AS_IF([test "x$enable_plugin_streaming" != "xyes"],
                      [enable_plugin_streaming=no])
                AS_IF([test "x$enable_plugin_textroom" != "xyes"],
@@ -124,6 +128,17 @@ AC_ARG_ENABLE([all-handlers],
               [
                AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([all-js-modules],
+              [AS_HELP_STRING([--enable-all-js-modules],
+                              [Build all the JavaScript modules (instead of manually enabling them one by one)])],
+              [
+               enable_javascript_es_module=yes
+               enable_javascript_umd_module=yes
+               enable_javascript_iife_module=yes
+               enable_javascript_common_js_module=yes
               ],
               [])
 
@@ -465,6 +480,20 @@ AC_ARG_ENABLE([plugin-sip],
                      [enable_plugin_sip=no])],
               [enable_plugin_sip=maybe])
 
+AC_ARG_ENABLE([plugin-sipre],
+              [AS_HELP_STRING([--disable-plugin-sipre],
+                              [Disable sipre plugin])],
+              [AS_IF([test "x$enable_plugin_sipre" != "xyes"],
+                     [enable_plugin_sipre=no])],
+              [enable_plugin_sipre=maybe])
+
+AC_ARG_ENABLE([plugin-nosip],
+              [AS_HELP_STRING([--disable-plugin-nosip],
+                              [Disable nosip plugin])],
+              [AS_IF([test "x$enable_plugin_nosip" != "xyes"],
+                     [enable_plugin_nosip=no])],
+              [enable_plugin_nosip=yes])
+
 AC_ARG_ENABLE([plugin-streaming],
               [AS_HELP_STRING([--disable-plugin-streaming],
                               [Disable streaming plugin])],
@@ -513,6 +542,26 @@ PKG_CHECK_MODULES([SOFIA],
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
 
+PKG_CHECK_MODULES([LIBRE],
+                  [libre],
+                  [
+                    AS_IF([test "x$enable_plugin_sipre" = "xmaybe"],
+                          [
+                           enable_plugin_sipre=yes
+                           AC_CHECK_LIB([re],
+                                        [sip_set_trace],
+                                        [AC_DEFINE(HAVE_LIBRE_SIPTRACE)],
+                                        [AC_MSG_NOTICE([libre version does not have sip_set_trace])]
+                                       )
+                          ])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_sipre" = "xyes"],
+                          [AC_MSG_ERROR([libre not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                  ])
+AC_SUBST([SOFIA_CFLAGS])
+AC_SUBST([SOFIA_LIBS])
+
 PKG_CHECK_MODULES([OPUS],
                   [opus],
                   [
@@ -543,6 +592,8 @@ AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" 
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_SIPRE], [test "x$enable_plugin_sipre" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_NOSIP], [test "x$enable_plugin_nosip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
@@ -559,6 +610,59 @@ PKG_CHECK_MODULES([EVENTS],
                     glib-2.0 >= $glib_version
                     jansson
                   ])
+
+
+##
+# JavaScript modules
+##
+
+AC_ARG_ENABLE([javascript-es-module],
+              [AS_HELP_STRING([--enable-javascript-es-module],
+                              [Generate an ECMAScript style module from janus.js])],
+              [AS_IF([test "x$enable_javascript_es_module" = "xyes"],
+                     [enable_javascript_es_module=yes])],
+              [enable_javascript_es_module=no])
+AM_CONDITIONAL([ENABLE_JAVASCRIPT_ES_MODULE], [test "x$enable_javascript_es_module" = "xyes" ])
+
+AC_ARG_ENABLE([javascript-umd-module],
+              [AS_HELP_STRING([--enable-javascript-umd-module],
+                              [Generate an UMD style module from janus.js])],
+              [AS_IF([test "x$enable_javascript_umd_module" = "xyes"],
+                     [enable_javascript_umd_module=yes])],
+              [enable_javascript_umd_module=no])
+AM_CONDITIONAL([ENABLE_JAVASCRIPT_UMD_MODULE], [test "x$enable_javascript_umd_module" = "xyes" ])
+
+AC_ARG_ENABLE([javascript-iife-module],
+              [AS_HELP_STRING([--enable-javascript-iife-module],
+                              [Generate an IIFE style wrapper around janus.js])],
+              [AS_IF([test "x$enable_javascript_iife_module" = "xyes"],
+                     [enable_javascript_iife_module=yes])],
+              [enable_javascript_iife_module=no])
+AM_CONDITIONAL([ENABLE_JAVASCRIPT_IIFE_MODULE], [test "x$enable_javascript_iife_module" = "xyes" ])
+
+AC_ARG_ENABLE([javascript-common-js-module],
+              [AS_HELP_STRING([--enable-javascript-common-js-module],
+                              [Generate an CommonJS style module from janus.js])],
+              [AS_IF([test "x$enable_javascript_common_js_module" = "xyes"],
+                     [enable_javascript_common_js_module=yes])],
+              [enable_javascript_common_js_module=no])
+AM_CONDITIONAL([ENABLE_JAVASCRIPT_COMMON_JS_MODULE], [test "x$enable_javascript_common_js_module" = "xyes" ])
+
+case "-${enable_javascript_common_js_module}-${enable_javascript_iife_module}-${enable_javascript_umd_module}-${enable_javascript_es_module}-" in
+    *-yes*)
+        AM_CONDITIONAL([ENABLE_JAVASCRIPT_MODULES], true)
+    ;;
+    *)
+        AM_CONDITIONAL([ENABLE_JAVASCRIPT_MODULES], false)
+    ;;
+esac
+
+AC_ARG_VAR(NPM,"npm executable to use")
+AC_PATH_PROG(NPM,npm,,)
+AM_CONDITIONAL([NPM_FOUND], [test "x$NPM" != "x" ])
+AM_COND_IF([ENABLE_JAVASCRIPT_MODULES],[
+    AM_COND_IF([NPM_FOUND],,[AC_MSG_ERROR([npm not found])])
+])
 
 
 ##
@@ -653,8 +757,14 @@ AM_COND_IF([ENABLE_PLUGIN_VIDEOCALL],
 	[echo "    Video Call:            yes"],
 	[echo "    Video Call:            no"])
 AM_COND_IF([ENABLE_PLUGIN_SIP],
-	[echo "    SIP Gateway:           yes"],
-	[echo "    SIP Gateway:           no"])
+	[echo "    SIP Gateway (Sofia):   yes"],
+	[echo "    SIP Gateway (Sofia):   no"])
+AM_COND_IF([ENABLE_PLUGIN_SIPRE],
+	[echo "    SIP Gateway (libre):   yes"],
+	[echo "    SIP Gateway (libre):   no"])
+AM_COND_IF([ENABLE_PLUGIN_NOSIP],
+	[echo "    NoSIP (RTP Bridge):    yes"],
+	[echo "    NoSIP (RTP Bridge):    no"])
 AM_COND_IF([ENABLE_PLUGIN_AUDIOBRIDGE],
 	[echo "    Audio Bridge:          yes"],
 	[echo "    Audio Bridge:          no"])
@@ -674,6 +784,23 @@ echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
+AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
+	echo "JavaScript modules:        yes"
+	echo "    Using npm:             $NPM"
+	AM_COND_IF([ENABLE_JAVASCRIPT_ES_MODULE],
+		[echo "    ES syntax:             yes"],
+		[echo "    ES syntax:             no"])
+	AM_COND_IF([ENABLE_JAVASCRIPT_IIFE_MODULE],
+		[echo "    IIFE syntax:           yes"],
+		[echo "    IIFE syntax:           no"])
+	AM_COND_IF([ENABLE_JAVASCRIPT_UMD_MODULE],
+		[echo "    UMD syntax:            yes"],
+		[echo "    UMD syntax:            no"])
+	AM_COND_IF([ENABLE_JAVASCRIPT_COMMON_JS_MODULE],
+		[echo "    CommonJS syntax:       yes"],
+		[echo "    CommonJS syntax:       no"])
+	],
+	[echo "JavaScript modules:        no"])
 
 echo
 echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."

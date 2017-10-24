@@ -428,16 +428,6 @@ void janus_recordplay_send_rtcp_feedback(janus_plugin_session *handle, int video
 #define AUDIO_PT		111
 #define VIDEO_PT		100
 
-/* Preferred codecs when negotiating audio and video to record */
-static const char *preferred_audio_codecs[] = {
-	"opus", "pcmu", "pcma", "g722", "isac16", "isac32"
-};
-static uint audio_codecs = sizeof(preferred_audio_codecs)/sizeof(*preferred_audio_codecs);
-static const char *preferred_video_codecs[] = {
-	"vp8", "vp9", "h264"
-};
-static uint video_codecs = sizeof(preferred_video_codecs)/sizeof(*preferred_video_codecs);
-
 /* Helper method to check which codec was used in a specific recording */
 static const char *janus_recordplay_parse_codec(const char *dir, const char *filename) {
 	if(dir == NULL || filename == NULL)
@@ -487,11 +477,11 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 				if(prebuffer[0] == 'v') {
 					JANUS_LOG(LOG_VERB, "This is an old video recording, assuming VP8\n");
 					fclose(file);
-					return preferred_video_codecs[0];
+					return "opus";
 				} else if(prebuffer[0] == 'a') {
 					JANUS_LOG(LOG_VERB, "This is an old audio recording, assuming Opus\n");
 					fclose(file);
-					return preferred_audio_codecs[0];
+					return "vp8";
 				}
 			}
 			JANUS_LOG(LOG_WARN, "Unsupported recording media type...\n");
@@ -550,14 +540,12 @@ static const char *janus_recordplay_parse_codec(const char *dir, const char *fil
 					return NULL;
 				}
 				const char *c = json_string_value(codec);
-				uint i=0;
-				for(i=0; i<(video ? video_codecs : audio_codecs); i++) {
-					if(!strcasecmp(c, (video ? preferred_video_codecs[i] : preferred_audio_codecs[i]))) {
-						/* Found! */
-						json_decref(info);
-						fclose(file);
-						return video ? preferred_video_codecs[i] : preferred_audio_codecs[i];
-					}
+				const char *mcodec = janus_sdp_match_preferred_codec(video ? JANUS_SDP_VIDEO : JANUS_SDP_AUDIO, (char *)c);
+				if(mcodec != NULL) {
+					/* Found! */
+					json_decref(info);
+					fclose(file);
+					return mcodec;
 				}
 				json_decref(info);
 			}
@@ -1106,7 +1094,7 @@ void janus_recordplay_incoming_rtp(janus_plugin_session *handle, int video, char
 			return;
 		if(video && session->simulcast_ssrc) {
 			/* The user is simulcasting: drop everything except the base layer */
-			rtp_header *header = (rtp_header *)buf;
+			janus_rtp_header *header = (janus_rtp_header *)buf;
 			uint32_t ssrc = ntohl(header->ssrc);
 			if(ssrc != session->simulcast_ssrc) {
 				JANUS_LOG(LOG_DBG, "Dropping packet (not base simulcast substream)\n");
@@ -1290,44 +1278,21 @@ static void *janus_recordplay_handler(void *data) {
 			janus_mutex_init(&rec->mutex);
 			/* Check which codec we should record for audio and/or video */
 			gboolean audio = FALSE, video = FALSE;
-			GList *temp = offer->m_lines;
-			while(temp) {
-				/* Which media are available? */
-				janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
-				if(m->type == JANUS_SDP_AUDIO && m->port > 0 &&
-						m->direction != JANUS_SDP_RECVONLY && m->direction != JANUS_SDP_INACTIVE) {
-					audio = TRUE;
-					if(rec->acodec == NULL) {
-						uint i=0;
-						for(i=0; i<audio_codecs; i++) {
-							if(janus_sdp_get_codec_pt(offer, preferred_audio_codecs[i]) > 0) {
-								rec->acodec = preferred_audio_codecs[i];
-								break;
-							}
-						}
-						if(rec->acodec == NULL) {
-							JANUS_LOG(LOG_WARN, "No supported audio codec found..?\n");
-							audio = FALSE;
-						}
-					}
-				} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 &&
-						m->direction != JANUS_SDP_RECVONLY && m->direction != JANUS_SDP_INACTIVE) {
-					video = TRUE;
-					if(rec->vcodec == NULL) {
-						uint i=0;
-						for(i=0; i<video_codecs; i++) {
-							if(janus_sdp_get_codec_pt(offer, preferred_video_codecs[i]) > 0) {
-								rec->vcodec = preferred_video_codecs[i];
-								break;
-							}
-						}
-						if(rec->vcodec == NULL) {
-							JANUS_LOG(LOG_WARN, "No supported video codec found..?\n");
-							video = FALSE;
-						}
-					}
-				}
-				temp = temp->next;
+			janus_sdp_find_preferred_codecs(offer, &rec->acodec, &rec->vcodec);
+			/* We found preferred codecs: let's just make sure the direction is what we need */
+			janus_sdp_mline *m = janus_sdp_mline_find(offer, JANUS_SDP_AUDIO);
+			if(m != NULL && m->direction == JANUS_SDP_RECVONLY)
+				rec->acodec = NULL;
+			audio = (rec->acodec != NULL);
+			if(audio) {
+				JANUS_LOG(LOG_WARN, "Audio codec: %s\n", rec->acodec);
+			}
+			m = janus_sdp_mline_find(offer, JANUS_SDP_VIDEO);
+			if(m != NULL && m->direction == JANUS_SDP_RECVONLY)
+				rec->vcodec = NULL;
+			video = (rec->vcodec != NULL);
+			if(video) {
+				JANUS_LOG(LOG_WARN, "Video codec: %s\n", rec->acodec);
 			}
 			rec->audio_pt = AUDIO_PT;
 			if(rec->acodec) {
@@ -1936,7 +1901,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 		}
 		/* Only read RTP header */
 		bytes = fread(prebuffer, sizeof(char), 16, file);
-		rtp_header *rtp = (rtp_header *)prebuffer;
+		janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
 		if(last_ts == 0) {
 			first_ts = ntohl(rtp->timestamp);
 			if(first_ts > 1000*1000)	/* Just used to check whether a packet is pre- or post-reset */
@@ -1983,7 +1948,7 @@ janus_recordplay_frame_packet *janus_recordplay_get_frames(const char *dir, cons
 			JANUS_LOG(LOG_WARN, "Error reading RTP header, stopping here...\n");
 			break;
 		}
-		rtp_header *rtp = (rtp_header *)prebuffer;
+		janus_rtp_header *rtp = (janus_rtp_header *)prebuffer;
 		JANUS_LOG(LOG_HUGE, "  -- RTP packet (ssrc=%"SCNu32", pt=%"SCNu16", ext=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32")\n",
 				ntohl(rtp->ssrc), rtp->type, rtp->extension, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 		/* Generate frame packet and insert in the ordered list */
@@ -2180,7 +2145,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 				if(bytes != audio->len)
 					JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, audio->len);
 				/* Update payload type */
-				rtp_header *rtp = (rtp_header *)buffer;
+				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 				rtp->type = audio_pt;
 				if(gateway != NULL)
 					gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
@@ -2221,7 +2186,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					if(bytes != audio->len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, audio->len);
 					/* Update payload type */
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = audio_pt;
 					if(gateway != NULL)
 						gateway->relay_rtp(session->handle, 0, (char *)buffer, bytes);
@@ -2240,7 +2205,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 					if(bytes != video->len)
 						JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
 					/* Update payload type */
-					rtp_header *rtp = (rtp_header *)buffer;
+					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					rtp->type = video_pt;
 					if(gateway != NULL)
 						gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);
@@ -2285,7 +2250,7 @@ static void *janus_recordplay_playout_thread(void *data) {
 						if(bytes != video->len)
 							JANUS_LOG(LOG_WARN, "Didn't manage to read all the bytes we needed (%d < %d)...\n", bytes, video->len);
 						/* Update payload type */
-						rtp_header *rtp = (rtp_header *)buffer;
+						janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 						rtp->type = video_pt;
 						if(gateway != NULL)
 							gateway->relay_rtp(session->handle, 1, (char *)buffer, bytes);

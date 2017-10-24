@@ -78,6 +78,11 @@ playoutdelay_ext = yes|no (whether the playout-delay RTP extension must be
 	negotiated/used or not for new publishers, default=yes)
 record = true|false (whether this room should be recorded, default=false)
 rec_dir = <folder where recordings should be stored, when enabled>
+notify_joining = true|false (optional, whether to notify all participants when a new
+            participant joins the room. The Videoroom plugin by design only notifies
+            new feeds (publishers), and enabling this may result extra notification
+            traffic. This flag is particularly useful when enabled with \c require_pvtid
+            for admin to manage listening only participants. default=false)
 \endverbatim
  *
  * Note that recording will work with all codecs except iSAC.
@@ -240,7 +245,8 @@ static struct janus_json_parameter create_parameters[] = {
 	{"playoutdelay_ext", JANUS_JSON_BOOL, 0},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"rec_dir", JSON_STRING, 0},
-	{"permanent", JANUS_JSON_BOOL, 0}
+	{"permanent", JANUS_JSON_BOOL, 0},
+	{"notify_joining", JANUS_JSON_BOOL, 0},
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"room", JSON_INTEGER, JANUS_JSON_PARAM_REQUIRED | JANUS_JSON_PARAM_POSITIVE},
@@ -509,6 +515,7 @@ typedef struct janus_videoroom {
 	gboolean check_tokens;		/* Whether to check tokens when participants join (see below) */
 	GHashTable *allowed;		/* Map of participants (as tokens) allowed to join */
 	janus_mutex participants_mutex;/* Mutex to protect room properties */
+	gboolean notify_joining;	/* Whether an event is sent to notify all participants if a new participant joins the room */
 } janus_videoroom;
 static GHashTable *rooms;
 static janus_mutex rooms_mutex = JANUS_MUTEX_INITIALIZER;
@@ -614,7 +621,7 @@ typedef struct janus_videoroom_listener {
 static void janus_videoroom_listener_free(janus_videoroom_listener *l);
 
 typedef struct janus_videoroom_rtp_relay_packet {
-	rtp_header *data;
+	janus_rtp_header *data;
 	gint length;
 	gboolean is_video;
 	uint32_t ssrc[3];
@@ -846,6 +853,7 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			janus_config_item *audio_level_average = janus_config_get_item(cat, "audio_level_average");
 			janus_config_item *videoorient_ext = janus_config_get_item(cat, "videoorient_ext");
 			janus_config_item *playoutdelay_ext = janus_config_get_item(cat, "playoutdelay_ext");
+			janus_config_item *notify_joining = janus_config_get_item(cat, "notify_joining");
 			janus_config_item *record = janus_config_get_item(cat, "record");
 			janus_config_item *rec_dir = janus_config_get_item(cat, "rec_dir");
 			/* Create the video room */
@@ -954,6 +962,11 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			if(rec_dir && rec_dir->value) {
 				videoroom->rec_dir = g_strdup(rec_dir->value);
 			}
+			/* By default, the videoroom plugin does not notify about participants simply joining the room.
+			   It only notifies when the participant actually starts publishing media. */
+			videoroom->notify_joining = FALSE;
+			if(notify_joining != NULL && notify_joining->value != NULL)
+				videoroom->notify_joining = janus_is_true(notify_joining->value);
 			videoroom->destroyed = 0;
 			janus_mutex_init(&videoroom->participants_mutex);
 			videoroom->participants = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
@@ -1122,6 +1135,26 @@ static void janus_videoroom_notify_participants(janus_videoroom_participant *par
 			int ret = gateway->push_event(p->session->handle, &janus_videoroom_plugin, NULL, msg, NULL);
 			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		}
+	}
+}
+
+static void janus_videoroom_participant_joining(janus_videoroom_participant *p) {
+	/* we need to check if the room still exists, may have been destroyed already */
+	if(p->room && !p->room->destroyed && p->room->notify_joining) {
+		json_t *event = json_object();
+		json_t *user = json_object();
+		json_object_set_new(user, "id", json_integer(p->user_id));
+		if (p->display) {
+			json_object_set_new(user, "display", json_string(p->display));
+		}
+		json_object_set_new(event, "videoroom", json_string("event"));
+		json_object_set_new(event, "room", json_integer(p->room->room_id));
+		json_object_set_new(event, "joining", user);
+		janus_mutex_lock(&p->room->participants_mutex);
+		janus_videoroom_notify_participants(p, event);
+		janus_mutex_unlock(&p->room->participants_mutex);
+		/* user gets deref-ed by the owner event */
+		json_decref(event);
 	}
 }
 
@@ -1436,6 +1469,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		json_t *audio_level_average = json_object_get(root, "audio_level_average");
 		json_t *videoorient_ext = json_object_get(root, "videoorient_ext");
 		json_t *playoutdelay_ext = json_object_get(root, "playoutdelay_ext");
+		json_t *notify_joining = json_object_get(root, "notify_joining");
 		json_t *record = json_object_get(root, "record");
 		json_t *rec_dir = json_object_get(root, "rec_dir");
 		json_t *permanent = json_object_get(root, "permanent");
@@ -1587,6 +1621,9 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 		}
 		videoroom->videoorient_ext = videoorient_ext ? json_is_true(videoorient_ext) : TRUE;
 		videoroom->playoutdelay_ext = playoutdelay_ext ? json_is_true(playoutdelay_ext) : TRUE;
+		/* By default, the videoroom plugin does not notify about participants simply joining the room.
+		   It only notifies when the participant actually starts publishing media. */
+		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
 		if(record) {
 			videoroom->record = json_is_true(record);
 		}
@@ -2646,7 +2683,7 @@ void janus_videoroom_incoming_rtp(janus_plugin_session *handle, int video, char 
 	}
 
 	if((!video && participant->audio_active) || (video && participant->video_active)) {
-		rtp_header *rtp = (rtp_header *)buf;
+		janus_rtp_header *rtp = (janus_rtp_header *)buf;
 		uint32_t ssrc = ntohl(rtp->ssrc);
 		int sc = -1;
 		/* Check if we're simulcasting, and if so, keep track of the "layer" */
@@ -3372,6 +3409,9 @@ static void *janus_videoroom_handler(void *data) {
 				json_object_set_new(event, "id", json_integer(user_id));
 				json_object_set_new(event, "private_id", json_integer(publisher->pvt_id));
 				json_object_set_new(event, "publishers", list);
+				/* See if we need to notify about a new participant joined the room (by default, we don't). */
+				janus_videoroom_participant_joining(publisher);
+
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
 					json_t *info = json_object();
