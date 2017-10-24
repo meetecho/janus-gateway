@@ -238,6 +238,7 @@
 #include "../record.h"
 #include "../rtp.h"
 #include "../rtcp.h"
+#include "../sdp-utils.h"
 #include "../utils.h"
 
 
@@ -361,6 +362,8 @@ typedef struct janus_videocall_session {
 	gboolean has_data;
 	gboolean audio_active;
 	gboolean video_active;
+	const char *acodec;		/* Codec used for audio, if available */
+	const char *vcodec;		/* Codec used for video, if available */
 	uint32_t bitrate;
 	guint16 slowlink_count;
 	struct janus_videocall_session *peer;
@@ -401,6 +404,7 @@ static janus_mutex sessions_mutex = JANUS_MUTEX_INITIALIZER;
 #define JANUS_VIDEOCALL_ERROR_ALREADY_IN_CALL		480
 #define JANUS_VIDEOCALL_ERROR_NO_CALL				481
 #define JANUS_VIDEOCALL_ERROR_MISSING_SDP			482
+#define JANUS_VIDEOCALL_ERROR_INVALID_SDP			483
 
 
 /* VideoCall watchdog/garbage collector (sort of) */
@@ -627,6 +631,11 @@ json_t *janus_videocall_query_session(janus_plugin_session *handle) {
 	if(session->peer) {
 		json_object_set_new(info, "peer", session->peer->username ? json_string(session->peer->username) : NULL);
 		json_object_set_new(info, "audio_active", session->audio_active ? json_true() : json_false());
+		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
+		if(session->acodec)
+			json_object_set_new(info, "audio_codec", json_string(session->acodec));
+		if(session->vcodec)
+			json_object_set_new(info, "video_codec", json_string(session->vcodec));
 		json_object_set_new(info, "video_active", session->video_active ? json_true() : json_false());
 		json_object_set_new(info, "bitrate", json_integer(session->bitrate));
 		json_object_set_new(info, "slowlink_count", json_integer(session->slowlink_count));
@@ -1011,6 +1020,8 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	session->has_data = FALSE;
 	session->audio_active = TRUE;
 	session->video_active = TRUE;
+	session->acodec = NULL;
+	session->vcodec = NULL;
 	session->bitrate = 0;
 	janus_rtp_switching_context_reset(&session->context);
 }
@@ -1185,6 +1196,15 @@ static void *janus_videocall_handler(void *data) {
 					g_snprintf(error_cause, 512, "Missing SDP");
 					goto error;
 				}
+				char error_str[512];
+				janus_sdp *offer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
+				if(offer == NULL) {
+					JANUS_LOG(LOG_ERR, "Error parsing offer: %s\n", error_str);
+					error_code = JANUS_VIDEOCALL_ERROR_INVALID_SDP;
+					g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
+					goto error;
+				}
+				janus_sdp_free(offer);
 				janus_mutex_lock(&sessions_mutex);
 				session->peer = peer;
 				peer->peer = session;
@@ -1240,6 +1260,14 @@ static void *janus_videocall_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing SDP");
 				goto error;
 			}
+			char error_str[512];
+			janus_sdp *answer = janus_sdp_parse(msg_sdp, error_str, sizeof(error_str));
+			if(answer == NULL) {
+				JANUS_LOG(LOG_ERR, "Error parsing answer: %s\n", error_str);
+				error_code = JANUS_VIDEOCALL_ERROR_INVALID_SDP;
+				g_snprintf(error_cause, 512, "Error parsing answer: %s", error_str);
+				goto error;
+			}
 			JANUS_LOG(LOG_VERB, "%s is accepting a call from %s\n", session->username, session->peer->username);
 			JANUS_LOG(LOG_VERB, "This is involving a negotiation (%s) as well:\n%s\n", msg_sdp_type, msg_sdp);
 			session->has_audio = (strstr(msg_sdp, "m=audio") != NULL);
@@ -1262,6 +1290,23 @@ static void *janus_videocall_handler(void *data) {
 					session->peer->ssrc[2] = 0;
 				}
 			}
+			/* Check which codecs we ended up using */
+			janus_sdp_find_first_codecs(answer, &session->acodec, &session->vcodec);
+			if(session->acodec == NULL) {
+				session->has_audio = FALSE;
+				if(session->peer)
+					session->peer->has_audio = FALSE;
+			} else if(session->peer) {
+				session->peer->acodec = session->acodec;
+			}
+			if(session->vcodec == NULL) {
+				session->has_video = FALSE;
+				if(session->peer)
+					session->peer->has_video = FALSE;
+			} else if(session->peer) {
+				session->peer->vcodec = session->vcodec;
+			}
+			janus_sdp_free(answer);
 			/* Send SDP to our peer */
 			json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 			json_t *call = json_object();
@@ -1372,7 +1417,7 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-audio", recording_base);
-							session->arc = janus_recorder_create(NULL, "opus", filename);
+							session->arc = janus_recorder_create(NULL, session->acodec, filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
@@ -1383,7 +1428,7 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(session->peer && session->peer->username) ? session->peer->username : "unknown",
 								now);
-							session->arc = janus_recorder_create(NULL, "opus", filename);
+							session->arc = janus_recorder_create(NULL, session->acodec, filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
@@ -1396,7 +1441,7 @@ static void *janus_videocall_handler(void *data) {
 						if(recording_base) {
 							/* Use the filename and path we have been provided */
 							g_snprintf(filename, 255, "%s-video", recording_base);
-							session->vrc = janus_recorder_create(NULL, "vp8", filename);
+							session->vrc = janus_recorder_create(NULL, session->vcodec, filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
@@ -1407,7 +1452,7 @@ static void *janus_videocall_handler(void *data) {
 								session->username ? session->username : "unknown",
 								(session->peer && session->peer->username) ? session->peer->username : "unknown",
 								now);
-							session->vrc = janus_recorder_create(NULL, "vp8", filename);
+							session->vrc = janus_recorder_create(NULL, session->vcodec, filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
 								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
