@@ -1227,7 +1227,9 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit (%s)\n", handle->handle_id, g_main_loop_is_running(handle->iceloop) ? "running" : "NOT running");
 				g_main_loop_quit(handle->iceloop);
-				g_main_context_wakeup(handle->icectx);
+				if (handle->icectx != NULL) {
+					g_main_context_wakeup(handle->icectx);
+				}
 			}
 		}
 	}
@@ -3417,7 +3419,9 @@ void *janus_ice_send_thread(void *data) {
 			}
 			if(handle->iceloop != NULL && g_main_loop_is_running(handle->iceloop)) {
 				g_main_loop_quit(handle->iceloop);
-				g_main_context_wakeup(handle->icectx);
+				if (handle->icectx != NULL) {
+					g_main_context_wakeup(handle->icectx);
+				}
 			}
 			continue;
 		}
