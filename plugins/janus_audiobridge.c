@@ -1286,9 +1286,11 @@ int janus_audiobridge_init(janus_callbacks *callback, const char *config_path) {
 			GError *error = NULL;
 			char tname[16];
 			g_snprintf(tname, sizeof(tname), "mixer %"SCNu64, audiobridge->room_id);
+			janus_refcount_increase(&audiobridge->ref);
 			audiobridge->thread = g_thread_try_new(tname, &janus_audiobridge_mixer_thread, audiobridge, &error);
 			if(error != NULL) {
 				/* FIXME We should clear some resources... */
+				janus_refcount_decrease(&audiobridge->ref);
 				JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
 			} else {
 				janus_mutex_lock(&rooms_mutex);
@@ -1724,8 +1726,10 @@ struct janus_plugin_result *janus_audiobridge_handle_message(janus_plugin_sessio
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "mixer %"SCNu64, audiobridge->room_id);
+		janus_refcount_increase(&audiobridge->ref);
 		audiobridge->thread = g_thread_try_new(tname, &janus_audiobridge_mixer_thread, audiobridge, &error);
 		if(error != NULL) {
+			janus_refcount_decrease(&audiobridge->ref);
 			janus_mutex_unlock(&rooms_mutex);
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
 			error_code = JANUS_AUDIOBRIDGE_ERROR_UNKNOWN_ERROR;
@@ -2996,8 +3000,10 @@ static void *janus_audiobridge_handler(void *data) {
 				g_snprintf(parttrunc, sizeof(parttrunc), "%"SCNu64, participant->user_id);
 				char tname[16];
 				g_snprintf(tname, sizeof(tname), "mixer %s %s", roomtrunc, parttrunc);
+				janus_refcount_increase(&session->ref);
 				participant->thread = g_thread_try_new(tname, &janus_audiobridge_participant_thread, participant, &error);
 				if(error != NULL) {
+					janus_refcount_decrease(&session->ref);
 					/* FIXME We should fail here... */
 					JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the participant thread...\n", error->code, error->message ? error->message : "??");
 				}
@@ -3788,7 +3794,6 @@ static void *janus_audiobridge_mixer_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "Invalid room!\n");
 		return NULL;
 	}
-	janus_refcount_increase(&audiobridge->ref);
 	JANUS_LOG(LOG_VERB, "Thread is for mixing room %"SCNu64" (%s) at rate %"SCNu32"...\n", audiobridge->room_id, audiobridge->room_name, audiobridge->sampling_rate);
 
 	/* Do we need to record the mix? */
@@ -4087,7 +4092,6 @@ static void *janus_audiobridge_participant_thread(void *data) {
 	}
 	JANUS_LOG(LOG_VERB, "Thread is for participant %"SCNu64" (%s)\n", participant->user_id, participant->display ? participant->display : "??");
 	janus_audiobridge_session *session = participant->session;
-	janus_refcount_increase(&session->ref);
 
 	/* Output buffer */
 	janus_audiobridge_rtp_relay_packet *outpkt = g_malloc0(sizeof(janus_audiobridge_rtp_relay_packet));

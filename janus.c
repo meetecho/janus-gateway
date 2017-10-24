@@ -41,8 +41,8 @@
 
 #define JANUS_NAME				"Janus WebRTC Gateway"
 #define JANUS_AUTHOR			"Meetecho s.r.l."
-#define JANUS_VERSION			25
-#define JANUS_VERSION_STRING	"0.2.5"
+#define JANUS_VERSION			26
+#define JANUS_VERSION_STRING	"0.2.6"
 #define JANUS_SERVER_NAME		"MyJanusInstance"
 
 #ifdef __MACH__
@@ -4069,11 +4069,11 @@ gint main(int argc, char *argv[])
 		janus_config_destroy(config);
 
 	JANUS_LOG(LOG_INFO, "Closing transport plugins:\n");
-	if(transports != NULL) {
+	if(transports != NULL && g_hash_table_size(transports) > 0) {
 		g_hash_table_foreach(transports, janus_transport_close, NULL);
 		g_hash_table_destroy(transports);
 	}
-	if(transports_so != NULL) {
+	if(transports_so != NULL && g_hash_table_size(transports_so) > 0) {
 		g_hash_table_foreach(transports_so, janus_transportso_close, NULL);
 		g_hash_table_destroy(transports_so);
 	}
@@ -4093,22 +4093,22 @@ gint main(int argc, char *argv[])
 	janus_auth_deinit();
 
 	JANUS_LOG(LOG_INFO, "Closing plugins:\n");
-	if(plugins != NULL) {
+	if(plugins != NULL && g_hash_table_size(plugins) > 0) {
 		g_hash_table_foreach(plugins, janus_plugin_close, NULL);
 		g_hash_table_destroy(plugins);
 	}
-	if(plugins_so != NULL) {
+	if(plugins_so != NULL && g_hash_table_size(plugins_so) > 0) {
 		g_hash_table_foreach(plugins_so, janus_pluginso_close, NULL);
 		g_hash_table_destroy(plugins_so);
 	}
 
 	JANUS_LOG(LOG_INFO, "Closing event handlers:\n");
 	janus_events_deinit();
-	if(eventhandlers != NULL) {
+	if(eventhandlers != NULL && g_hash_table_size(eventhandlers) > 0) {
 		g_hash_table_foreach(eventhandlers, janus_eventhandler_close, NULL);
 		g_hash_table_destroy(eventhandlers);
 	}
-	if(eventhandlers_so != NULL) {
+	if(eventhandlers_so != NULL && g_hash_table_size(eventhandlers_so) > 0) {
 		g_hash_table_foreach(eventhandlers_so, janus_eventhandlerso_close, NULL);
 		g_hash_table_destroy(eventhandlers_so);
 	}
@@ -4119,12 +4119,16 @@ gint main(int argc, char *argv[])
 #ifdef REFCOUNT_DEBUG
 	/* Any reference counters that are still up while we're leaving? (debug-mode only) */
 	janus_mutex_lock(&counters_mutex);
-	JANUS_PRINT("Debugging reference counters: %d still allocated\n", g_hash_table_size(counters));
-	GHashTableIter iter;
-	gpointer value;
-	g_hash_table_iter_init(&iter, counters);
-	while(g_hash_table_iter_next(&iter, NULL, &value)) {
-		JANUS_PRINT("  -- %p\n", value);
+	if(counters && g_hash_table_size(counters) > 0) {
+		JANUS_PRINT("Debugging reference counters: %d still allocated\n", g_hash_table_size(counters));
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, counters);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			JANUS_PRINT("  -- %p\n", value);
+		}
+	} else {
+		JANUS_PRINT("Debugging reference counters: 0 still allocated\n");
 	}
 	janus_mutex_unlock(&counters_mutex);
 #endif

@@ -1531,9 +1531,11 @@ static void janus_ice_cb_component_state_changed(NiceAgent *agent, guint stream_
 		GError *error = NULL;
 		char tname[16];
 		g_snprintf(tname, sizeof(tname), "icesend %"SCNu64, handle->handle_id);
+		janus_refcount_increase(&handle->ref);
 		handle->send_thread = g_thread_try_new(tname, &janus_ice_send_thread, handle, &error);
 		if(error != NULL) {
 			/* FIXME We should clear some resources... */
+			janus_refcount_decrease(&handle->ref);
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE send thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 			return;
 		}
@@ -2325,7 +2327,6 @@ void janus_ice_incoming_data(janus_ice_handle *handle, char *buffer, int length)
 /* Thread to create agent */
 void *janus_ice_thread(void *data) {
 	janus_ice_handle *handle = data;
-	janus_refcount_increase(&handle->ref);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread started; %p\n", handle->handle_id, handle);
 	GMainLoop *loop = handle->iceloop;
 	if(loop == NULL) {
@@ -2725,9 +2726,11 @@ int janus_ice_setup_local(janus_ice_handle *handle, int offer, int audio, int vi
 	GError *error = NULL;
 	char tname[16];
 	g_snprintf(tname, sizeof(tname), "iceloop %"SCNu64, handle->handle_id);
+	janus_refcount_increase(&handle->ref);
 	handle->icethread = g_thread_try_new(tname, &janus_ice_thread, handle, &error);
 	if(error != NULL) {
 		/* FIXME We should clear some resources... */
+		janus_refcount_decrease(&handle->ref);
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the ICE thread...\n", handle->handle_id, error->code, error->message ? error->message : "??");
 		janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
 		return -1;
@@ -3332,7 +3335,6 @@ void janus_ice_restart(janus_ice_handle *handle) {
 
 void *janus_ice_send_thread(void *data) {
 	janus_ice_handle *handle = (janus_ice_handle *)data;
-	janus_refcount_increase(&handle->ref);
 	janus_session *session = (janus_session *)handle->session;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE send thread started...; %p\n", handle->handle_id, handle);
 	janus_ice_queued_packet *pkt = NULL;
