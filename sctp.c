@@ -259,10 +259,12 @@ janus_sctp_association *janus_sctp_association_create(void *dtls, uint64_t handl
 	GError *error = NULL;
 	char tname[16];
 	g_snprintf(tname, sizeof(tname), "sctp %"SCNu64, sctp->handle_id);
+	janus_refcount_increase(&sctp->ref);
 	sctp->thread = g_thread_try_new(tname, &janus_sctp_thread, sctp, &error);
 	if(error != NULL) {
 		/* Something went wrong... */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Got error %d (%s) trying to launch the SCTP thread...\n", handle_id, error->code, error->message ? error->message : "??");
+		janus_refcount_decrease(&sctp->ref);	/* This is for the failed thread */
 		janus_refcount_decrease(&sctp->ref);
 		return NULL;
 	}
@@ -1262,7 +1264,6 @@ void *janus_sctp_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_refcount_increase(&sctp->ref);
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Starting thread for SCTP association\n", sctp->handle_id);
 	janus_sctp_message *message = NULL;
 	gboolean sent_data = FALSE;
