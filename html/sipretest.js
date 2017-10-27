@@ -373,7 +373,7 @@ $(document).ready(function() {
 											$('#dtmf').append('<button class="btn btn-info dtmf">*</button>');
 									}
 									$('.dtmf').click(function() {
-										if(adapter.browserDetails.browser === 'chrome') {
+										if(Janus.webRTCAdapter.browserDetails.browser === 'chrome') {
 											// Send DTMF tone (inband)
 											sipcall.dtmf({dtmf: { tones: $(this).text()}});
 										} else {

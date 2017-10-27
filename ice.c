@@ -2270,9 +2270,19 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 						"[session=%"SCNu64"][handle=%"SCNu64"]", session->session_id, handle->handle_id);
 				/* Check if there's an RTCP BYE: in case, let's wrap up */
 				if(janus_rtcp_has_bye(buf, buflen)) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
-					janus_ice_webrtc_hangup(handle, "RTCP BYE");
-					return;
+					/* Firefox 52 sends a broken BYE as part of its first compound packet: to
+					 * "fix" this, we check if we got a BYE too soon, and in case ignore it */
+					gint64 now = janus_get_monotonic_time();
+					if(now - component->dtls->dtls_connected < 500000) {
+						JANUS_LOG(LOG_WARN, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), but it arrived too soon, ignoring...\n",
+							handle->handle_id, stream->stream_id, component->component_id);
+						/* FIXME Should we remove the BYE from the compound packet? */
+					} else {
+						/* Looks like it's a real BYE: hangup the PeerConnection */
+						JANUS_LOG(LOG_VERB, "[%"SCNu64"] Got RTCP BYE on stream %"SCNu16" (component %"SCNu16"), closing...\n", handle->handle_id, stream->stream_id, component->component_id);
+						janus_ice_webrtc_hangup(handle, "RTCP BYE");
+						return;
+					}
 				}
 				/* Is this audio or video? */
 				int video = 0;

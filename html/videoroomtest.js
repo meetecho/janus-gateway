@@ -451,8 +451,10 @@ function newRemoteFeed(id, display, audio, video) {
 				// 'offer_data' properties to false (they're true by default), e.g.:
 				// 		listen["offer_video"] = false;
 				// For example, if the publisher is VP8 and this is Safari, let's avoid video
-				if(video === "vp8" && adapter.browserDetails.browser === "safari") {
-					toastr.warning("Publisher is using VP8, but Safari doesn't support it: disabling video");
+				if(video !== "h264" && Janus.webRTCAdapter.browserDetails.browser === "safari") {
+					if(video)
+						video = video.toUpperCase()
+					toastr.warning("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
 					listen["offer_video"] = false;
 				}
 				remoteFeed.send({"message": listen});
@@ -563,7 +565,7 @@ function newRemoteFeed(id, display, audio, video) {
 					var width = this.videoWidth;
 					var height = this.videoHeight;
 					$('#curres'+remoteFeed.rfindex).removeClass('hide').text(width+'x'+height).show();
-					if(adapter.browserDetails.browser === "firefox") {
+					if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 						// Firefox Stable has a bug: width and height are not immediately available after a playing
 						setTimeout(function() {
 							var width = $("#remotevideo"+remoteFeed.rfindex).get(0).videoWidth;
@@ -583,8 +585,8 @@ function newRemoteFeed(id, display, audio, video) {
 							'<span class="no-video-text" style="font-size: 16px;">No remote video available</span>' +
 						'</div>');
 				}
-				if(adapter.browserDetails.browser === "chrome" || adapter.browserDetails.browser === "firefox" ||
-						adapter.browserDetails.browser === "safari") {
+				if(Janus.webRTCAdapter.browserDetails.browser === "chrome" || Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+						Janus.webRTCAdapter.browserDetails.browser === "safari") {
 					$('#curbitrate'+remoteFeed.rfindex).removeClass('hide').show();
 					bitrateTimer[remoteFeed.rfindex] = setInterval(function() {
 						// Display updated bitrate, if supported
