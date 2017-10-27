@@ -4196,6 +4196,15 @@ static void *janus_videoroom_handler(void *data) {
 				/* Unsubscribe from the previous publisher */
 				janus_videoroom_participant *prev_feed = listener->feed;
 				if(prev_feed) {
+					/* ... but make sure the codecs are compliant first */
+					if(publisher->acodec != prev_feed->acodec || publisher->vcodec != prev_feed->vcodec) {
+						listener->paused = paused;
+						JANUS_LOG(LOG_ERR, "The two publishers are not using the same codecs, can't switch\n");
+						error_code = JANUS_VIDEOROOM_ERROR_INVALID_SDP;
+						g_snprintf(error_cause, 512, "The two publishers are not using the same codecs, can't switch");
+						goto error;
+					}
+					/* Go on */
 					janus_mutex_lock(&prev_feed->listeners_mutex);
 					prev_feed->listeners = g_slist_remove(prev_feed->listeners, listener);
 					janus_mutex_unlock(&prev_feed->listeners_mutex);
