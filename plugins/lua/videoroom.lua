@@ -69,6 +69,11 @@ function destroySession(id)
 	-- A Janus plugin session has gone
 	logger.print("Destroyed session: " .. id)
 	hangupMedia(id)
+	-- Remove the user from the list of participants
+	if s.userId ~= nil then
+		room.participants[s.userId] = nil
+	end
+	s.userId = nil
 	sessions[id] = nil
 end
 
