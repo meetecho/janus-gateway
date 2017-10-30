@@ -285,8 +285,16 @@ function handleMessage(id, tr, msg, jsep)
 						-- Import the room settings
 						s["audioCodec"] = room.audioCodec
 						s["videoCodec"] = room.videoCodec
-						s["bitrate"] = room.bitrate
-						s["pliFreq"] = room.pliFreq
+						if room.bitrate ~= nil then
+							logger.print("Setting bitrate: " .. room.bitrate)
+							setBitrate(id, room.bitrate)
+							s["bitrate"] = room.bitrate
+						end
+						if room.pliFreq ~= nil then
+							logger.print("Setting PLI frequency: " .. room.pliFreq)
+							setPliFreq(id, room.pliFreq)
+							s["pliFreq"] = room.pliFreq
+						end
 						-- Publishers can only send media
 						configureMedium(id, "audio", "out", true)
 						configureMedium(id, "audio", "in", false)
@@ -363,16 +371,6 @@ function handleMessage(id, tr, msg, jsep)
 						elseif comsg["data"] == false then
 							configureMedium(id, "data", "in", false)
 							s["data"] = false
-						end
-						if comsg["bitrate"] ~= nil then
-							logger.print("Setting bitrate: " .. comsg["bitrate"])
-							setBitrate(id, comsg["bitrate"])
-							s["bitrate"] = comsg["bitrate"]
-						end
-						if comsg["fir_freq"] ~= nil then
-							logger.print("Setting PLI frequency: " .. comsg["fir_freq"])
-							setPliFreq(id, comsg["fir_freq"])
-							s["pliFreq"] = comsg["fir_freq"]
 						end
 						-- Prepare offer and send it back
 						local event = { videoroom = "attached", room = roomId, id = feedId, display = f["display"] }
