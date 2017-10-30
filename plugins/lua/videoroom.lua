@@ -70,10 +70,11 @@ function destroySession(id)
 	logger.print("Destroyed session: " .. id)
 	hangupMedia(id)
 	-- Remove the user from the list of participants
-	if s.userId ~= nil then
+	local s = sessions[id]
+	if s~= nil and s.userId ~= nil then
 		room.participants[s.userId] = nil
+		s.userId = nil
 	end
-	s.userId = nil
 	sessions[id] = nil
 end
 
