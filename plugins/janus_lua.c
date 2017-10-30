@@ -1247,6 +1247,10 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	lua_pushstring(t, message_text);
 	lua_pushstring(t, jsep_text);
 	lua_call(t, 4, 2);
+	if(message_text != NULL)
+		free(message_text);
+	if(jsep_text != NULL)
+		free(jsep_text);
 	int n = lua_gettop(t);
 	if(n != 2) {
 		janus_mutex_unlock(&lua_mutex);
