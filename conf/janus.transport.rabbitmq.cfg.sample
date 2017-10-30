@@ -25,6 +25,7 @@ host = localhost			; The address of the RabbitMQ server
 ;vhost = /					; Virtual host to specify when logging in, if needed
 to_janus = to-janus			; Name of the queue for incoming messages
 from_janus = from-janus		; Name of the queue for outgoing messages
+;janus_exchange = janus-exchange ; Exchange for outgoing messages, using default if not provided
 ;ssl_enable = no			; Whether ssl support must be enabled
 ;ssl_verify_peer = yes		; Whether peer verification must be enabled
 ;ssl_verify_hostname = yes	; Whether hostname verification must be enabled
