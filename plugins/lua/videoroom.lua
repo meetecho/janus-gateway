@@ -72,7 +72,13 @@ function destroySession(id)
 	-- Remove the user from the list of participants
 	local s = sessions[id]
 	if s~= nil and s.userId ~= nil then
-		room.participants[s.userId] = nil
+		local room = nil
+		if s.roomId ~= nil then
+			room = rooms[s.roomId]
+		end
+		if room ~= nil then
+			room.participants[s.userId] = nil
+		end
 		s.userId = nil
 	end
 	sessions[id] = nil
