@@ -212,7 +212,7 @@ static gboolean has_incoming_rtp = FALSE;
 static gboolean has_incoming_rtcp = FALSE;
 static gboolean has_incoming_data = FALSE;
 /* Lua C scheduler (for coroutines) */
-static GThread *scheduler_thread;
+static GThread *scheduler_thread = NULL;
 static void *janus_lua_scheduler(void *data);
 static GAsyncQueue *events = NULL;
 typedef enum janus_lua_event {
@@ -220,6 +220,19 @@ typedef enum janus_lua_event {
 	janus_lua_event_resume,		/* Resume one or more pending coroutines */
 	janus_lua_event_exit		/* Break the scheduler loop */
 } janus_lua_event;
+/* Lua timer loop (for scheduled callbacks) */
+static GMainContext *timer_context = NULL;
+static GMainLoop *timer_loop = NULL;
+static GThread *timer_thread = NULL;
+static void *janus_lua_timer(void *data);
+static gboolean janus_lua_timer_cb(void *data);
+typedef struct janus_lua_callback {
+	guint id;
+	uint32_t ms;
+	GSource *source;
+	char *function;
+	char *argument;
+} janus_lua_callback;
 
 
 /* janus_lua_session is defined in janus_lua_data.h, but it's managed here */
@@ -300,11 +313,42 @@ static int janus_lua_method_pokescheduler(lua_State *s) {
 	return 1;
 }
 
+static int janus_lua_method_timecallback(lua_State *s) {
+	/* This method allows the Lua script to schedule a callback after a specified amount of time */
+	int n = lua_gettop(s);
+	if(n != 3) {
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 3)\n", n);
+		lua_pushnumber(s, -1);
+		return 1;
+	}
+	const char *function = lua_tostring(s, 1);
+	if(function == NULL) {
+		JANUS_LOG(LOG_ERR, "Invalid argument (missing function name)\n");
+		lua_pushnumber(s, -1);
+		return 1;
+	}
+	const char *argument = lua_tostring(s, 2);
+	guint32 ms = lua_tonumber(s, 3);
+	/* Create a callback instance */
+	janus_lua_callback *cb = g_malloc0(sizeof(janus_lua_callback));
+	cb->function = g_strdup(function);
+	if(argument != NULL)
+		cb->argument = g_strdup(argument);
+	cb->ms = ms;
+	cb->source = g_timeout_source_new(ms);
+	g_source_set_callback(cb->source, janus_lua_timer_cb, cb, NULL);
+	cb->id = g_source_attach(cb->source, timer_context);
+	JANUS_LOG(LOG_WARN, "Created scheduled callback (%"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	/* Done */
+	lua_pushnumber(s, 0);
+	return 1;
+}
+
 static int janus_lua_method_pushevent(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 4) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -379,7 +423,7 @@ static int janus_lua_method_notifyevent(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 2) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -411,7 +455,7 @@ static int janus_lua_method_closepc(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 1) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 1)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 1)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -451,7 +495,7 @@ static int janus_lua_method_configuremedium(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 4) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -500,7 +544,7 @@ static int janus_lua_method_addrecipient(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 2) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -543,7 +587,7 @@ static int janus_lua_method_removerecipient(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 2) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -590,7 +634,7 @@ static int janus_lua_method_setbitrate(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 2) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -623,7 +667,7 @@ static int janus_lua_method_setplifreq(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 2) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -650,7 +694,7 @@ static int janus_lua_method_sendpli(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 1) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 1)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 1)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -681,7 +725,7 @@ static int janus_lua_method_relayrtp(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 4) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -713,7 +757,7 @@ static int janus_lua_method_relayrtcp(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 4) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 4)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -745,7 +789,7 @@ static int janus_lua_method_relaydata(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 3) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -778,7 +822,7 @@ static int janus_lua_method_startrecording(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 5 && n != 9 && n != 13) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 5, 9 or 13)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 5, 9 or 13)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -871,7 +915,7 @@ static int janus_lua_method_stoprecording(lua_State *s) {
 	/* Get the arguments from the provided state */
 	int n = lua_gettop(s);
 	if(n != 2 && n != 3 && n != 4) {
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2, 3 or 4)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2, 3 or 4)\n", n);
 		lua_pushnumber(s, -1);
 		return 1;
 	}
@@ -981,6 +1025,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 
 	/* Register our functions */
 	lua_register(lua_state, "pokeScheduler", janus_lua_method_pokescheduler);
+	lua_register(lua_state, "timeCallback", janus_lua_method_timecallback);
 	lua_register(lua_state, "pushEvent", janus_lua_method_pushevent);
 	lua_register(lua_state, "notifyEvent", janus_lua_method_notifyevent);
 	lua_register(lua_state, "closePc", janus_lua_method_closepc);
@@ -1030,15 +1075,12 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	lua_getglobal(lua_state, "incomingData");
 	if(lua_isfunction(lua_state, lua_gettop(lua_state)) != 0)
 		has_incoming_data = TRUE;
-	/* Init the Lua script, in case it's needed */
-	lua_State *t = lua_newthread(lua_state);
-	lua_getglobal(t, "init");
-	lua_pushstring(t, lua_config);
-	lua_call(t, 1, 0);
 
 	lua_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)janus_lua_session_destroy);
 	lua_ids = g_hash_table_new(NULL, NULL);
 	events = g_async_queue_new();
+
+	g_atomic_int_set(&lua_initialized, 1);
 
 	/* Launch the scheduler thread (which will be responsible for resuming asynchronous coroutines) */
 	GError *error = NULL;
@@ -1053,14 +1095,37 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 		g_free(lua_config);
 		return -1;
 	}
+	/* Launch the timer loop thread (which will be responsible for scheduling timed callbacks) */
+	timer_context = g_main_context_new();
+	timer_loop = g_main_loop_new(timer_context, FALSE);
+	timer_thread = g_thread_try_new("lua timer", janus_lua_timer, timer_loop, &error);
+	if(error != NULL) {
+		g_atomic_int_set(&lua_initialized, 0);
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Lua timer loop thread...\n",
+			error->code, error->message ? error->message : "??");
+		if(timer_loop != NULL)
+			g_main_loop_unref(timer_loop);
+		if(timer_context != NULL)
+			g_main_context_unref(timer_context);
+		lua_close(lua_state);
+		g_free(lua_folder);
+		g_free(lua_file);
+		g_free(lua_config);
+		return -1;
+	}
+
+	/* This is the callback we'll need to invoke to contact the gateway */
+	janus_core = callback;
+
+	/* Init the Lua script, in case it's needed */
+	lua_State *t = lua_newthread(lua_state);
+	lua_getglobal(t, "init");
+	lua_pushstring(t, lua_config);
+	lua_call(t, 1, 0);
 
 	g_free(lua_folder);
 	g_free(lua_file);
 	g_free(lua_config);
-
-	/* This is the callback we'll need to invoke to contact the gateway */
-	janus_core = callback;
-	g_atomic_int_set(&lua_initialized, 1);
 
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_LUA_NAME);
 	return 0;
@@ -1075,6 +1140,20 @@ void janus_lua_destroy(void) {
 	if(scheduler_thread != NULL) {
 		g_thread_join(scheduler_thread);
 		scheduler_thread = NULL;
+	}
+	if(timer_loop != NULL)
+		g_main_loop_quit(timer_loop);
+	if(timer_thread != NULL) {
+		g_thread_join(timer_thread);
+		timer_thread = NULL;
+	}
+	if(timer_loop != NULL) {
+		g_main_loop_unref(timer_loop);
+		timer_loop = NULL;
+	}
+	if(timer_context != NULL) {
+		g_main_context_unref(timer_context);
+		timer_context = NULL;
 	}
 
 	/* Deinit the Lua script, in case it's needed */
@@ -1254,7 +1333,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	int n = lua_gettop(t);
 	if(n != 2) {
 		janus_mutex_unlock(&lua_mutex);
-		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)", n);
+		JANUS_LOG(LOG_ERR, "Wrong number of arguments: %d (expected 2)\n", n);
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "Lua error", NULL);
 	}
 	/* Check if this is a synchronous or asynchronous response */
@@ -1565,4 +1644,44 @@ static void *janus_lua_scheduler(void *data) {
 	}
 	JANUS_LOG(LOG_VERB, "Leaving Lua scheduler thread\n");
 	return NULL;
+}
+
+/* This is a loop that can be used for timing callbacks, e.g., whenever
+ * the Lua script asks for asynchronously invoking one of its methods
+ * after some time, rather than immediately (which is what the scheduler
+ * would be for instead). Allows for a string parameter to be passed. */
+static void *janus_lua_timer(void *data) {
+	JANUS_LOG(LOG_VERB, "Joining Lua timer loop\n");
+	GMainLoop *loop = (GMainLoop *)data;
+	/* Start loop */
+	g_main_loop_run(loop);
+	/* Done */
+	JANUS_LOG(LOG_VERB, "Leaving Lua timer loop\n");
+	return NULL;
+}
+
+/* Callback to trigger timed callbacks */
+static gboolean janus_lua_timer_cb(void *data) {
+	janus_lua_callback *cb = (janus_lua_callback *)data;
+	if(cb == NULL)
+		return FALSE;
+	/* Invoke the callback with the provided argument, if available */
+	JANUS_LOG(LOG_WARN, "Invoking scheduled callback (waited %"SCNu32"ms) with ID %u\n", cb->ms, cb->id);
+	janus_mutex_lock(&lua_mutex);
+	lua_State *t = lua_newthread(lua_state);
+	lua_getglobal(t, cb->function);
+	if(cb->argument == NULL) {
+		lua_call(t, 0, 0);
+	} else {
+		lua_pushstring(t, cb->argument);
+		lua_call(t, 1, 0);
+	}
+	janus_mutex_unlock(&lua_mutex);
+	/* Done */
+	g_source_destroy(cb->source);
+	g_source_unref(cb->source);
+	g_free(cb->function);
+	g_free(cb->argument);
+	g_free(cb);
+	return FALSE;
 }
