@@ -4063,7 +4063,7 @@ gint main(int argc, char *argv[])
 			g_strfreev(disabled_eventhandlers);
 		disabled_eventhandlers = NULL;
 		/* Initialize the event broadcaster */
-		if(janus_events_init(enable_events, eventhandlers) < 0) {
+		if(janus_events_init(enable_events, (server_name ? server_name : (char *)JANUS_SERVER_NAME), eventhandlers) < 0) {
 			JANUS_LOG(LOG_FATAL, "Error initializing the Event handlers mechanism...\n");
 			exit(1);
 		}
@@ -4333,6 +4333,7 @@ gint main(int argc, char *argv[])
 	if(janus_events_is_enabled()) {
 		json_t *info = json_object();
 		json_object_set_new(info, "status", json_string("started"));
+		json_object_set_new(info, "info", janus_info(NULL));
 		janus_events_notify_handlers(JANUS_EVENT_TYPE_CORE, 0, info);
 	}
 
