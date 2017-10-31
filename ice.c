@@ -8,12 +8,12 @@
  * on. Incoming RTP and RTCP packets from peers are relayed to the associated
  * plugins by means of the incoming_rtp and incoming_rtcp callbacks. Packets
  * to be sent to peers are relayed by peers invoking the relay_rtp and
- * relay_rtcp gateway callbacks instead. 
- * 
+ * relay_rtcp gateway callbacks instead.
+ *
  * \ingroup protocols
  * \ref protocols
  */
- 
+
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -682,7 +682,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 
 	/*! \note The RTP/RTCP port range configuration may be just a placeholder: for
 	 * instance, libnice supports this since 0.1.0, but the 0.1.3 on Fedora fails
-	 * when linking with an undefined reference to \c nice_agent_set_port_range 
+	 * when linking with an undefined reference to \c nice_agent_set_port_range
 	 * so this is checked by the install.sh script in advance. */
 	rtp_range_min = rtp_min_port;
 	rtp_range_max = rtp_max_port;
@@ -711,7 +711,7 @@ void janus_ice_init(gboolean ice_lite, gboolean ice_tcp, gboolean full_trickle, 
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to start handles watchdog...\n", error->code, error->message ? error->message : "??");
 		exit(1);
 	}
-	
+
 #ifdef HAVE_LIBCURL
 	/* Initialize the TURN REST API client stack, whether we're going to use it or not */
 	janus_turnrest_init();
@@ -934,7 +934,7 @@ int janus_ice_set_turn_server(gchar *turn_server, uint16_t turn_port, gchar *tur
 int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_method) {
 #ifndef HAVE_LIBCURL
 	JANUS_LOG(LOG_ERR, "Janus has been nuilt with no libcurl support, TURN REST API unavailable\n");
-	return -1; 
+	return -1;
 #else
 	if(api_server != NULL &&
 			(strstr(api_server, "http://") != api_server && strstr(api_server, "https://") != api_server)) {
@@ -949,7 +949,7 @@ int janus_ice_set_turn_rest_api(gchar *api_server, gchar *api_key, gchar *api_me
 
 
 /* ICE stuff */
-static const gchar *janus_ice_state_name[] = 
+static const gchar *janus_ice_state_name[] =
 {
 	"disconnected",
 	"gathering",
@@ -1695,7 +1695,7 @@ static void janus_ice_cb_new_selected_pair (NiceAgent *agent, guint stream_id, g
 	nice_address_to_string(&(remote->addr), (gchar *)&raddress);
 	lport = nice_address_get_port(&(local->addr));
 	rport = nice_address_get_port(&(remote->addr));
-	const char *ltype = NULL, *rtype = NULL; 
+	const char *ltype = NULL, *rtype = NULL;
 	switch(local->type) {
 		case NICE_CANDIDATE_TYPE_HOST:
 			ltype = "host";
@@ -1936,7 +1936,7 @@ static void janus_ice_cb_new_remote_candidate (NiceAgent *agent, NiceCandidate *
 	char buffer[100];
 	if(candidate->transport == NICE_CANDIDATE_TRANSPORT_UDP) {
 		g_snprintf(buffer, 100,
-			"%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n", 
+			"%s %d %s %d %s %d typ prflx raddr %s rport %d\r\n",
 				candidate->foundation,
 				candidate->component_id,
 				"udp",
@@ -2593,6 +2593,9 @@ static void janus_ice_cb_nice_recv(NiceAgent *agent, guint stream_id, guint comp
 								g_async_queue_push(handle->queued_packets, pkt);
 #endif
 						}
+						if (rtcp_ctx != NULL && in_rb) {
+							g_atomic_int_inc(&rtcp_ctx->nack_count);
+						}
 						list = list->next;
 					}
 					component->retransmit_recent_cnt += retransmits_cnt;
@@ -2888,7 +2891,7 @@ void janus_ice_setup_remote_candidates(janus_ice_handle *handle, guint stream_id
 	}
 	if(!component->candidates || !component->candidates->data) {
 		if(!janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_TRICKLE)
-				|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) { 
+				|| janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALL_TRICKLES)) {
 			JANUS_LOG(LOG_ERR, "[%"SCNu64"] No remote candidates for component %d in stream %d: was the remote SDP parsed?\n", handle->handle_id, component_id, stream_id);
 		}
 		return;
@@ -3929,6 +3932,9 @@ void *janus_ice_send_thread(void *data) {
 									stream->video_first_rtp_ts[0] = timestamp;
 								}
 							}
+							// update sent packets counter
+							rtcp_context *rtcp_ctx = video ? stream->video_rtcp_ctx : stream->audio_rtcp_ctx;
+							g_atomic_int_inc(&rtcp_ctx->sent_packets_since_last_rr);
 						}
 						if(max_nack_queue > 0) {
 							/* Save the packet for retransmissions that may be needed later */
