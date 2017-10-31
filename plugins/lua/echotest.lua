@@ -29,6 +29,11 @@ function init(config)
 		logger.print("Configuration file provided (" .. config .. "), but we don't need it")
 	end
 	logger.print("Initialized")
+	-- Just for fun (and to showcase the feature), let's send an event to handlers:
+	-- notice how the first argument is 0, meaning this event is not tied to any session
+	local event = { event = "loaded", script = name }
+	local eventjson = json.encode(event)
+	notifyEvent(0, eventjson)
 end
 
 function destroy()
@@ -103,6 +108,11 @@ function handleMessage(id, tr, msg, jsep)
 			local jsonjsep = json.encode(jsepanswer)
 			logger.print("  -- " .. jsonjsep)
 			pushEvent(id, tr, jsonevent, jsonjsep)
+			-- Just for fun (and to showcase the feature), let's send an event to handlers
+			-- notice how we pass the id now, meaning this event is tied to a specific session
+			event = { event = "processed", request = comsg }
+			eventjson = json.encode(event)
+			notifyEvent(id, eventjson)
 		end)
 		-- Enqueue it: the scheduler will resume it later
 		tasks[#tasks+1] = { co = async, id = id, tr = tr, msg = msgT, jsep = jsepT }
