@@ -51,9 +51,9 @@ typedef struct janus_recorder {
 	/*! \brief Whether this is a recording of a PERC session (meaning payload will be encrypted) */
 	gboolean perc;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
-	gboolean header;
+	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
-	gboolean writable;
+	volatile int writable;
 	/*! \brief Mutex to lock/unlock this recorder instance */ 
 	janus_mutex mutex;
 } janus_recorder;

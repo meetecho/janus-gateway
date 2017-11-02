@@ -187,7 +187,7 @@ $(document).ready(function() {
 										var width = this.videoWidth;
 										var height = this.videoHeight;
 										$('#curres').removeClass('hide').text(width+'x'+height).show();
-										if(adapter.browserDetails.browser === "firefox") {
+										if(Janus.webRTCAdapter.browserDetails.browser === "firefox") {
 											// Firefox Stable has a bug: width and height are not immediately available after a playing
 											setTimeout(function() {
 												var width = $("#remotevideo").get(0).videoWidth;
@@ -198,9 +198,9 @@ $(document).ready(function() {
 									});
 									var videoTracks = stream.getVideoTracks();
 									if(videoTracks && videoTracks.length &&
-											(adapter.browserDetails.browser === "chrome" ||
-												adapter.browserDetails.browser === "firefox" ||
-												adapter.browserDetails.browser === "safari")) {
+											(Janus.webRTCAdapter.browserDetails.browser === "chrome" ||
+												Janus.webRTCAdapter.browserDetails.browser === "firefox" ||
+												Janus.webRTCAdapter.browserDetails.browser === "safari")) {
 										$('#curbitrate').removeClass('hide').show();
 										bitrateTimer = setInterval(function() {
 											// Display updated bitrate, if supported
