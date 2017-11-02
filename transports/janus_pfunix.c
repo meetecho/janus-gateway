@@ -492,7 +492,11 @@ void *janus_pfunix_thread(void *data) {
 		if(res == 0)
 			continue;
 		if(res < 0) {
-			JANUS_LOG(LOG_ERR, "poll() failed\n");
+			if(errno == EINTR) {
+				JANUS_LOG(LOG_HUGE, "Got an EINTR (%s) polling the Unix Sockets descriptors, ignoring...\n", strerror(errno));
+				continue;
+			}
+			JANUS_LOG(LOG_ERR, "poll() failed: %d (%s)\n", errno, strerror(errno));
 			break;
 		}
 		int i = 0;

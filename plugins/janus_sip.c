@@ -3804,6 +3804,10 @@ static void *janus_sip_relay_thread(void *data) {
 		/* Wait for some data */
 		resfd = poll(fds, num, 1000);
 		if(resfd < 0) {
+			if(errno == EINTR) {
+				JANUS_LOG(LOG_HUGE, "[SIP-%s] Got an EINTR (%s), ignoring...\n", session->account.username, strerror(errno));
+				continue;
+			}
 			JANUS_LOG(LOG_ERR, "[SIP-%s] Error polling...\n", session->account.username);
 			JANUS_LOG(LOG_ERR, "[SIP-%s]   -- %d (%s)\n", session->account.username, errno, strerror(errno));
 			break;
