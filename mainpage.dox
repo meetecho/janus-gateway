@@ -673,6 +673,7 @@ janus.attach(
  * should return a new WebSocket (or something that acts like it)
  * -# \c webRTCAdapter: an \c adapter object such as provided by the
  * <a href="https://github.com/webrtc/adapter">webrtc-adapter</a> library
+ * -# \c newRTCPeerConnection: a function that returns a new RTCPeerConnection instance.
  * -# \c isArray: a function which tests if a given argument is a JavaScript array
  * -# \c checkJanusExtension: a function which tests if the Janus Screensharing extension
  * for Chrome is installed/available. This can be done by testing whether or not an element
