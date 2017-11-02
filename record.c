@@ -160,9 +160,9 @@ janus_recorder *janus_recorder_create(const char *dir, const char *codec, const 
 	rc->type = type;
 	/* Write the first part of the header */
 	fwrite(header, sizeof(char), strlen(header), rc->file);
-	rc->writable = 1;
+	g_atomic_int_set(&rc->writable, 1);
 	/* We still need to also write the info header first */
-	rc->header = 0;
+	g_atomic_int_set(&rc->header, 0);
 	janus_mutex_init(&rc->mutex);
 	return rc;
 }
@@ -179,11 +179,11 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -3;
 	}
-	if(!recorder->writable) {
+	if(!g_atomic_int_get(&recorder->writable)) {
 		janus_mutex_unlock_nodebug(&recorder->mutex);
 		return -4;
 	}
-	if(!recorder->header) {
+	if(!g_atomic_int_get(&recorder->header)) {
 		/* Write info header as a JSON formatted info */
 		json_t *info = json_object();
 		/* FIXME Codecs should be configurable in the future */
@@ -205,7 +205,7 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 		fwrite(info_text, sizeof(char), strlen(info_text), recorder->file);
 		free(info_text);
 		/* Done */
-		recorder->header = 1;
+		g_atomic_int_set(&recorder->header, 1);
 	}
 	/* Write frame header */
 	fwrite(frame_header, sizeof(char), strlen(frame_header), recorder->file);
@@ -233,10 +233,9 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
 }
 
 int janus_recorder_close(janus_recorder *recorder) {
-	if(!recorder || !recorder->writable)
+	if(!recorder || !g_atomic_int_compare_and_exchange(&recorder->writable, 1, 0))
 		return -1;
 	janus_mutex_lock_nodebug(&recorder->mutex);
-	recorder->writable = 0;
 	if(recorder->file) {
 		fseek(recorder->file, 0L, SEEK_END);
 		size_t fsize = ftell(recorder->file);
