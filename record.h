@@ -49,9 +49,9 @@ typedef struct janus_recorder {
 	/*! \brief Media this instance is recording */
 	janus_recorder_medium type;
 	/*! \brief Whether the info header for this recorder instance has already been written or not */
-	int header:1;
+	volatile int header;
 	/*! \brief Whether this recorder instance can be used for writing or not */ 
-	int writable:1;
+	volatile int writable;
 	/*! \brief Mutex to lock/unlock this recorder instance */ 
 	janus_mutex mutex;
 } janus_recorder;
