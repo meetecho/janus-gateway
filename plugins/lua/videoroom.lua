@@ -233,6 +233,11 @@ function handleMessage(id, tr, msg, jsep)
 			end
 		end
 		responsejson = json.encode(response)
+		logger.print(responsejson)
+		if responsejson:find("\"participants\":{}") ~= nil then
+			-- Ugly hack, as lua-json turns our empty array into an empty object
+			responsejson = string.gsub(responsejson, "\"participants\":{}", "\"participants\":[]")
+		end
 		return 0, responsejson
 	else
 		-- Check if it's a request we can handle asynchronously
@@ -317,6 +322,10 @@ function handleMessage(id, tr, msg, jsep)
 							end
 						end
 						eventjson = json.encode(event)
+						if eventjson:find("\"publishers\":{}") ~= nil then
+							-- Ugly hack, as lua-json turns our empty array into an empty object
+							eventjson = string.gsub(eventjson, "\"publishers\":{}", "\"publishers\":[]")
+						end
 						pushEvent(id, tr, eventjson, nil)
 					elseif pType == "subscriber" then
 						-- Setup new subscriber
@@ -582,6 +591,10 @@ function setupMedia(id)
 			video_codec = room.videoCodec
 		}
 		eventjson = json.encode(event)
+		if eventjson:find("\"publishers\":{}") ~= nil then
+			-- Ugly hack, as lua-json turns our empty array into an empty object
+			eventjson = string.gsub(eventjson, "\"publishers\":{}", "\"publishers\":[]")
+		end
 		for index,partId in pairs(room.participants) do
 			local p = sessions[partId]
 			if p ~= nil and p.id ~= id then
