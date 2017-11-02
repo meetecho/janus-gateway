@@ -400,6 +400,16 @@ function publishOwnFeed(useAudio) {
 				Janus.debug("Got publisher SDP!");
 				Janus.debug(jsep);
 				var publish = { "request": "configure", "audio": useAudio, "video": true };
+				// You can force a specific codec to use when publishing by using the
+				// audiocodec and videocodec properties, for instance:
+				// 		publish["audiocodec"] = "opus"
+				// to force Opus as the audio codec to use, or:
+				// 		publish["videocodec"] = "vp9"
+				// to force VP9 as the videocodec to use. In both case, though, forcing
+				// a codec will only work if: (1) the codec is actually in the SDP (and
+				// so the browser supports it), and (2) the codec is in the list of
+				// allowed codecs in a room. With respect to the point (2) above,
+				// refer to the text in janus.plugin.videoroom.cfg for more details
 				sfutest.send({"message": publish, "jsep": jsep});
 			},
 			error: function(error) {
