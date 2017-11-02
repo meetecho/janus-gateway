@@ -240,7 +240,7 @@ if ENABLE_MQTT
 transport_LTLIBRARIES += transports/libjanus_mqtt.la
 transports_libjanus_mqtt_la_SOURCES = transports/janus_mqtt.c
 transports_libjanus_mqtt_la_CFLAGS = $(transports_cflags)
-transports_libjanus_mqtt_la_LDFLAGS = $(transports_ldflags) -lpaho-mqtt3a
+transports_libjanus_mqtt_la_LDFLAGS = $(transports_ldflags) -lpaho-mqtt3as
 transports_libjanus_mqtt_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.mqtt.cfg.sample
 EXTRA_DIST += conf/janus.transport.mqtt.cfg.sample
