@@ -16,6 +16,7 @@
 #include "utils.h"
 
 static gboolean eventsenabled = FALSE;
+static char *server = NULL;
 static GHashTable *eventhandlers = NULL;
 
 static GAsyncQueue *events = NULL;
@@ -24,7 +25,7 @@ static json_t exit_event;
 static GThread *events_thread;
 void *janus_events_thread(void *data);
 
-int janus_events_init(gboolean enabled, GHashTable *handlers) {
+int janus_events_init(gboolean enabled, char *server_name, GHashTable *handlers) {
 	/* We setup a thread for passing events to the handlers */
 	GError *error = NULL;
 	events_thread = g_thread_try_new("janus events thread", janus_events_thread, NULL, &error);
@@ -32,6 +33,8 @@ int janus_events_init(gboolean enabled, GHashTable *handlers) {
 		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Events handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
+	if(server_name != NULL)
+		server = g_strdup(server_name);
 	events = g_async_queue_new();
 	eventhandlers = handlers;
 	eventsenabled = enabled;
@@ -49,6 +52,7 @@ void janus_events_deinit(void) {
 	}
 	if(events != NULL)
 		g_async_queue_unref(events);
+	g_free(server);
 }
 
 gboolean janus_events_is_enabled(void) {
@@ -96,6 +100,8 @@ void janus_events_notify_handlers(int type, guint64 session_id, ...) {
 
 	/* Prepare the event to notify as a Jansson json_t object */
 	json_t *event = json_object();
+	if(server != NULL)
+		json_object_set_new(event, "emitter", json_string(server));
 	json_object_set_new(event, "type", json_integer(type));
 	json_object_set_new(event, "timestamp", json_integer(janus_get_real_time()));
 	if(type != JANUS_EVENT_TYPE_CORE) {			/* Core events don't have a session ID */
