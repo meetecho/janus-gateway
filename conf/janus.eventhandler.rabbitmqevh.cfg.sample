@@ -9,12 +9,12 @@ events = all				; Comma separated list of the events mask you're interested
 grouping = yes				; Whether events should be sent individually , or if it's ok
 							; to group them. The default is 'yes' to limit the number of
 							; messages
-host = 192.168.99.100		; The address of the RabbitMQ server
+host = localhost			; The address of the RabbitMQ server
 ;port = 5672				; The port of the RabbitMQ server (5672 by default)
 ;username = guest			; Username to use to authenticate, if needed
 ;password = guest			; Password to use to authenticate, if needed
 ;vhost = /					; Virtual host to specify when logging in, if needed
-exchange = janus-exchange
+;exchange = janus-exchange
 route_key = janus-events	; Name of the queue for event messages
 
 ;ssl_enable = no			; Whether ssl support must be enabled
