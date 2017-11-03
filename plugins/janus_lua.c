@@ -1315,6 +1315,12 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	/* Processing the message is up to the Lua script: serialize the Jansson objects to strings */
 	char *message_text = message ? json_dumps(message, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
 	json_decref(message);
+	if(message == NULL || message_text == NULL) {
+		JANUS_LOG(LOG_ERR, "Invalid message..?\n");
+		if(jsep != NULL)
+			json_decref(jsep);
+		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
+	}
 	char *jsep_text = jsep ? json_dumps(jsep, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
 	json_decref(jsep);
 	/* Invoke the script function */

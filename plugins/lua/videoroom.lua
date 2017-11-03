@@ -107,6 +107,9 @@ function handleMessage(id, tr, msg, jsep)
 		return -1, "Session not found"
 	end
 	-- Decode the message JSON string to a table
+	if msg == nil then
+		return -1, "Invalid message"
+	end
 	local msgT = json.decode(msg)
 	local jsepT = nil
 	if jsep ~= nil then
