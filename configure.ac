@@ -128,6 +128,8 @@ AC_ARG_ENABLE([all-handlers],
               [
                AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])
+               AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
+                     [enable_rabbitmq_event_handler=no])
               ],
               [])
 
@@ -183,6 +185,13 @@ AC_ARG_ENABLE([sample-event-handler],
               [AS_IF([test "x$enable_sample_event_handler" != "xyes"],
                      [enable_sample_event_handler=no])],
               [enable_sample_event_handler=maybe])
+
+AC_ARG_ENABLE([rabbitmq-event-handler],
+              [AS_HELP_STRING([--disable-rabbitmq-event-handler],
+                              [Disable RabbitMQ event handler ])],
+              [AS_IF([test "x$enable_rabbitmq_event_handler" != "xyes"],
+                     [enable_rabbitmq_event_handler=no])],
+              [enable_rabbitmq_event_handler=maybe])
 
 PKG_CHECK_MODULES([JANUS],
                   [
@@ -397,10 +406,18 @@ AC_CHECK_LIB([rabbitmq],
                   AC_DEFINE(HAVE_RABBITMQ)
                   enable_rabbitmq=yes
                ])
+               AS_IF([test "x$enable_rabbitmq_event_handler" != "xno"],
+               [
+                 AC_DEFINE(HAVE_RABBITMQEVH)
+                 enable_rabbitmq_event_handler=yes
+               ])
+
              ],
              [
                AS_IF([test "x$enable_rabbitmq" = "xyes"],
                      [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq])])
+               AS_IF([test "x$enable_rabbitmq_event_handler" = "xyes"],
+                     [AC_MSG_ERROR([rabbitmq-c not found. See README.md for installation instructions or use --disable-rabbitmq-event-handler])])
              ])
 AC_CHECK_LIB([paho-mqtt3a],
              [MQTTAsync_create],
@@ -416,6 +433,7 @@ AC_CHECK_LIB([paho-mqtt3a],
                      [AC_MSG_ERROR([paho c client not found. See README.md for installation instructions or use --disable-mqtt])])
              ])
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
+AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
 
 AC_TRY_COMPILE([
@@ -784,6 +802,9 @@ echo "Event handlers:"
 AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
+AM_COND_IF([ENABLE_RABBITMQEVH],
+	[echo "    RabbitMQ event handler:yes"],
+	[echo "    RabbitMQ event handler:no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"

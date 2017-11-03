@@ -1314,6 +1314,13 @@ function Janus(gatewayCallbacks) {
 			// For support in Firefox track this: https://bugzilla.mozilla.org/show_bug.cgi?id=797262
 			pc_constraints.optional.push({"googIPv6":true});
 		}
+		// Any custom constraint to add?
+		if(callbacks.rtcConstraints && typeof callbacks.rtcConstraints === 'object') {
+			Janus.debug("Adding custom PeerConnection constraints:", callbacks.rtcConstraints);
+			for(var i in callbacks.rtcConstraints) {
+				pc_constraints.optional.push(callbacks.rtcConstraints[i]);
+			}
+		}
 		if(Janus.webRTCAdapter.browserDetails.browser === "edge") {
 			// This is Edge, enable BUNDLE explicitly
 			pc_config.bundlePolicy = "max-bundle";
