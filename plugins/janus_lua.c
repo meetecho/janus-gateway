@@ -992,7 +992,7 @@ int janus_lua_init(janus_callbacks *callback, const char *config_path) {
 	if(folder && folder->value)
 		lua_folder = g_strdup(folder->value);
 	janus_config_item *script = janus_config_get_item_drilldown(config, "general", "script");
-	if(script == NULL && script->value == NULL) {
+	if(script == NULL || script->value == NULL) {
 		JANUS_LOG(LOG_ERR, "Missing script path in Lua plugin configuration...\n");
 		janus_config_destroy(config);
 		g_free(lua_folder);
