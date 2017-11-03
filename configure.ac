@@ -803,8 +803,8 @@ AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
 AM_COND_IF([ENABLE_RABBITMQEVH],
-  [echo "    RabbitMQ event handler:yes"],
-  [echo "    RabbitMQ event handler:no"])
+	[echo "    RabbitMQ event handler:yes"],
+	[echo "    RabbitMQ event handler:no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"
