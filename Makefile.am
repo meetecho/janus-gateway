@@ -12,7 +12,7 @@ AM_CFLAGS = \
 	-Warray-bounds -Wold-style-definition -Wsign-compare -Wlarger-than=65537
 AM_CFLAGS += -Wno-undef  # sofiasip is not -Wundef--safe
 AM_CFLAGS += -Wno-redundant-decls  # sofiasip also contains redundant declarations
-AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT
+AM_CFLAGS += -Wno-override-init  # we need this for JANUS_PLUGIN_INIT and JANUS_TRANSPORT_INIT and JANUS_EVENTHANDLER_INIT
 # FIXME: These should be enabled once the code is safe for them. That requires
 # some fairly big refactoring though, which can wait.
 # AM_CFLAGS += -Wshadow -Wstrict-aliasing=2
@@ -28,9 +28,17 @@ CLEANFILES = $(NULL)
 bin_PROGRAMS = janus
 
 headerdir = $(includedir)/janus
-header_HEADERS = \
-	plugins/plugin.h transports/transport.h apierror.h config.h debug.h dtls.h \
-	janus.h ice.h mutex.h record.h rtcp.h rtp.h sctp.h sdp.h sdp-utils.h turnrest.h utils.h log.h
+header_HEADERS = apierror.h config.h log.h debug.h mutex.h record.h \
+	rtcp.h rtp.h sdp-utils.h ip-utils.h utils.h text2pcap.h
+
+pluginsheaderdir = $(includedir)/janus/plugins
+pluginsheader_HEADERS = plugins/plugin.h
+
+transportsheaderdir = $(includedir)/janus/transports
+transportsheader_HEADERS = transports/transport.h
+
+eventsheaderdir = $(includedir)/janus/events
+eventsheader_HEADERS = events/eventhandler.h
 
 confdir = $(sysconfdir)/janus
 conf_DATA = conf/janus.cfg.sample
@@ -44,6 +52,9 @@ plugin_LTLIBRARIES = $(NULL)
 transportdir = $(libdir)/janus/transports
 transport_LTLIBRARIES = $(NULL)
 
+eventdir = $(libdir)/janus/events
+event_LTLIBRARIES = $(NULL)
+
 SUBDIRS = html
 html_DATA = README.md
 
@@ -53,6 +64,9 @@ stream_DATA = $(NULL)
 recordingsdir = $(datadir)/janus/recordings
 recordings_DATA = $(NULL)
 
+demosdir = $(datadir)/janus/demos
+demos_DATA = $(NULL)
+
 %.sample: %.sample.in
 	$(MKDIR_P) $(@D)
 	$(AM_V_GEN) sed -e "\
@@ -60,7 +74,9 @@ recordings_DATA = $(NULL)
 	    s|[@]certdir[@]|$(certdir)|;\
 	    s|[@]plugindir[@]|$(plugindir)|;\
 	    s|[@]transportdir[@]|$(transportdir)|;\
+	    s|[@]eventdir[@]|$(eventdir)|;\
 	    s|[@]recordingsdir[@]|$(recordingsdir)|;\
+	    s|[@]demosdir[@]|$(demosdir)|;\
 	    s|[@]streamdir[@]|$(streamdir)|" \
 	$< > $@ || rm $@
 
@@ -85,6 +101,8 @@ janus_SOURCES = \
 	dtls.h \
 	dtls-bio.c \
 	dtls-bio.h \
+	events.c \
+	events.h \
 	ice.c \
 	ice.h \
 	janus.c \
@@ -104,13 +122,20 @@ janus_SOURCES = \
 	sdp.h \
 	sdp-utils.c \
 	sdp-utils.h \
+	ip-utils.c \
+	ip-utils.h \
 	turnrest.c \
 	turnrest.h \
 	utils.c \
 	utils.h \
+	version.c \
+	version.h \
+	text2pcap.c \
+	text2pcap.h \
 	plugins/plugin.c \
 	plugins/plugin.h \
 	transports/transport.h \
+	events/eventhandler.h \
 	$(NULL)
 
 janus_CFLAGS = \
@@ -118,6 +143,7 @@ janus_CFLAGS = \
 	$(JANUS_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
 	-DTRANSPORTDIR=\"$(transportdir)\" \
+	-DEVENTDIR=\"$(eventdir)\" \
 	-DCONFDIR=\"$(confdir)\" \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
@@ -126,16 +152,40 @@ janus_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
-	-lsrtp \
 	$(NULL)
 
-BUILT_SOURCES = cmdline.c cmdline.h
+man1_MANS = janus.1
+
+BUILT_SOURCES = cmdline.c cmdline.h version.c
 
 cmdline.c: janus.ggo
 	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
 
+directory = .git
+dir_target = $(directory)-$(wildcard $(directory))
+dir_present = $(directory)-$(directory)
+dir_absent = $(directory)-
+
+if WITH_SOURCE_DATE_EPOCH
+build_date = $(shell LC_ALL=C date --utc --date="@$(SOURCE_DATE_EPOCH)")
+else
+build_date = $(shell date)
+endif
+
+version.c: FORCE | $(dir_target)
+	echo "$(build_date)" | awk 'BEGIN {} {print "const char *janus_build_git_time = \""$$0"\";"} END {} ' >> version.c
+
+$(dir_present):
+	`which git` rev-parse HEAD | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
+
+$(dir_absent):
+	echo "not-a-git-repo" | awk 'BEGIN {print "#include \"version.h\""} {print "const char *janus_build_git_sha = \"" $$0"\";"} END {}' > version.c
+
+.PHONY: FORCE
+FORCE:
+
 EXTRA_DIST += janus.ggo
-CLEANFILES += cmdline.c cmdline.h
+CLEANFILES += cmdline.c cmdline.h version.c
 
 ##
 # Transports
@@ -200,6 +250,29 @@ transports_libjanus_pfunix_la_LDFLAGS = $(transports_ldflags)
 transports_libjanus_pfunix_la_LIBADD = $(transports_libadd)
 conf_DATA += conf/janus.transport.pfunix.cfg.sample
 EXTRA_DIST += conf/janus.transport.pfunix.cfg.sample
+endif
+
+##
+# Event handlers
+##
+
+events_cflags = \
+	$(AM_CFLAGS) \
+	$(EVENTS_CFLAGS) \
+	$(NULL)
+
+events_libadd = \
+	$(EVENTS_LIBS) \
+	$(NULL)
+
+if ENABLE_SAMPLEEVH
+event_LTLIBRARIES += events/libjanus_sampleevh.la
+events_libjanus_sampleevh_la_SOURCES = events/janus_sampleevh.c
+events_libjanus_sampleevh_la_CFLAGS = $(events_cflags)
+events_libjanus_sampleevh_la_LDFLAGS = $(events_ldflags) -lcurl
+events_libjanus_sampleevh_la_LIBADD = $(events_libadd)
+conf_DATA += conf/janus.eventhandler.sampleevh.cfg.sample
+EXTRA_DIST += conf/janus.eventhandler.sampleevh.cfg.sample
 endif
 
 ##
@@ -307,7 +380,7 @@ plugins_libjanus_voicemail_la_CFLAGS = $(plugins_cflags)
 plugins_libjanus_voicemail_la_LDFLAGS = $(plugins_ldflags) -logg
 plugins_libjanus_voicemail_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.voicemail.cfg.sample
-EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample
+EXTRA_DIST += conf/janus.plugin.voicemail.cfg.sample.in
 endif
 
 if ENABLE_PLUGIN_TEXTROOM
@@ -326,10 +399,13 @@ endif
 
 if ENABLE_POST_PROCESSING
 bin_PROGRAMS += janus-pp-rec
+man1_MANS += postprocessing/janus-pp-rec.1
 
 janus_pp_rec_SOURCES = \
 	postprocessing/pp-g711.c \
 	postprocessing/pp-g711.h \
+	postprocessing/pp-g722.c \
+	postprocessing/pp-g722.h \
 	postprocessing/pp-h264.c \
 	postprocessing/pp-h264.h \
 	postprocessing/pp-opus.c \

@@ -62,6 +62,14 @@ int janus_sdp_process(void *handle, janus_sdp *sdp);
  * @returns 0 in case of success, a non-zero integer in case of an error */
 int janus_sdp_parse_candidate(void *stream, const char *candidate, int trickle);
 
+/*! \brief Method to parse a SSRC group attribute
+ * \details This method will parse a SSRC group attribute, and set the parsed values for the peer
+ * @param[in] stream Opaque pointer to the ICE stream this candidate refers to
+ * @param[in] group_attr The SSRC group attribute value to parse
+ * @param[in] video Whether this is video-related or not
+ * @returns 0 in case of success, a non-zero integer in case of an error */
+int janus_sdp_parse_ssrc_group(void *stream, const char *group_attr, int video);
+
 /*! \brief Method to parse a SSRC attribute
  * \details This method will parse a SSRC attribute, and set it for the peer
  * @param[in] stream Opaque pointer to the ICE stream this candidate refers to

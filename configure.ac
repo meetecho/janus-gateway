@@ -1,4 +1,4 @@
-AC_INIT([Janus Gateway],[0.2.1],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
+AC_INIT([Janus Gateway],[0.2.5],[https://github.com/meetecho/janus-gateway],[janus-gateway],[https://janus.conf.meetecho.com])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -27,7 +27,7 @@ darwin*)
 	AM_CONDITIONAL([HAS_DTLS_WINDOW_SIZE], true)
 esac
 
-glib_version=2.32
+glib_version=2.34
 ssl_version=1.0.1
 
 ##
@@ -40,47 +40,29 @@ AC_ARG_ENABLE([docs],
               [],
               [enable_docs=no])
 
-AC_ARG_ENABLE([rest],
-              [AS_HELP_STRING([--disable-rest],
-                              [Disable REST (HTTP/HTTPS) support])],
-              [],
-              [enable_rest=maybe])
-
-AC_ARG_ENABLE([websockets],
-              [AS_HELP_STRING([--disable-websockets],
-                              [Disable WebSockets support])],
-              [],
-              [enable_websockets=maybe])
-
 AC_ARG_ENABLE([data-channels],
               [AS_HELP_STRING([--disable-data-channels],
                               [Disable DataChannels])],
               [],
               [enable_data_channels=maybe])
 
-AC_ARG_ENABLE([rabbitmq],
-              [AS_HELP_STRING([--disable-rabbitmq],
-                              [Disable RabbitMQ integration])],
-              [],
-              [enable_rabbitmq=maybe])
-
-AC_ARG_ENABLE([mqtt],
-              [AS_HELP_STRING([--disable-mqtt],
-                              [Disable MQTT integration])],
-              [],
-              [enable_mqtt=maybe])
-
-AC_ARG_ENABLE([unix-sockets],
-              [AS_HELP_STRING([--disable-unix-sockets],
-                              [Disable Unix Sockets integration])],
-              [],
-              [enable_unix_sockets=maybe])
-
 AC_ARG_ENABLE([boringssl],
               [AS_HELP_STRING([--enable-boringssl],
                               [Use BoringSSL instead of OpenSSL])],
+              [
+                case "${enableval}" in
+                  yes) boringssl_dir=/opt/boringssl ;;
+                  no)  boringssl_dir= ;;
+                  *) boringssl_dir=${enableval} ;;
+                esac
+              ],
+              [boringssl_dir=])
+
+AC_ARG_ENABLE([libsrtp2],
+              [AS_HELP_STRING([--enable-libsrtp2],
+                              [Use libsrtp 2.0.x instead of libsrtp 1.5.x])],
               [],
-              [enable_boringssl=no])
+              [enable_libsrtp2=maybe])
 
 AC_ARG_ENABLE([dtls-settimeout],
               [AS_HELP_STRING([--enable-dtls-settimeout],
@@ -94,6 +76,99 @@ AC_ARG_ENABLE([turn-rest-api],
               [],
               [enable_turn_rest_api=maybe])
 
+AC_ARG_ENABLE([all-plugins],
+              [AS_HELP_STRING([--disable-all-plugins],
+                              [Disable building all plugins (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_plugin_audiobridge" != "xyes"],
+                     [enable_plugin_audiobridge=no])
+               AS_IF([test "x$enable_plugin_echotest" != "xyes"],
+                     [enable_plugin_echotest=no])
+               AS_IF([test "x$enable_plugin_recordplay" != "xyes"],
+                     [enable_plugin_recordplay=no])
+               AS_IF([test "x$enable_plugin_sip" != "xyes"],
+                     [enable_plugin_sip=no])
+               AS_IF([test "x$enable_plugin_streaming" != "xyes"],
+                     [enable_plugin_streaming=no])
+               AS_IF([test "x$enable_plugin_textroom" != "xyes"],
+                     [enable_plugin_textroom=no])
+               AS_IF([test "x$enable_plugin_videocall" != "xyes"],
+                     [enable_plugin_videocall=no])
+               AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
+                     [enable_plugin_videoroom=no])
+               AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
+                     [enable_plugin_voicemail=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([all-transports],
+              [AS_HELP_STRING([--disable-all-transports],
+                              [Disable building all transports (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_rest" != "xyes"],
+                     [enable_rest=no])
+               AS_IF([test "x$enable_websockets" != "xyes"],
+                     [enable_websockets=no])
+               AS_IF([test "x$enable_rabbitmq" != "xyes"],
+                     [enable_rabbitmq=no])
+               AS_IF([test "x$enable_mqtt" != "xyes"],
+                     [enable_mqtt=no])
+               AS_IF([test "x$enable_unix_sockets" != "xyes"],
+                     [enable_unix_sockets=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([all-handlers],
+              [AS_HELP_STRING([--disable-all-handlers],
+                              [Disable building all event handlers (except those manually enabled)])],
+              [
+               AS_IF([test "x$enable_sample_event_handler" != "xyes"],
+                     [enable_sample_event_handler=no])
+              ],
+              [])
+
+AC_ARG_ENABLE([rest],
+              [AS_HELP_STRING([--disable-rest],
+                              [Disable REST (HTTP/HTTPS) support])],
+              [AS_IF([test "x$enable_rest" != "xyes"],
+                     [enable_rest=no])],
+              [enable_rest=maybe])
+
+AC_ARG_ENABLE([websockets],
+              [AS_HELP_STRING([--disable-websockets],
+                              [Disable WebSockets support])],
+              [AS_IF([test "x$enable_websockets" != "xyes"],
+                     [enable_websockets=no])],
+              [enable_websockets=maybe])
+
+AC_ARG_ENABLE([rabbitmq],
+              [AS_HELP_STRING([--disable-rabbitmq],
+                              [Disable RabbitMQ integration])],
+              [AS_IF([test "x$enable_rabbitmq" != "xyes"],
+                     [enable_rabbitmq=no])],
+              [enable_rabbitmq=maybe])
+
+AC_ARG_ENABLE([mqtt],
+              [AS_HELP_STRING([--disable-mqtt],
+                              [Disable MQTT integration])],
+              [AS_IF([test "x$enable_mqtt" != "xyes"],
+                     [enable_mqtt=no])],
+              [enable_mqtt=maybe])
+
+AC_ARG_ENABLE([unix-sockets],
+              [AS_HELP_STRING([--disable-unix-sockets],
+                              [Disable Unix Sockets integration])],
+              [AS_IF([test "x$enable_unix_sockets" != "xyes"],
+                     [enable_unix_sockets=no])],
+              [enable_unix_sockets=maybe])
+
+AC_ARG_ENABLE([sample-event-handler],
+              [AS_HELP_STRING([--disable-sample-event-handler],
+                              [Disable sample event handler (HTTP POST) ])],
+              [AS_IF([test "x$enable_sample_event_handler" != "xyes"],
+                     [enable_sample_event_handler=no])],
+              [enable_sample_event_handler=maybe])
+
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
@@ -105,24 +180,32 @@ PKG_CHECK_MODULES([JANUS],
 JANUS_MANUAL_LIBS+=" -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
 
-AS_IF([test "x$enable_boringssl" = "xyes"],
+AS_IF([test "x${boringssl_dir}" != "x"],
 	  [echo "Trying to use BoringSSL instead of OpenSSL...";
-	   CFLAGS="$CFLAGS -I/opt/boringssl/include";
-	   BORINGSSL_CFLAGS=" -I/opt/boringssl/include";
+	   AC_MSG_NOTICE([BoringSSL directory is ${boringssl_dir}])
+	   CFLAGS="$CFLAGS -I${boringssl_dir}/include";
+	   BORINGSSL_CFLAGS=" -I${boringssl_dir}/include";
        AC_SUBST(BORINGSSL_CFLAGS)
-	   BORINGSSL_LIBS=" -L/opt/boringssl/lib";
+	   BORINGSSL_LIBS=" -L${boringssl_dir}/lib";
        AC_SUBST(BORINGSSL_LIBS)
-	   AC_CHECK_HEADERS([openssl/opensslconf.h],
-	                    [],
-	                    [AC_MSG_ERROR([BoringSSL headers not found in /opt/boringssl, use --disable-boringssl if you want to use OpenSSL instead])])
+	   AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
+	                    [AC_DEFINE(HAVE_BORINGSSL)],
+	                    [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}, use --disable-boringssl if you want to use OpenSSL instead])])
       ])
-AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x$enable_boringssl" = "xyes"])
+AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x${boringssl_dir}" != "x"])
 
 AS_IF([test "x$enable_dtls_settimeout" = "xyes"],
       [
       AC_DEFINE(HAVE_DTLS_SETTIMEOUT)
       AC_MSG_NOTICE([Assuming DTLSv1_set_initial_timeout_duration is available])
       ])
+AM_CONDITIONAL([ENABLE_DTLS_SETTIMEOUT], [test "x$enable_dtls_settimeout" = "xyes"])
+
+AC_CHECK_LIB([crypto],
+             [RAND_egd],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], false)],
+             [AM_CONDITIONAL([LIBRESSL_DETECTED], true)]
+             )
 
 AC_CHECK_LIB([nice],
              [nice_agent_set_port_range],
@@ -141,10 +224,47 @@ AC_CHECK_LIB([dl],
              [JANUS_MANUAL_LIBS+=" -ldl"],
              [AC_MSG_ERROR([libdl not found.])])
 
-AC_CHECK_LIB([srtp],
-             [srtp_init],
-             [JANUS_MANUAL_LIBS+=" -lsrtp"],
-             [AC_MSG_ERROR([libsrtp not found.])])
+AM_CONDITIONAL([ENABLE_LIBSRTP_2], false)
+AS_IF([test "x$enable_libsrtp2" != "xno"],
+      [AC_CHECK_LIB([srtp2],
+                    [srtp_init],
+                    [
+                      AC_CHECK_HEADER([srtp2/srtp.h],
+                                      [
+                                        AC_DEFINE(HAVE_SRTP_2)
+                                        JANUS_MANUAL_LIBS+=" -lsrtp2"
+                                        enable_libsrtp2=yes
+                                        AM_CONDITIONAL([ENABLE_LIBSRTP_2], true)
+                                      ],
+                                      [
+                                        AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                                              [AC_MSG_ERROR([libsrtp2 headers not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                                      ])
+                    ],
+                    [
+                      AS_IF([test "x$enable_libsrtp2" = "xyes"],
+                            [AC_MSG_ERROR([libsrtp2 not found. See README.md for installation instructions or use --disable-libsrtp-2 to try and autodetect libsrtp 1.5.x instead])])
+                    ])
+      ])
+AM_COND_IF([ENABLE_LIBSRTP_2],
+           [],
+           [AC_CHECK_LIB([srtp],
+                         [srtp_init],
+                         [
+                           AC_CHECK_HEADER([srtp/srtp.h],
+                                           [
+                                             JANUS_MANUAL_LIBS+=" -lsrtp"
+                                             enable_libsrtp2=no
+                                             PKG_CHECK_MODULES([SRTP15X],
+                                                               [
+                                                                 libsrtp >= 1.5.0
+                                                               ])
+
+                                           ],
+                                           [AC_MSG_ERROR([libsrtp and libsrtp2 headers not found. See README.md for installation instructions])])
+                         ],
+                         [AC_MSG_ERROR([libsrtp and libsrtp2 not found. See README.md for installation instructions])])
+           ])
 
 AC_CHECK_LIB([usrsctp],
              [usrsctp_finish],
@@ -172,12 +292,21 @@ PKG_CHECK_MODULES([LIBCURL],
                         JANUS_MANUAL_LIBS+=" -lcurl"
                         enable_turn_rest_api=yes
                       ])
+                    AS_IF([test "x$enable_sample_event_handler" != "xno"],
+                      [
+                        AC_DEFINE(HAVE_SAMPLEEVH)
+                        JANUS_MANUAL_LIBS+=" -lcurl"
+                        enable_sample_event_handler=yes
+                      ])
                   ],
                   [
                     AS_IF([test "x$enable_turn_rest_api" = "xyes"],
-                          [AC_MSG_ERROR([libcurl not found not found. See README.md for installation instructions or use --disable-turn-rest-api])])
+                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-turn-rest-api])])
+                    AS_IF([test "x$enable_sample_event_handler" = "xyes"],
+                          [AC_MSG_ERROR([libcurl not found. See README.md for installation instructions or use --disable-sample-event-handler])])
                   ])
 AM_CONDITIONAL([ENABLE_TURN_REST_API], [test "x$enable_turn_rest_api" = "xyes"])
+AM_CONDITIONAL([ENABLE_SAMPLEEVH], [test "x$enable_sample_event_handler" = "xyes"])
 
 AC_CHECK_PROG([DOXYGEN],
               [doxygen],
@@ -224,35 +353,24 @@ AC_SUBST([MHD_CFLAGS])
 AC_SUBST([MHD_LIBS])
 AM_CONDITIONAL([ENABLE_REST], [test "x$enable_rest" = "xyes"])
 
-AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], false)
 AC_CHECK_LIB([websockets],
-             [libwebsocket_create_context],
-             [
-               AS_IF([test "x$enable_websockets" != "xno"],
-               [
-                  AC_DEFINE(HAVE_WEBSOCKETS)
-                  WS_MANUAL_LIBS="-lwebsockets"
-                  enable_websockets=yes
-               ])
-             ],
-             [
-				AC_CHECK_LIB([websockets],
-							 [lws_create_context],
-							 [
-							   AS_IF([test "x$enable_websockets" != "xno"],
-							   [
-								  AC_DEFINE(HAVE_WEBSOCKETS)
-								  AC_DEFINE(HAVE_LIBWEBSOCKETS_NEWAPI)
-								  AM_CONDITIONAL([ENABLE_WEBSOCKETS_NEWAPI], true)
-								  WS_MANUAL_LIBS="-lwebsockets"
-								  enable_websockets=yes
-							   ])
-							 ],
-							 [
-							   AS_IF([test "x$enable_websockets" = "xyes"],
-									 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
-							 ])
-             ])
+			 [lws_create_vhost],
+			 [
+			   AS_IF([test "x$enable_websockets" != "xno"],
+			   [
+				  AC_DEFINE(HAVE_WEBSOCKETS)
+				  WS_MANUAL_LIBS="-lwebsockets"
+				  enable_websockets=yes
+				  AC_CHECK_LIB([websockets],
+							   [lws_get_peer_simple],
+							   [AC_DEFINE(HAVE_LIBWEBSOCKETS_PEER_SIMPLE)]
+							  )
+			   ])
+			 ],
+			 [
+			   AS_IF([test "x$enable_websockets" = "xyes"],
+					 [AC_MSG_ERROR([libwebsockets not found. See README.md for installation instructions or use --disable-websockets])])
+			 ])
 AM_CONDITIONAL([ENABLE_WEBSOCKETS], [test "x$enable_websockets" = "xyes"])
 AC_SUBST(WS_MANUAL_LIBS)
 
@@ -322,56 +440,65 @@ PKG_CHECK_MODULES([PLUGINS],
 AC_ARG_ENABLE([plugin-audiobridge],
               [AS_HELP_STRING([--disable-plugin-audiobridge],
                               [Disable audiobridge plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_audiobridge" != "xyes"],
+                     [enable_plugin_audiobridge=no])],
               [enable_plugin_audiobridge=maybe])
 
 AC_ARG_ENABLE([plugin-echotest],
               [AS_HELP_STRING([--disable-plugin-echotest],
                               [Disable echotest plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_echotest" != "xyes"],
+                     [enable_plugin_echotest=no])],
               [enable_plugin_echotest=yes])
 
 AC_ARG_ENABLE([plugin-recordplay],
               [AS_HELP_STRING([--disable-plugin-recordplay],
                               [Disable record&play plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_recordplay" != "xyes"],
+                     [enable_plugin_recordplay=no])],
               [enable_plugin_recordplay=yes])
 
 AC_ARG_ENABLE([plugin-sip],
               [AS_HELP_STRING([--disable-plugin-sip],
                               [Disable sip plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_sip" != "xyes"],
+                     [enable_plugin_sip=no])],
               [enable_plugin_sip=maybe])
 
 AC_ARG_ENABLE([plugin-streaming],
               [AS_HELP_STRING([--disable-plugin-streaming],
                               [Disable streaming plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_streaming" != "xyes"],
+                     [enable_plugin_streaming=no])],
               [enable_plugin_streaming=yes])
+
+AC_ARG_ENABLE([plugin-textroom],
+              [AS_HELP_STRING([--disable-plugin-textroom],
+                              [Disable textroom plugin])],
+              [AS_IF([test "x$enable_plugin_textroom" != "xyes"],
+                     [enable_plugin_textroom=no])],
+              [enable_plugin_textroom=yes])
 
 AC_ARG_ENABLE([plugin-videocall],
               [AS_HELP_STRING([--disable-plugin-videocall],
                               [Disable videocall plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_videocall" != "xyes"],
+                     [enable_plugin_videocall=no])],
               [enable_plugin_videocall=yes])
 
 AC_ARG_ENABLE([plugin-videoroom],
               [AS_HELP_STRING([--disable-plugin-videoroom],
                               [Disable videoroom plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_videoroom" != "xyes"],
+                     [enable_plugin_videoroom=no])],
               [enable_plugin_videoroom=yes])
 
 AC_ARG_ENABLE([plugin-voicemail],
               [AS_HELP_STRING([--disable-plugin-voicemail],
                               [Disable voicemail plugin])],
-              [],
+              [AS_IF([test "x$enable_plugin_voicemail" != "xyes"],
+                     [enable_plugin_voicemail=no])],
               [enable_plugin_voicemail=maybe])
-
-AC_ARG_ENABLE([plugin-textroom],
-              [AS_HELP_STRING([--disable-plugin-textroom],
-                              [Disable textroom plugin])],
-              [],
-              [enable_plugin_textroom=yes])
 
 PKG_CHECK_MODULES([SOFIA],
                   [sofia-sip-ua],
@@ -381,7 +508,7 @@ PKG_CHECK_MODULES([SOFIA],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_sip" = "xyes"],
-                          [AC_MSG_ERROR([sofia-sip-ua not found not found. See README.md for installation instructions or use --disable-plugin-sip])])
+                          [AC_MSG_ERROR([sofia-sip-ua not found. See README.md for installation instructions or use --disable-plugin-sip])])
                   ])
 AC_SUBST([SOFIA_CFLAGS])
 AC_SUBST([SOFIA_LIBS])
@@ -394,7 +521,7 @@ PKG_CHECK_MODULES([OPUS],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_audiobridge" = "xyes"],
-                          [AC_MSG_ERROR([libopus not found not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
+                          [AC_MSG_ERROR([libopus not found. See README.md for installation instructions or use --disable-plugin-audiobridge])])
                   ])
 AC_SUBST([OPUS_CFLAGS])
 AC_SUBST([OPUS_LIBS])
@@ -407,7 +534,7 @@ PKG_CHECK_MODULES([OGG],
                   ],
                   [
                     AS_IF([test "x$enable_plugin_voicemail" = "xyes"],
-                          [AC_MSG_ERROR([libogg not found not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
+                          [AC_MSG_ERROR([libogg not found. See README.md for installation instructions or use --disable-plugin-voicemail])])
                   ])
 AC_SUBST([OGG_CFLAGS])
 AC_SUBST([OGG_LIBS])
@@ -421,6 +548,18 @@ AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "x
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
+
+
+##
+# Event handlers
+##
+
+PKG_CHECK_MODULES([EVENTS],
+                  [
+                    glib-2.0 >= $glib_version
+                    jansson
+                  ])
+
 
 ##
 # Post-processing
@@ -444,6 +583,7 @@ AS_IF([test "x$enable_post_processing" = "xyes"],
                          ])
       ])
 
+AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
 AM_CONDITIONAL([ENABLE_POST_PROCESSING], [test "x$enable_post_processing" = "xyes"])
 
 AC_CONFIG_FILES([
@@ -461,12 +601,22 @@ AC_OUTPUT
 ##
 echo
 
+AM_COND_IF([ENABLE_LIBSRTP_2],
+	[echo "libsrtp version:           2.0.x"],
+	[echo "libsrtp version:           1.5.x"])
+AM_COND_IF([ENABLE_BORINGSSL],
+	[echo "SSL/crypto library:        BoringSSL"
+	 AM_COND_IF([ENABLE_DTLS_SETTIMEOUT],
+		[echo "DTLS set-timeout:          yes"],
+		[echo "DTLS set-timeout:          no"])
+	],
+	[AM_COND_IF([LIBRESSL_DETECTED],
+		[echo "SSL/crypto library:        LibreSSL"],
+		[echo "SSL/crypto library:        OpenSSL"])
+	 echo "DTLS set-timeout:          not available"])
 AM_COND_IF([ENABLE_SCTP],
 	[echo "DataChannels support:      yes"],
 	[echo "DataChannels support:      no"])
-AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "BoringSSL (no OpenSSL):    yes"],
-	[echo "BoringSSL (no OpenSSL):    no"])
 AM_COND_IF([ENABLE_POST_PROCESSING],
 	[echo "Recordings post-processor: yes"],
 	[echo "Recordings post-processor: no"])
@@ -481,11 +631,7 @@ AM_COND_IF([ENABLE_REST],
 	[echo "    REST (HTTP/HTTPS):     yes"],
 	[echo "    REST (HTTP/HTTPS):     no"])
 AM_COND_IF([ENABLE_WEBSOCKETS],
-	[
-     AM_COND_IF([ENABLE_WEBSOCKETS_NEWAPI],
-		[echo "    WebSockets:            yes (new API)"],
-		[echo "    WebSockets:            yes (old API)"])
-	],
+	[echo "    WebSockets:            yes"],
 	[echo "    WebSockets:            no"])
 AM_COND_IF([ENABLE_RABBITMQ],
 	[echo "    RabbitMQ:              yes"],
@@ -524,6 +670,10 @@ AM_COND_IF([ENABLE_PLUGIN_RECORDPLAY],
 AM_COND_IF([ENABLE_PLUGIN_TEXTROOM],
 	[echo "    Text Room:             yes"],
 	[echo "    Text Room:             no"])
+echo "Event handlers:"
+AM_COND_IF([ENABLE_SAMPLEEVH],
+	[echo "    Sample event handler:  yes"],
+	[echo "    Sample event handler:  no"])
 
 echo
 echo "If this configuration is ok for you, do a 'make' to start building Janus. A 'make install' will install Janus and its plugins to the specified prefix. Finally, a 'make configs' will install some sample configuration files too (something you'll only want to do the first time, though)."

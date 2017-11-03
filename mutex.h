@@ -19,6 +19,8 @@ extern int lock_debug;
 typedef pthread_mutex_t janus_mutex;
 /*! \brief Janus mutex initialization */
 #define janus_mutex_init(a) pthread_mutex_init(a,NULL)
+/*! \brief Janus static mutex initializer */
+#define JANUS_MUTEX_INITIALIZER PTHREAD_MUTEX_INITIALIZER
 /*! \brief Janus mutex destruction */
 #define janus_mutex_destroy(a) pthread_mutex_destroy(a)
 /*! \brief Janus mutex lock without debug */

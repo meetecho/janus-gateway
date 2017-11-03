@@ -50,6 +50,8 @@ else
 
 var janus = null;
 var textroom = null;
+var opaqueId = "textroomtest-"+Janus.randomString(12);
+
 var started = false;
 
 var myroom = 1234;	// Demo room
@@ -81,6 +83,7 @@ $(document).ready(function() {
 						janus.attach(
 							{
 								plugin: "janus.plugin.textroom",
+								opaqueId: opaqueId,
 								success: function(pluginHandle) {
 									$('#details').remove();
 									textroom = pluginHandle;
@@ -105,7 +108,7 @@ $(document).ready(function() {
 								},
 								onmessage: function(msg, jsep) {
 									Janus.debug(" ::: Got a message :::");
-									Janus.debug(JSON.stringify(msg));
+									Janus.debug(msg);
 									if(msg["error"] !== undefined && msg["error"] !== null) {
 										bootbox.alert(msg["error"]);
 									}
@@ -188,7 +191,22 @@ $(document).ready(function() {
 										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' left</i></p>');
 										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
 										delete participants[username];
+									} else if(what === "kicked") {
+										// Somebody was kicked
+										var username = json["username"];
+										var when = new Date();
+										$('#rp' + username).remove();
+										$('#chatroom').append('<p style="color: green;">[' + getDateString() + '] <i>' + participants[username] + ' was kicked from the room</i></p>');
+										$('#chatroom').get(0).scrollTop = $('#chatroom').get(0).scrollHeight;
+										delete participants[username];
+										if(username === myid) {
+											bootbox.alert("You have been kicked from the room", function() {
+												window.location.reload();
+											});
+										}
 									} else if(what === "destroyed") {
+										if(json["room"] !== myroom)
+											return;
 										// Room was destroyed, goodbye!
 										Janus.warn("The room has been destroyed!");
 										bootbox.alert("The room has been destroyed", function() {
@@ -260,7 +278,17 @@ function registerUsername() {
 		transactions[transaction] = function(response) {
 			if(response["textroom"] === "error") {
 				// Something went wrong
-				bootbox.alert(response["error"]);
+				if(response["error_code"] === 417) {
+					// This is a "no such room" error: give a more meaningful description
+					bootbox.alert(
+						"<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
+						"does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.cfg</code> " +
+						"configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
+						"from that sample in your current configuration file, then restart Janus and try again."
+					);
+				} else {
+					bootbox.alert(response["error"]);
+				}
 				$('#username').removeAttr('disabled').val("");
 				$('#register').removeAttr('disabled').click(registerUsername);
 				return;
