@@ -150,6 +150,7 @@ typedef struct janus_rtp_switching_context {
 	uint16_t a_last_seq, a_base_seq, a_base_seq_prev,
 			v_last_seq, v_base_seq, v_base_seq_prev;
 	gboolean a_seq_reset, v_seq_reset;
+	gint64 a_last_time, v_last_time;
 } janus_rtp_switching_context;
 
 /*! \brief Set (or reset) the context fields to their default values
@@ -160,7 +161,7 @@ void janus_rtp_switching_context_reset(janus_rtp_switching_context *context);
  * @param[in] header The RTP header to update
  * @param[in] context The context to use as a reference
  * @param[in] video Whether this is an audio or a video packet
- * @param[in] step The expected timestamp step */
+ * @param[in] step \b deprecated The expected timestamp step */
 void janus_rtp_header_update(janus_rtp_header *header, janus_rtp_switching_context *context, gboolean video, int step);
 
 #endif
