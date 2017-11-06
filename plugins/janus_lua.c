@@ -559,8 +559,10 @@ static int janus_lua_method_addrecipient(lua_State *s) {
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
+	janus_mutex_lock(&session->recipients_mutex);
 	janus_lua_session *recipient = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(rid));
 	if(recipient == NULL || g_atomic_int_get(&recipient->destroyed)) {
+		janus_mutex_unlock(&session->recipients_mutex);
 		janus_refcount_decrease(&session->ref);
 		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
@@ -568,7 +570,6 @@ static int janus_lua_method_addrecipient(lua_State *s) {
 	}
 	janus_refcount_increase(&recipient->ref);
 	/* Add to the list of recipients */
-	janus_mutex_lock(&session->recipients_mutex);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	if(g_slist_find(session->recipients, recipient) == NULL) {
 		janus_refcount_increase(&session->ref);
@@ -602,8 +603,10 @@ static int janus_lua_method_removerecipient(lua_State *s) {
 		return 1;
 	}
 	janus_refcount_increase(&session->ref);
+	janus_mutex_lock(&session->recipients_mutex);
 	janus_lua_session *recipient = g_hash_table_lookup(lua_ids, GUINT_TO_POINTER(rid));
 	if(recipient == NULL) {
+		janus_mutex_unlock(&session->recipients_mutex);
 		janus_refcount_decrease(&session->ref);
 		janus_mutex_unlock(&lua_sessions_mutex);
 		lua_pushnumber(s, -1);
@@ -611,7 +614,6 @@ static int janus_lua_method_removerecipient(lua_State *s) {
 	}
 	janus_refcount_increase(&recipient->ref);
 	/* Remove from the list of recipients */
-	janus_mutex_lock(&session->recipients_mutex);
 	janus_mutex_unlock(&lua_sessions_mutex);
 	gboolean unref = FALSE;
 	if(g_slist_find(session->recipients, recipient) != NULL) {
@@ -1262,9 +1264,6 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	guint32 id = session->id;
 	JANUS_LOG(LOG_VERB, "Removing Lua session %"SCNu32"...\n", id);
-	janus_mutex_lock(&lua_sessions_mutex);
-	g_hash_table_remove(lua_sessions, handle);
-	janus_mutex_unlock(&lua_sessions_mutex);
 
 	/* Notify the Lua script */
 	janus_mutex_lock(&lua_mutex);
@@ -1273,6 +1272,23 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	lua_pushnumber(t, id);
 	lua_call(t, 1, 0);
 	janus_mutex_unlock(&lua_mutex);
+
+	/* Get any rid references recipients of this sessions may have */
+	janus_mutex_lock(&session->recipients_mutex);
+	while(session->recipients != NULL) {
+		janus_lua_session *recipient = (janus_lua_session *)session->recipients->data;
+		if(recipient != NULL) {
+			janus_refcount_decrease(&session->ref);
+			janus_refcount_decrease(&recipient->ref);
+		}
+		session->recipients = g_slist_remove(session->recipients, recipient);
+	}
+	janus_mutex_unlock(&session->recipients_mutex);
+
+	/* Finally, remove from the hashtable */
+	janus_mutex_lock(&lua_sessions_mutex);
+	g_hash_table_remove(lua_sessions, handle);
+	janus_mutex_unlock(&lua_sessions_mutex);
 
 	return;
 }
