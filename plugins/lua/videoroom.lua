@@ -662,7 +662,7 @@ function resumeScheduler()
 	-- expects this method to exist so it MUST be present, even if empty
 	logger.print("Resuming coroutines")
 	for index,task in ipairs(tasks) do
-		local success, result = pcall(coroutine.resume(task.co, task.id, task.tr, task.msg, task.jsep))
+		local success, result = coroutine.resume(task.co, task.id, task.tr, task.msg, task.jsep)
 		if not success then
 			logger.print(colors("[%{red}exception%{reset}]") .. " " .. dumpTable(result))
 		end
