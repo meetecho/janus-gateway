@@ -91,10 +91,10 @@ function querySession(id)
 	if s == nil then
 		return nil
 	end
-	info = { script = s["lua"], id = s["id"], display = s["display"],
+	local info = { script = s["lua"], id = s["id"], display = s["display"],
 		room = s["roomId"], ptype = s["pType"], user = s["userId"], feed = s["feedId"],
 		audio = s["audio"], video = s["video"], data = s["data"], bitrate = s["bitrate"] }
-	infojson = json.encode(info)
+	local infojson = json.encode(info)
 	return infojson
 end
 
@@ -142,7 +142,7 @@ function handleMessage(id, tr, msg, jsep)
 		local pliFreq = msgT["fir_freq"]
 		if rooms[roomId] ~= nil then
 			local response = { videoroom = "error", error_code = JANUS_VIDEOROOM_ERROR_ROOM_EXISTS, error = "Room exists" }
-			responsejson = json.encode(response)
+			local responsejson = json.encode(response)
 			return 0, responsejson
 		end
 		rooms[roomId] = {
@@ -157,7 +157,7 @@ function handleMessage(id, tr, msg, jsep)
 			participants = {}
 		}
 		local response = { videoroom = "created", room = roomId }
-		responsejson = json.encode(response)
+		local responsejson = json.encode(response)
 		return 0, responsejson
 	elseif request == "destroy" then
 		-- Destroy an existing room
@@ -166,12 +166,12 @@ function handleMessage(id, tr, msg, jsep)
 		local room = rooms[roomId]
 		if room == nil then
 			local error = { videoroom = "error", error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM, error = "No such room" }
-			responsejson = json.encode(error)
+			local responsejson = json.encode(error)
 			return 0, responsejson
 		end
 		if room.secret ~= nil and room.secret ~= msgT["secret"] then
 			local error = { videoroom = "error", error_code = JANUS_VIDEOROOM_ERROR_UNAUTHORIZED, error = "Unauthorized (wrong secret)" }
-			responsejson = json.encode(error)
+			local responsejson = json.encode(error)
 			return 0, responsejson
 		end
 		-- Kick users
@@ -181,7 +181,7 @@ function handleMessage(id, tr, msg, jsep)
 			if p ~= nil then
 				-- Notify user
 				logger.print("Notifying user: " .. p.id)
-				eventjson = json.encode(event)
+				local eventjson = json.encode(event)
 				pushEvent(p.id, nil, eventjson, nil)
 				-- Close the PeerConnection, if any
 				if p.started == true then
@@ -194,13 +194,13 @@ function handleMessage(id, tr, msg, jsep)
 		-- Done
 		rooms[roomId] = nil
 		local response = { videoroom = "destroyed", room = roomId }
-		responsejson = json.encode(response)
+		local responsejson = json.encode(response)
 		return 0, responsejson
 	elseif request == "list" then
 		-- List existing rooms
 		logger.print("Listing rooms")
 		local response = { videoroom = "success", list = rooms }
-		responsejson = json.encode(response)
+		local responsejson = json.encode(response)
 		return 0, responsejson
 	elseif request == "exists" then
 		-- Check if an existing room exists
@@ -211,7 +211,7 @@ function handleMessage(id, tr, msg, jsep)
 			exists = true
 		end
 		local response = { videoroom = "success", room = roomId, exists = exists }
-		responsejson = json.encode(response)
+		local responsejson = json.encode(response)
 		return 0, responsejson
 	elseif request == "listparticipants" then
 		-- List participants in a room
@@ -220,7 +220,7 @@ function handleMessage(id, tr, msg, jsep)
 		local room = rooms[roomId]
 		if room == nil then
 			local error = { videoroom = "error", error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM, error = "No such room" }
-			responsejson = json.encode(error)
+			local responsejson = json.encode(error)
 			return 0, responsejson
 		end
 		local response = { videoroom = "participants", room = roomId, participants = {} }
@@ -235,7 +235,7 @@ function handleMessage(id, tr, msg, jsep)
 				}
 			end
 		end
-		responsejson = json.encode(response)
+		local responsejson = json.encode(response)
 		logger.print(responsejson)
 		if responsejson:find("\"participants\":{}") ~= nil then
 			-- Ugly hack, as lua-json turns our empty array into an empty object
@@ -247,7 +247,7 @@ function handleMessage(id, tr, msg, jsep)
 		if request == "join" or request == "configure" or request == "publish" or request == "unpublish"
 				or request == "start" or request == "switch" or request == "leave" then
 			-- We need a new coroutine here
-			async = coroutine.create(function(id, tr, comsg, cojsep)
+			local async = coroutine.create(function(id, tr, comsg, cojsep)
 				-- We'll only execute this when the scheduler resumes the task
 				logger.print("Handling async message for session: " .. id)
 				logger.print("  -- " .. dumpTable(comsg))
@@ -265,7 +265,7 @@ function handleMessage(id, tr, msg, jsep)
 					local room = rooms[roomId]
 					if room == nil then
 						local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_ROOM, error = "No such room" }
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, nil)
 						return
 					end
@@ -280,7 +280,7 @@ function handleMessage(id, tr, msg, jsep)
 						end
 						if room.participants[userId] ~= nil then
 							local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_ID_EXISTS, error = "UserID already exists" }
-							eventjson = json.encode(event)
+							local eventjson = json.encode(event)
 							pushEvent(id, tr, eventjson, nil)
 							return
 						end
@@ -324,7 +324,7 @@ function handleMessage(id, tr, msg, jsep)
 								}
 							end
 						end
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						if eventjson:find("\"publishers\":{}") ~= nil then
 							-- Ugly hack, as lua-json turns our empty array into an empty object
 							eventjson = string.gsub(eventjson, "\"publishers\":{}", "\"publishers\":[]")
@@ -336,14 +336,14 @@ function handleMessage(id, tr, msg, jsep)
 						logger.print("Subscribing to feed: " .. feedId)
 						if room.participants[feedId] == nil then
 							local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED, error = "No such feed" }
-							eventjson = json.encode(event)
+							local eventjson = json.encode(event)
 							pushEvent(id, tr, eventjson, nil)
 							return
 						end
 						local f = sessions[room.participants[feedId]]
 						if f == nil or f.started ~= true then
 							local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_NO_SUCH_FEED, error = "No such feed" }
-							eventjson = json.encode(event)
+							local eventjson = json.encode(event)
 							pushEvent(id, tr, eventjson, nil)
 							return
 						end
@@ -386,15 +386,15 @@ function handleMessage(id, tr, msg, jsep)
 						end
 						-- Prepare offer and send it back
 						local event = { videoroom = "attached", room = roomId, id = feedId, display = f["display"] }
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						logger.print("Preparing offer from publisher: " .. f["sdp"])
 						local offer = { type = "offer", sdp = f["sdp"] }
-						offerjson = json.encode(offer)
+						local offerjson = json.encode(offer)
 						pushEvent(id, tr, eventjson, offerjson)
 					else
 						logger.print("Invalid element")
 						local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_ELEMENT, error = "Invalid element (ptype)" }
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, nil)
 					end
 				elseif request == "configure" or request == "publish" then
@@ -404,7 +404,7 @@ function handleMessage(id, tr, msg, jsep)
 						-- Prepare a response
 						local event = { videoroom = "event", room = s["roomId"], configured = "ok" }
 						-- Check if there's an SDP offer
-						answerjson = nil
+						local answerjson = nil
 						if cojsep ~= nil then
 							-- Make sure the publisher is sendonly
 							local room = rooms[s["roomId"]]
@@ -419,8 +419,7 @@ function handleMessage(id, tr, msg, jsep)
 							local jsepanswer = { type = "answer", sdp = sdp.render(answer) }
 							answerjson = json.encode(jsepanswer)
 							-- Prepare a revised version of the offer to send to subscribers
-							sdpoffer = string.gsub(jsepanswer.sdp, "recvonly", "sendonly")
-							s["sdp"] = sdpoffer
+							s["sdp"] = string.gsub(jsepanswer.sdp, "recvonly", "sendonly")
 							-- Prepare the event to send back
 							event["audio_codec"] = room.audioCodec
 							event["video_codec"] = room.videoCodec
@@ -465,14 +464,14 @@ function handleMessage(id, tr, msg, jsep)
 							s["pliFreq"] = comsg["fir_freq"]
 						end
 						-- Done
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, answerjson)
 					elseif s["pType"] == "subscriber" then
 						-- Configure the subscription properties
 						if request == "publish" then
 							logger.print("Invalid request: " .. request)
 							local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST, error = "Invalid request" }
-							eventjson = json.encode(event)
+							local eventjson = json.encode(event)
 							pushEvent(id, tr, eventjson, nil)
 							return
 						end
@@ -494,7 +493,7 @@ function handleMessage(id, tr, msg, jsep)
 							configureMedium(id, "data", "in", false)
 						end
 						local event = { videoroom = "event", room = s["roomId"], configured = "ok" }
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, nil)
 					end
 				elseif request == "unpublish" then
@@ -503,7 +502,7 @@ function handleMessage(id, tr, msg, jsep)
 					if s["pType"] ~= "publisher" then
 						logger.print("Invalid request: " .. request)
 						local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST, error = "Invalid request" }
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, nil)
 						return
 					end
@@ -511,7 +510,7 @@ function handleMessage(id, tr, msg, jsep)
 					hangupMedia(id)
 					closePc(id)
 					local event = { videoroom = "event", room = s["roomId"], unpublished = "ok" }
-					eventjson = json.encode(event)
+					local eventjson = json.encode(event)
 					pushEvent(id, tr, eventjson, nil)
 				elseif request == "leave" then
 					-- Leave a room
@@ -519,7 +518,7 @@ function handleMessage(id, tr, msg, jsep)
 					-- Clean up the PeerConnection
 					hangupMedia(id)
 					local event = { videoroom = "event", room = s["roomId"], leaving = "ok" }
-					eventjson = json.encode(event)
+					local eventjson = json.encode(event)
 					pushEvent(id, tr, eventjson, nil)
 				elseif request == "start" then
 					-- Start subscribing to a publisher (subscribers only)
@@ -527,30 +526,30 @@ function handleMessage(id, tr, msg, jsep)
 					if s["pType"] ~= "subscriber" then
 						logger.print("Invalid request: " .. request)
 						local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST, error = "Invalid request" }
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, nil)
 						return
 					end
 					local event = { videoroom = "event", room = s["roomId"], started = "ok" }
-					eventjson = json.encode(event)
+					local eventjson = json.encode(event)
 					pushEvent(id, tr, eventjson, nil)
 				elseif request == "switch" then
 					-- Switch to a new publisher (subscribers only)
 					if s["pType"] ~= "subscriber" then
 						logger.print("Invalid request: " .. request)
 						local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST, error = "Invalid request" }
-						eventjson = json.encode(event)
+						local eventjson = json.encode(event)
 						pushEvent(id, tr, eventjson, nil)
 						return
 					end
 					-- TODO
 					local event = { videoroom = "event", room = s["roomId"], switched = "ok" }
-					eventjson = json.encode(event)
+					local eventjson = json.encode(event)
 					pushEvent(id, tr, eventjson, nil)
 				else
 					logger.print("Invalid request: " .. request)
 					local event = { videoroom = "event", error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST, error = "Invalid request" }
-					eventjson = json.encode(event)
+					local eventjson = json.encode(event)
 					pushEvent(id, tr, eventjson, nil)
 				end
 				logger.print("Done handling request: " .. request)
@@ -562,7 +561,7 @@ function handleMessage(id, tr, msg, jsep)
 			return 1, nil
 		else
 			local response = { videoroom = "error", error_code = JANUS_VIDEOROOM_ERROR_INVALID_REQUEST, error = "Unknown request" }
-			responsejson = json.encode(response)
+			local responsejson = json.encode(response)
 			return 0, responsejson
 		end
 	end
@@ -593,7 +592,7 @@ function setupMedia(id)
 			audio_codec = room.audioCodec,
 			video_codec = room.videoCodec
 		}
-		eventjson = json.encode(event)
+		local eventjson = json.encode(event)
 		if eventjson:find("\"publishers\":{}") ~= nil then
 			-- Ugly hack, as lua-json turns our empty array into an empty object
 			eventjson = string.gsub(eventjson, "\"publishers\":{}", "\"publishers\":[]")
@@ -638,7 +637,7 @@ function hangupMedia(id)
 			return
 		end
 		local event = { videoroom = "event", unpublished = s.userId, room = room.roomId }
-		eventjson = json.encode(event)
+		local eventjson = json.encode(event)
 		for index,partId in pairs(room.participants) do
 			local p = sessions[partId]
 			if p ~= nil and p.id ~= id then

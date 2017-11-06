@@ -61,8 +61,8 @@ function querySession(id)
 	if s == nil then
 		return nil
 	end
-	info = { script = s["lua"], id = s["id"] }
-	infojson = json.encode(info)
+	local info = { script = s["lua"], id = s["id"] }
+	local infojson = json.encode(info)
 	return infojson
 end
 
@@ -80,13 +80,13 @@ function handleMessage(id, tr, msg, jsep)
 	if jsep == nil then
 		processRequest(id, msgT)
 		local response = { echotest = "response", result = "ok" }
-		responsejson = json.encode(response)
+		local responsejson = json.encode(response)
 		return 0, responsejson
 	else
 		-- Decode the JSEP JSON string to a table too
 		local jsepT = json.decode(jsep)
 		-- We need a new coroutine here
-		async = coroutine.create(function(id, tr, comsg, cojsep)
+		local async = coroutine.create(function(id, tr, comsg, cojsep)
 			-- We'll only execute this when the scheduler resumes the task
 			logger.print("Handling async message for session: " .. id)
 			local s = sessions[id]
@@ -110,8 +110,8 @@ function handleMessage(id, tr, msg, jsep)
 			pushEvent(id, tr, jsonevent, jsonjsep)
 			-- Just for fun (and to showcase the feature), let's send an event to handlers
 			-- notice how we pass the id now, meaning this event is tied to a specific session
-			event = { event = "processed", request = comsg }
-			eventjson = json.encode(event)
+			local event = { event = "processed", request = comsg }
+			local eventjson = json.encode(event)
 			notifyEvent(id, eventjson)
 		end)
 		-- Enqueue it: the scheduler will resume it later
