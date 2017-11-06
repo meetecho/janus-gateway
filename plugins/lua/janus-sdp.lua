@@ -7,7 +7,7 @@ function JANUSSDP.parse(text)
 	if text == nil then
 		return nil
 	end
-	lines = {}
+	local lines = {}
 	local s = nil
 	for s in text:gmatch("[^\r\n]+") do
 		table.insert(lines, s)
