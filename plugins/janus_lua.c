@@ -1319,6 +1319,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 		JANUS_LOG(LOG_ERR, "Invalid message..?\n");
 		if(jsep != NULL)
 			json_decref(jsep);
+		g_free(transaction);
 		return janus_plugin_result_new(JANUS_PLUGIN_ERROR, "No session associated with this handle", NULL);
 	}
 	char *jsep_text = jsep ? json_dumps(jsep, JSON_INDENT(0) | JSON_PRESERVE_ORDER) : NULL;
@@ -1336,6 +1337,7 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 		free(message_text);
 	if(jsep_text != NULL)
 		free(jsep_text);
+	g_free(transaction);
 	int n = lua_gettop(t);
 	if(n != 2) {
 		janus_mutex_unlock(&lua_mutex);
