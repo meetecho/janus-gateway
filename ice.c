@@ -1064,6 +1064,8 @@ void janus_ice_free(const janus_refcount *handle_ref) {
 	janus_ice_handle *handle = janus_refcount_containerof(handle_ref, janus_ice_handle, ref);
 	/* This stack can be destroyed, free all the resources */
 	janus_mutex_lock(&handle->mutex);
+	if(handle->queued_packets != NULL)
+		g_async_queue_unref(handle->queued_packets);
 	if(handle->app_handle != NULL)
 		janus_refcount_decrease(&handle->app_handle->ref);
 	janus_mutex_unlock(&handle->mutex);
