@@ -251,9 +251,9 @@ static void janus_lua_session_free(const janus_refcount *session_ref) {
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
 	g_hash_table_remove(lua_ids, GUINT_TO_POINTER(session->id));
-	janus_recorder_free(session->arc);
-	janus_recorder_free(session->vrc);
-	janus_recorder_free(session->drc);
+	janus_recorder_destroy(session->arc);
+	janus_recorder_destroy(session->vrc);
+	janus_recorder_destroy(session->drc);
 	g_free(session);
 }
 
@@ -897,9 +897,9 @@ static int janus_lua_method_startrecording(lua_State *s) {
 	goto done;
 
 error:
-	janus_recorder_free(arc);
-	janus_recorder_free(vrc);
-	janus_recorder_free(drc);
+	janus_recorder_destroy(arc);
+	janus_recorder_destroy(vrc);
+	janus_recorder_destroy(drc);
 	janus_mutex_unlock(&session->rec_mutex);
 	/* Something went wrong */
 	janus_refcount_decrease(&session->ref);
@@ -942,19 +942,19 @@ static int janus_lua_method_stoprecording(lua_State *s) {
 		if(!strcasecmp(type, "audio")) {
 			if(session->arc != NULL) {
 				janus_recorder_close(session->arc);
-				janus_recorder_free(session->arc);
+				janus_recorder_destroy(session->arc);
 				session->arc = NULL;
 			}
 		} else if(!strcasecmp(type, "video")) {
 			if(session->vrc != NULL) {
 				janus_recorder_close(session->vrc);
-				janus_recorder_free(session->vrc);
+				janus_recorder_destroy(session->vrc);
 				session->vrc = NULL;
 			}
 		} else if(!strcasecmp(type, "data")) {
 			if(session->drc != NULL) {
 				janus_recorder_close(session->drc);
-				janus_recorder_free(session->drc);
+				janus_recorder_destroy(session->drc);
 				session->drc = NULL;
 			}
 		}
