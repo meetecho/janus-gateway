@@ -746,6 +746,7 @@ static void janus_videoroom_room_free(const janus_refcount *room_ref) {
 	g_hash_table_destroy(room->participants);
 	g_hash_table_destroy(room->private_ids);
 	g_hash_table_destroy(room->allowed);
+	g_free(room);
 }
 
 static void janus_videoroom_message_free(janus_videoroom_message *msg) {
