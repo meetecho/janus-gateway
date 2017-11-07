@@ -25,6 +25,7 @@
 #include <stdlib.h>
 
 #include "mutex.h"
+#include "refcount.h"
 
 
 /*! \brief Media types we can record */
@@ -54,6 +55,10 @@ typedef struct janus_recorder {
 	volatile int writable;
 	/*! \brief Mutex to lock/unlock this recorder instance */ 
 	janus_mutex mutex;
+	/*! \brief Atomic flag to check if this instance has been destroyed */
+	volatile gint destroyed;
+	/*! \brief Reference counter for this instance */
+	janus_refcount ref;
 } janus_recorder;
 
 /*! \brief Initialize the recorder code
@@ -81,9 +86,8 @@ int janus_recorder_save_frame(janus_recorder *recorder, char *buffer, uint lengt
  * @param[in] recorder The janus_recorder instance to close
  * @returns 0 in case of success, a negative integer otherwise */
 int janus_recorder_close(janus_recorder *recorder);
-/*! \brief Free the recorder resources
- * @param[in] recorder The janus_recorder instance to free
- * @returns 0 in case of success, a negative integer otherwise */
-int janus_recorder_free(janus_recorder *recorder);
+/*! \brief Destroy the recorder instance
+ * @param[in] recorder The janus_recorder instance to destroy */
+void janus_recorder_destroy(janus_recorder *recorder);
 
 #endif

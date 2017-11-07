@@ -301,12 +301,11 @@ int janus_sctp_association_setup(janus_sctp_association *sctp) {
 }
 
 void janus_sctp_association_destroy(janus_sctp_association *sctp) {
-	if(sctp == NULL)
+	if(sctp == NULL || !g_atomic_int_compare_and_exchange(&sctp->destroyed, 0, 1))
 		return;
 	usrsctp_deregister_address(sctp);
 	usrsctp_shutdown(sctp->sock, SHUT_RDWR);
 	usrsctp_close(sctp->sock);
-	g_atomic_int_set(&sctp->destroyed, 1);
 	g_async_queue_push(sctp->messages, &exit_message);
 	janus_refcount_decrease(&sctp->ref);
 }

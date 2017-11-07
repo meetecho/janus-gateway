@@ -572,7 +572,7 @@ static void janus_sipre_session_free(const janus_refcount *session_ref) {
 		session->callid = NULL;
 	}
 	if(session->sdp) {
-		janus_sdp_free(session->sdp);
+		janus_sdp_destroy(session->sdp);
 		session->sdp = NULL;
 	}
 	if(session->transaction) {
@@ -1397,25 +1397,25 @@ void janus_sipre_hangup_media(janus_plugin_session *handle) {
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-		janus_recorder_free(session->arc);
+		janus_recorder_destroy(session->arc);
 	}
 	session->arc = NULL;
 	if(session->arc_peer) {
 		janus_recorder_close(session->arc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-		janus_recorder_free(session->arc_peer);
+		janus_recorder_destroy(session->arc_peer);
 	}
 	session->arc_peer = NULL;
 	if(session->vrc) {
 		janus_recorder_close(session->vrc);
 		JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-		janus_recorder_free(session->vrc);
+		janus_recorder_destroy(session->vrc);
 	}
 	session->vrc = NULL;
 	if(session->vrc_peer) {
 		janus_recorder_close(session->vrc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-		janus_recorder_free(session->vrc_peer);
+		janus_recorder_destroy(session->vrc_peer);
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
@@ -1874,7 +1874,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			if(janus_sipre_allocate_local_ports(session) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
@@ -1882,13 +1882,13 @@ static void *janus_sipre_handler(void *data) {
 			char *sdp = janus_sipre_sdp_manipulate(session, parsed_sdp, FALSE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
 			}
 			/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-			janus_sdp_free(session->sdp);
+			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for INVITE:\n%s", sdp);
 			/* Prepare the From header */
@@ -2025,7 +2025,7 @@ static void *janus_sipre_handler(void *data) {
 			}
 			if(janus_sipre_allocate_local_ports(session) < 0) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
@@ -2033,7 +2033,7 @@ static void *janus_sipre_handler(void *data) {
 			char *sdp = janus_sipre_sdp_manipulate(session, parsed_sdp, TRUE);
 			if(sdp == NULL) {
 				JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				error_code = JANUS_SIPRE_ERROR_IO_ERROR;
 				g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 				goto error;
@@ -2047,7 +2047,7 @@ static void *janus_sipre_handler(void *data) {
 				JANUS_LOG(LOG_VERB, "Detected video codec: %d (%s)\n", session->media.video_pt, session->media.video_pt_name);
 			}
 			/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-			janus_sdp_free(session->sdp);
+			janus_sdp_destroy(session->sdp);
 			session->sdp = parsed_sdp;
 			JANUS_LOG(LOG_VERB, "Prepared SDP for 200 OK:\n%s", sdp);
 			/* Also notify event handlers */
@@ -2402,7 +2402,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->arc) {
 						janus_recorder_close(session->arc);
 						JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-						janus_recorder_free(session->arc);
+						janus_recorder_destroy(session->arc);
 					}
 					session->arc = NULL;
 				}
@@ -2410,7 +2410,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->vrc) {
 						janus_recorder_close(session->vrc);
 						JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-						janus_recorder_free(session->vrc);
+						janus_recorder_destroy(session->vrc);
 					}
 					session->vrc = NULL;
 				}
@@ -2418,7 +2418,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->arc_peer) {
 						janus_recorder_close(session->arc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-						janus_recorder_free(session->arc_peer);
+						janus_recorder_destroy(session->arc_peer);
 					}
 					session->arc_peer = NULL;
 				}
@@ -2426,7 +2426,7 @@ static void *janus_sipre_handler(void *data) {
 					if(session->vrc_peer) {
 						janus_recorder_close(session->vrc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-						janus_recorder_free(session->vrc_peer);
+						janus_recorder_destroy(session->vrc_peer);
 					}
 					session->vrc_peer = NULL;
 				}
@@ -3467,13 +3467,13 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 		/* Check if offer has neither audio nor video, fail with 488 */
 		if(!session->media.has_audio && !session->media.has_video) {
 			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-			janus_sdp_free(sdp);
+			janus_sdp_destroy(sdp);
 			return;
 		}
 		/* Also fail with 488 if there's no remote IP address that can be used for RTP */
 		if(!session->media.remote_ip) {
 			mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
-			janus_sdp_free(sdp);
+			janus_sdp_destroy(sdp);
 			return;
 		}
 	}
@@ -3502,7 +3502,7 @@ void janus_sipre_cb_incoming(const struct sip_msg *msg, void *arg) {
 	json_decref(call);
 	if(jsep)
 		json_decref(jsep);
-	janus_sdp_free(sdp);
+	janus_sdp_destroy(sdp);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
 		json_t *info = json_object();
@@ -3541,7 +3541,7 @@ int janus_sipre_cb_offer(struct mbuf **mbp, const struct sip_msg *msg, void *arg
 	}
 	gboolean changed = FALSE;
 	janus_sipre_sdp_process(session, sdp, FALSE, TRUE, &changed);
-	janus_sdp_free(sdp);
+	janus_sdp_destroy(sdp);
 	/* Check if offer has neither audio nor video, fail with 488 */
 	if (!session->media.has_audio && !session->media.has_video) {
 		mqueue_push(mq, janus_sipre_mqueue_event_do_rcode, janus_sipre_mqueue_payload_create(session, msg, 488, NULL));
@@ -3597,7 +3597,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	/* If we asked for SRTP and are not getting it, fail */
 	if(session->media.require_srtp && !session->media.has_srtp_remote) {
 		JANUS_LOG(LOG_ERR, "We asked for mandatory SRTP but didn't get any in the reply!\n");
-		janus_sdp_free(sdp);
+		janus_sdp_destroy(sdp);
 		/* Hangup immediately */
 		session->media.earlymedia = FALSE;
 		session->media.ready = FALSE;
@@ -3611,7 +3611,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	if(!session->media.remote_ip) {
 		/* No remote address parsed? Give up */
 		JANUS_LOG(LOG_ERR, "No remote IP address found for RTP, something's wrong with the SDP!\n");
-		janus_sdp_free(sdp);
+		janus_sdp_destroy(sdp);
 		/* Hangup immediately */
 		session->media.earlymedia = FALSE;
 		session->media.ready = FALSE;
@@ -3671,7 +3671,7 @@ int janus_sipre_cb_answer(const struct sip_msg *msg, void *arg) {
 	}
 	json_decref(call);
 	json_decref(jsep);
-	janus_sdp_free(sdp);
+	janus_sdp_destroy(sdp);
 	/* Also notify event handlers */
 	if(notify_events && gateway->events_is_enabled()) {
 		json_t *info = json_object();
