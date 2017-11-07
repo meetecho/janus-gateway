@@ -2716,7 +2716,7 @@ void janus_audiobridge_hangup_media(janus_plugin_session *handle) {
 	if(participant->arc) {
 		janus_recorder_close(participant->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-		janus_recorder_free(participant->arc);
+		janus_recorder_destroy(participant->arc);
 	}
 	participant->arc = NULL;
 	janus_mutex_unlock(&participant->rec_mutex);
@@ -3208,7 +3208,7 @@ static void *janus_audiobridge_handler(void *data) {
 					if(participant->arc) {
 						janus_recorder_close(participant->arc);
 						JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-						janus_recorder_free(participant->arc);
+						janus_recorder_destroy(participant->arc);
 					}
 					participant->arc = NULL;
 				}
@@ -3439,7 +3439,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(participant->arc) {
 				janus_recorder_close(participant->arc);
 				JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-				janus_recorder_free(participant->arc);
+				janus_recorder_destroy(participant->arc);
 			}
 			participant->arc = NULL;
 			janus_mutex_unlock(&participant->rec_mutex);
@@ -3576,7 +3576,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(participant->arc) {
 				janus_recorder_close(participant->arc);
 				JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-				janus_recorder_free(participant->arc);
+				janus_recorder_destroy(participant->arc);
 			}
 			participant->arc = NULL;
 			janus_mutex_unlock(&participant->rec_mutex);
@@ -3714,8 +3714,8 @@ static void *janus_audiobridge_handler(void *data) {
 			answer->o_version = session->sdp_version;
 			/* Prepare the response */
 			char *sdp = janus_sdp_write(answer);
-			janus_sdp_free(offer);
-			janus_sdp_free(answer);
+			janus_sdp_destroy(offer);
+			janus_sdp_destroy(answer);
 			json_t *jsep = json_pack("{ssss}", "type", type, "sdp", sdp);
 			if(sdp_update)
 				json_object_set_new(jsep, "update", json_true());

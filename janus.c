@@ -1290,7 +1290,7 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Setup ICE locally (we received an offer) */
 					if(janus_ice_setup_local(handle, offer, audio, video, data, bundle, rtcpmux, trickle) < 0) {
 						JANUS_LOG(LOG_ERR, "Error setting ICE locally\n");
-						janus_sdp_free(parsed_sdp);
+						janus_sdp_destroy(parsed_sdp);
 						g_free(jsep_type);
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Error setting ICE locally");
@@ -1301,7 +1301,7 @@ int janus_process_incoming_request(janus_request *request) {
 					/* Make sure we're waiting for an ANSWER in the first place */
 					if(!handle->agent) {
 						JANUS_LOG(LOG_ERR, "Unexpected ANSWER (did we offer?)\n");
-						janus_sdp_free(parsed_sdp);
+						janus_sdp_destroy(parsed_sdp);
 						g_free(jsep_type);
 						janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 						ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Unexpected ANSWER (did we offer?)");
@@ -1311,7 +1311,7 @@ int janus_process_incoming_request(janus_request *request) {
 				}
 				if(janus_sdp_process(handle, parsed_sdp, FALSE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					g_free(jsep_type);
 					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "Error processing SDP");
@@ -1343,7 +1343,7 @@ int janus_process_incoming_request(janus_request *request) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Negotiation update, checking what changed...\n", handle->handle_id);
 				if(janus_sdp_process(handle, parsed_sdp, TRUE) < 0) {
 					JANUS_LOG(LOG_ERR, "Error processing SDP\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					g_free(jsep_type);
 					janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 					ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNEXPECTED_ANSWER, "Error processing SDP");
@@ -1382,13 +1382,13 @@ int janus_process_incoming_request(janus_request *request) {
 			if(janus_sdp_anonymize(parsed_sdp) < 0) {
 				/* Invalid SDP */
 				ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_JSEP_INVALID_SDP, "JSEP error: invalid SDP");
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				g_free(jsep_type);
 				janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 				goto jsondone;
 			}
 			jsep_sdp_stripped = janus_sdp_write(parsed_sdp);
-			janus_sdp_free(parsed_sdp);
+			janus_sdp_destroy(parsed_sdp);
 			sdp = NULL;
 			janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_PROCESSING_OFFER);
 		}
@@ -2797,7 +2797,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			/* Process SDP in order to setup ICE locally (this is going to result in an answer from the browser) */
 			if(janus_ice_setup_local(ice_handle, 0, audio, video, data, bundle, rtcpmux, trickle) < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error setting ICE locally\n", ice_handle->handle_id);
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
 		} else {
@@ -2811,14 +2811,14 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 			if(ice_handle == NULL || janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)
 					|| janus_flags_is_set(&ice_handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_ALERT)) {
 				JANUS_LOG(LOG_WARN, "[%"SCNu64"] Handle detached or PC closed, giving up...!\n", ice_handle ? ice_handle->handle_id : 0);
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
 			JANUS_LOG(LOG_VERB, "[%"SCNu64"] Waiting for candidates-done callback...\n", ice_handle->handle_id);
 			g_usleep(100000);
 			if(ice_handle->cdone < 0) {
 				JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error gathering candidates!\n", ice_handle->handle_id);
-				janus_sdp_free(parsed_sdp);
+				janus_sdp_destroy(parsed_sdp);
 				return NULL;
 			}
 		}
@@ -2827,7 +2827,7 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	if(janus_sdp_anonymize(parsed_sdp) < 0) {
 		/* Invalid SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Invalid SDP\n", ice_handle->handle_id);
-		janus_sdp_free(parsed_sdp);
+		janus_sdp_destroy(parsed_sdp);
 		return NULL;
 	}
 	/* FIXME Check if this is a renegotiation and we need an ICE restart */
@@ -2838,10 +2838,10 @@ json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plug
 	if(sdp_merged == NULL) {
 		/* Couldn't merge SDP */
 		JANUS_LOG(LOG_ERR, "[%"SCNu64"] Error merging SDP\n", ice_handle->handle_id);
-		janus_sdp_free(parsed_sdp);
+		janus_sdp_destroy(parsed_sdp);
 		return NULL;
 	}
-	janus_sdp_free(parsed_sdp);
+	janus_sdp_destroy(parsed_sdp);
 	janus_request_ice_disabled_m_line(ice_handle, audio, video, data, sdp_merged);
 
 	if(!updating) {

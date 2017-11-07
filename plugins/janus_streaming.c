@@ -2103,7 +2103,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(vrc == NULL) {
 					if(arc != NULL) {
 						janus_recorder_close(arc);
-						janus_recorder_free(arc);
+						janus_recorder_destroy(arc);
 						arc = NULL;
 					}
 					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for video\n", mp->name);
@@ -2121,12 +2121,12 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				if(drc == NULL) {
 					if(arc != NULL) {
 						janus_recorder_close(arc);
-						janus_recorder_free(arc);
+						janus_recorder_destroy(arc);
 						arc = NULL;
 					}
 					if(vrc != NULL) {
 						janus_recorder_close(vrc);
-						janus_recorder_free(vrc);
+						janus_recorder_destroy(vrc);
 						vrc = NULL;
 					}
 					JANUS_LOG(LOG_ERR, "[%s] Error starting recorder for data\n", mp->name);
@@ -2176,7 +2176,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mp->name, source->arc->filename ? source->arc->filename : "??");
 				janus_recorder *tmp = source->arc;
 				source->arc = NULL;
-				janus_recorder_free(tmp);
+				janus_recorder_destroy(tmp);
 			}
 			if(video && json_is_true(video) && source->vrc) {
 				/* Close the video recording */
@@ -2184,7 +2184,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_INFO, "[%s] Closed video recording %s\n", mp->name, source->vrc->filename ? source->vrc->filename : "??");
 				janus_recorder *tmp = source->vrc;
 				source->vrc = NULL;
-				janus_recorder_free(tmp);
+				janus_recorder_destroy(tmp);
 			}
 			if(data && json_is_true(data) && source->drc) {
 				/* Close the data recording */
@@ -2192,7 +2192,7 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 				JANUS_LOG(LOG_INFO, "[%s] Closed data recording %s\n", mp->name, source->drc->filename ? source->drc->filename : "??");
 				janus_recorder *tmp = source->drc;
 				source->drc = NULL;
-				janus_recorder_free(tmp);
+				janus_recorder_destroy(tmp);
 			}
 			janus_mutex_unlock(&source->rec_mutex);
 			janus_refcount_decrease(&mp->ref);
@@ -2247,21 +2247,21 @@ struct janus_plugin_result *janus_streaming_handle_message(janus_plugin_session 
 					JANUS_LOG(LOG_INFO, "[%s] Closed audio recording %s\n", mp->name, source->arc->filename ? source->arc->filename : "??");
 					janus_recorder *tmp = source->arc;
 					source->arc = NULL;
-					janus_recorder_free(tmp);
+					janus_recorder_destroy(tmp);
 				}
 				if(source->vrc) {
 					janus_recorder_close(source->vrc);
 					JANUS_LOG(LOG_INFO, "[%s] Closed video recording %s\n", mp->name, source->vrc->filename ? source->vrc->filename : "??");
 					janus_recorder *tmp = source->vrc;
 					source->vrc = NULL;
-					janus_recorder_free(tmp);
+					janus_recorder_destroy(tmp);
 				}
 				if(source->drc) {
 					janus_recorder_close(source->drc);
 					JANUS_LOG(LOG_INFO, "[%s] Closed data recording %s\n", mp->name, source->drc->filename ? source->drc->filename : "??");
 					janus_recorder *tmp = source->drc;
 					source->drc = NULL;
-					janus_recorder_free(tmp);
+					janus_recorder_destroy(tmp);
 				}
 				janus_mutex_unlock(&source->rec_mutex);
 			}
@@ -2560,12 +2560,14 @@ static void *janus_streaming_handler(void *data) {
 					GError *error = NULL;
 					char tname[16];
 					g_snprintf(tname, sizeof(tname), "mp %"SCNu64, id_value);
+					janus_refcount_increase(&session->ref);
 					janus_refcount_increase(&mp->ref);
 					g_thread_try_new(tname, &janus_streaming_ondemand_thread, session, &error);
 					if(error != NULL) {
 						session->mountpoint = NULL;
 						janus_mutex_unlock(&mp->mutex);
-						janus_refcount_decrease(&mp->ref);	/* This is for the failed thread */
+						janus_refcount_decrease(&session->ref);	/* This is for the failed thread */
+						janus_refcount_decrease(&mp->ref);		/* This is for the failed thread */
 						janus_refcount_decrease(&mp->ref);
 						JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the on-demand thread...\n", error->code, error->message ? error->message : "??");
 						error_code = JANUS_STREAMING_ERROR_UNKNOWN_ERROR;

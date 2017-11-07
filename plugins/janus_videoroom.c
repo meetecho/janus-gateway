@@ -694,9 +694,9 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 	g_free(p->sdp);
 
 	g_free(p->recording_base);
-	janus_recorder_free(p->arc);
-	janus_recorder_free(p->vrc);
-	janus_recorder_free(p->drc);
+	janus_recorder_destroy(p->arc);
+	janus_recorder_destroy(p->vrc);
+	janus_recorder_destroy(p->drc);
 
 	if(p->udp_sock > 0)
 		close(p->udp_sock);
@@ -3308,19 +3308,19 @@ static void janus_videoroom_recorder_close(janus_videoroom_publisher *participan
 	if(participant->arc) {
 		janus_recorder_close(participant->arc);
 		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", participant->arc->filename ? participant->arc->filename : "??");
-		janus_recorder_free(participant->arc);
+		janus_recorder_destroy(participant->arc);
 	}
 	participant->arc = NULL;
 	if(participant->vrc) {
 		janus_recorder_close(participant->vrc);
 		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", participant->vrc->filename ? participant->vrc->filename : "??");
-		janus_recorder_free(participant->vrc);
+		janus_recorder_destroy(participant->vrc);
 	}
 	participant->vrc = NULL;
 	if(participant->drc) {
 		janus_recorder_close(participant->drc);
 		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", participant->drc->filename ? participant->drc->filename : "??");
-		janus_recorder_free(participant->drc);
+		janus_recorder_destroy(participant->drc);
 	}
 	participant->drc = NULL;
 }
@@ -3825,7 +3825,7 @@ static void *janus_videoroom_handler(void *data) {
 							if(publisher->data && !subscriber->data_offered)
 								janus_sdp_mline_remove(offer, JANUS_SDP_APPLICATION);
 							sdp = janus_sdp_write(offer);
-							janus_sdp_free(offer);
+							janus_sdp_destroy(offer);
 						}
 						session->sdp_version = 1;
 						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", sdp);
@@ -4279,7 +4279,7 @@ static void *janus_videoroom_handler(void *data) {
 						session->sdp_version++;
 						parsed_sdp->o_version = session->sdp_version;
 						char *newsdp = janus_sdp_write(parsed_sdp);
-						janus_sdp_free(parsed_sdp);
+						janus_sdp_destroy(parsed_sdp);
 						JANUS_LOG(LOG_VERB, "Refreshing subscriber:\n%s\n", newsdp);
 						json_t *jsep = json_pack("{ssss}", "type", "offer", "sdp", newsdp);
 						json_object_set_new(jsep, "update", json_true());
@@ -4599,7 +4599,7 @@ static void *janus_videoroom_handler(void *data) {
 					JANUS_SDP_OA_VIDEO_CODEC, janus_videoroom_videocodec_name(participant->vcodec),
 					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_RECVONLY,
 					JANUS_SDP_OA_DONE);
-				janus_sdp_free(offer);
+				janus_sdp_destroy(offer);
 				/* Replace the session name */
 				g_free(answer->s_name);
 				char s_name[100];
@@ -4750,8 +4750,8 @@ static void *janus_videoroom_handler(void *data) {
 					}
 					janus_mutex_unlock(&participant->rec_mutex);
 				}
-				janus_sdp_free(offer);
-				janus_sdp_free(answer);
+				janus_sdp_destroy(offer);
+				janus_sdp_destroy(answer);
 				/* Send the answer back to the publisher */
 				JANUS_LOG(LOG_VERB, "Handling publisher: turned this into an '%s':\n%s\n", type, answer_sdp);
 				json_t *jsep = json_pack("{ssss}", "type", type, "sdp", answer_sdp);

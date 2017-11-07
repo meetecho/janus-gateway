@@ -619,7 +619,7 @@ static int janus_recordplay_generate_offer(janus_recordplay_recording *rec) {
 		JANUS_SDP_OA_DONE);
 	g_free(rec->offer);
 	rec->offer = janus_sdp_write(offer);
-	janus_sdp_free(offer);
+	janus_sdp_destroy(offer);
 	return 0;
 }
 
@@ -1388,8 +1388,8 @@ static void *janus_recordplay_handler(void *data) {
 			answer->o_version = session->sdp_version;
 			/* Generate the SDP string */
 			sdp = janus_sdp_write(answer);
-			janus_sdp_free(offer);
-			janus_sdp_free(answer);
+			janus_sdp_destroy(offer);
+			janus_sdp_destroy(answer);
 			JANUS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
 			/* If the user negotiated simulcasting, just stick with the base substream */
 			json_t *msg_simulcast = json_object_get(msg->jsep, "simulcast");
@@ -1455,7 +1455,7 @@ static void *janus_recordplay_handler(void *data) {
 				offer->o_sessid = session->sdp_sessid;
 				offer->o_version = session->sdp_version;
 				updated_offer = janus_sdp_write(offer);
-				janus_sdp_free(offer);
+				janus_sdp_destroy(offer);
 			} else {
 				json_t *id = json_object_get(root, "id");
 				id_value = json_integer_value(id);
@@ -1501,7 +1501,7 @@ static void *janus_recordplay_handler(void *data) {
 					session->sdp_version = offer->o_version;	/* This needs to be increased when it changes */
 					session->sdp_sessid = offer->o_sessid;
 				}
-				janus_sdp_free(offer);
+				janus_sdp_destroy(offer);
 			}
 			if(session->aframes == NULL && session->vframes == NULL) {
 				error_code = JANUS_RECORDPLAY_ERROR_INVALID_RECORDING;
@@ -1558,13 +1558,13 @@ static void *janus_recordplay_handler(void *data) {
 			if(session->arc) {
 				janus_recorder_close(session->arc);
 				JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-				janus_recorder_free(session->arc);
+				janus_recorder_destroy(session->arc);
 			}
 			session->arc = NULL;
 			if(session->vrc) {
 				janus_recorder_close(session->vrc);
 				JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-				janus_recorder_free(session->vrc);
+				janus_recorder_destroy(session->vrc);
 			}
 			session->vrc = NULL;
 			janus_mutex_unlock(&session->rec_mutex);

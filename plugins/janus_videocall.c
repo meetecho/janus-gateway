@@ -969,19 +969,19 @@ void janus_videocall_hangup_media(janus_plugin_session *handle) {
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-		janus_recorder_free(session->arc);
+		janus_recorder_destroy(session->arc);
 	}
 	session->arc = NULL;
 	if(session->vrc) {
 		janus_recorder_close(session->vrc);
 		JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-		janus_recorder_free(session->vrc);
+		janus_recorder_destroy(session->vrc);
 	}
 	session->vrc = NULL;
 	if(session->drc) {
 		janus_recorder_close(session->drc);
 		JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
-		janus_recorder_free(session->drc);
+		janus_recorder_destroy(session->drc);
 	}
 	session->drc = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
@@ -1234,7 +1234,7 @@ static void *janus_videocall_handler(void *data) {
 					g_snprintf(error_cause, 512, "Error parsing offer: %s", error_str);
 					goto error;
 				}
-				janus_sdp_free(offer);
+				janus_sdp_destroy(offer);
 				g_atomic_int_set(&peer->incall, 1);
 				session->peer = peer;
 				peer->peer = session;
@@ -1338,7 +1338,7 @@ static void *janus_videocall_handler(void *data) {
 			} else if(session->peer) {
 				session->peer->vcodec = session->vcodec;
 			}
-			janus_sdp_free(answer);
+			janus_sdp_destroy(answer);
 			/* Send SDP to our peer */
 			session->sdp = g_strdup(msg_sdp);
 			json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
@@ -1426,19 +1426,19 @@ static void *janus_videocall_handler(void *data) {
 					if(session->arc) {
 						janus_recorder_close(session->arc);
 						JANUS_LOG(LOG_INFO, "Closed audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-						janus_recorder_free(session->arc);
+						janus_recorder_destroy(session->arc);
 					}
 					session->arc = NULL;
 					if(session->vrc) {
 						janus_recorder_close(session->vrc);
 						JANUS_LOG(LOG_INFO, "Closed video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-						janus_recorder_free(session->vrc);
+						janus_recorder_destroy(session->vrc);
 					}
 					session->vrc = NULL;
 					if(session->drc) {
 						janus_recorder_close(session->drc);
 						JANUS_LOG(LOG_INFO, "Closed data recording %s\n", session->drc->filename ? session->drc->filename : "??");
-						janus_recorder_free(session->drc);
+						janus_recorder_destroy(session->drc);
 					}
 					session->drc = NULL;
 				} else {
@@ -1563,7 +1563,7 @@ static void *janus_videocall_handler(void *data) {
 					parsed_sdp->o_version = session->sdp_version;
 					/* Generate a new SDP */
 					char *sdp = janus_sdp_write(parsed_sdp);
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					janus_refcount_decrease(&session->peer->ref);
 					/* Answer back */
 					json_t *event = json_object();
