@@ -236,7 +236,7 @@ static void janus_nosip_session_free(const janus_refcount *session_ref) {
 	/* Remove the reference to the core plugin session */
 	janus_refcount_decrease(&session->handle->ref);
 	/* This session can be destroyed, free all the resources */
-	janus_sdp_free(session->sdp);
+	janus_sdp_destroy(session->sdp);
 	session->sdp = NULL;
 	g_free(session->media.remote_ip);
 	session->media.remote_ip = NULL;
@@ -850,25 +850,25 @@ void janus_nosip_hangup_media(janus_plugin_session *handle) {
 	if(session->arc) {
 		janus_recorder_close(session->arc);
 		JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-		janus_recorder_free(session->arc);
+		janus_recorder_destroy(session->arc);
 	}
 	session->arc = NULL;
 	if(session->arc_peer) {
 		janus_recorder_close(session->arc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-		janus_recorder_free(session->arc_peer);
+		janus_recorder_destroy(session->arc_peer);
 	}
 	session->arc_peer = NULL;
 	if(session->vrc) {
 		janus_recorder_close(session->vrc);
 		JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-		janus_recorder_free(session->vrc);
+		janus_recorder_destroy(session->vrc);
 	}
 	session->vrc = NULL;
 	if(session->vrc_peer) {
 		janus_recorder_close(session->vrc_peer);
 		JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-		janus_recorder_free(session->vrc_peer);
+		janus_recorder_destroy(session->vrc_peer);
 	}
 	session->vrc_peer = NULL;
 	janus_mutex_unlock(&session->rec_mutex);
@@ -1032,7 +1032,7 @@ static void *janus_nosip_handler(void *data) {
 				}
 				if(janus_nosip_allocate_local_ports(session) < 0) {
 					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_IO_ERROR;
 					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 					goto error;
@@ -1040,13 +1040,13 @@ static void *janus_nosip_handler(void *data) {
 				char *sdp = janus_nosip_sdp_manipulate(session, parsed_sdp, FALSE);
 				if(sdp == NULL) {
 					JANUS_LOG(LOG_ERR, "Could not allocate RTP/RTCP ports\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_IO_ERROR;
 					g_snprintf(error_cause, 512, "Could not allocate RTP/RTCP ports");
 					goto error;
 				}
 				/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-				janus_sdp_free(session->sdp);
+				janus_sdp_destroy(session->sdp);
 				session->sdp = parsed_sdp;
 				JANUS_LOG(LOG_VERB, "Prepared SDP %s for (%p)\n%s", msg_sdp_type, info, sdp);
 				g_atomic_int_set(&session->hangingup, 0);
@@ -1075,7 +1075,7 @@ static void *janus_nosip_handler(void *data) {
 				/* Check if offer has neither audio nor video, fail */
 				if(!session->media.has_audio && !session->media.has_video) {
 					JANUS_LOG(LOG_ERR, "No audio and no video being negotiated\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "No audio and no video being negotiated");
 					goto error;
@@ -1083,13 +1083,13 @@ static void *janus_nosip_handler(void *data) {
 				/* Also fail if there's no remote IP address that can be used for RTP */
 				if(!session->media.remote_ip) {
 					JANUS_LOG(LOG_ERR, "No remote IP address\n");
-					janus_sdp_free(parsed_sdp);
+					janus_sdp_destroy(parsed_sdp);
 					error_code = JANUS_NOSIP_ERROR_INVALID_SDP;
 					g_snprintf(error_cause, 512, "No remote IP address");
 					goto error;
 				}
 				/* Take note of the SDP (may be useful for UPDATEs or re-INVITEs) */
-				janus_sdp_free(session->sdp);
+				janus_sdp_destroy(session->sdp);
 				session->sdp = parsed_sdp;
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
@@ -1275,7 +1275,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->arc) {
 						janus_recorder_close(session->arc);
 						JANUS_LOG(LOG_INFO, "Closed user's audio recording %s\n", session->arc->filename ? session->arc->filename : "??");
-						janus_recorder_free(session->arc);
+						janus_recorder_destroy(session->arc);
 					}
 					session->arc = NULL;
 				}
@@ -1283,7 +1283,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->vrc) {
 						janus_recorder_close(session->vrc);
 						JANUS_LOG(LOG_INFO, "Closed user's video recording %s\n", session->vrc->filename ? session->vrc->filename : "??");
-						janus_recorder_free(session->vrc);
+						janus_recorder_destroy(session->vrc);
 					}
 					session->vrc = NULL;
 				}
@@ -1291,7 +1291,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->arc_peer) {
 						janus_recorder_close(session->arc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's audio recording %s\n", session->arc_peer->filename ? session->arc_peer->filename : "??");
-						janus_recorder_free(session->arc_peer);
+						janus_recorder_destroy(session->arc_peer);
 					}
 					session->arc_peer = NULL;
 				}
@@ -1299,7 +1299,7 @@ static void *janus_nosip_handler(void *data) {
 					if(session->vrc_peer) {
 						janus_recorder_close(session->vrc_peer);
 						JANUS_LOG(LOG_INFO, "Closed peer's video recording %s\n", session->vrc_peer->filename ? session->vrc_peer->filename : "??");
-						janus_recorder_free(session->vrc_peer);
+						janus_recorder_destroy(session->vrc_peer);
 					}
 					session->vrc_peer = NULL;
 				}
