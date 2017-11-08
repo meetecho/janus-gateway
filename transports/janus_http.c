@@ -1048,7 +1048,7 @@ void janus_http_session_created(void *transport, guint64 session_id) {
 
 	/* create cookie */
 	g_snprintf(cookie_value, sizeof(cookie_value), "%"G_GUINT64_FORMAT, (guint64)session_id);
-	cookie_max_age = 86400;	
+	cookie_max_age = 86400;
 }
 
 void janus_http_session_over(void *transport, guint64 session_id, gboolean timeout) {
@@ -1072,7 +1072,7 @@ void janus_http_session_over(void *transport, guint64 session_id, gboolean timeo
 
 	/* remove cookie */
 	g_snprintf(cookie_value, sizeof(cookie_value), "%"G_GUINT64_FORMAT, (guint64)session_id);
-	cookie_max_age = -1;	
+	cookie_max_age = -1;
 }
 
 /* Connection notifiers */
