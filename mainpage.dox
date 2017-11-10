@@ -2860,6 +2860,11 @@ ldd janus | grep asan
  * 		<td><a href="https://github.com/cargomedia/janus-gateway-rtpbroadcast">janus-gateway-rtpbroadcast</a></td>
  * 		<td>Janus-gateway plugin to broadcast RTP video</td>
  * </tr>
+ * <tr>
+ * 		<td><a href="https://github.com/mquander">Marshall Quander</a></td>
+ * 		<td><a href="https://github.com/mquander/janus-plugin-rs">janus-plugin-rs</a></td>
+ * 		<td>Rust bindings and wrappers for creating Janus plugins in Rust</td>
+ * </tr>
  * </table>
  * <br/>
  *
