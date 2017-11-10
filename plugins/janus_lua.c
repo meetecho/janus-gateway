@@ -1431,6 +1431,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 		/* Yep, pass the data to the Lua script and return */
 		janus_mutex_lock(&lua_mutex);
 		lua_State *t = lua_newthread(lua_state);
+		lua_getglobal(t, "incomingRtp");
 		lua_pushnumber(t, session->id);
 		lua_pushboolean(t, video);
 		lua_pushlstring(t, buf, len);
