@@ -1353,12 +1353,8 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	lua_pushnumber(t, session->id);
 	lua_pushstring(t, transaction);
 	lua_pushstring(t, message_text);
-	uint8_t nargs = 3;
-	if(jsep_text != NULL) {
-		lua_pushstring(t, jsep_text);
-		nargs++;
-	}
-	lua_call(t, nargs, 2);
+	lua_pushstring(t, jsep_text);
+	lua_call(t, 4, 2);
 	lua_pop(lua_state, 1);
 	if(message_text != NULL)
 		free(message_text);
