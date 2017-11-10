@@ -234,11 +234,10 @@ typedef struct janus_lua_callback {
 	char *argument;
 } janus_lua_callback;
 
-/* helper function to sample the number of occupied slots into Lua stack */
-static void janus_lua_stackdump(lua_State* l)
-{
+/* Helper function to sample the number of occupied slots into Lua stack */
+static void janus_lua_stackdump(lua_State* l) {
     int top = lua_gettop(l);
-    JANUS_LOG(LOG_WARN, "Total in lua stack %d\n", top);
+    JANUS_LOG(LOG_HUGE, "Total in lua stack %d\n", top);
 }
 
 /* janus_lua_session is defined in janus_lua_data.h, but it's managed here */
@@ -1250,7 +1249,7 @@ void janus_lua_create_session(janus_plugin_session *handle, int *error) {
 	lua_getglobal(t, "createSession");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 0);
-	lua_pop(lua_state,1);
+	lua_pop(lua_state, 1);
 	janus_mutex_unlock(&lua_mutex);
 
 	return;
@@ -1276,7 +1275,7 @@ void janus_lua_destroy_session(janus_plugin_session *handle, int *error) {
 	lua_getglobal(t, "destroySession");
 	lua_pushnumber(t, id);
 	lua_call(t, 1, 0);
-	lua_pop(lua_state,1);
+	lua_pop(lua_state, 1);
 	janus_mutex_unlock(&lua_mutex);
 
 	/* Get any rid references recipients of this sessions may have */
@@ -1314,7 +1313,7 @@ json_t *janus_lua_query_session(janus_plugin_session *handle) {
 	lua_getglobal(t, "querySession");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 1);
-	lua_pop(lua_state,1);
+	lua_pop(lua_state, 1);
 	const char *info = lua_tostring(t, -1);
 	lua_pop(t, 1);
 	/* We need a Jansson object */
@@ -1353,17 +1352,14 @@ struct janus_plugin_result *janus_lua_handle_message(janus_plugin_session *handl
 	lua_getglobal(t, "handleMessage");
 	lua_pushnumber(t, session->id);
 	lua_pushstring(t, transaction);
-	uint8_t nargs = 2;
-	if(message_text != NULL) {
-		lua_pushstring(t, message_text);
-		nargs++;
-	}
+	lua_pushstring(t, message_text);
+	uint8_t nargs = 3;
 	if(jsep_text != NULL) {
 		lua_pushstring(t, jsep_text);
 		nargs++;
 	}
 	lua_call(t, nargs, 2);
-	lua_pop(lua_state,1);
+	lua_pop(lua_state, 1);
 	if(message_text != NULL)
 		free(message_text);
 	if(jsep_text != NULL)
@@ -1420,7 +1416,7 @@ void janus_lua_setup_media(janus_plugin_session *handle) {
 	lua_getglobal(t, "setupMedia");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 0);
-	lua_pop(lua_state,1);
+	lua_pop(lua_state, 1);
 	janus_mutex_unlock(&lua_mutex);
 }
 
@@ -1444,7 +1440,7 @@ void janus_lua_incoming_rtp(janus_plugin_session *handle, int video, char *buf, 
 		lua_pushlstring(t, buf, len);
 		lua_pushnumber(t, len);
 		lua_call(t, 4, 0);
-		lua_pop(lua_state,1);
+		lua_pop(lua_state, 1);
 		janus_mutex_unlock(&lua_mutex);
 		return;
 	}
@@ -1502,7 +1498,7 @@ void janus_lua_incoming_rtcp(janus_plugin_session *handle, int video, char *buf,
 		lua_pushlstring(t, buf, len);
 		lua_pushnumber(t, len);
 		lua_call(t, 4, 0);
-		lua_pop(lua_state,1);
+		lua_pop(lua_state, 1);
 		janus_mutex_unlock(&lua_mutex);
 		return;
 	}
@@ -1540,7 +1536,7 @@ void janus_lua_incoming_data(janus_plugin_session *handle, char *buf, int len) {
 		lua_pushlstring(t, buf, len);
 		lua_pushnumber(t, len);
 		lua_call(t, 3, 0);
-		lua_pop(lua_state,1);
+		lua_pop(lua_state, 1);
 		janus_mutex_unlock(&lua_mutex);
 		return;
 	}
@@ -1621,7 +1617,7 @@ void janus_lua_hangup_media(janus_plugin_session *handle) {
 	lua_getglobal(t, "hangupMedia");
 	lua_pushnumber(t, session->id);
 	lua_call(t, 1, 0);
-	lua_pop(lua_state,1);
+	lua_pop(lua_state, 1);
 	janus_mutex_unlock(&lua_mutex);
 }
 
@@ -1722,7 +1718,7 @@ static gboolean janus_lua_timer_cb(void *data) {
 		lua_pushstring(t, cb->argument);
 		lua_call(t, 1, 0);
 	}
-	lua_pop(lua_state,1);
+	lua_pop(lua_state, 1);
 	janus_mutex_unlock(&lua_mutex);
 	/* Done */
 	g_source_destroy(cb->source);
