@@ -169,7 +169,8 @@ HTTP REST API, you'll have to install it manually:
 	# git checkout v1.5-chrome47-firefox41
 	mkdir build
 	cd build
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
+	# See https://github.com/meetecho/janus-gateway/issues/732 re: LWS_MAX_SMP
+	cmake -DLWS_MAX_SMP=1 -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_C_FLAGS="-fpic" ..
 	make && sudo make install
 
 * *Note:* if libwebsockets.org is unreachable for any reason, replace
