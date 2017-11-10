@@ -166,7 +166,7 @@ HTTP REST API, you'll have to install it manually:
 	git clone git://git.libwebsockets.org/libwebsockets
 	cd libwebsockets
 	# If you want the stable version of libwebsockets, uncomment the next line
-	# git checkout v1.5-chrome47-firefox41
+	# git checkout v2.4-stable
 	mkdir build
 	cd build
 	# See https://github.com/meetecho/janus-gateway/issues/732 re: LWS_MAX_SMP
