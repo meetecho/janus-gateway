@@ -3859,7 +3859,6 @@ static void *janus_streaming_ondemand_thread(void *data) {
 		g_thread_unref(g_thread_self());
 		return NULL;
 	}
-	janus_refcount_increase(&mountpoint->ref);
 	if(mountpoint->streaming_source != janus_streaming_source_file) {
 		JANUS_LOG(LOG_ERR, "[%s] Not an file source mountpoint!\n", mountpoint->name);
 		janus_refcount_decrease(&session->ref);
