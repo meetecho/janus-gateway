@@ -284,8 +284,15 @@ MacOS as well, there are a few aspects to highlight when doing that.
 
 First of all, you can use `brew` to install most of the dependencies:
 
-	brew tap homebrew/boneyard
-	brew install jansson libnice openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg libcurl glib pkg-config gengetopt autoconf automake libtool
+	brew install jansson openssl libusrsctp libmicrohttpd libwebsockets cmake rabbitmq-c sofia-sip opus libogg libcurl glib pkg-config gengetopt autoconf automake libtool
+
+The `libnice` dependency is no longer available via Homebrew and must be installed manually.
+
+  wget https://nice.freedesktop.org/releases/libnice-0.1.14.tar.gz
+  tar xfv libnice-0.1.14.tar.gz
+  cd libnice-0.1.14
+  ./configure
+  make && sudo make install
 
 For what concerns `libsrtp`, which needs to be installed manually, just
 pass `/usr/local` as a prefix when configuring, and proceed as normal:
