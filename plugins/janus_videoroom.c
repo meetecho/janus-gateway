@@ -598,6 +598,7 @@ typedef struct janus_videoroom_publisher {
 	gint64 fir_latest;	/* Time of latest sent FIR (to avoid flooding) */
 	gint fir_seq;		/* FIR sequence number */
 	gboolean recording_active;	/* Whether this publisher has to be recorded or not */
+	gboolean recording_paused;  /* Whether this publisher recording has been paused or not */
 	gchar *recording_base;	/* Base name for the recording (e.g., /path/to/filename, will generate /path/to/filename-audio.mjr and/or /path/to/filename-video.mjr */
 	janus_recorder *arc;	/* The Janus recorder instance for this publisher's audio, if enabled */
 	janus_recorder *vrc;	/* The Janus recorder instance for this user's video, if enabled */
@@ -712,7 +713,6 @@ static void janus_videoroom_publisher_free(const janus_refcount *p_ref) {
 static void janus_videoroom_session_dereference(janus_videoroom_session *session) {
 	janus_refcount_decrease(&session->ref);
 }
-
 static void janus_videoroom_session_destroy(janus_videoroom_session *session) {
 	if(session && g_atomic_int_compare_and_exchange(&session->destroyed, 0, 1))
 		janus_refcount_decrease(&session->ref);
@@ -791,6 +791,8 @@ static void janus_videoroom_message_free(janus_videoroom_message *msg) {
 #define JANUS_VIDEOROOM_ERROR_NOT_PUBLISHED		435
 #define JANUS_VIDEOROOM_ERROR_ID_EXISTS			436
 #define JANUS_VIDEOROOM_ERROR_INVALID_SDP		437
+#define JANUS_VIDEOROOM_ERROR_NO_RECORDER		438
+#define JANUS_VIDEOROOM_ERROR_INVALID_RECORDER	439
 
 
 static guint32 janus_videoroom_rtp_forwarder_add_helper(janus_videoroom_publisher *p,
@@ -1384,6 +1386,7 @@ json_t *janus_videoroom_query_session(janus_plugin_session *handle) {
 						json_object_set_new(recording, "video", json_string(participant->vrc->filename));
 					if(participant->drc && participant->drc->filename)
 						json_object_set_new(recording, "data", json_string(participant->drc->filename));
+					json_object_set_new(recording, "state", json_string(participant->recording_paused ?"Paused":"Active"));
 					json_object_set_new(info, "recording", recording);
 				}
 				if(participant->audio_level_extmap_id > 0) {
@@ -2759,7 +2762,7 @@ struct janus_plugin_result *janus_videoroom_handle_message(janus_plugin_session 
 	} else if(!strcasecmp(request_text, "join") || !strcasecmp(request_text, "joinandconfigure")
 			|| !strcasecmp(request_text, "configure") || !strcasecmp(request_text, "publish") || !strcasecmp(request_text, "unpublish")
 			|| !strcasecmp(request_text, "start") || !strcasecmp(request_text, "pause") || !strcasecmp(request_text, "switch")
-			|| !strcasecmp(request_text, "stop") || !strcasecmp(request_text, "leave")) {
+			|| !strcasecmp(request_text, "stop") || !strcasecmp(request_text, "keyframe") || !strcasecmp(request_text, "leave")) {
 		/* These messages are handled asynchronously */
 
 		janus_videoroom_message *msg = g_malloc0(sizeof(janus_videoroom_message));
@@ -3303,7 +3306,24 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher *participa
 		}
 	}
 }
-
+static int janus_videoroom_recorder_pause(janus_videoroom_publisher *participant, gboolean paused) {
+    int err = JANUS_VIDEOROOM_ERROR_NO_RECORDER;
+	if(participant->drc) {
+		err = paused ? janus_recorder_pause(participant->drc) : janus_recorder_resume(participant->drc);
+	}
+	if(participant->arc) {
+		err = paused ? janus_recorder_pause(participant->arc) : janus_recorder_resume(participant->arc);
+	}
+	if(participant->vrc) {
+		JANUS_LOG(LOG_INFO, "%s video recording file: %s\n", paused?"Pause":"Resume", participant->vrc->filename ? participant->vrc->filename : "");
+		err = paused ? janus_recorder_pause(participant->vrc) : janus_recorder_resume(participant->vrc);
+	}
+	if(err && err != JANUS_VIDEOROOM_ERROR_NO_RECORDER) {
+		JANUS_LOG(LOG_ERR, "%s event on invalid recoder ? err: %d le: %s\n", paused?"Pause":"Resume", err);
+		err = JANUS_VIDEOROOM_ERROR_INVALID_RECORDER;
+	}
+	return err;
+}
 static void janus_videoroom_recorder_close(janus_videoroom_publisher *participant) {
 	if(participant->arc) {
 		janus_recorder_close(participant->arc);
@@ -3364,6 +3384,8 @@ void janus_videoroom_hangup_media(janus_plugin_session *handle) {
 		participant->remb_latest = 0;
 		participant->fir_latest = 0;
 		participant->fir_seq = 0;
+		participant->recording_paused = FALSE;
+		participant->recording_active = FALSE;
 		while(participant->subscribers) {
 			janus_videoroom_subscriber *s = (janus_videoroom_subscriber *)participant->subscribers->data;
 			if(s) {
@@ -3572,6 +3594,7 @@ static void *janus_videoroom_handler(void *data) {
 				publisher->video_active = FALSE;
 				publisher->data_active = FALSE;
 				publisher->recording_active = FALSE;
+				publisher->recording_paused = FALSE;
 				publisher->recording_base = NULL;
 				publisher->arc = NULL;
 				publisher->vrc = NULL;
@@ -3897,6 +3920,7 @@ static void *janus_videoroom_handler(void *data) {
 				json_t *data = json_object_get(root, "data");
 				json_t *bitrate = json_object_get(root, "bitrate");
 				json_t *record = json_object_get(root, "record");
+				json_t *record_pause = json_object_get(root, "record_pause");
 				json_t *recfile = json_object_get(root, "filename");
 				json_t *display = json_object_get(root, "display");
 				json_t *refresh = json_object_get(root, "refresh");
@@ -4021,6 +4045,28 @@ static void *janus_videoroom_handler(void *data) {
 						}
 					}
 				}
+				if(record_pause) {
+					if(participant->recording_paused != json_is_true(record_pause)) {
+						JANUS_LOG(LOG_VERB, "Recording video, PAUSE changed %d to %d \n", participant->recording_paused, json_is_true(record_pause));
+						participant->recording_paused = json_is_true(record_pause);
+						error_code = janus_videoroom_recorder_pause(participant, participant->recording_paused);
+						if(!participant->recording_paused && strstr(participant->sdp, "m=video")) {
+							/* Send a FIR */
+							char buf[20];
+							memset(buf, 0, 20);
+							janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
+							JANUS_LOG(LOG_VERB, "Recording RESUME video, sending FIR to %"SCNu64" (%s)\n",
+								participant->user_id, participant->display ? participant->display : "??");
+							gateway->relay_rtcp(participant->session->handle, 1, buf, 20);
+							/* Send a PLI too, just in case... */
+							memset(buf, 0, 12);
+							janus_rtcp_pli((char *)&buf, 12);
+							JANUS_LOG(LOG_VERB, "Recording RESUME video, sending PLI to %"SCNu64" (%s)\n",
+								participant->user_id, participant->display ? participant->display : "??");
+							gateway->relay_rtcp(participant->session->handle, 1, buf, 12);
+						}
+					}
+				}
 				janus_mutex_unlock(&participant->rec_mutex);
 				if(display) {
 					janus_mutex_lock(&participant->room->mutex);
@@ -4047,6 +4093,9 @@ static void *janus_videoroom_handler(void *data) {
 				event = json_object();
 				json_object_set_new(event, "videoroom", json_string("event"));
 				json_object_set_new(event, "room", json_integer(participant->room->room_id));
+				if(error_code) {
+					/* TODO Handle error in recorder pause/resume */
+				}
 				json_object_set_new(event, "configured", json_string("ok"));
 				/* Also notify event handlers */
 				if(notify_events && gateway->events_is_enabled()) {
@@ -4066,10 +4115,33 @@ static void *janus_videoroom_handler(void *data) {
 							json_object_set_new(recording, "video", json_string(participant->vrc->filename));
 						if(participant->drc && participant->drc->filename)
 							json_object_set_new(recording, "data", json_string(participant->drc->filename));
+						json_object_set_new(recording, "state", json_string(participant->recording_paused ?"Paused":"Active"));
 						json_object_set_new(info, "recording", recording);
 					}
 					gateway->notify_event(&janus_videoroom_plugin, session->handle, info);
 				}
+			} else if(!strcasecmp(request_text, "keyframe")) {
+				event = json_object();
+				json_object_set_new(event, "videoroom", json_string("event"));
+				json_object_set_new(event, "room", json_integer(participant->room->room_id));
+				if(strstr(participant->sdp, "m=video")) {
+					/* Send a FIR */
+					char buf[20];
+					memset(buf, 0, 20);
+					janus_rtcp_fir((char *)&buf, 20, &participant->fir_seq);
+					JANUS_LOG(LOG_VERB, "Video keyframe , sending FIR to %"SCNu64" (%s)\n",
+						participant->user_id, participant->display ? participant->display : "??");
+					gateway->relay_rtcp(participant->session->handle, 1, buf, 20);
+					/* Send a PLI too, just in case... */
+					memset(buf, 0, 12);
+					janus_rtcp_pli((char *)&buf, 12);
+					JANUS_LOG(LOG_VERB, "Video keyframe, sending PLI to %"SCNu64" (%s)\n",
+						participant->user_id, participant->display ? participant->display : "??");
+					gateway->relay_rtcp(participant->session->handle, 1, buf, 12);
+					json_object_set_new(event, "keyframe", json_string("requested"));
+				} else
+					json_object_set_new(event, "keyframe", json_string("not_required"));
+
 			} else if(!strcasecmp(request_text, "unpublish")) {
 				/* This participant wants to unpublish */
 				if(!participant->sdp) {
