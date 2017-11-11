@@ -750,10 +750,13 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		stun_port = 3478;
 	JANUS_LOG(LOG_INFO, "STUN server to use: %s:%u\n", stun_server, stun_port);
 	/* Resolve address to get an IP */
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_INET;
 	struct addrinfo *res = NULL;
 	janus_network_address addr;
 	janus_network_address_string_buffer addr_buf;
-	if(getaddrinfo(stun_server, NULL, NULL, &res) != 0 ||
+	if(getaddrinfo(stun_server, NULL, &hints, &res) != 0 ||
 			janus_network_address_from_sockaddr(res->ai_addr, &addr) != 0 ||
 			janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 		JANUS_LOG(LOG_ERR, "Could not resolve %s...\n", stun_server);
