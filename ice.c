@@ -768,7 +768,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		return -1;
 	}
 	janus_stun_port = stun_port;
-	JANUS_LOG(LOG_VERB, "  >> %s:%u\n", janus_stun_server, janus_stun_port);
+	JANUS_LOG(LOG_INFO, "  >> %s:%u (%s)\n", janus_stun_server, janus_stun_port, addr.family == AF_INET ? "IPv4" : "IPv6");
 	/* Test the STUN server */
 	StunAgent stun;
 	stun_agent_init (&stun, STUN_ALL_KNOWN_ATTRIBUTES, STUN_COMPATIBILITY_RFC5389, 0);
@@ -776,25 +776,48 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 	uint8_t buf[1500];
 	size_t len = stun_usage_bind_create(&stun, &msg, buf, 1500);
 	JANUS_LOG(LOG_INFO, "Testing STUN server: message is of %zu bytes\n", len);
-	/* TODO Use the janus_network_address info to drive the socket creation */
-	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	/* Use the janus_network_address info to drive the socket creation */
+	int fd = socket(addr.family, SOCK_DGRAM, 0);
 	if(fd < 0) {
 		JANUS_LOG(LOG_FATAL, "Error creating socket for STUN BINDING test\n");
 		return -1;
 	}
-	struct sockaddr_in address, remote;
-	address.sin_family = AF_INET;
-	address.sin_port = 0;
-	address.sin_addr.s_addr = INADDR_ANY;
-	remote.sin_family = AF_INET;
-	remote.sin_port = htons(janus_stun_port);
-	remote.sin_addr.s_addr = inet_addr(janus_stun_server);
-	if(bind(fd, (struct sockaddr *)(&address), sizeof(struct sockaddr)) < 0) {
-		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test\n");
+	struct sockaddr *address = NULL, *remote = NULL;
+	struct sockaddr_in address4, remote4;
+	struct sockaddr_in6 address6, remote6;
+	socklen_t addrlen = 0;
+	if(addr.family == AF_INET) {
+		memset(&address4, 0, sizeof(address4));
+		address4.sin_family = AF_INET;
+		address4.sin_port = 0;
+		address4.sin_addr.s_addr = INADDR_ANY;
+		memset(&remote4, 0, sizeof(remote4));
+		remote4.sin_family = AF_INET;
+		remote4.sin_port = htons(janus_stun_port);
+		memcpy(&remote4.sin_addr, &addr.ipv4, sizeof(addr.ipv4));
+		address = (struct sockaddr *)(&address4);
+		remote = (struct sockaddr *)(&remote4);
+		addrlen = sizeof(remote4);
+	} else if(addr.family == AF_INET6) {
+		memset(&address6, 0, sizeof(address6));
+		address6.sin6_family = AF_INET6;
+		address6.sin6_port = 0;
+		address6.sin6_addr = in6addr_any;
+		memset(&remote6, 0, sizeof(remote6));
+		remote6.sin6_family = AF_INET6;
+		remote6.sin6_port = htons(janus_stun_port);
+		memcpy(&remote6.sin6_addr, &addr.ipv6, sizeof(addr.ipv6));
+		remote6.sin6_addr = addr.ipv6;
+		address = (struct sockaddr *)(&address6);
+		remote = (struct sockaddr *)(&remote6);
+		addrlen = sizeof(remote6);
+	}
+	if(bind(fd, address, addrlen) < 0) {
+		JANUS_LOG(LOG_FATAL, "Bind failed for STUN BINDING test: %d (%s)\n", errno, strerror(errno));
 		close(fd);
 		return -1;
 	}
-	int bytes = sendto(fd, buf, len, 0, (struct sockaddr*)&remote, sizeof(remote));
+	int bytes = sendto(fd, buf, len, 0, remote, addrlen);
 	if(bytes < 0) {
 		JANUS_LOG(LOG_FATAL, "Error sending STUN BINDING test\n");
 		close(fd);
@@ -813,8 +836,7 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		close(fd);
 		return -1;
 	}
-	socklen_t addrlen = sizeof(remote);
-	bytes = recvfrom(fd, buf, 1500, 0, (struct sockaddr*)&remote, &addrlen);
+	bytes = recvfrom(fd, buf, 1500, 0, remote, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> Got %d bytes...\n", bytes);
 	if(stun_agent_validate (&stun, &msg, buf, bytes, NULL, NULL) != STUN_VALIDATION_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Failed to validate STUN BINDING response\n");
@@ -828,10 +850,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		close(fd);
 		return -1;
 	}
-	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
+	StunMessageReturn ret = stun_message_find_xor_addr(&msg, STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> XOR-MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve XOR-MAPPED-ADDRESS...\n");
 		} else {
@@ -842,10 +864,10 @@ int janus_ice_set_stun_server(gchar *stun_server, uint16_t stun_port) {
 		}
 		return 0;
 	}
-	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)&address, &addrlen);
+	ret = stun_message_find_addr(&msg, STUN_ATTRIBUTE_MAPPED_ADDRESS, (struct sockaddr_storage *)address, &addrlen);
 	JANUS_LOG(LOG_VERB, "  >> MAPPED-ADDRESS: %d\n", ret);
 	if(ret == STUN_MESSAGE_RETURN_SUCCESS) {
-		if(janus_network_address_from_sockaddr((struct sockaddr *)&address, &addr) != 0 ||
+		if(janus_network_address_from_sockaddr((struct sockaddr *)address, &addr) != 0 ||
 				janus_network_address_to_string_buffer(&addr, &addr_buf) != 0) {
 			JANUS_LOG(LOG_ERR, "Could not resolve MAPPED-ADDRESS...\n");
 		} else {
