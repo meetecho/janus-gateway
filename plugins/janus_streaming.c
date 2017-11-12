@@ -2950,8 +2950,8 @@ static int janus_streaming_create_fd(int port, in_addr_t mcast, const janus_netw
 	/* If this is multicast, allow a re-use of the same ports (different groups may be used) */
 	if(port > 0 && IN_MULTICAST(ntohl(mcast))) {
 		int reuse = 1;
-		if(setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) == -1) {
-			JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEPORT failed\n", mountpointname, listenername);
+		if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
+			JANUS_LOG(LOG_ERR, "[%s] %s listener setsockopt SO_REUSEADDR failed\n", mountpointname, listenername);
 			close(fd);
 			return -1;
 		}
