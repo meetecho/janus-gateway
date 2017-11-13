@@ -193,6 +193,14 @@ AC_ARG_ENABLE([rabbitmq-event-handler],
                      [enable_rabbitmq_event_handler=no])],
               [enable_rabbitmq_event_handler=maybe])
 
+AC_ARG_ENABLE([mqtt-event-handler],
+              [AS_HELP_STRING([--disable-mqtt-event-handler],
+                              [Disable MQTT event handler ])],
+              [AS_IF([test "x$enable_mqtt_event_handler" != "xyes"],
+                     [enable_mqtt_event_handler=no])],
+              [enable_mqtt_event_handler=maybe])
+
+
 PKG_CHECK_MODULES([JANUS],
                   [
                     glib-2.0 >= $glib_version
@@ -432,9 +440,16 @@ AC_CHECK_LIB([paho-mqtt3a],
                AS_IF([test "x$enable_mqtt" = "xyes"],
                      [AC_MSG_ERROR([paho c client not found. See README.md for installation instructions or use --disable-mqtt])])
              ])
+               AS_IF([test "x$enable_mqtt_event_handler" != "xno"],
+               [
+                 AC_DEFINE(HAVE_MQTTEVH)
+                 enable_mqtt_event_handler=yes
+               ])
+
 AM_CONDITIONAL([ENABLE_RABBITMQ], [test "x$enable_rabbitmq" = "xyes"])
 AM_CONDITIONAL([ENABLE_RABBITMQEVH], [test "x$enable_rabbitmq_event_handler" = "xyes"])
 AM_CONDITIONAL([ENABLE_MQTT], [test "x$enable_mqtt" = "xyes"])
+AM_CONDITIONAL([ENABLE_MQTTEVH], [test "x$enable_mqtt_event_handler" = "xyes"])
 
 AC_TRY_COMPILE([
                #include <stdlib.h>
@@ -803,8 +818,11 @@ AM_COND_IF([ENABLE_SAMPLEEVH],
 	[echo "    Sample event handler:  yes"],
 	[echo "    Sample event handler:  no"])
 AM_COND_IF([ENABLE_RABBITMQEVH],
-	[echo "    RabbitMQ event handler:yes"],
-	[echo "    RabbitMQ event handler:no"])
+	[echo "    RabbitMQ event handler:	yes"],
+	[echo "    RabbitMQ event handler:	no"])
+AM_COND_IF([ENABLE_MQTTEVH],
+	[echo "    MQTT event handler:	yes"],
+	[echo "    MQTT event handler:	no"])
 AM_COND_IF([ENABLE_JAVASCRIPT_MODULES], [
 	echo "JavaScript modules:        yes"
 	echo "    Using npm:             $NPM"
