@@ -105,7 +105,7 @@ void *janus_dtls_sctp_setup_thread(void *data);
 #endif
 
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if JANUS_USE_OPENSSL_PRE_1_1_API
 /*
  * DTLS locking stuff to make OpenSSL thread safe (not needed for 1.1.0)
  *
@@ -308,7 +308,7 @@ error:
 /* DTLS-SRTP initialization */
 gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	const char *crypto_lib = NULL;
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if JANUS_USE_OPENSSL_PRE_1_1_API
 #if defined(LIBRESSL_VERSION_NUMBER)
 	crypto_lib = "LibreSSL";
 #else
@@ -331,7 +331,7 @@ gint janus_dtls_srtp_init(const char* server_pem, const char* server_key) {
 	JANUS_LOG(LOG_INFO, "Crypto: %s\n", crypto_lib);
 
 	/* Go on and create the DTLS context */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if JANUS_USE_OPENSSL_PRE_1_1_API
 	ssl_ctx = SSL_CTX_new(DTLSv1_method());
 #else
 	ssl_ctx = SSL_CTX_new(DTLS_method());
