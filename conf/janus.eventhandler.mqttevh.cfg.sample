@@ -1,0 +1,47 @@
+; Configuration file for the MQTT event handler
+; ---------------------------------------------
+;
+; Events are sent either on one topic or on a topic per event
+; type. You can also ask for topics that include plugin names
+;
+; Default configuration topics for handle and webrtc event types
+; with the base topic configured to /janus/events
+;	/janus/events/handle
+; 	/janus/events/webrtc
+;
+; If the plugin id is enabled, events in the "handle" category
+; will have plugin name attached
+; 	/janus/events/handle/sipre
+;	/janus/events/handle/audiobridge
+;
+; Subscriptions to /janus/events/+/sipre will get all events from
+; the "sipre" plugin.
+;
+;	/janus/events/handle/# will get all "handle" events from all plugins
+
+[general]
+enabled = no			; By default the module is not enabled
+events = all			; Comma separated list of the events mask to subscribe
+				; to. Valid values are 
+				; "none", "sessions", "handles", "jsep", "webrtc",
+				; "media", "plugins", "transports", "core" and "all"
+				; By default the module subscribes to all events
+
+host = localhost		; The URL of the MQTT server. Prefix with "mqtts"
+				; to use TLS
+;username = guest		; Username for authentication
+;password = guest		; Password for authentication
+;topic=/janus/events		; base topic
+;addtype = yes			; Add event type to base topic
+;addplugin = yes		; Add plugin to base topic
+
+;
+; Additional parameters if "mqtts://" schema is used
+;tls_verify_peer = yes		; Whether peer verification must be enabled
+;tls_verify_hostname = yes	; Whether hostname verification must be enabled
+; certificates to use when SSL support is enabled, if needed
+;tls_cacert = /path/to/cacert.pem
+;tls_cert = /path/to/cert.pem
+;tls_key = /path/to/key.pem
+;tls_ciphers
+;tls_version
