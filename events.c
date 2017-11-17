@@ -15,6 +15,22 @@
 #include "events.h"
 #include "utils.h"
 
+static struct event_types_t {
+	int 	event_type;
+	const char *eventlabel;	/* Lower case label for topics */
+	const char *eventname;	/* Pretty formatted for logs etc */
+} event_type_string[] = {
+	{ JANUS_EVENT_TYPE_NONE,	"no_events",	"No events"},
+	{ JANUS_EVENT_TYPE_SESSION,	"session",	"Session"},
+	{ JANUS_EVENT_TYPE_HANDLE,	"handle",	"Handle"},
+	{ JANUS_EVENT_TYPE_JSEP,	"jsep",		"Jsep"},
+	{ JANUS_EVENT_TYPE_WEBRTC,	"webrtc",	"WebRTC"},
+	{ JANUS_EVENT_TYPE_MEDIA,	"media",	"Media"},
+	{ JANUS_EVENT_TYPE_PLUGIN,	"plugin",	"Plugin"},
+	{ JANUS_EVENT_TYPE_TRANSPORT,	"transport",	"Transport"},
+	{ JANUS_EVENT_TYPE_CORE,	"core",		"Core"}
+}
+
 static gboolean eventsenabled = FALSE;
 static char *server = NULL;
 static GHashTable *eventhandlers = NULL;
@@ -241,4 +257,39 @@ void *janus_events_thread(void *data) {
 
 	JANUS_LOG(LOG_VERB, "Leaving EchoTest handler thread\n");
 	return NULL;
+}
+
+
+/* Convert event flag to label. if an event has 
+   multiple flags, we'll return the first one. 
+   Labels are lower case and useful for stuff like
+   mqtt topics.
+ */
+const char *event_type_to_label(int event_type)
+{
+	struct event_types_t *ev = event_types_string;
+
+	while (ev) {
+		if (event_type = ev->event_type) {
+			return ev->event_label;
+		}
+		ev++;
+	}
+	return (char *) NULL;
+}
+
+/* Convert event flag to name. if an event has 
+   multiple flags, we'll return the first one. 
+ */
+const char *event_type_to_name(int event_type)
+{
+	struct event_types_t *ev = event_types_string;
+
+	while (ev) {
+		if (event_type = ev->event_type) {
+			return ev->event_name;
+		}
+		ev++;
+	}
+	return (char *) NULL;
 }
