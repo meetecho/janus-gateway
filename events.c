@@ -293,3 +293,16 @@ const char *event_type_to_name(int event_type)
 	}
 	return (char *) NULL;
 }
+
+int event_label_to_flog(const char *label)
+{
+	struct event_types_t *ev = event_type_string;
+
+	while (ev) {
+		if (!strcasecmp(label, ev->eventlabel)) {
+			return ev->event_type;;
+		}
+		ev++;
+	}
+	return 0;
+}

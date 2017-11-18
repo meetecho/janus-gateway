@@ -50,5 +50,8 @@ const char *event_type_to_label(int event_type);
 	 * @param[in] type Type of the event to notify
  */
 const char *event_type_to_name(int event_type);
+/*! \brief Convert event label to flag
+ */
+int event_label_to_flog(const char *label);
 
 #endif
