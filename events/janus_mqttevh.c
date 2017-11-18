@@ -26,7 +26,7 @@
 /* Plugin information */
 #define JANUS_MQTTEVH_VERSION               1
 #define JANUS_MQTTEVH_VERSION_STRING        "0.0.1"
-#define JANUS_MQTTEVH_DESCRIPTION           "This is a trivial MQTT event handler plugin for Janus."
+#define JANUS_MQTTEVH_DESCRIPTION           "This is a MQTT event handler plugin for Janus."
 #define JANUS_MQTTEVH_NAME                  "JANUS MqttEventHandler plugin"
 #define JANUS_MQTTEVH_AUTHOR                "Edvina AB"
 #define JANUS_MQTTEVH_PACKAGE               "janus.eventhandler.mqttevh"
@@ -45,7 +45,7 @@ const char *janus_mqttevh_get_package(void);
 void janus_mqttevh_incoming_event(json_t *event);
 
 gboolean janus_mqttevh_is_janus_api_enabled(void);
-int janus_mqttevh_send_message(void *context, void *request_id, const char *topic, json_t *message);
+int janus_mqttevh_send_message(void *context, const char *topic, json_t *message);
 void janus_mqttevh_session_created(void *context, guint64 session_id);
 void janus_mqttevh_session_over(void *context, guint64 session_id, gboolean timeout);
 static void *janus_mqttevh_handler(void *data);
@@ -221,7 +221,7 @@ gboolean janus_mqttevh_is_janus_api_enabled(void) {
 }
 
 /* Send an event */
-int janus_mqttevh_send_message(void *context, void *request_id, const char *topic, json_t *message) {
+int janus_mqttevh_send_message(void *context, const char *topic, json_t *message) {
 
 	if(message == NULL) {
 		return -1;
@@ -317,7 +317,11 @@ void janus_mqttevh_client_connect_success(void *context, MQTTAsync_successData *
 
 	/* Subscribe to one topic at the time */
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
+
+	janus_mqttevh_send_message(context,  "/janus/connected", "Hello janus");
 #ifdef SKREP
+//int janus_mqttevh_send_message(void *context, void *request_id, const char *topic, json_t *message) {
+
 	/* No need to subscribe here */
 	if(janus_mqtt_evh_enabled_) {
 		int rc = janus_mqttevh_client_subscribe(context, FALSE);
@@ -551,27 +555,13 @@ int janus_mqttevh_init(const char *config_path) {
 				if(index != NULL) {
 					int i=0;
 					while(index != NULL) {
-						while(isspace(*index))
+						while(isspace(*index)) {
 							index++;
+						}
 						if(strlen(index)) {
-							if(!strcasecmp(index, "sessions")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_SESSION);
-							} else if(!strcasecmp(index, "handles")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_HANDLE);
-							} else if(!strcasecmp(index, "jsep")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_JSEP);
-							} else if(!strcasecmp(index, "webrtc")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_WEBRTC);
-							} else if(!strcasecmp(index, "media")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_MEDIA);
-							} else if(!strcasecmp(index, "plugins")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_PLUGIN);
-							} else if(!strcasecmp(index, "transports")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_TRANSPORT);
-							} else if(!strcasecmp(index, "core")) {
-								janus_flags_set(&janus_mqttevh.events_mask, JANUS_EVENT_TYPE_CORE);
-							} else {
-								JANUS_LOG(LOG_WARN, "Unknown event type '%s'\n", index);
+							int flag = event_label_to_flog(index);
+							if (flag) {
+								janus_flags_set(&janus_mqttevh.events_mask, flag);
 							}
 						}
 						i++;
