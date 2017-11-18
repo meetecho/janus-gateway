@@ -318,7 +318,10 @@ void janus_mqttevh_client_connect_success(void *context, MQTTAsync_successData *
 	/* Subscribe to one topic at the time */
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 
-	janus_mqttevh_send_message(context,  "/janus/connected", "Hello janus");
+	json_t *info = json_object();
+	json_object_set_new(info, "event", json_string("connected"));
+
+	janus_mqttevh_send_message(context,  "/janus/connected", info);
 #ifdef SKREP
 //int janus_mqttevh_send_message(void *context, void *request_id, const char *topic, json_t *message) {
 
@@ -678,6 +681,7 @@ int janus_mqttevh_init(const char *config_path) {
 		JANUS_LOG(LOG_FATAL, "Event handler : Can't setup MQTT broker %s: error setting up callbacks...\n", ctx->connect.url);
 		goto error;
 	}
+	JANUS_LOG(LOG_INFO, "Event handler : About to setup MQTT broker %s: ...\n", ctx->connect.url);
 
 	/* Connecting to the broker */
 	int rc = janus_mqttevh_client_connect(ctx);
