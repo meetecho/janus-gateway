@@ -21,6 +21,7 @@
 #include "../debug.h"
 #include "../config.h"
 #include "../utils.h"
+#include "../events.h"
 
 /* Plugin information */
 #define JANUS_MQTTEVH_VERSION               1
@@ -452,7 +453,6 @@ void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ptr) {
 
 /* Plugin implementation */
 int janus_mqttevh_init(const char *config_path) {
-	const char *url;
 	janus_config_item *url_item;
 	janus_config_item *username_item, *password_item;
 
@@ -790,8 +790,7 @@ static void *janus_mqttevh_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining MqttEventHandler handler thread\n");
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
-	int count = 0;
-	char topicbuf[512];
+	//char topicbuf[512];
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Get event from queue */
