@@ -597,6 +597,10 @@ int janus_mqttevh_init(const char *config_path) {
 			} else {
 				ctx->publish.topic = g_strdup(topic_item->value);
 			}
+			janus_config_item *addevent_item = janus_config_get_item_drilldown(config, "general", "addevent");
+			if(addevent_item && addevent_item->value && addevent_janus_is_true(item->value)) {
+				ctx->addevent = TRUE;
+			}
 
 			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "general", "qos");
 			ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
@@ -818,9 +822,12 @@ static void *janus_mqttevh_handler(void *data) {
 		if(!g_atomic_int_get(&stopping)) {
 			/* Convert event to string */
 			//event_text = json_dumps(output, json_format);
-			/* TODO: Set topic */
-			snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, event_type_to_label(type));
-			janus_mqttevh_send_message(ctx, topicbuf, output);
+			if (ctx->addevent) {
+				snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, event_type_to_label(type));
+				janus_mqttevh_send_message(ctx, topicbuf, output);
+			} else {
+				janus_mqttevh_send_message(ctx, ctx->publish.topic, output);
+			}
 
 			/* free the event */
 			free(event_text);
