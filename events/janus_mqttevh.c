@@ -818,7 +818,7 @@ static void *janus_mqttevh_handler(void *data) {
 			/* Convert event to string */
 			//event_text = json_dumps(output, json_format);
 			/* TODO: Set topic */
-			/* TODO: Publish in mqtt */
+			janus_mqttevh_send_message(ctx, ctx->publish.topic, output);
 
 			/* free the event */
 			free(event_text);
