@@ -696,7 +696,7 @@ int janus_mqttevh_init(const char *config_path) {
 	g_atomic_int_set(&initialized, 1);
 
 	GError *error = NULL;
-	handler_thread = g_thread_try_new("janus mqttevh handler", janus_mqttevh_handler, NULL, &error);
+	handler_thread = g_thread_try_new("janus mqttevh handler", janus_mqttevh_handler, ctx, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
 		JANUS_LOG(LOG_FATAL, "Got error %d (%s) trying to launch the MQTT EventHandler handler thread...\n", error->code, error->message ? error->message : "??");
@@ -782,6 +782,7 @@ void janus_mqttevh_incoming_event(json_t *event) {
 */
 static void *janus_mqttevh_handler(void *data) {
 	JANUS_LOG(LOG_VERB, "Joining MqttEventHandler handler thread\n");
+	janus_mqttevh_context *ctx = (janus_mqttevh_context *) data;
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
 	//char topicbuf[512];
