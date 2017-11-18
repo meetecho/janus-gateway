@@ -480,6 +480,7 @@ int janus_mqttevh_init(const char *config_path) {
 		JANUS_LOG(LOG_WARN, "MQTT event handler disabled\n");
 		goto error;
 	}
+	janus_mqtt_evh_enabled_ = TRUE;
 
 	url_item = janus_config_get_item_drilldown(config, "general", "url");
 	url = g_strdup((url_item && url_item->value) ? url_item->value : DEFAULT_MQTTURL);
@@ -588,16 +589,6 @@ int janus_mqttevh_init(const char *config_path) {
 			ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
 	}
-	else {
-		janus_mqtt_evh_enabled_ = FALSE;
-		ctx->publish.topic = NULL;
-	}
-
-	if(!janus_mqtt_evh_enabled_ ) {
-		JANUS_LOG(LOG_WARN, "MQTT event handler support disabled, giving up\n");
-		goto error;
-	}
-
 
 	/* TLS config*/
 	item = janus_config_get_item_drilldown(config, "general", "tls_enable");
