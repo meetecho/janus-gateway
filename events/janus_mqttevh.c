@@ -44,9 +44,10 @@ const char *janus_mqttevh_get_package(void);
 void janus_mqttevh_incoming_event(json_t *event);
 
 gboolean janus_mqttevh_is_janus_api_enabled(void);
-int janus_mqttevh_send_message(void *context, void *request_id, json_t *message);
+int janus_mqttevh_send_message(void *context, void *request_id, const char *topic, json_t *message);
 void janus_mqttevh_session_created(void *context, guint64 session_id);
 void janus_mqttevh_session_over(void *context, guint64 session_id, gboolean timeout);
+static void *janus_mqttevh_handler(void *data);
 
 
 /* Event handler setup */
@@ -68,6 +69,17 @@ static janus_eventhandler janus_mqttevh =
                 .events_mask = JANUS_EVENT_TYPE_NONE
         );
 
+/* Fix an exit event */
+static json_t exit_event;
+static void janus_mqttevh_event_free(json_t *event) {
+        if(!event || event == &exit_event)
+                return;
+        json_decref(event);
+}
+
+/* Queue of events to handle */
+static GAsyncQueue *events = NULL;
+
 /* Plugin creator */
 janus_eventhandler *create(void) {
         JANUS_LOG(LOG_VERB, "%s created!\n", JANUS_MQTTEVH_NAME);
@@ -76,6 +88,8 @@ janus_eventhandler *create(void) {
 
 /* API flags */
 static gboolean janus_mqtt_evh_enabled_ = FALSE;
+static GThread *handler_thread;
+static volatile gint initialized = 0, stopping = 0;
 
 /* JSON serialization options */
 
@@ -86,7 +100,7 @@ static gboolean janus_mqtt_evh_enabled_ = FALSE;
 #define DEFAULT_TIMEOUT		30
 #define DEFAULT_QOS		0
 #define DEFAULT_RETAIN		1
-#define DEFAULT_WILL_CONTENT	"{\"event\" : "\disconnect\" }"
+#define DEFAULT_WILL_CONTENT	"{\"event\" : \"disconnect\" }"
 #define DEFAULT_WILL_RETAIN	1
 #define DEFAULT_WILL_QOS	0
 #define DEFAULT_BASETOPIC	"/janus/events"
@@ -112,10 +126,12 @@ typedef struct janus_mqttevh_context {
 	struct {
 		char *topic;
 		int qos;
+		int retain;
 	} publish;
 	struct {
 		char *topic;
 		int qos;
+		int retain;
 		char *content;
 	} will;
 	int addplugin;
@@ -142,13 +158,6 @@ void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ctx);
 
 /* We only handle a single client */
 static janus_mqttevh_context *context_ = NULL;
-
-
-/* Callback on destruction */
-void janus_mqttevh_destroy(void) {
-	JANUS_LOG(LOG_INFO, "Disconnecting MQTT EVH client...\n");
-	janus_mqttevh_client_disconnect(context_);
-}
 
 int janus_mqttevh_get_version(void) {
 	return JANUS_MQTTEVH_VERSION;
@@ -306,7 +315,6 @@ void janus_mqttevh_client_connect_failure(void *context, MQTTAsync_failureData *
 }
 
 int janus_mqttevh_client_reconnect(janus_mqttevh_context *ctx) {
-	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 	JANUS_LOG(LOG_INFO, "MQTT EVH client reconnecting to %s. Reconnecting...\n", ctx->connect.url);
 
 	MQTTAsync_disconnectOptions options = MQTTAsync_disconnectOptions_initializer;
@@ -702,10 +710,6 @@ error:
 	g_free((char *)client_id);
 	g_free(config);
 
-	if(username)
-		g_free((char *)username);
-	if(password)
-		g_free((char *)password);
 	if(ssl_cacert_file)
 		g_free((char *)ssl_cacert_file);
 	if(ssl_cert_file)
@@ -740,35 +744,6 @@ void janus_mqttevh_destroy(void) {
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", JANUS_MQTTEVH_NAME);
-}
-
-int janus_mqttevh_get_api_compatibility(void) {
-	/* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
-	return JANUS_EVENTHANDLER_API_VERSION;
-}
-
-int janus_mqttevh_get_version(void) {
-	return JANUS_MQTTEVH_VERSION;
-}
-
-const char *janus_mqttevh_get_version_string(void) {
-	return JANUS_MQTTEVH_VERSION_STRING;
-}
-
-const char *janus_mqttevh_get_description(void) {
-	return JANUS_MQTTEVH_DESCRIPTION;
-}
-
-const char *janus_mqttevh_get_name(void) {
-	return JANUS_MQTTEVH_NAME;
-}
-
-const char *janus_mqttevh_get_author(void) {
-	return JANUS_MQTTEVH_AUTHOR;
-}
-
-const char *janus_mqttevh_get_package(void) {
-	return JANUS_MQTTEVH_PACKAGE;
 }
 
 
@@ -832,7 +807,7 @@ static void *janus_mqttevh_handler(void *data) {
 
 		if(!g_atomic_int_get(&stopping)) {
 			/* Convert event to string */
-			event_text = json_dumps(output, json_format);
+			//event_text = json_dumps(output, json_format);
 			/* TODO: Set topic */
 			/* TODO: Publish in mqtt */
 
