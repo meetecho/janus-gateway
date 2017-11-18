@@ -785,7 +785,7 @@ static void *janus_mqttevh_handler(void *data) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *) data;
 	json_t *event = NULL, *output = NULL;
 	char *event_text = NULL;
-	//char topicbuf[512];
+	char topicbuf[512];
 
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		/* Get event from queue */
@@ -819,7 +819,8 @@ static void *janus_mqttevh_handler(void *data) {
 			/* Convert event to string */
 			//event_text = json_dumps(output, json_format);
 			/* TODO: Set topic */
-			janus_mqttevh_send_message(ctx, ctx->publish.topic, output);
+			snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, event_type_to_label(type));
+			janus_mqttevh_send_message(ctx, topicbuf, output);
 
 			/* free the event */
 			free(event_text);
