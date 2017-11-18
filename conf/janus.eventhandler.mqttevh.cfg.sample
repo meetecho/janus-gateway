@@ -27,11 +27,19 @@ events = all			; Comma separated list of the events mask to subscribe
 				; "media", "plugins", "transports", "core" and "all"
 				; By default the module subscribes to all events
 
-host = localhost		; The URL of the MQTT server. Prefix with "mqtts"
-				; to use TLS
-;username = guest		; Username for authentication
-;password = guest		; Password for authentication
-;topic=/janus/events		; base topic
+json = indented			; Whether the JSON messages should be indented (default),
+				; plain (no indentation) or compact (no indentation and no spaces)
+
+url = tcp://localhost:1883	; The URL of the MQTT server. Prefix with "mqtts"
+				; to use TLS (Default: tcp://localhost:1883)
+client_id = Janus02.edvina.net	; Janus client id. If not configured, random ID is default
+;keep_alive_interval = 20	; Keep connection for N seconds (Default 30)
+;cleansession = 0		; Clean session flag (Default off)
+;mqtt_qos = 1			; Default MQTT QoS for published events
+;disconnect_timeout = 100	; Seconds to wait before destroying client
+;username = guest		; Username for authentication (Default no authentication)
+;password = guest		; Password for authentication (Default no authentication)
+;topic=/janus/events		; base topic (default /janus/events)
 ;addtype = yes			; Add event type to base topic
 ;addplugin = yes		; Add plugin to base topic
 
@@ -41,7 +49,7 @@ host = localhost		; The URL of the MQTT server. Prefix with "mqtts"
 ;tls_verify_hostname = yes	; Whether hostname verification must be enabled
 ; certificates to use when SSL support is enabled, if needed
 ;tls_cacert = /path/to/cacert.pem
-;tls_cert = /path/to/cert.pem
-;tls_key = /path/to/key.pem
+;tls_client_cert = /path/to/cert.pem
+;tls_client_key = /path/to/key.pem
 ;tls_ciphers
 ;tls_version
