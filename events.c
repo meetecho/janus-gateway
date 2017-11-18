@@ -29,7 +29,7 @@ static struct event_types_t {
 	{ JANUS_EVENT_TYPE_PLUGIN,	"plugin",	"Plugin"},
 	{ JANUS_EVENT_TYPE_TRANSPORT,	"transport",	"Transport"},
 	{ JANUS_EVENT_TYPE_CORE,	"core",		"Core"}
-}
+};
 
 static gboolean eventsenabled = FALSE;
 static char *server = NULL;
@@ -267,11 +267,11 @@ void *janus_events_thread(void *data) {
  */
 const char *event_type_to_label(int event_type)
 {
-	struct event_types_t *ev = event_types_string;
+	struct event_types_t *ev = event_type_string;
 
 	while (ev) {
-		if (event_type = ev->event_type) {
-			return ev->event_label;
+		if (event_type == ev->event_type) {
+			return ev->eventlabel;
 		}
 		ev++;
 	}
@@ -283,11 +283,11 @@ const char *event_type_to_label(int event_type)
  */
 const char *event_type_to_name(int event_type)
 {
-	struct event_types_t *ev = event_types_string;
+	struct event_types_t *ev = event_type_string;
 
 	while (ev) {
-		if (event_type = ev->event_type) {
-			return ev->event_name;
+		if (event_type == ev->event_type) {
+			return ev->eventname;
 		}
 		ev++;
 	}
