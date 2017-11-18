@@ -598,7 +598,7 @@ int janus_mqttevh_init(const char *config_path) {
 				ctx->publish.topic = g_strdup(topic_item->value);
 			}
 			janus_config_item *addevent_item = janus_config_get_item_drilldown(config, "general", "addevent");
-			if(addevent_item && addevent_item->value && addevent_janus_is_true(item->value)) {
+			if(addevent_item && addevent_item->value && janus_is_true(item->value)) {
 				ctx->addevent = TRUE;
 			}
 
