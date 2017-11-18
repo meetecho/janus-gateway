@@ -159,6 +159,12 @@ void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ctx);
 /* We only handle a single client */
 static janus_mqttevh_context *context_ = NULL;
 
+
+int janus_mqttevh_get_api_compatibility(void) {
+        /* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
+        return JANUS_EVENTHANDLER_API_VERSION;
+}
+
 int janus_mqttevh_get_version(void) {
 	return JANUS_MQTTEVH_VERSION;
 }
