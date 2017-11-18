@@ -98,6 +98,7 @@ static volatile gint initialized = 0, stopping = 0;
 #define	DEFAULT_KEEPALIVE	30
 #define	DEFAULT_CLEANSESSION	0	/* Off */
 #define DEFAULT_TIMEOUT		30
+#define DEFAULT_DISCONNECT_TIMEOUT	100
 #define DEFAULT_QOS		0
 #define DEFAULT_RETAIN		1
 #define DEFAULT_WILL_CONTENT	"{\"event\" : \"disconnect\" }"
@@ -107,35 +108,59 @@ static volatile gint initialized = 0, stopping = 0;
 #define DEFAULT_MQTTURL		"tcp://localhost:1883"
 #define DEFAULT_JSON_FORMAT	JSON_INDENT(3) | JSON_PRESERVE_ORDER
 
+#define DEFAULT_TLS_ENABLE	FALSE
+#define DEFAULT_TLS_VERIFY_PEER	FALSE
+#define DEFAULT_TLS_VERIFY_HOST	FALSE
+
 static size_t json_format_ = DEFAULT_JSON_FORMAT;
 
 /* MQTT client context */
 typedef struct janus_mqttevh_context {
 	//janus_transport_callbacks *gateway;
+	/* THe Paho MQTT client data structure */
 	MQTTAsync client;
+
+	int addplugin;
+	int addevent;
+
+	/* Connection data - authentication and url */
 	struct {
 		int keep_alive_interval;
 		int cleansession;
+		char *client_id;
 		char *username;
 		char *password;
 		char *url;
 	} connect;
+
 	struct {
 		int timeout;
 	} disconnect;
+
+	/* Data for publishing events */
 	struct {
 		char *topic;
 		int qos;
 		int retain;
 	} publish;
+
+	/* If we loose connection, the will is our last publish */
 	struct {
 		char *topic;
 		int qos;
 		int retain;
 		char *content;
 	} will;
-	int addplugin;
-	int addevent;
+
+	/* TLS connection data */
+	struct {
+		gboolean enable;
+		const char *cacert_file;
+		const char *cert_file;
+		const char *key_file;
+		gboolean verify_peer;
+		gboolean verify_host;
+	} tls;
 } janus_mqttevh_context;
 
 /* Transport client methods */
@@ -160,6 +185,7 @@ void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ctx);
 static janus_mqttevh_context *context_ = NULL;
 
 
+/* Janus API methods */
 int janus_mqttevh_get_api_compatibility(void) {
         /* Important! This is what your plugin MUST always return: don't lie here or bad things will happen */
         return JANUS_EVENTHANDLER_API_VERSION;
@@ -229,11 +255,11 @@ void janus_mqttevh_session_over(void *context, guint64 session_id, gboolean time
 }
 
 void janus_mqttevh_client_connection_lost(void *context, char *cause) {
-	JANUS_LOG(LOG_INFO, "MQTT EVH connection lost cause of %s. Reconnecting...\n", cause);
 	/* Automatic reconnect */
 
 	/* Notify handlers about this transport being gone */
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
+	JANUS_LOG(LOG_INFO, "MQTT EVH connection %s lost cause of %s. Reconnecting...\n", ctx->connect.url, cause);
 #ifdef SKREP
 	if(notify_events && ctx && ctx->gateway && ctx->gateway->events_is_enabled()) {
 		json_t *info = json_object();
@@ -253,7 +279,7 @@ int janus_mqttevh_client_message_arrived(void *context, char *topicName, int top
         g_free(topic);
 
         if(janus && message->payloadlen) {
-                JANUS_LOG(LOG_HUGE, "Receiving %s EVH message over MQTT: %s\n", "Janus", (char *)message->payload);
+                JANUS_LOG(LOG_HUGE, "MQTT %s: Receiving %s EVH message over MQTT: %s\n", ctx->connect.url, "Janus", (char *)message->payload);
 
 #ifdef SKREP
                 json_error_t error;
@@ -447,14 +473,6 @@ int janus_mqttevh_init(const char *config_path) {
 		janus_config_print(config);
 	}
 
-	/* TODO OEJ : THese should propably be in the context */
-	const char *ssl_cacert_file = NULL;
-	const char *ssl_cert_file = NULL;
-	const char *ssl_key_file = NULL;
-	gboolean ssl_enable = FALSE;
-	gboolean ssl_verify_peer = FALSE;
-	gboolean ssl_verify_hostname = FALSE;
-
 	/* Initializing context */
 	janus_mqttevh_context *ctx = g_malloc0(sizeof(struct janus_mqttevh_context));
 	context_ = ctx;
@@ -470,8 +488,9 @@ int janus_mqttevh_init(const char *config_path) {
 	ctx->will.retain = DEFAULT_WILL_RETAIN;
 	ctx->will.content = DEFAULT_WILL_CONTENT;
 
-
-
+	ctx->tls.enable = DEFAULT_TLS_ENABLE;
+	ctx->tls.verify_peer = DEFAULT_TLS_VERIFY_PEER;
+	ctx->tls.verify_host = DEFAULT_TLS_VERIFY_HOST;
 
 	/* Setup the event handler, if required */
 	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "enabled");
@@ -482,12 +501,13 @@ int janus_mqttevh_init(const char *config_path) {
 	}
 	janus_mqtt_evh_enabled_ = TRUE;
 
+	/* MQTT URL */
 	url_item = janus_config_get_item_drilldown(config, "general", "url");
-	url = g_strdup((url_item && url_item->value) ? url_item->value : DEFAULT_MQTTURL);
+	ctx->connect.url= g_strdup((url_item && url_item->value) ? url_item->value : DEFAULT_MQTTURL);
 
 	janus_config_item *client_id_item = janus_config_get_item_drilldown(config, "general", "client_id");
 	// OEJ TODO: Fix random client id if not configured
-	const char *client_id = g_strdup((client_id_item && client_id_item->value) ? client_id_item->value : "guest");
+	ctx->connect.client_id = g_strdup((client_id_item && client_id_item->value) ? client_id_item->value : "guest");
 
 	username_item = janus_config_get_item_drilldown(config, "general", "username");
 	ctx->connect.username = g_strdup((username_item && username_item->value) ? username_item->value : "");
@@ -572,7 +592,7 @@ int janus_mqttevh_init(const char *config_path) {
 
 	/* Disconnect configuration */
 	janus_config_item *disconnect_timeout_item = janus_config_get_item_drilldown(config, "general", "disconnect_timeout");
-	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : 100;
+	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : DEFAULT_DISCONNECT_TIMEOUT;
 
 	if(janus_mqtt_evh_enabled_) {
 
@@ -585,7 +605,7 @@ int janus_mqttevh_init(const char *config_path) {
 				ctx->publish.topic = g_strdup(topic_item->value);
 			}
 
-			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "general", "publish_qos");
+			janus_config_item *qos_item = janus_config_get_item_drilldown(config, "general", "qos");
 			ctx->publish.qos = (qos_item && qos_item->value) ? atoi(qos_item->value) : 1;
 		}
 	}
@@ -600,13 +620,13 @@ int janus_mqttevh_init(const char *config_path) {
 	if(!item || !item->value || !janus_is_true(item->value)) {
 		JANUS_LOG(LOG_INFO, "MQTTEventHandler: MQTT TLS support disabled\n");
 	} else {
-		ssl_enable = TRUE;
+		ctx->tls.enable = TRUE;
 		item = janus_config_get_item_drilldown(config, "general", "tls_cacert");
 		if (!item) {
-			item = janus_config_get_item_drilldown(config, "general", "tls_enable");
+			item = janus_config_get_item_drilldown(config, "general", "ssl_cacert");
 		}
 		if(item && item->value) {
-			ssl_cacert_file = g_strdup(item->value);
+			ctx->tls.cacert_file = g_strdup(item->value);
 		}
 
 		item = janus_config_get_item_drilldown(config, "general", "tls_client_cert");
@@ -614,28 +634,28 @@ int janus_mqttevh_init(const char *config_path) {
 			item = janus_config_get_item_drilldown(config, "general", "ssl_client_cert");
 		}
 		if(item && item->value) {
-			ssl_cert_file = g_strdup(item->value);
+			ctx->tls.cert_file = g_strdup(item->value);
 		}
 		item = janus_config_get_item_drilldown(config, "general", "tls_client_key");
 		if (!item) {
 			item = janus_config_get_item_drilldown(config, "general", "ssl_client_key");
 		}
 		if(item && item->value) {
-			ssl_key_file = g_strdup(item->value);
+			ctx->tls.key_file = g_strdup(item->value);
 		}
 		item = janus_config_get_item_drilldown(config, "general", "tls_verify_peer");
 		if (!item) {
 			item = janus_config_get_item_drilldown(config, "general", "ssl_verify_peer");
 		}
 		if(item && item->value && janus_is_true(item->value)) {
-			ssl_verify_peer = TRUE;
+			ctx->tls.verify_peer = TRUE;
 		}
 		item = janus_config_get_item_drilldown(config, "general", "tls_verify_hostname");
 		if (!item) {
 			item = janus_config_get_item_drilldown(config, "general", "ssl_verify_hostname");
 		}
 		if(item && item->value && janus_is_true(item->value)) {
-			ssl_verify_hostname = TRUE;
+			ctx->tls.verify_host = TRUE;
 		}
 	}
 
@@ -648,14 +668,14 @@ int janus_mqttevh_init(const char *config_path) {
 		goto error;
 	}
 
-	/* Creating a client */
+	/* Create a MQTT client */
 	if(MQTTAsync_create(
 			&ctx->client,
-			url,
-			client_id,
+			ctx->connect.url,
+			ctx->connect.client_id,
 			MQTTCLIENT_PERSISTENCE_NONE,
 			NULL) != MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_FATAL, "Can't setup library for connection to  MQTT broker %s: error creating client...\n", url);
+		JANUS_LOG(LOG_FATAL, "Can't setup library for connection to  MQTT broker %s: error creating client...\n", ctx->connect.url);
 		goto error;
 	}
 	/* Set callbacks. We should not really subscribe to anything but nevertheless */
@@ -665,7 +685,7 @@ int janus_mqttevh_init(const char *config_path) {
 			janus_mqttevh_client_connection_lost,
 			janus_mqttevh_client_message_arrived,	//Needed
 			janus_mqttevh_client_delivery_complete) != MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_FATAL, "Event handler : Can't setup MQTT broker %s: error setting up callbacks...\n", url);
+		JANUS_LOG(LOG_FATAL, "Event handler : Can't setup MQTT broker %s: error setting up callbacks...\n", ctx->connect.url);
 		goto error;
 	}
 
@@ -702,18 +722,18 @@ int janus_mqttevh_init(const char *config_path) {
 error:
 	/* If we got here, something went wrong */
 	janus_mqttevh_client_destroy_context(&ctx);
-	g_free((char *)url);
-	g_free((char *)client_id);
-	g_free(config);
+	//g_free((char *)url);
+	//g_free((char *)client_id);
 
-	if(ssl_cacert_file)
-		g_free((char *)ssl_cacert_file);
-	if(ssl_cert_file)
-		g_free((char *)ssl_cert_file);
-	if(ssl_key_file)
-		g_free((char *)ssl_key_file);
+	//if(ssl_cacert_file)
+		//g_free((char *)ssl_cacert_file);
+	//if(ssl_cert_file)
+		//g_free((char *)ssl_cert_file);
+	//if(ssl_key_file)
+		//g_free((char *)ssl_key_file);
 	if(config)
 		janus_config_destroy(config);
+	g_free(config);
 	return -1;
 }
 
