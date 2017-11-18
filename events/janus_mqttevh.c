@@ -475,8 +475,9 @@ int janus_mqttevh_init(const char *config_path) {
 
 	/* Setup the event handler, if required */
 	janus_config_item *item = janus_config_get_item_drilldown(config, "general", "enabled");
+
 	if(!item || !item->value || !janus_is_true(item->value)) {
-		JANUS_LOG(LOG_WARN, "RabbitMQ event handler disabled\n");
+		JANUS_LOG(LOG_WARN, "MQTT event handler disabled\n");
 		goto error;
 	}
 
@@ -572,9 +573,7 @@ int janus_mqttevh_init(const char *config_path) {
 	janus_config_item *disconnect_timeout_item = janus_config_get_item_drilldown(config, "general", "disconnect_timeout");
 	ctx->disconnect.timeout = (disconnect_timeout_item && disconnect_timeout_item->value) ? atoi(disconnect_timeout_item->value) : 100;
 
-	janus_config_item *enable_item = janus_config_get_item_drilldown(config, "general", "enable");
-	if(enable_item && enable_item->value && janus_is_true(enable_item->value)) {
-		janus_mqtt_evh_enabled_ = TRUE;
+	if(janus_mqtt_evh_enabled_) {
 
 		/* Publish configuration */
 		{
