@@ -151,7 +151,7 @@ void janus_mqttevh_client_reconnect_failure(void *context, MQTTAsync_failureData
 int janus_mqttevh_client_disconnect(janus_mqttevh_context *ctx);
 void janus_mqttevh_client_disconnect_success(void *context, MQTTAsync_successData *response);
 void janus_mqttevh_client_disconnect_failure(void *context, MQTTAsync_failureData *response);
-int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, char *payload);
+int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, const char *topic, char *payload );
 void janus_mqttevh_client_publish_janus_success(void *context, MQTTAsync_successData *response);
 void janus_mqttevh_client_publish_janus_failure(void *context, MQTTAsync_failureData *response);
 void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ctx);
@@ -205,7 +205,7 @@ int janus_mqttevh_send_message(void *context, void *request_id, const char *topi
 	json_decref(message);
 	JANUS_LOG(LOG_HUGE, "Sending Event via MQTT: %s\n", payload);
 
-	int rc = janus_mqttevh_client_publish_message(ctx, payload);
+	int rc = janus_mqttevh_client_publish_message(ctx, "OEJ/TOPIC", payload);
 	if(rc != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_ERR, "Can't publish to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
 	}
@@ -475,7 +475,7 @@ int janus_mqttevh_init(const char *config_path) {
 	}
 
 	url_item = janus_config_get_item_drilldown(config, "general", "url");
-	url = g_strdup((url_item && url_item->value) ? url_item->value : DEFAULT_MQTT_URL);
+	url = g_strdup((url_item && url_item->value) ? url_item->value : DEFAULT_MQTTURL);
 
 	janus_config_item *client_id_item = janus_config_get_item_drilldown(config, "general", "client_id");
 	// OEJ TODO: Fix random client id if not configured
