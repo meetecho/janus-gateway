@@ -409,6 +409,7 @@ static void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ptr) {
 
 /* Plugin implementation */
 static int janus_mqttevh_init(const char *config_path) {
+	int res = 0;
 	janus_config_item *url_item;
 	janus_config_item *username_item, *password_item, *topic_item, *addevent_item;
 	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item;
@@ -610,23 +611,24 @@ static int janus_mqttevh_init(const char *config_path) {
 	}
 
 	/* Create a MQTT client */
-	if(MQTTAsync_create(
+	res = MQTTAsync_create(
 			&ctx->client,
 			ctx->connect.url,
 			ctx->connect.client_id,
 			MQTTCLIENT_PERSISTENCE_NONE,
-			NULL) != MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_FATAL, "Can't setup library for connection to  MQTT broker %s: error creating client...\n", ctx->connect.url);
+			NULL);
+	 if (res != MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_FATAL, "Can't setup library for connection to  MQTT broker %s: error %d creating client...\n", ctx->connect.url, res);
 		goto error;
 	}
 	/* Set callbacks. We should not really subscribe to anything but nevertheless */
-	if(MQTTAsync_setCallbacks(
-			ctx->client,
-			ctx,
+	res = MQTTAsync_setCallbacks(
+			ctx->client, ctx,
 			janus_mqttevh_client_connection_lost,
 			janus_mqttevh_client_message_arrived,	//Needed
-			janus_mqttevh_client_delivery_complete) != MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_FATAL, "Event handler : Can't setup MQTT broker %s: error setting up callbacks...\n", ctx->connect.url);
+			janus_mqttevh_client_delivery_complete);
+	if (res != MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_FATAL, "Event handler : Can't setup MQTT broker %s: error %d setting up callbacks...\n", ctx->connect.url, res);
 		goto error;
 	}
 	JANUS_LOG(LOG_INFO, "Event handler : About to setup MQTT broker %s: ...\n", ctx->connect.url);
@@ -664,15 +666,13 @@ static int janus_mqttevh_init(const char *config_path) {
 error:
 	/* If we got here, something went wrong */
 	janus_mqttevh_client_destroy_context(&ctx);
-	//g_free((char *)url);
-	//g_free((char *)client_id);
-
 	//if(ssl_cacert_file)
 		//g_free((char *)ssl_cacert_file);
 	//if(ssl_cert_file)
 		//g_free((char *)ssl_cert_file);
 	//if(ssl_key_file)
 		//g_free((char *)ssl_key_file);
+
 	if(config)
 		janus_config_destroy(config);
 	g_free(config);
