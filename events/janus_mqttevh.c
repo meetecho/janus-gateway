@@ -336,6 +336,8 @@ int janus_mqttevh_client_reconnect(janus_mqttevh_context *ctx) {
 
 void janus_mqttevh_client_reconnect_success(void *context, MQTTAsync_successData *response) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
+	char topicbuf[512];
+
 	JANUS_LOG(LOG_INFO, "MQTT EVH client has been disconnected from %s. Reconnecting...\n", ctx->connect.url);
 
 	int rc = janus_mqttevh_client_connect(context);
@@ -427,7 +429,7 @@ void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ptr) {
 int janus_mqttevh_init(const char *config_path) {
 	janus_config_item *url_item;
 	janus_config_item *username_item, *password_item, *topic_item, *addevent_item;
-	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item
+	janus_config_item *keep_alive_interval_item, *cleansession_item, *disconnect_timeout_item, *qos_item, *retain_item;
 
 	if(g_atomic_int_get(&stopping)) {
 		/* Still stopping from before */
@@ -620,10 +622,6 @@ int janus_mqttevh_init(const char *config_path) {
 		}
 	}
 
-	/* Parse configuration */
-	// JANUS_LOG(LOG_INFO, "RabbitMQ event handler enabled, %s:%d (%s)\n", rmqhost, rmqport, route_key);
-
-	/* Connect to MQTT*/
 	if(!janus_mqtt_evh_enabled_ ) {
 		JANUS_LOG(LOG_WARN, "MQTT event handler support disabled, giving up\n");
 		goto error;
