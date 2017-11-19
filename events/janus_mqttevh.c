@@ -156,9 +156,9 @@ typedef struct janus_mqttevh_context {
 	/* TLS connection data */
 	struct {
 		gboolean enable;
-		const char *cacert_file;
-		const char *cert_file;
-		const char *key_file;
+		char *cacert_file;
+		char *cert_file;
+		char *key_file;
 		gboolean verify_peer;
 		gboolean verify_host;
 	} tls;
@@ -317,7 +317,6 @@ void janus_mqttevh_client_connect_failure(void *context, MQTTAsync_failureData *
 	int rc = response ? response->code : 0;
 
 	/* Notify handlers about this transport failure */
-	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 	JANUS_LOG(LOG_ERR, "MQTT EVH client has failed connecting to the broker, return code: %d. Reconnecting...\n", rc);
 
 }
@@ -562,12 +561,12 @@ int janus_mqttevh_init(const char *config_path) {
 		ctx->publish.topic = g_strdup(topic_item->value);
 	}
 	addevent_item = janus_config_get_item_drilldown(config, "general", "addevent");
-	if(addevent_item && addevent_item->value && janus_is_true(item->value)) {
+	if(addevent_item && addevent_item->value && janus_is_true(addevent_item->value)) {
 		ctx->addevent = TRUE;
 	}
-	addevent_item = janus_config_get_item_drilldown(config, "general", "retain");
-	if(addevent_item && addevent_item->value && janus_is_true(item->value)) {
-		ctx->publish.retain = atoi(addevent_item->value);;
+	retain_item = janus_config_get_item_drilldown(config, "general", "retain");
+	if(retain_item && retain_item->value && janus_is_true(retain_item->value)) {
+		ctx->publish.retain = atoi(retain_item->value);;
 	}
 
 	qos_item = janus_config_get_item_drilldown(config, "general", "qos");
