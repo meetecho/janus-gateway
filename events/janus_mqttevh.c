@@ -162,9 +162,7 @@ typedef struct janus_mqttevh_context {
 } janus_mqttevh_context;
 
 /* Transport client methods */
-static int janus_mqttevh_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message);
 static void janus_mqttevh_client_connection_lost(void *context, char *cause);
-static void janus_mqttevh_client_delivery_complete(void *context, MQTTAsync_token token);
 static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx);
 static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_successData *response);
 static void janus_mqttevh_client_connect_failure(void *context, MQTTAsync_failureData *response);
@@ -247,27 +245,6 @@ static void janus_mqttevh_client_connection_lost(void *context, char *cause) {
 	JANUS_LOG(LOG_INFO, "MQTT EVH connection %s lost cause of %s. Reconnecting...\n", ctx->connect.url, cause);
 }
 
-/* This is not used here, but required by the api (or is it? ) */
-static int janus_mqttevh_client_message_arrived(void *context, char *topicName, int topicLen, MQTTAsync_message *message) {
-        janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
-        gchar *topic = g_strndup(topicName, topicLen);
-        //const gboolean janus = janus_mqtt_evh_enabled_ &&  !strcasecmp(topic, ctx->subscribe.topic);
-        const gboolean janus = janus_mqtt_evh_enabled_ ;
-        g_free(topic);
-
-        if(janus && message->payloadlen) {
-                JANUS_LOG(LOG_HUGE, "MQTT %s: Receiving %s EVH message over MQTT: %s\n", ctx->connect.url, "Janus", (char *)message->payload);
-        }
-
-        MQTTAsync_freeMessage(&message);
-        MQTTAsync_free(topicName);
-        return TRUE;
-}
-
-static void janus_mqttevh_client_delivery_complete(void *context, MQTTAsync_token token) {
-	/* If you send with QoS, you get confirmation here */
-}
-
 /* Set up connection to broker */
 static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	MQTTAsync_connectOptions options = MQTTAsync_connectOptions_initializer;
@@ -279,6 +256,7 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	options.onSuccess = janus_mqttevh_client_connect_success;
 	options.onFailure = janus_mqttevh_client_connect_failure;
 	options.context = ctx;
+
 	return MQTTAsync_connect(ctx->client, &options);
 }
 
@@ -323,7 +301,61 @@ static void janus_mqttevh_client_reconnect_success(void *context, MQTTAsync_succ
 	JANUS_LOG(LOG_INFO, "MQTT EVH client has been disconnected from %s. Reconnecting...\n", ctx->connect.url);
 
 	int rc = janus_mqttevh_client_connect(context);
+/*
+MQTTASYNC_SUCCESS if the client connect request was accepted. If the client was unable to connect to the server, an error code is returned via the onFailure callback, if set. Error codes greater than 0 are returned by the MQTT protocol:
+
+1: Connection refused: Unacceptable protocol version
+2: Connection refused: Identifier rejected
+3: Connection refused: Server unavailable
+4: Connection refused: Bad user name or password
+5: Connection refused: Not authorized
+*/
 	if(rc != MQTTASYNC_SUCCESS) {
+		char *error;
+		switch rc:
+			case 1: error = "Connection refused - protocol version";
+				break;
+			case 2: error = "Connection refused - identifier rejected";
+				break;
+			case 3: error = "Connection refused - server unavailable";
+				break;
+			case 4: error = "Connection refused - bad credentials";
+				break;
+			case 5: error = "Connection refused - not authroized";
+				break;
+			default: error = "Connection refused - unknown error";
+				break;
+		}
+		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker, return code: %d (%s)\n", rc, error);
+		return;
+	} 
+	json_t *info = json_object();
+	json_object_set_new(info, "event", json_string("connected"));
+	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, "status");
+	janus_mqttevh_send_message(context,  topicbuf, info);
+}
+
+static void janus_mqttevh_client_reconnect_failure(void *context, MQTTAsync_failureData *response) {
+	int rc = response ? response->code : 0;
+	JANUS_LOG(LOG_ERR, "MQTT EVH client failed reconnecting to MQTT broker, return code: %d\n", rc);
+}
+
+static int janus_mqttevh_client_disconnect(janus_mqttevh_context *ctx) {
+	MQTTAsync_disconnectOptions options = MQTTAsync_disconnectOptions_initializer;
+	options.onSuccess = janus_mqttevh_client_disconnect_success;
+	options.onFailure = janus_mqttevh_client_disconnect_failure;
+	options.context = ctx;
+	options.timeout = ctx->disconnect.timeout;
+	return MQTTAsync_disconnect(ctx->client, &options);
+}
+
+static void janus_mqttevh_client_disconnect_success(void *context, MQTTAsync_successData *response) {
+
+	/* Notify handlers about this transport being gone */
+	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
+
+	JANUS_LOG(LOG_INFO, "MQTT EVH client has been successfully disconnected from %s. Destroying the client...\n", ctx->connect.url);
+	janus_mqttevh_client_destroy_context(&ctx);
 		JANUS_LOG(LOG_FATAL, "Can't connect to MQTT broker, return code: %d\n", rc);
 	} else {
 		json_t *info = json_object();
@@ -621,11 +653,8 @@ static int janus_mqttevh_init(const char *config_path) {
 	}
 	/* Set callbacks. We should not really subscribe to anything but nevertheless */
 	if(MQTTAsync_setCallbacks(
-			ctx->client,
-			ctx,
-			janus_mqttevh_client_connection_lost,
-			janus_mqttevh_client_message_arrived,	//Needed
-			janus_mqttevh_client_delivery_complete) != MQTTASYNC_SUCCESS) {
+			ctx->client, ctx, janus_mqttevh_client_connection_lost,
+			NULL, NULL) != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Event handler : Can't setup MQTT broker %s: error setting up callbacks...\n", ctx->connect.url);
 		goto error;
 	}
