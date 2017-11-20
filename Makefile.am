@@ -407,6 +407,16 @@ conf_DATA += conf/janus.plugin.videoroom.cfg.sample
 EXTRA_DIST += conf/janus.plugin.videoroom.cfg.sample
 endif
 
+if ENABLE_PLUGIN_AUVIOUSROOM
+plugin_LTLIBRARIES += plugins/libjanus_auviousroom.la
+plugins_libjanus_auviousroom_la_SOURCES = plugins/janus_auviousroom.c
+plugins_libjanus_auviousroom_la_CFLAGS = $(plugins_cflags)
+plugins_libjanus_auviousroom_la_LDFLAGS = $(plugins_ldflags)
+plugins_libjanus_auviousroom_la_LIBADD = $(plugins_libadd)
+conf_DATA += conf/janus.plugin.auviousroom.cfg.sample
+EXTRA_DIST += conf/janus.plugin.auviousroom.cfg.sample
+endif
+
 if ENABLE_PLUGIN_VOICEMAIL
 plugin_LTLIBRARIES += plugins/libjanus_voicemail.la
 plugins_libjanus_voicemail_la_SOURCES = plugins/janus_voicemail.c
