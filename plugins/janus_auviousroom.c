@@ -3614,6 +3614,7 @@ static void *janus_auviousroom_handler(void *data) {
 				json_t *offer_audio = json_object_get(root, "offer_audio");
 				json_t *offer_video = json_object_get(root, "offer_video");
 				json_t *offer_data = json_object_get(root, "offer_data");
+				json_t *listener_creates_offer = json_object_get(root, "listener_creates_offer");
 				janus_mutex_lock(&auviousroom->participants_mutex);
 				janus_auviousroom_participant *owner = NULL;
 				janus_auviousroom_participant *publisher = g_hash_table_lookup(auviousroom->participants, &feed_id);
@@ -3701,6 +3702,25 @@ static void *janus_auviousroom_handler(void *data) {
 						json_object_set_new(event, "display", json_string(publisher->display));
 					session->participant_type = janus_auviousroom_p_type_subscriber;
 					JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
+					if (json_is_true(listener_creates_offer)) {
+						/* How long will the gateway take to push the event? */
+						g_atomic_int_set(&session->hangingup, 0);
+						gint64 start = janus_get_monotonic_time();
+						int res = gateway->push_event(msg->handle, &janus_auviousroom_plugin, msg->transaction, event, NULL);
+						JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (took %"SCNu64" us)\n", res, janus_get_monotonic_time()-start);
+						json_decref(event);
+						janus_auviousroom_message_free(msg);
+						/* Also notify event handlers */
+						if(notify_events && gateway->events_is_enabled()) {
+							json_t *info = json_object();
+							json_object_set_new(info, "event", json_string("subscribing"));
+							json_object_set_new(info, "room", json_integer(auviousroom->room_id));
+							json_object_set_new(info, "feed", json_integer(feed_id));
+							json_object_set_new(info, "private_id", json_integer(pvt_id));
+							gateway->notify_event(&janus_auviousroom_plugin, session->handle, info);
+						}
+						continue;
+					}
 					/* Negotiate by sending the selected publisher SDP back */
 					if(publisher->sdp != NULL) {
 						/* Check if there's something the original SDP has that we should remove */
