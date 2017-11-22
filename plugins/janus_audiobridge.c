@@ -2613,7 +2613,7 @@ void janus_audiobridge_incoming_rtp(janus_plugin_session *handle, int video, cha
 			JANUS_LOG(LOG_ERR, "[Opus] Ops! got an error accessing the RTP payload\n");
 			g_free(pkt->data);
 			g_free(pkt);
-		  participant->working = FALSE;
+		  	participant->working = FALSE;
 			return;
 		}
 		pkt->length = opus_decode(participant->decoder, payload, plen, (opus_int16 *)pkt->data, BUFFER_SAMPLES, USE_FEC);
