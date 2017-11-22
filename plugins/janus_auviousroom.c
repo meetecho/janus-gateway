@@ -3703,6 +3703,8 @@ static void *janus_auviousroom_handler(void *data) {
 					session->participant_type = janus_auviousroom_p_type_subscriber;
 					JANUS_LOG(LOG_VERB, "Preparing JSON event as a reply\n");
 					if (json_is_true(listener_creates_offer)) {
+						/* forward rtp to listener asap */
+						listener->paused = FALSE;
 						/* How long will the gateway take to push the event? */
 						g_atomic_int_set(&session->hangingup, 0);
 						gint64 start = janus_get_monotonic_time();
