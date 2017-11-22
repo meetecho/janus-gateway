@@ -661,6 +661,15 @@ typedef struct janus_auviousroom_listener {
 	 * simulcast, which has similar info (substream/templayer) but in a completely different context */
 	int spatial_layer, target_spatial_layer;
 	int temporal_layer, target_temporal_layer;
+	// fields added for supporting subscriber create offer
+	gboolean firefox;	/* We send Firefox users a different kind of FIR */
+	guint8 audio_level_extmap_id;	/* Audio level extmap ID */
+	guint8 video_orient_extmap_id;	/* Video orientation extmap ID */
+	guint8 playout_delay_extmap_id;	/* Playout delay extmap ID */
+	janus_auviousroom_audiocodec acodec;	/* Audio codec this publisher is using */
+	janus_auviousroom_videocodec vcodec;	/* Video codec this publisher is using */
+	guint32 audio_pt;		/* Audio payload type (Opus) */
+	guint32 video_pt;		/* Video payload type (depends on room configuration) */
 } janus_auviousroom_listener;
 static void janus_auviousroom_listener_free(janus_auviousroom_listener *l);
 
@@ -4344,12 +4353,13 @@ static void *janus_auviousroom_handler(void *data) {
 			if(session->participant_type == janus_auviousroom_p_type_subscriber) {
 				/* We got an offer (from a listener), need to negotiate */
 				/* This is a new subscriber */
-				janus_auviousroom_participant *participant = (janus_auviousroom_participant *)session->participant;
-				janus_auviousroom *auviousroom = participant->room;
+				janus_auviousroom_listener *listener = (janus_auviousroom_listener *)session->participant;
+				janus_auviousroom_participant *publisher = listener->feed;
+				janus_auviousroom *auviousroom = listener->room;
 
                 /* Now prepare the SDP to give back */
 				if(strstr(msg_sdp, "Mozilla")) {
-					participant->firefox = TRUE;
+					listener->firefox = TRUE;
 				}
 				/* Start by parsing the offer */
 				char error_str[512];
@@ -4371,12 +4381,12 @@ static void *janus_auviousroom_handler(void *data) {
 					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 					if(m->type == JANUS_SDP_AUDIO && m->port > 0 &&
 							m->direction != JANUS_SDP_SENDONLY && m->direction != JANUS_SDP_INACTIVE) {
-						participant->audio = TRUE;
+						listener->audio = TRUE;
 					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 &&
 							m->direction != JANUS_SDP_SENDONLY && m->direction != JANUS_SDP_INACTIVE) {
-						participant->video = TRUE;
+						listener->video = TRUE;
 					} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
-						participant->data = TRUE;
+						listener->data = TRUE;
 					}
 					if(m->type == JANUS_SDP_AUDIO || m->type == JANUS_SDP_VIDEO) {
 						/* Are the extmaps we care about there? */
@@ -4385,15 +4395,15 @@ static void *janus_auviousroom_handler(void *data) {
 							janus_sdp_attribute *a = (janus_sdp_attribute *)ma->data;
 							if(a->value) {
 								if(auviousroom->audiolevel_ext && m->type == JANUS_SDP_AUDIO && strstr(a->value, JANUS_RTP_EXTMAP_AUDIO_LEVEL)) {
-									participant->audio_level_extmap_id = atoi(a->value);
+									listener->audio_level_extmap_id = atoi(a->value);
 									audio_level_extmap = TRUE;
 									audio_level_mdir = a->direction;
 								} else if(auviousroom->videoorient_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION)) {
-									participant->video_orient_extmap_id = atoi(a->value);
+									listener->video_orient_extmap_id = atoi(a->value);
 									video_orient_extmap = TRUE;
 									video_orient_mdir = a->direction;
 								} else if(auviousroom->playoutdelay_ext && m->type == JANUS_SDP_VIDEO && strstr(a->value, JANUS_RTP_EXTMAP_PLAYOUT_DELAY)) {
-									participant->playout_delay_extmap_id = atoi(a->value);
+									listener->playout_delay_extmap_id = atoi(a->value);
 									playout_delay_extmap = TRUE;
 									playout_delay_mdir = a->direction;
 								}
@@ -4405,40 +4415,32 @@ static void *janus_auviousroom_handler(void *data) {
 				}
 
                 /* Prepare an answer now: force the room codecs and recvonly on the Janus side */
-				JANUS_LOG(LOG_VERB, "The subscriber %s going to receive an audio stream\n", participant->audio ? "is" : "is NOT");
-				JANUS_LOG(LOG_VERB, "The subscriber %s going to receive a video stream\n", participant->video ? "is" : "is NOT");
-				JANUS_LOG(LOG_VERB, "The subscriber %s going to open a data channel\n", participant->data ? "is" : "is NOT");
+				JANUS_LOG(LOG_VERB, "The subscriber %s going to receive an audio stream\n", listener->audio ? "is" : "is NOT");
+				JANUS_LOG(LOG_VERB, "The subscriber %s going to receive a video stream\n", listener->video ? "is" : "is NOT");
+				JANUS_LOG(LOG_VERB, "The subscriber %s going to open a data channel\n", listener->data ? "is" : "is NOT");
+
 				/* Check the codecs we can use, or the ones we should */
-				if(participant->acodec == JANUS_AUVIOUSROOM_NOAUDIO) {
-					int i=0;
-					for(i=0; i<3; i++) {
-						if(participant->room->acodec[i] == JANUS_AUVIOUSROOM_NOAUDIO)
-							continue;
-						if(janus_sdp_get_codec_pt(offer, janus_auviousroom_audiocodec_name(participant->room->acodec[i])) != -1) {
-							participant->acodec = participant->room->acodec[i];
-							break;
-						}
-					}
+				listener->acodec = publisher->acodec;
+				listener->vcodec = publisher->vcodec;
+
+				int audio_pt = janus_sdp_get_codec_pt(offer, janus_auviousroom_audiocodec_name(listener->acodec));
+				if (audio_pt == -1) {
+					listener->acodec = JANUS_AUVIOUSROOM_NOAUDIO;
 				}
-                JANUS_LOG(LOG_VERB, "The subscriber is going to use the %s audio codec\n", janus_auviousroom_audiocodec_name(participant->acodec));
-				participant->audio_pt = janus_auviousroom_audiocodec_pt(participant->acodec);
-				if(participant->vcodec == JANUS_AUVIOUSROOM_NOVIDEO) {
-					int i=0;
-					for(i=0; i<3; i++) {
-						if(participant->room->vcodec[i] == JANUS_AUVIOUSROOM_NOVIDEO)
-							continue;
-						if(janus_sdp_get_codec_pt(offer, janus_auviousroom_videocodec_name(participant->room->vcodec[i])) != -1) {
-							participant->vcodec = participant->room->vcodec[i];
-							break;
-						}
-					}
+				listener->audio_pt = audio_pt;
+				JANUS_LOG(LOG_VERB, "The subscriber is going to use the %s audio codec\n", janus_auviousroom_audiocodec_name(publisher->acodec));
+
+				int video_pt = janus_sdp_get_codec_pt(offer, janus_auviousroom_videocodec_name(listener->vcodec));
+				if (video_pt == -1) {
+					listener->vcodec = JANUS_AUVIOUSROOM_NOVIDEO;
 				}
-                JANUS_LOG(LOG_VERB, "The subscriber is going to use the %s video codec\n", janus_auviousroom_videocodec_name(participant->vcodec));
-				participant->video_pt = janus_auviousroom_videocodec_pt(participant->vcodec);
+				listener->video_pt = video_pt;
+				JANUS_LOG(LOG_VERB, "The subscriber is going to use the %s video codec\n", janus_auviousroom_videocodec_name(publisher->vcodec));
+
 				janus_sdp *answer = janus_sdp_generate_answer(offer,
-					JANUS_SDP_OA_AUDIO_CODEC, janus_auviousroom_audiocodec_name(participant->acodec),
+					JANUS_SDP_OA_AUDIO_CODEC, janus_auviousroom_audiocodec_name(publisher->acodec),
 					JANUS_SDP_OA_AUDIO_DIRECTION, JANUS_SDP_SENDONLY,
-					JANUS_SDP_OA_VIDEO_CODEC, janus_auviousroom_videocodec_name(participant->vcodec),
+					JANUS_SDP_OA_VIDEO_CODEC, janus_auviousroom_videocodec_name(publisher->vcodec),
 					JANUS_SDP_OA_VIDEO_DIRECTION, JANUS_SDP_SENDONLY,
 					JANUS_SDP_OA_DONE);
 				janus_sdp_free(offer);
@@ -4448,33 +4450,33 @@ static void *janus_auviousroom_handler(void *data) {
 				g_snprintf(s_name, sizeof(s_name), "AuviousRoom %"SCNu64, auviousroom->room_id);
 				answer->s_name = g_strdup(s_name);
 				/* Which media are REALLY available? (some may have been rejected) */
-				participant->audio = FALSE;
-				participant->video = FALSE;
-				participant->data = FALSE;
+				listener->audio = FALSE;
+				listener->video = FALSE;
+				listener->data = FALSE;
 				temp = answer->m_lines;
 				while(temp) {
 					janus_sdp_mline *m = (janus_sdp_mline *)temp->data;
 					if(m->type == JANUS_SDP_AUDIO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
-						participant->audio = TRUE;
+						listener->audio = TRUE;
 					} else if(m->type == JANUS_SDP_VIDEO && m->port > 0 && m->direction != JANUS_SDP_INACTIVE) {
-						participant->video = TRUE;
+						listener->video = TRUE;
 					} else if(m->type == JANUS_SDP_APPLICATION && m->port > 0) {
-						participant->data = TRUE;
+						listener->data = TRUE;
 					}
 					temp = temp->next;
 				}
-				JANUS_LOG(LOG_VERB, "Per the answer, the subscriber %s going to receive an audio stream\n", participant->audio ? "is" : "is NOT");
-				JANUS_LOG(LOG_VERB, "Per the answer, the subscriber %s going to receive a video stream\n", participant->video ? "is" : "is NOT");
-				JANUS_LOG(LOG_VERB, "Per the answer, the subscriber %s going to open a data channel\n", participant->data ? "is" : "is NOT");
+				JANUS_LOG(LOG_VERB, "Per the answer, the subscriber %s going to receive an audio stream\n", listener->audio ? "is" : "is NOT");
+				JANUS_LOG(LOG_VERB, "Per the answer, the subscriber %s going to receive a video stream\n", listener->video ? "is" : "is NOT");
+				JANUS_LOG(LOG_VERB, "Per the answer, the subscriber %s going to open a data channel\n", listener->data ? "is" : "is NOT");
 				/* Update the event with info on the codecs that we'll be handling */
 				if(event) {
-					if(participant->audio)
-						json_object_set_new(event, "audio_codec", json_string(janus_auviousroom_audiocodec_name(participant->acodec)));
-					if(participant->video)
-						json_object_set_new(event, "video_codec", json_string(janus_auviousroom_videocodec_name(participant->vcodec)));
+					if(listener->audio)
+						json_object_set_new(event, "audio_codec", json_string(janus_auviousroom_audiocodec_name(publisher->acodec)));
+					if(listener->video)
+						json_object_set_new(event, "video_codec", json_string(janus_auviousroom_videocodec_name(publisher->vcodec)));
 				}
 				/* Also add a bandwidth SDP attribute if we're capping the bitrate in the room */
-				if(participant->firefox) {	/* Don't add any b=AS attribute for Chrome */
+				if(listener->firefox) {	/* Don't add any b=AS attribute for Chrome */
 					janus_sdp_mline *m = janus_sdp_mline_find(answer, JANUS_SDP_VIDEO);
 					if(m != NULL && auviousroom->bitrate > 0) {
 						m->b_name = g_strdup("AS");
@@ -4498,7 +4500,7 @@ static void *janus_auviousroom_handler(void *data) {
 							break;
 					}
 					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d%s %s\r\n", participant->audio_level_extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
+						"%d%s %s\r\n", listener->audio_level_extmap_id, direction, JANUS_RTP_EXTMAP_AUDIO_LEVEL);
 					janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_AUDIO), a);
 				}
 				if(video_orient_extmap) {
@@ -4517,7 +4519,7 @@ static void *janus_auviousroom_handler(void *data) {
 							break;
 					}
 					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d%s %s\r\n", participant->video_orient_extmap_id, direction, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
+						"%d%s %s\r\n", listener->video_orient_extmap_id, direction, JANUS_RTP_EXTMAP_VIDEO_ORIENTATION);
 					janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_VIDEO), a);
 				}
 				if(playout_delay_extmap) {
@@ -4536,7 +4538,7 @@ static void *janus_auviousroom_handler(void *data) {
 							break;
 					}
 					janus_sdp_attribute *a = janus_sdp_attribute_create("extmap",
-						"%d%s %s\r\n", participant->playout_delay_extmap_id, direction, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
+						"%d%s %s\r\n", listener->playout_delay_extmap_id, direction, JANUS_RTP_EXTMAP_PLAYOUT_DELAY);
 					janus_sdp_attribute_add_to_mline(janus_sdp_mline_find(answer, JANUS_SDP_VIDEO), a);
 				}
 				/* Generate an SDP string we can send back to the subscriber */
@@ -4900,6 +4902,7 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 	
 	/* Make sure there hasn't been a publisher switch by checking the SSRC */
 	if(packet->is_video) {
+		packet->data->type = listener->video_pt;
 		/* Check if this listener is subscribed to this medium */
 		if(!listener->video) {
 			/* Nope, don't relay */
@@ -5009,6 +5012,8 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
+			/* Restore the video rtp type */
+			packet->data->type = listener->feed->video_pt;
 		} else if(packet->ssrc[0] != 0) {
 			/* Handle simulcast: don't relay if it's not the SSRC we wanted to handle */
 			uint32_t ssrc = ntohl(packet->data->ssrc);
@@ -5117,6 +5122,8 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
+			/* Restore the video rtp type */
+			packet->data->type = listener->feed->video_pt;
 			/* Restore the original payload descriptor as well, as it will be needed by the next viewer */
 			memcpy(payload, vp8pd, sizeof(vp8pd));
 		} else {
@@ -5128,8 +5135,11 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 			/* Restore the timestamp and sequence number to what the publisher set them to */
 			packet->data->timestamp = htonl(packet->timestamp);
 			packet->data->seq_number = htons(packet->seq_number);
+			/* Restore the video rtp type */
+			packet->data->type = listener->feed->video_pt;
 		}
 	} else {
+		packet->data->type = listener->audio_pt;
 		/* Check if this listener is subscribed to this medium */
 		if(!listener->audio) {
 			/* Nope, don't relay */
@@ -5143,6 +5153,8 @@ static void janus_auviousroom_relay_rtp_packet(gpointer data, gpointer user_data
 		/* Restore the timestamp and sequence number to what the publisher set them to */
 		packet->data->timestamp = htonl(packet->timestamp);
 		packet->data->seq_number = htons(packet->seq_number);
+		/* Restore the audio rtp type */
+		packet->data->type = listener->feed->audio_pt;
 	}
 
 	return;
