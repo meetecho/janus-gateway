@@ -213,7 +213,7 @@ static const char *janus_mqttevh_get_package(void) {
 /* Send an JSON message to a MQTT topic */
 static int janus_mqttevh_send_message(void *context, const char *topic, json_t *message) {
 	char *payload = NULL;
-	int rc;
+	int rc = 0;
 	janus_mqttevh_context *ctx;
 
 	if(message == NULL) {
@@ -224,6 +224,7 @@ static int janus_mqttevh_send_message(void *context, const char *topic, json_t *
 		json_decref(message);
 		return -1;
 	}
+	JANUS_LOG(LOG_INFO, "About to send message to %s \n", topic);
 
 #ifdef SKREP
 	if (payload != NULL) {
@@ -235,14 +236,22 @@ static int janus_mqttevh_send_message(void *context, const char *topic, json_t *
 	ctx = (janus_mqttevh_context *) context;
 
 	payload = json_dumps(message, json_format_);
+	if (payload == NULL) {
+		JANUS_LOG(LOG_ERR, "Can't convert message to string format \n");
+		json_decref(message);
+		return 0;
+	}
+	JANUS_LOG(LOG_INFO, "Converted message to JSON for %s \n", topic);
+	/* Ok, lets' get rid of the message */
 	json_decref(message);
 
 	rc = janus_mqttevh_client_publish_message(ctx, topic, ctx->publish.retain, payload);
 
 	if(rc != MQTTASYNC_SUCCESS) {
-		JANUS_LOG(LOG_ERR, "Can't publish to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
+		JANUS_LOG(LOG_INFO, "Can't publish to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
 	}
 
+	JANUS_LOG(LOG_INFO, "Done with message to JSON for %s \n", topic);
 
 	return 0;
 }
@@ -258,6 +267,8 @@ static void janus_mqttevh_client_connection_lost(void *context, char *cause) {
 
 /* Set up connection to broker */
 static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
+	int rc;
+
 	MQTTAsync_connectOptions options = MQTTAsync_connectOptions_initializer;
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
 	options.cleansession = ctx->connect.cleansession;
@@ -268,7 +279,8 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	options.onFailure = janus_mqttevh_client_connect_failure;
 	options.context = ctx;
 
-	return MQTTAsync_connect(ctx->client, &options);
+	rc = MQTTAsync_connect(ctx->client, &options);
+	return rc;
 }
 
 static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_successData *response) {
@@ -395,8 +407,12 @@ static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, cons
 	options.onSuccess = janus_mqttevh_client_publish_janus_success;
 	options.onFailure = janus_mqttevh_client_publish_janus_failure;
 	rc = MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
+	if (rc == MQTTASYNC_SUCCESS) {
+		JANUS_LOG(LOG_INFO, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+	} else {
+		JANUS_LOG(LOG_INFO, "FAILURE: MQTT EVH message propably not sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
+	}
 
-	JANUS_LOG(LOG_INFO, "MQTT EVH message sent to topic %s on %s. Result %d\n", topic, ctx->connect.url, rc);
 	return rc;
 }
 
@@ -837,6 +853,7 @@ static void *janus_mqttevh_handler(void *data) {
 		int type = json_integer_value(json_object_get(event, "type"));
 		const char *elabel = event_type_to_label(type);
 		const char *ename = event_type_to_name(type);
+
 		if (elabel && ename) {
 			JANUS_LOG(LOG_DBG, "Event label %s, name %s\n", elabel, ename);
 		} else {
@@ -859,8 +876,9 @@ static void *janus_mqttevh_handler(void *data) {
 		}
 
 		/* Done, let's unref the event */
-		json_decref(output);
-		output = NULL;
+		//json_decref(output);
+		//output = NULL;
+		JANUS_LOG(LOG_VERB, "Debug: Thread done publishing MQTT Publish event on %s\n", topicbuf);
 	}
 	JANUS_LOG(LOG_VERB, "Leaving MQTTEventHandler handler thread\n");
 	return NULL;
