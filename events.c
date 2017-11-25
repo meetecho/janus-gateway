@@ -294,7 +294,7 @@ const char *event_type_to_name(int event_type)
 	return (char *) NULL;
 }
 
-int event_label_to_flog(const char *label)
+int event_label_to_flag(const char *label)
 {
 	struct event_types_t *ev = event_type_string;
 
