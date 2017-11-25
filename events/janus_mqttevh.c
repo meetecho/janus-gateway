@@ -1,4 +1,5 @@
-/*! \file   janus_mqtt.c
+/*! \file   janus_mqttevh.c
+ *
  * \author Copyright Olle E. Johansson <oej@edvina.net>
  *
  * Based on the mqtt transport by
@@ -11,11 +12,19 @@
  *
  * \ingroup eventhandlers
  * \ref eventhandlers
+ *
+ * \todo Add will handling
+ * \todo Add TLS support (not SSL)
+ * \todo Add support for addplugin in topic
+ * \todo Improve the MQTT connect message (the first one)
+ * \todo Fix random client id if not configured
  */
 
 #include "eventhandler.h"
 
-/* We use the Paho MQTT library */
+/* We use the Paho MQTT library  
+ * http://www.eclipse.org/paho/clients/c/
+ */
 #include <MQTTAsync.h>
 
 #include "../debug.h"
@@ -25,10 +34,10 @@
 
 /* Plugin information */
 #define JANUS_MQTTEVH_VERSION               1
-#define JANUS_MQTTEVH_VERSION_STRING        "0.0.1"
-#define JANUS_MQTTEVH_DESCRIPTION           "This is a MQTT event handler plugin for Janus."
+#define JANUS_MQTTEVH_VERSION_STRING        "0.1.0"
+#define JANUS_MQTTEVH_DESCRIPTION           "An MQTT event handler plugin for Janus."
 #define JANUS_MQTTEVH_NAME                  "JANUS MqttEventHandler plugin"
-#define JANUS_MQTTEVH_AUTHOR                "Edvina AB"
+#define JANUS_MQTTEVH_AUTHOR                "Olle E. Johansson, Edvina AB"
 #define JANUS_MQTTEVH_PACKAGE               "janus.eventhandler.mqttevh"
 
 /* Plugin methods */
@@ -69,9 +78,12 @@ static janus_eventhandler janus_mqttevh =
 
 /* Fix an exit event */
 static json_t exit_event;
+
+/* Destruction of events */
 static void janus_mqttevh_event_free(json_t *event) {
-        if(!event || event == &exit_event)
+        if(!event || event == &exit_event) {
                 return;
+	}
         json_decref(event);
 }
 
@@ -114,7 +126,7 @@ static size_t json_format_ = DEFAULT_JSON_FORMAT;
 
 /* MQTT client context */
 typedef struct janus_mqttevh_context {
-	//janus_transport_callbacks *gateway;
+
 	/* THe Paho MQTT client data structure */
 	MQTTAsync client;
 
@@ -161,7 +173,7 @@ typedef struct janus_mqttevh_context {
 	} tls;
 } janus_mqttevh_context;
 
-/* Transport client methods */
+/* Event handler methods */
 static void janus_mqttevh_client_connection_lost(void *context, char *cause);
 static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx);
 static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_successData *response);
@@ -177,7 +189,7 @@ static void janus_mqttevh_client_publish_janus_success(void *context, MQTTAsync_
 static void janus_mqttevh_client_publish_janus_failure(void *context, MQTTAsync_failureData *response);
 static void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ctx);
 
-/* We only handle a single client */
+/* We only handle a single connection */
 static janus_mqttevh_context *context_ = NULL;
 
 
@@ -237,7 +249,6 @@ static int janus_mqttevh_send_message(void *context, const char *topic, json_t *
 }
 
 static void janus_mqttevh_client_connection_lost(void *context, char *cause) {
-	/* Automatic reconnect */
 
 	/* Notify handlers about this transport being gone */
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
@@ -245,7 +256,7 @@ static void janus_mqttevh_client_connection_lost(void *context, char *cause) {
 	JANUS_LOG(LOG_INFO, "MQTT EVH connection %s lost cause of %s. Reconnecting...\n", ctx->connect.url, cause);
 }
 
-/* Set up connection to broker */
+/* Set up connection to MQTT broker */
 static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	MQTTAsync_connectOptions options = MQTTAsync_connectOptions_initializer;
 	options.keepAliveInterval = ctx->connect.keep_alive_interval;
@@ -260,6 +271,7 @@ static int janus_mqttevh_client_connect(janus_mqttevh_context *ctx) {
 	return MQTTAsync_connect(ctx->client, &options);
 }
 
+/* Callback for succesful connection to MQTT broker */
 static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_successData *response) {
 	char topicbuf[512];
 
@@ -268,11 +280,13 @@ static void janus_mqttevh_client_connect_success(void *context, MQTTAsync_succes
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 
 	json_t *info = json_object();
+
 	json_object_set_new(info, "event", json_string("connected"));
 	snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, "status");
 	janus_mqttevh_send_message(context,  topicbuf, info);
 }
 
+/* Callback for MQTT broker connection failure */
 static void janus_mqttevh_client_connect_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = response ? response->code : 0;
 
@@ -281,6 +295,7 @@ static void janus_mqttevh_client_connect_failure(void *context, MQTTAsync_failur
 
 }
 
+/* MQTT broker Reconnect function */
 static int janus_mqttevh_client_reconnect(janus_mqttevh_context *ctx) {
 	JANUS_LOG(LOG_INFO, "MQTT EVH client reconnecting to %s. Reconnecting...\n", ctx->connect.url);
 
@@ -293,6 +308,7 @@ static int janus_mqttevh_client_reconnect(janus_mqttevh_context *ctx) {
 	return MQTTAsync_disconnect(ctx->client, &options);
 }
 
+/* Callback for successful reconnection to MQTT broker */
 static void janus_mqttevh_client_reconnect_success(void *context, MQTTAsync_successData *response) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 	char topicbuf[512];
@@ -325,11 +341,13 @@ static void janus_mqttevh_client_reconnect_success(void *context, MQTTAsync_succ
 	janus_mqttevh_send_message(context,  topicbuf, info);
 }
 
+/* Callback for MQTT broker reconnect failure */
 static void janus_mqttevh_client_reconnect_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = response ? response->code : 0;
 	JANUS_LOG(LOG_ERR, "MQTT EVH client failed reconnecting to MQTT broker, return code: %d\n", rc);
 }
 
+/* Disconnect from MQTT broker */
 static int janus_mqttevh_client_disconnect(janus_mqttevh_context *ctx) {
 	MQTTAsync_disconnectOptions options = MQTTAsync_disconnectOptions_initializer;
 	options.onSuccess = janus_mqttevh_client_disconnect_success;
@@ -339,6 +357,7 @@ static int janus_mqttevh_client_disconnect(janus_mqttevh_context *ctx) {
 	return MQTTAsync_disconnect(ctx->client, &options);
 }
 
+/* Callback for succesful MQTT disconnect */
 static void janus_mqttevh_client_disconnect_success(void *context, MQTTAsync_successData *response) {
 
 	/* Notify handlers about this transport being gone */
@@ -348,6 +367,7 @@ static void janus_mqttevh_client_disconnect_success(void *context, MQTTAsync_suc
 	janus_mqttevh_client_destroy_context(&ctx);
 }
 
+/* Callback for MQTT disconnect failure */
 void janus_mqttevh_client_disconnect_failure(void *context, MQTTAsync_failureData *response) {
 	int rc = response ? response->code : 0;
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
@@ -358,7 +378,9 @@ void janus_mqttevh_client_disconnect_failure(void *context, MQTTAsync_failureDat
 }
 
 
-/* Publish mqtt message using paho*/
+/* Publish mqtt message using paho
+ * Payload is a string. JSON objects should be stringified before calling this function.
+ */
 static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, const char *topic, int retain, char *payload ) 
 {
 	MQTTAsync_message msg = MQTTAsync_message_initializer;
@@ -374,17 +396,23 @@ static int janus_mqttevh_client_publish_message(janus_mqttevh_context *ctx, cons
 	return MQTTAsync_sendMessage(ctx->client, topic, &msg, &options);
 }
 
+/* Callback for successful MQTT publish */
 static void janus_mqttevh_client_publish_janus_success(void *context, MQTTAsync_successData *response) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 	JANUS_LOG(LOG_HUGE, "MQTT EVH client has successfully published to MQTT topic: %s\n", ctx->publish.topic);
 }
 
+/* Callback for MQTT publish failure 
+ * 	Should we bring message into queue? Right now, we just drop it.
+ */
 static void janus_mqttevh_client_publish_janus_failure(void *context, MQTTAsync_failureData *response) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)context;
 	int rc = response ? response->code : 0;
 	JANUS_LOG(LOG_ERR, "MQTT EVH client has failed publishing to MQTT topic: %s, return code: %d\n", ctx->publish.topic, rc);
 }
 
+
+/* Destroy Janus MQTT event handler session context */
 static void janus_mqttevh_client_destroy_context(janus_mqttevh_context **ptr) {
 	janus_mqttevh_context *ctx = (janus_mqttevh_context *)*ptr;
 	if(ctx) {
@@ -458,7 +486,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	ctx->connect.url= g_strdup((url_item && url_item->value) ? url_item->value : DEFAULT_MQTTURL);
 
 	janus_config_item *client_id_item = janus_config_get_item_drilldown(config, "general", "client_id");
-	// OEJ TODO: Fix random client id if not configured
+
 	ctx->connect.client_id = g_strdup((client_id_item && client_id_item->value) ? client_id_item->value : "guest");
 
 	username_item = janus_config_get_item_drilldown(config, "general", "username");
@@ -606,11 +634,12 @@ static int janus_mqttevh_init(const char *config_path) {
 
 	/* Create a MQTT client */
 	res = MQTTAsync_create(
-			&ctx->client,
-			ctx->connect.url,
-			ctx->connect.client_id,
-			MQTTCLIENT_PERSISTENCE_NONE,
-			NULL);
+		&ctx->client,
+		ctx->connect.url,
+		ctx->connect.client_id,
+		MQTTCLIENT_PERSISTENCE_NONE,
+		NULL);
+
 	 if (res != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Can't setup library for connection to  MQTT broker %s: error %d creating client...\n", ctx->connect.url, res);
 		goto error;
@@ -620,11 +649,12 @@ static int janus_mqttevh_init(const char *config_path) {
 			ctx->client, ctx,
 			janus_mqttevh_client_connection_lost,
 			NULL, NULL);
+
 	if (res != MQTTASYNC_SUCCESS) {
 		JANUS_LOG(LOG_FATAL, "Event handler : Can't setup MQTT broker %s: error %d setting up callbacks...\n", ctx->connect.url, res);
 		goto error;
 	}
-	JANUS_LOG(LOG_INFO, "Event handler : About to setup MQTT broker %s: ...\n", ctx->connect.url);
+	JANUS_LOG(LOG_INFO, "Event handler : About to connect to  MQTT broker %s: ...\n", ctx->connect.url);
 
 	/* Connecting to the broker */
 	int rc = janus_mqttevh_client_connect(ctx);
@@ -653,6 +683,7 @@ static int janus_mqttevh_init(const char *config_path) {
 	events = g_async_queue_new_full((GDestroyNotify) janus_mqttevh_event_free);
 	g_atomic_int_set(&initialized, 1);
 
+	/* Create the event handler thread */
 	GError *error = NULL;
 	handler_thread = g_thread_try_new("janus mqttevh handler", janus_mqttevh_handler, ctx, &error);
 	if(error != NULL) {
@@ -662,8 +693,6 @@ static int janus_mqttevh_init(const char *config_path) {
 	}
 
 	/* Done */
-	JANUS_LOG(LOG_INFO, "Setup of MQTT event handler completed\n");
-
 	if(config) {
 		janus_config_destroy(config);
 	}
@@ -674,12 +703,6 @@ static int janus_mqttevh_init(const char *config_path) {
 error:
 	/* If we got here, something went wrong */
 	janus_mqttevh_client_destroy_context(&ctx);
-	//if(ssl_cacert_file)
-		//g_free((char *)ssl_cacert_file);
-	//if(ssl_cert_file)
-		//g_free((char *)ssl_cert_file);
-	//if(ssl_key_file)
-		//g_free((char *)ssl_key_file);
 
 	if(config)
 		janus_config_destroy(config);
@@ -767,6 +790,7 @@ static void *janus_mqttevh_handler(void *data) {
 
 		int type = json_integer_value(json_object_get(event, "type"));
 
+		/* Hack to test new functions */
 		JANUS_LOG(LOG_DBG, "Event label %s, name %s\n", event_type_to_label(type), event_type_to_name(type));
 
 		output = json_array();
@@ -778,7 +802,7 @@ static void *janus_mqttevh_handler(void *data) {
 			//event_text = json_dumps(output, json_format);
 			if (ctx->addevent) {
 				snprintf(topicbuf, sizeof(topicbuf), "%s/%s", ctx->publish.topic, event_type_to_label(type));
-				JANUS_LOG(LOG_VERB, "Debug: MQTT Publish event on %s\n", topicbuf);
+				JANUS_LOG(LOG_DBG, "Debug: MQTT Publish event on %s\n", topicbuf);
 				janus_mqttevh_send_message(ctx, topicbuf, output);
 			} else {
 				janus_mqttevh_send_message(ctx, ctx->publish.topic, output);

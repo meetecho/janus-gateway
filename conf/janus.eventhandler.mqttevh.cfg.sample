@@ -2,22 +2,13 @@
 ; ---------------------------------------------
 ;
 ; Events are sent either on one topic or on a topic per event
-; type. You can also ask for topics that include plugin names
+; type.
 ;
 ; Default configuration topics for handle and webrtc event types
 ; with the base topic configured to /janus/events
 ;	/janus/events/handle
 ; 	/janus/events/webrtc
-;
-; If the plugin id is enabled, events in the "handle" category
-; will have plugin name attached
-; 	/janus/events/handle/sipre
-;	/janus/events/handle/audiobridge
-;
-; Subscriptions to /janus/events/+/sipre will get all events from
-; the "sipre" plugin.
-;
-;	/janus/events/handle/# will get all "handle" events from all plugins
+; Etc, etc.
 
 [general]
 enabled = no			; By default the module is not enabled
@@ -30,9 +21,8 @@ events = all			; Comma separated list of the events mask to subscribe
 json = indented			; Whether the JSON messages should be indented (default),
 				; plain (no indentation) or compact (no indentation and no spaces)
 
-url = tcp://localhost:1883	; The URL of the MQTT server. Prefix with "mqtts"
-				; to use TLS (Default: tcp://localhost:1883)
-client_id = Janus02.edvina.net	; Janus client id. If not configured, random ID is default
+url = tcp://localhost:1883	; The URL of the MQTT server. Only tcp supported at this time.
+client_id = Janus02.edvina.net	; Janus client id. You have to configure a unique ID.
 ;keep_alive_interval = 20	; Keep connection for N seconds (Default 30)
 ;cleansession = 0		; Clean session flag (Default off)
 ;mqtt_qos = 1			; Default MQTT QoS for published events
@@ -41,7 +31,6 @@ client_id = Janus02.edvina.net	; Janus client id. If not configured, random ID i
 ;password = guest		; Password for authentication (Default no authentication)
 ;topic=/janus/events		; base topic (default /janus/events)
 ;addtype = yes			; Add event type to base topic
-;addplugin = yes		; Add plugin to base topic
 
 ;
 ; Additional parameters if "mqtts://" schema is used
