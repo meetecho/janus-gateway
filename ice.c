@@ -1124,16 +1124,6 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 			if(handle->data_id > 0) {
 				nice_agent_attach_recv(handle->agent, handle->data_id, 1, g_main_loop_get_context (handle->iceloop), NULL, NULL);
 			}
-			gint64 waited = 0;
-			while(handle->iceloop && !g_main_loop_is_running(handle->iceloop)) {
-				JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE loop exists but is not running, waiting for it to run\n", handle->handle_id);
-				g_usleep (100000);
-				waited += 100000;
-				if(waited >= G_USEC_PER_SEC) {
-					JANUS_LOG(LOG_VERB, "[%"SCNu64"]   -- Waited a second, that's enough!\n", handle->handle_id);
-					break;
-				}
-			}
 			if(g_main_loop_is_running(handle->iceloop)) {
 				JANUS_LOG(LOG_VERB, "[%"SCNu64"] Forcing ICE loop to quit\n", handle->handle_id);
 				g_main_loop_quit(handle->iceloop);
@@ -1196,7 +1186,6 @@ void janus_ice_webrtc_free(janus_ice_handle *handle) {
 	handle->video_mid = NULL;
 	g_free(handle->data_mid);
 	handle->data_mid = NULL;
-	handle->icethread = NULL;
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_READY);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	janus_flags_clear(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_HAS_AGENT);
@@ -2360,10 +2349,11 @@ void *janus_ice_thread(void *data) {
 	janus_flags_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_CLEANING);
 	if(handle->cdone == 0)
 		handle->cdone = -1;
-	if (handle->send_thread != NULL && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
+	if(handle->send_thread != NULL && janus_flags_is_set(&handle->webrtc_flags, JANUS_ICE_HANDLE_WEBRTC_STOP)) {
 		g_thread_join(handle->send_thread);
 	}
 	janus_ice_webrtc_free(handle);
+	handle->icethread = NULL;
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] ICE thread ended! %p\n", handle->handle_id, handle);
 	/* This ICE session is over, unref it */
 	janus_refcount_decrease(&handle->ref);
