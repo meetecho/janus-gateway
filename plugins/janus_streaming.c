@@ -388,6 +388,7 @@ typedef struct janus_streaming_rtp_source {
 	janus_recorder *vrc;	/* The Janus recorder instance for this streams's video, if enabled */
 	janus_recorder *drc;	/* The Janus recorder instance for this streams's data, if enabled */
 	janus_mutex rec_mutex;	/* Mutex to protect the recorders from race conditions */
+	janus_rtp_switching_context context[3];
 	int audio_fd;
 	int video_fd[3];
 	int data_fd;
@@ -3250,6 +3251,9 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	live_rtp_source->arc = NULL;
 	live_rtp_source->vrc = NULL;
 	live_rtp_source->drc = NULL;
+	janus_rtp_switching_context_reset(&live_rtp_source->context[0]);
+	janus_rtp_switching_context_reset(&live_rtp_source->context[1]);
+	janus_rtp_switching_context_reset(&live_rtp_source->context[2]);
 	janus_mutex_init(&live_rtp_source->rec_mutex);
 	live_rtp_source->audio_fd = audio_fd;
 	live_rtp_source->video_fd[0] = video_fd[0];
@@ -4075,10 +4079,7 @@ static void *janus_streaming_relay_thread(void *data) {
 	int data_fd = source->data_fd;
 	char *name = g_strdup(mountpoint->name ? mountpoint->name : "??");
 	/* Needed to fix seq and ts */
-	uint32_t a_last_ssrc = 0, a_last_ts = 0, a_base_ts = 0, a_base_ts_prev = 0,
-			v_last_ssrc[3] = {0, 0, 0}, v_last_ts[3] = {0, 0, 0}, v_base_ts[3] = {0, 0, 0}, v_base_ts_prev[3] = {0, 0, 0};
-	uint16_t a_last_seq = 0, a_base_seq = 0, a_base_seq_prev = 0,
-			v_last_seq[3] = {0, 0, 0}, v_base_seq[3] = {0, 0, 0}, v_base_seq_prev[3] = {0, 0, 0};
+	uint32_t ssrc = 0, a_last_ssrc = 0, v_last_ssrc[3] = {0, 0, 0};
 	/* File descriptors */
 	socklen_t addrlen;
 	struct sockaddr_in remote;
@@ -4290,20 +4291,14 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(ntohl(packet.data->ssrc) != a_last_ssrc) {
 						a_last_ssrc = ntohl(packet.data->ssrc);
 						JANUS_LOG(LOG_INFO, "[%s] New audio stream! (ssrc=%u)\n", name, a_last_ssrc);
-						a_base_ts_prev = a_last_ts;
-						a_base_ts = ntohl(packet.data->timestamp);
-						a_base_seq_prev = a_last_seq;
-						a_base_seq = ntohs(packet.data->seq_number);
 					}
-					a_last_ts = (ntohl(packet.data->timestamp)-a_base_ts)+a_base_ts_prev+960;	/* FIXME We're assuming Opus here... */
-					packet.data->timestamp = htonl(a_last_ts);
-					a_last_seq = (ntohs(packet.data->seq_number)-a_base_seq)+a_base_seq_prev+1;
-					packet.data->seq_number = htons(a_last_seq);
-					//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					packet.data->type = mountpoint->codecs.audio_pt;
 					/* Is there a recorder? */
+					janus_rtp_header_update(packet.data, &source->context[0], FALSE, 960);
+					ssrc = ntohl(packet.data->ssrc);
+					packet.data->ssrc = ntohl((uint32_t)mountpoint->id);
 					janus_recorder_save_frame(source->arc, buffer, bytes);
+					packet.data->ssrc = ntohl(ssrc);
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
@@ -4438,21 +4433,16 @@ static void *janus_streaming_relay_thread(void *data) {
 					if(ntohl(packet.data->ssrc) != v_last_ssrc[index]) {
 						v_last_ssrc[index] = ntohl(packet.data->ssrc);
 						JANUS_LOG(LOG_INFO, "[%s] New video stream! (ssrc=%u, index %d)\n", name, v_last_ssrc[index], index);
-						v_base_ts_prev[index] = v_last_ts[index];
-						v_base_ts[index] = ntohl(packet.data->timestamp);
-						v_base_seq_prev[index] = v_last_seq[index];
-						v_base_seq[index] = ntohs(packet.data->seq_number);
 					}
-					v_last_ts[index] = (ntohl(packet.data->timestamp)-v_base_ts[index])+v_base_ts_prev[index]+4500;	/* FIXME We're assuming 15fps here... */
-					packet.data->timestamp = htonl(v_last_ts[index]);
-					v_last_seq[index] = (ntohs(packet.data->seq_number)-v_base_seq[index])+v_base_seq_prev[index]+1;
-					packet.data->seq_number = htons(v_last_seq[index]);
-					//~ JANUS_LOG(LOG_VERB, " ... updated RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						//~ ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					packet.data->type = mountpoint->codecs.video_pt;
 					/* Is there a recorder? (FIXME notice we only record the first substream, if simulcasting) */
-					if(index == 0)
+					janus_rtp_header_update(packet.data, &source->context[index], TRUE, 4500);
+					if(index == 0) {
+						ssrc = ntohl(packet.data->ssrc);
+						packet.data->ssrc = ntohl((uint32_t)mountpoint->id);
 						janus_recorder_save_frame(source->vrc, buffer, bytes);
+						packet.data->ssrc = ntohl(ssrc);
+					}
 					/* Backup the actual timestamp and sequence number set by the restreamer, in case switching is involved */
 					packet.timestamp = ntohl(packet.data->timestamp);
 					packet.seq_number = ntohs(packet.data->seq_number);
