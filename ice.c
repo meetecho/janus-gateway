@@ -1107,7 +1107,7 @@ void janus_ice_webrtc_hangup(janus_ice_handle *handle, const char *reason) {
 		janus_ice_notify_hangup(handle, reason);
 	}
 	if(handle->queued_packets != NULL)
-		g_async_queue_push(handle->queued_packets, &janus_ice_dtls_alert);
+		g_async_queue_push_front(handle->queued_packets, &janus_ice_dtls_alert);
 	if(handle->send_thread == NULL) {
 		/* Get rid of the loop */
 		if(handle->iceloop != NULL) {
